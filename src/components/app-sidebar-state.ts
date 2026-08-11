@@ -131,7 +131,8 @@ export function isSidebarItemActive({
     );
   }
   if (title === "Storage") {
-    return pathname.startsWith("/storage");
+    // The projects gallery lives under Storage, so it lights this entry.
+    return pathname.startsWith("/storage") || pathname.startsWith("/apps");
   }
   if (title === "System") {
     // Every technical destination lives under System now, including the ones

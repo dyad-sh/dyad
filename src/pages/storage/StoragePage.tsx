@@ -2,14 +2,26 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   Cloud,
+  Code2,
   DatabaseZap,
   HardDrive,
+  LayoutGrid,
   ShieldCheck,
 } from "lucide-react";
 
 import { ParticleBackground } from "@/components/home/ParticleBackground";
 
 const storageDestinations = [
+  {
+    title: "Coding Projects",
+    description:
+      "Every project you have built with Meta Human OS. Open one to keep coding, or restore one from the cloud.",
+    detail: "Built with Build Studio",
+    badge: "Projects",
+    to: "/apps",
+    icon: LayoutGrid,
+    badgeIcon: Code2,
+  },
   {
     title: "Meta Drive HD",
     description:
@@ -50,8 +62,8 @@ export default function StoragePage() {
             Choose a storage workspace
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-100/45">
-            Open your cloud drive or manage the local vector knowledge used by
-            the app and its agents.
+            Open your coding projects, your cloud drive, or the local vector
+            knowledge used by the app and its agents.
           </p>
         </header>
 

@@ -6,7 +6,6 @@ import {
   MessageSquare,
   Store,
   BookOpen,
-  LayoutGrid,
   Bot,
   Library,
   CalendarDays,
@@ -64,8 +63,8 @@ const mainNavItems = [
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },
-  { title: "My Apps", to: "/apps", icon: LayoutGrid },
-  // Storage keeps its own rail entry as well as its place under System.
+  // Storage keeps its own rail entry as well as its place under System, and
+  // the coding projects gallery now lives inside it.
   { title: "Storage", to: "/storage", icon: HardDrive },
   { title: "Hub", to: "/hub", icon: Store },
 ] satisfies Array<{

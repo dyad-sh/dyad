@@ -48,8 +48,11 @@ import {
   ensurePlaywrightBootstrap,
   DYAD_CONFIG_FILENAME,
   PREVIEW_CDP_ENDPOINT_ENV,
+  SLOW_MO_DELAY_MS,
+  SLOW_MO_TEST_TIMEOUT_MS,
   TEST_BASE_URL_ENV,
   TEST_RESULTS_JSON,
+  TEST_SLOW_MO_ENV,
 } from "../utils/playwright_bootstrap";
 import {
   parsePlaywrightReport,
@@ -235,6 +238,13 @@ export interface RunAppTestsCoreOptions {
    * file's independent tests run concurrently against the one dev server.
    */
   parallel?: boolean;
+  /**
+   * When true, Playwright pauses `SLOW_MO_DELAY_MS` between actions so the user
+   * can follow the run. Carried by an env var (Playwright has no CLI flag for
+   * it) that the generated config and the preview fixture shim both read, so it
+   * applies whether the run drives its own browser or the preview panel.
+   */
+  slowMo?: boolean;
   /** Aborts an in-flight bootstrap or run. */
   signal?: AbortSignal;
   /**
@@ -274,6 +284,7 @@ export async function runAppTestsCore({
   grep,
   headed,
   parallel,
+  slowMo,
   signal,
   timeoutMs,
   onOutput,
@@ -386,6 +397,13 @@ export async function runAppTestsCore({
   if (parallel && !previewCdpEndpoint) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
   }
+  // Slow motion spends wall-clock time inside each test, which Playwright bills
+  // against its 30s per-test default — so a spec that's green at full speed
+  // could time out purely from the toggle. Raise the per-test ceiling so
+  // watching a run stays a pace change, not a source of spurious failures.
+  if (slowMo) {
+    args.push(`--timeout=${SLOW_MO_TEST_TIMEOUT_MS}`);
+  }
 
   let run;
   try {
@@ -402,6 +420,8 @@ export async function runAppTestsCore({
         ...(previewCdpEndpoint
           ? { [PREVIEW_CDP_ENDPOINT_ENV]: previewCdpEndpoint }
           : {}),
+        // Left unset at full speed so the config's `|| 0` fallback applies.
+        ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
         PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
         // Non-interactive: never try to open/serve an HTML report.
         CI: "true",
@@ -531,6 +551,7 @@ export async function runAppTestsCore({
     first_run: installed,
     single_file: Boolean(testFile),
     parallel: Boolean(parallel),
+    slow_mo: Boolean(slowMo),
   });
 
   return { appId, results };
@@ -550,6 +571,8 @@ export interface RunTestsWithIsolationOptions {
   grep?: string;
   headed?: boolean;
   parallel?: boolean;
+  /** Pauses between actions so the user can follow the run. */
+  slowMo?: boolean;
   timeoutMs?: number;
   /** Stamped onto `tests:run-state` so the panel ignores its own runs. */
   source: "panel" | "agent";
@@ -585,6 +608,7 @@ export async function runAppTestsWithIsolation({
   grep,
   headed,
   parallel,
+  slowMo,
   timeoutMs,
   source,
   externalSignal,
@@ -839,15 +863,16 @@ export async function runAppTestsWithIsolation({
           try {
             result = await runAppTestsCore({
               appId,
-            testFile: normalizedTestFile ?? undefined,
-            testLine,
-            grep,
-            headed,
-            parallel,
-            signal: controller.signal,
-            timeoutMs,
-            onOutput: emit,
-            testEnv: prepared.testCredentials,
+              testFile: normalizedTestFile ?? undefined,
+              testLine,
+              grep,
+              headed,
+              parallel,
+              slowMo,
+              signal: controller.signal,
+              timeoutMs,
+              onOutput: emit,
+              testEnv: prepared.testCredentials,
               previewCdpEndpoint,
             });
           } finally {

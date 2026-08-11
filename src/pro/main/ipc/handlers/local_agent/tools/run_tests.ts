@@ -284,9 +284,10 @@ async function runSpec(
   ctx.onXmlStream(
     `<dyad-status title="${escapeXmlAttr(`Running ${label}`)}"></dyad-status>`,
   );
-  // Honor the modes the user picked in the Tests panel. With the preview
-  // experiment enabled, headed mode drives Dyad's native preview view. A
-  // preview or narrowed run must stay serial.
+  // Honor the modes the user picked in the Tests panel — including slow motion,
+  // so a user watching the agent's runs gets the same pace as their own. With
+  // the preview experiment enabled, headed mode drives Dyad's native preview
+  // view. A preview or narrowed run must stay serial.
   const settings = readSettings();
   const preview =
     (settings.enableTestRunInPreview ?? false) &&
@@ -299,6 +300,7 @@ async function runSpec(
     source: "agent",
     headed: settings.testHeaded ?? false,
     parallel: (settings.testParallel ?? false) && !grep && !preview,
+    slowMo: settings.testSlowMo ?? false,
     preview,
     externalSignal: ctx.abortSignal,
     timeoutMs: RUN_TIMEOUT_MS,

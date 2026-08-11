@@ -71,6 +71,40 @@ function playwrightInstallCommand(appPath: string): {
 export const TEST_BASE_URL_ENV = "DYAD_TEST_BASE_URL";
 
 /**
+ * Environment variable carrying the slow-motion delay, in milliseconds between
+ * actions. Read by the generated config (browser runs) and the fixture shim
+ * (preview runs); unset means full speed, so a run that doesn't opt in is
+ * unaffected. Playwright has no CLI flag for `slowMo`, hence the env var.
+ */
+export const TEST_SLOW_MO_ENV = "DYAD_TEST_SLOW_MO";
+
+/**
+ * How long Playwright pauses between actions when slow motion is on. Slow
+ * enough to follow each click by eye, short enough that a normal spec doesn't
+ * turn into a multi-minute run.
+ */
+export const SLOW_MO_DELAY_MS = 500;
+
+/**
+ * Per-test timeout for a slow-motion run, replacing Playwright's 30s default.
+ * The inserted delays are wall-clock time inside the test, so at
+ * `SLOW_MO_DELAY_MS` a spec only needs ~60 actions to blow the default budget —
+ * a green spec would start failing purely from the toggle. Passed as
+ * `--timeout` on slow-motion runs only, so ordinary runs keep the default.
+ */
+export const SLOW_MO_TEST_TIMEOUT_MS = 120_000;
+
+/**
+ * The generated config's slow-motion lines. Shared by the template and the
+ * migration below so a migrated config comes out byte-identical to a freshly
+ * written one.
+ */
+const SLOW_MO_CONFIG_LINES = `    // Slow motion: Dyad sets ${TEST_SLOW_MO_ENV} (milliseconds between
+    // actions) while the Tests panel's slow-motion toggle is on, so a run is
+    // easy to follow. Unset means full speed.
+    launchOptions: { slowMo: Number(process.env.${TEST_SLOW_MO_ENV}) || 0 },`;
+
+/**
  * Dyad's own Playwright config. Deliberately NOT `playwright.config.ts`: that
  * name is the user's (some apps ship a legitimate Playwright setup of their
  * own), and Playwright auto-resolves it. Ours sits beside it under a distinct
@@ -178,7 +212,8 @@ export default defineConfig({
   fullyParallel: false,
   reporter: [["json", { outputFile: "${TEST_RESULTS_JSON}" }]],
   use: {
-    baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",${channelLine}
+    baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",
+${SLOW_MO_CONFIG_LINES}${channelLine}
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
@@ -213,6 +248,9 @@ import * as pw from "@playwright/test";
 export * from "@playwright/test";
 
 const endpoint = process.env.${PREVIEW_CDP_ENDPOINT_ENV};
+// No browser is launched here, so the config's \`launchOptions.slowMo\` never
+// applies — the connection carries it instead.
+const slowMo = Number(process.env.${TEST_SLOW_MO_ENV}) || 0;
 
 function requireBaseUrl(): string {
   const baseUrl = process.env.${TEST_BASE_URL_ENV};
@@ -227,7 +265,7 @@ export const test = !endpoint
   : pw.test.extend({
       browser: [
         async ({}, use) => {
-          const browser = await pw.chromium.connectOverCDP(endpoint);
+          const browser = await pw.chromium.connectOverCDP(endpoint, { slowMo });
           try {
             await use(browser);
           } finally {
@@ -631,6 +669,28 @@ function migrateConfigTestDir(appPath: string): void {
   }
 }
 
+/**
+ * Add the slow-motion `launchOptions` to a Dyad-generated config written before
+ * the Tests panel had that toggle — without it the toggle would silently do
+ * nothing for apps bootstrapped by an older Dyad. Splices in just those lines
+ * (rather than rewriting the file) so a `channel:` the config already selected
+ * survives. Only touches configs carrying the sentinel, and only while the
+ * generated `baseURL` line is still intact — a config edited past that point is
+ * the user's to change.
+ */
+function migrateConfigSlowMo(appPath: string): void {
+  if (!isDyadGeneratedConfig(appPath)) return;
+  const text = readDyadConfigText(appPath);
+  if (!text || text.includes(TEST_SLOW_MO_ENV)) return;
+  const baseUrlLine = `    baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",`;
+  if (!text.includes(baseUrlLine)) return;
+  fs.writeFileSync(
+    dyadConfigPath(appPath),
+    text.replace(baseUrlLine, `${baseUrlLine}\n${SLOW_MO_CONFIG_LINES}`),
+  );
+  logger.info(`Added slow-motion support to ${DYAD_CONFIG_FILENAME}`);
+}
+
 function appendGitignoreEntries(appPath: string): void {
   const gitignorePath = path.join(appPath, ".gitignore");
   let existing = "";
@@ -775,8 +835,11 @@ export async function ensurePlaywrightBootstrap({
   }
 
   // Bring an older Dyad config's testDir up to date (./tests -> ./e2e-tests) so
-  // existing apps' runs target the new directory after the convention switch.
+  // existing apps' runs target the new directory after the convention switch,
+  // and teach it the slow-motion option added later. Both are no-ops once the
+  // config is current, including right after the writes above.
   migrateConfigTestDir(appPath);
+  migrateConfigSlowMo(appPath);
 
   // The bundled Chromium binary is downloaded separately from the npm package,
   // so we track it apart (a present package does NOT mean the browser is

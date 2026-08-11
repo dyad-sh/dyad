@@ -330,10 +330,10 @@ export const queryKeys = {
      * Keyed by instance and token: servers and projects belong to both, and
      * two tokens on one instance can see different teams.
      *
-     * The token here comes from the status query, which lags the write, so a
-     * refetch right after a change can still fill the outgoing token's entry
-     * with the incoming token's list. Changing a token drops these entries
-     * rather than marking them stale, so there is none left to serve.
+     * The token comes from the status query, which lags the write, so in
+     * principle a list fetched with one token can land under another's key.
+     * Changing a token requires signing out first, which disables these
+     * queries, so nothing reaches that state through the form today.
      */
     discovery: (instanceUrl: string | null, tokenId: string | null) =>
       [

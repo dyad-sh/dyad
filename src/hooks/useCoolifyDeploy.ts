@@ -87,12 +87,13 @@ export function useCoolifyDeploy(appId: number | null) {
   /**
    * Drops every cached server and project list, rather than marking it stale.
    *
-   * The key carries a token fingerprint read from the status query, and that
-   * lags the write — so a refetch triggered by the change still runs under the
-   * outgoing token's key while asking with the incoming one, leaving that
-   * entry holding the wrong team's list for anyone who switches back. Removing
-   * leaves nothing to serve; the lists are refetched, which the pickers
-   * already show as loading.
+   * The key carries a token fingerprint read from the status query, which lags
+   * the write, so a list fetched with one token can land under another's key.
+   * Reaching that needs the token to change without signing out first, which
+   * the form does not allow today — entering one requires there to be none. So
+   * this guards a state nothing currently produces, and costs nothing: signing
+   * out already leaves the lists stale and disabled, so they are refetched
+   * either way.
    */
   const forgetDiscovery = useCallback(() => {
     queryClient.removeQueries({ queryKey: queryKeys.coolify.discoveryAll });

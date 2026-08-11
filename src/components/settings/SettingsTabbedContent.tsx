@@ -400,8 +400,10 @@ export function SettingsTabbedContent({
           value="mcp"
           className="space-y-6 focus-visible:outline-none"
         >
-          <div id={SECTION_IDS.toolsMcp} className={settingsCardClass}>
-            <h2 className={sectionHeadingClass}>Tools (MCP)</h2>
+          {/* No card wrapper here: this tab is a chooser whose own two cards
+              are the surface. Wrapping them in a third drew a border around a
+              border. */}
+          <div id={SECTION_IDS.toolsMcp}>
             <ToolsMcpSettings />
           </div>
           <SettingsTabSaveBar tabId="mcp" />

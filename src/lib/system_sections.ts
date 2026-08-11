@@ -1,5 +1,7 @@
 import {
   Activity,
+  AudioLines,
+  FlaskConical,
   Blocks,
   Boxes,
   Cpu,
@@ -37,8 +39,10 @@ export type SystemDestinationId =
   | "plugins"
   | "integrations"
   | "skills"
+  | "voice-assistant"
   | "security"
-  | "settings";
+  | "advanced"
+  | "appearance";
 
 /** Visual grouping only. The canonical destinations are the ids above. */
 export type SystemGroup =
@@ -104,6 +108,14 @@ export const SYSTEM_DESTINATIONS: SystemDestination[] = [
     renders: { kind: "settings-tab", tab: "modelRoles" },
   },
   {
+    id: "voice-assistant",
+    label: "Voice Assistant",
+    summary: "JARVIS voice, listening and permissions",
+    group: "Intelligence",
+    icon: AudioLines,
+    renders: { kind: "settings-tab", tab: "jarvis" },
+  },
+  {
     id: "data-sources",
     label: "Data Sources",
     summary: "Where Meta Human reads external data",
@@ -153,12 +165,21 @@ export const SYSTEM_DESTINATIONS: SystemDestination[] = [
     renders: { kind: "settings-tab", tab: "agent" },
   },
   {
-    id: "settings",
-    label: "Settings",
-    summary: "General configuration",
+    id: "advanced",
+    label: "Advanced",
+    summary: "Experimental features",
+    group: "Control",
+    icon: FlaskConical,
+    renders: { kind: "settings-tab", tab: "advanced" },
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    summary: "Theme, language and general preferences",
     group: "Control",
     icon: SettingsIcon,
     renders: { kind: "settings-tab", tab: "general" },
+    legacyRoute: "/settings",
   },
 ];
 
@@ -174,6 +195,24 @@ export const SYSTEM_GROUPS: SystemGroup[] = [
 export function destinationsInGroup(group: SystemGroup): SystemDestination[] {
   return SYSTEM_DESTINATIONS.filter(
     (destination) => destination.group === group,
+  );
+}
+
+/**
+ * The destination that owns a settings tab.
+ *
+ * Used to turn an existing settings deep link into the System destination that
+ * now renders it, so links written before this section existed still land in
+ * the right place.
+ */
+export function destinationForTab(
+  tab: string | null | undefined,
+): SystemDestination | undefined {
+  if (!tab) return undefined;
+  return SYSTEM_DESTINATIONS.find(
+    (destination) =>
+      destination.renders.kind === "settings-tab" &&
+      destination.renders.tab === tab,
   );
 }
 

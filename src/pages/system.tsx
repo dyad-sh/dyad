@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { ChevronLeft, Cpu } from "lucide-react";
 
 import { ipc } from "@/ipc/types";
@@ -9,12 +8,16 @@ import { cn } from "@/lib/utils";
 import { activeSettingsTabAtom } from "@/atoms/viewAtoms";
 import {
   SYSTEM_GROUPS,
+  destinationForTab,
   destinationsInGroup,
   findDestination,
   type SystemDestination,
   type SystemDestinationId,
 } from "@/lib/system_sections";
 import { SettingsTabbedContent } from "@/components/settings/SettingsTabbedContent";
+import { SettingsDraftProvider } from "@/contexts/SettingsDraftContext";
+import ConfirmationDialog from "@/components/ConfirmationDialog";
+import { showError, showSuccess } from "@/lib/toast";
 import InfrastructurePage from "./infrastructure";
 import DataSourcesPage from "./data-sources";
 
@@ -31,10 +34,27 @@ import DataSourcesPage from "./data-sources";
  * no number: it is one somebody will act on.
  */
 
-export default function SystemPage() {
-  const [active, setActive] = useState<SystemDestinationId | null>(null);
+export default function SystemPage({
+  followActiveSettingsTab = false,
+}: {
+  /**
+   * Open the destination that owns the currently selected settings tab.
+   *
+   * Set on the /settings route, where arrivals are deep links: the code that
+   * navigates there sets the tab first and expects to land on it, not on an
+   * index. Entering System from the rail shows the index instead.
+   */
+  followActiveSettingsTab?: boolean;
+} = {}) {
+  const [settingsTab, setSettingsTab] = useAtom(activeSettingsTabAtom);
+  const [active, setActive] = useState<SystemDestinationId | null>(() =>
+    followActiveSettingsTab
+      ? (destinationForTab(settingsTab)?.id ?? null)
+      : null,
+  );
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [appVersion, setAppVersion] = useState("");
-  const navigate = useNavigate();
 
   useEffect(() => {
     void ipc.system
@@ -42,7 +62,6 @@ export default function SystemPage() {
       .then((version) => setAppVersion(String(version ?? "")))
       .catch(() => setAppVersion(""));
   }, []);
-  const setSettingsTab = useSetAtom(activeSettingsTabAtom);
 
   // Real counts, from the same sources the pages themselves use.
   const infrastructure = useQuery({
@@ -61,6 +80,21 @@ export default function SystemPage() {
       setSettingsTab(destination.renders.tab);
     }
     setActive(destination.id);
+  };
+
+  const resetEverything = async () => {
+    setIsResetting(true);
+    try {
+      await ipc.system.resetAll();
+      showSuccess("Successfully reset everything. Restart the application.");
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "An unknown error occurred",
+      );
+    } finally {
+      setIsResetting(false);
+      setIsResetDialogOpen(false);
+    }
   };
 
   /**
@@ -121,20 +155,30 @@ export default function SystemPage() {
             )
           ) : (
             <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8">
-              <SettingsTabbedContent
-                hideTabList
-                appVersion={appVersion}
-                isResetting={false}
-                onOpenResetDialog={() => {
-                  // Reset lives on the Settings screen, which owns the
-                  // confirmation dialog. Sending the user there keeps one
-                  // canonical place for a destructive action.
-                  void navigate({ to: "/settings" });
-                }}
-              />
+              {/* The draft context the settings screen provides. Without it the
+                  save bar and the tabs that use drafts lose their edits. */}
+              <SettingsDraftProvider>
+                <SettingsTabbedContent
+                  hideTabList
+                  appVersion={appVersion}
+                  isResetting={isResetting}
+                  onOpenResetDialog={() => setIsResetDialogOpen(true)}
+                />
+              </SettingsDraftProvider>
             </div>
           )}
         </div>
+
+        <ConfirmationDialog
+          isOpen={isResetDialogOpen}
+          title="Reset Everything"
+          message="Are you sure you want to reset everything? This will delete all your apps, chats, and settings. This action cannot be undone."
+          confirmText={isResetting ? "Resetting..." : "Reset Everything"}
+          cancelText="Cancel"
+          confirmDisabled={isResetting}
+          onConfirm={resetEverything}
+          onCancel={() => setIsResetDialogOpen(false)}
+        />
       </div>
     );
   }

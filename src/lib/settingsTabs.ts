@@ -118,7 +118,7 @@ export const SETTINGS_TABS: SettingsTabDefinition[] = [
   },
   {
     id: "general",
-    label: "System",
+    label: "Appearance",
     description: "Appearance, language and app info",
     icon: Settings2,
     sectionIds: [

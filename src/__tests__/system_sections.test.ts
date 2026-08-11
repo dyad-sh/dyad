@@ -28,7 +28,9 @@ const REQUIRED = [
   "integrations",
   "skills",
   "security",
-  "settings",
+  "appearance",
+  "advanced",
+  "voice-assistant",
 ];
 
 describe("System destinations", () => {
@@ -72,12 +74,10 @@ describe("System destinations", () => {
       ),
     );
 
-    // These tabs are reached through the Settings destination, which renders
-    // the settings screen where they remain available.
-    const viaSettingsScreen = new Set(["jarvis", "advanced", "agent"]);
-
+    // No exceptions. /settings renders System now, so a tab System does not
+    // route to is a tab with no way in at all.
     const stranded = SETTINGS_TABS.map((tab) => tab.id).filter(
-      (id) => !routed.has(id) && !viaSettingsScreen.has(id),
+      (id) => !routed.has(id),
     );
     expect(stranded, "settings tabs not reachable from System").toEqual([]);
   });

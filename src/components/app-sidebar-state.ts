@@ -126,6 +126,8 @@ export function isSidebarItemActive({
     // that kept their original routes so existing links keep working.
     return (
       pathname.startsWith("/system") ||
+      // /settings renders System too, so the one entry stays lit there.
+      pathname.startsWith("/settings") ||
       pathname.startsWith("/storage") ||
       pathname.startsWith("/meta-hd") ||
       pathname.startsWith("/vector") ||

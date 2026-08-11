@@ -4,7 +4,6 @@ import {
   type LucideIcon,
   Code2,
   MessageSquare,
-  Settings,
   Store,
   BookOpen,
   LayoutGrid,
@@ -66,9 +65,6 @@ const mainNavItems = [
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },
-  // The technical destinations live inside System rather than each taking a
-  // slot in the rail. Their routes still exist, so old links keep working.
-  { title: "System", to: "/system", icon: Cpu },
   { title: "My Apps", to: "/apps", icon: LayoutGrid },
   { title: "Hub", to: "/hub", icon: Store },
 ] satisfies Array<{
@@ -77,10 +73,16 @@ const mainNavItems = [
   icon: ComponentType<{ className?: string }>;
 }>;
 
+/**
+ * System sits where the settings gear used to.
+ *
+ * There is only one place to configure anything now, so there is only one
+ * entry for it. Keeping both would have been two doors into the same room.
+ */
 const settingsNavItem = {
-  title: "Settings" as const,
-  to: "/settings",
-  icon: Settings,
+  title: "System" as const,
+  to: "/system",
+  icon: Cpu,
 };
 
 type AppSidebarItemTo =

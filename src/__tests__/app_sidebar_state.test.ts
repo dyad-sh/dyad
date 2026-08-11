@@ -66,14 +66,13 @@ describe("app sidebar state", () => {
       "/vector",
       "/data-sources",
       "/infrastructure",
+      // /settings renders System too.
+      "/settings",
     ]) {
       expect(isSidebarItemActive({ title: "System", pathname }), pathname).toBe(
         true,
       );
     }
-    expect(
-      isSidebarItemActive({ title: "System", pathname: "/settings" }),
-    ).toBe(false);
   });
 
   it("shows the selected app chat list only inside Apps with an app selected", () => {

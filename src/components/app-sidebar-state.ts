@@ -112,7 +112,10 @@ export function isSidebarItemActive({
     return pathname.startsWith("/apps");
   }
   if (title === "Agents") {
-    return pathname.startsWith("/agent-os");
+    // The index and the dashboard it categorises. The coding routes are also
+    // reachable from here, but they keep lighting up Coding Agent, which is
+    // where they have always lived in the rail.
+    return pathname.startsWith("/agents") || pathname.startsWith("/agent-os");
   }
   if (title === "Dev Ops") {
     return (

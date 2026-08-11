@@ -104,7 +104,9 @@ async function resizeAvatar(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.86);
 }
 
-function AgentAvatar({
+// Exported so the Agents index can show the same avatar the dashboard shows,
+// rather than growing a second one that drifts from it.
+export function AgentAvatar({
   agent,
   className,
 }: {

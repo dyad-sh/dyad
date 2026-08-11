@@ -60,7 +60,7 @@ const mainNavItems = [
   ...agentNavItems,
   // Agents and Engineering sit directly under the coding agent, which is where
   // the build tools belong together.
-  { title: "Agents", to: "/agent-os", icon: Bot },
+  { title: "Agents", to: "/agents", icon: Bot },
   { title: "Engineering", to: "/engineering", icon: DraftingCompass },
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },

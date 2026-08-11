@@ -45,6 +45,7 @@ export type WorkspaceScreen = {
 };
 
 const SCREENS: WorkspaceScreen[] = [
+  { path: "/agents", title: "Agents", icon: Boxes },
   { path: "/coder/studio", title: "Build Studio", icon: Code2 },
   { path: "/coder/helix", title: "Helix", icon: Orbit },
   { path: "/coder/openworker", title: "OpenWorker", icon: Briefcase },

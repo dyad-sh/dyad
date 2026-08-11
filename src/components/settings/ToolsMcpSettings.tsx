@@ -899,85 +899,75 @@ export function ToolsMcpSettings() {
                       : ""}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
+                {/* One switch, and it is the one the section is about: does
+                    this server appear in the chat toolbar. Everything else
+                    moved below, where it cannot be mistaken for this. */}
+                <div className="flex shrink-0 items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-2">
                     <Switch
-                      aria-label={`Toggle ${s.name}`}
+                      aria-label={`Show ${s.name} in the chat toolbar`}
                       checked={!!s.enabled}
                       onCheckedChange={() =>
                         toggleServerEnabled(s.id, !!s.enabled)
                       }
                     />
-                    <span className="text-xs text-muted-foreground">
-                      Enabled
+                    <span className="text-xs whitespace-nowrap text-muted-foreground">
+                      In chat toolbar
                     </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      aria-label={`Use ${s.name} with Chat Agent`}
-                      checked={chatAgentMcpServerIds.includes(s.id)}
-                      disabled={!s.enabled}
-                      onCheckedChange={(checked) =>
-                        onToggleChatAgentServer(s.id, checked)
-                      }
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      Chat Agent
-                    </span>
-                  </div>
-                  {(toolsByServer[s.id] || []).length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {
-                        (toolsByServer[s.id] || []).filter((tool) =>
-                          chatAgentMcpToolKeys.includes(
-                            getChatAgentToolKey(s.id, tool.name),
-                          ),
-                        ).length
-                      }
-                      /{(toolsByServer[s.id] || []).length} tools
-                    </span>
-                  )}
-                  <Button variant="outline" onClick={() => deleteServer(s.id)}>
-                    Delete
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-muted-foreground hover:text-destructive"
+                    aria-label={`Delete ${s.name}`}
+                    onClick={() => deleteServer(s.id)}
+                  >
+                    <Trash2 className="size-4" />
                   </Button>
                 </div>
               </div>
               {s.transport === "stdio" && (
-                <div className="mt-3">
-                  <div className="text-sm font-medium mb-2">
-                    Environment Variables
+                <details className="mt-3 rounded-md border bg-muted/20 p-2">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Environment variables
+                  </summary>
+                  <div className="mt-2">
+                    <KeyValueEditor
+                      id={s.id}
+                      json={s.envJson}
+                      disabled={!s.enabled}
+                      isSaving={!!isUpdatingServer}
+                      onSave={async (pairs) => {
+                        await updateServer({
+                          id: s.id,
+                          envJson: arrayToJsonObject(pairs),
+                        });
+                      }}
+                    />
                   </div>
-                  <KeyValueEditor
-                    id={s.id}
-                    json={s.envJson}
-                    disabled={!s.enabled}
-                    isSaving={!!isUpdatingServer}
-                    onSave={async (pairs) => {
-                      await updateServer({
-                        id: s.id,
-                        envJson: arrayToJsonObject(pairs),
-                      });
-                    }}
-                  />
-                </div>
+                </details>
               )}
               {s.transport === "http" && (
-                <div className="mt-3">
-                  <div className="text-sm font-medium mb-2">Headers</div>
-                  <KeyValueEditor
-                    id={s.id}
-                    json={s.headersJson}
-                    disabled={!s.enabled}
-                    isSaving={!!isUpdatingServer}
-                    itemLabel="Header"
-                    onSave={async (pairs) => {
-                      await updateServer({
-                        id: s.id,
-                        headersJson: arrayToJsonObject(pairs),
-                      });
-                    }}
-                  />
-                </div>
+                <details className="mt-3 rounded-md border bg-muted/20 p-2">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Headers and authentication
+                  </summary>
+                  <div className="mt-2">
+                    <KeyValueEditor
+                      id={s.id}
+                      json={s.headersJson}
+                      disabled={!s.enabled}
+                      isSaving={!!isUpdatingServer}
+                      itemLabel="Header"
+                      onSave={async (pairs) => {
+                        await updateServer({
+                          id: s.id,
+                          headersJson: arrayToJsonObject(pairs),
+                        });
+                      }}
+                    />
+                  </div>
+                </details>
               )}
               {(() => {
                 const tools = toolsByServer[s.id] || [];
@@ -998,6 +988,30 @@ export function ToolsMcpSettings() {
 
                 return (
                   <div className="mt-3 space-y-2">
+                    {/* Chat Agent access sits with the tools it governs, not
+                        beside the switch that decides chat-toolbar
+                        visibility. Two switches side by side read as one
+                        setting split in half. */}
+                    <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/20 p-2">
+                      <Switch
+                        aria-label={`Let Chat Agent use ${s.name}`}
+                        checked={chatAgentMcpServerIds.includes(s.id)}
+                        disabled={!s.enabled}
+                        onCheckedChange={(checked) =>
+                          onToggleChatAgentServer(s.id, checked)
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">
+                          Chat Agent may call these tools
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {selectedToolCount} of {tools.length} selected. Tool
+                          consent still applies before anything runs.
+                        </span>
+                      </span>
+                    </label>
+
                     {supportsWorkflowDiscovery && (
                       <CollapsibleMcpSection
                         title="n8n workflows"

@@ -29,10 +29,11 @@ import {
   MODEL_ROLES,
   MODEL_ROLE_META,
   createRoleModelOption,
-  filterModelsForRole,
   inferModelCapabilities,
+  isModelSuitableForRole,
   modelOptionKey,
   selectBestModelForRole,
+  selectableModelsForRole,
   type ModelCapability,
   type RoleModelOption,
 } from "@/lib/model_roles";
@@ -197,6 +198,43 @@ function ModelSelector({
   onSelect: (model: RoleModelOption) => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  /**
+   * Recommended first, then the rest.
+   *
+   * The split is the capability inference doing what it is actually good for:
+   * pointing at the likely answer without deciding for the person. A provider
+   * whose models it cannot classify still shows its whole catalogue.
+   */
+  const groups = useMemo(() => {
+    const from = providerName ? ` from ${providerName}` : "";
+    const recommended = models.filter((model) =>
+      isModelSuitableForRole(model, role),
+    );
+    const others = models.filter(
+      (model) => !isModelSuitableForRole(model, role),
+    );
+    return [
+      recommended.length > 0
+        ? {
+            heading: `Recommended for ${MODEL_ROLE_META[role].label}${from}`,
+            items: recommended,
+          }
+        : null,
+      others.length > 0
+        ? {
+            heading:
+              recommended.length > 0
+                ? `Other models${from}`
+                : `All models${from}`,
+            items: others,
+          }
+        : null,
+    ].filter((group): group is { heading: string; items: RoleModelOption[] } =>
+      Boolean(group),
+    );
+  }, [models, role, providerName]);
+
   return (
     <>
       <Button
@@ -215,9 +253,7 @@ function ModelSelector({
           <span className="min-w-0">
             <span className="block truncate text-sm text-cyan-50/85">
               {selected?.displayName ??
-                (models.length > 0
-                  ? "Choose a model"
-                  : "No compatible model available")}
+                (models.length > 0 ? "Choose a model" : "No model available")}
             </span>
             {selected && (
               <span className="block truncate text-[10px] text-cyan-100/35">
@@ -233,53 +269,56 @@ function ModelSelector({
         open={open}
         onOpenChange={setOpen}
         title={`Choose a ${MODEL_ROLE_META[role].label} model`}
-        description="Only compatible models from connected providers are shown."
+        description="Models from the selected provider. Recommended ones are listed first."
         className="border-cyan-400/25 bg-[#06111f] text-cyan-50 shadow-[0_0_36px_rgba(0,229,255,0.14)] [&_[data-slot=command]]:bg-[#06111f] [&_[data-slot=command-input-wrapper]]:border-cyan-400/15 [&_[data-slot=command-input]]:text-cyan-50"
       >
         <CommandInput placeholder="Search models…" />
         <CommandList className="scrollbar-on-hover max-h-96">
           <CommandEmpty className="text-cyan-100/45">
-            No compatible connected models found.
+            No models found for this provider.
           </CommandEmpty>
-          <CommandGroup
-            heading={`${models.length} compatible model${models.length === 1 ? "" : "s"}${providerName ? ` from ${providerName}` : ""}`}
-            className="[&_[cmdk-group-heading]]:text-cyan-100/40"
-          >
-            {models.map((model) => (
-              <CommandItem
-                key={`${modelOptionKey(model)}:${model.serverUrl ?? ""}`}
-                value={`${model.displayName} ${model.name} ${model.providerName}`}
-                onSelect={() => {
-                  onSelect(model);
-                  setOpen(false);
-                }}
-                className="items-start rounded-lg border border-transparent py-2.5 text-cyan-50/85 data-[selected=true]:!border-cyan-400/20 data-[selected=true]:!bg-cyan-400/10 data-[selected=true]:!text-cyan-50"
-              >
-                <ProviderIcon
-                  providerId={model.provider}
-                  apiName={model.name}
-                  className="mt-0.5 size-4"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate font-medium">
-                      {model.displayName}
+          {groups.map(({ heading, items }) => (
+            <CommandGroup
+              key={heading}
+              heading={heading}
+              className="[&_[cmdk-group-heading]]:text-cyan-100/40"
+            >
+              {items.map((model) => (
+                <CommandItem
+                  key={`${modelOptionKey(model)}:${model.serverUrl ?? ""}`}
+                  value={`${model.displayName} ${model.name} ${model.providerName}`}
+                  onSelect={() => {
+                    onSelect(model);
+                    setOpen(false);
+                  }}
+                  className="items-start rounded-lg border border-transparent py-2.5 text-cyan-50/85 data-[selected=true]:!border-cyan-400/20 data-[selected=true]:!bg-cyan-400/10 data-[selected=true]:!text-cyan-50"
+                >
+                  <ProviderIcon
+                    providerId={model.provider}
+                    apiName={model.name}
+                    className="mt-0.5 size-4"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate font-medium">
+                        {model.displayName}
+                      </span>
+                      {selected &&
+                        modelOptionKey(selected) === modelOptionKey(model) && (
+                          <Check className="size-3.5 text-emerald-400" />
+                        )}
                     </span>
-                    {selected &&
-                      modelOptionKey(selected) === modelOptionKey(model) && (
-                        <Check className="size-3.5 text-emerald-400" />
-                      )}
+                    <span className="block truncate text-xs text-cyan-100/40">
+                      {model.name}
+                    </span>
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {model.capabilities.slice(0, 5).map(capabilityBadge)}
+                    </span>
                   </span>
-                  <span className="block truncate text-xs text-cyan-100/40">
-                    {model.name}
-                  </span>
-                  <span className="mt-1 flex flex-wrap gap-1">
-                    {model.capabilities.slice(0, 5).map(capabilityBadge)}
-                  </span>
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))}
         </CommandList>
       </CommandDialog>
     </>
@@ -372,7 +411,7 @@ function ProviderModelSelector({
                       {provider.name}
                     </span>
                     <span className="block text-[10px] text-cyan-100/35">
-                      {provider.modelCount} compatible{" "}
+                      {provider.modelCount}{" "}
                       {provider.modelCount === 1 ? "model" : "models"}
                     </span>
                   </span>
@@ -433,8 +472,11 @@ function RoleCard({
   onChange: (assignment: ModelRoleAssignment, model: RoleModelOption) => void;
 }) {
   const Icon = ROLE_ICONS[role];
-  const compatible = useMemo(
-    () => filterModelsForRole(models, role),
+  // Every model from every active provider, except for the gated roles.
+  // Auto-select below still reasons about capability; this is only what the
+  // person is allowed to choose for themselves.
+  const selectable = useMemo(
+    () => selectableModelsForRole(models, role),
     [models, role],
   );
   const best = useMemo(
@@ -442,7 +484,7 @@ function RoleCard({
     [models, role],
   );
   const configuredModel = assignment?.model ?? legacyModel;
-  const manuallySelected = compatible.find(
+  const manuallySelected = selectable.find(
     (model) =>
       configuredModel &&
       model.provider === configuredModel.provider &&
@@ -451,6 +493,21 @@ function RoleCard({
   const auto = assignment?.auto ?? true;
   const selected = auto ? best : manuallySelected;
   const unavailable = !auto && configuredModel && !manuallySelected;
+
+  /**
+   * Where the assignment does not reach, stated plainly.
+   *
+   * Image generation posts to OpenRouter whichever model is assigned, and the
+   * embedding model that vector search actually uses is configured with the
+   * workspace, not here. Neither is a new limit; both were previously hidden
+   * by a picker that offered nothing else.
+   */
+  const runtimeNote =
+    role === "image" && selected && selected.provider !== "openrouter"
+      ? `Image generation currently sends every request to OpenRouter, so a ${selected.providerName} model will not be reached.`
+      : role === "embeddings" && selected
+        ? "Vector search uses the embedding model configured in the Vector workspace; this assignment does not change it."
+        : null;
 
   const persist = (model: RoleModelOption, nextAuto: boolean) =>
     onChange(
@@ -579,7 +636,7 @@ function RoleCard({
           <div className="mt-3">
             <ProviderModelSelector
               role={role}
-              models={compatible}
+              models={selectable}
               selected={selected}
               onSelect={(model) => persist(model, false)}
             />
@@ -590,6 +647,13 @@ function RoleCard({
               Your assigned model is offline. Enable Auto Select to use the next
               compatible model.
             </p>
+          )}
+
+          {/* The picker offers every connected provider, but two roles are
+              narrower at runtime than they now look here. Saying so at the
+              point of choice beats a failure later that names no cause. */}
+          {runtimeNote && (
+            <p className="mt-2 text-xs text-amber-300/75">{runtimeNote}</p>
           )}
 
           {selected && (
@@ -1059,8 +1123,8 @@ export function ModelRolesSettings() {
             Model Roles
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-cyan-100/45">
-            Give each job the right model. Only compatible models from connected
-            cloud and local providers are offered.
+            Give each job the right model. Models from connected cloud and local
+            providers are offered.
           </p>
           {(providersLoading || modelsLoading) && (
             <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-cyan-200/45">

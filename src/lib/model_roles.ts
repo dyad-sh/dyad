@@ -161,6 +161,42 @@ export function isModelSuitableForRole(
   return model.capabilities.includes(required);
 }
 
+/**
+ * Roles whose picker is limited to models we judge capable.
+ *
+ * Only video. Its providers are a separate set from the language-model ones,
+ * and a video role pointed at a chat model produces nothing at all.
+ *
+ * Everywhere else the capability is inferred from a regex over the model name,
+ * which is a reasonable hint and a bad gate: it was hiding entire providers
+ * from the image and embeddings pickers because nothing they offer happens to
+ * match the pattern. The inference still orders and labels the list, it just no
+ * longer decides what may be chosen.
+ */
+export const CAPABILITY_GATED_ROLES: readonly ModelRole[] = ["video"];
+
+export function isRoleCapabilityGated(role: ModelRole): boolean {
+  return CAPABILITY_GATED_ROLES.includes(role);
+}
+
+/**
+ * What the picker offers for a role: every active provider's models, with the
+ * ones inferred capable first, except where the role is gated.
+ */
+export function selectableModelsForRole(
+  models: RoleModelOption[],
+  role: ModelRole,
+): RoleModelOption[] {
+  if (isRoleCapabilityGated(role)) return filterModelsForRole(models, role);
+  return [...models].sort((a, b) => {
+    const capable =
+      Number(isModelSuitableForRole(b, role)) -
+      Number(isModelSuitableForRole(a, role));
+    if (capable !== 0) return capable;
+    return a.displayName.localeCompare(b.displayName);
+  });
+}
+
 export function filterModelsForRole(
   models: RoleModelOption[],
   role: ModelRole,

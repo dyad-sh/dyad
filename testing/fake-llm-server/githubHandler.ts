@@ -756,7 +756,6 @@ export function handleCreateDeployKey(req: Request, res: Response) {
   return res.status(201).json(created);
 }
 
-/** Lets a spec put a key on another repository, for the 422 branch. */
 export function handleClearDeployKeys(_req: Request, res: Response) {
   deployKeysByRepo.clear();
   deployKeyOwner.clear();

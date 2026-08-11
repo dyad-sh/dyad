@@ -291,26 +291,6 @@ describe("naming the target in the connected view", () => {
     expect(screen.getByText(/belongs to a different Coolify/)).toBeTruthy();
   });
 
-  it("keeps saying the app belongs elsewhere while the list refreshes", async () => {
-    // A refetch over a list already on screen is not a reason to withdraw the
-    // banner: the list is still readable, so the answer has not changed. Doing
-    // so also re-offered Deploy every time the window regained focus.
-    deploy.value = {
-      status: CONNECTED,
-      discovery: {
-        servers: [{ uuid: "srv-elsewhere", name: "other-box" }],
-        projects: [{ uuid: "prj-1", name: "storefront" }],
-      },
-      isDiscovering: true,
-    };
-    render(<CoolifyConnector appId={1} />);
-
-    expect(screen.getByText(/belongs to a different Coolify/)).toBeTruthy();
-    expect(
-      (screen.getByTestId("coolify-deploy") as HTMLButtonElement).disabled,
-    ).toBe(true);
-  });
-
   it("keeps saying the app belongs elsewhere while the list refreshes", () => {
     // A refetch does not change the answer, and withdrawing it re-offered
     // Deploy every time the window regained focus.

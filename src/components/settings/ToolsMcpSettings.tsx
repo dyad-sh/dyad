@@ -18,6 +18,8 @@ import {
   AlertCircle,
   KeyRound,
   ChevronDown,
+  ChevronLeft,
+  ArrowRight,
   CheckCircle2,
   Edit2,
   Loader2,
@@ -36,10 +38,24 @@ import type { McpConnectionStatus } from "@/ipc/types";
 
 type KeyValue = { key: string; value: string };
 
-const cardClass =
-  "rounded-xl border border-cyan-500/15 bg-[rgba(8,18,36,0.72)] p-6 shadow-[0_0_24px_rgba(0,229,255,0.06)] backdrop-blur-md";
-const headingClass =
-  "font-jarvis-ui text-sm font-medium uppercase tracking-widest text-cyan-300/70";
+type McpView = "index" | "servers" | "config";
+
+const MCP_DESTINATIONS = [
+  {
+    id: "servers" as const,
+    title: "MCP Servers",
+    description:
+      "The servers you have added. Switch one on to offer its tools in the chat toolbar, or off to hide it there.",
+    icon: Plug,
+  },
+  {
+    id: "config" as const,
+    title: "Server Configuration",
+    description:
+      "Add a server by pasting its config snippet, or fill in the transport, address and headers yourself.",
+    icon: Plus,
+  },
+];
 
 function parseJsonToArray(
   json?: Record<string, string> | string | null,
@@ -542,6 +558,7 @@ export function ToolsMcpSettings() {
   const [headersText, setHeadersText] = useState("");
   const [importConfig, setImportConfig] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [mcpView, setMcpView] = useState<McpView>("index");
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   // What the wrench in the chat bar will actually offer.
   const enabledCount = servers.filter((server) => server.enabled).length;
@@ -629,9 +646,7 @@ export function ToolsMcpSettings() {
     setEnabled(true);
     // Adding is finished, so the page returns to the list where the new
     // service now appears. A cleared form left in view reads as a failure.
-    document
-      .getElementById(SETTING_IDS.chatAgentMcpServers)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setMcpView("servers");
   };
 
   const onImportConfig = async () => {
@@ -701,9 +716,7 @@ export function ToolsMcpSettings() {
       showSuccess(
         `Imported ${entries.length} MCP server${entries.length === 1 ? "" : "s"}`,
       );
-      document
-        .getElementById(SETTING_IDS.chatAgentMcpServers)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setMcpView("servers");
     } catch (error) {
       showError(error instanceof Error ? error.message : "Invalid MCP JSON");
     }
@@ -828,200 +841,368 @@ export function ToolsMcpSettings() {
     setConsents((prev) => ({ ...prev, [`${serverId}:${toolName}`]: consent }));
   };
 
+  // The index, then a page each. Two cards that open somewhere, the way the
+  // Storage and Memory sections work, rather than two panels stacked on one
+  // screen that the reader has to scroll past each other.
+  if (mcpView === "index") {
+    return (
+      <div className="space-y-4">
+        {MCP_DESTINATIONS.map((destination) => (
+          <button
+            key={destination.id}
+            type="button"
+            onClick={() => setMcpView(destination.id)}
+            className="group flex w-full flex-col gap-5 rounded-2xl border border-cyan-400/15 bg-[rgba(5,16,31,0.72)] p-5 text-left outline-none transition-colors hover:border-cyan-400/35 hover:bg-cyan-500/8 focus-visible:ring-2 focus-visible:ring-cyan-400/60 sm:flex-row sm:items-center"
+            data-testid={`mcp-open-${destination.id}`}
+          >
+            <span className="grid size-14 shrink-0 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-500/8 text-cyan-200">
+              <destination.icon className="size-7" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="text-lg font-semibold text-white">
+                {destination.title}
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-cyan-100/45">
+                {destination.description}
+              </span>
+              <span className="mt-2 block text-xs font-medium text-cyan-300/70">
+                {destination.id === "servers"
+                  ? servers.length === 0
+                    ? "None configured yet"
+                    : `${enabledCount} of ${servers.length} in the chat toolbar`
+                  : "Add and configure a server"}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2 text-sm font-medium text-cyan-200/70 transition-colors group-hover:text-cyan-100">
+              Open
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  const destination = MCP_DESTINATIONS.find((item) => item.id === mcpView)!;
+
   return (
-    <div className="space-y-6">
-      {/* Two cards on one page, like the rest of settings: what is connected,
-          then adding one. Tabs made adding feel like somewhere else to go. */}
-      <div className={cardClass}>
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Plug className="size-4 text-cyan-300/70" />
-              <h2 className={headingClass}>Connected services</h2>
-            </div>
-            <div className="mt-1 text-sm text-cyan-100/45">
-              {servers.length === 0
-                ? "No services connected yet."
-                : `${enabledCount} of ${servers.length} available in the chat toolbar.`}
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() =>
-              document
-                .getElementById("mcp-add-server")
-                ?.scrollIntoView({ behavior: "smooth", block: "start" })
-            }
-            data-testid="mcp-add-open"
-          >
-            <Plus size={14} />
-            Add a server
-          </Button>
-        </div>
+    <div className="space-y-5">
+      <div className="system-subheader">
+        <button
+          type="button"
+          onClick={() => setMcpView("index")}
+          className="system-back"
+          data-testid="mcp-back"
+        >
+          <ChevronLeft className="size-4" />
+          MCP
+        </button>
+        <span className="system-crumb">
+          <destination.icon className="size-3.5" />
+          {destination.title}
+        </span>
+      </div>
 
-        {/* The toggle is the whole contract: on means the wrench in the chat
+      {mcpView === "servers" ? (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm text-cyan-100/45">
+                {servers.length === 0
+                  ? "No services connected yet."
+                  : `${enabledCount} of ${servers.length} available in the chat toolbar.`}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setMcpView("config")}
+              data-testid="mcp-add-open"
+            >
+              <Plus size={14} />
+              Add a server
+            </Button>
+          </div>
+
+          {/* The toggle is the whole contract: on means the wrench in the chat
             bar offers it, off means the wrench does not show it at all. */}
-        <p className="text-sm text-muted-foreground">
-          A server switched on here appears in the chat toolbar&rsquo;s tools
-          menu. Switched off, it stays configured but is hidden there.
-        </p>
+          <p className="text-sm text-muted-foreground">
+            A server switched on here appears in the chat toolbar&rsquo;s tools
+            menu. Switched off, it stays configured but is hidden there.
+          </p>
 
-        <div id={SETTING_IDS.chatAgentMcpServers} className="space-y-1">
-          <div className="text-sm font-medium">Chat Agent access</div>
-          <div
-            id={SETTING_IDS.chatAgentMcpTools}
-            className="text-sm text-muted-foreground"
-          >
-            Select which enabled MCP servers and discovered tools/workflows Chat
-            Agent can call. Tool consent still applies before a tool runs.
+          <div id={SETTING_IDS.chatAgentMcpServers} className="space-y-1">
+            <div className="text-sm font-medium">Chat Agent access</div>
+            <div
+              id={SETTING_IDS.chatAgentMcpTools}
+              className="text-sm text-muted-foreground"
+            >
+              Select which enabled MCP servers and discovered tools/workflows
+              Chat Agent can call. Tool consent still applies before a tool
+              runs.
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-3">
-          {servers.map((s) => (
-            <div key={s.id} className="border rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-medium">{s.name}</div>
-                    <McpConnectionIndicator
-                      enabled={!!s.enabled}
-                      status={connectionStatuses[s.id]}
-                      isChecking={isCheckingConnections}
-                    />
+          <div className="space-y-3">
+            {servers.map((s) => (
+              <div key={s.id} className="border rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium">{s.name}</div>
+                      <McpConnectionIndicator
+                        enabled={!!s.enabled}
+                        status={connectionStatuses[s.id]}
+                        isChecking={isCheckingConnections}
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {s.transport}
+                      {s.url ? ` · ${s.url}` : ""}
+                      {s.command ? ` · ${s.command}` : ""}
+                      {Array.isArray(s.args) && s.args.length
+                        ? ` · ${s.args.join(" ")}`
+                        : ""}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {s.transport}
-                    {s.url ? ` · ${s.url}` : ""}
-                    {s.command ? ` · ${s.command}` : ""}
-                    {Array.isArray(s.args) && s.args.length
-                      ? ` · ${s.args.join(" ")}`
-                      : ""}
-                  </div>
-                </div>
-                {/* One switch, and it is the one the section is about: does
+                  {/* One switch, and it is the one the section is about: does
                     this server appear in the chat toolbar. Everything else
                     moved below, where it cannot be mistaken for this. */}
-                <div className="flex shrink-0 items-center gap-3">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <Switch
-                      aria-label={`Show ${s.name} in the chat toolbar`}
-                      checked={!!s.enabled}
-                      onCheckedChange={() =>
-                        toggleServerEnabled(s.id, !!s.enabled)
-                      }
-                    />
-                    <span className="text-xs whitespace-nowrap text-muted-foreground">
-                      In chat toolbar
-                    </span>
-                  </label>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-muted-foreground hover:text-destructive"
-                    aria-label={`Delete ${s.name}`}
-                    onClick={() => deleteServer(s.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <Switch
+                        aria-label={`Show ${s.name} in the chat toolbar`}
+                        checked={!!s.enabled}
+                        onCheckedChange={() =>
+                          toggleServerEnabled(s.id, !!s.enabled)
+                        }
+                      />
+                      <span className="text-xs whitespace-nowrap text-muted-foreground">
+                        In chat toolbar
+                      </span>
+                    </label>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-muted-foreground hover:text-destructive"
+                      aria-label={`Delete ${s.name}`}
+                      onClick={() => deleteServer(s.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              {s.transport === "stdio" && (
-                <details className="mt-3 rounded-md border bg-muted/20 p-2">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    Environment variables
-                  </summary>
-                  <div className="mt-2">
-                    <KeyValueEditor
-                      id={s.id}
-                      json={s.envJson}
-                      disabled={!s.enabled}
-                      isSaving={!!isUpdatingServer}
-                      onSave={async (pairs) => {
-                        await updateServer({
-                          id: s.id,
-                          envJson: arrayToJsonObject(pairs),
-                        });
-                      }}
-                    />
-                  </div>
-                </details>
-              )}
-              {s.transport === "http" && (
-                <details className="mt-3 rounded-md border bg-muted/20 p-2">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    Headers and authentication
-                  </summary>
-                  <div className="mt-2">
-                    <KeyValueEditor
-                      id={s.id}
-                      json={s.headersJson}
-                      disabled={!s.enabled}
-                      isSaving={!!isUpdatingServer}
-                      itemLabel="Header"
-                      onSave={async (pairs) => {
-                        await updateServer({
-                          id: s.id,
-                          headersJson: arrayToJsonObject(pairs),
-                        });
-                      }}
-                    />
-                  </div>
-                </details>
-              )}
-              {(() => {
-                const tools = toolsByServer[s.id] || [];
-                const workflows = workflowsByServer[s.id] || [];
-                const supportsWorkflowDiscovery = tools.some(
-                  (tool) => tool.name === "search_workflows",
-                );
-                const selectedToolCount = tools.filter((tool) =>
-                  chatAgentMcpToolKeys.includes(
-                    getChatAgentToolKey(s.id, tool.name),
-                  ),
-                ).length;
-                const selectedWorkflowCount = workflows.filter((workflow) =>
-                  chatAgentMcpWorkflowKeys.includes(
-                    getChatAgentWorkflowKey(s.id, workflow.id),
-                  ),
-                ).length;
+                {s.transport === "stdio" && (
+                  <details className="mt-3 rounded-md border bg-muted/20 p-2">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Environment variables
+                    </summary>
+                    <div className="mt-2">
+                      <KeyValueEditor
+                        id={s.id}
+                        json={s.envJson}
+                        disabled={!s.enabled}
+                        isSaving={!!isUpdatingServer}
+                        onSave={async (pairs) => {
+                          await updateServer({
+                            id: s.id,
+                            envJson: arrayToJsonObject(pairs),
+                          });
+                        }}
+                      />
+                    </div>
+                  </details>
+                )}
+                {s.transport === "http" && (
+                  <details className="mt-3 rounded-md border bg-muted/20 p-2">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Headers and authentication
+                    </summary>
+                    <div className="mt-2">
+                      <KeyValueEditor
+                        id={s.id}
+                        json={s.headersJson}
+                        disabled={!s.enabled}
+                        isSaving={!!isUpdatingServer}
+                        itemLabel="Header"
+                        onSave={async (pairs) => {
+                          await updateServer({
+                            id: s.id,
+                            headersJson: arrayToJsonObject(pairs),
+                          });
+                        }}
+                      />
+                    </div>
+                  </details>
+                )}
+                {(() => {
+                  const tools = toolsByServer[s.id] || [];
+                  const workflows = workflowsByServer[s.id] || [];
+                  const supportsWorkflowDiscovery = tools.some(
+                    (tool) => tool.name === "search_workflows",
+                  );
+                  const selectedToolCount = tools.filter((tool) =>
+                    chatAgentMcpToolKeys.includes(
+                      getChatAgentToolKey(s.id, tool.name),
+                    ),
+                  ).length;
+                  const selectedWorkflowCount = workflows.filter((workflow) =>
+                    chatAgentMcpWorkflowKeys.includes(
+                      getChatAgentWorkflowKey(s.id, workflow.id),
+                    ),
+                  ).length;
 
-                return (
-                  <div className="mt-3 space-y-2">
-                    {/* Chat Agent access sits with the tools it governs, not
+                  return (
+                    <div className="mt-3 space-y-2">
+                      {/* Chat Agent access sits with the tools it governs, not
                         beside the switch that decides chat-toolbar
                         visibility. Two switches side by side read as one
                         setting split in half. */}
-                    <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/20 p-2">
-                      <Switch
-                        aria-label={`Let Chat Agent use ${s.name}`}
-                        checked={chatAgentMcpServerIds.includes(s.id)}
-                        disabled={!s.enabled}
-                        onCheckedChange={(checked) =>
-                          onToggleChatAgentServer(s.id, checked)
-                        }
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium">
-                          Chat Agent may call these tools
+                      <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/20 p-2">
+                        <Switch
+                          aria-label={`Let Chat Agent use ${s.name}`}
+                          checked={chatAgentMcpServerIds.includes(s.id)}
+                          disabled={!s.enabled}
+                          onCheckedChange={(checked) =>
+                            onToggleChatAgentServer(s.id, checked)
+                          }
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">
+                            Chat Agent may call these tools
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {selectedToolCount} of {tools.length} selected. Tool
+                            consent still applies before anything runs.
+                          </span>
                         </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {selectedToolCount} of {tools.length} selected. Tool
-                          consent still applies before anything runs.
-                        </span>
-                      </span>
-                    </label>
+                      </label>
 
-                    {supportsWorkflowDiscovery && (
+                      {supportsWorkflowDiscovery && (
+                        <CollapsibleMcpSection
+                          title="n8n workflows"
+                          description="Real workflow records returned by search_workflows. Toggle the workflows Chat Agent may execute."
+                          count={workflows.length}
+                          selectedCount={selectedWorkflowCount}
+                          accent
+                          actions={
+                            <>
+                              {workflows.length > 0 && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!s.enabled}
+                                    onClick={() =>
+                                      onSetAllChatAgentWorkflows(
+                                        s.id,
+                                        workflows.map(
+                                          (workflow) => workflow.id,
+                                        ),
+                                        true,
+                                      )
+                                    }
+                                  >
+                                    Select all
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!s.enabled}
+                                    onClick={() =>
+                                      onSetAllChatAgentWorkflows(
+                                        s.id,
+                                        workflows.map(
+                                          (workflow) => workflow.id,
+                                        ),
+                                        false,
+                                      )
+                                    }
+                                  >
+                                    Clear
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={!s.enabled}
+                                onClick={() => void refetchAll()}
+                              >
+                                <RefreshCw
+                                  size={14}
+                                  className={
+                                    isCheckingConnections ? "animate-spin" : ""
+                                  }
+                                />
+                                Refresh
+                              </Button>
+                            </>
+                          }
+                        >
+                          <div id={SETTING_IDS.chatAgentMcpWorkflows} />
+                          {workflows.map((workflow) => (
+                            <div
+                              key={workflow.id}
+                              className="flex items-center gap-3 rounded-md border bg-background/60 p-2"
+                            >
+                              <Switch
+                                aria-label={`Use workflow ${workflow.name} with Chat Agent`}
+                                checked={chatAgentMcpWorkflowKeys.includes(
+                                  getChatAgentWorkflowKey(s.id, workflow.id),
+                                )}
+                                disabled={
+                                  !s.enabled ||
+                                  !chatAgentMcpServerIds.includes(s.id)
+                                }
+                                onCheckedChange={(checked) =>
+                                  onToggleChatAgentWorkflow(
+                                    s.id,
+                                    workflow.id,
+                                    checked,
+                                  )
+                                }
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium">
+                                  {workflow.name}
+                                </div>
+                                <div className="truncate font-mono text-xs text-muted-foreground">
+                                  {workflow.id}
+                                  {workflow.active != null
+                                    ? workflow.active
+                                      ? " · active"
+                                      : " · inactive"
+                                    : ""}
+                                </div>
+                                {workflow.description && (
+                                  <div className="truncate text-xs text-muted-foreground">
+                                    {workflow.description}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+
+                          {workflows.length === 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              No n8n workflows returned yet. Confirm the server
+                              connection, then refresh.
+                            </div>
+                          )}
+                        </CollapsibleMcpSection>
+                      )}
+
                       <CollapsibleMcpSection
-                        title="n8n workflows"
-                        description="Real workflow records returned by search_workflows. Toggle the workflows Chat Agent may execute."
-                        count={workflows.length}
-                        selectedCount={selectedWorkflowCount}
-                        accent
+                        title="Available MCP tools"
+                        description="Server capabilities like search_workflows and execute_workflow."
+                        count={tools.length}
+                        selectedCount={selectedToolCount}
                         actions={
                           <>
-                            {workflows.length > 0 && (
+                            {tools.length > 0 && (
                               <>
                                 <Button
                                   type="button"
@@ -1029,9 +1210,9 @@ export function ToolsMcpSettings() {
                                   size="sm"
                                   disabled={!s.enabled}
                                   onClick={() =>
-                                    onSetAllChatAgentWorkflows(
+                                    onSetAllChatAgentTools(
                                       s.id,
-                                      workflows.map((workflow) => workflow.id),
+                                      tools.map((tool) => tool.name),
                                       true,
                                     )
                                   }
@@ -1044,9 +1225,9 @@ export function ToolsMcpSettings() {
                                   size="sm"
                                   disabled={!s.enabled}
                                   onClick={() =>
-                                    onSetAllChatAgentWorkflows(
+                                    onSetAllChatAgentTools(
                                       s.id,
-                                      workflows.map((workflow) => workflow.id),
+                                      tools.map((tool) => tool.name),
                                       false,
                                     )
                                   }
@@ -1073,322 +1254,207 @@ export function ToolsMcpSettings() {
                           </>
                         }
                       >
-                        <div id={SETTING_IDS.chatAgentMcpWorkflows} />
-                        {workflows.map((workflow) => (
-                          <div
-                            key={workflow.id}
-                            className="flex items-center gap-3 rounded-md border bg-background/60 p-2"
-                          >
-                            <Switch
-                              aria-label={`Use workflow ${workflow.name} with Chat Agent`}
-                              checked={chatAgentMcpWorkflowKeys.includes(
-                                getChatAgentWorkflowKey(s.id, workflow.id),
-                              )}
-                              disabled={
-                                !s.enabled ||
-                                !chatAgentMcpServerIds.includes(s.id)
-                              }
-                              onCheckedChange={(checked) =>
-                                onToggleChatAgentWorkflow(
-                                  s.id,
-                                  workflow.id,
-                                  checked,
-                                )
-                              }
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium">
-                                {workflow.name}
-                              </div>
-                              <div className="truncate font-mono text-xs text-muted-foreground">
-                                {workflow.id}
-                                {workflow.active != null
-                                  ? workflow.active
-                                    ? " · active"
-                                    : " · inactive"
-                                  : ""}
-                              </div>
-                              {workflow.description && (
-                                <div className="truncate text-xs text-muted-foreground">
-                                  {workflow.description}
+                        {(toolsByServer[s.id] || []).map((t) => (
+                          <div key={t.name} className="border rounded p-2">
+                            <div className="flex items-center gap-4">
+                              <div className="min-w-0 flex-1">
+                                <div className="font-mono text-sm truncate">
+                                  {t.name}
                                 </div>
-                              )}
+                                {t.description && (
+                                  <div className="mt-1 text-xs text-muted-foreground truncate">
+                                    {t.description}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  aria-label={`Use ${t.name} with Chat Agent`}
+                                  checked={chatAgentMcpToolKeys.includes(
+                                    getChatAgentToolKey(s.id, t.name),
+                                  )}
+                                  disabled={
+                                    !s.enabled ||
+                                    !chatAgentMcpServerIds.includes(s.id)
+                                  }
+                                  onCheckedChange={(checked) =>
+                                    onToggleChatAgentTool(s.id, t.name, checked)
+                                  }
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  Chat Agent
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  value={consents[`${s.id}:${t.name}`] || "ask"}
+                                  onValueChange={(v) =>
+                                    onSetToolConsent(s.id, t.name, v as any)
+                                  }
+                                >
+                                  <SelectTrigger className="w-[140px] h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="ask">Ask</SelectItem>
+                                    <SelectItem value="always">
+                                      Always allow
+                                    </SelectItem>
+                                    <SelectItem value="denied">Deny</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
                           </div>
                         ))}
-
-                        {workflows.length === 0 && (
+                        {tools.length === 0 && (
                           <div className="text-xs text-muted-foreground">
-                            No n8n workflows returned yet. Confirm the server
-                            connection, then refresh.
+                            No tools discovered yet. Check the server URL and
+                            headers, then refresh.
                           </div>
                         )}
                       </CollapsibleMcpSection>
-                    )}
-
-                    <CollapsibleMcpSection
-                      title="Available MCP tools"
-                      description="Server capabilities like search_workflows and execute_workflow."
-                      count={tools.length}
-                      selectedCount={selectedToolCount}
-                      actions={
-                        <>
-                          {tools.length > 0 && (
-                            <>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={!s.enabled}
-                                onClick={() =>
-                                  onSetAllChatAgentTools(
-                                    s.id,
-                                    tools.map((tool) => tool.name),
-                                    true,
-                                  )
-                                }
-                              >
-                                Select all
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={!s.enabled}
-                                onClick={() =>
-                                  onSetAllChatAgentTools(
-                                    s.id,
-                                    tools.map((tool) => tool.name),
-                                    false,
-                                  )
-                                }
-                              >
-                                Clear
-                              </Button>
-                            </>
-                          )}
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!s.enabled}
-                            onClick={() => void refetchAll()}
-                          >
-                            <RefreshCw
-                              size={14}
-                              className={
-                                isCheckingConnections ? "animate-spin" : ""
-                              }
-                            />
-                            Refresh
-                          </Button>
-                        </>
-                      }
-                    >
-                      {(toolsByServer[s.id] || []).map((t) => (
-                        <div key={t.name} className="border rounded p-2">
-                          <div className="flex items-center gap-4">
-                            <div className="min-w-0 flex-1">
-                              <div className="font-mono text-sm truncate">
-                                {t.name}
-                              </div>
-                              {t.description && (
-                                <div className="mt-1 text-xs text-muted-foreground truncate">
-                                  {t.description}
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                aria-label={`Use ${t.name} with Chat Agent`}
-                                checked={chatAgentMcpToolKeys.includes(
-                                  getChatAgentToolKey(s.id, t.name),
-                                )}
-                                disabled={
-                                  !s.enabled ||
-                                  !chatAgentMcpServerIds.includes(s.id)
-                                }
-                                onCheckedChange={(checked) =>
-                                  onToggleChatAgentTool(s.id, t.name, checked)
-                                }
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                Chat Agent
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Select
-                                value={consents[`${s.id}:${t.name}`] || "ask"}
-                                onValueChange={(v) =>
-                                  onSetToolConsent(s.id, t.name, v as any)
-                                }
-                              >
-                                <SelectTrigger className="w-[140px] h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="ask">Ask</SelectItem>
-                                  <SelectItem value="always">
-                                    Always allow
-                                  </SelectItem>
-                                  <SelectItem value="denied">Deny</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {tools.length === 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          No tools discovered yet. Check the server URL and
-                          headers, then refresh.
-                        </div>
-                      )}
-                    </CollapsibleMcpSection>
-                  </div>
-                );
-              })()}
-            </div>
-          ))}
-          {servers.length === 0 && (
-            <div className="text-sm text-muted-foreground">
-              No servers configured yet.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className={cardClass} id="mcp-add-server">
-        <div className="mb-5 flex items-center gap-2">
-          <Plus className="size-4 text-cyan-300/70" />
-          <h2 className={headingClass}>Add a server</h2>
-        </div>
-        <p className="mb-5 text-sm text-cyan-100/45">
-          Most services publish a config snippet. Paste it and everything is
-          filled in for you; the manual fields are there for the ones that do
-          not.
-        </p>
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="mcp-import-json">Paste a config snippet</Label>
-            <Textarea
-              id="mcp-import-json"
-              value={importConfig}
-              onChange={(e) => setImportConfig(e.target.value)}
-              placeholder={
-                '{ "mcpServers": { "n8n-mcp": { "type": "http", "url": "https://...", "headers": { "Authorization": "Bearer ..." } } } }'
-              }
-              className="mt-1 min-h-24 font-mono text-xs"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Paste an MCP JSON block to add n8n or other HTTP servers with
-              their headers.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onImportConfig}
-            disabled={!importConfig.trim()}
-          >
-            <Plus size={14} />
-            Add from config
-          </Button>
-        </div>
-
-        {/* The manual path is second and visibly secondary: it is the
-          fallback for services that do not publish a snippet, not the
-          route most people should take. */}
-        <div className="space-y-2 border-t border-white/10 pt-4">
-          <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Or set it up manually
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Name</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="My MCP Server"
-              />
-            </div>
-            <div>
-              <Label htmlFor="mcp-transport-select">Transport</Label>
-              <select
-                id="mcp-transport-select"
-                data-testid="mcp-transport-select"
-                value={transport}
-                onChange={(e) => setTransport(e.target.value as Transport)}
-                className="w-full h-9 rounded-md border bg-transparent px-3 text-sm"
-              >
-                <option value="stdio">stdio</option>
-                <option value="http">http</option>
-              </select>
-            </div>
-            {transport === "stdio" && (
-              <>
-                <div>
-                  <Label>Command</Label>
-                  <Input
-                    value={command}
-                    onChange={(e) => setCommand(e.target.value)}
-                    placeholder="node"
-                  />
-                </div>
-                <div>
-                  <Label>Args</Label>
-                  <Input
-                    value={args}
-                    onChange={(e) => setArgs(e.target.value)}
-                    placeholder="path/to/mcp-server.js --flag"
-                  />
-                </div>
-              </>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+            {servers.length === 0 && (
+              <div className="text-sm text-muted-foreground">
+                No servers configured yet.
+              </div>
             )}
-            {transport === "http" && (
-              <>
-                <div className="col-span-2">
-                  <Label>URL</Label>
-                  <Input
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://example.com/mcp-server/http"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>Headers / bearer token</Label>
-                  <Textarea
-                    value={headersText}
-                    onChange={(e) => setHeadersText(e.target.value)}
-                    placeholder={
-                      'Bearer ...\n\nor\n{ "Authorization": "Bearer ..." }'
-                    }
-                    className="mt-1 min-h-20 font-mono text-xs"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Paste a raw Bearer token, Key: Value header lines, or a JSON
-                    object.
-                  </p>
-                </div>
-              </>
-            )}
-            <div className="flex items-center gap-2">
-              <Switch
-                aria-label="Enabled"
-                checked={enabled}
-                onCheckedChange={setEnabled}
-              />
-              <Label>Enabled</Label>
-            </div>
           </div>
-          <div>
-            <Button onClick={onCreate} disabled={!name.trim()}>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-cyan-100/45">
+            Most services publish a config snippet. Paste it and everything is
+            filled in for you; the manual fields are there for the ones that do
+            not.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="mcp-import-json">Paste a config snippet</Label>
+              <Textarea
+                id="mcp-import-json"
+                value={importConfig}
+                onChange={(e) => setImportConfig(e.target.value)}
+                placeholder={
+                  '{ "mcpServers": { "n8n-mcp": { "type": "http", "url": "https://...", "headers": { "Authorization": "Bearer ..." } } } }'
+                }
+                className="mt-1 min-h-24 font-mono text-xs"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Paste an MCP JSON block to add n8n or other HTTP servers with
+                their headers.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onImportConfig}
+              disabled={!importConfig.trim()}
+            >
               <Plus size={14} />
-              Add Server
+              Add from config
             </Button>
           </div>
+
+          {/* The manual path is second and visibly secondary: it is the
+          fallback for services that do not publish a snippet, not the
+          route most people should take. */}
+          <div className="space-y-2 border-t border-white/10 pt-4">
+            <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Or set it up manually
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="My MCP Server"
+                />
+              </div>
+              <div>
+                <Label htmlFor="mcp-transport-select">Transport</Label>
+                <select
+                  id="mcp-transport-select"
+                  data-testid="mcp-transport-select"
+                  value={transport}
+                  onChange={(e) => setTransport(e.target.value as Transport)}
+                  className="w-full h-9 rounded-md border bg-transparent px-3 text-sm"
+                >
+                  <option value="stdio">stdio</option>
+                  <option value="http">http</option>
+                </select>
+              </div>
+              {transport === "stdio" && (
+                <>
+                  <div>
+                    <Label>Command</Label>
+                    <Input
+                      value={command}
+                      onChange={(e) => setCommand(e.target.value)}
+                      placeholder="node"
+                    />
+                  </div>
+                  <div>
+                    <Label>Args</Label>
+                    <Input
+                      value={args}
+                      onChange={(e) => setArgs(e.target.value)}
+                      placeholder="path/to/mcp-server.js --flag"
+                    />
+                  </div>
+                </>
+              )}
+              {transport === "http" && (
+                <>
+                  <div className="col-span-2">
+                    <Label>URL</Label>
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="https://example.com/mcp-server/http"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Headers / bearer token</Label>
+                    <Textarea
+                      value={headersText}
+                      onChange={(e) => setHeadersText(e.target.value)}
+                      placeholder={
+                        'Bearer ...\n\nor\n{ "Authorization": "Bearer ..." }'
+                      }
+                      className="mt-1 min-h-20 font-mono text-xs"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Paste a raw Bearer token, Key: Value header lines, or a
+                      JSON object.
+                    </p>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center gap-2">
+                <Switch
+                  aria-label="Enabled"
+                  checked={enabled}
+                  onCheckedChange={setEnabled}
+                />
+                <Label>Enabled</Label>
+              </div>
+            </div>
+            <div>
+              <Button onClick={onCreate} disabled={!name.trim()}>
+                <Plus size={14} />
+                Add Server
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -139,7 +139,11 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
     expect(runner).toHaveBeenCalledWith(
-      expect.objectContaining({ headed: false, parallel: false }),
+      expect.objectContaining({
+        headed: false,
+        parallel: false,
+        preview: false,
+      }),
     );
   });
 
@@ -151,7 +155,31 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
     expect(runner).toHaveBeenCalledWith(
-      expect.objectContaining({ headed: true, parallel: true }),
+      expect.objectContaining({ headed: true, parallel: true, preview: false }),
+    );
+  });
+
+  it("runs headed tests in the preview when the experiment is enabled", async () => {
+    settingsReader.mockReturnValue({
+      enableTestRunInPreview: true,
+      testHeaded: true,
+    } as ReturnType<typeof readSettings>);
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ headed: true, parallel: false, preview: true }),
+    );
+  });
+
+  it("keeps headless tests out of the preview when the experiment is enabled", async () => {
+    settingsReader.mockReturnValue({
+      enableTestRunInPreview: true,
+      testHeaded: false,
+    } as ReturnType<typeof readSettings>);
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ headed: false, preview: false }),
     );
   });
 

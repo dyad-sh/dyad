@@ -30,7 +30,6 @@ import {
   CircleDot,
   Code,
   Trash2,
-  MonitorPlay,
 } from "lucide-react";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAtom } from "@/atoms/previewAtoms";
@@ -705,9 +704,8 @@ export function TestsPanel() {
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
 
-  // Experimental: run the tests inside the preview panel's native view so the
-  // user watches them in place. This is the only thing that opens that view,
-  // and it needs the debugging endpoint that only exists after a restart.
+  // With the experiment enabled, "headed" means visible in Dyad's preview
+  // rather than in a separate Playwright browser window.
   const previewRunEnabled = !!settings?.enableTestRunInPreview;
   const { data: automationStatus } = useQuery({
     queryKey: queryKeys.previewView.automationStatus,
@@ -843,11 +841,15 @@ export function TestsPanel() {
   }, [selectedAppId, switchKeyAsync, switchedIsolation, t]);
 
   const runTests = useCallback(
-    async (file?: string, line?: number, opts?: { preview?: boolean }) => {
+    async (file?: string, line?: number) => {
       if (selectedAppId == null) return;
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
-      const preview = opts?.preview ?? false;
+      const preview = previewRunEnabled && headed;
+      if (preview) {
+        setPreviewNativeView(true);
+        setPreviewMode("preview");
+      }
       const startedAt = Date.now();
 
       applyRunStarted({ appId, testFile: file, testLine: line, startedAt });
@@ -895,6 +897,9 @@ export function TestsPanel() {
       setRunState,
       headed,
       parallel,
+      previewRunEnabled,
+      setPreviewMode,
+      setPreviewNativeView,
     ],
   );
 
@@ -1274,7 +1279,9 @@ export function TestsPanel() {
             aria-pressed={headed}
             title={
               headed
-                ? "Headed: tests open a visible browser window"
+                ? previewRunEnabled
+                  ? "Headed: tests run visibly in the preview panel"
+                  : "Headed: tests open a visible browser window"
                 : "Headless: tests run without a visible window"
             }
             aria-label={
@@ -1329,48 +1336,29 @@ export function TestsPanel() {
         ) : (
           testingEnabled &&
           specs.length > 0 && (
-            <>
-              {previewRunEnabled && (
-                <button
-                  onClick={() => {
-                    setPreviewNativeView(true);
-                    setPreviewMode("preview");
-                    void runTests(undefined, undefined, { preview: true });
-                  }}
-                  disabled={!devServerRunning || !canRunInPreview}
-                  title={
-                    canRunInPreview
-                      ? "Runs the tests inside the preview panel so you can watch them."
-                      : "Restart Dyad to run tests in the preview panel."
-                  }
-                  aria-label="Run all tests in the preview panel"
-                  data-testid="tests-run-in-preview-button"
-                  className={cn(
-                    "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
-                    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60",
-                    (!devServerRunning || !canRunInPreview) &&
-                      "opacity-40 cursor-not-allowed",
-                  )}
-                >
-                  <MonitorPlay size={14} />
-                  Run in preview
-                </button>
+            <button
+              onClick={() => runTests()}
+              disabled={
+                !devServerRunning ||
+                (previewRunEnabled && headed && !canRunInPreview)
+              }
+              title={
+                previewRunEnabled && headed && !canRunInPreview
+                  ? "Restart Dyad to run headed tests in the preview panel."
+                  : "During database-isolated runs, other app operations may wait until the run finishes."
+              }
+              aria-label="Run all tests"
+              className={cn(
+                "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
+                "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
+                (!devServerRunning ||
+                  (previewRunEnabled && headed && !canRunInPreview)) &&
+                  "opacity-40 cursor-not-allowed",
               )}
-              <button
-                onClick={() => runTests()}
-                disabled={!devServerRunning}
-                title="During database-isolated runs, other app operations may wait until the run finishes."
-                aria-label="Run all tests"
-                className={cn(
-                  "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
-                  "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                  !devServerRunning && "opacity-40 cursor-not-allowed",
-                )}
-              >
-                <Play size={14} />
-                Run all
-              </button>
-            </>
+            >
+              <Play size={14} />
+              Run all
+            </button>
           )
         )}
       </div>

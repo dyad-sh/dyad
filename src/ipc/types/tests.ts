@@ -434,6 +434,8 @@ export const TestsRunStatePayloadSchema = z.object({
   testLine: z.number().optional(),
   /** With testFile: regex passed to Playwright's --grep for a partial run. */
   grep: z.string().optional(),
+  /** Whether this run drives the native preview view. Present on "started". */
+  preview: z.boolean().optional(),
   /** Present only on "finished". */
   results: z.array(TestResultSchema).optional(),
   infraError: z.object({ message: z.string() }).optional(),

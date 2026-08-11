@@ -562,9 +562,8 @@ export interface RunTestsWithIsolationOptions {
   /**
    * Experimental: run inside the preview panel's native view instead of a
    * separate browser. Requires the `enableTestRunInPreview` experiment (which
-   * opens the CDP endpoint at boot) and the preview showing this app — the
-   * Tests panel's "Run in preview" action is the only thing that opens that
-   * view.
+   * opens the CDP endpoint at boot) and the preview showing this app. The
+   * renderer opens that view for headed panel and agent runs.
    */
   preview?: boolean;
 }
@@ -731,6 +730,7 @@ export async function runAppTestsWithIsolation({
       testFile: normalizedTestFile ?? undefined,
       testLine,
       grep,
+      preview,
     });
 
     // Own the runtime/test resources across the whole isolation lifecycle

@@ -46,6 +46,7 @@ import {
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { spawnStreaming } from "../utils/spawn_streaming";
 import {
+  configSetsTimeout,
   ensurePlaywrightBootstrap,
   DYAD_CONFIG_FILENAME,
   PREVIEW_CDP_ENDPOINT_ENV,
@@ -250,6 +251,12 @@ export interface RunAppTestsCoreOptions {
    * applies whether the run drives its own browser or the preview panel.
    */
   slowMo?: boolean;
+  /**
+   * Called when a preview run turns out not to be one after all (the shim
+   * couldn't be routed), so the caller can hand the preview view back instead
+   * of holding it frozen for a run happening in another window.
+   */
+  onPreviewFallback?: () => void;
   /** Aborts an in-flight bootstrap or run. */
   signal?: AbortSignal;
   /**
@@ -290,6 +297,7 @@ export async function runAppTestsCore({
   headed,
   parallel,
   slowMo,
+  onPreviewFallback,
   signal,
   timeoutMs,
   onOutput,
@@ -328,6 +336,10 @@ export async function runAppTestsCore({
 
   // 1. Lazy bootstrap (install Playwright + browser, write config), streamed.
   let installed = false;
+  // Cleared below when the shim can't be routed, because from that point on
+  // this is an ordinary browser run and every decision keyed on the endpoint
+  // (headed, parallel, the env var the shim reads) has to follow.
+  let previewEndpoint = previewCdpEndpoint;
   try {
     const result = await ensurePlaywrightBootstrap({
       appPath,
@@ -336,6 +348,14 @@ export async function runAppTestsCore({
       ensurePreviewShim: !!previewCdpEndpoint,
     });
     installed = result.installed;
+    if (previewEndpoint && !result.previewRouted) {
+      // The specs import the real @playwright/test and will launch their own
+      // browser. Keeping the endpoint would suppress `--headed` and leave the
+      // user watching an empty preview while an invisible browser runs — the
+      // opposite of the warning bootstrap just printed.
+      previewEndpoint = undefined;
+      onPreviewFallback?.();
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Playwright bootstrap failed: ${message}`);
@@ -391,7 +411,7 @@ export async function runAppTestsCore({
   // It overrides the headless default (and the CI=true env set below).
   // A preview run is already visible — it drives Dyad's own window — and has no
   // browser of its own to make headed.
-  if (headed && !previewCdpEndpoint) {
+  if (headed && !previewEndpoint) {
     args.push("--headed");
   }
   // Override the generated config's serial defaults (`workers: 1`,
@@ -399,14 +419,22 @@ export async function runAppTestsCore({
   // `--fully-parallel` is what parallelizes tests *within* a single file.
   // Preview runs share the single page inside the preview panel, so they can
   // only ever be serial.
-  if (parallel && !previewCdpEndpoint) {
+  if (parallel && !previewEndpoint) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
+  }
+  // A trace of the borrowed context records every page in it, Dyad's own
+  // windows included. Passed as a flag so it also covers apps whose generated
+  // config predates the same setting.
+  if (previewEndpoint) {
+    args.push("--trace=off");
   }
   // Slow motion spends wall-clock time inside each test, which Playwright bills
   // against its 30s per-test default — so a spec that's green at full speed
   // could time out purely from the toggle. Raise the per-test ceiling so
   // watching a run stays a pace change, not a source of spurious failures.
-  if (slowMo) {
+  // Skipped when the config names a timeout: that one is the user's, and
+  // `--timeout` would override it in either direction — including down.
+  if (slowMo && !configSetsTimeout(appPath)) {
     args.push(`--timeout=${SLOW_MO_TEST_TIMEOUT_MS}`);
   }
 
@@ -422,8 +450,15 @@ export async function runAppTestsCore({
         [TEST_BASE_URL_ENV]: baseUrl,
         // Only set for preview runs; the generated fixture shim is inert
         // without it, so every other run keeps launching its own browser.
-        ...(previewCdpEndpoint
-          ? { [PREVIEW_CDP_ENDPOINT_ENV]: previewCdpEndpoint }
+        ...(previewEndpoint
+          ? {
+              [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
+              // Playwright's "copy prompt" snapshot goes into error-context.md
+              // and is taken from the borrowed context's FIRST page — over CDP
+              // that's a Dyad window, not the app. Suppress it rather than
+              // hand the model a picture of the user's editor.
+              PLAYWRIGHT_NO_COPY_PROMPT: "1",
+            }
           : {}),
         // Left unset at full speed so the config's `|| 0` fallback applies.
         ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
@@ -889,18 +924,41 @@ export async function runAppTestsWithIsolation({
           if (previewWindow && previewCdpEndpoint) {
             const baseUrl = getRunningTestBaseUrl(appId);
             const ready = baseUrl
-              ? await waitForPreviewView(previewWindow, { url: baseUrl })
+              ? await waitForPreviewView(previewWindow, {
+                  url: baseUrl,
+                  // A panel run was just started by someone looking at the
+                  // preview, so waiting out a slow mount is worth it. An agent
+                  // run falls back instead of failing, and pays this wait on
+                  // every call while the user is elsewhere — inside the app lock,
+                  // holding up other operations — so it gives up sooner.
+                  ...(source === "agent" ? { timeoutMs: 5_000 } : {}),
+                })
               : ({ ok: false, reason: "the app isn't running" } as const);
 
             if (!ready.ok) {
-              return {
-                appId,
-                results: [],
-                infraError: {
-                  message: `The preview panel isn't showing this app (${ready.reason}). Start the run with "Run in preview" from the Tests panel and stay on the Preview tab, then try again.`,
-                },
-                isolation: prepared.isolation,
-              };
+              if (source === "agent") {
+                // Nothing opened the native view — the user is looking at
+                // another app, another window, or a page with no preview at
+                // all. The agent can't put them back, so failing here would
+                // fail every run_tests call for as long as they stay there,
+                // taking the whole fix loop with it. Run the tests in an
+                // ordinary browser instead: less to watch, but a real result.
+                emit(
+                  `The preview panel isn't showing this app (${ready.reason}); running the tests in a separate browser instead.\n`,
+                  "setup",
+                );
+                previewWindow = undefined;
+                previewCdpEndpoint = undefined;
+              } else {
+                return {
+                  appId,
+                  results: [],
+                  infraError: {
+                    message: `The preview panel isn't showing this app (${ready.reason}). Run the tests from the Tests panel with Headed on and stay on the Preview tab, then try again.`,
+                  },
+                  isolation: prepared.isolation,
+                };
+              }
             }
           }
 
@@ -912,6 +970,21 @@ export async function runAppTestsWithIsolation({
                 },
               })
             : null;
+
+          if (previewCdpEndpoint && !automation) {
+            // The view went away between the wait above and this call. Running
+            // anyway would drive a page nothing is guarding: no destroyed-view
+            // notification, and `showPreviewView` would navigate it mid-run.
+            return {
+              appId,
+              results: [],
+              infraError: {
+                message:
+                  "The preview panel closed before the run could start. Open the Preview tab and try again.",
+              },
+              isolation: prepared.isolation,
+            };
+          }
 
           let result: RunAppTestsResult;
           try {
@@ -928,16 +1001,25 @@ export async function runAppTestsWithIsolation({
               onOutput: emit,
               testEnv: prepared.testCredentials,
               previewCdpEndpoint,
+              // The run turned out to need its own browser, so stop holding the
+              // preview view frozen (no navigation, no hiding) for it.
+              onPreviewFallback: () => automation?.end(),
             });
           } finally {
             automation?.end();
           }
 
-          if (previewViewClosed && result.infraError) {
-            // The CDP target vanished mid-run; the raw disconnect error tells the
-            // user nothing about why.
+          if (previewViewClosed) {
+            // The CDP target vanished mid-run. Losing it usually doesn't abort
+            // Playwright: it reports a screenful of "Target closed" test
+            // failures and exits with a perfectly parseable report, so gating
+            // this on `infraError` let the common case through as a wall of
+            // failures the user's app never caused. None of it is a verdict on
+            // the app, so it must not read as one — or count against the agent's
+            // fix budget.
             result = {
               ...result,
+              results: [],
               infraError: {
                 message:
                   "The preview was closed while tests were running, so the run was interrupted.",

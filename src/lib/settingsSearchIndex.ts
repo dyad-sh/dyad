@@ -616,7 +616,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     id: SETTING_IDS.enableTestRunInPreview,
     label: "Run tests in preview panel",
     description:
-      "Add a Tests panel action that runs your app's tests in a native browser view inside the preview panel so you can watch them",
+      "Send the Tests panel's headed runs to a native browser view inside the preview panel so you can watch them",
     keywords: [
       "tests",
       "preview",

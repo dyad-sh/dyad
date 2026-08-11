@@ -24,6 +24,16 @@ export interface RemoteDebuggingEndpoint {
 
 let switchApplied = false;
 let cachedEndpoint: RemoteDebuggingEndpoint | null = null;
+/**
+ * When the poll below last gave up. Chromium writes its port file during
+ * startup, so an endpoint that hasn't appeared within the timeout probably
+ * isn't coming, and without this every Tests panel mount and every agent test
+ * run pays the full timeout again. It expires rather than latching: a failure
+ * here disables the Tests panel's run buttons, which is far too much to hang
+ * on one unlucky poll.
+ */
+let failedAt: number | null = null;
+const FAILURE_RETRY_AFTER_MS = 30_000;
 
 /**
  * Reads the experiment flag straight off disk.
@@ -99,6 +109,9 @@ export async function resolveRemoteDebuggingEndpoint(): Promise<RemoteDebuggingE
   if (!switchApplied) {
     return null;
   }
+  if (failedAt !== null && Date.now() - failedAt < FAILURE_RETRY_AFTER_MS) {
+    return null;
+  }
   if (cachedEndpoint) {
     return cachedEndpoint;
   }
@@ -118,6 +131,7 @@ export async function resolveRemoteDebuggingEndpoint(): Promise<RemoteDebuggingE
       logger.warn(
         `Remote debugging was enabled but no ${DEVTOOLS_ACTIVE_PORT_FILE} appeared within ${PORT_POLL_TIMEOUT_MS}ms.`,
       );
+      failedAt = Date.now();
       return null;
     }
     await new Promise((resolve) => setTimeout(resolve, PORT_POLL_INTERVAL_MS));
@@ -128,4 +142,5 @@ export async function resolveRemoteDebuggingEndpoint(): Promise<RemoteDebuggingE
 export function resetRemoteDebuggingForTesting(): void {
   switchApplied = false;
   cachedEndpoint = null;
+  failedAt = null;
 }

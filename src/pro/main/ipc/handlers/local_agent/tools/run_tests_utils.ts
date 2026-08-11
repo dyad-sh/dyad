@@ -12,6 +12,13 @@ export const MAX_ATTEMPTS = 4;
 export const MAX_RUNS_PER_TURN = 10;
 /** Hard wall-clock cap so one run can't stall the whole agent turn. */
 export const RUN_TIMEOUT_MS = 10 * 60_000;
+/**
+ * The same cap for a run the user has deliberately slowed down. Slow motion is
+ * a Tests-panel preference that applies to the agent's runs too, so without
+ * extra room a spec that fits comfortably at full speed would blow the budget
+ * and come back as an infra failure that has nothing to do with the app.
+ */
+export const SLOW_MO_RUN_TIMEOUT_MS = 20 * 60_000;
 /** Cap on the error text echoed back to the model (matches askAiToFix). */
 export const MAX_ERROR_CHARS = 4000;
 

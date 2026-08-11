@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useSetAtom, useStore } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   appendTestRunOutputAtom,
@@ -13,7 +13,7 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
-import { previewModeAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
@@ -45,6 +45,12 @@ export function useTestRunEvents() {
   const store = useStore();
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  // Held in a ref so switching apps doesn't re-run the effect and resubscribe,
+  // which is what this hook exists to avoid (a terminal event could land in
+  // the gap).
+  const selectedAppIdRef = useRef(selectedAppId);
+  selectedAppIdRef.current = selectedAppId;
   const queryClient = useQueryClient();
   const activeRunByAppId = useRef(
     new Map<
@@ -142,7 +148,14 @@ export function useTestRunEvents() {
           startedAt,
         });
         discardPendingOutput(appId);
-        if (payload.source === "agent" && payload.preview) {
+        // Run state is broadcast to every window, and each shows whichever
+        // app it has selected. Only the window already looking at this run's
+        // app should be pulled into the native test view.
+        if (
+          payload.source === "agent" &&
+          payload.preview &&
+          payload.appId === selectedAppIdRef.current
+        ) {
           setPreviewNativeView(true);
           setPreviewMode("preview");
         }

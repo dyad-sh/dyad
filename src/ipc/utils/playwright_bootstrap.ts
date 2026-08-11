@@ -185,6 +185,42 @@ const SHIM_PATH_FROM_E2E_TSCONFIG = `./${PREVIEW_SHIM_RELATIVE_PATH.slice(
   `${E2E_TEST_DIR}/`.length,
 )}`;
 
+/** Where an older Dyad's mapping pointed, relative to the same tsconfig. */
+const LEGACY_SHIM_PATH_FROM_E2E_TSCONFIG = `./${LEGACY_PREVIEW_SHIM_RELATIVE_PATH.slice(
+  `${E2E_TEST_DIR}/`.length,
+)}`;
+
+/** A tsconfig path with the optional "./" prefix and extension removed. */
+function shimPathStem(target: string): string {
+  return target.replace(/\.tsx?$/, "").replace(/^\.\//, "");
+}
+
+/**
+ * Whether a tsconfig the app owns routes `@playwright/test` at `shimPath`.
+ *
+ * Reads the actual mapping rather than searching the file: a stray mention in
+ * an `include` or a comment would otherwise read as "routed", and the run
+ * would keep the CDP endpoint, drop `--headed`, and go invisible in a browser
+ * the shim never loaded. Compares stems, since both the leading "./" and the
+ * extension are optional — reading "./fixtures/dyad-test" as "not the legacy
+ * shim" is how the file a mapping resolves to ends up deleted. Falls back to a
+ * substring test only when the file can't be parsed at all, where guessing
+ * "not mapped" is the more destructive answer.
+ */
+function mapsToShim(tsconfig: string, shimPath: string): boolean {
+  const stem = shimPathStem(shimPath);
+  const parsed = parseTsconfigJson(tsconfig);
+  if (!parsed) return tsconfig.includes(stem);
+
+  const targets = (
+    parsed.compilerOptions?.paths as Record<string, unknown> | undefined | null
+  )?.["@playwright/test"];
+  if (!Array.isArray(targets)) return false;
+  return targets.some(
+    (target) => typeof target === "string" && shimPathStem(target) === stem,
+  );
+}
+
 /** A browser channel that drives a system-installed browser, or bundled. */
 export type BrowserChannel = "chrome" | "msedge";
 
@@ -214,8 +250,14 @@ export default defineConfig({
   use: {
     baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",
 ${SLOW_MO_CONFIG_LINES}${channelLine}
-    screenshot: "only-on-failure",
-    trace: "retain-on-failure",
+    // Off for a preview run: it drives a browser that also contains Dyad's own
+    // windows, and these recorders capture every page they can see rather than
+    // the one under test. The fixture shim attaches a screenshot of just that
+    // page instead.
+    screenshot: process.env.${PREVIEW_CDP_ENDPOINT_ENV}
+      ? "off"
+      : "only-on-failure",
+    trace: process.env.${PREVIEW_CDP_ENDPOINT_ENV} ? "off" : "retain-on-failure",
   },
 });
 `;
@@ -240,7 +282,7 @@ ${SLOW_MO_CONFIG_LINES}${channelLine}
 export function buildPreviewShimSource(): string {
   return `// ${DYAD_CONFIG_SENTINEL}. Do not edit — Dyad regenerates this file.
 //
-// Lets "Run in preview" drive the page already open in Dyad's preview panel
+// Lets a headed run drive the page already open in Dyad's preview panel
 // instead of launching a separate browser. Inert unless Dyad sets
 // ${PREVIEW_CDP_ENDPOINT_ENV}, so ordinary test runs behave exactly as before.
 import * as pw from "@playwright/test";
@@ -280,23 +322,53 @@ export const test = !endpoint
         if (!context) {
           throw new Error("Dyad preview: no browser context available over CDP.");
         }
+        const baseUrl = requireBaseUrl();
         // Playwright applies the config's \`baseURL\` when IT creates a context.
         // Dyad's preview created this one, so the option is missing and every
-        // relative URL would have nothing to resolve against. Everything that
-        // reads it on the client — expect(page).toHaveURL("/x"),
-        // page.waitForURL, route globs, context.request — is fixed by filling
-        // it in. (page.goto resolves elsewhere; see below.) Best-effort: it's
-        // internal, so a rename should cost the extras, not the run.
+        // relative URL would have nothing to resolve against. The checks that
+        // read it on the client — expect(page).toHaveURL("/x"),
+        // page.waitForURL, route globs — are fixed by filling it in.
+        // Best-effort: it's internal, so a rename should cost the extras, not
+        // the run. Navigation and API requests resolve in Playwright's server
+        // half instead, from the options the context was CREATED with, so they
+        // are handled separately (below, and in the page fixture).
         const contextInternals = context as unknown as {
           _options?: { baseURL?: string };
         };
         if (contextInternals._options) {
-          contextInternals._options.baseURL = requireBaseUrl();
+          contextInternals._options.baseURL = baseUrl;
         }
-        // Pre-existing context: hand it over without closing it afterwards.
-        await use(context);
+        // context.request.get("/api/health") — and page.request, which is the
+        // same object — would otherwise reach the server half as "/api/health"
+        // and throw "Invalid URL", but only under a preview run. Resolve here
+        // so a spec behaves the same whichever way Dyad runs it.
+        type ApiCall = (url: unknown, options?: unknown) => unknown;
+        const api = context.request as unknown as Record<string, ApiCall>;
+        const originalApiMethods = new Map<string, ApiCall>();
+        const apiMethodNames = ["fetch", "get", "post", "put", "patch", "delete", "head"];
+        for (const name of apiMethodNames) {
+          const original = api[name];
+          if (typeof original !== "function") continue;
+          originalApiMethods.set(name, original);
+          // A Request object (fetch's other overload) carries its own URL.
+          api[name] = (url, options) =>
+            original.call(
+              api,
+              typeof url === "string" ? new URL(url, baseUrl).href : url,
+              options,
+            );
+        }
+        try {
+          // Pre-existing context: hand it over without closing it afterwards.
+          await use(context);
+        } finally {
+          // It outlives the run, so the patches have to come back off.
+          for (const [name, original] of originalApiMethods) {
+            api[name] = original;
+          }
+        }
       },
-      page: async ({ context }, use) => {
+      page: async ({ context }, use, testInfo) => {
         const baseUrl = requireBaseUrl();
         const origin = new URL(baseUrl).origin;
         const page = context.pages().find((candidate) => {
@@ -325,6 +397,23 @@ export const test = !endpoint
           await use(page);
         } finally {
           page.goto = originalGoto;
+          // Playwright's own failure screenshot is off for preview runs
+          // (see the config): its recorder shoots every page the connection
+          // can reach, and over CDP that includes Dyad's own windows — which
+          // would then be attached to the failure and shown as "your app".
+          // This attaches the page under test, and nothing else. It lands
+          // first because auto fixtures tear down last, so it is the one
+          // Dyad picks up even in an app whose config predates that change.
+          if (testInfo.status !== testInfo.expectedStatus) {
+            try {
+              await testInfo.attach("screenshot", {
+                body: await page.screenshot(),
+                contentType: "image/png",
+              });
+            } catch {
+              // A screenshot is a nicety; never fail teardown over it.
+            }
+          }
         }
       },
     });
@@ -333,13 +422,210 @@ export const expect = pw.expect;
 `;
 }
 
-export function buildE2eTsconfigSource(): string {
+/** How many tsconfig files to open looking for the app's `paths`. */
+const MAX_TSCONFIG_FILES = 8;
+
+interface ParsedTsconfig {
+  extends?: unknown;
+  references?: unknown;
+  compilerOptions?: { baseUrl?: unknown; paths?: unknown };
+}
+
+/**
+ * Parses a tsconfig, which is JSONC rather than JSON: comments and trailing
+ * commas are legal there and fatal to `JSON.parse`, and the templates most apps
+ * start from are full of both. Strips them while tracking string literals, so a
+ * "//" inside a URL survives.
+ */
+export function parseTsconfigJson(text: string): ParsedTsconfig | null {
+  let out = "";
+  let i = 0;
+  // Held back until the next meaningful character says whether it's a
+  // separator (keep) or a trailing comma (drop).
+  let pendingComma = false;
+  while (i < text.length) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '"') {
+      if (pendingComma) {
+        pendingComma = false;
+        out += ",";
+      }
+      out += ch;
+      i++;
+      while (i < text.length) {
+        const inner = text[i];
+        out += inner;
+        i++;
+        if (inner === "\\") {
+          out += text[i] ?? "";
+          i++;
+          continue;
+        }
+        if (inner === '"') break;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    if (ch === ",") {
+      pendingComma = true;
+      i++;
+      continue;
+    }
+    if (pendingComma && !/\s/.test(ch)) {
+      pendingComma = false;
+      if (ch !== "}" && ch !== "]") out += ",";
+    }
+    out += ch;
+    i++;
+  }
+  try {
+    const parsed: unknown = JSON.parse(out);
+    return parsed && typeof parsed === "object"
+      ? (parsed as ParsedTsconfig)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolves a tsconfig `extends`/`references` entry to a file path. */
+function resolveTsconfigRef(
+  fromConfig: string,
+  target: string,
+  kind: "extends" | "references",
+): string {
+  const resolved = path.resolve(path.dirname(fromConfig), target);
+  if (target.endsWith(".json")) return resolved;
+  // The two spell an extension-less target differently: TypeScript appends
+  // `.json` to an `extends` ("./tsconfig.base" is a file), and looks for a
+  // `tsconfig.json` inside a `references` path (it names a project directory).
+  return kind === "extends"
+    ? `${resolved}.json`
+    : path.join(resolved, "tsconfig.json");
+}
+
+/**
+ * The app's own `paths` mappings, with the directory they resolve against.
+ *
+ * Starts at the app's tsconfig and, if that one declares no `paths`, follows
+ * relative `extends` parents and then `references` — solution-style roots
+ * (`create-vite` and friends) keep the aliases in a referenced project. A
+ * package specifier (`@tsconfig/...`) is not followed: resolving it goes
+ * through node resolution, which isn't worth reimplementing for a best-effort
+ * copy. Returns null when there is genuinely nothing to copy.
+ */
+function readAppPathMappings(
+  appPath: string,
+): { mappings: Record<string, unknown>; baseDir: string } | null {
+  const queue = [path.join(appPath, "tsconfig.json")];
+  const visited = new Set<string>();
+  while (queue.length > 0 && visited.size < MAX_TSCONFIG_FILES) {
+    const configPath = queue.shift()!;
+    if (visited.has(configPath)) continue;
+    visited.add(configPath);
+
+    const raw = readFileOrNull(configPath);
+    if (raw === null) continue;
+    const parsed = parseTsconfigJson(raw);
+    if (!parsed) continue;
+
+    const paths = parsed.compilerOptions?.paths;
+    if (paths && typeof paths === "object") {
+      const baseUrl = parsed.compilerOptions?.baseUrl;
+      const dir = path.dirname(configPath);
+      return {
+        mappings: paths as Record<string, unknown>,
+        // TypeScript resolves `paths` against `baseUrl` when it's set, and
+        // against the config's own directory otherwise.
+        baseDir: typeof baseUrl === "string" ? path.resolve(dir, baseUrl) : dir,
+      };
+    }
+
+    // A parent is this same project's configuration, so it comes first; a
+    // reference is a sibling project that usually shares the app's aliases.
+    const parents = Array.isArray(parsed.extends)
+      ? parsed.extends
+      : [parsed.extends];
+    for (const parent of parents) {
+      if (typeof parent === "string" && parent.startsWith(".")) {
+        queue.push(resolveTsconfigRef(configPath, parent, "extends"));
+      }
+    }
+    if (Array.isArray(parsed.references)) {
+      for (const reference of parsed.references) {
+        const target = (reference as { path?: unknown })?.path;
+        if (typeof target === "string") {
+          queue.push(resolveTsconfigRef(configPath, target, "references"));
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The app's `paths`, rewritten to resolve from the generated tsconfig's
+ * directory.
+ *
+ * Playwright — and the editor — read `paths` from the CLOSEST tsconfig above a
+ * file and never merge in parents, so the file written beside the specs
+ * SHADOWS the app's root tsconfig: without this, a spec importing
+ * `@/lib/routes` stops resolving the moment a preview run writes that file, in
+ * every later run (preview or not) and in the editor, permanently. `extends`
+ * is not a fix — a child's `paths` replaces the parent's outright rather than
+ * merging with it.
+ */
+function rebasedAppPathMappings(appPath: string): Record<string, string[]> {
+  const found = readAppPathMappings(appPath);
+  if (!found) return {};
+  const e2eDir = path.join(appPath, E2E_TEST_DIR);
+  const rebased: Record<string, string[]> = {};
+  for (const [alias, targets] of Object.entries(found.mappings)) {
+    if (!Array.isArray(targets)) continue;
+    const rewritten = targets
+      .filter((target): target is string => typeof target === "string")
+      .map((target) =>
+        path.isAbsolute(target)
+          ? target
+          : path
+              .relative(e2eDir, path.resolve(found.baseDir, target))
+              .split(path.sep)
+              .join("/"),
+      );
+    if (rewritten.length > 0) rebased[alias] = rewritten;
+  }
+  return rebased;
+}
+
+export function buildE2eTsconfigSource(appPath: string): string {
+  const extendsApp = fs.existsSync(path.join(appPath, "tsconfig.json"));
   return `${JSON.stringify(
     {
-      _comment: `${DYAD_CONFIG_SENTINEL}. Routes @playwright/test through Dyad's fixture shim so tests can run inside the preview panel. Delete this file to opt out.`,
+      _comment: `${DYAD_CONFIG_SENTINEL}. Routes @playwright/test through Dyad's fixture shim so tests can run inside the preview panel. The other entries keep this app's own tsconfig settings, which this file would otherwise shadow. Delete this file to opt out.`,
+      // This file is the closest tsconfig to the specs, so on its own it would
+      // replace the app's compiler options wholesale — target, lib, jsx,
+      // strict, the lot — with the bare defaults, and turn green specs red.
+      ...(extendsApp ? { extends: "../tsconfig.json" } : {}),
+      // `extends` also carries `files`, which a solution-style root sets to []:
+      // without this the specs would belong to no project at all.
+      ...(extendsApp ? { include: ["**/*.ts", "**/*.tsx"] } : {}),
       compilerOptions: {
         baseUrl: ".",
+        // `paths` is the one option `extends` can't merge — a child replaces
+        // the parent's outright — so the app's own aliases are copied in.
         paths: {
+          ...rebasedAppPathMappings(appPath),
+          // Last, so the shim wins if the app maps this specifier too.
           "@playwright/test": [SHIM_PATH_FROM_E2E_TSCONFIG],
         },
       },
@@ -356,6 +642,30 @@ export function buildE2eTsconfigSource(): string {
  * `@playwright/test`. No `baseUrl`: setting one makes Playwright add a
  * catch-all `*` -> `*` mapping, which is exactly what we're avoiding.
  */
+/**
+ * Stand-in for the shim at its old location, for an app whose own tsconfig
+ * still maps `@playwright/test` there.
+ *
+ * It must NOT be a copy of the shim: the mapping that leads here is the closest
+ * one above this file, so the shim's own `import ... from "@playwright/test"`
+ * would resolve straight back to itself. A relative import is never
+ * path-mapped, so forwarding is the one shape that can't loop — and the real
+ * shim keeps the sibling tsconfig that shadows the mapping for its own import.
+ */
+export function buildLegacyShimForwarderSource(): string {
+  const forwardTo = `./${PREVIEW_SHIM_RELATIVE_PATH.slice(
+    `${E2E_TEST_DIR}/fixtures/`.length,
+  ).replace(/\.ts$/, "")}`;
+  return `// ${DYAD_CONFIG_SENTINEL}. Do not edit — Dyad regenerates this file.
+//
+// The shim moved to ${PREVIEW_SHIM_RELATIVE_PATH}, but your
+// ${E2E_TSCONFIG_RELATIVE_PATH} still maps "@playwright/test" here, so this
+// file forwards to its new home. Point that mapping at
+// "${SHIM_PATH_FROM_E2E_TSCONFIG}" to drop this hop.
+export * from "${forwardTo}";
+`;
+}
+
 export function buildShimTsconfigSource(): string {
   return `${JSON.stringify(
     {
@@ -405,31 +715,52 @@ export function ensurePreviewShim(appPath: string): { warning?: string } {
     fs.writeFileSync(shimTsconfigPath, buildShimTsconfigSource());
   }
 
-  // Drop the shim an older Dyad left one directory up, but only if it's still
-  // ours — nothing points at it anymore, and leaving it there invites edits to
-  // a file that no longer runs.
+  const tsconfigPath = path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
+  const existingTsconfig = readFileOrNull(tsconfigPath);
+  // A tsconfig carrying the sentinel is ours to rewrite; anything else is the
+  // app's, and its mappings are the ones that decide how a run resolves.
+  const appOwnedTsconfig =
+    existingTsconfig !== null &&
+    !existingTsconfig.includes(DYAD_CONFIG_SENTINEL)
+      ? existingTsconfig
+      : null;
+
+  // An older Dyad kept the shim one directory up and told users to map to it
+  // there. Normally that file is dead and worth removing — nothing points at
+  // it, and leaving it invites edits to a file that no longer runs. But if the
+  // app's own tsconfig still maps to it, that mapping is what makes
+  // `@playwright/test` resolve AT ALL, so deleting it would break every run in
+  // the app, preview or not. Leave a forwarder instead (and write one back if
+  // an earlier Dyad already deleted the file out from under the mapping).
   const legacyShimPath = path.join(appPath, LEGACY_PREVIEW_SHIM_RELATIVE_PATH);
-  if (readFileOrNull(legacyShimPath)?.includes(DYAD_CONFIG_SENTINEL)) {
+  const legacyShim = readFileOrNull(legacyShimPath);
+  const legacyStillMapped =
+    appOwnedTsconfig !== null &&
+    mapsToShim(appOwnedTsconfig, LEGACY_SHIM_PATH_FROM_E2E_TSCONFIG);
+  if (legacyStillMapped) {
+    if (legacyShim === null || legacyShim.includes(DYAD_CONFIG_SENTINEL)) {
+      fs.mkdirSync(path.dirname(legacyShimPath), { recursive: true });
+      fs.writeFileSync(legacyShimPath, buildLegacyShimForwarderSource());
+    }
+  } else if (legacyShim?.includes(DYAD_CONFIG_SENTINEL)) {
     fs.rmSync(legacyShimPath, { force: true });
   }
 
-  const tsconfigPath = path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
-  const existingTsconfig = readFileOrNull(tsconfigPath);
-  if (
-    existingTsconfig === null ||
-    existingTsconfig.includes(DYAD_CONFIG_SENTINEL)
-  ) {
-    fs.writeFileSync(tsconfigPath, buildE2eTsconfigSource());
+  if (appOwnedTsconfig === null) {
+    fs.writeFileSync(tsconfigPath, buildE2eTsconfigSource(appPath));
     return {};
   }
 
-  if (existingTsconfig.includes("dyad-test")) {
-    // The app kept its own tsconfig but still routes to the shim.
+  if (
+    legacyStillMapped ||
+    mapsToShim(appOwnedTsconfig, SHIM_PATH_FROM_E2E_TSCONFIG)
+  ) {
+    // The app kept its own tsconfig but still routes to a shim Dyad maintains.
     return {};
   }
 
   return {
-    warning: `Your app has its own ${E2E_TSCONFIG_RELATIVE_PATH}, so Dyad can't route tests through the preview. The run will use a separate browser instead. Add a "@playwright/test" path mapping to "./fixtures/dyad-test.ts" to enable preview runs.\n`,
+    warning: `Your app has its own ${E2E_TSCONFIG_RELATIVE_PATH}, so Dyad can't route tests through the preview. The run will use a separate browser instead. Add a "@playwright/test" path mapping to "${SHIM_PATH_FROM_E2E_TSCONFIG}" to enable preview runs.\n`,
   };
 }
 
@@ -632,6 +963,17 @@ function configUsesChannel(appPath: string): boolean {
   );
 }
 
+/**
+ * True when Dyad's config names a `timeout` of its own. The template never
+ * does, so any occurrence is the user's — and a CLI `--timeout` would override
+ * it silently. Deliberately conservative: `expect: { timeout }` counts too,
+ * because guessing wrong the other way overrides a deliberate choice.
+ */
+export function configSetsTimeout(appPath: string): boolean {
+  const text = readDyadConfigText(appPath);
+  return text != null && /(?:^|[,{\s])timeout\s*:/.test(text);
+}
+
 /** True when Dyad's config is still pure template output (safe to rewrite). */
 function isDyadGeneratedConfig(appPath: string): boolean {
   const text = readDyadConfigText(appPath);
@@ -682,6 +1024,10 @@ function migrateConfigSlowMo(appPath: string): void {
   if (!isDyadGeneratedConfig(appPath)) return;
   const text = readDyadConfigText(appPath);
   if (!text || text.includes(TEST_SLOW_MO_ENV)) return;
+  // A `launchOptions` of the user's own is in the same object literal, so
+  // splicing ours in would make one of the two silently win — and the
+  // TEST_SLOW_MO_ENV guard above would then call it migrated forever.
+  if (text.includes("launchOptions")) return;
   const baseUrlLine = `    baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",`;
   if (!text.includes(baseUrlLine)) return;
   fs.writeFileSync(
@@ -749,7 +1095,10 @@ function ensureTestScript(appPath: string): void {
  * since the Chromium download needs the network. Callers should classify this
  * as an infra/inconclusive failure (amber).
  *
- * Returns whether a fresh install was performed (first-run setup).
+ * Returns whether a fresh install was performed (first-run setup), and whether
+ * specs actually reach the preview shim — `ensurePreviewShim` declines when the
+ * app owns the tsconfig the mapping would go in, and the caller has to know
+ * that its preview run has quietly become an ordinary browser run.
  */
 export async function ensurePlaywrightBootstrap({
   appPath,
@@ -766,7 +1115,7 @@ export async function ensurePlaywrightBootstrap({
    * changes how their editor resolves `@playwright/test`.
    */
   ensurePreviewShim?: boolean;
-}): Promise<{ installed: boolean }> {
+}): Promise<{ installed: boolean; previewRouted: boolean }> {
   // Yarn Plug'n'Play has no node_modules, so the installed-check below and the
   // `npx playwright` runner can't work with it: every run would reinstall and
   // then fail to resolve the runner. Dead-end with an actionable message
@@ -876,12 +1225,14 @@ export async function ensurePlaywrightBootstrap({
   appendGitignoreEntries(appPath);
   ensureTestScript(appPath);
 
+  let previewRouted = false;
   if (writePreviewShim) {
     try {
       const { warning } = ensurePreviewShim(appPath);
       if (warning) {
         onOutput?.(warning);
       }
+      previewRouted = !warning;
     } catch (err) {
       // Losing the preview routing is not worth failing an otherwise fine run.
       logger.warn(`Failed to write the preview test shim: ${err}`);
@@ -891,5 +1242,5 @@ export async function ensurePlaywrightBootstrap({
     }
   }
 
-  return { installed: !packageInstalled || downloadedBrowser };
+  return { installed: !packageInstalled || downloadedBrowser, previewRouted };
 }

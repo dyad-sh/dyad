@@ -159,6 +159,21 @@ describe("resolveRemoteDebuggingEndpoint", () => {
     await expect(pending).resolves.toBeNull();
   });
 
+  it("stops re-polling once it has given up", async () => {
+    // Chromium writes the port file during startup, so one that hasn't shown
+    // up by the deadline never will. Without remembering that, the Tests panel
+    // pays the full timeout on every mount and the agent on every test run.
+    enable();
+    vi.useFakeTimers();
+    const first = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(6_000);
+    await expect(first).resolves.toBeNull();
+
+    const second = resolveRemoteDebuggingEndpoint();
+    // No timer advance: a second poll would still be waiting here.
+    await expect(second).resolves.toBeNull();
+  });
+
   it("ignores a port file with junk in it", async () => {
     enable();
     fs.writeFileSync(

@@ -34,8 +34,6 @@ import {
   type AppSidebarItemTitle,
   isSidebarItemActive,
 } from "./app-sidebar-state";
-import { useSettings } from "@/hooks/useSettings";
-import { hasEnabledDevOpsPlugins } from "@/lib/dev_ops_plugins";
 
 const mainNavItems = [
   { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
@@ -138,8 +136,6 @@ function AppSidebarNavItem({
 export function AppSidebar() {
   const { state } = useSidebar();
   const isExpanded = state === "expanded";
-  const { settings } = useSettings();
-  const showDevOps = hasEnabledDevOpsPlugins(settings);
 
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
@@ -157,22 +153,20 @@ export function AppSidebar() {
         <SidebarGroup className="py-2">
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {mainNavItems
-                .filter((item) => item.title !== "Dev Ops" || showDevOps)
-                .map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <AppSidebarNavItem
-                      icon={item.icon}
-                      label={item.title}
-                      to={item.to}
-                      isExpanded={isExpanded}
-                      isActive={isSidebarItemActive({
-                        title: item.title,
-                        pathname,
-                      })}
-                    />
-                  </SidebarMenuItem>
-                ))}
+              {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <AppSidebarNavItem
+                    icon={item.icon}
+                    label={item.title}
+                    to={item.to}
+                    isExpanded={isExpanded}
+                    isActive={isSidebarItemActive({
+                      title: item.title,
+                      pathname,
+                    })}
+                  />
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

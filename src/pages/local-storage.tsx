@@ -110,7 +110,7 @@ export default function LocalStoragePage() {
                 data-testid="vault-reveal-current"
               >
                 <FolderOpen className="size-4" />
-                Show in Finder
+                Open in Finder
               </button>
             </div>
           )}
@@ -208,7 +208,11 @@ export default function LocalStoragePage() {
                     type="button"
                     onClick={() => reveal(entry.path)}
                     className="shrink-0 rounded-md p-1 text-white/30 hover:bg-cyan-500/10 hover:text-cyan-100"
-                    aria-label={`Show ${entry.name} in Finder`}
+                    aria-label={
+                      entry.kind === "directory"
+                        ? `Open ${entry.name} in Finder`
+                        : `Open the folder containing ${entry.name}`
+                    }
                   >
                     <FolderOpen className="size-3.5" />
                   </button>

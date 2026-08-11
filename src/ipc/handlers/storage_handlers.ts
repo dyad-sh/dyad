@@ -203,7 +203,30 @@ export function registerStorageHandlers() {
           DyadErrorKind.Validation,
         );
       }
-      shell.showItemInFolder(absolute);
+
+      // A vault on an external or network volume can disappear between the
+      // listing and the click. Say so, rather than asking the file manager to
+      // find something that is not there.
+      if (!fs.existsSync(absolute)) {
+        throw new DyadError(
+          "That item is no longer there. The vault volume may have been disconnected.",
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      // openPath, not showItemInFolder. showItemInFolder is synchronous and
+      // runs on the main thread, so against a sleeping external volume it
+      // blocks the whole app until the disk answers. openPath returns a
+      // promise and cannot freeze the UI. The cost is that a file opens its
+      // containing folder instead of being selected inside it.
+      const stats = fs.statSync(absolute);
+      const target = stats.isDirectory()
+        ? absolute
+        : nodePath.dirname(absolute);
+      const error = await shell.openPath(target);
+      if (error) {
+        throw new DyadError(error, DyadErrorKind.External);
+      }
     },
   );
 

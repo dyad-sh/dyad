@@ -38,8 +38,6 @@ interface FakeKey {
 type DeploymentScript = string[];
 
 export interface FakeCoolifyState {
-  /** Rejects every request when false, as an instance with the API off does. */
-  tokenValid: boolean;
   servers: Array<{ uuid: string; name: string; ip: string }>;
   projects: Array<{ uuid: string; name: string }>;
   keys: FakeKey[];
@@ -47,13 +45,10 @@ export interface FakeCoolifyState {
   deployments: Map<string, { remaining: DeploymentScript; last: string }>;
   /** Statuses each new deployment walks through, oldest first. */
   deploymentScript: DeploymentScript;
-  /** Set to fail the next application create, for the failure path. */
-  failNextCreate: boolean;
 }
 
 function initialState(): FakeCoolifyState {
   return {
-    tokenValid: true,
     servers: [{ uuid: "srv-1", name: "production", ip: "203.0.113.10" }],
     projects: [{ uuid: "prj-1", name: "demo-project" }],
     keys: [],
@@ -62,7 +57,6 @@ function initialState(): FakeCoolifyState {
     // One poll and done, so a spec that only cares about the outcome does not
     // sit through the pipeline's five-second interval more than once.
     deploymentScript: ["finished"],
-    failNextCreate: false,
   };
 }
 
@@ -77,20 +71,17 @@ export function registerFakeCoolify(app: Express): void {
       res.status(401).json({ message: "Unauthenticated." });
       return false;
     }
-    if (!state.tokenValid) {
-      res.status(401).json({ message: "Unauthenticated." });
-      return false;
-    }
     return true;
   };
 
   const base = "/coolify/api/v1";
 
-  // Lets a spec choose the shape of the run before it starts: a token that is
-  // refused, a server the app does not belong to, a build that fails.
+  // Lets a spec choose the shape of the run before it starts. Named fields
+  // rather than a spread, which would also let a caller replace the Maps.
   app.post("/coolify/test/reset", (req, res) => {
     state = initialState();
-    Object.assign(state, req.body ?? {});
+    if (Array.isArray(req.body?.servers)) state.servers = req.body.servers;
+    if (Array.isArray(req.body?.projects)) state.projects = req.body.projects;
     if (Array.isArray(req.body?.deploymentScript)) {
       state.deploymentScript = req.body.deploymentScript;
     }
@@ -139,11 +130,6 @@ export function registerFakeCoolify(app: Express): void {
 
   app.post(`${base}/applications/private-deploy-key`, (req, res) => {
     if (!authed(req, res)) return;
-    if (state.failNextCreate) {
-      state.failNextCreate = false;
-      res.status(500).json({ message: "Could not create application." });
-      return;
-    }
     const uuid = id("app");
     // Resolved, not guessed: the pipeline compares this against the key it
     // registered to decide whether a stored application still clones with the

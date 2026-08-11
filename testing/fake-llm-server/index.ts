@@ -24,7 +24,6 @@ import {
   handleRepoCollaborators,
   handleListDeployKeys,
   handleCreateDeployKey,
-  handleSeedDeployKey,
   handleClearDeployKeys,
 } from "./githubHandler";
 
@@ -692,7 +691,6 @@ export function createFakeLlmApp(getPort: () => number) {
   // Deploy keys, which the Coolify pipeline registers before it builds.
   app.get("/github/api/repos/:owner/:repo/keys", handleListDeployKeys);
   app.post("/github/api/repos/:owner/:repo/keys", handleCreateDeployKey);
-  app.post("/github/api/test/seed-deploy-key", handleSeedDeployKey);
   app.post("/github/api/test/clear-deploy-keys", handleClearDeployKeys);
 
   // GitHub test endpoints for verifying push operations

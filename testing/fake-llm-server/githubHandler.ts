@@ -757,13 +757,6 @@ export function handleCreateDeployKey(req: Request, res: Response) {
 }
 
 /** Lets a spec put a key on another repository, for the 422 branch. */
-export function handleSeedDeployKey(req: Request, res: Response) {
-  const fullName = String(req.body?.repo ?? "");
-  const material = keyMaterial(String(req.body?.key ?? ""));
-  deployKeyOwner.set(material, fullName);
-  return res.json({ ok: true });
-}
-
 export function handleClearDeployKeys(_req: Request, res: Response) {
   deployKeysByRepo.clear();
   deployKeyOwner.clear();

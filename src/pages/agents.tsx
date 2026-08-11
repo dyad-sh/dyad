@@ -16,6 +16,8 @@ import {
 import { useAgentOsAgents } from "@/hooks/useAgentOsAgents";
 import { LOVABLE_WEB_DEV_AGENT } from "@/lib/lovable_web_dev";
 import { openHermesWorkspaceTab } from "@/lib/hermes_workspace_tabs";
+import { CodingAgentRows } from "@/components/coding-agents/CodingAgentCards";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
 import { AgentAvatar } from "@/pages/agent-os/AgentOsPage";
 import { StatusDot } from "@/pages/agent-os/ui";
 import type { Agent } from "@/pages/agent-os/data";
@@ -76,6 +78,7 @@ export default function AgentsPage() {
 
   return (
     <div className="settings-jarvis home-jarvis relative flex min-h-full w-full flex-col overflow-auto bg-background">
+      <ParticleBackground className="z-0" />
       <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 lg:px-8">
         <header className="mb-8">
           <div className="mb-3 flex items-center gap-2.5">
@@ -98,6 +101,10 @@ export default function AgentsPage() {
           <section key={group} className="mb-6">
             <h2 className="system-group-label">{group}</h2>
             <div className="system-grid">
+              {/* The coding agents themselves, in the same row shape as the
+                  ones above, from the component that owns their status. */}
+              {group === "Coding" && <CodingAgentRows />}
+
               {group === "My Agents"
                 ? myAgents.map((agent) => (
                     <button

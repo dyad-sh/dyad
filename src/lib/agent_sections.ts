@@ -1,4 +1,4 @@
-import { Boxes, Code2, Hammer, Settings2, type LucideIcon } from "lucide-react";
+import { Boxes, Settings2, type LucideIcon } from "lucide-react";
 
 /**
  * The Agents section, as data.
@@ -6,6 +6,11 @@ import { Boxes, Code2, Hammer, Settings2, type LucideIcon } from "lucide-react";
  * Categorisation only. Every destination here already existed and still opens
  * the same screen it always did; this file records which group it belongs to
  * and nothing else.
+ *
+ * Coding is absent from the fixed list too, for the same reason in a different
+ * form: those cards are the real ones from the Coding Agents page, rendered by
+ * the component that owns them, with live status. A static copy here would be a
+ * second description of the same three agents.
  *
  * My Agents is deliberately absent from the fixed list below. Those entries are
  * the agents the user has actually registered, read at render time from the
@@ -23,39 +28,20 @@ export const AGENT_GROUPS: AgentGroup[] = [
   "Configuration",
 ];
 
-export type AgentDestinationId =
-  | "coding-agents"
-  | "build-studio"
-  | "hermes-agents";
+export type AgentDestinationId = "hermes-agents";
 
 export type AgentDestination = {
   id: AgentDestinationId;
   label: string;
   /** One line saying what this is, so the groups stay distinguishable. */
   summary: string;
-  group: Exclude<AgentGroup, "My Agents">;
+  group: Extract<AgentGroup, "Configuration">;
   icon: LucideIcon;
   /** The route it already had, unchanged. */
   route: string;
 };
 
 export const AGENT_DESTINATIONS: AgentDestination[] = [
-  {
-    id: "coding-agents",
-    label: "Coding Agents",
-    summary: "Agents that plan, write and review code",
-    group: "Coding",
-    icon: Code2,
-    route: "/coder",
-  },
-  {
-    id: "build-studio",
-    label: "Build Studio",
-    summary: "Build and iterate on an app with an agent",
-    group: "Coding",
-    icon: Hammer,
-    route: "/coder/studio",
-  },
   {
     id: "hermes-agents",
     label: "Hermes Agents",

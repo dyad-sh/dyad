@@ -55,11 +55,19 @@ describe("Agents section", () => {
     }
   });
 
-  it("covers Coding and Configuration", () => {
-    expect(agentDestinationsInGroup("Coding").map((d) => d.id)).toEqual([
-      "coding-agents",
-      "build-studio",
-    ]);
+  it("leaves Coding to the component that owns those cards", () => {
+    // Build Studio, Helix and OpenWorker render from CodingAgentCards, with
+    // their real status. A static entry here would be a second description of
+    // the same three agents, correct only until one of them changes.
+    expect(agentDestinationsInGroup("Coding" as never)).toEqual([]);
+    const page = fs.readFileSync(
+      path.join(process.cwd(), "src", "pages", "agents.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("CodingAgentRows");
+  });
+
+  it("keeps Hermes Agents under Configuration", () => {
     expect(agentDestinationsInGroup("Configuration").map((d) => d.id)).toEqual([
       "hermes-agents",
     ]);
@@ -70,7 +78,14 @@ describe("Agents section", () => {
     // that data, wrong the moment an agent is renamed, added or removed.
     expect(agentDestinationsInGroup("My Agents" as never)).toEqual([]);
     const labels = AGENT_DESTINATIONS.map((d) => d.label.toLowerCase());
-    for (const name of ["brainiac", "emc2", "web dev"]) {
+    for (const name of [
+      "brainiac",
+      "emc2",
+      "web dev",
+      "helix",
+      "openworker",
+      "build studio",
+    ]) {
       expect(
         labels,
         `"${name}" is a live agent, not a navigation entry`,

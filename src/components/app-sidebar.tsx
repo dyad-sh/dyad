@@ -2,7 +2,6 @@ import {
   Cpu,
   DraftingCompass,
   type LucideIcon,
-  Code2,
   MessageSquare,
   Store,
   BookOpen,
@@ -47,7 +46,6 @@ import { hasEnabledDevOpsPlugins } from "@/lib/dev_ops_plugins";
  */
 const agentNavItems = [
   { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
-  { title: "Coding Agent", to: "/coder", icon: Code2 },
   { title: "Planner", to: "/planner", icon: CalendarDays },
 ] as const satisfies ReadonlyArray<{
   title: AppSidebarItemTitle;

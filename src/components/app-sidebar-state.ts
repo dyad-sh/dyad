@@ -121,6 +121,7 @@ export function isSidebarItemActive({
   }
   if (title === "Dev Ops") {
     return (
+      pathname.startsWith("/devops") ||
       pathname.startsWith("/dev-ops") ||
       pathname.startsWith("/github") ||
       pathname.startsWith("/vercel")

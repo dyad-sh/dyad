@@ -47,7 +47,7 @@ const mainNavItems = [
   // the build tools belong together.
   { title: "Agents", to: "/agents", icon: Bot },
   { title: "Build", to: "/build", icon: DraftingCompass },
-  { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
+  { title: "Dev Ops", to: "/devops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   // Storage keeps its own rail entry as well as its place under System, and
   // the coding projects gallery now lives inside it.

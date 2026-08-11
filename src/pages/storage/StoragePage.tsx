@@ -70,7 +70,7 @@ const storageDestinations = [
 export default function StoragePage() {
   return (
     <div
-      className="agent-os home-jarvis no-app-region-drag relative min-h-full w-full overflow-hidden"
+      className="agent-os home-jarvis no-app-region-drag relative min-h-full w-full overflow-y-auto"
       data-testid="storage-page"
     >
       <ParticleBackground className="z-0" />

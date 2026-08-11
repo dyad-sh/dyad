@@ -78,7 +78,11 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/system", title: "System", icon: Cpu },
   { path: "/storage", title: "Storage", icon: HardDrive },
   { path: "/local-storage", title: "File Vault", icon: FolderOpen },
-  { path: "/dev-ops", title: "DevOps", icon: Rocket },
+  { path: "/devops", title: "Dev Ops", icon: Rocket },
+  { path: "/devops/github", title: "GitHub", icon: Github },
+  { path: "/devops/vercel", title: "Vercel", icon: Triangle },
+  // The path this section used before the hierarchy existed.
+  { path: "/dev-ops", title: "Dev Ops", icon: Rocket },
   { path: "/meta-hd", title: "Meta HD", icon: Box },
   { path: "/github", title: "GitHub", icon: Github },
   { path: "/vercel", title: "Vercel", icon: Triangle },

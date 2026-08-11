@@ -19,7 +19,7 @@ function PluginCard({
   description: string;
   icon: typeof Github;
   label: string;
-  to: "/github" | "/vercel";
+  to: "/devops/github" | "/devops/vercel";
 }) {
   return (
     <article className="rounded-xl border border-cyan-400/15 bg-[rgba(8,18,36,0.72)] p-5 shadow-[0_0_24px_rgba(0,229,255,0.06)] backdrop-blur-md">
@@ -42,15 +42,14 @@ function PluginCard({
       <p className="mt-1 min-h-10 text-sm leading-5 text-cyan-100/45">
         {description}
       </p>
-      {connected && (
-        <Link
-          to={to}
-          className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-cyan-400/25 bg-cyan-400/8 px-3 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-400/14"
-        >
-          Manage {label}
-          <ArrowRight className="size-4" />
-        </Link>
-      )}
+      <Link
+        to={to}
+        className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-cyan-400/25 bg-cyan-400/8 px-3 text-sm font-medium text-cyan-100 transition-colors hover:bg-cyan-400/14"
+        data-testid={`dev-ops-open-${label.toLowerCase()}`}
+      >
+        {connected ? `Open ${label}` : `Connect ${label}`}
+        <ArrowRight className="size-4" />
+      </Link>
     </article>
   );
 }
@@ -89,14 +88,14 @@ export default function DevOpsPage() {
             description="Create and delete repositories, browse folders, and create, edit or remove files."
             icon={Github}
             label="GitHub"
-            to="/github"
+            to="/devops/github"
           />
           <PluginCard
             connected={vercel.isConnected}
             description="Browse, create, rename and delete projects, then open them in the Vercel dashboard."
             icon={Triangle}
             label="Vercel"
-            to="/vercel"
+            to="/devops/vercel"
           />
         </section>
 

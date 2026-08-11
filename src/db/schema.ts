@@ -510,3 +510,29 @@ export const chatDataSources = sqliteTable(
     unique("chat_data_sources_unique").on(table.chatId, table.dataSourceId),
   ],
 );
+
+/**
+ * Projects: a named working context that spans the app.
+ *
+ * A project carries standing instructions the assistant should follow while it
+ * is active, so "we use British spelling and Postgres" is said once rather than
+ * at the top of every conversation.
+ *
+ * Deliberately not a container that owns chats or files. Making it one would
+ * mean moving existing conversations into it and deciding what happens to the
+ * ones that belong nowhere; this earns its place first by changing what the
+ * assistant knows, and can grow to hold things later.
+ */
+export const projects = sqliteTable("projects", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** Prepended to the assistant's system prompt while this project is active. */
+  instructions: text("instructions"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

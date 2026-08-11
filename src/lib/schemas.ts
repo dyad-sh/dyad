@@ -651,6 +651,14 @@ const BaseUserSettingsFields = {
   modelRoles: ModelRoleAssignmentsSchema,
   /** MCP server IDs the standalone Chat Agent may call. */
   chatAgentMcpServerIds: z.array(z.number()).optional(),
+  /**
+   * The project in effect, or absent for none.
+   *
+   * In settings rather than renderer state because the main process assembles
+   * the system prompt, and a project that only the window knows about could
+   * not reach it.
+   */
+  activeProjectId: z.string().nullable().optional(),
   /** MCP tool keys the standalone Chat Agent may call, formatted as `${serverId}:${toolName}`. */
   chatAgentMcpToolKeys: z.array(z.string()).optional(),
   /** MCP workflow keys the standalone Chat Agent may execute, formatted as `${serverId}:${workflowId}`. */

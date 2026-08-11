@@ -10,6 +10,7 @@ export type AppSidebarItemTitle =
   | "Dev Ops"
   | "System"
   | "Storage"
+  | "Projects"
   | "Settings"
   | "Library";
 
@@ -126,6 +127,9 @@ export function isSidebarItemActive({
       pathname.startsWith("/github") ||
       pathname.startsWith("/vercel")
     );
+  }
+  if (title === "Projects") {
+    return pathname.startsWith("/projects");
   }
   if (title === "Storage") {
     // The projects gallery and the template hub live under Storage, so they

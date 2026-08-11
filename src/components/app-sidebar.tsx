@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Cpu,
   DraftingCompass,
+  FolderKanban,
   HardDrive,
   type LucideIcon,
   MessageSquare,
@@ -39,6 +40,7 @@ const mainNavItems = [
   { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
   { title: "Planner", to: "/planner", icon: CalendarDays },
   { title: "Library", to: "/library", icon: BookOpen },
+  { title: "Projects", to: "/projects", icon: FolderKanban },
   // Memory sits under the agents that use it. The Knowledge Core and
   // Knowledge Base live inside.
   { title: "Memory", to: "/memory", icon: Brain },

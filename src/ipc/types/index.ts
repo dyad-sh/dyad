@@ -475,6 +475,7 @@ import { helixClient } from "./helix";
 import { openWorkerClient } from "./openworker";
 import { storageClient } from "./storage";
 import { dataSourceClient } from "./data_source";
+import { projectClient } from "./project";
 import { infrastructureClient } from "./infrastructure";
 import { vectorClient, vectorEventClient } from "./vector";
 
@@ -529,6 +530,7 @@ export const ipc = {
   vercelBlob: vercelBlobClient,
   storage: storageClient,
   dataSource: dataSourceClient,
+  project: projectClient,
   infrastructure: infrastructureClient,
   cloudApps: cloudAppsClient,
   videoGeneration: videoGenerationClient,

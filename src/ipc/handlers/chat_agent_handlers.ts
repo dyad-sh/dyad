@@ -18,6 +18,7 @@ import {
   getOpenRouterFallbackForLocalChatModel,
 } from "@/lib/chat_agent_model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { activeProjectPrompt } from "../utils/active_project";
 import { buildMcpToolSetForServerIds } from "../utils/mcp_tool_set";
 import { assertLocalModelReady } from "@/lib/validate_local_model";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
@@ -556,13 +557,18 @@ function runChatAgentStream(
         ...dataSourceTools,
         ...mcpTools,
       });
+      // Standing instructions from the active project, if there is one. Read
+      // fresh per turn so an edit applies to the next message rather than the
+      // next restart.
+      const projectPrompt = await activeProjectPrompt();
+
       const systemPrompt = isLovableWebDev
         ? `${LOVABLE_WEB_DEV_SYSTEM_PROMPT}\n\n${deploymentToolsPrompt(settings)}`
         : `${CHAT_AGENT_SYSTEM_PROMPT}\n- Today's date is ${localIsoDate()}.${
             Object.keys(dataSourceTools).length > 0
               ? `\n${DATA_SOURCE_SYSTEM_PROMPT}`
               : ""
-          }`;
+          }${projectPrompt}`;
       const toolNames = Object.keys(tools);
       // Check the MCP tools specifically: the GitHub/Vercel tools are always
       // present when their tokens exist, so counting every tool would hide a

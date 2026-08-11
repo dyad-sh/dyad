@@ -34,6 +34,7 @@ import { vectorRoute } from "./routes/vector";
 import { storageRoute } from "./routes/storage";
 import { localStorageRoute } from "./routes/local-storage";
 import { memoryRoute } from "./routes/memory";
+import { projectsRoute } from "./routes/projects";
 import {
   devOpsGithubRoute,
   devOpsOverviewRoute,
@@ -70,6 +71,7 @@ const routeTree = rootRoute.addChildren([
   storageRoute,
   localStorageRoute,
   memoryRoute,
+  projectsRoute,
   devOpsOverviewRoute,
   devOpsGithubRoute,
   devOpsVercelRoute,

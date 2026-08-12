@@ -392,3 +392,105 @@ export async function executeD1ViaWrangler(input: {
     throw new Error("Could not read the query results.");
   }
 }
+
+/**
+ * Creates a D1 database through Wrangler, for the browser-signed-in path.
+ *
+ * The name is passed as an argument rather than interpolated, and has already
+ * been restricted to letters, digits, hyphens and underscores before it gets
+ * here.
+ */
+export async function createD1ViaWrangler(input: {
+  projectRoot: string;
+  name: string;
+}): Promise<{ uuid: string; name: string; accountId: string | null }> {
+  const result = await run(
+    "npx",
+    ["wrangler", "d1", "create", input.name, "--json"],
+    { cwd: input.projectRoot, timeoutMs: 120_000 },
+  );
+
+  const output = result.stdout + result.stderr;
+
+  if (result.code !== 0) {
+    if (/already exists/i.test(output)) {
+      throw new Error(`A database called ${input.name} already exists.`);
+    }
+    if (/not authenticated|not logged in/i.test(output)) {
+      throw new Error("Cloudflare is not signed in.");
+    }
+    throw new Error("Cloudflare would not create that database.");
+  }
+
+  // Wrangler prints a banner before the JSON on some versions.
+  const start = result.stdout.indexOf("{");
+  if (start < 0) throw new Error("Could not read the new database's details.");
+
+  try {
+    const parsed = JSON.parse(result.stdout.slice(start)) as {
+      uuid?: string;
+      name?: string;
+      account_id?: string;
+    };
+    if (!parsed.uuid) {
+      throw new Error("Cloudflare did not return a database id.");
+    }
+    return {
+      uuid: parsed.uuid,
+      name: parsed.name ?? input.name,
+      accountId: parsed.account_id ?? null,
+    };
+  } catch (error) {
+    throw error instanceof Error
+      ? error
+      : new Error("Could not read the new database's details.");
+  }
+}
+
+/** Creates a D1 database through the REST API, for the token path. */
+export async function createD1ViaToken(input: {
+  apiToken: string;
+  accountId: string;
+  name: string;
+}): Promise<{ uuid: string; name: string; accountId: string }> {
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+      input.accountId,
+    )}/d1/database`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: input.name }),
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as {
+    success?: boolean;
+    result?: { uuid?: string; name?: string };
+    errors?: Array<{ message: string }>;
+  } | null;
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      "This token is not permitted to create databases. It needs D1 edit access.",
+    );
+  }
+  if (!response.ok || !payload?.success || !payload.result?.uuid) {
+    const detail = payload?.errors?.map((error) => error.message).join("; ");
+    throw new Error(
+      /already exists/i.test(detail ?? "")
+        ? `A database called ${input.name} already exists.`
+        : detail || "Cloudflare would not create that database.",
+    );
+  }
+
+  return {
+    uuid: payload.result.uuid,
+    name: payload.result.name ?? input.name,
+    accountId: input.accountId,
+  };
+}

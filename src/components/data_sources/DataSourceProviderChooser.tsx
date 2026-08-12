@@ -7,6 +7,7 @@ import {
   Database,
   HardDrive,
   Loader2,
+  Plus,
   X,
 } from "lucide-react";
 
@@ -83,6 +84,7 @@ function CloudflareSetup({
   // Browser sign-in is the default path; the token is there for machines that
   // cannot open a browser.
   const [useToken, setUseToken] = useState(false);
+  const [newName, setNewName] = useState("");
   const [databases, setDatabases] = useState<CloudflareD1Database[] | null>(
     null,
   );
@@ -138,24 +140,68 @@ function CloudflareSetup({
    * everything downstream — testing, schema sync, querying — works through the
    * same rows and the same encryption as Supabase.
    */
-  const connect = useMutation({
-    mutationFn: async (database: CloudflareD1Database) => {
-      const created = await ipc.dataSource.create({
-        name: database.name,
-        description: `Cloudflare D1 · ${database.accountName}`,
-        projectUrl: d1Endpoint(database.accountId, database.uuid),
-        environment: "production",
-        credentialType: "secret",
-        // Empty when signed in through the browser: Wrangler holds that
-        // credential, and storing nothing is better than storing a copy.
-        connectionKey: apiToken.trim(),
-        provider: "cloudflare-d1",
+  /**
+   * Saves a D1 database as a data source and syncs its schema.
+   *
+   * Shared by connecting an existing database and creating a new one, so both
+   * produce the same row and neither can drift into saving it differently.
+   */
+  const connectDatabase = async (database: CloudflareD1Database) => {
+    const created = await ipc.dataSource.create({
+      name: database.name,
+      description: `Cloudflare D1 · ${database.accountName}`,
+      projectUrl: d1Endpoint(database.accountId, database.uuid),
+      environment: "production",
+      credentialType: "secret",
+      // Empty when signed in through the browser: Wrangler holds that
+      // credential, and storing nothing is better than storing a copy.
+      connectionKey: useToken ? apiToken.trim() : "",
+      provider: "cloudflare-d1",
+    });
+    // Discovering the schema is what makes it answerable in chat, so it
+    // happens now rather than waiting for someone to press Sync.
+    await ipc.dataSource.syncSchema({ id: created.id });
+    return created;
+  };
+
+  /**
+   * Create a database, then connect it.
+   *
+   * One action rather than two: a database created and left unconnected is a
+   * thing the user has to go and find, and the only reason to make one here is
+   * to use it.
+   */
+  const createAndConnect = useMutation({
+    mutationFn: async () => {
+      const created = await ipc.cloudflare.createDatabase({
+        name: newName,
+        // Present only on the token path; the browser path signs in through
+        // Wrangler, which already knows the account.
+        apiToken: useToken ? apiToken.trim() : undefined,
+        accountId: useToken ? databases?.[0]?.accountId : undefined,
       });
-      // Discovering the schema is what makes it answerable in chat, so it
-      // happens now rather than waiting for someone to press Sync.
-      await ipc.dataSource.syncSchema({ id: created.id });
-      return created;
+      return connectDatabase({
+        uuid: created.uuid,
+        name: created.name,
+        accountId:
+          created.accountId ??
+          environment.data?.account?.accountId ??
+          databases?.[0]?.accountId ??
+          "",
+        accountName: environment.data?.account?.email ?? "Cloudflare",
+        fileSizeBytes: null,
+      });
     },
+    onSuccess: async (created) => {
+      showSuccess(`${created.name} created and connected`);
+      await queryClient.invalidateQueries({ queryKey: ["data-sources"] });
+      onConnected();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const connect = useMutation({
+    mutationFn: connectDatabase,
     onSuccess: async (created) => {
       showSuccess(`${created.name} connected`);
       await queryClient.invalidateQueries({ queryKey: ["data-sources"] });
@@ -295,34 +341,77 @@ function CloudflareSetup({
             </Button>
           </div>
         </div>
-      ) : databases.length === 0 ? (
-        <p className="text-sm text-cyan-100/45">
-          This token can see no D1 databases. Creating one from here is not
-          built yet; create it in the Cloudflare dashboard and look again.
-        </p>
       ) : (
-        <div className="space-y-1.5">
-          {databases.map((database) => (
-            <button
-              key={database.uuid}
-              type="button"
-              onClick={() => connect.mutate(database)}
-              disabled={connect.isPending}
-              className="flex w-full items-center gap-3 rounded-lg border border-cyan-400/15 bg-[rgba(5,16,31,0.6)] p-2.5 text-left hover:border-cyan-400/35 hover:bg-cyan-500/8"
-              data-testid={`cloudflare-database-${database.uuid}`}
-            >
-              <Database className="size-4 shrink-0 text-cyan-300/70" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-cyan-50">
-                  {database.name}
+        <div className="space-y-3">
+          {databases.length === 0 && (
+            <p className="text-sm text-cyan-100/45">
+              No D1 databases here yet. Create the first one below.
+            </p>
+          )}
+
+          <div className="space-y-1.5">
+            {databases.map((database) => (
+              <button
+                key={database.uuid}
+                type="button"
+                onClick={() => connect.mutate(database)}
+                disabled={connect.isPending}
+                className="flex w-full items-center gap-3 rounded-lg border border-cyan-400/15 bg-[rgba(5,16,31,0.6)] p-2.5 text-left hover:border-cyan-400/35 hover:bg-cyan-500/8"
+                data-testid={`cloudflare-database-${database.uuid}`}
+              >
+                <Database className="size-4 shrink-0 text-cyan-300/70" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-cyan-50">
+                    {database.name}
+                  </span>
+                  <span className="block truncate text-[10px] text-cyan-100/35">
+                    {database.accountName}
+                  </span>
                 </span>
-                <span className="block truncate text-[10px] text-cyan-100/35">
-                  {database.accountName}
-                </span>
-              </span>
-              <ArrowRight className="size-4 shrink-0 text-cyan-200/50" />
-            </button>
-          ))}
+                <ArrowRight className="size-4 shrink-0 text-cyan-200/50" />
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-2 border-t border-cyan-500/10 pt-3">
+            <Label htmlFor="cf-new-db">Create a new database</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="cf-new-db"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="customers-db"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && newName.trim()) {
+                    createAndConnect.mutate();
+                  }
+                }}
+                data-testid="cloudflare-new-database-name"
+              />
+              <Button
+                onClick={() => createAndConnect.mutate()}
+                disabled={!newName.trim() || createAndConnect.isPending}
+                className="shrink-0 border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+                data-testid="cloudflare-create-database"
+              >
+                {createAndConnect.isPending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-4" />
+                    Create
+                  </>
+                )}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-cyan-100/40">
+              Created empty and connected straight away. Letters, numbers,
+              hyphens and underscores; anything else is removed.
+            </p>
+          </div>
         </div>
       )}
 

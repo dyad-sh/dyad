@@ -76,6 +76,26 @@ export const cloudflareContracts = {
     output: z.array(z.object({ uuid: z.string(), name: z.string() })),
   }),
 
+  /**
+   * Creates a database and returns it.
+   *
+   * The token and account are optional: without them the signed-in Wrangler
+   * does the work, which is the browser path.
+   */
+  createDatabase: defineContract({
+    channel: "cloudflare:create-database",
+    input: z.object({
+      name: z.string().min(1),
+      apiToken: z.string().optional(),
+      accountId: z.string().optional(),
+    }),
+    output: z.object({
+      uuid: z.string(),
+      name: z.string(),
+      accountId: z.string().nullable(),
+    }),
+  }),
+
   listDatabases: defineContract({
     channel: "cloudflare:list-databases",
     input: z.object({ apiToken: z.string().min(1) }),

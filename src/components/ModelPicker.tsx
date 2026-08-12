@@ -118,8 +118,7 @@ export function ModelPicker() {
     chat,
     isLoading: chatLoading,
     selectedMode,
-    setChatMode,
-    setChatModelSelection,
+    setChatSelection,
   } = useChatMode(isChatRoute ? chatId : null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -154,9 +153,9 @@ export function ModelPicker() {
       model: model.name,
       effortLevel: modelSelection.effortLevel,
     });
-    if (isFreeProBuildModeCombination(model, selectedMode)) {
-      await setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE);
-    }
+    const fallbackChatMode = isFreeProBuildModeCombination(model, selectedMode)
+      ? FREE_PRO_MODEL_FALLBACK_CHAT_MODE
+      : undefined;
 
     const preferenceUpdate = rememberEffort
       ? {
@@ -168,13 +167,17 @@ export function ModelPicker() {
       : {};
     if (hasEstablishedChat && chatId) {
       await Promise.all([
-        setChatModelSelection(modelSelection),
+        setChatSelection({
+          modelSelection,
+          ...(fallbackChatMode ? { chatMode: fallbackChatMode } : {}),
+        }),
         rememberEffort ? updateSettings(preferenceUpdate) : Promise.resolve(),
       ]);
     } else {
       await updateSettings({
         selectedModel: model,
         ...preferenceUpdate,
+        ...(fallbackChatMode ? { selectedChatMode: fallbackChatMode } : {}),
         ...(isFreeProModel(model) && settings.defaultChatMode === "build"
           ? { defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE }
           : {}),
@@ -559,26 +562,135 @@ export function ModelPicker() {
       .filter(Boolean)
       .join(". ");
 
-    const item = (
+    const rowContent = (
+      <div className="flex justify-between items-center gap-2 w-full">
+        <span className="min-w-0 flex items-center gap-2">
+          {!isAutoProviderRow && (
+            <ProviderIcon providerId={providerId} apiName={model.apiName} />
+          )}
+          <span className="min-w-0 flex flex-col items-start">
+            <span
+              className={cn(
+                "text-[13px] truncate leading-tight",
+                isLocked && "text-muted-foreground",
+              )}
+            >
+              {model.displayName}
+            </span>
+            {showProvider && (
+              <span className="text-xs text-muted-foreground truncate">
+                {getProviderDisplayName(providerId)}
+              </span>
+            )}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
+          {model.tag && !isFreeProRow && (
+            <span
+              className={cn(
+                PILL_CLASS,
+                "bg-primary/10 text-primary",
+                model.tagColor,
+              )}
+            >
+              {model.tag}
+            </span>
+          )}
+          {isLocked && (
+            <LockIcon className="size-3.5 text-muted-foreground shrink-0" />
+          )}
+          {isSelected && (
+            <CheckIcon className="size-3.5 text-primary shrink-0" />
+          )}
+          {isFreeProRow && (
+            <span
+              className={cn(
+                PILL_CLASS,
+                freeModelQuota.isQuotaExceeded
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+              )}
+              title={
+                freeProResetTimeLabel
+                  ? `Resets at ${freeProResetTimeLabel}`
+                  : undefined
+              }
+            >
+              {freeProQuotaLabel}
+            </span>
+          )}
+          {shouldShowDataSharingDisclosure && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className={cn(
+                      PILL_CLASS,
+                      "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                    )}
+                  >
+                    Data sharing
+                  </span>
+                }
+              />
+              <TooltipContent side="right" align="start">
+                Data may be shared with the AI provider and used for training
+                models.
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {!isLocked && (
+            <>
+              <span data-effort-level className="text-xs text-muted-foreground">
+                {effortLabel}
+              </span>
+              <span
+                data-effort-chevron
+                className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
+                aria-hidden="true"
+              >
+                <ChevronRightIcon className="size-4" />
+              </span>
+            </>
+          )}
+        </span>
+      </div>
+    );
+
+    const commonProps = {
+      "data-model-provider": providerId,
+      "data-model-name": model.apiName,
+      "data-locked": isLocked || undefined,
+      className: cn(
+        "relative px-2 py-1.5",
+        isFreeProRow &&
+          freeModelQuota.isQuotaExceeded &&
+          "opacity-60 cursor-default",
+        isSelected &&
+          "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
+      ),
+    };
+
+    const item = isLocked ? (
+      <DropdownMenuItem
+        key={`${providerId}-${model.apiName}`}
+        {...commonProps}
+        aria-label={
+          isFreeProviderRow
+            ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
+            : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
+        }
+        onClick={() => handleLockedModelClick(providerId, model)}
+      >
+        {rowContent}
+      </DropdownMenuItem>
+    ) : (
       <DropdownMenuSubTrigger
         key={`${providerId}-${model.apiName}`}
-        data-locked={isLocked || undefined}
-        aria-label={
-          isLocked
-            ? isFreeProviderRow
-              ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
-              : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
-            : `${unlockedAriaLabel}.`
-        }
+        {...commonProps}
+        aria-label={`${unlockedAriaLabel}.`}
         disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
-        className={cn(
-          "relative px-2 py-1.5",
-          isFreeProRow &&
-            freeModelQuota.isQuotaExceeded &&
-            "opacity-60 cursor-default",
-          isSelected &&
-            "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
-        )}
         hideChevron
         onClick={(event) => {
           if (!(event.target as HTMLElement).closest("[data-effort-chevron]")) {
@@ -586,110 +698,28 @@ export function ModelPicker() {
           }
         }}
       >
-        <div className="flex justify-between items-center gap-2 w-full">
-          <span className="min-w-0 flex items-center gap-2">
-            {!isAutoProviderRow && (
-              <ProviderIcon providerId={providerId} apiName={model.apiName} />
-            )}
-            <span className="min-w-0 flex flex-col items-start">
-              <span
-                className={cn(
-                  "text-[13px] truncate leading-tight",
-                  isLocked && "text-muted-foreground",
-                )}
-              >
-                {model.displayName}
-              </span>
-              {showProvider && (
-                <span className="text-xs text-muted-foreground truncate">
-                  {getProviderDisplayName(providerId)}
-                </span>
-              )}
-            </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-1.5">
-            {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
-            {model.tag && !isFreeProRow && (
-              <span
-                className={cn(
-                  PILL_CLASS,
-                  "bg-primary/10 text-primary",
-                  model.tagColor,
-                )}
-              >
-                {model.tag}
-              </span>
-            )}
-            {isLocked && (
-              <LockIcon className="size-3.5 text-muted-foreground shrink-0" />
-            )}
-            {isSelected && (
-              <CheckIcon className="size-3.5 text-primary shrink-0" />
-            )}
-            {isFreeProRow && (
-              <span
-                className={cn(
-                  PILL_CLASS,
-                  freeModelQuota.isQuotaExceeded
-                    ? "bg-destructive/10 text-destructive"
-                    : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-                )}
-                title={
-                  freeProResetTimeLabel
-                    ? `Resets at ${freeProResetTimeLabel}`
-                    : undefined
-                }
-              >
-                {freeProQuotaLabel}
-              </span>
-            )}
-            {shouldShowDataSharingDisclosure && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span
-                      className={cn(
-                        PILL_CLASS,
-                        "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-                      )}
-                    >
-                      Data sharing
-                    </span>
-                  }
-                />
-                <TooltipContent side="right" align="start">
-                  Data may be shared with the AI provider and used for training
-                  models.
-                </TooltipContent>
-              </Tooltip>
-            )}
-            <span data-effort-level className="text-xs text-muted-foreground">
-              {effortLabel}
-            </span>
-            <span
-              data-effort-chevron
-              className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
-              aria-hidden="true"
-            >
-              <ChevronRightIcon className="size-4" />
-            </span>
-          </span>
-        </div>
+        {rowContent}
       </DropdownMenuSubTrigger>
     );
 
+    const itemWithTooltip = model.description ? (
+      <Tooltip key={`${providerId}-${model.apiName}`}>
+        <TooltipTrigger render={item} />
+        <TooltipContent side="left" align="start">
+          <span className="max-w-64">{model.description}</span>
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      item
+    );
+
+    if (isLocked) {
+      return itemWithTooltip;
+    }
+
     return (
       <DropdownMenuSub key={`${providerId}-${model.apiName}`}>
-        {model.description ? (
-          <Tooltip>
-            <TooltipTrigger render={item} />
-            <TooltipContent side="left" align="start">
-              <span className="max-w-64">{model.description}</span>
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          item
-        )}
+        {itemWithTooltip}
         <DropdownMenuSubContent className="w-52">
           <DropdownMenuLabel>Effort</DropdownMenuLabel>
           <DropdownMenuSeparator />

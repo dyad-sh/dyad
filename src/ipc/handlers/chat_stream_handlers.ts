@@ -138,6 +138,7 @@ import {
 import { isFreeProModel } from "@/lib/freeProModel";
 import {
   assertChatModeCompatibleWithModel,
+  normalizeStoredChatMode,
   resolveChatModeForTurn,
 } from "./chat_mode_resolution";
 import { acceptChatTurn } from "./chat_turn_acceptance";
@@ -1418,7 +1419,9 @@ ${componentSnippet}
 
       const authoritativeResolution = await resolveChatModeForTurn({
         storedChatMode: acceptedTurn.authoritativeChatMode,
-        requestedChatMode: req.requestedChatMode,
+        requestedChatMode:
+          req.requestedChatMode ??
+          normalizeStoredChatMode(acceptedTurn.authoritativeChatMode),
         settings: storedSettings,
       });
       ({
@@ -1537,7 +1540,7 @@ ${componentSnippet}
       } else {
         // Normal AI processing for non-test prompts
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =
-          await getModelClient(settings.selectedModel, settings);
+          await getModelClient(settings.selectedModel, settings, selectedModel);
 
         const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we

@@ -737,6 +737,7 @@ export async function handleLocalAgentStream(
     const { modelClient } = await getModelClient(
       settings.selectedModel,
       settings,
+      selectedModel,
     );
 
     // Load persisted todos from a previous turn (if any)

@@ -244,7 +244,11 @@ export async function performCompaction(
     const conversationText = formatAsTranscript(messagesToBackup, chatId);
 
     // Get model client
-    const { modelClient } = await getModelClient(compactionModel, settings);
+    const { modelClient } = await getModelClient(
+      compactionModel,
+      settings,
+      compactionModel,
+    );
 
     // Generate summary
     const summaryMessages: ModelMessage[] = [

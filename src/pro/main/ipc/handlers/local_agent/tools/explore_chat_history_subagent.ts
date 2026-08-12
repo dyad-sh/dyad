@@ -69,7 +69,11 @@ export async function runExploreChatHistorySubagent({
   });
   const settings = { ...storedSettings, selectedModel };
 
-  const modelInfo = await getModelClient(SUBAGENT_MODEL, settings);
+  const modelInfo = await getModelClient(
+    SUBAGENT_MODEL,
+    settings,
+    selectedModel,
+  );
   const maxOutputTokens = Math.min(
     (await getMaxTokens(SUBAGENT_MODEL)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
     SUBAGENT_MAX_OUTPUT_TOKENS,

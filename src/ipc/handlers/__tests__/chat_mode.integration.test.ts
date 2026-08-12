@@ -24,7 +24,7 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 import { chats, messages } from "@/db/schema";
-import { writeSettings } from "@/main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 
 function errorEvents(harness: HybridChatHarness) {
   return harness.bridge.sentEvents.filter(
@@ -184,6 +184,38 @@ describe("chat mode (integration)", () => {
       where: eq(chats.id, overrideChatId),
     });
     expect(unchangedChat?.chatMode).toBe("build");
+  }, 60_000);
+
+  it("uses the stored winner after accepting an implicit turn", async () => {
+    const originalSettings = readSettings();
+    const arbitrationChatId = await harness.createChat();
+    await harness.db
+      .update(chats)
+      .set({ chatMode: "build" })
+      .where(eq(chats.id, arbitrationChatId));
+    writeSettings({
+      selectedChatMode: "ask",
+      defaultChatMode: "ask",
+    });
+
+    try {
+      const result = await harness.streamChat("[dump] authoritative build", {
+        chatId: arbitrationChatId,
+        requestedChatMode: null,
+        userInputRequestId: "implicit-authoritative-build",
+      });
+
+      expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+      expect(harness.getServerDump({ type: "all-messages" }).text).toContain(
+        "This is my codebase.",
+      );
+      const unchangedChat = await harness.db.query.chats.findFirst({
+        where: eq(chats.id, arbitrationChatId),
+      });
+      expect(unchangedChat?.chatMode).toBe("build");
+    } finally {
+      writeSettings(originalSettings);
+    }
   }, 60_000);
 
   it("lets main resolve an implicit Google-only first turn", async () => {

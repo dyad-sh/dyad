@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   setChatMode: vi.fn(),
   setChatModelSelection: vi.fn(),
+  setChatSelection: vi.fn(),
   updateSettings: vi.fn(),
   updateChat: vi.fn(),
   navigate: vi.fn(),
@@ -146,6 +147,7 @@ vi.mock("@/hooks/useChatMode", () => ({
     selectedMode: mocks.selectedMode,
     setChatMode: mocks.setChatMode,
     setChatModelSelection: mocks.setChatModelSelection,
+    setChatSelection: mocks.setChatSelection,
   }),
 }));
 
@@ -361,6 +363,8 @@ describe("ModelPicker", () => {
     mocks.setChatMode.mockResolvedValue(undefined);
     mocks.setChatModelSelection.mockReset();
     mocks.setChatModelSelection.mockResolvedValue(undefined);
+    mocks.setChatSelection.mockReset();
+    mocks.setChatSelection.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
     mocks.updateSettings.mockResolvedValue(mocks.settings);
     mocks.updateChat.mockReset();
@@ -479,10 +483,12 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getAllByText("Xhigh")[0]);
 
     await waitFor(() => {
-      expect(mocks.setChatModelSelection).toHaveBeenCalledWith({
-        provider: "openai",
-        name: "gpt-5",
-        effortLevel: "xhigh",
+      expect(mocks.setChatSelection).toHaveBeenCalledWith({
+        modelSelection: {
+          provider: "openai",
+          name: "gpt-5",
+          effortLevel: "xhigh",
+        },
       });
     });
     expect(mocks.updateChat).not.toHaveBeenCalled();
@@ -542,6 +548,12 @@ describe("ModelPicker", () => {
     expect(screen.getByText("GPT 5").closest("button")?.dataset.locked).toBe(
       "true",
     );
+    expect(
+      screen
+        .getByText("GPT 5")
+        .closest("button")
+        ?.querySelector("[data-effort-chevron]"),
+    ).toBeNull();
     expect(
       screen.getByText("Claude Sonnet 4.5").closest("button")?.dataset.locked,
     ).toBeUndefined();
@@ -814,15 +826,44 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
 
     await waitFor(() => {
-      expect(mocks.setChatMode).toHaveBeenCalledWith("local-agent");
       expect(mocks.updateSettings).toHaveBeenCalledWith({
         selectedModel: expect.objectContaining({
           name: "free-pro",
           provider: "auto",
         }),
+        selectedChatMode: "local-agent",
         defaultChatMode: "local-agent",
       });
     });
+  });
+
+  it("updates an established chat model and fallback mode atomically", async () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      messages: [{ id: 1 }],
+      modelSelection: {
+        provider: "openai",
+        name: "gpt-5",
+        effortLevel: "high",
+      },
+    };
+
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
+
+    await waitFor(() => {
+      expect(mocks.setChatSelection).toHaveBeenCalledWith({
+        chatMode: "local-agent",
+        modelSelection: expect.objectContaining({
+          name: "free-pro",
+          provider: "auto",
+        }),
+      });
+    });
+    expect(mocks.setChatMode).not.toHaveBeenCalled();
+    expect(mocks.setChatModelSelection).not.toHaveBeenCalled();
   });
 
   it("shows Dyad Free quota as unavailable when the quota fetch fails", () => {

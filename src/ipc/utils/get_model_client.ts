@@ -10,6 +10,7 @@ import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import type {
   LargeLanguageModel,
+  ModelSelection,
   UserSettings,
   VertexProviderSetting,
   AzureProviderSetting,
@@ -74,18 +75,20 @@ const logger = log.scope("getModelClient");
 export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
+  modelSelectionOverride?: ModelSelection,
   // files?: File[],
 ): Promise<{
   modelClient: ModelClient;
   isEngineEnabled?: boolean;
   isSmartContextEnabled?: boolean;
 }> {
-  const modelSelection = await resolveModelSelection({
-    model,
-    preferredEffortLevel:
-      (model as { effortLevel?: string }).effortLevel ??
-      settings.modelEffortPreferences?.[getModelPreferenceKey(model)],
-  });
+  const modelSelection =
+    modelSelectionOverride ??
+    (await resolveModelSelection({
+      model,
+      preferredEffortLevel:
+        settings.modelEffortPreferences?.[getModelPreferenceKey(model)],
+    }));
   const allProviders = await getLanguageModelProviders();
 
   const dyadApiKey = settings.enableDyadPro

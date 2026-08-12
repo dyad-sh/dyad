@@ -103,10 +103,16 @@ export function acceptChatTurn(
       .from(chats)
       .where(eq(chats.id, input.chatId))
       .get();
-    if (!winningChat?.chatMode || !winningChat.modelSelection) {
+    if (!winningChat) {
       throw new DyadError(
         `Chat not found: ${input.chatId}`,
         DyadErrorKind.NotFound,
+      );
+    }
+    if (!winningChat.chatMode || !winningChat.modelSelection) {
+      throw new DyadError(
+        `Chat turn acceptance failed to latch mode and model selection for chat ${input.chatId}`,
+        DyadErrorKind.Internal,
       );
     }
     return {

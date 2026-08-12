@@ -165,6 +165,15 @@ export function useChatMode(chatId: number | null | undefined) {
     [activeChatId, updateChatSelectionMutation],
   );
 
+  const setChatSelection = useCallback(
+    async (patch: ChatSelectionPatch) => {
+      if (activeChatId !== null) {
+        await updateChatSelectionMutation.mutateAsync(patch);
+      }
+    },
+    [activeChatId, updateChatSelectionMutation],
+  );
+
   return {
     chat: chatQuery.data ?? null,
     isLoading: chatQuery.isLoading,
@@ -176,6 +185,7 @@ export function useChatMode(chatId: number | null | undefined) {
     fallbackReason,
     setChatMode,
     setChatModelSelection,
+    setChatSelection,
     isUpdating: updateChatSelectionMutation.isPending,
     settings: settings as UserSettings | null,
   };

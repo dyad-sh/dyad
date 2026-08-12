@@ -128,6 +128,16 @@ export default function ProjectsPage() {
    */
   const openAsChat = async (project: Project) => {
     await updateSettings({ activeProjectId: project.id });
+
+    // Return to where the work already is. Opening a project that has
+    // conversations should resume the newest, not bury it under an empty one.
+    const existing = conversationsFor(project.id)[0];
+    if (existing) {
+      setActiveTab(existing.id);
+      await navigate({ to: "/chat-agent" });
+      return;
+    }
+
     const conversation = {
       id: crypto.randomUUID(),
       title: `${project.name} conversation`,

@@ -66,6 +66,11 @@ vi.mock("./ChatAgentDataSourceMenu", () => ({
     </button>
   ),
 }));
+// Reads projects over IPC; this suite renders without a query client, the same
+// reason the knowledge and data source menus above are stubbed.
+vi.mock("./ChatAgentProjectMenu", () => ({
+  ChatAgentProjectMenu: () => null,
+}));
 vi.mock("./ChatAgentAttachmentsList", () => ({
   ChatAgentAttachmentsList: () => null,
 }));

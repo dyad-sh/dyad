@@ -29,6 +29,7 @@ import { ChatAgentToolMenu } from "./ChatAgentToolMenu";
 import { ChatAgentAttachmentsList } from "./ChatAgentAttachmentsList";
 import { ChatAgentKnowledgeMenu } from "./ChatAgentKnowledgeMenu";
 import { ChatAgentDataSourceMenu } from "./ChatAgentDataSourceMenu";
+import { ChatAgentProjectMenu } from "./ChatAgentProjectMenu";
 import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -286,6 +287,7 @@ export function ChatAgentComposer({
                   selectedDataSourceIds={dataSourceIds}
                   onChange={setDataSourceIds}
                 />
+                <ChatAgentProjectMenu disabled={disabled || isEnhancing} />
               </>
             )}
             {exclusiveToolLabel && (

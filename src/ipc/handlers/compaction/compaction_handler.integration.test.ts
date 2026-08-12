@@ -248,6 +248,11 @@ describe("performCompaction", () => {
           effortLevel: "medium",
         },
       },
+      {
+        provider: "anthropic",
+        name: "test-model",
+        effortLevel: "medium",
+      },
     );
   });
 
@@ -273,7 +278,7 @@ describe("performCompaction", () => {
       {
         provider: "openai",
         name: "gpt-5.6-luna",
-        effortLevel: "medium",
+        effortLevel: "high",
       },
       {
         enableDyadPro: true,
@@ -281,8 +286,13 @@ describe("performCompaction", () => {
         selectedModel: {
           provider: "openai",
           name: "gpt-5.6-luna",
-          effortLevel: "medium",
+          effortLevel: "high",
         },
+      },
+      {
+        provider: "openai",
+        name: "gpt-5.6-luna",
+        effortLevel: "high",
       },
     );
   });

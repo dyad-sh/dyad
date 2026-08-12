@@ -168,6 +168,11 @@ describe("runExploreCodeSubagent", () => {
           effortLevel: "medium",
         },
       }),
+      {
+        provider: "openai",
+        name: "gpt-5.6-luna",
+        effortLevel: "medium",
+      },
     );
     const options = vi.mocked(streamText).mock.calls[0][0] as any;
     expect(Object.keys(options.tools).sort()).toEqual([

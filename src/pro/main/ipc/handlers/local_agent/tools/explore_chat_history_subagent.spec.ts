@@ -179,6 +179,11 @@ describe("runExploreChatHistorySubagent", () => {
           effortLevel: "medium",
         },
       }),
+      {
+        provider: "openai",
+        name: "gpt-5.6-luna",
+        effortLevel: "medium",
+      },
     );
   });
 

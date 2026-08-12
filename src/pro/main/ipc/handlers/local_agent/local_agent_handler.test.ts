@@ -817,6 +817,7 @@ describe("handleLocalAgentStream", () => {
       expect(getModelClient).toHaveBeenCalledWith(
         modelSelectionOverride,
         expect.objectContaining({ selectedModel: modelSelectionOverride }),
+        modelSelectionOverride,
       );
     });
   });

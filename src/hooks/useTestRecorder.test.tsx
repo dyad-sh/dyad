@@ -1075,6 +1075,45 @@ describe("useTestRecorder", () => {
     expect(result.current.auth?.mode).toBe("neon-better-auth");
   });
 
+  it("opens the spec on the route sign-in settled at", async () => {
+    // An app whose "/" sends authenticated users to a landing route settles
+    // there, and that is where the capture runs. Leaving the spec's opening
+    // `page.goto("/")` in place would make replay depend on the app repeating
+    // its redirect rather than going where the recording actually was.
+    authenticatedStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+    const login = findLogin(iframe)!;
+
+    await act(async () => {
+      iframe.send({
+        type: "dyad-auth-ready",
+        ok: true,
+        path: "/dashboard",
+        nonce: login.message.nonce,
+      });
+      await started;
+    });
+
+    await act(async () => {
+      await result.current.stopAndReview("Dashboard flow");
+    });
+
+    // The landing route replaces the opening `page.goto("/")` rather than being
+    // appended after it, so replay lands where the capture ran in one hop.
+    expect(result.current.draftSteps).toEqual([
+      `await signIn(page);`,
+      `await page.goto("/dashboard");`,
+    ]);
+  });
+
   it("withholds credentials until the preview's origin is known", async () => {
     authenticatedStart();
     const iframe = makeIframe();

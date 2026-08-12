@@ -59,6 +59,14 @@ function setup({
     get pathname() {
       return currentPathname;
     },
+    // The bootstrap reports the settled route as pathname + search + hash, the
+    // same shape the unauthenticated start's route hint uses.
+    get search() {
+      return "";
+    },
+    get hash() {
+      return "";
+    },
     replace: vi.fn((target: string) => {
       currentPathname = new URL(target, location.href).pathname;
     }),
@@ -393,6 +401,10 @@ describe("dyad auth bootstrap", () => {
     // Simulate a protected-route effect moving the iframe after the bootstrap
     // has verified storage but before it acknowledges authentication.
     h.setPathname("/login");
+    // The move itself only re-arms the settle window; it is the URL *resting*
+    // on a login route that identifies the guard race.
+    h.flushTimers();
+    expect(h.replace).not.toHaveBeenCalled();
     h.flushTimers();
 
     expect(h.replace).toHaveBeenCalledWith("/");
@@ -406,6 +418,73 @@ describe("dyad auth bootstrap", () => {
       ref: "ref123",
       homeRedirects: 1,
     });
+  });
+
+  it("accepts a stable landing route as the post-login destination", async () => {
+    // An app that sends authenticated users from "/" to "/dashboard" has signed
+    // in successfully. Reporting failure here would leave the established
+    // session in place while the parent downgrades the draft to
+    // `authMode: "none"`, so the generated spec omits `signIn(page)` and
+    // replays the dashboard flow from a signed-out context.
+    const h = setup({
+      pending: {
+        mode: "supabase-password",
+        ref: "ref123",
+        nonce: "attempt-1",
+      },
+      preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
+      fetchImpl: async () => ({ ok: true, json: async () => ({ id: "u" }) }),
+    });
+
+    h.sendLogin(SUPABASE_AUTH, "attempt-1");
+
+    await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
+    h.setPathname("/dashboard");
+    // First window sees the move and re-arms; the second finds it at rest.
+    h.flushTimers();
+    h.flushTimers();
+
+    expect(h.replace).not.toHaveBeenCalled();
+    // The settled route rides along, so the parent can open the spec on the page
+    // the capture actually ran against.
+    expect(h.posts).toContainEqual(
+      expect.objectContaining({
+        type: "dyad-auth-ready",
+        ok: true,
+        path: "/dashboard",
+      }),
+    );
+    // The toolbar follows the iframe to wherever the app actually landed.
+    expect(h.posts).toContainEqual({
+      type: "replaceState",
+      payload: { newUrl: "http://localhost:42100/dashboard" },
+    });
+    expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
+  });
+
+  it("gives up when the app never comes to rest after sign-in", async () => {
+    const h = setup({
+      pending: { mode: "neon-better-auth", nonce: "attempt-1" },
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({ user: { id: "u" } }),
+      }),
+    });
+
+    h.sendLogin(NEON_AUTH, "attempt-1");
+
+    await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
+    // Moving on every window: the destination itself is the unstable thing, so
+    // extra settle windows never find it at rest.
+    for (const next of ["/a", "/b", "/c"]) {
+      h.setPathname(next);
+      h.flushTimers();
+    }
+
+    expect(h.replace).toHaveBeenCalledWith("/");
+    expect(
+      JSON.parse(h.sessionStorage.getItem("__dyad_auth_pending__")!),
+    ).toMatchObject({ homeRedirects: 1 });
   });
 
   it("signs in fresh when the marker belongs to an abandoned attempt", async () => {

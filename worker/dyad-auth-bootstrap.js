@@ -16,7 +16,8 @@
  * Plain, dependency-free IIFE JS. Protocol:
  *   down (from parent): { type: "dyad-auth-login", auth, nonce, token }
  *   up   (to parent):   { type: "dyad-auth-bootstrap-ready", pendingNonce? }
- *                       { type: "dyad-auth-ready", ok: boolean, error?: string }
+ *                       { type: "dyad-auth-ready", ok: boolean, error?: string,
+ *                         path?: string }
  *
  * `nonce` identifies one sign-in attempt. Sign-in spans a document navigation
  * (sign in → replace("/") → verify), and the marker carrying state across it
@@ -42,6 +43,16 @@
   const PENDING_KEY = "__dyad_auth_pending__";
   const HOME_SETTLE_DELAY_MS = 500;
   const MAX_HOME_REDIRECTS = 3;
+  // How many settle windows the app gets to come to rest before the movement
+  // itself is treated as the problem. A post-login redirect chain ("/" landing
+  // on "/dashboard") clears in one extra window; something still moving after
+  // ~1.5s is not going to settle on its own.
+  const MAX_SETTLE_SAMPLES = 3;
+  // Landing here after sign-in means the session did not take, or the app's
+  // route guard beat its own async session resolution — the one case where
+  // reloading "/" is the right answer. Segment-anchored, so "/authors" is not
+  // mistaken for an auth route.
+  const LOGIN_PATH = /(^|\/)(login|log-in|signin|sign-in|sign_in|auth)(\/|$)/i;
   // Backstop for a marker the parent never adjudicates. Kept longer than the
   // renderer's 30s `AUTH_READY_TIMEOUT_MS` so a slow preview reload can't expire
   // a marker for an attempt the parent is still waiting on. The parent's nonce
@@ -55,9 +66,12 @@
   // message so the parent can tell our completion from a stale one.
   let activeNonce = null;
 
-  function post(ok, error) {
+  // `path` is where sign-in actually came to rest. The parent needs it because
+  // that is where recording begins, and the generated spec has to open on the
+  // same route rather than assuming "/".
+  function post(ok, error, path) {
     window.parent.postMessage(
-      { type: "dyad-auth-ready", ok, error, nonce: activeNonce },
+      { type: "dyad-auth-ready", ok, error, path, nonce: activeNonce },
       "*",
     );
   }
@@ -104,9 +118,10 @@
     );
   }
 
-  // Land on "/" so recording starts where the generated test replays from, and
-  // to avoid sticking on a "/login" route that would re-render after a bare
-  // reload. Guarded so a second login message can't double-run.
+  // Ask for "/" so the session starts from the app's entry point rather than
+  // sticking on a "/login" route that would re-render after a bare reload.
+  // Where that request actually lands is the app's call — see `settleAtHome`.
+  // Guarded so a second login message can't double-run.
   let loggingIn = false;
 
   function goHome() {
@@ -134,7 +149,7 @@
       ? pending.homeRedirects
       : 0;
     if (homeRedirects >= MAX_HOME_REDIRECTS) {
-      failPending("the app kept redirecting away from / after sign-in");
+      failPending("the app never settled on a signed-in page after sign-in");
       return;
     }
     sessionStorage.setItem(
@@ -145,19 +160,39 @@
   }
 
   /**
-   * Auth libraries resolve their initial session asynchronously, so a protected
-   * route can redirect to /login shortly after load even though the session is
-   * valid. Keep the marker until "/" stays stable for a short window; if the
-   * app's guard wins that race, load "/" again now that its auth state is warm.
+   * Wait for the app to come to rest after sign-in, then accept wherever it
+   * landed.
+   *
+   * Two different things happen here and they look alike from inside the frame:
+   * an app whose "/" sends authenticated users on to a landing route such as
+   * "/dashboard", and an app whose route guard bounces to "/login" because its
+   * auth library has not resolved the session yet. Requiring the pathname to
+   * stay exactly "/" reads both as failure, and for the first that failure is
+   * expensive — the session IS established, so the parent degrades the draft to
+   * `authMode: "none"` and records an authenticated app into a spec that omits
+   * `signIn(page)` and replays from a signed-out context.
+   *
+   * So the test is stability, not position: a URL that has not moved for a full
+   * window is the app's own post-login destination, and recording starts there.
+   * Only a login route still warrants reloading "/" with the auth state warm.
+   * (No origin check is needed — a cross-origin destination would unload this
+   * script along with the document.)
    */
-  function settleAtHome(pending) {
-    if (location.pathname !== "/") {
-      redirectPendingHome(pending);
-      return;
-    }
+  function settleAtHome(pending, sample = 0) {
+    const settlingAt = location.href;
 
     setTimeout(() => {
-      if (location.pathname !== "/") {
+      if (location.href !== settlingAt) {
+        // Still moving. Reloading now would only restart the same redirect
+        // chain, so give the app another window to finish it.
+        if (sample + 1 < MAX_SETTLE_SAMPLES) {
+          settleAtHome(pending, sample + 1);
+          return;
+        }
+        redirectPendingHome(pending);
+        return;
+      }
+      if (LOGIN_PATH.test(location.pathname)) {
         redirectPendingHome(pending);
         return;
       }
@@ -172,7 +207,11 @@
         },
         "*",
       );
-      post(true);
+      post(
+        true,
+        undefined,
+        location.pathname + location.search + location.hash,
+      );
     }, HOME_SETTLE_DELAY_MS);
   }
 

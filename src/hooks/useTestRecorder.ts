@@ -116,7 +116,7 @@ export function useTestRecorder({
   // an app switch.
   const lastPreviewOriginRef = useRef<string | null>(null);
   const authReadyRef = useRef<
-    ((data: { ok?: boolean; error?: string }) => void) | null
+    ((data: { ok?: boolean; error?: string; path?: string }) => void) | null
   >(null);
   // Settled by the `dyad-recorder-initialized` of the document the recording is
   // about to be armed in. Tagged with its app because the iframe ref follows the
@@ -480,6 +480,7 @@ export function useTestRecorder({
           authReadyRef.current?.({
             ok: Boolean(data.ok),
             error: typeof data.error === "string" ? data.error : undefined,
+            path: typeof data.path === "string" ? data.path : undefined,
           });
           break;
         }
@@ -794,7 +795,7 @@ export function useTestRecorder({
       targetAppId: number,
       auth: RecordingAuth,
       authBootstrapToken: string | undefined,
-    ) => {
+    ): Promise<{ ok: boolean; error?: string; path?: string }> => {
       // Never fall back to the old unauthenticated message shape. A missing
       // capability means the proxy was not prepared to authenticate its
       // framing parent, so the caller degrades to recording signed out.
@@ -804,47 +805,54 @@ export function useTestRecorder({
           error: "secure preview sign-in is unavailable",
         });
       }
-      return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-        let done = false;
-        const finish = (ok: boolean, error?: string) => {
-          if (done) return;
-          done = true;
-          pendingAuthRef.current = null;
-          authReadyRef.current = null;
-          clearTimeout(timer);
-          resolve({ ok, error });
-        };
-        const timer = setTimeout(
-          () => finish(false, "timed out waiting for the preview to sign in"),
-          AUTH_READY_TIMEOUT_MS,
-        );
-        // Register the creds FIRST so the fresh load's bootstrap announce
-        // triggers a resend, then force that load. Also post directly, for when
-        // the current page is alive and listening.
-        const nonce = crypto.randomUUID();
-        pendingAuthRef.current = {
-          appId: targetAppId,
-          auth,
-          nonce,
-          authBootstrapToken,
-        };
-        authReadyRef.current = (result) =>
-          finish(Boolean(result.ok), result.error);
-        reloadPreview();
-        // Fails closed on an unknown origin, exactly as the inbound handler
-        // does. This is the one message carrying the test user's credentials,
-        // and "*" would hand them to whatever origin the preview happens to be
-        // showing. The registration above stands, and the effect below replays
-        // it as soon as an origin exists — the bootstrap's own announce can't
-        // be relied on for that, since it is refused by this same check.
-        const origin = previewOrigin();
-        if (origin !== "*") {
-          postToIframe(
-            { type: "dyad-auth-login", auth, nonce, token: authBootstrapToken },
-            origin,
+      return new Promise<{ ok: boolean; error?: string; path?: string }>(
+        (resolve) => {
+          let done = false;
+          const finish = (ok: boolean, error?: string, path?: string) => {
+            if (done) return;
+            done = true;
+            pendingAuthRef.current = null;
+            authReadyRef.current = null;
+            clearTimeout(timer);
+            resolve({ ok, error, path });
+          };
+          const timer = setTimeout(
+            () => finish(false, "timed out waiting for the preview to sign in"),
+            AUTH_READY_TIMEOUT_MS,
           );
-        }
-      });
+          // Register the creds FIRST so the fresh load's bootstrap announce
+          // triggers a resend, then force that load. Also post directly, for when
+          // the current page is alive and listening.
+          const nonce = crypto.randomUUID();
+          pendingAuthRef.current = {
+            appId: targetAppId,
+            auth,
+            nonce,
+            authBootstrapToken,
+          };
+          authReadyRef.current = (result) =>
+            finish(Boolean(result.ok), result.error, result.path);
+          reloadPreview();
+          // Fails closed on an unknown origin, exactly as the inbound handler
+          // does. This is the one message carrying the test user's credentials,
+          // and "*" would hand them to whatever origin the preview happens to be
+          // showing. The registration above stands, and the effect below replays
+          // it as soon as an origin exists — the bootstrap's own announce can't
+          // be relied on for that, since it is refused by this same check.
+          const origin = previewOrigin();
+          if (origin !== "*") {
+            postToIframe(
+              {
+                type: "dyad-auth-login",
+                auth,
+                nonce,
+                token: authBootstrapToken,
+              },
+              origin,
+            );
+          }
+        },
+      );
     },
     [postToIframe, previewOrigin, reloadPreview],
   );
@@ -1014,9 +1022,24 @@ export function useTestRecorder({
             } — recording without authentication.`,
           }));
         }
-        // The sign-in path lands the preview on "/" itself (the bootstrap's
-        // `goHome`), so a recording that authenticated always starts where the
-        // spec replays from.
+        // Sign-in asks for "/", but the app decides where that lands: one whose
+        // root sends authenticated users to a landing route settles there, and
+        // that route is where recording begins. Record it the same way the
+        // unauthenticated start records its own route, so the spec opens on the
+        // page the capture actually ran against instead of leaning on the app
+        // repeating the redirect at replay.
+        const landedAction =
+          signIn.ok && signIn.path && signIn.path !== "/"
+            ? parseRecorderAction(
+                { kind: "navigate", path: signIn.path, initial: true },
+                // Trusted for the same reason as the unauthenticated start
+                // below: the route comes from the bootstrap, not the app.
+                { trusted: true },
+              )
+            : null;
+        if (landedAction) {
+          appendEntry({ appId: targetAppId, entry: { action: landedAction } });
+        }
       } else {
         // Still start from a fresh load so the preview reflects the isolated
         // database and cleared storage, and isn't stuck on a dead page.
@@ -1035,7 +1058,8 @@ export function useTestRecorder({
         // whatever route the app had reached on its own — a redirect, a link
         // followed before Record was pressed — and every captured action would
         // replay against a page the test never visits. The authenticated path
-        // gets this for free: the bootstrap's `goHome` lands on "/".
+        // handles this itself: the bootstrap asks for "/" and reports back
+        // wherever the app settled, which the branch above records.
         //
         // Through the machine rather than the iframe, so the preview toolbar
         // and the recorder agree on where the session starts.

@@ -5,6 +5,8 @@ import {
   AssertionProposalPayloadSchema,
   buildPlanItems,
   countAssertions,
+  MAX_STEP_TEXT_DISPLAY_LENGTH,
+  MAX_STEP_TEXT_LENGTH,
   moveAssertion,
   type AssertionPlanItem,
 } from "./assertion_proposal";
@@ -38,6 +40,60 @@ describe("buildPlanItems", () => {
       "Click Add",
       "Type Ada",
     ]);
+  });
+
+  // A recorded `fill` may carry 10,000 characters, and `actionToCodeLine`
+  // JSON-escapes them — sixfold in the worst case. Left whole, the fallback
+  // step text would blow past the payload schema and fail a recording that
+  // never left its own limits.
+  it("truncates a step row that would exceed the payload schema", () => {
+    const value = "\u0001".repeat(10_000);
+    const statement = `await page.getByLabel("Notes").fill(${JSON.stringify(value)});`;
+    expect(statement.length).toBeGreaterThan(MAX_STEP_TEXT_LENGTH);
+
+    const { items } = buildPlanItems({
+      bodyStatements: [statement],
+      // Also applied to a model description long enough to break the schema.
+      stepDescriptions: [{ index: 0, text: "x".repeat(50_000) }],
+      assertions: [],
+      newId: idFactory(),
+    });
+
+    const [step] = items;
+    expect(step.kind).toBe("step");
+    if (step.kind !== "step") return;
+    expect(step.text.length).toBe(MAX_STEP_TEXT_DISPLAY_LENGTH);
+    expect(step.text.endsWith("…")).toBe(true);
+
+    // And the whole payload still validates, which is the point.
+    expect(
+      AssertionProposalPayloadSchema.safeParse({
+        version: ASSERTION_PROPOSAL_VERSION,
+        appId: 1,
+        draft: {
+          version: RECORDED_TEST_DRAFT_VERSION,
+          draftId: "draft-1",
+          authMode: "none",
+          actions: [],
+        },
+        testTitle: "long fill",
+        specPath: null,
+        items,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("leaves a step row that already fits untouched", () => {
+    const { items } = buildPlanItems({
+      bodyStatements: [`await page.getByLabel("Name").fill("Ada");`],
+      stepDescriptions: [],
+      assertions: [],
+      newId: idFactory(),
+    });
+    expect(items[0]).toMatchObject({
+      kind: "step",
+      text: `page.getByLabel("Name").fill("Ada")`,
+    });
   });
 
   it("places an afterStep of -1 before the first step", () => {

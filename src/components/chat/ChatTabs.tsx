@@ -560,6 +560,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       stagedDiffFile: null,
       previewHistory: [],
       previewHistoryPosition: 0,
+      previewRouteSource: "none",
       previewMode: "preview",
       isPreviewOpen: true,
       isChatPanelHidden: false,
@@ -591,6 +592,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         stagedDiffFile: store.get(stagedDiffFileAtom),
         previewHistory: [...iframe.history],
         previewHistoryPosition: iframe.position,
+        previewRouteSource: iframe.currentUrlSource,
         previewMode: store.get(previewModeAtom),
         isPreviewOpen: store.get(isPreviewOpenAtom),
         isChatPanelHidden: store.get(isChatPanelHiddenAtom),
@@ -625,6 +627,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         type: "RESTORE_PRESENTATION",
         history: presentation.previewHistory,
         position: presentation.previewHistoryPosition,
+        source: presentation.previewRouteSource,
         preserveHistoryOnNextReplacement:
           !previewIframeManager.hasTarget(appId),
       });

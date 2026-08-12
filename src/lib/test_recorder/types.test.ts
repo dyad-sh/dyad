@@ -39,6 +39,43 @@ describe("parseRecorderAction", () => {
     ).toBeNull();
   });
 
+  it("rejects a navigation hiding its authority behind a control character", () => {
+    // WHATWG URL deletes every tab, LF and CR before it parses anything, so
+    // these are all the authority-relative `//dyad.invalid/x` by the time
+    // Playwright resolves them against the real preview — and it leaves the
+    // app. Reading the raw second character would find the control character,
+    // pass the structural check, and let the escape through.
+    for (const separator of ["\t", "\n", "\r"]) {
+      expect(
+        parseRecorderAction({
+          kind: "navigate",
+          path: `/${separator}/dyad.invalid/x`,
+        }),
+      ).toBeNull();
+      expect(
+        parseRecorderAction({
+          kind: "navigate",
+          path: `/${separator}/evil.example/x`,
+        }),
+      ).toBeNull();
+      // The backslash form normalizes the same way.
+      expect(
+        parseRecorderAction({
+          kind: "navigate",
+          path: `/${separator}\\evil.example/x`,
+        }),
+      ).toBeNull();
+      // And a control character can't smuggle a scheme past the leading-slash
+      // check either.
+      expect(
+        parseRecorderAction({
+          kind: "navigate",
+          path: `${separator}https://evil.example/x`,
+        }),
+      ).toBeNull();
+    }
+  });
+
   it("accepts a path whose backslash isn't leading", () => {
     // Resolution only turns `/\` at the front into an authority, so a backslash
     // deeper in the path is an ordinary character and stays on-origin.

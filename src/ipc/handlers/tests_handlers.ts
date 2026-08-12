@@ -57,10 +57,7 @@ import {
   type PreparedIsolation,
 } from "../services/isolated_test_db";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
-import {
-  assertNoActiveRecording,
-  isRecordingActive,
-} from "../services/recording_registry";
+import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
@@ -883,11 +880,6 @@ export function registerTestsHandlers() {
   );
 
   createTypedHandler(testsContracts.deleteAppTest, async (_event, params) => {
-    // A recording holds `repository`/`test-files` for its whole session, so
-    // without this the coordinator would queue the delete behind it — up to the
-    // 30-minute cap, with the Tests panel showing nothing but a spinner.
-    assertNoActiveRecording(params.appId, "delete a test");
-
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
     // Only ever delete something that looks like one of the spec paths
@@ -903,11 +895,16 @@ export function registerTestsHandlers() {
 
     // Same per-app lock the runs take, so a delete can't remove a spec out
     // from under an in-flight run (or interleave with its env swap).
+    //
+    // A recording holds `repository`/`test-files` for its whole session, so
+    // without the refusal the coordinator would queue the delete behind it — up
+    // to the 30-minute cap, with the Tests panel showing nothing but a spinner.
     return await appOperationCoordinator.run(
       {
         appId: params.appId,
         operation: "delete-app-test",
         resources: [readAppResource("app-path"), "repository", "test-files"],
+        refuseWhenRecording: "delete a test",
       },
       async () => {
         // Canonical check on top of the pattern match: a symlinked `e2e-tests/`
@@ -988,19 +985,19 @@ export function registerTestsHandlers() {
   createTypedHandler(
     testsContracts.migrateLegacyTests,
     async (_event, params) => {
-      // Same claim conflict as `deleteAppTest`: refuse with a reason rather than
-      // queueing the migration behind the recording's `test-files` hold.
-      assertNoActiveRecording(params.appId, "migrate legacy tests");
-
       const app = await getApp(params.appId);
       const appPath = getDyadAppPath(app.path);
       // Serialize against test runs (same numeric appId lock) so a move can't
       // interleave with a run's env swap / dev-server restart.
+      //
+      // Same claim conflict as `deleteAppTest`: refuse with a reason rather than
+      // queueing the migration behind the recording's `test-files` hold.
       return await appOperationCoordinator.run(
         {
           appId: params.appId,
           operation: "migrate-legacy-tests",
           resources: [readAppResource("app-path"), "repository", "test-files"],
+          refuseWhenRecording: "migrate legacy tests",
         },
         async () => {
           const results: MigrateLegacyTestResult[] = [];

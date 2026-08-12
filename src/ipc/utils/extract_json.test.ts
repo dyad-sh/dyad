@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractJson } from "./extract_json";
+import { extractJson, extractJsonWithScan } from "./extract_json";
 
 describe("extractJson", () => {
   it("returns the object as-is", () => {
@@ -38,32 +38,38 @@ describe("extractJson", () => {
     // thousands of braces made this O(n^2) on the main process. Only a `{`
     // followed by `"` or `}` can open a JSON object, so the rest cost O(1).
     //
-    // Asserted as a GROWTH RATE rather than a wall-clock bound. What the
-    // implementation actually guarantees is algorithmic (the scan budget is a
-    // multiple of the input length), and a fixed millisecond ceiling measures
-    // the CI runner's current load instead — the kind of assertion that either
-    // flakes or gets ignored when it fires. Quadratic work grows ~16x when the
-    // input quadruples; linear work grows ~4x. The 8x threshold sits far from
-    // both, so scheduler noise can't reach it.
+    // Asserted on the work itself, not on a clock. Linearity here is an
+    // algorithmic property — the scan budget is a multiple of the input length
+    // and `opensJsonObject` rejects prose braces in O(1) — so the scan counters
+    // decide it outright. A millisecond bound would instead report the CI
+    // runner's load, and flake under contention on an implementation that is
+    // provably fine.
     const withBraces = (repeats: number) =>
       `${"{tok} ".repeat(repeats)}result: {"ok":true}`;
-    // Best-of-three: a single sample can be interrupted, and an interrupted
-    // *baseline* is what would make a linear implementation look quadratic.
-    const timeExtract = (text: string) => {
-      let best = Infinity;
-      for (let run = 0; run < 3; run++) {
-        const started = performance.now();
-        expect(JSON.parse(extractJson(text)!)).toEqual({ ok: true });
-        best = Math.min(best, performance.now() - started);
-      }
-      return best;
-    };
 
-    const base = timeExtract(withBraces(50_000));
-    const quadrupled = timeExtract(withBraces(200_000));
-    // Guards against dividing by a zero-ish baseline on a fast machine, where
-    // the ratio stops meaning anything.
-    expect(quadrupled).toBeLessThan(Math.max(base, 1) * 8);
+    const base = extractJsonWithScan(withBraces(50_000));
+    const quadrupled = extractJsonWithScan(withBraces(200_000));
+
+    expect(JSON.parse(base.json!)).toEqual({ ok: true });
+    expect(JSON.parse(quadrupled.json!)).toEqual({ ok: true });
+    // Every `{tok}` is rejected on its second character, so quadrupling the
+    // prose buys no extra balanced scan and no extra scanned character. Under
+    // the old fallback both would have grown with the input.
+    expect(base.candidateScans).toBe(1);
+    expect(quadrupled.candidateScans).toBe(1);
+    expect(quadrupled.scannedChars).toBe(base.scannedChars);
+  });
+
+  it("charges each scanned candidate against the budget", () => {
+    // The counters are only worth asserting on if they move when real work
+    // happens: two objects that open like JSON but don't parse, then one that
+    // does.
+    const scan = extractJsonWithScan(
+      'a {"x": } b {"y": } c {"ok":true} {"trailing":1}',
+    );
+    expect(JSON.parse(scan.json!)).toEqual({ ok: true });
+    expect(scan.candidateScans).toBe(3);
+    expect(scan.scannedChars).toBeGreaterThan(0);
   });
 
   it("returns the widest span when nothing parses, so the caller reports the syntax error", () => {

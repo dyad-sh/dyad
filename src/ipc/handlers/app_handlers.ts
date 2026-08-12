@@ -959,6 +959,11 @@ export function registerAppHandlers() {
           readAppResource("app-path"),
           readAppResource("runtime-config"),
         ],
+        // Repeated here so the refusal is atomic with admission. The preflight
+        // above still runs first — it has to precede `restoreAppFromTestBranch`,
+        // which takes these same claims — but a recording can start in the gap
+        // between the two, and only this one can't be raced.
+        refuseWhenRecording: "duplicate this app",
       },
       async () => {
         // 2. Find the original app while its path and runtime configuration are
@@ -1571,6 +1576,10 @@ export function registerAppHandlers() {
         appId,
         operation: "rename-app",
         resources: ["app-path", "repository", "runtime"],
+        // A rename stops the dev server and moves the directory the recording
+        // is capturing against. Refusing beats queueing behind the session's
+        // whole-lifetime claims, which the coordinator would do with no timeout.
+        refuseWhenRecording: "rename this app",
       },
       async () => {
         let appName = sanitizeAppDisplayName(params.appName);
@@ -1953,6 +1962,7 @@ export function registerAppHandlers() {
         appId,
         operation: "rename-branch",
         resources: [readAppResource("app-path"), "repository"],
+        refuseWhenRecording: "rename this branch",
       },
       async () => {
         const app = await db.query.apps.findFirst({
@@ -2247,6 +2257,9 @@ export function registerAppHandlers() {
         appId,
         operation: "change-app-location",
         resources: ["app-path", "repository", "runtime"],
+        // Moves the directory out from under the running dev server the
+        // recording is capturing.
+        refuseWhenRecording: "move this app",
       },
       async () => {
         const app = await db.query.apps.findFirst({

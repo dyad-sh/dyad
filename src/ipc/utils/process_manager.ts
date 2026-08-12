@@ -47,6 +47,17 @@ export interface RunningAppInfo {
   originalUrl?: string;
   /** Proxy worker dedicated to this running app */
   proxyWorker?: Worker;
+  /**
+   * Set while a recording's own lifecycle is replacing this process.
+   *
+   * The child's `close` listener runs to completion before `stopAppByInfo`
+   * resumes past its kill and removes the map entry, so an intentional
+   * replacement is indistinguishable from a crash at that point. Isolation
+   * setup restarts the very app it is preparing to record; without this marker
+   * that restart reports itself as `app-stopped` and cancels the session it
+   * belongs to.
+   */
+  recordingOwnedRestart?: boolean;
 }
 
 // Store running app processes
@@ -169,11 +180,21 @@ export function removeDockerVolumesForApp(appId: number): Promise<void> {
 
 /**
  * Stops an app based on its RunningAppInfo (container vs host) and removes it from the running map.
+ *
+ * Pass `recordingOwnedRestart` when the stop is part of a recording's own
+ * lifecycle (isolation setup and teardown restart the app they are recording).
+ * The process's `close` listener sees the map entry as still current, so
+ * otherwise the restart would be read as the app going away and end the session
+ * it is preparing.
  */
 export async function stopAppByInfo(
   appId: number,
   appInfo: RunningAppInfo,
+  options: { recordingOwnedRestart?: boolean } = {},
 ): Promise<void> {
+  if (options.recordingOwnedRestart) {
+    appInfo.recordingOwnedRestart = true;
+  }
   stopCloudSandboxFileSync(appId);
 
   if (appInfo.mode === "cloud") {
@@ -225,20 +246,26 @@ export function removeAppIfCurrentProcess(
     // outside Dyad. Stop/Restart/Delete end a recording explicitly, but this
     // path had nothing watching it, so isolation and the session's whole-app
     // claim would have been held until the 30-minute cap with no preview left
-    // to record. Deliberate restarts don't reach here: they delete the map
-    // entry first, so the guard above sends them to the branch below.
+    // to record.
+    //
+    // A recording's own restart is the one deliberate stop that does reach
+    // here: `stopAppByInfo` only deletes the map entry after the kill resolves,
+    // and this listener runs first, so isolation setup would otherwise cancel
+    // the session it is preparing. That caller marks its entry instead.
     //
     // `skipRestart` because there is no process to put back — teardown must
     // restore `.env.local`, not resurrect an app the user didn't ask to start.
     // Fire-and-forget: this is a lifecycle callback, and teardown reports its
     // own failures to the recorder bar.
-    void endRecordingForApp(appId, "app-stopped", { skipRestart: true }).catch(
-      (error) => {
+    if (!currentAppInfo.recordingOwnedRestart) {
+      void endRecordingForApp(appId, "app-stopped", {
+        skipRestart: true,
+      }).catch((error) => {
         logger.error(
           `Failed to end app ${appId}'s recording after its process exited: ${error}`,
         );
-      },
-    );
+      });
+    }
   } else {
     logger.info(
       `App ${appId} process was already removed or replaced in running map. Ignoring.`,

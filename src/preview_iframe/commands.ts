@@ -74,7 +74,8 @@ export type PreviewIframeMachineMessageType =
   | "dyad-component-selector-initialized"
   | "dyad-screenshot-response"
   | "pushState"
-  | "replaceState";
+  | "replaceState"
+  | "dyad-document-loaded";
 
 export const PREVIEW_IFRAME_MESSAGE_ROUTES: Readonly<
   Record<
@@ -88,6 +89,10 @@ export const PREVIEW_IFRAME_MESSAGE_ROUTES: Readonly<
   "dyad-screenshot-response": "shared-and-component",
   pushState: "machine",
   replaceState: "machine",
+  // The shim announces every document it loads. Only the machine cares: it is
+  // how a navigation the app made on its own — a link, a redirect — becomes
+  // visible at all, since neither passes through the history overrides.
+  "dyad-document-loaded": "machine",
 };
 
 export type PreviewSharedMachineEvent =
@@ -137,14 +142,22 @@ export function routePreviewIframeMessage(input: {
           : {}),
       });
     }
-  } else if (type === "pushState" || type === "replaceState") {
+  } else if (
+    type === "pushState" ||
+    type === "replaceState" ||
+    type === "dyad-document-loaded"
+  ) {
     const rawUrl = event.data?.payload?.newUrl;
     if (typeof rawUrl === "string" && rawUrl && appUrl) {
       try {
         const trustedAppUrl = new URL(appUrl);
         const url = new URL(rawUrl, trustedAppUrl);
         if (url.origin !== trustedAppUrl.origin) return;
-        send({ type: "NAVIGATED_IN_APP", kind: type, url: url.href });
+        send({
+          type: "NAVIGATED_IN_APP",
+          kind: type === "dyad-document-loaded" ? "documentLoad" : type,
+          url: url.href,
+        });
       } catch {
         return;
       }

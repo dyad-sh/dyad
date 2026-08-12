@@ -307,9 +307,18 @@ export const PreviewIframe = ({
     // link would hand back a path that reads as app-relative and replay as
     // `page.goto("/that/path")` against the app — a destination the user never
     // visited. Unknown or off-origin means no hint at all.
+    //
+    // And only for a route the user picked through Dyad's chrome: one the app
+    // reached itself is not a starting point anyone chose, and opening a
+    // session there makes replay `goto` the destination and skip the navigation
+    // that got to it. Same gate as the Tests panel's Record button — both feed
+    // the same recorder start, so they must agree on what counts as a start
+    // route.
     // Asks first — setup clears the preview's cookies and local storage.
     recorder.requestStartRecording(
-      sameOriginStartPath(currentHistoryUrl, appUrl),
+      iframeState.currentUrlSource === "dyad"
+        ? sameOriginStartPath(currentHistoryUrl, appUrl)
+        : undefined,
     );
   };
 

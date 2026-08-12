@@ -137,6 +137,31 @@ describe("recordedBodyStatements", () => {
     ]);
   });
 
+  // The session opened on that route, so replay has to as well — a leading "/"
+  // would load a page it immediately leaves.
+  it("lets the recorder's opening route replace the root navigation", () => {
+    expect(
+      recordedBodyStatements(
+        draft([{ kind: "navigate", path: "/items", initial: true }]),
+      ),
+    ).toEqual([`await page.goto("/items");`]);
+  });
+
+  // ...but a navigation the user made mid-flow started somewhere, and that
+  // somewhere is the history entry Back replays onto. Without the root `goto`,
+  // `page.goBack()` returns to `about:blank` rather than to "/".
+  it("keeps the root navigation before a user-initiated first navigation", () => {
+    expect(
+      recordedBodyStatements(
+        draft([{ kind: "navigate", path: "/items" }, { kind: "back" }]),
+      ),
+    ).toEqual([
+      `await page.goto("/");`,
+      `await page.goto("/items");`,
+      `await page.goBack();`,
+    ]);
+  });
+
   it("renders each action kind, escaping recorded values", () => {
     expect(actionToCodeLine({ kind: "press", key: "Escape" })).toBe(
       `await page.keyboard.press("Escape");`,

@@ -26,6 +26,7 @@ import {
 import {
   activeRecordings,
   endRecordingForApp,
+  recordingStartBlockReason,
   reserveRecordingStart,
   type EndRecordingOptions,
   type RecordingEndReason,
@@ -129,9 +130,16 @@ export function registerRecordingHandlers() {
 
       const startReservation = reserveRecordingStart(appId);
       if (!startReservation) {
+        // A destructive operation can hold the app against new sessions while
+        // it runs (a restore cancels streams before it can take the repository
+        // claim). Naming it beats "already in progress", which would be simply
+        // untrue.
+        const blockedBy = recordingStartBlockReason(appId);
         return infraResult(
           appId,
-          "A recording session is already in progress for this app.",
+          blockedBy
+            ? `Wait for Dyad to ${blockedBy} before starting a recording.`
+            : "A recording session is already in progress for this app.",
         );
       }
 

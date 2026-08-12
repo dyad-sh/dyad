@@ -701,6 +701,68 @@ export async function gitResetFile({
   );
 }
 
+/**
+ * One path's index entry, exactly as it is staged right now.
+ *
+ * `null` means the path is not in the index at all. Anything that stages over a
+ * file it may have to put back needs this: restoring the working-tree bytes and
+ * re-adding them rebuilds the index from the *content*, which silently replaces
+ * whatever the user had staged there — including a staged delete, which has no
+ * content to rebuild from.
+ */
+export interface GitIndexEntry {
+  mode: string;
+  oid: string;
+}
+
+export async function readGitIndexEntry({
+  path,
+  filepath,
+}: GitFileParams): Promise<GitIndexEntry | null> {
+  const normalizedFilepath = normalizePath(filepath);
+  const result = await execGit(
+    ["ls-files", "--stage", "--", normalizedFilepath],
+    path,
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Failed to read the index entry for '${normalizedFilepath}'. ${
+        result.stderr.trim() || result.stdout.trim()
+      }`,
+      DyadErrorKind.External,
+    );
+  }
+  // `<mode> <oid> <stage>\t<path>`, empty when the path isn't staged.
+  const line = result.stdout.split("\n")[0]?.trim();
+  if (!line) return null;
+  const [mode, oid] = line.split(/\s+/);
+  return mode && oid ? { mode, oid } : null;
+}
+
+/**
+ * Put a path's index entry back to exactly what `readGitIndexEntry` returned,
+ * without touching the working tree. `entry: null` removes it from the index.
+ */
+export async function restoreGitIndexEntry({
+  path,
+  filepath,
+  entry,
+}: GitFileParams & { entry: GitIndexEntry | null }): Promise<void> {
+  const normalizedFilepath = normalizePath(filepath);
+  await execOrThrow(
+    entry
+      ? [
+          "update-index",
+          "--add",
+          "--cacheinfo",
+          `${entry.mode},${entry.oid},${normalizedFilepath}`,
+        ]
+      : ["update-index", "--force-remove", "--", normalizedFilepath],
+    path,
+    `Failed to restore the index entry for '${normalizedFilepath}'`,
+  );
+}
+
 export async function gitReset({ path }: GitBaseParams): Promise<void> {
   // Reset the staging area to match HEAD (unstage files but keep working directory changes)
   await execOrThrow(["reset", "HEAD"], path, "Failed to reset staging area");

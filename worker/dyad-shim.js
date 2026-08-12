@@ -6,6 +6,20 @@
   let previousUrl = window.location.href;
   const PARENT_TARGET_ORIGIN = "*";
 
+  // A whole-document navigation — a plain link, a `<form>` submit, a server
+  // redirect — never passes through the history overrides below, so without
+  // this the parent keeps showing whatever route it last selected itself. That
+  // stale route is what the recorder would pin a session's opening `goto` to,
+  // skipping the very navigation the test is about. Sent on every load; the
+  // parent ignores the one matching the route it just asked for.
+  window.parent.postMessage(
+    {
+      type: "dyad-document-loaded",
+      payload: { newUrl: window.location.href },
+    },
+    PARENT_TARGET_ORIGIN,
+  );
+
   // --- History API Overrides ---
   const originalPushState = history.pushState;
   const originalReplaceState = history.replaceState;

@@ -61,13 +61,26 @@ export type PreviewIframeEvent =
       type: "RESTORE_PRESENTATION";
       history: readonly string[];
       position: number;
+      /**
+       * Provenance captured alongside the history. Absent for presentations
+       * saved before it was tracked — restoring those must not claim the user
+       * picked the route, so the transition treats it as app-driven.
+       */
+      source?: PreviewRouteSource;
       preserveHistoryOnNextReplacement?: boolean;
     }
   | { type: "APP_URL_CHANGED"; url: string }
   | { type: "NAVIGATE"; path: string }
   | {
       type: "NAVIGATED_IN_APP";
-      kind: "pushState" | "replaceState";
+      /**
+       * `documentLoad` is a whole-document navigation the app performed itself
+       * — a plain link or a server redirect. Those never reach the history
+       * shim, so without it the preview keeps reporting the route Dyad last
+       * selected and a recording started afterwards pins replay to a route the
+       * user never chose.
+       */
+      kind: "pushState" | "replaceState" | "documentLoad";
       url: string;
     }
   | { type: "GO_BACK" }

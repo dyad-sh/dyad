@@ -70,7 +70,17 @@ function createLockedHandler<
 ): void {
   createTypedHandler(
     contract,
-    createAppOperationHandler(`neon:${contract.channel}`, resources, handler),
+    createAppOperationHandler(
+      `neon:${contract.channel}`,
+      resources,
+      handler,
+      // A recording holds provider, repository and runtime-config for its whole
+      // session, and this queue has no timeout — so without the refusal a Neon
+      // mutation sits on a spinner for up to the 30-minute cap with nothing on
+      // screen saying why. It also rewrites the `.env.local` the session has
+      // swapped for its isolated branch.
+      "change this app's database",
+    ),
   );
 }
 

@@ -15,7 +15,13 @@ import type { ApplyTestAssertionsResult } from "../types/tests";
 import { assertMutationPathAllowed } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
 import { broadcastToAllWindows } from "../utils/window_broadcast";
-import { gitAdd, gitResetFile } from "../utils/git_utils";
+import {
+  gitAdd,
+  gitResetFile,
+  readGitIndexEntry,
+  restoreGitIndexEntry,
+  type GitIndexEntry,
+} from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
 import { getModelClient } from "../utils/get_model_client";
 import { fastTextOutput } from "../utils/stream_text_utils";
@@ -137,31 +143,111 @@ function recordedDraftMarker(draft: RecordedTestDraft): string {
 }
 
 /**
- * Whether the file at `relativePath` is still this draft's generated spec.
+ * The marker line written into the spec: the draft it came from, plus the
+ * proposal whose plan produced it.
+ *
+ * The proposal id is what makes a re-approval able to recognise its OWN file.
+ * Writing the spec and latching the card are two steps, and a crash between
+ * them leaves a file on disk that the card has no record of. Without this the
+ * retry can only tell that *something* already wrote this recording, and
+ * reports "no assertions were added" over a file that contains them.
+ *
+ * Appended after the draft marker so every existing reader — which compares the
+ * draft marker as a prefix — keeps working on specs written before this, and on
+ * specs a user has hand-edited the tail of.
+ */
+function recordedSpecMarker(
+  draft: RecordedTestDraft,
+  proposalId: string,
+): string {
+  return `${recordedDraftMarker(draft)} ${JSON.stringify(proposalId)}`;
+}
+
+/**
+ * Whether a spec's first line is this draft's marker.
+ *
+ * A prefix match, so the optional proposal id after the draft id doesn't make
+ * an otherwise-matching spec invisible. Bounded on the right by requiring the
+ * next character to be a space or nothing at all, so one draft id can never
+ * match another that merely starts with it.
+ */
+function markerLineMatchesDraft(
+  line: string | undefined,
+  draft: RecordedTestDraft,
+): boolean {
+  if (line === undefined) return false;
+  const marker = recordedDraftMarker(draft);
+  if (!line.startsWith(marker)) return false;
+  const next = line[marker.length];
+  return next === undefined || next === " ";
+}
+
+/** The proposal id in a spec's marker line, or null for a spec without one. */
+function proposalIdFromMarkerLine(
+  line: string,
+  draft: RecordedTestDraft,
+): string | null {
+  const rest = line.slice(recordedDraftMarker(draft).length).trim();
+  if (!rest) return null;
+  try {
+    const parsed: unknown = JSON.parse(rest);
+    return typeof parsed === "string" && parsed ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the file at `relativePath` is still this draft's generated spec, and
+ * which proposal wrote it.
  *
  * A read that fails for any reason other than "not there" answers yes: we
  * cannot prove the spec is gone, and writing a duplicate on a transient error is
- * worse than trusting a path that may since have moved.
+ * worse than trusting a path that may since have moved. `proposalId` is null
+ * whenever it can't be read, which is the conservative answer — the caller then
+ * treats the file as somebody else's and latches steps only.
  */
 async function specCarriesDraftMarker(
   appPath: string,
   relativePath: string,
   draft: RecordedTestDraft,
-): Promise<boolean> {
+): Promise<{ matches: boolean; proposalId: string | null }> {
   try {
     const source = await fs.promises.readFile(
       path.join(appPath, relativePath),
       "utf-8",
     );
-    return source.split(/\r?\n/, 1)[0] === recordedDraftMarker(draft);
+    // Prefix, not equality: the line now carries the writing proposal's id
+    // after the draft id, and specs written before that don't.
+    const line = source.split(/\r?\n/, 1)[0];
+    if (!markerLineMatchesDraft(line, draft)) {
+      return { matches: false, proposalId: null };
+    }
+    return { matches: true, proposalId: proposalIdFromMarkerLine(line, draft) };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { matches: false, proposalId: null };
+    }
     logger.warn(
       `Couldn't re-check ${relativePath} for its recorded draft marker; keeping it:`,
       error,
     );
-    return true;
+    return { matches: true, proposalId: null };
   }
+}
+
+/** A generated spec already on disk for this recording. */
+interface WrittenSpec {
+  relativePath: string;
+  /**
+   * The proposal whose plan produced the file, when its marker records one.
+   *
+   * Null for a spec written before the marker carried it, or one whose marker
+   * couldn't be read. Both mean "assume another card wrote this", which is the
+   * conservative answer: it under-claims what the file contains rather than
+   * latching checks that may not be in it.
+   */
+  proposalId: string | null;
 }
 
 /**
@@ -173,7 +259,7 @@ async function findWrittenSpecForDraft(
   appId: number,
   appPath: string,
   draft: RecordedTestDraft,
-): Promise<string | null> {
+): Promise<WrittenSpec | null> {
   const remembered = getWrittenSpecForDraft(appId, draft);
   // Re-checked rather than trusted: the Tests panel can delete or rename a
   // generated spec while another card for the same recording is still open, and
@@ -182,8 +268,9 @@ async function findWrittenSpecForDraft(
   // below — and, finding nothing, the write — can proceed as if it never
   // existed.
   if (remembered) {
-    if (await specCarriesDraftMarker(appPath, remembered, draft)) {
-      return remembered;
+    const marker = await specCarriesDraftMarker(appPath, remembered, draft);
+    if (marker.matches) {
+      return { relativePath: remembered, proposalId: marker.proposalId };
     }
     logger.info(
       `Forgetting ${remembered}: it no longer carries this recording's marker`,
@@ -201,7 +288,6 @@ async function findWrittenSpecForDraft(
     throw error;
   }
 
-  const marker = recordedDraftMarker(draft);
   for (const entry of entries.sort((left, right) =>
     left.name.localeCompare(right.name),
   )) {
@@ -231,11 +317,15 @@ async function findWrittenSpecForDraft(
       );
       throw error;
     }
-    if (source.split(/\r?\n/, 1)[0] !== marker) continue;
+    const line = source.split(/\r?\n/, 1)[0];
+    if (!markerLineMatchesDraft(line, draft)) continue;
 
     const relativePath = `${E2E_TEST_DIR}/${entry.name}`;
     markRecordedDraftWritten(appId, draft, relativePath);
-    return relativePath;
+    return {
+      relativePath,
+      proposalId: proposalIdFromMarkerLine(line, draft),
+    };
   }
   return null;
 }
@@ -273,6 +363,17 @@ interface SignInFixtureChange {
   absolutePath: string;
   /** The bytes that were there before, or null when we created the file. */
   previousContent: string | null;
+  /**
+   * The index entry as it stood before we staged over it, or null when the path
+   * wasn't staged.
+   *
+   * Restoring the working-tree bytes and re-adding them is NOT the same thing:
+   * that rebuilds the index from content and discards whatever the user had
+   * staged for this path — a staged delete most of all, which has no content to
+   * rebuild from. `undefined` means the snapshot itself failed, so rollback
+   * falls back to the content-based restore rather than guessing.
+   */
+  previousIndexEntry: GitIndexEntry | null | undefined;
 }
 
 async function ensureSignInFixture(
@@ -301,6 +402,21 @@ async function ensureSignInFixture(
     );
   }
 
+  // Snapshotted before the write, so a rollback can put the user's staged state
+  // back byte for byte instead of inferring it from the file we restore.
+  let previousIndexEntry: GitIndexEntry | null | undefined;
+  try {
+    previousIndexEntry = await readGitIndexEntry({
+      path: appPath,
+      filepath: relativePath,
+    });
+  } catch (error) {
+    logger.warn(
+      `Couldn't snapshot the index entry for ${relativePath}; a rollback will restore its contents only:`,
+      error,
+    );
+  }
+
   await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.promises.writeFile(
     absolutePath,
@@ -308,7 +424,7 @@ async function ensureSignInFixture(
     "utf-8",
   );
   await stage(appPath, relativePath);
-  return { relativePath, absolutePath, previousContent };
+  return { relativePath, absolutePath, previousContent, previousIndexEntry };
 }
 
 /**
@@ -322,9 +438,42 @@ async function revertSignInFixture(
 ): Promise<void> {
   try {
     if (change.previousContent === null) {
-      // We created it, so the tree had no such file. Unstage as well, or the
-      // uncommitted-changes review lists a file that is no longer there.
+      // We created it, so the tree had no such file.
       await fs.promises.rm(change.absolutePath, { force: true });
+    } else {
+      // We replaced our own stale fixture. Put the exact bytes back.
+      await fs.promises.writeFile(
+        change.absolutePath,
+        change.previousContent,
+        "utf-8",
+      );
+    }
+
+    // The index is restored from the snapshot, not rebuilt from the file we
+    // just put back: the user may have had something else staged for this path,
+    // and re-adding the working-tree bytes (or resetting to HEAD) would replace
+    // it with content they never staged. Only when the snapshot failed do we
+    // fall back to the content-based restore.
+    if (change.previousIndexEntry !== undefined) {
+      try {
+        await restoreGitIndexEntry({
+          path: appPath,
+          filepath: change.relativePath,
+          entry: change.previousIndexEntry,
+        });
+        return;
+      } catch (error) {
+        logger.warn(
+          `Restored ${change.relativePath} but couldn't put its index entry back:`,
+          error,
+        );
+        return;
+      }
+    }
+
+    if (change.previousContent === null) {
+      // Unstage, or the uncommitted-changes review lists a file that is no
+      // longer there.
       try {
         await gitResetFile({ path: appPath, filepath: change.relativePath });
       } catch (error) {
@@ -335,14 +484,6 @@ async function revertSignInFixture(
       }
       return;
     }
-    // We replaced our own stale fixture. Put the exact bytes back and stage
-    // that, which is a no-op in the index when they match HEAD and restores the
-    // prior staged state when they don't.
-    await fs.promises.writeFile(
-      change.absolutePath,
-      change.previousContent,
-      "utf-8",
-    );
     await stage(appPath, change.relativePath);
   } catch (error) {
     logger.error(
@@ -400,11 +541,14 @@ async function writeRecordedSpec({
   appId,
   appPath,
   draft,
+  proposalId,
   bodyStatements,
 }: {
   appId: number;
   appPath: string;
   draft: RecordedTestDraft;
+  /** Stamped into the marker so a re-approval can recognise its own write. */
+  proposalId: string;
   bodyStatements: string[];
 }): Promise<{ specPath: string; fixtureChange: SignInFixtureChange | null }> {
   const fixtureChange = await ensureSignInFixture(appPath, draft);
@@ -423,7 +567,7 @@ async function writeRecordedSpec({
     ({ relativePath } = await writeSpecToFreePath(
       appPath,
       testName,
-      `${recordedDraftMarker(draft)}\n${generatedSource}`,
+      `${recordedSpecMarker(draft, proposalId)}\n${generatedSource}`,
     ));
   } catch (error) {
     // The spec never landed, so the fixture written for it is a change the user
@@ -950,6 +1094,26 @@ export function registerTestAssertionHandlers() {
           },
         );
         if (alreadyWritten) {
+          // This card's own earlier write, finished but never latched: the
+          // process died between `writeRecordedSpec` and `persistApproval`. The
+          // file on disk already contains THIS plan's checks, so reporting
+          // "no assertions were added" would be describing someone else's file
+          // — and would leave the card, and the resumed agent turn, wrong about
+          // a test that is exactly what the user approved.
+          if (alreadyWritten.proposalId === proposalId) {
+            const recovered = stored.items;
+            await persistApproval({
+              row,
+              proposalId,
+              stored,
+              items: recovered,
+              specPath: alreadyWritten.relativePath,
+            });
+            return {
+              specPath: alreadyWritten.relativePath,
+              appliedCount: countAssertions(recovered),
+            };
+          }
           await persistApproval({
             row,
             proposalId,
@@ -959,12 +1123,12 @@ export function registerTestAssertionHandlers() {
             // approved would render a card claiming checks, and showing their
             // code, that the file the button opens does not contain.
             items: stored.items.filter((item) => item.kind === "step"),
-            specPath: alreadyWritten,
+            specPath: alreadyWritten.relativePath,
           });
           return {
-            specPath: alreadyWritten,
+            specPath: alreadyWritten.relativePath,
             appliedCount: 0,
-            warning: `This recording was already saved as ${alreadyWritten}, so no assertions were added.`,
+            warning: `This recording was already saved as ${alreadyWritten.relativePath}, so no assertions were added.`,
           };
         }
 
@@ -1013,7 +1177,7 @@ export function registerTestAssertionHandlers() {
         // Synthesis above spent up to a minute in the model, so re-check under
         // the write lock: another card for this same recording may have been
         // approved while we waited.
-        const { specPath, wroteIt, fixtureChange } =
+        const { specPath, wroteIt, racedProposalId, fixtureChange } =
           await appOperationCoordinator.run(
             {
               appId,
@@ -1023,6 +1187,11 @@ export function registerTestAssertionHandlers() {
                 "repository",
                 "test-files",
               ],
+              // The preflight above has to run after the idempotency latches,
+              // so a recording can start between it and this admission. This
+              // one can't be raced — and it guards the write, which is the step
+              // that would otherwise sit on "Generating…" for half an hour.
+              refuseWhenRecording: "generate this test",
             },
             async () =>
               withLock(specWriteKey(appId), async () => {
@@ -1034,8 +1203,9 @@ export function registerTestAssertionHandlers() {
                 );
                 if (raced) {
                   return {
-                    specPath: raced,
+                    specPath: raced.relativePath,
                     wroteIt: false,
+                    racedProposalId: raced.proposalId,
                     fixtureChange: null,
                   };
                 }
@@ -1043,11 +1213,13 @@ export function registerTestAssertionHandlers() {
                   appId,
                   appPath,
                   draft: stored.draft,
+                  proposalId,
                   bodyStatements: finalStatements,
                 });
                 return {
                   specPath: written.specPath,
                   wroteIt: true,
+                  racedProposalId: null,
                   fixtureChange: written.fixtureChange,
                 };
               }),
@@ -1057,6 +1229,20 @@ export function registerTestAssertionHandlers() {
         // the model. That file carries its plan, not this one's, so reporting
         // these assertions as applied would describe a spec that doesn't exist.
         // Latch the card against what is actually on disk and say so.
+        //
+        // Unless the marker names THIS proposal: then it is our own earlier
+        // write, finished before the process died and never latched, and the
+        // file holds exactly the plan being approved now.
+        if (!wroteIt && racedProposalId === proposalId) {
+          await persistApproval({
+            row,
+            proposalId,
+            stored,
+            items: stored.items,
+            specPath,
+          });
+          return { specPath, appliedCount: countAssertions(stored.items) };
+        }
         if (!wroteIt) {
           await persistApproval({
             row,

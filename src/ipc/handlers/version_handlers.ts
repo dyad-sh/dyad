@@ -69,7 +69,10 @@ import {
 } from "@/ipc/services/chat_actor_service";
 import type { RestoreRecovery } from "@/version_preview/state";
 import { readStoredReferencedAppIds } from "../utils/mention_apps";
-import { assertNoActiveRecording } from "../services/recording_registry";
+import {
+  assertNoActiveRecording,
+  blockRecordingStart,
+} from "../services/recording_registry";
 
 const logger = log.scope("version_handlers");
 
@@ -908,7 +911,6 @@ export function registerVersionHandlers() {
     // A recording holds repository, provider and runtime-config for its whole
     // session, so this would queue invisibly behind it for up to the 30-minute
     // cap. It is also rewriting the tree the recording is capturing against.
-    assertNoActiveRecording(appId, "undo to a previous version");
     return appOperationCoordinator.run(
       {
         appId,
@@ -920,6 +922,7 @@ export function registerVersionHandlers() {
           "repository",
           "runtime-config",
         ],
+        refuseWhenRecording: "undo to a previous version",
       },
       async () => {
         const app = await db.query.apps.findFirst({
@@ -1211,6 +1214,7 @@ export function registerVersionHandlers() {
       ? await beginAppChatActorMutation(appId)
       : undefined;
     let releaseStreamAdmissionBlock: (() => void) | undefined;
+    let releaseRecordingBlock: (() => void) | undefined;
 
     // Wrap phases 2 and 3 in a single try/finally so the admission block is
     // always released, even if `withLock` were to throw synchronously before
@@ -1218,6 +1222,21 @@ export function registerVersionHandlers() {
     // promise). Leaking the block would permanently stall new streams for the
     // app/chat until the process restarts.
     try {
+      // Taken BEFORE phase 2 cancels anything. The preflight above refuses a
+      // recording that already exists, but phase 1 and the cancellation below
+      // deliberately hold no lock — a recording starting in that window used to
+      // be caught only after the user's in-flight generations were already
+      // gone, so they lost the generation and got the refusal. Holding the app
+      // first means the refusal costs nothing.
+      releaseRecordingBlock =
+        blockRecordingStart(appId, "restore a version") ?? undefined;
+      if (!releaseRecordingBlock) {
+        throw new DyadError(
+          "Stop the recording session before you restore this version — it's holding this app while it records.",
+          DyadErrorKind.Precondition,
+        );
+      }
+
       releaseStreamAdmissionBlock = restoreCodebase
         ? blockNewStreamsForApp(appId)
         : blockNewStreamsForChat(chatId);
@@ -1236,13 +1255,10 @@ export function registerVersionHandlers() {
         : false;
       const preserveDirtyTree = didCancelActor || didCancelTransport;
 
-      // Rechecked here, not only before phase 1: a recording that started while
-      // phase 1 ran (or during the stream cancellation above, which deliberately
-      // holds no lock) will already own the repository claim phase 3 needs, and
-      // the preflight refusal would have been bypassed. Without this the user
-      // gets the half-hour spinner the preflight exists to prevent, instead of
-      // the precondition error explaining why.
-      assertNoActiveRecording(appId, "restore this version");
+      // No recording recheck here: the block taken above is what rules one out
+      // for the rest of this operation, and it was taken while a refusal was
+      // still free. A recheck at this point would be reporting a race that can
+      // no longer happen — after the cost it exists to avoid.
 
       // Phase 3: perform the codebase revert and create the forked chat under
       // the lock. Holding it across the whole mutation serializes the revert
@@ -1577,6 +1593,7 @@ export function registerVersionHandlers() {
     } finally {
       releaseStreamAdmissionBlock?.();
       releaseActorAdmissionBlock?.();
+      releaseRecordingBlock?.();
     }
   };
   versionPreviewHandlerBridge.restoreToMessage = (

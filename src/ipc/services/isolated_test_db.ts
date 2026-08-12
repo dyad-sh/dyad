@@ -552,7 +552,11 @@ async function restartAppInPlace({
     async ({ invocationRef, output }) => {
       const appInfo = runningApps.get(app.id);
       if (appInfo) {
-        await stopAppByInfo(app.id, appInfo);
+        // This restart belongs to the session's own lifecycle. The stopped
+        // process's `close` listener still sees the map entry as current, so
+        // unmarked it would report `app-stopped` and cancel the recording this
+        // very restart is setting up (or tearing down).
+        await stopAppByInfo(app.id, appInfo, { recordingOwnedRestart: true });
       }
       await cleanUpPort(getAppPort(app.id));
       await executeApp({

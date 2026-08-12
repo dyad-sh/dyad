@@ -26,11 +26,27 @@ export const MAX_PLAN_ITEMS = 10_000;
 /** A UUID today; sized so a different id scheme doesn't have to revisit this. */
 export const MAX_ASSERTION_ID_LENGTH = 128;
 /**
- * Step text falls back to the generated statement itself, and a `fill`
- * statement carries up to `MAX_VALUE_LEN` (10,000) characters of recorded
- * value — so this cannot be sized like the prose it usually is.
+ * Ceiling the schema enforces on a step row.
+ *
+ * Deliberately far above what `buildPlanItems` produces: it truncates to
+ * `MAX_STEP_TEXT_DISPLAY_LENGTH` first, so the bound is slack rather than
+ * something a real plan can reach. Sizing it to the *untruncated* worst case
+ * was not possible — step text falls back to the generated statement, and
+ * `actionToCodeLine` JSON-escapes a `fill` value of up to `MAX_VALUE_LEN`
+ * (10,000) characters, which expands sixfold when every one of them is a
+ * control character. A recording well inside its own limits could therefore
+ * fail this one and take the whole proposal down with it.
  */
 export const MAX_STEP_TEXT_LENGTH = 20_000;
+/**
+ * Longest step row a plan actually carries.
+ *
+ * Step text is display-only — `recordedBodyStatements` regenerates the spec
+ * from the draft, never from these strings — so truncating costs nothing that
+ * is read back, and keeps one long recorded `fill` from parking tens of
+ * kilobytes in chat history and in the assertion-code request.
+ */
+export const MAX_STEP_TEXT_DISPLAY_LENGTH = 2_000;
 /** One plain-English sentence, model- or user-authored. */
 export const MAX_ASSERTION_TEXT_LENGTH = 2_000;
 /** A Playwright `expect(...)` line, which may carry a long locator. */
@@ -91,6 +107,16 @@ export function countAssertions(items: AssertionPlanItem[]): number {
 
 function statementFallbackText(statement: string): string {
   return statement.replace(/^await\s+/, "").replace(/;\s*$/, "");
+}
+
+/**
+ * Bound a step row to something a card can render and the schema will accept.
+ * Applied to the model's description and to the statement fallback alike —
+ * neither is read back, and either can arrive longer than a row should be.
+ */
+function truncateStepText(text: string): string {
+  if (text.length <= MAX_STEP_TEXT_DISPLAY_LENGTH) return text;
+  return `${text.slice(0, MAX_STEP_TEXT_DISPLAY_LENGTH - 1)}…`;
 }
 
 export interface RawStepDescription {
@@ -165,8 +191,9 @@ export function buildPlanItems({
     items.push({
       kind: "step",
       stepIndex,
-      text:
+      text: truncateStepText(
         descriptionByIndex.get(stepIndex) ?? statementFallbackText(statement),
+      ),
     });
     for (const raw of byAfterStep.get(stepIndex) ?? []) items.push(toItem(raw));
   });

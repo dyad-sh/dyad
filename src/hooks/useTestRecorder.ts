@@ -237,7 +237,7 @@ export function useTestRecorder({
       }
       const action = parseRecorderAction(candidate);
       if (!action) return "rejected";
-      const entry = { action, at: Date.now() };
+      const entry = { action };
       // Jotai updates the canonical buffer synchronously, but React may not run
       // the effect that mirrors it into this ref before a flush acknowledgement
       // resumes stopAndReview. Mirror accepted entries here as well so the
@@ -958,15 +958,21 @@ export function useTestRecorder({
         // the wrong page. Record the route as the navigation it effectively is,
         // rather than pretending the flow started at the root. "/" needs
         // nothing — that is already the opening statement.
+        //
+        // Marked `initial` so codegen can tell it from a navigation the user
+        // makes mid-flow: only this one replaces the opening `page.goto("/")`.
+        // A user navigation still needs the root before it, or a later Back
+        // replays onto `about:blank` instead of the page they came from.
         const action =
           startPath && startPath !== "/"
-            ? parseRecorderAction({ kind: "navigate", path: startPath })
+            ? parseRecorderAction({
+                kind: "navigate",
+                path: startPath,
+                initial: true,
+              })
             : null;
         if (action) {
-          appendEntry({
-            appId: targetAppId,
-            entry: { action, at: Date.now() },
-          });
+          appendEntry({ appId: targetAppId, entry: { action } });
         }
 
         // The bar is what tells the user recording has begun, and it goes up

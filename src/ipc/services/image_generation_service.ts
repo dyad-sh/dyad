@@ -289,6 +289,9 @@ export class ImageGenerationService {
         appId: params.targetAppId,
         operation: "save-generated-image",
         resources: [readAppResource("app-path"), "media", "repository"],
+        // `repository` is a recording's for the whole session, so saving the
+        // image would sit behind it with only a spinner to show for it.
+        refuseWhenRecording: "save a generated image",
       },
       async () => {
         this.assertAcceptingGenerations(params.targetAppId);

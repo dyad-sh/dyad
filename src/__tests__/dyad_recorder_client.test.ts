@@ -690,11 +690,13 @@ describe("dyad recorder client", () => {
         `<select id="colour">` +
         `<option value="red">Red</option><option value="blue">Blue</option>` +
         `</select>` +
-        `<label for="vol">Volume</label><input id="vol" type="range" value="50" />`,
+        `<label for="vol">Volume</label><input id="vol" type="range" value="50" />` +
+        `<label for="qty">Quantity</label><input id="qty" type="number" value="1" />`,
     );
     r.activate();
     const select = r.doc.querySelector("select");
     const range = r.doc.querySelector('input[type="range"]');
+    const number = r.doc.querySelector('input[type="number"]');
 
     // Keyboard users change these without ever clicking. The keypress and the
     // value action describe the SAME change, so recording both replays it
@@ -705,10 +707,58 @@ describe("dyad recorder client", () => {
     r.keydown(range, { key: "ArrowRight" });
     range.value = "51";
     r.change(range);
+    // A number input steps on arrows exactly as the slider does — its value
+    // change arrives as `input`, which is already recorded as the fill.
+    r.keydown(number, { key: "ArrowUp" });
+    r.typeInto(number, "2");
 
     expect(r.actions.map((action: any) => action.kind)).toEqual([
       "select",
       "fill",
+      "fill",
+    ]);
+  });
+
+  // Arrows do nothing to a checkbox: no group to walk, so no `change` follows
+  // to stand in for the press. Suppressing it would erase a keyboard-only
+  // interaction with the app's own handler from the recording.
+  it("still records arrow keys on a checkbox, which no change follows", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="agree">Agree</label><input id="agree" type="checkbox" />`,
+    );
+    r.activate();
+
+    r.keydown(r.doc.querySelector('input[type="checkbox"]'), {
+      key: "ArrowDown",
+    });
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual(["press"]);
+  });
+
+  // Escape shares NAV_KEYS with the arrows but drives nothing, so the
+  // arrow-suppression must not reach it on any of these controls.
+  it("still records Escape on controls that arrows would drive", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="colour">Colour</label><select id="colour"><option>Red</option></select>` +
+        `<label for="vol">Volume</label><input id="vol" type="range" value="50" />` +
+        `<label for="pick">Pick</label><input id="pick" type="radio" />`,
+    );
+    r.activate();
+
+    for (const selector of [
+      "select",
+      'input[type="range"]',
+      'input[type="radio"]',
+    ]) {
+      r.keydown(r.doc.querySelector(selector), { key: "Escape" });
+    }
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual([
+      "press",
+      "press",
+      "press",
     ]);
   });
 

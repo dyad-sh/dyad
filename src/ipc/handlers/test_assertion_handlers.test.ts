@@ -662,8 +662,10 @@ describe("registerTestAssertionHandlers", () => {
       resetRecordedTestDrafts();
       const second = await approve(appId, chatId, "proposal-2");
 
+      // The marker names the draft AND the proposal that wrote the file, which
+      // is what lets a re-approval tell its own write from another card's.
       expect(readSpec().split("\n", 1)[0]).toBe(
-        '// dyad-recording-draft-id: "draft-test"',
+        '// dyad-recording-draft-id: "draft-test" "proposal-1"',
       );
       expect(first.specPath).toBe(SPEC_PATH);
       expect(second.specPath).toBe(SPEC_PATH);
@@ -881,9 +883,52 @@ describe("registerTestAssertionHandlers", () => {
       expect(second.warning ?? "").not.toMatch(/already saved/i);
       expect(second.appliedCount).toBeGreaterThan(0);
       expect(specExists()).toBe(true);
+      // Rewritten by the second card, so its marker names that proposal.
       expect(readSpec().split("\n", 1)[0]).toBe(
-        '// dyad-recording-draft-id: "draft-test"',
+        '// dyad-recording-draft-id: "draft-test" "proposal-2"',
       );
+    });
+
+    // The write and the latch are two steps. A crash between them leaves a file
+    // holding exactly this card's checks and a card that has no record of it —
+    // approving again must recognise its own marker and report what is really
+    // in the file, not "no assertions were added" about someone else's.
+    it("recovers its own unlatched write after a restart", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId, {
+        proposalId: "proposal-1",
+      });
+
+      const updateSpy = vi
+        .spyOn(harness.db, "update")
+        .mockImplementationOnce(() => {
+          throw new Error("couldn't latch");
+        });
+      try {
+        await expect(approve(appId, chatId, proposalId)).rejects.toThrow(
+          /couldn't latch/,
+        );
+      } finally {
+        updateSpy.mockRestore();
+      }
+
+      // The rollback removed the file, so put the crash-shaped state back: the
+      // spec on disk, nothing latched, no in-memory cache.
+      fs.mkdirSync(path.dirname(path.join(tmpDir, SPEC_PATH)), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(tmpDir, SPEC_PATH),
+        `// dyad-recording-draft-id: "draft-test" "${proposalId}"\n// body\n`,
+        "utf-8",
+      );
+      resetRecordedTestDrafts();
+
+      const retried = await approve(appId, chatId, proposalId);
+
+      expect(retried.specPath).toBe(SPEC_PATH);
+      expect(retried.warning ?? "").not.toMatch(/already saved/i);
+      expect(retried.appliedCount).toBeGreaterThan(0);
     });
 
     it("rejects a chat that belongs to a different app", async () => {

@@ -604,6 +604,12 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   retry attempt), normalize only that counter in the explorer's `stateKey` so
   the graph stays finite; keep direct transition tests for exact stale-token
   acceptance and rejection.
+- When adding an event to an explorer's generator, reuse a payload an existing
+  event already uses if the two share a transition branch. A new distinct value
+  (another URL, another id) multiplies the reachable graph combinatorially and
+  trips `Reachable-state exploration exceeded maxStates` without covering
+  anything new. Assert what is specific to the new event in a direct transition
+  test instead.
 - Use `assertCapabilityTransitionConsistency` with domain-supplied
   representative valid events for every capability. Every enabled
   capability/state pair must supply at least one valid representative so the

@@ -28,6 +28,15 @@ const EVENTS: readonly PreviewIframeEvent[] = [
     kind: "replaceState",
     url: `${URL}/account`,
   },
+  // Same URL as the `replaceState` case above on purpose: both take the same
+  // branch, so a second URL only multiplies the explored state space without
+  // covering anything new. The behaviour that IS specific to `documentLoad` —
+  // provenance, and ignoring Dyad's own load — is asserted directly below.
+  {
+    type: "NAVIGATED_IN_APP",
+    kind: "documentLoad",
+    url: `${URL}/account`,
+  },
   { type: "GO_BACK" },
   { type: "GO_FORWARD" },
   { type: "RUNTIME_RESTARTED" },
@@ -363,7 +372,10 @@ describe("preview iframe transition", () => {
     }).state;
     expect(typedIn.currentUrlSource).toBe("dyad");
 
-    for (const kind of ["pushState", "replaceState"] as const) {
+    // `documentLoad` included: a plain link or a server redirect replaces the
+    // whole document and never reaches the history shim, so without it the
+    // preview would keep reporting `/settings` as a route the user picked.
+    for (const kind of ["pushState", "replaceState", "documentLoad"] as const) {
       const redirected = transition(typedIn, {
         type: "NAVIGATED_IN_APP",
         kind,
@@ -376,6 +388,55 @@ describe("preview iframe transition", () => {
         transition(redirected, { type: "GO_BACK" }).state.currentUrlSource,
       ).toBe("dyad");
     }
+
+    // Dyad's own navigation loads a document too. That load reports the route
+    // Dyad just set, so it must not downgrade the selection it belongs to.
+    const ownLoad = transition(typedIn, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/settings`,
+    });
+    expect(ownLoad.state).toBe(typedIn);
+    expect(ignoreReasonOf(ownLoad)).toBe("already-current-url");
+  });
+
+  it("restores route provenance with the presentation", () => {
+    const restored = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "RESTORE_PRESENTATION",
+      history: [URL, `${URL}/settings`],
+      position: 1,
+      source: "dyad",
+    });
+    expect(restored.state.currentUrlSource).toBe("dyad");
+
+    const appDriven = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "RESTORE_PRESENTATION",
+      history: [URL, `${URL}/login`],
+      position: 1,
+      source: "app",
+    });
+    expect(appDriven.state.currentUrlSource).toBe("app");
+  });
+
+  // Presentations persisted before provenance was captured have none. Reading
+  // those as the user's own selection would hand a redirect destination back as
+  // a deliberate choice; "app" costs a recording its start route instead.
+  it("restores a presentation without provenance as app-driven", () => {
+    const restored = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "RESTORE_PRESENTATION",
+      history: [URL, `${URL}/settings`],
+      position: 1,
+    });
+    expect(restored.state.currentUrlSource).toBe("app");
+
+    // An empty presentation has no route at all, so nobody chose one.
+    expect(
+      transition(INITIAL_PREVIEW_IFRAME_STATE, {
+        type: "RESTORE_PRESENTATION",
+        history: [],
+        position: 0,
+      }).state.currentUrlSource,
+    ).toBe("none");
   });
 
   it("derives browser navigation availability from history and position", () => {

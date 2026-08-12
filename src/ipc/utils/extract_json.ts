@@ -30,26 +30,57 @@ const SCAN_BUDGET_FACTOR = 8;
  * valid JSON" — callers must still handle a parse failure.
  */
 export function extractJson(text: string): string | null {
+  return extractJsonWithScan(text).json;
+}
+
+/**
+ * What the fallback scan cost, alongside its result.
+ *
+ * The counters exist so the linearity `SCAN_BUDGET_FACTOR` guarantees can be
+ * asserted directly. Measuring it with a clock instead makes the test a report
+ * on the CI runner's load — the kind of assertion that either flakes or gets
+ * ignored when it fires.
+ */
+export interface ExtractJsonScan {
+  json: string | null;
+  /** `{` positions that survived `opensJsonObject` and got a balanced scan. */
+  candidateScans: number;
+  /** Characters those scans charged against the budget. */
+  scannedChars: number;
+}
+
+export function extractJsonWithScan(text: string): ExtractJsonScan {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
+  if (start === -1 || end === -1 || end < start) {
+    return { json: null, candidateScans: 0, scannedChars: 0 };
+  }
 
   const widest = text.slice(start, end + 1);
-  if (isParseable(widest)) return widest;
+  if (isParseable(widest)) {
+    return { json: widest, candidateScans: 0, scannedChars: 0 };
+  }
 
   let budget = text.length * SCAN_BUDGET_FACTOR;
+  let candidateScans = 0;
+  let scannedChars = 0;
   for (let i = start; i < text.length && budget > 0; i++) {
     // Only `{` that could actually open a JSON object is worth a scan. A JSON
     // object is `{}` or `{"…`, so this rejects prose like `{foo}` on one
     // character.
     if (text[i] !== "{" || !opensJsonObject(text, i)) continue;
     const candidate = balancedObjectAt(text, i);
-    budget -= candidate ? candidate.length : text.length - i;
-    if (candidate && isParseable(candidate)) return candidate;
+    const cost = candidate ? candidate.length : text.length - i;
+    candidateScans++;
+    scannedChars += cost;
+    budget -= cost;
+    if (candidate && isParseable(candidate)) {
+      return { json: candidate, candidateScans, scannedChars };
+    }
   }
   // Nothing parsed. Return the widest span anyway so the caller's own
   // `JSON.parse` reports the syntax error it would have reported before.
-  return widest;
+  return { json: widest, candidateScans, scannedChars };
 }
 
 /** Whether the `{` at `start` is followed by `"` or `}` (ignoring whitespace). */

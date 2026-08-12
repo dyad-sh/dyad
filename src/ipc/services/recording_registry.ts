@@ -59,6 +59,56 @@ export interface RecordingStartReservation {
 const startingRecordings = new Map<number, { cancelled: boolean }>();
 
 /**
+ * Operations that must not have a recording start underneath them, by appId,
+ * counted so overlapping holders release independently.
+ *
+ * Refusing a recording is not the point — `assertNoActiveRecording` covers the
+ * other direction. This exists for operations whose refusal comes too late to
+ * be free: a restore cancels the user's in-flight generations before it can
+ * take the repository claim, so a recording that starts in that window costs
+ * them the generation AND the restore. Holding the app first makes the refusal
+ * happen while nothing is destroyed yet.
+ */
+const recordingStartBlocks = new Map<
+  number,
+  { count: number; reason: string }
+>();
+
+/**
+ * Refuse recording starts for this app until the returned release is called.
+ * Null when a recording already owns the app, so the caller refuses BEFORE
+ * doing anything it can't take back.
+ *
+ * `reason` names the operation in the imperative, e.g. "restore a version".
+ */
+export function blockRecordingStart(
+  appId: number,
+  reason: string,
+): (() => void) | null {
+  if (isRecordingActive(appId)) return null;
+  const existing = recordingStartBlocks.get(appId);
+  if (existing) existing.count++;
+  else recordingStartBlocks.set(appId, { count: 1, reason });
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const block = recordingStartBlocks.get(appId);
+    if (!block) return;
+    block.count--;
+    if (block.count <= 0) recordingStartBlocks.delete(appId);
+  };
+}
+
+/**
+ * Why a recording start would be refused right now, for the message the
+ * recorder shows. Null when nothing is holding the app.
+ */
+export function recordingStartBlockReason(appId: number): string | null {
+  return recordingStartBlocks.get(appId)?.reason ?? null;
+}
+
+/**
  * Atomically reserve this app's recording start before the handler's first
  * await. Test runs consult the same state through `isRecordingActive`, so they
  * refuse immediately instead of queueing behind a setup that has not published
@@ -73,7 +123,11 @@ const startingRecordings = new Map<number, { cancelled: boolean }>();
 export function reserveRecordingStart(
   appId: number,
 ): RecordingStartReservation | null {
-  if (activeRecordings.has(appId) || startingRecordings.has(appId)) {
+  if (
+    activeRecordings.has(appId) ||
+    startingRecordings.has(appId) ||
+    recordingStartBlocks.has(appId)
+  ) {
     return null;
   }
   const state = { cancelled: false };

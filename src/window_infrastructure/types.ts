@@ -52,6 +52,15 @@ export const ChatTabPresentationStateSchema = z.object({
   stagedDiffFile: z.string().max(10_000).nullable(),
   previewHistory: z.array(z.string().max(20_000)).max(100),
   previewHistoryPosition: z.number().int().nonnegative(),
+  /**
+   * Who put the preview on the route being restored — see `PreviewRouteSource`.
+   *
+   * Optional because presentations persisted before this field existed carry no
+   * provenance; restoring those falls back to "app", the answer that costs a
+   * recording its start route rather than pinning one to a redirect
+   * destination.
+   */
+  previewRouteSource: z.enum(["none", "dyad", "app"]).optional(),
   previewMode: z.enum([
     "preview",
     "code",

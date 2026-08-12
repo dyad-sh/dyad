@@ -107,12 +107,18 @@ export function recordedBodyStatements(draft: RecordedTestDraft): string[] {
   if (draftIncludesSignIn(draft)) statements.push(`await signIn(page);`);
   // The base URL is configured by Dyad's Playwright bootstrap.
   //
-  // Skipped when the recording already opens with a navigation — a session
-  // started from a route rather than the app root records that route as its
-  // first action, and emitting the root `goto` first would make replay load a
-  // page it immediately leaves. Behaviour-neutral, but it is a real round-trip
-  // and it reads as a mistake in the generated file.
-  if (draft.actions[0]?.kind !== "navigate") {
+  // Skipped only for the recorder's own opening route: a session started from a
+  // route rather than the app root records that route as its first action, and
+  // emitting the root `goto` first would make replay load a page it immediately
+  // leaves. Behaviour-neutral there, but it is a real round-trip and it reads
+  // as a mistake in the generated file.
+  //
+  // A navigation the *user* made is a step inside a flow that did start at the
+  // root, so the root `goto` stays: it is the history entry `page.goBack()`
+  // replays onto. Dropping it left a later `back` returning to `about:blank`,
+  // which is not where the recording went.
+  const first = draft.actions[0];
+  if (!(first?.kind === "navigate" && first.initial)) {
     statements.push(`await page.goto("/");`);
   }
   for (const action of draft.actions) {

@@ -1,4 +1,5 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { assertNoActiveRecording } from "./recording_registry";
 
 export const APP_OPERATION_RESOURCES = [
   "app-path", // The app row's path and the identity/location of its directory.
@@ -25,6 +26,24 @@ export interface AppOperationRequest {
   appId: number;
   operation: string;
   resources: readonly (AppOperationResource | AppOperationAccess)[];
+  /**
+   * Refuse this operation outright while a recording session holds the app,
+   * instead of queueing behind it. Names the action in the imperative, e.g.
+   * "delete a test".
+   *
+   * A session claims repository, provider, runtime, runtime-config and
+   * test-files for its whole lifetime, and this queue has no timeout — so
+   * anything taking one of those claims can sit on a spinner for the rest of
+   * the 30-minute cap with nothing on screen saying why. Paths that can't
+   * simply end the session (the recording IS what the user is doing) say so and
+   * let them decide.
+   *
+   * Checked HERE rather than by the caller beforehand so the refusal and the
+   * admission are one synchronous step. A caller-side check leaves a window in
+   * which a recording starts between the two, and the operation queues behind
+   * the session the check exists to avoid.
+   */
+  refuseWhenRecording?: string;
 }
 
 interface NormalizedAppOperationRequest {
@@ -112,6 +131,16 @@ export class AppOperationCoordinator {
           DyadErrorKind.Precondition,
         ),
       );
+    }
+
+    // Synchronous with the enqueue below: a recording reserving this app in
+    // between is what a caller-side check cannot rule out.
+    if (request.refuseWhenRecording !== undefined) {
+      try {
+        assertNoActiveRecording(request.appId, request.refuseWhenRecording);
+      } catch (error) {
+        return Promise.reject(error);
+      }
     }
 
     const normalizedRequest: NormalizedAppOperationRequest = {

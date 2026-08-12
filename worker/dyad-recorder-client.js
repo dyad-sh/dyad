@@ -431,21 +431,24 @@
    * the keypress produces a `change` this recorder already captures as the
    * value action.
    *
-   * A `<select>` walks its options, a range slider steps, and arrows inside a
-   * radio group both move focus and check the radio they land on. Recording the
-   * press as well as the resulting `select`/`fill`/`check` makes replay perform
-   * the value change twice — once by keystroke, once by the value action — and
-   * land somewhere the user never went. Text fields are not here: arrows only
-   * move the caret, and no `change` follows.
+   * A `<select>` walks its options, range and number inputs step, and arrows
+   * inside a radio group both move focus and check the radio they land on.
+   * Recording the press as well as the resulting `select`/`fill`/`check` makes
+   * replay perform the value change twice — once by keystroke, once by the
+   * value action — and land somewhere the user never went. Text fields are not
+   * here: arrows only move the caret, and no `change` follows.
+   *
+   * Checkboxes are deliberately absent even though radios are here. Arrows do
+   * nothing to a checkbox — there is no group to walk and no `change` to take
+   * the press's place — so suppressing it would erase the only record of a
+   * keyboard-only interaction with the app's own key handler.
    */
   function changesValueOnArrowKeys(control) {
     if (!control || control.nodeType !== 1) return false;
-    return (
-      control.tagName === "SELECT" ||
-      isCheckboxOrRadio(control) ||
-      (control.tagName === "INPUT" &&
-        (control.getAttribute("type") || "").toLowerCase() === "range")
-    );
+    if (control.tagName === "SELECT") return true;
+    if (control.tagName !== "INPUT") return false;
+    const type = (control.getAttribute("type") || "text").toLowerCase();
+    return type === "radio" || type === "range" || type === "number";
   }
 
   /** Controls whose meaningful action is captured by input/change, not click. */
@@ -1088,9 +1091,16 @@
       // Arrows that drive a native control are already recorded as the value
       // action the resulting `change` produces. Keeping the press too would
       // replay the change twice.
-      const raw = deepTarget(e);
-      const control = resolveControl(raw) || raw;
-      if (changesValueOnArrowKeys(control)) return false;
+      //
+      // Arrow keys only. Escape is in NAV_KEYS as well, and it changes nothing
+      // on these controls — so no `change` follows to stand in for the press,
+      // and suppressing it would drop the interaction from the recording
+      // entirely.
+      if (e.key.startsWith("Arrow")) {
+        const raw = deepTarget(e);
+        const control = resolveControl(raw) || raw;
+        if (changesValueOnArrowKeys(control)) return false;
+      }
       return true;
     }
     return false;

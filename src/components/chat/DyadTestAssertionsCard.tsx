@@ -165,10 +165,15 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const [optimisticApproved, setOptimisticApproved] = useState(false);
   const [optimisticDiscarded, setOptimisticDiscarded] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  // Tracked apart from `isApproving` even though both disable the same
+  // controls: closing a plan writes no file, and reusing the approval flag made
+  // the card answer "Generating…" to a button that generates nothing.
+  const [isDiscarding, setIsDiscarding] = useState(false);
   const [liveMessage, setLiveMessage] = useState("");
   // Synchronous guard: state updates are async, so a fast double-click would
-  // otherwise fire two applies before `isApproving` re-renders.
-  const approvingRef = useRef(false);
+  // otherwise fire two applies before the flags above re-render. Shared by both
+  // operations — either one in flight rules out the other.
+  const busyRef = useRef(false);
   const editingIdRef = useRef<string | null>(null);
   editingIdRef.current = editingId;
 
@@ -293,9 +298,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   };
 
   const handleApprove = async () => {
-    if (approvingRef.current || isLocked) return;
+    if (busyRef.current || isLocked) return;
     if (!proposalId || chatId == null || appId == null) return;
-    approvingRef.current = true;
+    busyRef.current = true;
     setIsApproving(true);
     setOptimisticApproved(true);
     try {
@@ -350,7 +355,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
           : "Couldn't generate the test file.",
       );
     } finally {
-      approvingRef.current = false;
+      busyRef.current = false;
       setIsApproving(false);
     }
   };
@@ -361,9 +366,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
    * isn't the 30-minute deadline.
    */
   const handleDiscard = async () => {
-    if (approvingRef.current || isLocked || !isAgentWaiting) return;
-    approvingRef.current = true;
-    setIsApproving(true);
+    if (busyRef.current || isLocked || !isAgentWaiting) return;
+    busyRef.current = true;
+    setIsDiscarding(true);
     try {
       // Latched BEFORE the parked request is answered. Answering resumes the
       // agent's turn, which immediately re-reads this message row and keeps
@@ -402,10 +407,14 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         );
       }
     } finally {
-      approvingRef.current = false;
-      setIsApproving(false);
+      busyRef.current = false;
+      setIsDiscarding(false);
     }
   };
+
+  // Either operation locks the card's controls; only approving writes a file,
+  // so the labels below still have to tell them apart.
+  const isBusy = isApproving || isDiscarding;
 
   if (!payload) {
     // The tag arrives a character at a time, so incomplete JSON is the normal
@@ -460,7 +469,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
           <span
             className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
             data-testid={
-              isApproved && !isApproving
+              isApproved && !isBusy
                 ? "dyad-test-assertions-approved-badge"
                 : undefined
             }
@@ -469,8 +478,11 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                 optimistically so the plan can't be edited or submitted twice
                 while the write is in flight, but claiming the file exists
                 before it does leaves a slow apply looking finished — and a
-                failed one silently reverting from a terminal state. */}
-            {isApproving ? (
+                failed one silently reverting from a terminal state.
+
+                Closing gets its own label: it writes nothing, so announcing it
+                as generation promises a file that is never coming. */}
+            {isBusy ? (
               <Loader2
                 size={12}
                 className="animate-spin motion-reduce:hidden"
@@ -480,9 +492,11 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
             )}
             {isApproving
               ? "Generating…"
-              : isApproved
-                ? "Generated"
-                : checkCountLabel}
+              : isDiscarding
+                ? "Closing…"
+                : isApproved
+                  ? "Generated"
+                  : checkCountLabel}
           </span>
         </div>
         <span
@@ -742,6 +756,16 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
             <Loader2 size={12} className="animate-spin motion-reduce:hidden" />
             Generating the test file…
           </span>
+        ) : isDiscarding ? (
+          // Same shape, opposite promise: nothing is being written, so the row
+          // says what is actually happening rather than borrowing the approval's.
+          <span
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            data-testid="dyad-test-assertions-closing-note"
+          >
+            <Loader2 size={12} className="animate-spin motion-reduce:hidden" />
+            Closing the plan…
+          </span>
         ) : isApproved ? (
           <>
             <span className="text-xs text-muted-foreground">
@@ -779,7 +803,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
               <button
                 type="button"
                 onClick={() => void handleDiscard()}
-                disabled={isApproving}
+                disabled={isBusy}
                 data-testid="dyad-test-assertions-discard-button"
                 className="ml-auto rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-(--background-darker) hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -789,7 +813,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
             <button
               type="button"
               onClick={() => void handleApprove()}
-              disabled={isApproving || hasBlankAssertion || !proposalId}
+              disabled={isBusy || hasBlankAssertion || !proposalId}
               data-testid="dyad-test-assertions-approve-button"
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 focus-visible:ring-offset-(--background-lightest) disabled:cursor-not-allowed disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-500",

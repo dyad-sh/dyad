@@ -43,9 +43,17 @@ export function transition(
           history,
           position,
           currentUrl,
-          // A restored presentation is the user's own last selection, handed
-          // back to them.
-          currentUrlSource: currentUrl === null ? "none" : "dyad",
+          // Provenance travels with the presentation: a restored route is only
+          // the user's own selection if it was one when it was captured.
+          // Restoring it as "dyad" regardless would hand a redirect destination
+          // back as a deliberate choice, and a recording started after the tab
+          // switch would open there and skip the navigation under test.
+          //
+          // Presentations saved before provenance was captured have none, and
+          // "app" is the safe reading: the recorder falls back to the app root
+          // rather than pinning replay to a route nobody may have picked.
+          currentUrlSource:
+            currentUrl === null ? "none" : (event.source ?? "app"),
           preservedUrl: currentUrl,
           iframeEpoch:
             currentUrl === null ? state.iframeEpoch + 1 : state.iframeEpoch,
@@ -109,6 +117,13 @@ export function transition(
           preservedUrl: event.url,
         });
       }
+      // `replaceState` and a whole-document navigation both land here: neither
+      // adds a history entry, they replace what is in the current slot.
+      //
+      // The equality check is also what keeps a document load caused by Dyad's
+      // own navigation from being misread as the app's doing — that navigation
+      // already set `currentUrl` to this URL before the document loaded, so it
+      // is ignored rather than downgrading provenance to "app".
       if (event.url === state.currentUrl) {
         return ignore(state, "already-current-url");
       }

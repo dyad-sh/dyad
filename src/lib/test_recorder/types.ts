@@ -120,16 +120,36 @@ export const RecordedActionSchema = z.discriminatedUnion("kind", [
   // the preview address bar and routes dropdown for `navigate`, its back and
   // forward buttons for the other two. Routing the app does on its own is not
   // recorded — the step that triggered it already is.
-  z.object({ kind: z.literal("navigate"), path: NavigatePathSchema }),
+  z.object({
+    kind: z.literal("navigate"),
+    path: NavigatePathSchema,
+    /**
+     * This is the route the session opened on, not a step the user took during
+     * it. The recorder seeds one when recording starts somewhere other than the
+     * app root, so replay opens where the flow actually began.
+     *
+     * Codegen is the only reader, and it only decides whether to emit the
+     * leading `page.goto("/")` — so a previewed app forging the flag on its own
+     * `navigate` costs nothing beyond a spec that skips one navigation.
+     */
+    initial: z.literal(true).optional(),
+  }),
   z.object({ kind: z.literal("back") }),
   z.object({ kind: z.literal("forward") }),
 ]);
 export type RecordedAction = z.infer<typeof RecordedActionSchema>;
 
+/**
+ * One observation from the recorder client, before `collapseActions` folds the
+ * stream into the actions a spec replays.
+ *
+ * Deliberately just the action: click→dblclick merging is decided structurally
+ * (the gesture's own leading click is the immediately preceding entry), not by
+ * a time window, so there is no timestamp for anything to read. Adding one back
+ * would be state the recorder carries for nobody.
+ */
 export interface RecordedEntry {
   action: RecordedAction;
-  /** Epoch ms the action was observed; used to merge click→dblclick. */
-  at: number;
 }
 
 /** Validate an untrusted `dyad-recorder-action` payload; null when malformed. */

@@ -161,6 +161,9 @@ export function registerTemplateHandlers() {
         appId,
         operation: "apply-app-template",
         resources: ["app-path", "chat-content", "repository", "runtime"],
+        // Replaces the codebase and restarts the dev server the recording is
+        // capturing against, so refuse rather than queue behind the session.
+        refuseWhenRecording: "apply a template",
       },
       async () => {
         const appRecord = await db.query.apps.findFirst({

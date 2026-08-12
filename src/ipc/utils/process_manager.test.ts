@@ -5,11 +5,13 @@ const {
   stopCloudSandboxFileSyncMock,
   unregisterRunningCloudSandboxMock,
   killProcessTreeSyncMock,
+  endRecordingForAppMock,
 } = vi.hoisted(() => ({
   destroyCloudSandboxMock: vi.fn(),
   stopCloudSandboxFileSyncMock: vi.fn(),
   unregisterRunningCloudSandboxMock: vi.fn(),
   killProcessTreeSyncMock: vi.fn(),
+  endRecordingForAppMock: vi.fn(),
 }));
 
 vi.mock("./cloud_sandbox_provider", () => ({
@@ -22,8 +24,15 @@ vi.mock("./kill_process_tree_sync", () => ({
   killProcessTreeSync: killProcessTreeSyncMock,
 }));
 
+vi.mock("../services/recording_registry", () => ({
+  endRecordingForApp: endRecordingForAppMock,
+}));
+
+import type { ChildProcess } from "node:child_process";
+
 import {
   getRunningAppProcessPids,
+  removeAppIfCurrentProcess,
   runningApps,
   stopAppByInfo,
   stopAllAppsSync,
@@ -98,6 +107,70 @@ describe("stopAppByInfo", () => {
       appId: 1,
     });
     expect(runningApps.has(1)).toBe(false);
+  });
+});
+
+describe("removeAppIfCurrentProcess", () => {
+  beforeEach(() => {
+    runningApps.clear();
+    vi.clearAllMocks();
+    endRecordingForAppMock.mockResolvedValue({ envRestored: true });
+  });
+
+  const hostApp = (process: ChildProcess): RunningAppInfo => ({
+    process,
+    processId: 1,
+    mode: "host",
+    lastViewedAt: Date.now(),
+  });
+
+  it("ends the recording when the dev server exits on its own", () => {
+    const process = { pid: 111 } as ChildProcess;
+    runningApps.set(1, hostApp(process));
+
+    removeAppIfCurrentProcess(1, process);
+
+    expect(runningApps.has(1)).toBe(false);
+    expect(endRecordingForAppMock).toHaveBeenCalledWith(1, "app-stopped", {
+      skipRestart: true,
+    });
+  });
+
+  // Isolation setup restarts the app it is preparing to record. `stopAppByInfo`
+  // only removes the map entry after the kill resolves, and this callback runs
+  // first — so without the marker the session cancels itself during setup.
+  it("leaves the recording alone for a recording-owned restart", () => {
+    const process = { pid: 111 } as ChildProcess;
+    const appInfo = hostApp(process);
+    appInfo.recordingOwnedRestart = true;
+    runningApps.set(1, appInfo);
+
+    removeAppIfCurrentProcess(1, process);
+
+    expect(runningApps.has(1)).toBe(false);
+    expect(endRecordingForAppMock).not.toHaveBeenCalled();
+  });
+
+  it("marks the entry before the kill so the close callback can see it", async () => {
+    const listeners: Array<(code: number | null) => void> = [];
+    const process = {
+      pid: 111,
+      on: (event: string, listener: (code: number | null) => void) => {
+        if (event === "close") listeners.push(listener);
+      },
+    } as unknown as ChildProcess;
+    const appInfo = hostApp(process);
+    runningApps.set(1, appInfo);
+
+    const stopped = stopAppByInfo(1, appInfo, { recordingOwnedRestart: true });
+    // Stand in for the real child's exit: the listener fires while the entry is
+    // still current, which is exactly when the marker has to already be set.
+    expect(runningApps.get(1)?.recordingOwnedRestart).toBe(true);
+    removeAppIfCurrentProcess(1, process);
+    for (const listener of listeners) listener(null);
+    await stopped;
+
+    expect(endRecordingForAppMock).not.toHaveBeenCalled();
   });
 });
 

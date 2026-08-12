@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import type { RemoveFileAndCommitResult } from "../services/git_service";
 import { apps } from "@/db/schema";
+import { appOperationCoordinator } from "../services/app_operation_coordinator";
+import { activeRecordings } from "../services/recording_registry";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -106,6 +108,7 @@ describe("tests handlers", () => {
   let harness: HandlerTestHarness;
 
   beforeEach(() => {
+    activeRecordings.clear();
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     removeFileAndCommitMock.mockClear();
@@ -136,6 +139,44 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it("refuses atomically when a recording starts at coordinator admission", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const originalRun = appOperationCoordinator.run.bind(
+        appOperationCoordinator,
+      );
+      const runSpy = vi
+        .spyOn(appOperationCoordinator, "run")
+        .mockImplementation((request, operation) => {
+          if (request.operation === "run-app-tests") {
+            activeRecordings.set(appId, {
+              appId,
+              stop: () => {},
+              done: Promise.resolve({ envRestored: true }),
+            });
+          }
+          return originalRun(request, operation);
+        });
+
+      try {
+        await expect(
+          runAppTestsWithIsolation({
+            event: { sender: {} } as any,
+            appId,
+            source: "panel",
+          }),
+        ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+        expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
+      } finally {
+        runSpy.mockRestore();
+        activeRecordings.delete(appId);
+      }
+    });
+
     it("reports an unrestored test-run environment", async () => {
       const appId = seedApp("app");
       harness.db

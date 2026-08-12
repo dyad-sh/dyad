@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { activeRecordings } from "./recording_registry";
 import {
   getGithubOperationResources,
   GithubOpsService,
 } from "./github_ops_service";
 
 const handlers = vi.hoisted(() => ({
+  disconnect: vi.fn<() => Promise<void>>(),
   push: vi.fn<() => Promise<void>>(),
 }));
 
@@ -15,7 +17,7 @@ vi.mock("../handlers/github_handlers", () => ({
   handleConnectToExistingRepo: vi.fn(),
   handleContinueRebase: vi.fn(),
   handleCreateRepo: vi.fn(),
-  handleDisconnectGithubRepo: vi.fn(),
+  handleDisconnectGithubRepo: handlers.disconnect,
   handleGetGitState: vi.fn(),
   handleGetMergeConflicts: vi.fn(),
   handleRebaseFromGithub: vi.fn(),
@@ -34,6 +36,8 @@ vi.mock("../handlers/git_branch_handlers", () => ({
 
 describe("GithubOpsService lifecycle", () => {
   beforeEach(() => {
+    activeRecordings.clear();
+    handlers.disconnect.mockReset();
     handlers.push.mockReset();
   });
 
@@ -67,6 +71,26 @@ describe("GithubOpsService lifecycle", () => {
     expect(handlers.push).not.toHaveBeenCalled();
 
     service.endAppDeletion(7);
+  });
+
+  it("refuses repository operations during recording but allows metadata-only disconnect", async () => {
+    const service = new GithubOpsService();
+    activeRecordings.set(7, {
+      appId: 7,
+      stop: () => {},
+      done: Promise.resolve({ envRestored: true }),
+    });
+    handlers.disconnect.mockResolvedValue();
+
+    await expect(
+      service.run(7, { type: "push", mode: "normal" }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    await expect(
+      service.run(7, { type: "disconnect" }),
+    ).resolves.toBeUndefined();
+
+    expect(handlers.push).not.toHaveBeenCalled();
+    expect(handlers.disconnect).toHaveBeenCalledOnce();
   });
 
   it("rejects every app while a full reset is fenced", async () => {

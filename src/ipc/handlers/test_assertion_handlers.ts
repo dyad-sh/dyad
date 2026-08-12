@@ -72,7 +72,6 @@ import {
   appOperationCoordinator,
   readAppResource,
 } from "../services/app_operation_coordinator";
-import { assertNoActiveRecording } from "../services/recording_registry";
 
 /**
  * Writing a recorded test to disk. Approving the assertion card is the only way
@@ -1144,17 +1143,6 @@ export function registerTestAssertionHandlers() {
 
         assertStepsMatch(items, stored.items);
 
-        // Everything below takes app-path, test-files and repository through the
-        // coordinator, and a recording session holds all three as write claims
-        // for its whole lifetime — read-vs-write conflicts too, so approving
-        // during one queues with no timeout and the card sits on "Generating…"
-        // for up to the 30-minute session cap with nothing saying why. Refused
-        // here for the same reason duplicate/undo/restore refuse: the recording
-        // is what the user is doing, so only they can decide to end it. Checked
-        // after the idempotency latches above so a card that was already
-        // approved still returns its answer instead of failing.
-        assertNoActiveRecording(appId, "generate this test");
-
         // One recording can have more than one card: "Ask again" proposes the
         // same draft afresh, and each card carries its own copy of it — which is
         // what makes approving survive a restart, and also what leaves nothing
@@ -1167,6 +1155,11 @@ export function registerTestAssertionHandlers() {
               readAppResource("app-path"),
               readAppResource("test-files"),
             ],
+            // Keep this first conflicting admission after the idempotency
+            // latches above: an already-approved card still answers, while a
+            // new approval refuses atomically instead of queueing behind a
+            // recording that started during the preceding database work.
+            refuseWhenRecording: "generate this test",
           },
           async () => {
             const appPath = await getAppPath(appId);
@@ -1286,10 +1279,9 @@ export function registerTestAssertionHandlers() {
                 "repository",
                 "test-files",
               ],
-              // The preflight above has to run after the idempotency latches,
-              // so a recording can start between it and this admission. This
-              // one can't be raced — and it guards the write, which is the step
-              // that would otherwise sit on "Generating…" for half an hour.
+              // The earlier read admission refuses atomically, but releases
+              // before assertion synthesis. A recording can start during that
+              // model call, so the write needs its own atomic refusal too.
               refuseWhenRecording: "generate this test",
             },
             async () =>

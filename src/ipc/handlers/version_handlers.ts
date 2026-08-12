@@ -69,10 +69,7 @@ import {
 } from "@/ipc/services/chat_actor_service";
 import type { RestoreRecovery } from "@/version_preview/state";
 import { readStoredReferencedAppIds } from "../utils/mention_apps";
-import {
-  assertNoActiveRecording,
-  blockRecordingStart,
-} from "../services/recording_registry";
+import { blockRecordingStart } from "../services/recording_registry";
 
 const logger = log.scope("version_handlers");
 
@@ -1060,13 +1057,6 @@ export function registerVersionHandlers() {
       targetBranchName,
     } = params;
 
-    // Before phase 1, which already takes a repository claim the recording holds
-    // for its whole session: the coordinator would queue this restore behind it
-    // with no timeout, leaving a spinner that can outlast the user's patience by
-    // half an hour. Refusing is also the right answer on its own terms — the
-    // recording is capturing the very tree this would rewrite.
-    assertNoActiveRecording(appId, "restore this version");
-
     // Phase 1: validate the request and resolve the restore target under the
     // app lock WITHOUT cancelling any streams. Chat/message deletion endpoints
     // take this same lock, so the snapshot we validate against stays
@@ -1081,6 +1071,10 @@ export function registerVersionHandlers() {
           readAppResource("chat-content"),
           readAppResource("repository"),
         ],
+        // Phase 1 already conflicts with the recording's repository claim.
+        // Refuse as part of admission so an active or reserving session cannot
+        // leave Restore spinning behind its whole-lifetime claim.
+        refuseWhenRecording: "restore this version",
       },
       async () => {
         const app = await db.query.apps.findFirst({
@@ -1222,12 +1216,12 @@ export function registerVersionHandlers() {
     // promise). Leaking the block would permanently stall new streams for the
     // app/chat until the process restarts.
     try {
-      // Taken BEFORE phase 2 cancels anything. The preflight above refuses a
-      // recording that already exists, but phase 1 and the cancellation below
-      // deliberately hold no lock — a recording starting in that window used to
-      // be caught only after the user's in-flight generations were already
-      // gone, so they lost the generation and got the refusal. Holding the app
-      // first means the refusal costs nothing.
+      // Taken BEFORE phase 2 cancels anything. Phase 1's atomic admission
+      // refuses a recording that already exists, but it releases before this
+      // cancellation window. A recording starting there used to be caught only
+      // after the user's in-flight generations were already gone, so they lost
+      // the generation and got the refusal. Holding the app first means the
+      // refusal costs nothing.
       releaseRecordingBlock =
         blockRecordingStart(appId, "restore a version") ?? undefined;
       if (!releaseRecordingBlock) {
@@ -1624,6 +1618,7 @@ export function registerVersionHandlers() {
           "repository",
           "runtime-config",
         ],
+        refuseWhenRecording: "check out this version",
       },
       async () => {
         let warningMessage = "";

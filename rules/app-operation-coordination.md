@@ -55,6 +55,12 @@ own the app going away) or refuse when the session is the thing the user is
 doing. Adding a resource to a long-lived operation means auditing every other
 handler that declares it.
 
+For cross-app operations, apply recording refusal per app according to that
+app's claims, not to the whole operation indiscriminately. For example, moving
+media claims `media` on both apps but `repository` only on the target (where it
+may update `.gitignore`), so a recording target must refuse while a recording
+source can still move the media out.
+
 Refuse by passing `refuseWhenRecording: "<action>"` on the coordinator request,
 not by calling `assertNoActiveRecording` beforehand. `run()` checks it in the
 same synchronous step as the enqueue, so no session can start in between; a

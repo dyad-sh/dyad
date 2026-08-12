@@ -133,6 +133,7 @@ describe("registerTestAssertionHandlers", () => {
   });
 
   afterEach(() => {
+    activeRecordings.clear();
     harness.dispose();
     appRoots.clear();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -648,6 +649,43 @@ describe("registerTestAssertionHandlers", () => {
         }>("tests:apply-assertions", { appId, chatId, proposalId, items });
         expect(second.warning).toMatch(/already generated/i);
       } finally {
+        activeRecordings.delete(appId);
+      }
+    });
+
+    it("refuses atomically when recording starts at the first file admission", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+      const originalRun = appOperationCoordinator.run.bind(
+        appOperationCoordinator,
+      );
+      const runSpy = vi
+        .spyOn(appOperationCoordinator, "run")
+        .mockImplementation((request, operation) => {
+          if (request.operation === "find-recorded-test") {
+            activeRecordings.set(appId, {
+              appId,
+              stop: () => {},
+              done: Promise.resolve({ envRestored: true }),
+            });
+          }
+          return originalRun(request, operation);
+        });
+
+      try {
+        await expect(
+          harness.invokeHandler("tests:apply-assertions", {
+            appId,
+            chatId,
+            proposalId,
+            items,
+          }),
+        ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+        expect(mockStreamText).not.toHaveBeenCalled();
+        expect(specExists(SPEC_PATH)).toBe(false);
+      } finally {
+        runSpy.mockRestore();
         activeRecordings.delete(appId);
       }
     });

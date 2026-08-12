@@ -695,6 +695,11 @@ export async function runAppTestsWithIsolation({
         appId,
         operation: "run-app-tests",
         resources: testRunResources,
+        // The preflight above avoids registering/cancelling test controllers
+        // when a recording already exists, but a session can start during any
+        // of the awaits before admission. Refuse atomically here as well so the
+        // run never queues behind that session's whole-lifetime claims.
+        refuseWhenRecording: "run tests",
       },
       async () => {
         let prepared: PreparedIsolation | undefined;

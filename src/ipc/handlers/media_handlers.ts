@@ -83,6 +83,7 @@ async function withMediaLock<T>(
       return fn();
     }
 
+    const claimsRepository = repositoryIds.has(uniqueSortedIds[index]);
     return appOperationCoordinator.run(
       {
         appId: uniqueSortedIds[index],
@@ -90,10 +91,14 @@ async function withMediaLock<T>(
         resources: [
           readAppResource("app-path"),
           "media",
-          ...(repositoryIds.has(uniqueSortedIds[index])
-            ? (["repository"] as const)
-            : []),
+          ...(claimsRepository ? (["repository"] as const) : []),
         ],
+        // Moving into an app may update that target's .gitignore. A recording
+        // owns its repository for the whole session, so refuse at the target's
+        // admission instead of queueing the cross-app move indefinitely.
+        refuseWhenRecording: claimsRepository
+          ? "move an image into this app"
+          : undefined,
       },
       () => runWithLock(index + 1),
     );

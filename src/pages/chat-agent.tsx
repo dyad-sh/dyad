@@ -725,6 +725,11 @@ export default function ChatAgentPage() {
     // Reading a document happens before the model is called and can take a
     // while, so this turn is pinned to the tab it was sent from.
     const target = sessionId;
+    // The project this conversation belongs to, not whichever is active now.
+    // A chat started in a project keeps it; one started outside every project
+    // stays outside, which is what makes the project sit above the chat.
+    const conversationProjectId =
+      openTabs.find((tab) => tab.id === target)?.projectId ?? null;
     // Captured before the composer is cleared, so the sent bubble can show
     // which files went with it.
     const sentAttachments = describeAttachments(attachments);
@@ -841,6 +846,7 @@ export default function ChatAgentPage() {
         // allow-list, so an empty array means the agent gets no database
         // tools at all rather than access to everything.
         dataSourceIds: dataSourceIds.length > 0 ? dataSourceIds : undefined,
+        projectId: conversationProjectId,
         conversationHistory: messages.map(({ role, content }) => ({
           role,
           content,

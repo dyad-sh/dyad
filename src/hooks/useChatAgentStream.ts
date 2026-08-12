@@ -251,6 +251,10 @@ export function useChatAgentStream(
               : message.vectorCollectionIds,
           dataSourceIds:
             typeof message === "string" ? undefined : message.dataSourceIds,
+          // The conversation's project, so its instructions and reference
+          // files travel with it rather than with whatever is active now.
+          projectId:
+            typeof message === "string" ? undefined : message.projectId,
         },
         {
           onAssistantFlush: callbacks.onAssistantFlush,

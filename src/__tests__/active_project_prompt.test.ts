@@ -44,13 +44,40 @@ describe("active project prompt", () => {
     expect(await activeProjectPrompt()).toBe("");
   });
 
-  it("is empty when the project has no instructions", async () => {
+  it("is empty when the project has nothing in it", async () => {
     settings.activeProjectId = "p1";
     rows.push({ id: "p1", name: "Client work", instructions: null });
     expect(await activeProjectPrompt()).toBe("");
 
     rows[0].instructions = "   \n  ";
     expect(await activeProjectPrompt()).toBe("");
+  });
+
+  it("uses the conversation's project rather than the active one", async () => {
+    // The whole point of a project sitting above a conversation: a chat
+    // started inside one keeps its instructions after the user moves on.
+    settings.activeProjectId = "other";
+    rows.push({
+      id: "p1",
+      name: "Client work",
+      instructions: "British spelling.",
+    });
+
+    expect(await activeProjectPrompt("p1")).toContain("Client work");
+  });
+
+  it("treats an explicit null as no project at all", async () => {
+    // A conversation started outside every project stays outside, even while
+    // one is active. Undefined means "no conversation", which falls back.
+    settings.activeProjectId = "p1";
+    rows.push({
+      id: "p1",
+      name: "Client work",
+      instructions: "British spelling.",
+    });
+
+    expect(await activeProjectPrompt(null)).toBe("");
+    expect(await activeProjectPrompt()).toContain("Client work");
   });
 
   it("labels the instructions as the user's rather than the app's", async () => {

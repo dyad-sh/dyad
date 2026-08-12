@@ -560,7 +560,7 @@ function runChatAgentStream(
       // Standing instructions from the active project, if there is one. Read
       // fresh per turn so an edit applies to the next message rather than the
       // next restart.
-      const projectPrompt = await activeProjectPrompt();
+      const projectPrompt = await activeProjectPrompt(params.projectId);
 
       const systemPrompt = isLovableWebDev
         ? `${LOVABLE_WEB_DEV_SYSTEM_PROMPT}\n\n${deploymentToolsPrompt(settings)}`

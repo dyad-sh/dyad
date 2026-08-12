@@ -29,6 +29,15 @@ export const ChatAgentStartParamsSchema = z.object({
   vectorCollectionIds: z.array(z.string()).max(20).optional(),
   /** Data sources the user ticked; the agent may reach no others. */
   dataSourceIds: z.array(z.string()).max(20).optional(),
+  /**
+   * The project this conversation belongs to.
+   *
+   * Sent per turn rather than read from settings, because a project sits above
+   * the conversation: a chat started inside one keeps its instructions even
+   * after the user moves to another project, and a chat started outside every
+   * project stays outside.
+   */
+  projectId: z.string().nullable().optional(),
   /** When true, re-run the last user turn (drops the latest assistant reply). */
   regenerate: z.boolean().optional(),
 });

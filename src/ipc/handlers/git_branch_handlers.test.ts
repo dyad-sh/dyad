@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { IpcMainInvokeEvent } from "electron";
 
+const registeredHandlers = vi.hoisted(
+  () => [] as Array<(event: any, input: any) => Promise<unknown>>,
+);
+
 vi.mock("@/ipc/utils/git_utils", () => ({
   gitListBranches: vi.fn(),
   gitListRemoteBranches: vi.fn(),
@@ -64,7 +68,14 @@ vi.mock("@/ipc/handlers/github_handlers", () => ({
 }));
 
 vi.mock("@/ipc/handlers/base", () => ({
-  createTypedHandler: vi.fn(),
+  createTypedHandler: vi.fn(
+    (
+      _contract: unknown,
+      handler: (event: any, input: any) => Promise<unknown>,
+    ) => {
+      registeredHandlers.push(handler);
+    },
+  ),
 }));
 
 vi.mock("@/ipc/types/github", () => ({
@@ -76,7 +87,10 @@ vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
 }));
 
-import { handleDeleteBranch } from "@/ipc/handlers/git_branch_handlers";
+import {
+  handleDeleteBranch,
+  registerGithubBranchHandlers,
+} from "@/ipc/handlers/git_branch_handlers";
 import {
   gitListBranches,
   gitListRemoteBranches,
@@ -84,6 +98,7 @@ import {
 } from "@/ipc/utils/git_utils";
 import { db } from "@/db";
 import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
+import { reserveRecordingStart } from "@/ipc/services/recording_registry";
 
 const mockEvent = {} as IpcMainInvokeEvent;
 
@@ -140,6 +155,33 @@ describe("whole-operation app mutation locks", () => {
       "push:1:end",
       "switch:1",
     ]);
+  });
+});
+
+describe("recording admission", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registeredHandlers.length = 0;
+    registerGithubBranchHandlers();
+  });
+
+  it("refuses commit and discard while a recording owns the app", async () => {
+    const commit = registeredHandlers.at(-2)!;
+    const discard = registeredHandlers.at(-1)!;
+    const reservation = reserveRecordingStart(1);
+    expect(reservation).not.toBeNull();
+
+    try {
+      await expect(
+        commit(mockEvent, { appId: 1, message: "Save work" }),
+      ).rejects.toThrow("before you commit");
+      await expect(discard(mockEvent, { appId: 1 })).rejects.toThrow(
+        "before you discard changes",
+      );
+      expect(db.query.apps.findFirst).not.toHaveBeenCalled();
+    } finally {
+      reservation?.release();
+    }
   });
 });
 

@@ -390,6 +390,7 @@ async function withAppGitOp<T>(
       appId,
       operation: `git:${operation}`,
       resources: [readAppResource("app-path"), "repository"],
+      refuseWhenRecording: operation,
     },
     async () => {
       const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });

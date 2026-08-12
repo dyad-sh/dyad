@@ -6,6 +6,31 @@
   let previousUrl = window.location.href;
   const PARENT_TARGET_ORIGIN = "*";
 
+  /**
+   * Whether this load landed in the current history slot instead of adding one.
+   * A plain link or a `<form>` submit pushes an entry, so the parent's history
+   * has to grow with it or its Back button — and the `page.goBack()` a
+   * recording replays with — skips the page the user came from. A server
+   * redirect, a reload and a back/forward traversal all reuse the slot.
+   *
+   * A same-document `location.replace()` by the app is indistinguishable from a
+   * link here and reads as a push; the parent's equality check still covers the
+   * one case that matters, Dyad's own `location.replace` navigation.
+   */
+  function loadReplacedHistoryEntry() {
+    try {
+      const [navigation] = performance.getEntriesByType("navigation");
+      if (!navigation) return false;
+      return (
+        navigation.redirectCount > 0 ||
+        navigation.type === "reload" ||
+        navigation.type === "back_forward"
+      );
+    } catch {
+      return false;
+    }
+  }
+
   // A whole-document navigation — a plain link, a `<form>` submit, a server
   // redirect — never passes through the history overrides below, so without
   // this the parent keeps showing whatever route it last selected itself. That
@@ -15,7 +40,10 @@
   window.parent.postMessage(
     {
       type: "dyad-document-loaded",
-      payload: { newUrl: window.location.href },
+      payload: {
+        newUrl: window.location.href,
+        replacesEntry: loadReplacedHistoryEntry(),
+      },
     },
     PARENT_TARGET_ORIGIN,
   );

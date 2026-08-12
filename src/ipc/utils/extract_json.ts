@@ -7,7 +7,7 @@
  * parses wins" true for any response whose candidates are mostly short — which
  * is every real one — instead of abandoning the search at a fixed candidate.
  */
-const SCAN_BUDGET_FACTOR = 8;
+export const SCAN_BUDGET_FACTOR = 8;
 
 /**
  * Slice a JSON object out of a model response.
@@ -69,8 +69,11 @@ export function extractJsonWithScan(text: string): ExtractJsonScan {
     // object is `{}` or `{"…`, so this rejects prose like `{foo}` on one
     // character.
     if (text[i] !== "{" || !opensJsonObject(text, i)) continue;
-    const candidate = balancedObjectAt(text, i);
-    const cost = candidate ? candidate.length : text.length - i;
+    // Bounded by what is left rather than charged after the fact: a candidate
+    // scanned in full first could run a whole extra pass over the text past an
+    // almost-exhausted budget, which is the one case the factor is there to
+    // rule out.
+    const { candidate, cost } = balancedObjectAt(text, i, budget);
     candidateScans++;
     scannedChars += cost;
     budget -= cost;
@@ -104,13 +107,22 @@ function isParseable(candidate: string): boolean {
 
 /**
  * The `{...}` span opening at `start`, honoring string literals so a `}` inside
- * a value doesn't close the object early. Null when it never closes.
+ * a value doesn't close the object early. Null when it never closes within
+ * `limit` characters — an unclosed span and one whose close lies past the
+ * remaining budget are the same answer to the caller, which stops either way.
+ *
+ * Returns the characters actually read, so the caller charges what it spent.
  */
-function balancedObjectAt(text: string, start: number): string | null {
+function balancedObjectAt(
+  text: string,
+  start: number,
+  limit: number,
+): { candidate: string | null; cost: number } {
   let depth = 0;
   let inString = false;
+  const end = Math.min(text.length, start + Math.max(limit, 0));
 
-  for (let i = start; i < text.length; i++) {
+  for (let i = start; i < end; i++) {
     const ch = text[i];
     if (inString) {
       if (ch === "\\") i++;
@@ -121,8 +133,10 @@ function balancedObjectAt(text: string, start: number): string | null {
     else if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (depth === 0) return text.slice(start, i + 1);
+      if (depth === 0) {
+        return { candidate: text.slice(start, i + 1), cost: i + 1 - start };
+      }
     }
   }
-  return null;
+  return { candidate: null, cost: end - start };
 }

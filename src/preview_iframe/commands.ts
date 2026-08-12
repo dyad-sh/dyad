@@ -153,11 +153,23 @@ export function routePreviewIframeMessage(input: {
         const trustedAppUrl = new URL(appUrl);
         const url = new URL(rawUrl, trustedAppUrl);
         if (url.origin !== trustedAppUrl.origin) return;
-        send({
-          type: "NAVIGATED_IN_APP",
-          kind: type === "dyad-document-loaded" ? "documentLoad" : type,
-          url: url.href,
-        });
+        // A `blob:` URL inherits the app's origin, so the check above lets it
+        // through — but it is not a route the preview can navigate to, nor one
+        // a recording could replay.
+        if (url.protocol !== "http:" && url.protocol !== "https:") return;
+        send(
+          type === "dyad-document-loaded"
+            ? {
+                type: "NAVIGATED_IN_APP",
+                kind: "documentLoad",
+                url: url.href,
+                // Only the shim knows whether the browser grew its history for
+                // this load; absent (an older shim still in the page) keeps the
+                // previous reading, which never invents an entry.
+                replacesEntry: event.data?.payload?.replacesEntry !== false,
+              }
+            : { type: "NAVIGATED_IN_APP", kind: type, url: url.href },
+        );
       } catch {
         return;
       }

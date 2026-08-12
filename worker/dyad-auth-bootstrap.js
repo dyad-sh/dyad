@@ -208,7 +208,68 @@
     }
   }
 
-  async function verifyPending(pending) {
+  /**
+   * Pull the access token back out of supabase-js's storage slot. The value can
+   * be the raw session JSON this script seeds, or the `base64-` encoding newer
+   * supabase-js rewrites it to once the app's own client has read it — either
+   * shape means the app owns a session, so accept both.
+   */
+  function readStoredAccessToken(raw) {
+    if (typeof raw !== "string" || !raw) return null;
+    let text = raw;
+    if (text.slice(0, 7) === "base64-") {
+      try {
+        const encoded = text.slice(7).replace(/-/g, "+").replace(/_/g, "/");
+        const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+        const binary = atob(padded);
+        text = new TextDecoder().decode(
+          Uint8Array.from(binary, (char) => char.charCodeAt(0)),
+        );
+      } catch {
+        return null;
+      }
+    }
+    try {
+      const parsed = JSON.parse(text);
+      const session =
+        parsed && parsed.currentSession ? parsed.currentSession : parsed;
+      const token = session && session.access_token;
+      return typeof token === "string" && token ? token : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Ask Supabase whether the seeded session is real, rather than re-reading the
+   * value this script wrote a moment ago — localStorage survives the reload, so
+   * the write alone proves nothing about whether the app's supabase-js accepted
+   * it. A `false` here is what routes the recording into the existing
+   * "recording without authentication" warning instead of a silently signed-out
+   * session that the generated spec's `signIn` fixture claims is signed in.
+   */
+  async function hasSupabaseSession(pending, auth) {
+    const ref = pending.ref;
+    const projectUrl = auth && auth.projectUrl;
+    const anonKey = auth && auth.anonKey;
+    if (!ref || !projectUrl || !anonKey) return false;
+    const accessToken = readStoredAccessToken(
+      localStorage.getItem(`sb-${ref}-auth-token`),
+    );
+    if (!accessToken) return false;
+    const base = projectUrl.replace(/\/+$/, "");
+    const response = await fetch(`${base}/auth/v1/user`, {
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!response.ok) return false;
+    const data = await response.json().catch(() => null);
+    return !!(data && data.id);
+  }
+
+  async function verifyPending(pending, auth) {
     try {
       if (pending.mode === "neon-better-auth") {
         const response = await fetch("/api/auth/get-session", {
@@ -229,10 +290,7 @@
         return;
       }
       if (pending.mode === "supabase-password") {
-        const ok = !!(
-          pending.ref && localStorage.getItem(`sb-${pending.ref}-auth-token`)
-        );
-        if (!ok) {
+        if (!(await hasSupabaseSession(pending, auth))) {
           failPending("no session after sign-in");
           return;
         }
@@ -257,7 +315,7 @@
     pendingOnLoad = null;
     activeNonce = nonce;
     if (pending && nonce && pending.nonce === nonce) {
-      verifyPending(pending);
+      verifyPending(pending, auth);
       return;
     }
     if (pending) clearPending();

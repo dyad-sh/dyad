@@ -12,14 +12,19 @@ import {
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
 
-const { mockStreamText, mockGitAdd, mockGitResetFile, appRoots } = vi.hoisted(
-  () => ({
-    mockStreamText: vi.fn(),
-    mockGitAdd: vi.fn(async () => {}),
-    mockGitResetFile: vi.fn(async () => {}),
-    appRoots: new Map<string, string>(),
-  }),
-);
+const {
+  mockStreamText,
+  mockGitAdd,
+  mockGitResetFile,
+  appRoots,
+  broadcastToAllWindowsMock,
+} = vi.hoisted(() => ({
+  mockStreamText: vi.fn(),
+  mockGitAdd: vi.fn(async () => {}),
+  mockGitResetFile: vi.fn(async () => {}),
+  appRoots: new Map<string, string>(),
+  broadcastToAllWindowsMock: vi.fn(),
+}));
 
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
@@ -57,6 +62,10 @@ vi.mock("../utils/git_utils", () => ({
   gitResetFile: mockGitResetFile,
 }));
 
+vi.mock("../utils/window_broadcast", () => ({
+  broadcastToAllWindows: broadcastToAllWindowsMock,
+}));
+
 vi.mock("../../paths/paths", () => ({
   getDyadAppPath: (appPath: string) => appRoots.get(appPath) ?? appPath,
 }));
@@ -70,6 +79,7 @@ import {
 import {
   ASSERTION_PROPOSAL_VERSION,
   buildPlanItems,
+  countAssertions,
   type AssertionPlanItem,
 } from "@/lib/test_recorder/assertion_proposal";
 import {
@@ -119,6 +129,7 @@ describe("registerTestAssertionHandlers", () => {
     registerTestAssertionHandlers();
     mockStreamText.mockReset();
     mockGitAdd.mockClear();
+    broadcastToAllWindowsMock.mockClear();
   });
 
   afterEach(() => {
@@ -238,6 +249,23 @@ describe("registerTestAssertionHandlers", () => {
   }
 
   /** Approve a card the way the renderer does: with its own stored plan. */
+  /**
+   * Fail the approval latch, and only it. The handler checkpoints the plan it
+   * is about to write first, so the latch is the SECOND `db.update` an approval
+   * makes — failing the first would break before the spec is written and never
+   * reach the rollback these tests are about.
+   */
+  function failApprovalLatch(onLatch?: () => void) {
+    const realUpdate = harness.db.update.bind(harness.db);
+    return vi
+      .spyOn(harness.db, "update")
+      .mockImplementationOnce(realUpdate)
+      .mockImplementationOnce(() => {
+        onLatch?.();
+        throw new Error("couldn't latch the approval");
+      });
+  }
+
   function approve(appId: number, chatId: number, proposalId = "proposal-1") {
     const row = storedMessageFor(proposalId);
     return harness.invokeHandler<{
@@ -826,11 +854,7 @@ describe("registerTestAssertionHandlers", () => {
       setRecordedTestDraft(appId, DRAFT);
       // Latching the approval is what fails here: the spec was written, so the
       // rollback has to undo the write AND everything the write consumed.
-      const updateSpy = vi
-        .spyOn(harness.db, "update")
-        .mockImplementationOnce(() => {
-          throw new Error("couldn't latch the approval");
-        });
+      const updateSpy = failApprovalLatch();
 
       try {
         await expect(approve(appId, chatId)).rejects.toThrow(/couldn't latch/);
@@ -849,14 +873,11 @@ describe("registerTestAssertionHandlers", () => {
       propose(appId, chatId);
       setRecordedTestDraft(appId, DRAFT);
       const newer: RecordedTestDraft = { ...DRAFT, draftId: "draft-newer" };
-      const updateSpy = vi
-        .spyOn(harness.db, "update")
-        .mockImplementationOnce(() => {
-          // Recorded while the approval was in flight — the bar is offering this
-          // one now, and the rollback must not displace it.
-          setRecordedTestDraft(appId, newer);
-          throw new Error("couldn't latch the approval");
-        });
+      const updateSpy = failApprovalLatch(() => {
+        // Recorded while the approval was in flight — the bar is offering this
+        // one now, and the rollback must not displace it.
+        setRecordedTestDraft(appId, newer);
+      });
 
       try {
         await expect(approve(appId, chatId)).rejects.toThrow(/couldn't latch/);
@@ -899,11 +920,7 @@ describe("registerTestAssertionHandlers", () => {
         proposalId: "proposal-1",
       });
 
-      const updateSpy = vi
-        .spyOn(harness.db, "update")
-        .mockImplementationOnce(() => {
-          throw new Error("couldn't latch");
-        });
+      const updateSpy = failApprovalLatch();
       try {
         await expect(approve(appId, chatId, proposalId)).rejects.toThrow(
           /couldn't latch/,
@@ -929,6 +946,67 @@ describe("registerTestAssertionHandlers", () => {
       expect(retried.specPath).toBe(SPEC_PATH);
       expect(retried.warning ?? "").not.toMatch(/already saved/i);
       expect(retried.appliedCount).toBeGreaterThan(0);
+      // Nothing else tells the recorder bar its draft is now a file, and this
+      // is the path reached with a bar still up from the attempt that died.
+      expect(broadcastToAllWindowsMock).toHaveBeenCalledWith(
+        "recording:draft-consumed",
+        expect.objectContaining({
+          appId,
+          draftId: DRAFT.draftId,
+          specPath: SPEC_PATH,
+        }),
+      );
+    });
+
+    // The plan that reaches the file is the one the user submitted, not the one
+    // the model proposed. Recovering from the proposal would latch assertions
+    // the user removed as checks the spec on disk does not contain.
+    it("recovers the plan it wrote, not the one first proposed", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId, {
+        proposalId: "proposal-1",
+      });
+      const proposed = planFromMessage(storedMessageFor(proposalId).content);
+      const dropped = proposed.find((item) => item.kind === "assertion")!;
+      // The user removed one assertion in the card before approving.
+      const submitted = proposed.filter((item) => item !== dropped);
+      expect(countAssertions(submitted)).toBe(countAssertions(proposed) - 1);
+
+      const submit = () =>
+        harness.invokeHandler<{ specPath: string; appliedCount: number }>(
+          "tests:apply-assertions",
+          { appId, chatId, proposalId, items: submitted },
+        );
+
+      const updateSpy = failApprovalLatch();
+      try {
+        await expect(submit()).rejects.toThrow(/couldn't latch/);
+      } finally {
+        updateSpy.mockRestore();
+      }
+
+      // Crash-shaped state: the spec on disk, nothing latched, no cache.
+      fs.mkdirSync(path.dirname(path.join(tmpDir, SPEC_PATH)), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(tmpDir, SPEC_PATH),
+        `// dyad-recording-draft-id: "draft-test" "${proposalId}"\n// body\n`,
+        "utf-8",
+      );
+      resetRecordedTestDrafts();
+
+      const retried = await submit();
+
+      expect(retried.appliedCount).toBe(countAssertions(submitted));
+      // And the latched card shows the same plan the file holds.
+      const latched = planFromMessage(storedMessageFor(proposalId).content);
+      expect(countAssertions(latched)).toBe(countAssertions(submitted));
+      expect(
+        latched.some(
+          (item) => item.kind === "assertion" && item.id === dropped.id,
+        ),
+      ).toBe(false);
     });
 
     it("rejects a chat that belongs to a different app", async () => {

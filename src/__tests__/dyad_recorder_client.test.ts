@@ -772,6 +772,29 @@ describe("dyad recorder client", () => {
     expect(r.actions.map((action: any) => action.kind)).toEqual(["press"]);
   });
 
+  // Only up and down step a number input. Left and right move the caret exactly
+  // as in a text field, so no `change` follows to stand in for the press.
+  it("still records horizontal arrows on a number input", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="qty">Quantity</label><input id="qty" type="number" value="1" />`,
+    );
+    r.activate();
+    const number = r.doc.querySelector('input[type="number"]');
+
+    r.keydown(number, { key: "ArrowLeft" });
+    r.keydown(number, { key: "ArrowRight" });
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual([
+      "press",
+      "press",
+    ]);
+    expect(r.actions.map((action: any) => action.key)).toEqual([
+      "ArrowLeft",
+      "ArrowRight",
+    ]);
+  });
+
   it("uses the accessible text from every native label", () => {
     const r = setup();
     r.setHtml(

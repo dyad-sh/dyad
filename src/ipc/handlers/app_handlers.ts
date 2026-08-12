@@ -663,7 +663,11 @@ async function deleteAppByIdExclusive(
           where: eq(apps.id, appId),
         });
         try {
-          const testUserDeleted = await deleteTempTestUser(app);
+          // `doomedRow` for the same reason it is re-read above: the test-user
+          // id can land on the row after the first read, and deleting from the
+          // stale row would orphan that user in the user's Supabase project
+          // with the row that reconciliation needs to find it already gone.
+          const testUserDeleted = await deleteTempTestUser(doomedRow ?? app);
           if (!testUserDeleted) {
             throw new DyadError(
               "Failed to delete the app's temporary Supabase test user. Please retry app deletion.",

@@ -965,11 +965,16 @@ export function useTestRecorder({
         // replays onto `about:blank` instead of the page they came from.
         const action =
           startPath && startPath !== "/"
-            ? parseRecorderAction({
-                kind: "navigate",
-                path: startPath,
-                initial: true,
-              })
+            ? parseRecorderAction(
+                {
+                  kind: "navigate",
+                  path: startPath,
+                  initial: true,
+                },
+                // The one caller allowed to claim `initial`: this route comes
+                // from the preview machine, not from the previewed app.
+                { trusted: true },
+              )
             : null;
         if (action) {
           appendEntry({ appId: targetAppId, entry: { action } });

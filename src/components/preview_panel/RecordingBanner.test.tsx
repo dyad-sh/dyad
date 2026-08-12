@@ -188,6 +188,23 @@ describe("RecordingBanner", () => {
     ).toBeNull();
   });
 
+  // The buffer cap and the unauthenticated fallback both arrive as `warning`,
+  // and this line is the only thing that puts either in front of the user — a
+  // truncated recording otherwise reviews as a complete-looking step list that
+  // quietly ends partway through what they did.
+  it("shows the recorder's warning alongside the review", () => {
+    renderBanner(
+      makeRecorder("reviewing", {
+        warning:
+          "This recording reached the 5,000-action limit — anything after that wasn't captured.",
+      }),
+    );
+
+    expect(screen.getByTestId("preview-recording-warning").textContent).toMatch(
+      /5,000-action limit/,
+    );
+  });
+
   it("offers a way out of a setup that is taking too long", () => {
     // `startRecording` resolves only once it holds the app's lock, so this phase
     // can wait indefinitely behind another app operation — with the preview

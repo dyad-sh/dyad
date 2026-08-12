@@ -11,6 +11,26 @@ describe("parseRecorderAction", () => {
     ).toEqual({ kind: "navigate", path: "/items?page=2" });
   });
 
+  // `initial` suppresses the spec's opening `page.goto("/")`, and that root
+  // entry is what a later `page.goBack()` replays onto. An app forging it on
+  // its own first action would land the generated test on `about:blank`.
+  it("strips `initial` from an app-sent navigation but keeps the renderer's", () => {
+    expect(
+      parseRecorderAction({
+        kind: "navigate",
+        path: "/items",
+        initial: true,
+      }),
+    ).toEqual({ kind: "navigate", path: "/items" });
+
+    expect(
+      parseRecorderAction(
+        { kind: "navigate", path: "/items", initial: true },
+        { trusted: true },
+      ),
+    ).toEqual({ kind: "navigate", path: "/items", initial: true });
+  });
+
   it("rejects a navigation that leaves the app", () => {
     // `page.goto("https://evil.example")` in a generated test would send the
     // user's own test run somewhere they never recorded.

@@ -103,7 +103,23 @@ export function transition(
     }
     case "NAVIGATED_IN_APP": {
       if (!event.url) return ignore(state, "empty-url");
-      if (event.kind === "pushState") {
+      // A document load caused by Dyad's own navigation must not be misread as
+      // the app's doing: that navigation already set `currentUrl` to this URL
+      // before the document loaded, so it is ignored rather than downgrading
+      // provenance to "app". `replaceState` shares the check for the same
+      // reason — it too can only restate the slot it is already in.
+      if (event.kind !== "pushState" && event.url === state.currentUrl) {
+        return ignore(state, "already-current-url");
+      }
+      // A plain link or `<form>` submit grows the browser's history exactly as
+      // `pushState` does, and the preview's history has to grow with it: its
+      // Back button, and the `page.goBack()` a recording replays with, would
+      // otherwise skip the page the user came from. Only `replaceState` and a
+      // load that reused its slot (a server redirect, a reload) stay put.
+      if (
+        event.kind === "pushState" ||
+        (event.kind === "documentLoad" && event.replacesEntry === false)
+      ) {
         const history = [
           ...state.history.slice(0, state.position + 1),
           event.url,
@@ -116,16 +132,6 @@ export function transition(
           currentUrlSource: "app",
           preservedUrl: event.url,
         });
-      }
-      // `replaceState` and a whole-document navigation both land here: neither
-      // adds a history entry, they replace what is in the current slot.
-      //
-      // The equality check is also what keeps a document load caused by Dyad's
-      // own navigation from being misread as the app's doing — that navigation
-      // already set `currentUrl` to this URL before the document loaded, so it
-      // is ignored rather than downgrading provenance to "app".
-      if (event.url === state.currentUrl) {
-        return ignore(state, "already-current-url");
       }
       const history = [...state.history];
       if (history.length === 0) {

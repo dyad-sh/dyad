@@ -1020,16 +1020,16 @@ export function TestsPanel() {
     const currentPreviewUrl =
       previewIframeState.history[previewIframeState.position] ??
       previewIframeState.currentUrl;
-    // Only a route the user picked through Dyad's chrome becomes the session's
-    // opening navigation. A route the app reached on its own — a redirect, a
-    // link followed before Record was pressed — is not a starting point the
-    // user chose, and recording it as one makes replay `goto` straight to the
-    // destination and skip the navigation that got there. Left undefined, the
-    // recording simply opens at the app's root like any other.
-    const startPath =
-      previewIframeState.currentUrlSource === "dyad"
-        ? sameOriginStartPath(currentPreviewUrl, appUrl.appUrl)
-        : undefined;
+    // Wherever the preview is now, however it got there. The unauthenticated
+    // start is a bare remount, so the session records on this route either way
+    // — and a spec that opened with the default `page.goto("/")` would replay
+    // every captured action against a page the user was never on. The route the
+    // app reached itself is no less where the recording begins than one picked
+    // from Dyad's chrome.
+    //
+    // Off-origin or unknown still means no hint: `sameOriginStartPath` returns
+    // undefined rather than handing back a path that only reads as app-relative.
+    const startPath = sameOriginStartPath(currentPreviewUrl, appUrl.appUrl);
     requestRecording({
       appId: selectedAppId,
       requestedAt: Date.now(),

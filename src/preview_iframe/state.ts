@@ -81,6 +81,14 @@ export type PreviewIframeEvent =
        * user never chose.
        */
       kind: "pushState" | "replaceState" | "documentLoad";
+      /**
+       * `documentLoad` only: whether the load reused the current history slot
+       * (a server redirect, a reload) rather than adding one (a plain link, a
+       * form submit). A link that lands in the current slot costs the preview
+       * the page the user came from — its Back button, and the `page.goBack()`
+       * a recording replays with, would skip straight past it.
+       */
+      replacesEntry?: boolean;
       url: string;
     }
   | { type: "GO_BACK" }

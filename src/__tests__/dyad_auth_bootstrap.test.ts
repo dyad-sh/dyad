@@ -97,6 +97,9 @@ function setup({
     },
     fetch: fetchMock,
     URL,
+    atob,
+    TextDecoder,
+    Uint8Array,
     console: { debug() {}, warn() {}, error() {}, log() {} },
   });
 
@@ -133,7 +136,7 @@ function setup({
   };
 }
 
-/** A minimal auth payload; the verify path never reads its fields. */
+/** The verify path re-reads `projectUrl`/`anonKey` to check the session. */
 const SUPABASE_AUTH = {
   mode: "supabase-password",
   email: "e@x.test",
@@ -249,6 +252,7 @@ describe("dyad auth bootstrap", () => {
         nonce: "attempt-1",
       },
       preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
+      fetchImpl: async () => ({ ok: true, json: async () => ({ id: "u" }) }),
     });
 
     // Nothing happens on load alone — the marker is held until the parent says
@@ -279,7 +283,74 @@ describe("dyad auth bootstrap", () => {
         payload: { newUrl: "http://localhost:42100/" },
       }),
     );
+    // Verified against Supabase itself, not against the value this script wrote
+    // — localStorage survives the reload, so re-reading it proves nothing.
+    expect(h.fetchMock).toHaveBeenCalledWith(
+      "https://ref123.supabase.co/auth/v1/user",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          apikey: "anon-key",
+          Authorization: "Bearer a",
+        }),
+      }),
+    );
     // The pending marker is consumed so a later reload doesn't re-verify.
+    expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
+  });
+
+  // Newer supabase-js re-saves the session under a `base64-` encoding once its
+  // own client reads the slot. That is still an authenticated app, so the token
+  // has to come back out rather than reading as "no session".
+  it("verifies a supabase session the app re-saved in base64 form", async () => {
+    const session = JSON.stringify({ access_token: "a", user: { id: "u" } });
+    const h = setup({
+      pending: {
+        mode: "supabase-password",
+        ref: "ref123",
+        nonce: "attempt-1",
+      },
+      preLocal: {
+        "sb-ref123-auth-token": `base64-${Buffer.from(session, "utf8")
+          .toString("base64url")
+          .replace(/=+$/, "")}`,
+      },
+      fetchImpl: async () => ({ ok: true, json: async () => ({ id: "u" }) }),
+    });
+
+    h.sendLogin(SUPABASE_AUTH, "attempt-1");
+
+    await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
+    h.flushTimers();
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
+    ).toBe(true);
+  });
+
+  // The seeded write always succeeds; only Supabase can say whether the app's
+  // client actually holds a session. Reporting `ok` here would record a
+  // signed-out flow into a spec whose `signIn` fixture claims otherwise.
+  it("fails supabase verification when the seeded session is rejected", async () => {
+    const h = setup({
+      pending: {
+        mode: "supabase-password",
+        ref: "ref123",
+        nonce: "attempt-1",
+      },
+      preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
+      fetchImpl: async () => ({
+        ok: false,
+        status: 401,
+        json: async () => ({}),
+      }),
+    });
+
+    h.sendLogin(SUPABASE_AUTH, "attempt-1");
+
+    await vi.waitFor(() =>
+      expect(
+        h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === false),
+      ).toBe(true),
+    );
     expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
   });
 
@@ -313,6 +384,7 @@ describe("dyad auth bootstrap", () => {
         nonce: "attempt-1",
       },
       preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
+      fetchImpl: async () => ({ ok: true, json: async () => ({ id: "u" }) }),
     });
 
     h.sendLogin(SUPABASE_AUTH, "attempt-1");

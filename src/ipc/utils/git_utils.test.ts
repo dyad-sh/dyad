@@ -29,6 +29,8 @@ import {
   countChangedLines,
   unquoteGitPath,
   isGitPathClean,
+  readGitIndexEntries,
+  restoreGitIndexEntries,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
@@ -653,5 +655,114 @@ describe("gitStageToRevert", () => {
     ).rejects.toMatchObject({
       message: "Cannot revert: working tree has uncommitted changes.",
     });
+  });
+});
+
+describe("index entry snapshot and restore", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  async function initRepo(): Promise<string> {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-index-"));
+    await runGit(dir, ["init", "-b", "main"]);
+    return dir;
+  }
+
+  it("round-trips an ordinary staged entry", async () => {
+    repoDir = await initRepo();
+    await fs.promises.writeFile(path.join(repoDir, "a.txt"), "staged\n");
+    await runGit(repoDir, ["add", "a.txt"]);
+    const before = await readGitIndexEntries({
+      path: repoDir,
+      filepath: "a.txt",
+    });
+    expect(before).toHaveLength(1);
+    expect(before[0].stage).toBe(0);
+
+    // Something else stages over it, the way a generated file would.
+    await fs.promises.writeFile(path.join(repoDir, "a.txt"), "generated\n");
+    await runGit(repoDir, ["add", "a.txt"]);
+    await restoreGitIndexEntries({
+      path: repoDir,
+      filepath: "a.txt",
+      entries: before,
+    });
+
+    expect(
+      await readGitIndexEntries({ path: repoDir, filepath: "a.txt" }),
+    ).toEqual(before);
+  });
+
+  it("removes the entry when the snapshot was empty", async () => {
+    repoDir = await initRepo();
+    await fs.promises.writeFile(path.join(repoDir, "a.txt"), "seed\n");
+    await commitAll(repoDir, "seed");
+    await fs.promises.writeFile(path.join(repoDir, "new.txt"), "new\n");
+    const before = await readGitIndexEntries({
+      path: repoDir,
+      filepath: "new.txt",
+    });
+    expect(before).toEqual([]);
+
+    await runGit(repoDir, ["add", "new.txt"]);
+    await restoreGitIndexEntries({
+      path: repoDir,
+      filepath: "new.txt",
+      entries: before,
+    });
+
+    expect(
+      await readGitIndexEntries({ path: repoDir, filepath: "new.txt" }),
+    ).toEqual([]);
+  });
+
+  // A conflicted path has no stage-0 entry — it has stages 1, 2 and 3. Reducing
+  // them to the first blob would hand the user back a resolved-looking file
+  // they never resolved.
+  it("round-trips every stage of a conflicted path", async () => {
+    repoDir = await initRepo();
+    await fs.promises.writeFile(path.join(repoDir, "c.txt"), "base\n");
+    await commitAll(repoDir, "base");
+    await runGit(repoDir, ["checkout", "-b", "theirs"]);
+    await fs.promises.writeFile(path.join(repoDir, "c.txt"), "theirs\n");
+    await commitAll(repoDir, "theirs");
+    await runGit(repoDir, ["checkout", "main"]);
+    await fs.promises.writeFile(path.join(repoDir, "c.txt"), "ours\n");
+    await commitAll(repoDir, "ours");
+    await expect(runGit(repoDir, ["merge", "theirs"])).rejects.toThrow();
+
+    const before = await readGitIndexEntries({
+      path: repoDir,
+      filepath: "c.txt",
+    });
+    expect(before.map((entry) => entry.stage)).toEqual([1, 2, 3]);
+
+    // Staging over the conflict is exactly what collapses it to stage 0.
+    await runGit(repoDir, ["add", "c.txt"]);
+    expect(
+      (await readGitIndexEntries({ path: repoDir, filepath: "c.txt" })).map(
+        (entry) => entry.stage,
+      ),
+    ).toEqual([0]);
+
+    await restoreGitIndexEntries({
+      path: repoDir,
+      filepath: "c.txt",
+      entries: before,
+    });
+
+    expect(
+      await readGitIndexEntries({ path: repoDir, filepath: "c.txt" }),
+    ).toEqual(before);
+    // And git agrees the path is unmerged again.
+    expect(
+      await runGitOutput(repoDir, ["diff", "--name-only", "--diff-filter=U"]),
+    ).toBe("c.txt");
   });
 });

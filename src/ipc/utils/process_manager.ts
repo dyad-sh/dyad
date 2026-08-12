@@ -195,28 +195,37 @@ export async function stopAppByInfo(
   if (options.recordingOwnedRestart) {
     appInfo.recordingOwnedRestart = true;
   }
-  stopCloudSandboxFileSync(appId);
+  try {
+    stopCloudSandboxFileSync(appId);
 
-  if (appInfo.mode === "cloud") {
-    if (appInfo.cloudSandboxId) {
-      await destroyCloudSandbox(appInfo.cloudSandboxId);
+    if (appInfo.mode === "cloud") {
+      if (appInfo.cloudSandboxId) {
+        await destroyCloudSandbox(appInfo.cloudSandboxId);
+      }
+    } else if (appInfo.mode === "docker") {
+      const containerName = appInfo.containerName || `dyad-app-${appId}`;
+      await stopDockerContainer(containerName);
+    } else if (appInfo.process) {
+      await killProcess(appInfo.process);
     }
-  } else if (appInfo.mode === "docker") {
-    const containerName = appInfo.containerName || `dyad-app-${appId}`;
-    await stopDockerContainer(containerName);
-  } else if (appInfo.process) {
-    await killProcess(appInfo.process);
-  }
 
-  if (appInfo.proxyWorker) {
-    await appInfo.proxyWorker.terminate();
-    appInfo.proxyWorker = undefined;
-  }
+    if (appInfo.proxyWorker) {
+      await appInfo.proxyWorker.terminate();
+      appInfo.proxyWorker = undefined;
+    }
 
-  appInfo.cloudLogAbortController?.abort();
-  appInfo.cloudLogAbortController = undefined;
-  unregisterRunningCloudSandbox({ appId });
-  runningApps.delete(appId);
+    appInfo.cloudLogAbortController?.abort();
+    appInfo.cloudLogAbortController = undefined;
+    unregisterRunningCloudSandbox({ appId });
+    runningApps.delete(appId);
+  } finally {
+    // The marker only has to outlive the kill, whose `close` listener runs
+    // inside the await above. Left latched on a stop that threw, it would sit
+    // on an entry still in `runningApps` and suppress a later, legitimate
+    // `app-stopped` — holding the session's claim until the 30-minute cap with
+    // no preview left to record.
+    appInfo.recordingOwnedRestart = false;
+  }
 }
 
 /**

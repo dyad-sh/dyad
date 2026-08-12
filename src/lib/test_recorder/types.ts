@@ -128,9 +128,10 @@ export const RecordedActionSchema = z.discriminatedUnion("kind", [
      * it. The recorder seeds one when recording starts somewhere other than the
      * app root, so replay opens where the flow actually began.
      *
-     * Codegen is the only reader, and it only decides whether to emit the
-     * leading `page.goto("/")` — so a previewed app forging the flag on its own
-     * `navigate` costs nothing beyond a spec that skips one navigation.
+     * Renderer-only: `parseRecorderAction` strips it from anything the previewed
+     * app sends. It suppresses the leading `page.goto("/")`, and that root entry
+     * is what a later `page.goBack()` replays onto — a forged flag on an app's
+     * first action lands the generated test on `about:blank` instead.
      */
     initial: z.literal(true).optional(),
   }),
@@ -152,8 +153,24 @@ export interface RecordedEntry {
   action: RecordedAction;
 }
 
-/** Validate an untrusted `dyad-recorder-action` payload; null when malformed. */
-export function parseRecorderAction(data: unknown): RecordedAction | null {
+/**
+ * Validate an untrusted `dyad-recorder-action` payload; null when malformed.
+ *
+ * Pass `trusted` only for actions the renderer synthesizes itself. Everything
+ * else arrives by postMessage from the previewed app, which must not be able to
+ * claim `initial` — that flag drops the spec's opening `page.goto("/")`, and
+ * with it the history entry a later `page.goBack()` replays onto.
+ */
+export function parseRecorderAction(
+  data: unknown,
+  { trusted = false }: { trusted?: boolean } = {},
+): RecordedAction | null {
   const result = RecordedActionSchema.safeParse(data);
-  return result.success ? result.data : null;
+  if (!result.success) return null;
+  const action = result.data;
+  if (!trusted && action.kind === "navigate" && action.initial) {
+    const { initial: _initial, ...withoutInitial } = action;
+    return withoutInitial;
+  }
+  return action;
 }

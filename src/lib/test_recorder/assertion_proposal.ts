@@ -90,6 +90,20 @@ export const AssertionProposalPayloadSchema = z.object({
   specPath: z.string().nullable(),
   /** Steps and assertions interleaved, in the order they will be written. */
   items: z.array(AssertionPlanItemSchema).max(MAX_PLAN_ITEMS),
+  /**
+   * The exact plan a spec file is being written from, checkpointed just before
+   * the write and cleared once the approval latches.
+   *
+   * `items` is the plan the model proposed; the user may reorder, edit or drop
+   * assertions before approving, and synthesis may drop more. If the process
+   * dies between the file write and the latch, only this says what actually
+   * reached the file — recovering from `items` would latch a card claiming
+   * checks the spec on disk does not contain.
+   */
+  pendingWriteItems: z
+    .array(AssertionPlanItemSchema)
+    .max(MAX_PLAN_ITEMS)
+    .optional(),
 });
 export type AssertionProposalPayload = z.infer<
   typeof AssertionProposalPayloadSchema
@@ -116,7 +130,13 @@ function statementFallbackText(statement: string): string {
  */
 function truncateStepText(text: string): string {
   if (text.length <= MAX_STEP_TEXT_DISPLAY_LENGTH) return text;
-  return `${text.slice(0, MAX_STEP_TEXT_DISPLAY_LENGTH - 1)}…`;
+  const head = text.slice(0, MAX_STEP_TEXT_DISPLAY_LENGTH - 1);
+  // `slice` cuts on UTF-16 code units, so a cut landing inside a surrogate pair
+  // (an emoji in a recorded fill value, say) would leave a lone surrogate that
+  // renders as a replacement character.
+  const lastCode = head.charCodeAt(head.length - 1);
+  const endsWithLoneHighSurrogate = lastCode >= 0xd800 && lastCode <= 0xdbff;
+  return `${endsWithLoneHighSurrogate ? head.slice(0, -1) : head}…`;
 }
 
 export interface RawStepDescription {

@@ -279,10 +279,11 @@ describe("TestsPanel", () => {
     expect(store.get(previewModeAtom)).toBe("preview");
   });
 
-  it("sends no start path for a route the app navigated to itself", () => {
-    // A redirect or an in-app link is not a starting point the user chose.
-    // Recording it as one makes the generated spec `goto` straight to the
-    // destination, skipping the navigation that may be the thing under test.
+  it("sends the start path for a route the app navigated to itself", () => {
+    // The session records on this route however the preview got here — the
+    // unauthenticated start is a bare remount. Without the path the spec opens
+    // with the default `page.goto("/")` and replays every captured action
+    // against a page the user was never on.
     mocks.previewUrl = "http://localhost:32100/login?next=%2Fsettings";
     mocks.previewUrlSource = "app";
     const { store } = renderPanel();
@@ -291,7 +292,9 @@ describe("TestsPanel", () => {
     fireEvent.click(screen.getByTestId("tests-record-button"));
 
     expect(store.get(recordingStartRequestAtom)?.appId).toBe(1);
-    expect(store.get(recordingStartRequestAtom)?.startPath).toBeUndefined();
+    expect(store.get(recordingStartRequestAtom)?.startPath).toBe(
+      "/login?next=%2Fsettings",
+    );
   });
 
   it("disables recording until the app is running", () => {

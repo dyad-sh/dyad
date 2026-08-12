@@ -7,7 +7,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUrlState } from "@/app_run/selectors";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
-import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
+import {
+  MAX_RECORDED_ENTRIES,
+  recordingStartRequestAtom,
+  setRecordingStateForAppAtom,
+} from "@/atoms/recorderAtoms";
 import { useTestRecorder } from "@/hooks/useTestRecorder";
 
 /**
@@ -1043,6 +1047,31 @@ describe("useTestRecorder", () => {
     expect(result.current.isRecording).toBe(true);
     expect(result.current.auth).toEqual({ mode: "none" });
     expect(result.current.warning).toMatch(/without authentication/i);
+  });
+
+  // A recording that hit the buffer cap stops capturing, and the review then
+  // shows a complete-looking list of steps that quietly ends partway through
+  // what the user did. The banner renders `warning`, so folding it in there is
+  // what puts the truncation in front of them.
+  it("surfaces a truncated recording in the banner's warning", async () => {
+    const { result, store } = await recordingSession({
+      iframe: makeIframe(),
+      appUrl: true,
+    });
+    expect(result.current.warning).toBeUndefined();
+
+    act(() => {
+      store.set(setRecordingStateForAppAtom, {
+        appId: 1,
+        update: (prev) => ({ ...prev, limitReached: true }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.warning).toMatch(
+        new RegExp(`${MAX_RECORDED_ENTRIES.toLocaleString()}-action limit`),
+      );
+    });
   });
 
   it("refuses to record when the proxy capability is unavailable", async () => {

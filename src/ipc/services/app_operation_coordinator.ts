@@ -139,6 +139,9 @@ export class AppOperationCoordinator {
       try {
         assertNoActiveRecording(request.appId, request.refuseWhenRecording);
       } catch (error) {
+        // Nothing was enqueued, so the state this refusal just created would
+        // otherwise be retained empty for the lifetime of the process.
+        this.removeStateIfIdle(request.appId, state);
         return Promise.reject(error);
       }
     }

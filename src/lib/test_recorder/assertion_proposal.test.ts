@@ -51,10 +51,11 @@ describe("buildPlanItems", () => {
     const statement = `await page.getByLabel("Notes").fill(${JSON.stringify(value)});`;
     expect(statement.length).toBeGreaterThan(MAX_STEP_TEXT_LENGTH);
 
+    // No `stepDescriptions`: a description at index 0 would win over the
+    // fallback and the oversized statement would never reach the truncation.
     const { items } = buildPlanItems({
       bodyStatements: [statement],
-      // Also applied to a model description long enough to break the schema.
-      stepDescriptions: [{ index: 0, text: "x".repeat(50_000) }],
+      stepDescriptions: [],
       assertions: [],
       newId: idFactory(),
     });
@@ -81,6 +82,40 @@ describe("buildPlanItems", () => {
         items,
       }).success,
     ).toBe(true);
+  });
+
+  it("truncates a model description that would exceed the payload schema", () => {
+    const { items } = buildPlanItems({
+      bodyStatements: [`await page.getByLabel("Name").fill("Ada");`],
+      stepDescriptions: [{ index: 0, text: "x".repeat(50_000) }],
+      assertions: [],
+      newId: idFactory(),
+    });
+
+    const [step] = items;
+    expect(step.kind).toBe("step");
+    if (step.kind !== "step") return;
+    expect(step.text.length).toBe(MAX_STEP_TEXT_DISPLAY_LENGTH);
+    expect(step.text.endsWith("…")).toBe(true);
+  });
+
+  // Cutting on UTF-16 code units can land inside a surrogate pair and leave a
+  // lone surrogate, which renders as a replacement character.
+  it("does not split a surrogate pair when truncating", () => {
+    // The cut at MAX - 1 lands between the two code units of the first emoji.
+    const head = "x".repeat(MAX_STEP_TEXT_DISPLAY_LENGTH - 2);
+    const { items } = buildPlanItems({
+      bodyStatements: [`await page.getByLabel("Name").fill("Ada");`],
+      stepDescriptions: [{ index: 0, text: `${head}😀😀` }],
+      assertions: [],
+      newId: idFactory(),
+    });
+
+    const [step] = items;
+    expect(step.kind).toBe("step");
+    if (step.kind !== "step") return;
+    expect(step.text).toBe(`${head}…`);
+    expect(/[\uD800-\uDFFF]/.test(step.text)).toBe(false);
   });
 
   it("leaves a step row that already fits untouched", () => {

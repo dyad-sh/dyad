@@ -113,9 +113,70 @@ describe("preview iframe command adapter", () => {
       type: "NAVIGATED_IN_APP",
       kind: "documentLoad",
       url: "http://localhost:3000/dashboard",
+      // No signal from the shim reads as "reused the slot" — the conservative
+      // side, since it never invents a history entry the browser lacks.
+      replacesEntry: true,
     });
     // Machine-only: the component layer has no use for it.
     expect(onComponentMessage).not.toHaveBeenCalled();
+  });
+
+  // A plain link grows the browser's history, and the preview's has to grow
+  // with it or Back skips the page the user came from.
+  it("carries the shim's history-entry signal for a link navigation", () => {
+    const contentWindow = { postMessage: vi.fn() };
+    const send = vi.fn<(event: PreviewIframeEvent) => void>();
+
+    routePreviewIframeMessage({
+      event: {
+        source: contentWindow,
+        data: {
+          type: "dyad-document-loaded",
+          payload: {
+            newUrl: "http://localhost:3000/dashboard",
+            replacesEntry: false,
+          },
+        },
+      } as unknown as MessageEvent,
+      contentWindow,
+      appUrl: "http://localhost:3000",
+      send,
+      onSharedMachineEvent: vi.fn(),
+      onComponentMessage: vi.fn(),
+    });
+
+    expect(send).toHaveBeenCalledWith({
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: "http://localhost:3000/dashboard",
+      replacesEntry: false,
+    });
+  });
+
+  // `blob:` inherits the app's origin, so the origin check alone lets it
+  // through — but it is not a route the preview can load or a recording replay.
+  it("rejects a same-origin blob URL", () => {
+    const contentWindow = { postMessage: vi.fn() };
+    const send = vi.fn<(event: PreviewIframeEvent) => void>();
+
+    routePreviewIframeMessage({
+      event: {
+        source: contentWindow,
+        data: {
+          type: "dyad-document-loaded",
+          payload: {
+            newUrl: "blob:http://localhost:3000/8f1c4a2e-0000-4000-8000-abc",
+          },
+        },
+      } as unknown as MessageEvent,
+      contentWindow,
+      appUrl: "http://localhost:3000",
+      send,
+      onSharedMachineEvent: vi.fn(),
+      onComponentMessage: vi.fn(),
+    });
+
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("rejects iframe navigation outside the trusted app origin", () => {

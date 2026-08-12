@@ -400,6 +400,38 @@ describe("preview iframe transition", () => {
     expect(ignoreReasonOf(ownLoad)).toBe("already-current-url");
   });
 
+  // A plain link grows the browser's history; a server redirect or a reload
+  // reuses the slot. Reading a link as a replacement costs the preview the page
+  // the user came from — its Back button, and the `page.goBack()` a recording
+  // replays with, would skip straight past it.
+  it("keeps the previous entry when a link loads a new document", () => {
+    const appRoot = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_URL_CHANGED",
+      url: URL,
+    }).state;
+
+    const linked = transition(appRoot, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/dashboard`,
+      replacesEntry: false,
+    }).state;
+    expect(linked.history).toEqual([URL, `${URL}/dashboard`]);
+    expect(linked.position).toBe(1);
+    expect(linked.currentUrlSource).toBe("app");
+    // The entry the user came from is still reachable.
+    expect(transition(linked, { type: "GO_BACK" }).state.currentUrl).toBe(URL);
+
+    const redirected = transition(appRoot, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/login`,
+      replacesEntry: true,
+    }).state;
+    expect(redirected.history).toEqual([`${URL}/login`]);
+    expect(redirected.position).toBe(0);
+  });
+
   it("restores route provenance with the presentation", () => {
     const restored = transition(INITIAL_PREVIEW_IFRAME_STATE, {
       type: "RESTORE_PRESENTATION",

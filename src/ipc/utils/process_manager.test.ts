@@ -6,12 +6,23 @@ const {
   unregisterRunningCloudSandboxMock,
   killProcessTreeSyncMock,
   endRecordingForAppMock,
+  treeKillMock,
 } = vi.hoisted(() => ({
   destroyCloudSandboxMock: vi.fn(),
   stopCloudSandboxFileSyncMock: vi.fn(),
   unregisterRunningCloudSandboxMock: vi.fn(),
   killProcessTreeSyncMock: vi.fn(),
   endRecordingForAppMock: vi.fn(),
+  treeKillMock: vi.fn(),
+}));
+
+// The fake processes below carry made-up PIDs. Unmocked, `killProcess` would
+// signal whatever real process happens to hold that PID on the host.
+vi.mock("tree-kill", () => ({
+  default: (pid: number, signal: string, callback?: (err?: Error) => void) => {
+    treeKillMock(pid, signal);
+    callback?.(undefined);
+  },
 }));
 
 vi.mock("./cloud_sandbox_provider", () => ({
@@ -171,6 +182,35 @@ describe("removeAppIfCurrentProcess", () => {
     await stopped;
 
     expect(endRecordingForAppMock).not.toHaveBeenCalled();
+  });
+
+  // The marker is a one-way bit on a shared mutable object. A stop that throws
+  // after latching it leaves the entry in `runningApps` still marked, and the
+  // next legitimate `app-stopped` would be suppressed by a restart that is long
+  // over — holding the session's claim with no preview left to record.
+  it("clears the recording marker when the stop fails after latching it", async () => {
+    const process = {
+      pid: 111,
+      on: (event: string, listener: (code: number | null) => void) => {
+        if (event === "close") queueMicrotask(() => listener(null));
+      },
+    } as unknown as ChildProcess;
+    const appInfo = hostApp(process);
+    appInfo.proxyWorker = {
+      terminate: vi.fn().mockRejectedValue(new Error("terminate failed")),
+    } as unknown as NonNullable<RunningAppInfo["proxyWorker"]>;
+    runningApps.set(1, appInfo);
+
+    await expect(
+      stopAppByInfo(1, appInfo, { recordingOwnedRestart: true }),
+    ).rejects.toThrow("terminate failed");
+    expect(runningApps.get(1)?.recordingOwnedRestart).toBe(false);
+
+    removeAppIfCurrentProcess(1, process);
+
+    expect(endRecordingForAppMock).toHaveBeenCalledWith(1, "app-stopped", {
+      skipRestart: true,
+    });
   });
 });
 

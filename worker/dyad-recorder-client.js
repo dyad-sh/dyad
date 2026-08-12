@@ -442,13 +442,19 @@
    * nothing to a checkbox — there is no group to walk and no `change` to take
    * the press's place — so suppressing it would erase the only record of a
    * keyboard-only interaction with the app's own key handler.
+   *
+   * A number input is the one control where WHICH arrow matters: only up and
+   * down step it. Left and right move the caret exactly as in a text field, so
+   * no `change` follows to stand in for the press and dropping it would erase
+   * caret navigation — and any app key handler behind it — from the recording.
    */
-  function changesValueOnArrowKeys(control) {
+  function changesValueOnArrowKeys(control, key) {
     if (!control || control.nodeType !== 1) return false;
     if (control.tagName === "SELECT") return true;
     if (control.tagName !== "INPUT") return false;
     const type = (control.getAttribute("type") || "text").toLowerCase();
-    return type === "radio" || type === "range" || type === "number";
+    if (type === "radio" || type === "range") return true;
+    return type === "number" && (key === "ArrowUp" || key === "ArrowDown");
   }
 
   /** Controls whose meaningful action is captured by input/change, not click. */
@@ -1099,7 +1105,7 @@
       if (e.key.startsWith("Arrow")) {
         const raw = deepTarget(e);
         const control = resolveControl(raw) || raw;
-        if (changesValueOnArrowKeys(control)) return false;
+        if (changesValueOnArrowKeys(control, e.key)) return false;
       }
       return true;
     }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { extractJson, extractJsonWithScan } from "./extract_json";
+import {
+  extractJson,
+  extractJsonWithScan,
+  SCAN_BUDGET_FACTOR,
+} from "./extract_json";
 
 describe("extractJson", () => {
   it("returns the object as-is", () => {
@@ -70,6 +74,20 @@ describe("extractJson", () => {
     expect(JSON.parse(scan.json!)).toEqual({ ok: true });
     expect(scan.candidateScans).toBe(3);
     expect(scan.scannedChars).toBeGreaterThan(0);
+  });
+
+  // The budget is a ceiling, not a stopping condition checked after the fact:
+  // a candidate scanned in full before being charged could run a whole extra
+  // pass over the text past an almost-exhausted budget.
+  it("never scans past the advertised budget", () => {
+    // Every `{"` opens a candidate that never closes, so each one costs a full
+    // scan to end-of-text — the worst case the factor exists to bound.
+    const adversarial = `${'{"'.repeat(20_000)}`;
+    const scan = extractJsonWithScan(adversarial);
+
+    expect(scan.scannedChars).toBeLessThanOrEqual(
+      adversarial.length * SCAN_BUDGET_FACTOR,
+    );
   });
 
   it("returns the widest span when nothing parses, so the caller reports the syntax error", () => {

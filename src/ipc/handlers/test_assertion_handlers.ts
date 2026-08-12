@@ -18,8 +18,8 @@ import { broadcastToAllWindows } from "../utils/window_broadcast";
 import {
   gitAdd,
   gitResetFile,
-  readGitIndexEntry,
-  restoreGitIndexEntry,
+  readGitIndexEntries,
+  restoreGitIndexEntries,
   type GitIndexEntry,
 } from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
@@ -62,6 +62,7 @@ import {
   parseAssertionsPayloadFromMessage,
   readAssertionsTagAttribute,
   replaceAssertionsTagInMessage,
+  type AssertionProposalStatus,
 } from "@/lib/test_recorder/assertion_tag";
 import {
   buildAssertionCodePayload,
@@ -373,7 +374,7 @@ interface SignInFixtureChange {
    * rebuild from. `undefined` means the snapshot itself failed, so rollback
    * falls back to the content-based restore rather than guessing.
    */
-  previousIndexEntry: GitIndexEntry | null | undefined;
+  previousIndexEntries: GitIndexEntry[] | undefined;
 }
 
 async function ensureSignInFixture(
@@ -404,9 +405,9 @@ async function ensureSignInFixture(
 
   // Snapshotted before the write, so a rollback can put the user's staged state
   // back byte for byte instead of inferring it from the file we restore.
-  let previousIndexEntry: GitIndexEntry | null | undefined;
+  let previousIndexEntries: GitIndexEntry[] | undefined;
   try {
-    previousIndexEntry = await readGitIndexEntry({
+    previousIndexEntries = await readGitIndexEntries({
       path: appPath,
       filepath: relativePath,
     });
@@ -424,7 +425,12 @@ async function ensureSignInFixture(
     "utf-8",
   );
   await stage(appPath, relativePath);
-  return { relativePath, absolutePath, previousContent, previousIndexEntry };
+  return {
+    relativePath,
+    absolutePath,
+    previousContent,
+    previousIndexEntries,
+  };
 }
 
 /**
@@ -454,12 +460,12 @@ async function revertSignInFixture(
     // and re-adding the working-tree bytes (or resetting to HEAD) would replace
     // it with content they never staged. Only when the snapshot failed do we
     // fall back to the content-based restore.
-    if (change.previousIndexEntry !== undefined) {
+    if (change.previousIndexEntries !== undefined) {
       try {
-        await restoreGitIndexEntry({
+        await restoreGitIndexEntries({
           path: appPath,
           filepath: change.relativePath,
-          entry: change.previousIndexEntry,
+          entries: change.previousIndexEntries,
         });
         return;
       } catch (error) {
@@ -885,7 +891,10 @@ async function persistApproval({
     buildAssertionsTagContent({
       proposalId,
       status: "approved",
-      payload: { ...stored, items, specPath },
+      // The checkpoint has served its purpose: `items` is now what the file
+      // holds, so leaving it would keep a second, staler copy of the plan
+      // around for every reader of the approved card.
+      payload: { ...stored, items, specPath, pendingWriteItems: undefined },
     }),
     proposalId,
   );
@@ -900,6 +909,56 @@ async function persistApproval({
     .update(messages)
     .set({ content: approvedContent })
     .where(eq(messages.id, row.id));
+}
+
+/**
+ * Record the plan a spec is about to be written from, durably and before the
+ * write. The file write and the approval latch are two steps that a crash can
+ * fall between; without this the retry has only the model's original `items` to
+ * recover from, and would report assertions the user edited away — or that
+ * synthesis dropped — as applied checks the file does not contain.
+ *
+ * Deliberately not a status change: the card is still pending, and a write that
+ * fails must leave it exactly as approvable as it was, with its full plan
+ * intact for the retry's synthesis to try again.
+ */
+async function persistPendingWrite({
+  row,
+  proposalId,
+  stored,
+  items,
+}: {
+  row: { id: number; content: string };
+  proposalId: string;
+  stored: AssertionProposalPayload;
+  items: AssertionPlanItem[];
+}): Promise<{ content: string }> {
+  const status = readAssertionsTagAttribute(row.content, "status", proposalId);
+  const requestId = readAssertionsTagAttribute(
+    row.content,
+    "request-id",
+    proposalId,
+  );
+  const content = replaceAssertionsTagInMessage(
+    row.content,
+    buildAssertionsTagContent({
+      proposalId,
+      ...(requestId ? { requestId } : {}),
+      status: (status as AssertionProposalStatus | null) ?? "proposed",
+      payload: { ...stored, pendingWriteItems: items },
+    }),
+    proposalId,
+  );
+  if (content === null) {
+    throw new DyadError(
+      "This assertion proposal is corrupted and can't be applied.",
+      DyadErrorKind.Validation,
+    );
+  }
+  await db.update(messages).set({ content }).where(eq(messages.id, row.id));
+  // The row is read again by `persistApproval`, which must not write the
+  // pre-checkpoint content back over this.
+  return { content };
 }
 
 async function assertChatOwnsApp(chatId: number, appId: number): Promise<void> {
@@ -1037,6 +1096,26 @@ export function registerTestAssertionHandlers() {
           );
         }
 
+        /**
+         * Tell the recording bar its draft is now a file, so it stops offering
+         * to propose a recording that has already been written. Every path that
+         * leaves this handler with a spec on disk owes this — the recovery and
+         * already-written branches most of all, since those are precisely the
+         * ones reached with a bar still up from an attempt that didn't finish.
+         *
+         * Broadcast rather than replied to the approving window: the bar belongs
+         * to whichever window holds the preview, which need not be the one the
+         * chat was approved in. Same reason `recording:draft-named` broadcasts.
+         */
+        const announceDraftConsumed = (specPath: string) => {
+          if (!specPath) return;
+          broadcastToAllWindows("recording:draft-consumed", {
+            appId,
+            draftId: stored.draft.draftId,
+            specPath,
+          });
+        };
+
         const status = readAssertionsTagAttribute(
           row.content,
           "status",
@@ -1045,6 +1124,7 @@ export function registerTestAssertionHandlers() {
         // Idempotent: a second approve (double click, stale card) must not write
         // a second spec file.
         if (status === "approved") {
+          announceDraftConsumed(stored.specPath ?? "");
           return {
             specPath: stored.specPath ?? "",
             appliedCount: countAssertions(stored.items),
@@ -1101,7 +1181,12 @@ export function registerTestAssertionHandlers() {
           // — and would leave the card, and the resumed agent turn, wrong about
           // a test that is exactly what the user approved.
           if (alreadyWritten.proposalId === proposalId) {
-            const recovered = stored.items;
+            // The checkpoint, not `stored.items`: the file was written from the
+            // plan the user actually submitted, after synthesis dropped
+            // whatever it couldn't produce code for. Latching the model's
+            // original plan instead would claim edited-away and unsynthesized
+            // assertions as checks the spec does not contain.
+            const recovered = stored.pendingWriteItems ?? stored.items;
             await persistApproval({
               row,
               proposalId,
@@ -1109,6 +1194,7 @@ export function registerTestAssertionHandlers() {
               items: recovered,
               specPath: alreadyWritten.relativePath,
             });
+            announceDraftConsumed(alreadyWritten.relativePath);
             return {
               specPath: alreadyWritten.relativePath,
               appliedCount: countAssertions(recovered),
@@ -1125,6 +1211,7 @@ export function registerTestAssertionHandlers() {
             items: stored.items.filter((item) => item.kind === "step"),
             specPath: alreadyWritten.relativePath,
           });
+          announceDraftConsumed(alreadyWritten.relativePath);
           return {
             specPath: alreadyWritten.relativePath,
             appliedCount: 0,
@@ -1173,6 +1260,18 @@ export function registerTestAssertionHandlers() {
           finalItems.push({ ...item, code, needsCode: false });
           finalStatements.push(code);
         }
+
+        // Durable before the file exists: a crash between the write and the
+        // approval latch leaves the retry with nothing else that names the plan
+        // the file was actually built from.
+        row.content = (
+          await persistPendingWrite({
+            row,
+            proposalId,
+            stored,
+            items: finalItems,
+          })
+        ).content;
 
         // Synthesis above spent up to a minute in the model, so re-check under
         // the write lock: another card for this same recording may have been
@@ -1234,14 +1333,18 @@ export function registerTestAssertionHandlers() {
         // write, finished before the process died and never latched, and the
         // file holds exactly the plan being approved now.
         if (!wroteIt && racedProposalId === proposalId) {
+          // The checkpoint from that earlier attempt, for the same reason as
+          // the recovery branch above: it names the plan the file holds.
+          const recovered = stored.pendingWriteItems ?? stored.items;
           await persistApproval({
             row,
             proposalId,
             stored,
-            items: stored.items,
+            items: recovered,
             specPath,
           });
-          return { specPath, appliedCount: countAssertions(stored.items) };
+          announceDraftConsumed(specPath);
+          return { specPath, appliedCount: countAssertions(recovered) };
         }
         if (!wroteIt) {
           await persistApproval({
@@ -1253,6 +1356,7 @@ export function registerTestAssertionHandlers() {
             items: stored.items.filter((item) => item.kind === "step"),
             specPath,
           });
+          announceDraftConsumed(specPath);
           return {
             specPath,
             appliedCount: 0,
@@ -1287,15 +1391,7 @@ export function registerTestAssertionHandlers() {
         // Approval happens entirely in the chat, so nothing else tells the
         // recording bar its draft is now a file. Without this it stays up
         // offering to propose the recording that has already been written.
-        //
-        // Broadcast rather than reply to the approving window: the bar belongs to
-        // whichever window holds the preview, which need not be the one the chat
-        // was approved in. Same reason `recording:draft-named` broadcasts.
-        broadcastToAllWindows("recording:draft-consumed", {
-          appId,
-          draftId: stored.draft.draftId,
-          specPath,
-        });
+        announceDraftConsumed(specPath);
 
         const appliedCount = countAssertions(finalItems);
         logger.info(

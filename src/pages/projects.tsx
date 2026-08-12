@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FolderKanban, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  FolderKanban,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { useAtom } from "jotai";
 
 import { ipc } from "@/ipc/types";
 import type { Project } from "@/ipc/types/project";
@@ -11,6 +20,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { useSettings } from "@/hooks/useSettings";
+import {
+  activeChatAgentTabAtom,
+  chatAgentOpenTabsAtom,
+} from "@/atoms/chatAgentAtoms";
 import { showError, showSuccess } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +41,10 @@ import { cn } from "@/lib/utils";
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { settings, updateSettings } = useSettings();
+  const [openTabs, setOpenTabs] = useAtom(chatAgentOpenTabsAtom);
+  const [, setActiveTab] = useAtom(activeChatAgentTabAtom);
   const activeId = settings?.activeProjectId ?? null;
 
   const [editing, setEditing] = useState<Project | null>(null);
@@ -98,6 +114,35 @@ export default function ProjectsPage() {
   const setActive = async (project: Project | null) => {
     await updateSettings({ activeProjectId: project?.id ?? null });
   };
+
+  /**
+   * Open a project as a conversation.
+   *
+   * Activating and opening are separate acts: activating changes what the
+   * assistant knows, opening puts you in a conversation that belongs to the
+   * project. Doing both here means the new chat is stamped with it rather
+   * than with whatever was active a moment ago.
+   */
+  const openAsChat = async (project: Project) => {
+    await updateSettings({ activeProjectId: project.id });
+    const conversation = {
+      id: crypto.randomUUID(),
+      title: `${project.name} conversation`,
+      messages: [],
+      vectorCollectionIds: [],
+      projectId: project.id,
+      updatedAt: Date.now(),
+    };
+    setOpenTabs((current) => [...current, conversation]);
+    setActiveTab(conversation.id);
+    await navigate({ to: "/chat-agent" });
+  };
+
+  /** Conversations already belonging to a project, newest first. */
+  const conversationsFor = (projectId: string) =>
+    openTabs
+      .filter((tab) => tab.projectId === projectId)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const isEditorOpen = isCreating || editing !== null;
 
@@ -253,10 +298,23 @@ export default function ProjectsPage() {
                       {project.instructions
                         ? `${project.instructions.trim().split("\n").length} lines of instructions`
                         : "No instructions yet"}
+                      {conversationsFor(project.id).length > 0 &&
+                        ` · ${conversationsFor(project.id).length} conversation${
+                          conversationsFor(project.id).length === 1 ? "" : "s"
+                        }`}
                     </p>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void openAsChat(project)}
+                      className="border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+                      data-testid={`project-open-${project.id}`}
+                    >
+                      <MessageSquare className="size-3.5" />
+                      Open
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -284,6 +342,33 @@ export default function ProjectsPage() {
                     </Button>
                   </div>
                 </div>
+
+                {conversationsFor(project.id).length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-cyan-500/10 pt-3">
+                    {conversationsFor(project.id).map((conversation) => (
+                      <li key={conversation.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab(conversation.id);
+                            void navigate({ to: "/chat-agent" });
+                          }}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-cyan-100/60 hover:bg-cyan-500/8 hover:text-cyan-50"
+                        >
+                          <MessageSquare className="size-3.5 shrink-0 opacity-60" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {conversation.title}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-cyan-100/25">
+                            {new Date(
+                              conversation.updatedAt,
+                            ).toLocaleDateString()}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </article>
             );
           })}

@@ -9746,3 +9746,31 @@ html.theme-switching * {
   color: rgb(224 247 255 / 0.95);
   box-shadow: inset 2px 0 0 rgb(34 211 238 / 0.7);
 }
+
+/* A query result opened at window size. The chat column is too narrow for a
+   wide table however it scrolls, so expanding gives it the room instead. */
+.chat-agent-db-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.chat-agent-db-modal {
+  max-width: min(96vw, 1400px);
+  width: min(96vw, 1400px);
+}
+
+.chat-agent-db-modal-scroll {
+  overflow: auto;
+  max-height: 72vh;
+  border: 1px solid rgb(34 211 238 / 0.15);
+  border-radius: 0.6rem;
+}
+
+.chat-agent-db-modal-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #06111f;
+}

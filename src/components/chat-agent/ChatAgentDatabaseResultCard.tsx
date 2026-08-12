@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Database, Rows3 } from "lucide-react";
+import { ChevronDown, Database, Maximize2, Rows3 } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import type { ChatAgentToolPresentation } from "@/ipc/types/chat_agent";
 
@@ -48,6 +56,7 @@ export function ChatAgentDatabaseResultCard({
     presentation;
 
   const [expanded, setExpanded] = useState(rows.length <= COLLAPSE_ABOVE_ROWS);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const numericColumns = useMemo(
     () => columns.map((_, index) => isNumericColumn(rows, index)),
     [columns, rows],
@@ -69,6 +78,54 @@ export function ChatAgentDatabaseResultCard({
     );
   }
 
+  const resultTable = (visible: string[][]) => (
+    <table className="chat-agent-db-table">
+      <thead>
+        <tr>
+          {columns.map((column, columnIndex) => (
+            <th
+              key={column}
+              scope="col"
+              className={
+                numericColumns[columnIndex] ? "chat-agent-db-num" : undefined
+              }
+            >
+              {column}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {visible.map((row, rowIndex) => (
+          <tr key={rowIndex}>
+            {columns.map((column, columnIndex) => {
+              const value = row[columnIndex] ?? "";
+              return (
+                <td
+                  key={column}
+                  className={
+                    numericColumns[columnIndex]
+                      ? "chat-agent-db-num"
+                      : undefined
+                  }
+                  // The full value is always available on hover, even where a
+                  // long cell is visually clamped.
+                  title={value}
+                >
+                  {value === "" ? (
+                    <span className="chat-agent-db-null">—</span>
+                  ) : (
+                    value
+                  )}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <section className="chat-agent-db-card" data-testid="chat-agent-db-result">
       <header className="chat-agent-db-head">
@@ -88,66 +145,52 @@ export function ChatAgentDatabaseResultCard({
 
       {/* The scroll container is the table's own, so a wide result never
           widens the message around it. */}
-      <div className="chat-agent-db-scroll">
-        <table className="chat-agent-db-table">
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th
-                  key={column}
-                  scope="col"
-                  className={
-                    numericColumns[columns.indexOf(column)]
-                      ? "chat-agent-db-num"
-                      : undefined
-                  }
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                {columns.map((column, columnIndex) => {
-                  const value = row[columnIndex] ?? "";
-                  return (
-                    <td
-                      key={column}
-                      className={
-                        numericColumns[columnIndex]
-                          ? "chat-agent-db-num"
-                          : undefined
-                      }
-                      // The full value is always available on hover, even
-                      // where a long cell is visually clamped.
-                      title={value}
-                    >
-                      {value === "" ? (
-                        <span className="chat-agent-db-null">—</span>
-                      ) : (
-                        value
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* The scroll container is the table's own, so a wide result never
+          widens the message around it. */}
+      <div className="chat-agent-db-scroll">{resultTable(visibleRows)}</div>
 
-      {withheld > 0 && (
+      <div className="chat-agent-db-actions">
+        {withheld > 0 && (
+          <button
+            type="button"
+            className="chat-agent-db-more"
+            onClick={() => setExpanded(true)}
+          >
+            <ChevronDown className="size-3.5" />
+            Show {withheld} more {withheld === 1 ? "row" : "rows"}
+          </button>
+        )}
+        {/* A wide result is unreadable in a chat column however it is scrolled,
+            so it can be opened at the size of the window instead. */}
         <button
           type="button"
           className="chat-agent-db-more"
-          onClick={() => setExpanded(true)}
+          onClick={() => setIsFullScreen(true)}
+          data-testid="chat-agent-db-expand"
         >
-          <ChevronDown className="size-3.5" />
-          Show {withheld} more {withheld === 1 ? "row" : "rows"}
+          <Maximize2 className="size-3.5" />
+          Expand
         </button>
-      )}
+      </div>
+
+      <Dialog open={isFullScreen} onOpenChange={setIsFullScreen}>
+        <DialogContent className="chat-agent-db-modal">
+          <DialogHeader>
+            <DialogTitle className="flex flex-wrap items-center gap-2 text-cyan-50">
+              <Database className="size-4 shrink-0 text-cyan-300" />
+              {table}
+              <span className="chat-agent-db-source">{sourceName}</span>
+            </DialogTitle>
+            <DialogDescription className="text-cyan-100/45">
+              {totalRows !== null && totalRows > rows.length
+                ? `Showing ${rows.length} of ${totalRows.toLocaleString()} rows returned by this query.`
+                : `${rows.length} ${rows.length === 1 ? "row" : "rows"}.`}
+            </DialogDescription>
+          </DialogHeader>
+          {/* Every row here, not the collapsed view. */}
+          <div className="chat-agent-db-modal-scroll">{resultTable(rows)}</div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

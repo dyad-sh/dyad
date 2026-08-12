@@ -63,17 +63,23 @@ function titleFromMessages(messages: ChatAgentMessage[]) {
   return snippet.length < firstUser.content.length ? `${snippet}…` : snippet;
 }
 
-function createBlankConversation(): ChatAgentOpenTab {
+function createBlankConversation(projectId?: string | null): ChatAgentOpenTab {
   return {
     id: crypto.randomUUID(),
     title: "New conversation",
     messages: [],
     vectorCollectionIds: [],
+    // Stamped from whatever project is active when the conversation starts.
+    projectId: projectId ?? null,
     updatedAt: Date.now(),
   };
 }
 
 export default function ChatAgentPage() {
+  // Read before the initial tab is built below, which happens during the first
+  // render and stamps the conversation with the project it started in.
+  const { settings: settingsForProject } = useSettings();
+  const activeProjectId = settingsForProject?.activeProjectId ?? null;
   const [openTabs, setOpenTabs] = useAtom(chatAgentOpenTabsAtom);
   const [persistedActiveId, setPersistedActiveId] = useAtom(
     activeChatAgentTabAtom,
@@ -83,7 +89,7 @@ export default function ChatAgentPage() {
     initialTabRef.current =
       openTabs.find((tab) => tab.id === persistedActiveId) ??
       openTabs[0] ??
-      createBlankConversation();
+      createBlankConversation(activeProjectId);
   }
   const [sessionId, setSessionId] = useState<string>(initialTabRef.current.id);
   const [messages, setMessages] = useState<ChatAgentMessage[]>(
@@ -360,7 +366,7 @@ export default function ChatAgentPage() {
     // A new tab never waits on an old one: work already running keeps running
     // in the tab that started it.
     flushTabSync();
-    const conversation = createBlankConversation();
+    const conversation = createBlankConversation(activeProjectId);
     setOpenTabs((prev) => [...prev, conversation]);
     setPersistedActiveId(conversation.id);
     setSessionId(conversation.id);
@@ -397,7 +403,7 @@ export default function ChatAgentPage() {
   // Closing the last tab from the bar clears the active id; start fresh.
   useEffect(() => {
     if (persistedActiveId !== null) return;
-    const conversation = createBlankConversation();
+    const conversation = createBlankConversation(activeProjectId);
     setOpenTabs((prev) => (prev.length > 0 ? prev : [conversation]));
     setPersistedActiveId(conversation.id);
     setSessionId(conversation.id);
@@ -446,7 +452,7 @@ export default function ChatAgentPage() {
     const { tabs: remaining, fallback } = closeChatAgentTab(openTabs, id);
     // Deleting from history is permanent, so also remove any matching open tab.
     if (id === sessionId) {
-      const next = fallback ?? createBlankConversation();
+      const next = fallback ?? createBlankConversation(activeProjectId);
       setOpenTabs(fallback ? remaining : [next]);
       setPersistedActiveId(next.id);
       setSessionId(next.id);

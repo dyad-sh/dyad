@@ -64,6 +64,14 @@ export type ChatAgentConversation = {
   messages: ChatAgentMessage[];
   /** Knowledge spaces searched for every turn in this conversation. */
   vectorCollectionIds?: string[];
+  /**
+   * The project this conversation was started in, if any.
+   *
+   * Recorded at creation and never reassigned: a conversation belongs to the
+   * context it happened in, and moving it later would change what its
+   * instructions meant at the time.
+   */
+  projectId?: string | null;
   updatedAt: number;
 };
 

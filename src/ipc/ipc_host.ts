@@ -59,6 +59,7 @@ import { app as electronApp } from "electron";
 import { registerMiscHandlers } from "./handlers/misc_handlers";
 import { registerStorageHandlers } from "./handlers/storage_handlers";
 import { registerProjectHandlers } from "./handlers/project_handlers";
+import { registerCloudflareHandlers } from "./handlers/cloudflare_handlers";
 import { registerDataSourceHandlers } from "./handlers/data_source_handlers";
 import { registerInfrastructureHandlers } from "./handlers/infrastructure_handlers";
 import { registerVectorHandlers } from "./handlers/vector_handlers";
@@ -127,6 +128,7 @@ export function registerIpcHandlers() {
   registerMiscHandlers();
   registerStorageHandlers();
   registerProjectHandlers();
+  registerCloudflareHandlers();
   registerDataSourceHandlers();
   registerInfrastructureHandlers();
   registerVectorHandlers();

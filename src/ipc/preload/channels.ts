@@ -59,6 +59,7 @@ import { helixContracts } from "../types/helix";
 import { vectorContracts, vectorEvents } from "../types/vector";
 import { storageContracts } from "../types/storage";
 import { projectContracts } from "../types/project";
+import { cloudflareContracts } from "../types/cloudflare";
 import { dataSourceContracts } from "../types/data_source";
 import { infrastructureContracts } from "../types/infrastructure";
 import { jarvisContracts, jarvisEvents } from "../types/jarvis";
@@ -139,6 +140,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(vectorContracts),
   ...getInvokeChannels(storageContracts),
   ...getInvokeChannels(projectContracts),
+  ...getInvokeChannels(cloudflareContracts),
   ...getInvokeChannels(dataSourceContracts),
   ...getInvokeChannels(infrastructureContracts),
   ...getInvokeChannels(jarvisContracts),

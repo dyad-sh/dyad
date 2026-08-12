@@ -476,6 +476,7 @@ import { openWorkerClient } from "./openworker";
 import { storageClient } from "./storage";
 import { dataSourceClient } from "./data_source";
 import { projectClient } from "./project";
+import { cloudflareClient } from "./cloudflare";
 import { infrastructureClient } from "./infrastructure";
 import { vectorClient, vectorEventClient } from "./vector";
 
@@ -531,6 +532,7 @@ export const ipc = {
   storage: storageClient,
   dataSource: dataSourceClient,
   project: projectClient,
+  cloudflare: cloudflareClient,
   infrastructure: infrastructureClient,
   cloudApps: cloudAppsClient,
   videoGeneration: videoGenerationClient,

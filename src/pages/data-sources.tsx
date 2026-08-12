@@ -19,6 +19,10 @@ import { ipc } from "@/ipc/types";
 import type { DataSourceDto } from "@/ipc/types/data_source";
 import { showError, showSuccess } from "@/lib/toast";
 import { DataSourceDialog } from "@/components/data_sources/DataSourceDialog";
+import {
+  DataSourceProviderChooser,
+  type DataSourceProvider,
+} from "@/components/data_sources/DataSourceProviderChooser";
 
 /**
  * Data Sources.
@@ -307,6 +311,10 @@ function DataSourceCard({
 
 export default function DataSourcesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Connecting starts with which kind of source, not with a Supabase form.
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [chosenProvider, setChosenProvider] =
+    useState<DataSourceProvider | null>(null);
   const [editing, setEditing] = useState<DataSourceDto | null>(null);
 
   const sourcesQuery = useQuery({
@@ -316,7 +324,8 @@ export default function DataSourcesPage() {
 
   const openNew = () => {
     setEditing(null);
-    setDialogOpen(true);
+    setChosenProvider(null);
+    setChooserOpen(true);
   };
 
   return (
@@ -416,6 +425,17 @@ export default function DataSourcesPage() {
           </section>
         )}
       </main>
+
+      <DataSourceProviderChooser
+        open={chooserOpen}
+        chosen={chosenProvider}
+        onChoose={setChosenProvider}
+        onClose={() => setChooserOpen(false)}
+        onChooseSupabase={() => {
+          setChooserOpen(false);
+          setDialogOpen(true);
+        }}
+      />
 
       <DataSourceDialog
         open={dialogOpen}

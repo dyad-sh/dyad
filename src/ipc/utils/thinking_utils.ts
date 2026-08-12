@@ -46,8 +46,10 @@ export function getExtraProviderOptionsForEngine(
   return {};
 }
 
-function getGeminiThinkingBudgetTokens(effortLevel: string): number {
+export function getGeminiThinkingBudgetTokens(effortLevel: string): number {
   switch (effortLevel) {
+    case "minimal":
+      return 0;
     case "low":
       return 1_000;
     case "medium":

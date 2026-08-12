@@ -32,6 +32,8 @@ import {
 } from "@/ipc/utils/socket_firewall";
 import { getLastUpdaterError } from "../../main/updater_state";
 import { collectProcessMemoryDiagnostics } from "../../utils/process_memory_diagnostics";
+import { resolveDefaultModelSelection } from "@/ipc/utils/model_effort";
+import type { ModelSelection } from "@/lib/schemas";
 
 /**
  * Collects auto-updater failure details: the last updater error seen this
@@ -184,7 +186,10 @@ function serializeModelForDebug(model: {
  * All Secret fields (API keys, OAuth tokens) are excluded.
  * Provider setup status is derived as boolean flags only.
  */
-function sanitizeSettingsForDebug(settings: UserSettings) {
+function sanitizeSettingsForDebug(
+  settings: UserSettings,
+  selectedModel: ModelSelection,
+) {
   // Build provider setup status: { providerName: hasApiKey }
   const providerSetupStatus: Record<string, boolean> = {};
   if (settings.providerSettings) {
@@ -197,17 +202,15 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
 
   return {
     selectedModel: {
-      name: settings.selectedModel.name,
-      provider: settings.selectedModel.provider,
-      customModelId: settings.selectedModel.customModelId,
+      name: selectedModel.name,
+      provider: selectedModel.provider,
+      customModelId: selectedModel.customModelId,
     },
     selectedChatMode: settings.selectedChatMode ?? null,
     defaultChatMode: settings.defaultChatMode ?? null,
     autoApproveChanges: settings.autoApproveChanges ?? null,
     enableDyadPro: settings.enableDyadPro ?? null,
-    effortLevel:
-      (settings.selectedModel as { effortLevel?: string }).effortLevel ??
-      "medium",
+    effortLevel: selectedModel.effortLevel,
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
     enableAutoUpdate: settings.enableAutoUpdate,
     releaseChannel: settings.releaseChannel,
@@ -422,7 +425,11 @@ export function registerDebugHandlers() {
               : settings.telemetryUserId || "unknown",
         },
 
-        settings: sanitizeSettingsForDebug(settings),
+        settings: sanitizeSettingsForDebug(
+          settings,
+          chatRecord.modelSelection ??
+            (await resolveDefaultModelSelection(settings)),
+        ),
 
         app: {
           id: app.id,

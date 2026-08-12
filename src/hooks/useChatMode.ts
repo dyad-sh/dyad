@@ -44,9 +44,11 @@ export function useChatMode(chatId: number | null | undefined) {
   });
 
   const freeAgentQuotaAvailable = isQuotaLoading ? undefined : !isQuotaExceeded;
+  const selectedModel =
+    chatQuery.data?.modelSelection ?? settings?.selectedModel;
   const effectiveDefaultMode = settings
     ? getFreeProCompatibleChatMode(
-        settings.selectedModel,
+        selectedModel ?? settings.selectedModel,
         getEffectiveDefaultChatMode(settings, envVars, freeAgentQuotaAvailable),
       )
     : "build";
@@ -157,6 +159,7 @@ export function useChatMode(chatId: number | null | undefined) {
     isLoading: chatQuery.isLoading,
     storedChatMode,
     selectedMode,
+    selectedModel,
     effectiveMode,
     effectiveDefaultMode,
     fallbackReason,

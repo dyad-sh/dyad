@@ -92,6 +92,39 @@ describe("acceptChatTurn", () => {
     ).toHaveLength(2);
   });
 
+  it("returns the current mode and model when the caller snapshot is stale", () => {
+    db.update(chats)
+      .set({
+        chatMode: "ask",
+        modelSelection: {
+          provider: "auto",
+          name: "free-pro",
+          effortLevel: "low",
+        },
+      })
+      .where(eq(chats.id, chatId))
+      .run();
+
+    const accepted = acceptChatTurn(db, {
+      chatId,
+      storedChatMode: "build",
+      selectedChatMode: "build",
+      selectedModel: {
+        provider: "openai",
+        name: "stale-model",
+        effortLevel: "high",
+      },
+      content: "use the authoritative pair",
+    });
+
+    expect(accepted.authoritativeChatMode).toBe("ask");
+    expect(accepted.authoritativeModel).toEqual({
+      provider: "auto",
+      name: "free-pro",
+      effortLevel: "low",
+    });
+  });
+
   it("compacts reordered queue positions without uniqueness collisions", async () => {
     const intent = (intentId: string): SerializableChatTurnIntent => {
       const envelope = {

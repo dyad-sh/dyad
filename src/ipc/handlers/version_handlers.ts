@@ -1476,6 +1476,7 @@ export function registerVersionHandlers() {
                 appId,
                 title: restoredTitle,
                 chatMode: latestChat.chatMode,
+                modelSelection: latestChat.modelSelection,
                 initialCommitHash: forkInitialCommitHash,
                 // Carry over the sticky referenced apps. The fork copies the
                 // history containing the `@app:` mentions, so dropping these

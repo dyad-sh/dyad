@@ -35,6 +35,10 @@ import { ApproveProposalResult } from "@/ipc/types";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
+import {
+  normalizeModelSelection,
+  resolveDefaultModelSelection,
+} from "@/ipc/utils/model_effort";
 
 const logger = log.scope("proposal_handlers");
 const handle = createLoggedHandler(logger);
@@ -287,6 +291,10 @@ const getProposalHandler = async (
       });
 
       if (latestAssistantMessage && chat) {
+        const storedSettings = readSettings();
+        const selectedModel = chat.modelSelection
+          ? await normalizeModelSelection(chat.modelSelection)
+          : await resolveDefaultModelSelection(storedSettings);
         // Calculate total tokens from message history
         const messagesTokenCount = estimateMessagesTokens(chat.messages);
 
@@ -300,7 +308,10 @@ const getProposalHandler = async (
         );
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;
-        const contextWindow = Math.min(await getContextWindow(), 100_000);
+        const contextWindow = Math.min(
+          await getContextWindow(selectedModel),
+          100_000,
+        );
         logger.debug(
           `Token usage: ${totalTokens}/${contextWindow} (${(totalTokens / contextWindow) * 100}%)`,
         );
@@ -341,11 +352,15 @@ const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<ApproveProposalResult> => {
-  const settings = readSettings();
+  const storedSettings = readSettings();
   const chat = await db.query.chats.findFirst({
     where: eq(chats.id, chatId),
-    columns: { chatMode: true },
+    columns: { chatMode: true, modelSelection: true },
   });
+  const selectedModel = chat?.modelSelection
+    ? await normalizeModelSelection(chat.modelSelection)
+    : await resolveDefaultModelSelection(storedSettings);
+  const settings = { ...storedSettings, selectedModel };
   const { mode: selectedChatMode } = await resolveChatModeForTurn({
     storedChatMode: chat?.chatMode ?? null,
     settings,

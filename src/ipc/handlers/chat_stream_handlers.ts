@@ -1417,11 +1417,7 @@ ${componentSnippet}
       }
 
       const authoritativeResolution = await resolveChatModeForTurn({
-        storedChatMode: acceptedTurn.authoritativeChatMode ?? chat.chatMode,
-        requestedChatMode:
-          acceptedTurn.authoritativeChatMode === null
-            ? req.requestedChatMode
-            : undefined,
+        storedChatMode: acceptedTurn.authoritativeChatMode,
         settings: storedSettings,
       });
       ({
@@ -2053,6 +2049,7 @@ This conversation includes one or more image attachments. When the user uploads 
             versionedFiles,
             mentionedAppsCodebases,
             builtinProviderId: modelClient.builtinProviderId,
+            reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
             settings,
           });
 

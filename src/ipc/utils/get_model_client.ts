@@ -65,6 +65,7 @@ const OPENROUTER_FREE_MODEL_NAME = "openrouter/free";
 export interface ModelClient {
   model: LanguageModel;
   builtinProviderId?: string;
+  reasoningEffortProviderId?: string;
 }
 
 const logger = log.scope("getModelClient");
@@ -566,6 +567,7 @@ function getRegularModelClient(
         modelClient: {
           model: provider(model.name),
           builtinProviderId: providerId,
+          reasoningEffortProviderId: "azure",
         },
         backupModelClients: [],
       };
@@ -579,6 +581,7 @@ function getRegularModelClient(
         modelClient: {
           model: provider(model.name),
           builtinProviderId: providerId,
+          reasoningEffortProviderId: "ollama",
         },
         backupModelClients: [],
       };
@@ -594,6 +597,8 @@ function getRegularModelClient(
       return {
         modelClient: {
           model: provider(model.name),
+          builtinProviderId: providerId,
+          reasoningEffortProviderId: "lmstudio",
         },
         backupModelClients: [],
       };
@@ -647,6 +652,8 @@ function getRegularModelClient(
         return {
           modelClient: {
             model: provider(model.name),
+            builtinProviderId: providerConfig.id,
+            reasoningEffortProviderId: providerConfig.id,
           },
           backupModelClients: [],
         };

@@ -28,6 +28,12 @@ export function resolveEffortLevel({
   catalogModel?: LanguageModel | null;
   preferredEffortLevel?: string | null;
 }): string {
+  // A persisted chat selection is authoritative even if a remote-only model is
+  // temporarily absent from the current catalog. Only apply the generic
+  // fallback schema when the model exists and explicitly has no metadata.
+  if (!catalogModel) {
+    return preferredEffortLevel ?? FALLBACK_EFFORT_SETTINGS.defaultEffortLevel;
+  }
   const settings = getEffortSettings(catalogModel);
   return preferredEffortLevel &&
     settings.possibleEffortLevels.includes(preferredEffortLevel)

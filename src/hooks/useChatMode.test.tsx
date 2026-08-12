@@ -163,4 +163,27 @@ describe("useChatMode with an active chat", () => {
     expect(result.current.storedChatMode).toBe("build");
     expect(result.current.selectedMode).toBe("build");
   });
+
+  it("uses the chat model instead of the global model for compatibility", () => {
+    const chat = {
+      id: 123,
+      appId: 1,
+      title: "",
+      messages: [],
+      chatMode: null,
+      modelSelection: {
+        provider: "openai",
+        name: "gpt-5",
+        effortLevel: "high",
+      },
+      referencedApps: [],
+    } satisfies Chat;
+
+    const { result } = renderHook(() => useChatMode(chat.id), {
+      wrapper: makeWrapper(false, chat),
+    });
+
+    expect(result.current.selectedModel).toEqual(chat.modelSelection);
+    expect(result.current.selectedMode).toBe("build");
+  });
 });

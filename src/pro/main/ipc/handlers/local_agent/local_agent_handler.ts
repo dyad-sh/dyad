@@ -1076,6 +1076,7 @@ export async function handleLocalAgentStream(
               files: [],
               mentionedAppsCodebases: [],
               builtinProviderId: modelClient.builtinProviderId,
+              reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
               settings,
             }),
             maxOutputTokens,

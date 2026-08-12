@@ -39,7 +39,9 @@ import { isDyadProEnabled } from "@/lib/schemas";
 import {
   normalizeModelSelection,
   resolveDefaultModelSelection,
+  resolveModelSelection,
 } from "@/ipc/utils/model_effort";
+import { getModelPreferenceKey } from "@/lib/modelEffort";
 
 const logger = log.scope("compaction_handler");
 
@@ -193,7 +195,16 @@ export async function performCompaction(
     const selectedModel = chat?.modelSelection
       ? await normalizeModelSelection(chat.modelSelection)
       : await resolveDefaultModelSelection(storedSettings);
-    const settings = { ...storedSettings, selectedModel };
+    const compactionModel = isDyadProEnabled(storedSettings)
+      ? await resolveModelSelection({
+          model: PRO_COMPACTION_MODEL,
+          preferredEffortLevel:
+            storedSettings.modelEffortPreferences?.[
+              getModelPreferenceKey(PRO_COMPACTION_MODEL)
+            ],
+        })
+      : selectedModel;
+    const settings = { ...storedSettings, selectedModel: compactionModel };
     logger.info(`Starting compaction for chat ${chatId}`);
 
     // Load all messages for the chat
@@ -233,12 +244,7 @@ export async function performCompaction(
     const conversationText = formatAsTranscript(messagesToBackup, chatId);
 
     // Get model client
-    const { modelClient } = await getModelClient(
-      isDyadProEnabled(settings)
-        ? PRO_COMPACTION_MODEL
-        : settings.selectedModel,
-      settings,
-    );
+    const { modelClient } = await getModelClient(compactionModel, settings);
 
     // Generate summary
     const summaryMessages: ModelMessage[] = [
@@ -264,6 +270,7 @@ export async function performCompaction(
         files: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelClient.builtinProviderId,
+        reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
         settings,
       }),
       system: COMPACTION_SYSTEM_PROMPT,

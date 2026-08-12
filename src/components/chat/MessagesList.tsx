@@ -24,6 +24,7 @@ import { showError, showWarning } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
+import { useChatMode } from "@/hooks/useChatMode";
 import { ModifiedFilesCard } from "./ModifiedFilesCard";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
@@ -596,6 +597,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
+    const { chat: selectedChat } = useChatMode(selectedChatId);
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
@@ -614,7 +616,8 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
     // Stabilize renderSetupBanner with proper dependencies
     const renderSetupBanner = useCallback(() => {
-      const selectedModel = settings?.selectedModel;
+      const selectedModel =
+        selectedChat?.modelSelection ?? settings?.selectedModel;
       if (
         selectedModel?.name === "free" &&
         selectedModel?.provider === "auto" &&
@@ -629,6 +632,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     }, [
       settings?.selectedModel?.name,
       settings?.selectedModel?.provider,
+      selectedChat?.modelSelection,
       isProviderSetup,
       isAnyProviderSetup,
     ]);

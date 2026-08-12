@@ -41,6 +41,19 @@ describe("model effort", () => {
     expect(formatEffortLevel("very_high")).toBe("Very High");
   });
 
+  it("preserves a persisted arbitrary effort while its model is unavailable", () => {
+    expect(resolveEffortLevel({ preferredEffortLevel: "xhigh" })).toBe("xhigh");
+    expect(
+      resolveEffortLevel({
+        catalogModel: {
+          apiName: "model-without-effort-metadata",
+          displayName: "Model",
+        },
+        preferredEffortLevel: "xhigh",
+      }),
+    ).toBe("medium");
+  });
+
   it("uses a collision-safe preference key including custom model identity", () => {
     expect(
       getModelPreferenceKey({

@@ -329,6 +329,11 @@ describe("context compaction (integration)", () => {
       .values({
         appId: harness.appId,
         chatMode: "local-agent",
+        modelSelection: {
+          provider: "openai",
+          name: "fork-model",
+          effortLevel: "xhigh",
+        },
         initialCommitHash,
         referencedAppIds,
       })
@@ -362,7 +367,14 @@ describe("context compaction (integration)", () => {
       harness.db.query.chats.findFirst({
         where: (chats, { eq }) => eq(chats.id, result.createdChatId ?? -1),
       }),
-    ).resolves.toMatchObject({ referencedAppIds });
+    ).resolves.toMatchObject({
+      referencedAppIds,
+      modelSelection: {
+        provider: "openai",
+        name: "fork-model",
+        effortLevel: "xhigh",
+      },
+    });
   });
 
   it("restore to message uses the target branch while previewing detached history", async () => {

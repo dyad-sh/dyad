@@ -273,13 +273,14 @@ describe("performCompaction", () => {
       {
         provider: "openai",
         name: "gpt-5.6-luna",
+        effortLevel: "medium",
       },
       {
         enableDyadPro: true,
         providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
         selectedModel: {
-          provider: "anthropic",
-          name: "test-model",
+          provider: "openai",
+          name: "gpt-5.6-luna",
           effortLevel: "medium",
         },
       },

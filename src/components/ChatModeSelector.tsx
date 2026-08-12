@@ -46,6 +46,7 @@ export function ChatModeSelector() {
     selectedMode,
     effectiveMode,
     storedChatMode,
+    selectedModel,
     fallbackReason,
     setChatMode,
     settings,
@@ -58,7 +59,7 @@ export function ChatModeSelector() {
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, messagesLimit, isQuotaExceeded } =
     useFreeAgentQuota();
-  const isDyadFreeSelected = isFreeProModel(settings?.selectedModel);
+  const isDyadFreeSelected = isFreeProModel(selectedModel);
   const buildUnavailableForDyadFree = isDyadFreeSelected;
 
   useEffect(() => {
@@ -88,17 +89,19 @@ export function ChatModeSelector() {
     if (
       settings &&
       storedChatMode === "build" &&
-      isFreeProBuildModeCombination(settings.selectedModel, selectedMode)
+      selectedModel &&
+      isFreeProBuildModeCombination(selectedModel, selectedMode)
     ) {
       void setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE).catch(() => {});
     }
-  }, [selectedMode, setChatMode, settings, storedChatMode]);
+  }, [selectedMode, selectedModel, setChatMode, settings, storedChatMode]);
 
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
     if (
       settings &&
-      isFreeProBuildModeCombination(settings.selectedModel, newMode)
+      selectedModel &&
+      isFreeProBuildModeCombination(selectedModel, newMode)
     ) {
       toast.error("Dyad Free is not available in Build mode.");
       return;

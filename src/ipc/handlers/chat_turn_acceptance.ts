@@ -90,46 +90,20 @@ export function acceptChatTurn(
       .set({ modelSelection: selectedModel })
       .where(and(eq(chats.id, input.chatId), isNull(chats.modelSelection)))
       .run();
-    const authoritativeModel = tx
-      .select({ modelSelection: chats.modelSelection })
-      .from(chats)
-      .where(eq(chats.id, input.chatId))
-      .get()?.modelSelection;
-    if (!authoritativeModel) {
-      throw new DyadError(
-        `Chat not found: ${input.chatId}`,
-        DyadErrorKind.NotFound,
-      );
-    }
-
-    if (input.storedChatMode !== null) {
-      return {
-        userMessageId: insertedUserMessage.id,
-        authoritativeChatMode: null,
-        authoritativeModel,
-      };
-    }
-
-    const latchedChat = tx
-      .update(chats)
+    tx.update(chats)
       .set({ chatMode: input.selectedChatMode })
       .where(and(eq(chats.id, input.chatId), isNull(chats.chatMode)))
-      .returning({ chatMode: chats.chatMode })
-      .get();
-    if (latchedChat) {
-      return {
-        userMessageId: insertedUserMessage.id,
-        authoritativeChatMode: latchedChat.chatMode,
-        authoritativeModel,
-      };
-    }
+      .run();
 
     const winningChat = tx
-      .select({ chatMode: chats.chatMode })
+      .select({
+        chatMode: chats.chatMode,
+        modelSelection: chats.modelSelection,
+      })
       .from(chats)
       .where(eq(chats.id, input.chatId))
       .get();
-    if (!winningChat) {
+    if (!winningChat?.chatMode || !winningChat.modelSelection) {
       throw new DyadError(
         `Chat not found: ${input.chatId}`,
         DyadErrorKind.NotFound,
@@ -138,7 +112,7 @@ export function acceptChatTurn(
     return {
       userMessageId: insertedUserMessage.id,
       authoritativeChatMode: winningChat.chatMode,
-      authoritativeModel,
+      authoritativeModel: winningChat.modelSelection,
     };
   });
   if (accepted.userMessageId !== null && input.chatTurnIntentId) {

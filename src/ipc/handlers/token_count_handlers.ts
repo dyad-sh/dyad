@@ -211,7 +211,7 @@ export function registerTokenCountHandlers() {
         mentionedAppsTokens,
         inputTokens,
         systemPromptTokens,
-        contextWindow: await getContextWindow(),
+        contextWindow: await getContextWindow(selectedModel),
       };
     },
   );

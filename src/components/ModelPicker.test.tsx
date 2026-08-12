@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   isTrial: false,
   renderSubContent: false,
   settingsLoading: false,
+  chatLoading: false,
+  pathname: "/",
+  search: {} as { id?: number },
   envVars: {} as Record<string, string | undefined>,
   freeModelQuota: {
     quotaStatus: {
@@ -78,8 +81,8 @@ vi.mock("@/hooks/useSettings", () => ({
 vi.mock("@tanstack/react-router", () => ({
   useRouterState: () => ({
     location: {
-      pathname: "/",
-      search: {},
+      pathname: mocks.pathname,
+      search: mocks.search,
     },
   }),
   useNavigate: () => mocks.navigate,
@@ -129,6 +132,7 @@ vi.mock("@/components/ui/dialog", () => ({
 vi.mock("@/hooks/useChatMode", () => ({
   useChatMode: () => ({
     chat: null,
+    isLoading: mocks.chatLoading,
     selectedMode: mocks.selectedMode,
     setChatMode: mocks.setChatMode,
   }),
@@ -354,6 +358,9 @@ describe("ModelPicker", () => {
     mocks.selectedMode = "build";
     mocks.renderSubContent = false;
     mocks.settingsLoading = false;
+    mocks.chatLoading = false;
+    mocks.pathname = "/";
+    mocks.search = {};
     mocks.envVars = {};
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
@@ -409,6 +416,20 @@ describe("ModelPicker", () => {
         },
       });
     });
+  });
+
+  it("disables selection while an existing chat is still loading", () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chatLoading = true;
+
+    render(<ModelPicker />);
+
+    expect(
+      (screen.getByTestId("model-picker") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(mocks.updateChat).not.toHaveBeenCalled();
   });
 
   it("sorts the Pro flat list by price descending and groups same-price models by provider", () => {

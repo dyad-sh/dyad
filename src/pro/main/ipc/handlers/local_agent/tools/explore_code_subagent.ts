@@ -163,6 +163,8 @@ export async function runExploreCodeSubagent({
         files: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelInfo.modelClient.builtinProviderId,
+        reasoningEffortProviderId:
+          modelInfo.modelClient.reasoningEffortProviderId,
         settings,
       }),
       maxOutputTokens,

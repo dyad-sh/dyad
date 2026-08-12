@@ -141,6 +141,24 @@ describe("getExtraProviderOptions", () => {
       },
     });
   });
+
+  it("maps Gemini minimal effort to the minimum gateway budget", () => {
+    expect(
+      getExtraProviderOptionsForEngine("google", {
+        ...baseSettings,
+        selectedModel: {
+          ...baseSettings.selectedModel,
+          effortLevel: "minimal",
+        } as UserSettings["selectedModel"] & { effortLevel: string },
+      }),
+    ).toEqual({
+      thinking: {
+        type: "enabled",
+        include_thoughts: true,
+        budget_tokens: 0,
+      },
+    });
+  });
 });
 
 describe("getAnthropicProviderOptions", () => {

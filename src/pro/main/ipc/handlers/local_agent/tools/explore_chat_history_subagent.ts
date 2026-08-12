@@ -124,6 +124,8 @@ export async function runExploreChatHistorySubagent({
         files: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelInfo.modelClient.builtinProviderId,
+        reasoningEffortProviderId:
+          modelInfo.modelClient.reasoningEffortProviderId,
         settings,
       }),
       maxOutputTokens,

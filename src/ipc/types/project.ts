@@ -44,6 +44,21 @@ export const ProjectListingSchema = z.object({
   entries: z.array(ProjectFileSchema),
 });
 
+/** A conversation stored in a project, as listed. */
+export const ProjectConversationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  updatedAt: z.number(),
+  messageCount: z.number(),
+});
+
+export type ProjectConversation = z.infer<typeof ProjectConversationSchema>;
+
+const StoredMessageSchema = z.object({
+  role: z.string(),
+  content: z.string(),
+});
+
 export const projectContracts = {
   list: defineContract({
     channel: "project:list",
@@ -92,6 +107,41 @@ export const projectContracts = {
     input: z.object({ id: z.string(), path: z.string().min(1) }),
     output: z.void(),
   }),
+  /** Record a conversation in the project, or update the one already there. */
+  saveConversation: defineContract({
+    channel: "project:save-conversation",
+    input: z.object({
+      projectId: z.string(),
+      conversationId: z.string(),
+      title: z.string(),
+      updatedAt: z.number(),
+      messages: z.array(StoredMessageSchema),
+    }),
+    output: z.void(),
+  }),
+  /** Conversations recorded in a project, newest first. */
+  listConversations: defineContract({
+    channel: "project:list-conversations",
+    input: z.object({ projectId: z.string() }),
+    output: z.array(ProjectConversationSchema),
+  }),
+  /** One recorded conversation, with its messages, to continue it. */
+  getConversation: defineContract({
+    channel: "project:get-conversation",
+    input: z.object({ projectId: z.string(), conversationId: z.string() }),
+    output: z.object({
+      id: z.string(),
+      title: z.string(),
+      updatedAt: z.number(),
+      messages: z.array(StoredMessageSchema),
+    }),
+  }),
+  deleteConversation: defineContract({
+    channel: "project:delete-conversation",
+    input: z.object({ projectId: z.string(), conversationId: z.string() }),
+    output: z.void(),
+  }),
+
   /** Show a project file in the system file browser. */
   revealFile: defineContract({
     channel: "project:reveal-file",

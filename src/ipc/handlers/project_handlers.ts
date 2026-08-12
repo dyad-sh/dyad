@@ -61,6 +61,31 @@ function resolveInProject(id: string, relative: string): string {
   }
 }
 
+/**
+ * Where a project's conversations are recorded.
+ *
+ * A folder of JSON beside the project's files rather than rows in the
+ * database, so a project is one directory you could copy, inspect or back up
+ * without the app.
+ */
+const CONVERSATIONS_DIR = "Conversations";
+
+function conversationsRoot(projectId: string): string {
+  const dir = nodePath.join(projectFilesRoot(projectId), CONVERSATIONS_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function conversationFile(projectId: string, conversationId: string): string {
+  // The id names the file, not the title: a title changes as the conversation
+  // is renamed, and a rename must not leave a second copy behind.
+  const safe = conversationId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safe) {
+    throw new DyadError("Invalid conversation id.", DyadErrorKind.Validation);
+  }
+  return nodePath.join(conversationsRoot(projectId), `${safe}.json`);
+}
+
 export function registerProjectHandlers() {
   createTypedHandler(projectContracts.list, async () => {
     const rows = await db
@@ -132,6 +157,9 @@ export function registerProjectHandlers() {
 
     const entries = dirents
       .filter((entry) => !entry.name.startsWith("."))
+      .filter(
+        (entry) => !(input.path === "" && entry.name === CONVERSATIONS_DIR),
+      )
       .map((entry) => {
         const childPath = input.path
           ? `${input.path}/${entry.name}`
@@ -237,6 +265,104 @@ export function registerProjectHandlers() {
     );
     if (error) throw new DyadError(error, DyadErrorKind.External);
   });
+
+  createTypedHandler(
+    projectContracts.saveConversation,
+    async (_event, input) => {
+      // An empty conversation is not worth a file; it would show as a card for
+      // something the user never said.
+      if (input.messages.length === 0) return;
+
+      fs.writeFileSync(
+        conversationFile(input.projectId, input.conversationId),
+        JSON.stringify(
+          {
+            id: input.conversationId,
+            title: input.title,
+            updatedAt: input.updatedAt,
+            messages: input.messages,
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+    },
+  );
+
+  createTypedHandler(
+    projectContracts.listConversations,
+    async (_event, { projectId }) => {
+      const dir = conversationsRoot(projectId);
+      const files = fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"));
+
+      const conversations = files.flatMap((entry) => {
+        try {
+          const raw = JSON.parse(
+            fs.readFileSync(nodePath.join(dir, entry.name), "utf-8"),
+          ) as {
+            id?: string;
+            title?: string;
+            updatedAt?: number;
+            messages?: unknown[];
+          };
+          if (!raw.id) return [];
+          return [
+            {
+              id: raw.id,
+              title: raw.title || "Untitled conversation",
+              updatedAt: raw.updatedAt ?? 0,
+              messageCount: Array.isArray(raw.messages)
+                ? raw.messages.length
+                : 0,
+            },
+          ];
+        } catch {
+          // A corrupt file is skipped rather than taking the whole list down.
+          logger.warn(`Skipping unreadable conversation ${entry.name}`);
+          return [];
+        }
+      });
+
+      return conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+  );
+
+  createTypedHandler(
+    projectContracts.getConversation,
+    async (_event, input) => {
+      const file = conversationFile(input.projectId, input.conversationId);
+      if (!fs.existsSync(file)) {
+        throw new DyadError(
+          "That conversation is no longer recorded here.",
+          DyadErrorKind.NotFound,
+        );
+      }
+      const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+        id: string;
+        title?: string;
+        updatedAt?: number;
+        messages?: Array<{ role: string; content: string }>;
+      };
+      return {
+        id: raw.id,
+        title: raw.title || "Untitled conversation",
+        updatedAt: raw.updatedAt ?? 0,
+        messages: raw.messages ?? [],
+      };
+    },
+  );
+
+  createTypedHandler(
+    projectContracts.deleteConversation,
+    async (_event, input) => {
+      fs.rmSync(conversationFile(input.projectId, input.conversationId), {
+        force: true,
+      });
+    },
+  );
 
   logger.info("Project handlers registered");
 }

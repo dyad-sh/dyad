@@ -152,11 +152,61 @@ export default function ProjectsPage() {
     await navigate({ to: "/chat-agent" });
   };
 
-  /** Conversations already belonging to a project, newest first. */
+  /**
+   * Conversations recorded in the open project.
+   *
+   * Read from the project folder rather than the open tabs, so a conversation
+   * closed weeks ago is still here to continue.
+   */
+  const conversationsQuery = useQuery({
+    queryKey: ["project-conversations", filesOpen],
+    queryFn: () =>
+      ipc.project.listConversations({ projectId: filesOpen as string }),
+    enabled: filesOpen !== null,
+  });
+
+  /** Conversations belonging to a project among the tabs currently open. */
   const conversationsFor = (projectId: string) =>
     openTabs
       .filter((tab) => tab.projectId === projectId)
       .sort((a, b) => b.updatedAt - a.updatedAt);
+
+  /**
+   * Continue a recorded conversation.
+   *
+   * If its tab is still open, go to it. Otherwise the messages are read back
+   * from the project and reopened as a tab under the same id, so continuing
+   * where you left off is the same conversation rather than a copy of it.
+   */
+  const continueConversation = async (
+    projectId: string,
+    conversationId: string,
+  ) => {
+    const alreadyOpen = openTabs.find((tab) => tab.id === conversationId);
+    if (!alreadyOpen) {
+      const stored = await ipc.project.getConversation({
+        projectId,
+        conversationId,
+      });
+      setOpenTabs((current) => [
+        ...current,
+        {
+          id: stored.id,
+          title: stored.title,
+          messages: stored.messages.map((message) => ({
+            role: message.role as "user" | "assistant",
+            content: message.content,
+          })),
+          vectorCollectionIds: [],
+          projectId,
+          updatedAt: stored.updatedAt,
+        },
+      ]);
+    }
+    await updateSettings({ activeProjectId: projectId });
+    setActiveTab(conversationId);
+    await navigate({ to: "/chat-agent" });
+  };
 
   const isEditorOpen = isCreating || editing !== null;
   const openProject = projects.find((project) => project.id === filesOpen);
@@ -183,6 +233,79 @@ export default function ProjectsPage() {
           </div>
 
           <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+            <section className="mb-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="system-group-label">Conversations</h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void openAsChat(openProject)}
+                  data-testid="project-new-conversation"
+                >
+                  <Plus className="size-3.5" />
+                  New conversation
+                </Button>
+              </div>
+
+              {conversationsQuery.data?.length === 0 && (
+                <p className="text-xs text-cyan-100/35">
+                  No conversations recorded here yet.
+                </p>
+              )}
+
+              <div className="project-file-grid">
+                {(conversationsQuery.data ?? []).map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    className="project-file-tile group"
+                    data-testid={`project-conversation-${conversation.id}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void continueConversation(
+                          openProject.id,
+                          conversation.id,
+                        )
+                      }
+                      className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center"
+                    >
+                      <MessageSquare className="size-9 text-cyan-300/70" />
+                      <span className="w-full truncate text-xs text-cyan-50/85">
+                        {conversation.title}
+                      </span>
+                      <span className="text-[10px] text-cyan-100/30">
+                        {new Date(conversation.updatedAt).toLocaleDateString(
+                          undefined,
+                          { day: "numeric", month: "short", year: "numeric" },
+                        )}
+                        {` · ${conversation.messageCount} message${conversation.messageCount === 1 ? "" : "s"}`}
+                      </span>
+                    </button>
+                    <div className="project-file-tile-actions">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await ipc.project.deleteConversation({
+                            projectId: openProject.id,
+                            conversationId: conversation.id,
+                          });
+                          await queryClient.invalidateQueries({
+                            queryKey: ["project-conversations", openProject.id],
+                          });
+                        }}
+                        aria-label={`Delete ${conversation.title}`}
+                        className="rounded p-1 text-white/35 hover:bg-rose-500/10 hover:text-rose-300"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <h2 className="system-group-label mb-3">Files</h2>
             <ProjectFiles projectId={openProject.id} />
           </div>
         </div>

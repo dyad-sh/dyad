@@ -353,9 +353,28 @@ export default function ChatAgentPage() {
       }
       return [conversation, ...prev].slice(0, MAX_CHAT_AGENT_HISTORY);
     });
+
+    // A conversation in a project is also recorded there, so it survives the
+    // tab being closed and can be continued from the project itself.
+    const projectId = openTabs.find((tab) => tab.id === sessionId)?.projectId;
+    if (projectId) {
+      void ipc.project
+        .saveConversation({
+          projectId,
+          conversationId: sessionId,
+          title,
+          updatedAt: Date.now(),
+          messages: messages.map(({ role, content }) => ({ role, content })),
+        })
+        .catch(() => {
+          // Recording is a convenience; failing to write must not interrupt
+          // the conversation the user is having.
+        });
+    }
   }, [
     isStreaming,
     messages,
+    openTabs,
     sessionId,
     title,
     vectorCollectionIds,

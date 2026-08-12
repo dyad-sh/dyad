@@ -343,7 +343,9 @@ export function buildDataSourceToolSet(
       }
 
       const key = decryptCredential(row.encryptedCredential);
-      if (!key) {
+      // A D1 source signed in through the browser has no stored key: Wrangler
+      // holds the credential, so an absent one is expected there.
+      if (!key && row.provider !== "cloudflare-d1") {
         return `"${row.name}" has no usable connection key. Ask the user to re-enter it in Data Sources.`;
       }
 

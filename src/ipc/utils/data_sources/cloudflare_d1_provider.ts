@@ -3,6 +3,8 @@ import {
   sanitiseDatabaseError,
 } from "@/lib/data_sources/read_only";
 import type { QueryPlan } from "@/lib/data_sources/query_plan";
+import { inlineParameters } from "@/lib/data_sources/sqlite_literal";
+import { executeD1ViaWrangler } from "../cloudflare/environment";
 
 /**
  * Cloudflare D1, over Cloudflare's own REST API.
@@ -23,6 +25,20 @@ export function d1Endpoint(accountId: string, databaseId: string): string {
   return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
     accountId,
   )}/d1/database/${encodeURIComponent(databaseId)}`;
+}
+
+/** The account and database an endpoint refers to, or null. */
+export function parseD1Endpoint(
+  value: string,
+): { accountId: string; databaseId: string } | null {
+  const match = value.match(
+    /^https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/([^/]+)\/d1\/database\/([^/]+)$/,
+  );
+  if (!match) return null;
+  return {
+    accountId: decodeURIComponent(match[1]),
+    databaseId: decodeURIComponent(match[2]),
+  };
 }
 
 export function isD1Endpoint(value: string): boolean {
@@ -50,11 +66,28 @@ type D1Response = {
  */
 async function d1Query(input: {
   endpoint: string;
-  token: string;
+  token: string | null;
   sql: string;
   params?: unknown[];
 }): Promise<{ rows: Array<Record<string, unknown>>; durationMs: number }> {
   assertReadOnly(input.sql);
+
+  // No token means the user signed in through the browser, so Wrangler holds
+  // the credential and is the only thing that can use it. Values are inlined
+  // there because wrangler d1 execute takes no bind parameters; the guard
+  // above and the literal encoder are what make that safe.
+  if (!input.token) {
+    const target = parseD1Endpoint(input.endpoint);
+    if (!target) throw new Error("This is not a D1 database endpoint.");
+
+    const startedAt = Date.now();
+    const rows = await executeD1ViaWrangler({
+      projectRoot: process.cwd(),
+      databaseId: target.databaseId,
+      sql: inlineParameters(input.sql, input.params ?? []),
+    });
+    return { rows, durationMs: Date.now() - startedAt };
+  }
 
   const startedAt = Date.now();
   let response: Response;
@@ -133,15 +166,6 @@ export async function testD1Connection(input: {
     detail: "Endpoint is well formed.",
   });
 
-  if (!input.token) {
-    checks.push({
-      name: "API token",
-      ok: false,
-      detail: "No Cloudflare API token is stored for this database.",
-    });
-    return { ok: false, status: "auth_error", checks, tablesDiscovered: null };
-  }
-
   try {
     const { rows } = await d1Query({
       endpoint: input.endpoint,
@@ -151,9 +175,11 @@ export async function testD1Connection(input: {
       sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'",
     });
     checks.push({
-      name: "API token",
+      name: "Authentication",
       ok: true,
-      detail: "Cloudflare accepted the token.",
+      detail: input.token
+        ? "Cloudflare accepted the token."
+        : "Signed in through the browser.",
     });
     checks.push({
       name: "Tables",
@@ -169,10 +195,10 @@ export async function testD1Connection(input: {
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : "Could not reach Cloudflare.";
-    checks.push({ name: "API token", ok: false, detail });
+    checks.push({ name: "Authentication", ok: false, detail });
     return {
       ok: false,
-      status: /permitted|token/i.test(detail)
+      status: /permitted|token|signed in/i.test(detail)
         ? "auth_error"
         : "connection_error",
       checks,
@@ -255,7 +281,7 @@ export function d1CatalogueToParsedSchema(catalogue: { tables: D1Table[] }): {
  */
 export async function discoverD1Schema(input: {
   endpoint: string;
-  token: string;
+  token: string | null;
 }): Promise<{ tables: D1Table[] }> {
   const { rows } = await d1Query({
     endpoint: input.endpoint,
@@ -301,7 +327,7 @@ export async function discoverD1Schema(input: {
  */
 export async function executeD1Plan(input: {
   endpoint: string;
-  token: string;
+  token: string | null;
   plan: QueryPlan;
 }): Promise<{
   columns: string[];

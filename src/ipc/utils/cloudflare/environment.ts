@@ -235,3 +235,160 @@ export async function listD1Databases(apiToken: string): Promise<
 
   return databases;
 }
+
+/**
+ * Installs Wrangler into the project, if it is not already usable.
+ *
+ * Project-local rather than global: a global install is shared state that this
+ * app does not own, and removing it later would be someone else's problem.
+ */
+export async function ensureWrangler(projectRoot: string): Promise<string> {
+  const existing = await run("npx", ["wrangler", "--version"], {
+    cwd: projectRoot,
+    timeoutMs: 45_000,
+  });
+  const found = parseWranglerVersion(existing.stdout + existing.stderr);
+  if (existing.code === 0 && found) return found;
+
+  const manager = detectPackageManager(projectRoot);
+  const args: Record<PackageManager, string[]> = {
+    npm: ["install", "--save-dev", "wrangler@latest"],
+    pnpm: ["add", "-D", "wrangler@latest"],
+    yarn: ["add", "-D", "wrangler@latest"],
+    bun: ["add", "-d", "wrangler@latest"],
+  };
+
+  const install = await run(manager, args[manager], {
+    cwd: projectRoot,
+    timeoutMs: 300_000,
+  });
+  if (install.code !== 0) {
+    throw new Error(
+      `Could not install Wrangler with ${manager}. ${install.stderr.slice(0, 300)}`,
+    );
+  }
+
+  const after = await run("npx", ["wrangler", "--version"], {
+    cwd: projectRoot,
+    timeoutMs: 45_000,
+  });
+  const version = parseWranglerVersion(after.stdout + after.stderr);
+  if (!version) throw new Error("Wrangler installed but did not run.");
+  return version;
+}
+
+/**
+ * Browser sign-in.
+ *
+ * `wrangler login` prints an authorization URL and waits on a local callback.
+ * The process is left running while the user approves in their browser, and
+ * success is confirmed by asking who we are afterwards rather than by trusting
+ * the exit code — a cancelled sign-in can exit zero.
+ */
+export async function loginWithBrowser(
+  projectRoot: string,
+): Promise<{ email: string | null; accountId: string | null }> {
+  const login = await run("npx", ["wrangler", "login"], {
+    cwd: projectRoot,
+    // Long enough for a person to find the browser window and approve.
+    timeoutMs: 240_000,
+  });
+
+  const whoami = await run("npx", ["wrangler", "whoami"], {
+    cwd: projectRoot,
+    timeoutMs: 45_000,
+  });
+  const account = parseWhoami(whoami.stdout + whoami.stderr);
+
+  if (!account) {
+    throw new Error(
+      login.code === 0
+        ? "Cloudflare sign-in did not complete. The browser window may have been closed before approving."
+        : "Cloudflare sign-in failed.",
+    );
+  }
+  return account;
+}
+
+/** D1 databases visible to the signed-in account, via Wrangler. */
+export async function listD1DatabasesViaWrangler(
+  projectRoot: string,
+): Promise<Array<{ uuid: string; name: string }>> {
+  const result = await run("npx", ["wrangler", "d1", "list", "--json"], {
+    cwd: projectRoot,
+    timeoutMs: 60_000,
+  });
+
+  if (result.code !== 0) {
+    throw new Error(
+      /not authenticated|not logged in/i.test(result.stdout + result.stderr)
+        ? "Cloudflare is not signed in."
+        : "Could not list D1 databases.",
+    );
+  }
+
+  // Wrangler prints a banner before the JSON on some versions, so the array is
+  // located rather than assumed to start at the first character.
+  const text = result.stdout;
+  const start = text.indexOf("[");
+  if (start < 0) return [];
+
+  try {
+    const parsed = JSON.parse(text.slice(start)) as Array<{
+      uuid?: string;
+      name?: string;
+    }>;
+    return parsed
+      .filter((row) => row.uuid && row.name)
+      .map((row) => ({ uuid: row.uuid as string, name: row.name as string }));
+  } catch {
+    throw new Error("Could not read the list of D1 databases.");
+  }
+}
+
+/**
+ * One read-only statement, through Wrangler, against the remote database.
+ *
+ * `--remote` matters: without it Wrangler queries a local simulation, which
+ * would answer confidently about data that is not there.
+ */
+export async function executeD1ViaWrangler(input: {
+  projectRoot: string;
+  databaseId: string;
+  sql: string;
+}): Promise<Array<Record<string, unknown>>> {
+  const result = await run(
+    "npx",
+    [
+      "wrangler",
+      "d1",
+      "execute",
+      input.databaseId,
+      "--remote",
+      "--json",
+      "--command",
+      input.sql,
+    ],
+    { cwd: input.projectRoot, timeoutMs: 60_000 },
+  );
+
+  if (result.code !== 0) {
+    throw new Error(
+      /not authenticated|not logged in/i.test(result.stdout + result.stderr)
+        ? "Cloudflare is not signed in."
+        : "The query could not be run.",
+    );
+  }
+
+  const start = result.stdout.indexOf("[");
+  if (start < 0) return [];
+
+  try {
+    const parsed = JSON.parse(result.stdout.slice(start)) as Array<{
+      results?: Array<Record<string, unknown>>;
+    }>;
+    return parsed[0]?.results ?? [];
+  } catch {
+    throw new Error("Could not read the query results.");
+  }
+}

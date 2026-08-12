@@ -54,6 +54,28 @@ export const cloudflareContracts = {
    * before anything is saved, which is the point at which the user is deciding
    * whether to save it at all.
    */
+  /** Install Wrangler if the machine does not already have a usable one. */
+  ensureWrangler: defineContract({
+    channel: "cloudflare:ensure-wrangler",
+    input: z.void(),
+    output: z.object({ version: z.string() }),
+  }),
+  /** Sign in through the browser. Resolves once Cloudflare confirms who we are. */
+  loginWithBrowser: defineContract({
+    channel: "cloudflare:login",
+    input: z.void(),
+    output: z.object({
+      email: z.string().nullable(),
+      accountId: z.string().nullable(),
+    }),
+  }),
+  /** D1 databases visible to the signed-in account. */
+  listSignedInDatabases: defineContract({
+    channel: "cloudflare:list-signed-in-databases",
+    input: z.void(),
+    output: z.array(z.object({ uuid: z.string(), name: z.string() })),
+  }),
+
   listDatabases: defineContract({
     channel: "cloudflare:list-databases",
     input: z.object({ apiToken: z.string().min(1) }),

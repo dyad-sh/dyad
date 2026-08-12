@@ -315,7 +315,7 @@ export function registerDataSourceHandlers() {
     const row = await requireRow(id);
     const key = decryptCredential(row.encryptedCredential);
 
-    if (!key) {
+    if (!key && row.provider !== "cloudflare-d1") {
       throw new DyadError(
         "Add a connection key before syncing the schema.",
         DyadErrorKind.Precondition,

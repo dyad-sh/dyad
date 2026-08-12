@@ -80,6 +80,9 @@ function CloudflareSetup({
   onConnected: () => void;
 }) {
   const [apiToken, setApiToken] = useState("");
+  // Browser sign-in is the default path; the token is there for machines that
+  // cannot open a browser.
+  const [useToken, setUseToken] = useState(false);
   const [databases, setDatabases] = useState<CloudflareD1Database[] | null>(
     null,
   );
@@ -91,6 +94,35 @@ function CloudflareSetup({
 
   const queryClient = useQueryClient();
   const env = environment.data;
+
+  /**
+   * Install Wrangler if needed, sign in through the browser, then list.
+   *
+   * One button rather than three steps: the user's part is approving in the
+   * browser, and everything either side of that is ours to do.
+   */
+  const signIn = useMutation({
+    mutationFn: async () => {
+      await ipc.cloudflare.ensureWrangler();
+      await ipc.cloudflare.loginWithBrowser();
+      return ipc.cloudflare.listSignedInDatabases();
+    },
+    onSuccess: async (found) => {
+      await environment.refetch();
+      setDatabases(
+        found.map((database) => ({
+          uuid: database.uuid,
+          name: database.name,
+          // Wrangler lists databases for the signed-in account, which the
+          // environment check has already named.
+          accountId: environment.data?.account?.accountId ?? "",
+          accountName: environment.data?.account?.email ?? "Signed in",
+          fileSizeBytes: null,
+        })),
+      );
+    },
+    onError: (error: Error) => showError(error.message),
+  });
 
   const listDatabases = useMutation({
     mutationFn: () =>
@@ -114,6 +146,8 @@ function CloudflareSetup({
         projectUrl: d1Endpoint(database.accountId, database.uuid),
         environment: "production",
         credentialType: "secret",
+        // Empty when signed in through the browser: Wrangler holds that
+        // credential, and storing nothing is better than storing a copy.
         connectionKey: apiToken.trim(),
         provider: "cloudflare-d1",
       });
@@ -199,7 +233,40 @@ function CloudflareSetup({
         />
       </div>
 
-      {databases === null ? (
+      {databases === null && !useToken ? (
+        <div className="space-y-3">
+          <Button
+            onClick={() => signIn.mutate()}
+            disabled={signIn.isPending}
+            className="w-full border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+            data-testid="cloudflare-sign-in"
+          >
+            {signIn.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Waiting for Cloudflare authorization…
+              </>
+            ) : (
+              <>
+                <Cloud className="size-4" />
+                Sign in with Cloudflare
+              </>
+            )}
+          </Button>
+          <p className="text-xs leading-5 text-cyan-100/40">
+            Opens Cloudflare in your browser to approve access. Wrangler is
+            installed first if this machine does not already have it, and the
+            sign-in is kept by Wrangler rather than stored here.
+          </p>
+          <button
+            type="button"
+            onClick={() => setUseToken(true)}
+            className="text-xs text-cyan-200/60 underline-offset-2 hover:underline"
+          >
+            Use an API token instead
+          </button>
+        </div>
+      ) : databases === null ? (
         <div className="space-y-2">
           <Label htmlFor="cf-token">Cloudflare API token</Label>
           <Input
@@ -215,13 +282,18 @@ function CloudflareSetup({
             to read accounts and D1. It is stored encrypted on this machine and
             never sent anywhere but Cloudflare.
           </p>
-          <Button
-            onClick={() => listDatabases.mutate()}
-            disabled={!apiToken.trim() || listDatabases.isPending}
-            data-testid="cloudflare-list-databases"
-          >
-            {listDatabases.isPending ? "Looking…" : "Find my databases"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => listDatabases.mutate()}
+              disabled={!apiToken.trim() || listDatabases.isPending}
+              data-testid="cloudflare-list-databases"
+            >
+              {listDatabases.isPending ? "Looking…" : "Find my databases"}
+            </Button>
+            <Button variant="ghost" onClick={() => setUseToken(false)}>
+              Back to sign-in
+            </Button>
+          </div>
         </div>
       ) : databases.length === 0 ? (
         <p className="text-sm text-cyan-100/45">

@@ -9749,11 +9749,23 @@ html.theme-switching * {
 
 /* A query result opened at window size. The chat column is too narrow for a
    wide table however it scrolls, so expanding gives it the room instead. */
-.chat-agent-db-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
+/* Quiet until wanted: the header already carries the table's name, source and
+   row count, so the control that opens it larger should not compete. */
+.chat-agent-db-expand {
+  margin-left: 0.35rem;
+  display: grid;
+  place-items: center;
+  padding: 0.25rem;
+  border-radius: 0.35rem;
+  color: rgb(224 247 255 / 0.3);
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.chat-agent-db-expand:hover {
+  color: rgb(224 247 255 / 0.85);
+  background: rgb(34 211 238 / 0.1);
 }
 
 .chat-agent-db-modal {

@@ -141,6 +141,16 @@ export function ChatAgentDatabaseResultCard({
             : `${rows.length} ${rows.length === 1 ? "row" : "rows"}`}
           {executionMs !== undefined && ` · ${executionMs} ms`}
         </span>
+        <button
+          type="button"
+          className="chat-agent-db-expand"
+          onClick={() => setIsFullScreen(true)}
+          aria-label="Expand this table"
+          title="Expand"
+          data-testid="chat-agent-db-expand"
+        >
+          <Maximize2 className="size-3.5" />
+        </button>
       </header>
 
       {/* The scroll container is the table's own, so a wide result never
@@ -149,29 +159,16 @@ export function ChatAgentDatabaseResultCard({
           widens the message around it. */}
       <div className="chat-agent-db-scroll">{resultTable(visibleRows)}</div>
 
-      <div className="chat-agent-db-actions">
-        {withheld > 0 && (
-          <button
-            type="button"
-            className="chat-agent-db-more"
-            onClick={() => setExpanded(true)}
-          >
-            <ChevronDown className="size-3.5" />
-            Show {withheld} more {withheld === 1 ? "row" : "rows"}
-          </button>
-        )}
-        {/* A wide result is unreadable in a chat column however it is scrolled,
-            so it can be opened at the size of the window instead. */}
+      {withheld > 0 && (
         <button
           type="button"
           className="chat-agent-db-more"
-          onClick={() => setIsFullScreen(true)}
-          data-testid="chat-agent-db-expand"
+          onClick={() => setExpanded(true)}
         >
-          <Maximize2 className="size-3.5" />
-          Expand
+          <ChevronDown className="size-3.5" />
+          Show {withheld} more {withheld === 1 ? "row" : "rows"}
         </button>
-      </div>
+      )}
 
       <Dialog open={isFullScreen} onOpenChange={setIsFullScreen}>
         <DialogContent className="chat-agent-db-modal">

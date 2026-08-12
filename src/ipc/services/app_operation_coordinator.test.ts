@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
+  AppDeletionInProgressError,
   AppOperationCoordinator,
   readAppResource,
 } from "./app_operation_coordinator";
@@ -232,5 +233,19 @@ describe("AppOperationCoordinator", () => {
     release.resolve();
     await first;
     deletion.release();
+  });
+
+  // `deleteAppById` has to recognise this to report "already being deleted" as
+  // a Precondition rather than an unclassified product exception. Matching on
+  // the message text coupled the two files through a string nothing checks.
+  it("throws a recognisable error for a second deletion of the same app", () => {
+    const coordinator = new AppOperationCoordinator();
+    coordinator.beginAppDeletion(1);
+
+    expect(() => coordinator.beginAppDeletion(1)).toThrow(
+      AppDeletionInProgressError,
+    );
+    // A different app is unaffected.
+    expect(() => coordinator.beginAppDeletion(2)).not.toThrow();
   });
 });

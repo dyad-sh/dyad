@@ -17,6 +17,21 @@ export const APP_OPERATION_RESOURCES = [
 export type AppOperationResource = (typeof APP_OPERATION_RESOURCES)[number];
 export type AppOperationAccessMode = "read" | "write";
 
+/**
+ * A second `beginAppDeletion` for an app already being deleted.
+ *
+ * A named class rather than a bare `Error`, because the delete handler has to
+ * recognise it to report "already being deleted" as a Precondition rather than
+ * an unclassified product exception (`rules/dyad-errors.md`). Matching on the
+ * message text coupled the two files through a string nothing checks.
+ */
+export class AppDeletionInProgressError extends Error {
+  constructor(readonly appId: number) {
+    super(`App ${appId} deletion is already in progress`);
+    this.name = "AppDeletionInProgressError";
+  }
+}
+
 export interface AppOperationAccess {
   resource: AppOperationResource;
   mode: AppOperationAccessMode;
@@ -178,7 +193,7 @@ export class AppOperationCoordinator {
   beginAppDeletion(appId: number): AppOperationDeletion {
     const state = this.getOrCreateState(appId);
     if (state.deletion) {
-      throw new Error(`App ${appId} deletion is already in progress`);
+      throw new AppDeletionInProgressError(appId);
     }
 
     const token = Symbol(`app-deletion:${appId}`);

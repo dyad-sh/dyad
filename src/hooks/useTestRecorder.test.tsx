@@ -880,6 +880,51 @@ describe("useTestRecorder", () => {
     expect(result.current.phase).toBe("idle");
   });
 
+  // The cap is an orderly stop — isolation is torn down exactly as an explicit
+  // Stop tears it down — and parking a draft needs no live session. Resetting
+  // to idle made a long flow vanish at the 30-minute mark with only a toast.
+  it("keeps the recording when the session cap ends it", async () => {
+    const iframe = makeIframe();
+    const { result } = await recordingSession({ iframe, appUrl: true });
+    act(() => {
+      iframe.send({
+        type: "dyad-recorder-action",
+        action: {
+          kind: "click",
+          locator: { kind: "role", value: "button", name: "Save" },
+        },
+      });
+    });
+    await waitFor(() => expect(result.current.entryCount).toBe(1));
+
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    await act(async () => {
+      onEnded({
+        appId: 1,
+        reason: "timed-out",
+        message:
+          "Recording stopped after reaching the 30-minute session limit.",
+      });
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe("reviewing"));
+    expect(saveDraftMock).toHaveBeenCalledWith({
+      appId: 1,
+      draft: expect.objectContaining({
+        actions: [
+          {
+            kind: "click",
+            locator: { kind: "role", value: "button", name: "Save" },
+          },
+        ],
+      }),
+    });
+    // Reported on the review rather than as an error toast: the recording
+    // survived, and the user still has to decide what to do with it.
+    expect(result.current.warning).toMatch(/30-minute session limit/);
+    expect(result.current.error).toBeUndefined();
+  });
+
   it("reloads the preview when a session is cancelled", async () => {
     // Teardown took the temporary test user out of the preview's storage and
     // deleted the user, but the document loaded with it is still running and

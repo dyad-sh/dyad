@@ -489,6 +489,57 @@ export function useTestRecorder({
     settleRecorderReady,
   ]);
 
+  /**
+   * Park what a session captured before it ended on its own, and open the
+   * review over it.
+   *
+   * The 30-minute cap is the case this exists for: it is an orderly stop —
+   * isolation is torn down exactly as an explicit Stop tears it down — and
+   * `saveRecordedTestDraft` writes to a store that outlives the session, so
+   * there is nothing about the cap that requires throwing the recording away.
+   * The reason arrives as the review's warning rather than an error toast,
+   * because the recording survived and the user still has to decide what to do
+   * with it.
+   */
+  const parkEndedRecording = useCallback(
+    (targetAppId: number, endMessage: string) => {
+      const captured = stateRef.current;
+      const draft: RecordedTestDraft = {
+        version: RECORDED_TEST_DRAFT_VERSION,
+        draftId: crypto.randomUUID(),
+        // Unnamed: the cap gave the user no chance to name it, and the AI names
+        // the test as part of proposing it anyway.
+        authMode: captured.auth?.mode ?? "none",
+        actions: collapseActions(entriesRef.current),
+      };
+      patchState(targetAppId, (prev) => ({ ...prev, phase: "finishing" }));
+      void ipc.recording
+        .saveRecordedTestDraft({ appId: targetAppId, draft })
+        .then(() => {
+          clearEntries(targetAppId);
+          patchState(targetAppId, (prev) => ({
+            phase: "reviewing",
+            draft,
+            limitReached: prev.limitReached,
+            isolation: captured.isolation,
+            auth: captured.auth,
+            warning:
+              [captured.warning, endMessage].filter(Boolean).join(" ") ||
+              undefined,
+          }));
+        })
+        .catch((error) => {
+          // Nothing was kept, so this is the ending the old path reported.
+          const failure =
+            error instanceof Error ? error.message : String(error);
+          clearEntries(targetAppId);
+          patchState(targetAppId, { phase: "idle", error: endMessage });
+          showError(`${endMessage} Couldn't keep the recording: ${failure}`);
+        });
+    },
+    [clearEntries, patchState],
+  );
+
   // Reset the UI if a session ends outside our control (app stopped / crash /
   // session cap) — and only then. Failures are toasted: the recording bar
   // unmounts on idle, so a state field alone would go unseen.
@@ -542,6 +593,25 @@ export function useTestRecorder({
           reloadPreview();
         }
         recorderTokensRef.current.delete(endedAppId);
+        // The cap is an orderly stop, not a failure — isolation is torn down
+        // the same way an explicit Stop tears it down. Parking the draft needs
+        // no live session, so keep the recording rather than making a long flow
+        // vanish at the 30-minute mark with only a toast to show for it.
+        //
+        // Only for the app on screen: `entriesRef` follows the selected app, so
+        // there is nothing to park for one the user has switched away from.
+        if (
+          reason === "timed-out" &&
+          endedAppId === appIdRef.current &&
+          phaseRef.current === "recording" &&
+          entriesRef.current.length > 0
+        ) {
+          parkEndedRecording(
+            endedAppId,
+            message ?? "Recording stopped after reaching the session limit.",
+          );
+          return;
+        }
         patchState(endedAppId, (prev) =>
           prev.phase === "idle"
             ? prev
@@ -555,6 +625,7 @@ export function useTestRecorder({
     );
     return unsub;
   }, [
+    parkEndedRecording,
     patchState,
     postRecorderControl,
     reloadPreview,

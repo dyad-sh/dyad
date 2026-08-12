@@ -240,6 +240,10 @@ export function registerSupabaseHandlers() {
           `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationSlug})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
         );
       },
+      // A recording holds `provider` for its whole session, so this would sit
+      // in Settings with a spinner and no explanation until the user ends the
+      // recording or the 30-minute cap expires.
+      "connect a Supabase project",
     ),
   );
 
@@ -253,6 +257,9 @@ export function registerSupabaseHandlers() {
         appId: app,
         operation: "unset-supabase-project",
         resources: ["provider"],
+        // Same reason as the connect above: a recording holds `provider` for
+        // its whole session, so this would queue invisibly behind it.
+        refuseWhenRecording: "disconnect this app's Supabase project",
       },
       async () => {
         await db
@@ -342,6 +349,10 @@ export function registerSupabaseHandlers() {
           );
         }
       },
+      // Both `provider` and `repository` are a recording's for its whole
+      // session, so this would sit in Settings with a spinner and no
+      // explanation until the session ends or the 30-minute cap expires.
+      "switch this app's Supabase API key",
     ),
   );
 

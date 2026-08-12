@@ -32,6 +32,7 @@ import {
   resolveUniqueFolderName,
 } from "../utils/app_name_resolution";
 import {
+  AppDeletionInProgressError,
   appOperationCoordinator,
   readAppResource,
   type AppOperationDeletion,
@@ -466,10 +467,7 @@ async function deleteAppById(
   try {
     appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === `App ${appId} deletion is already in progress`
-    ) {
+    if (error instanceof AppDeletionInProgressError) {
       throw new DyadError(
         "This app is already being deleted.",
         DyadErrorKind.Precondition,

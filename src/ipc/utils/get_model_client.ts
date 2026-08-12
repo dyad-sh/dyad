@@ -39,6 +39,8 @@ import {
 } from "@/lib/providerApiKey";
 import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
 import { getOpenRouterAppAttributionHeaders } from "./openrouter_attribution";
+import { resolveModelSelection } from "./model_effort";
+import { getModelPreferenceKey } from "@/lib/modelEffort";
 
 // The test-only fetch seam lives in ./test_fetch_override (dependency-free,
 // so secondary factories can use it without import cycles). Re-exported here
@@ -78,6 +80,12 @@ export async function getModelClient(
   isEngineEnabled?: boolean;
   isSmartContextEnabled?: boolean;
 }> {
+  const modelSelection = await resolveModelSelection({
+    model,
+    preferredEffortLevel:
+      (model as { effortLevel?: string }).effortLevel ??
+      settings.modelEffortPreferences?.[getModelPreferenceKey(model)],
+  });
   const allProviders = await getLanguageModelProviders();
 
   const dyadApiKey = settings.enableDyadPro
@@ -130,6 +138,7 @@ export async function getModelClient(
           enableWebSearch: settings.enableProWebSearch,
         },
         settings,
+        modelSelection,
       });
 
       logger.debug(

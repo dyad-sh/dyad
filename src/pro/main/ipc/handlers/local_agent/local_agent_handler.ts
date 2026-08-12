@@ -27,6 +27,7 @@ import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 import {
   isDyadProEnabled,
   isBasicAgentMode,
+  type ModelSelection,
   type UserSettings,
 } from "@/lib/schemas";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
@@ -67,6 +68,10 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
+import {
+  normalizeModelSelection,
+  resolveDefaultModelSelection,
+} from "@/ipc/utils/model_effort";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -466,7 +471,9 @@ export async function handleLocalAgentStream(
     currentTurnHasOnDiskAttachment?: boolean;
   },
 ): Promise<boolean> {
-  const settings = settingsOverride ?? readSettings();
+  const storedSettings = settingsOverride ?? readSettings();
+  let settings: UserSettings = storedSettings;
+  let selectedModel: ModelSelection;
   const maxToolCallSteps =
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
@@ -594,6 +601,18 @@ export async function handleLocalAgentStream(
   }
 
   let chat = initialChat;
+  const configuredModelSelection = storedSettings.selectedModel;
+  selectedModel =
+    typeof configuredModelSelection === "object" &&
+    configuredModelSelection !== null &&
+    "effortLevel" in configuredModelSelection
+      ? await normalizeModelSelection(
+          configuredModelSelection as ModelSelection,
+        )
+      : chat.modelSelection
+        ? await normalizeModelSelection(chat.modelSelection)
+        : await resolveDefaultModelSelection(storedSettings);
+  settings = { ...storedSettings, selectedModel };
 
   for (const id of getMidTurnCompactionSummaryIds(chat.messages)) {
     hiddenMessageIdsForStreaming.add(id);
@@ -1078,6 +1097,7 @@ export async function handleLocalAgentStream(
               builtinProviderId: modelClient.builtinProviderId,
               reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
               settings,
+              modelSelection: selectedModel,
             }),
             maxOutputTokens,
             temperature,

@@ -2051,6 +2051,7 @@ This conversation includes one or more image attachments. When the user uploads 
             builtinProviderId: modelClient.builtinProviderId,
             reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
             settings,
+            modelSelection: selectedModel,
           });
 
           const streamResult = streamText({

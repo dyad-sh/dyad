@@ -93,12 +93,15 @@ function buildTestSettings(
   overrides: {
     enableDyadPro?: boolean;
     hasApiKey?: boolean;
-    selectedModel?: string;
+    selectedModel?: { name: string; provider: string };
     enableContextCompaction?: boolean;
   } = {},
 ) {
   const baseSettings = {
-    selectedModel: overrides.selectedModel ?? "gpt-4",
+    selectedModel: overrides.selectedModel ?? {
+      name: "gpt-4",
+      provider: "openai",
+    },
     enableContextCompaction: overrides.enableContextCompaction ?? true,
   };
 
@@ -251,6 +254,14 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
       model: { id: "test-model" },
       builtinProviderId: "openai",
     },
+  })),
+}));
+
+vi.mock("@/ipc/utils/model_effort", () => ({
+  normalizeModelSelection: vi.fn(async (selection) => selection),
+  resolveDefaultModelSelection: vi.fn(async (settings) => ({
+    ...settings.selectedModel,
+    effortLevel: "medium",
   })),
 }));
 

@@ -1,12 +1,9 @@
 import { PROVIDERS_THAT_SUPPORT_THINKING as GEMINI_PROVIDERS } from "../shared/language_model_constants";
 import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
-import type { UserSettings } from "../../lib/schemas";
+import type { ModelSelection, UserSettings } from "../../lib/schemas";
 
-export function getModelEffort(settings: UserSettings): string {
-  return (
-    (settings.selectedModel as { effortLevel?: string } | undefined)
-      ?.effortLevel ?? "medium"
-  );
+export function getModelEffort(modelSelection: ModelSelection): string {
+  return modelSelection.effortLevel;
 }
 
 // The Dyad Engine is backed by LiteLLM using the
@@ -17,6 +14,7 @@ export function getModelEffort(settings: UserSettings): string {
 export function getExtraProviderOptionsForEngine(
   providerId: string | undefined,
   settings: UserSettings,
+  modelSelection: ModelSelection,
 ): Record<string, any> {
   if (!providerId) {
     return {};
@@ -24,14 +22,14 @@ export function getExtraProviderOptionsForEngine(
   if (providerId === "openai") {
     // OpenAI uses the same provider options because the Dyad Engine
     // is implemented as an OpenAI-compatible provider.
-    return getOpenAIProviderOptions(settings);
+    return getOpenAIProviderOptions(settings, modelSelection);
   }
   if (providerId === "anthropic") {
-    return getAnthropicEngineThinkingOptions(settings);
+    return getAnthropicEngineThinkingOptions(modelSelection);
   }
   if (GEMINI_PROVIDERS.includes(providerId)) {
     const budgetTokens = getGeminiThinkingBudgetTokens(
-      getModelEffort(settings),
+      getModelEffort(modelSelection),
     );
     return {
       thinking: {
@@ -63,33 +61,38 @@ export function getGeminiThinkingBudgetTokens(effortLevel: string): number {
 }
 
 // This is the engine-specicific (LiteLLM) thinking configuration
-function getAnthropicEngineThinkingOptions(settings: UserSettings) {
+function getAnthropicEngineThinkingOptions(modelSelection: ModelSelection) {
   return {
     thinking: {
       type: "adaptive",
       display: "summarized",
     },
     // Use anthropic's native effort config.
-    output_config: { effort: getModelEffort(settings) },
+    output_config: { effort: getModelEffort(modelSelection) },
   };
 }
 
 // This is the regular AI-SDK Anthropic provider options.
 export function getAnthropicProviderOptions(
-  settings: UserSettings,
+  modelSelection: ModelSelection,
 ): AnthropicProviderOptions {
   return {
     thinking: {
       type: "adaptive",
       display: "summarized",
     },
-    effort: getModelEffort(settings) as AnthropicProviderOptions["effort"],
+    effort: getModelEffort(
+      modelSelection,
+    ) as AnthropicProviderOptions["effort"],
     sendReasoning: true,
   };
 }
 
-export function getOpenAIProviderOptions(settings: UserSettings) {
-  const effort = getModelEffort(settings);
+export function getOpenAIProviderOptions(
+  settings: UserSettings,
+  modelSelection: ModelSelection,
+) {
+  const effort = getModelEffort(modelSelection);
 
   if (settings.selectedChatMode === "local-agent") {
     return {

@@ -323,6 +323,18 @@ export function ModelPicker() {
       settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
   }).effortLevel;
   const modelDisplayName = `${getModelDisplayName()} (${formatEffortLevel(selectedEffortLevel)})`;
+  const trialAutoModel = autoModels.find((model) => model.apiName === "auto");
+  const trialAutoEffortSettings = getEffortSettings(trialAutoModel);
+  const trialAutoEffort = createModelSelection({
+    model: { name: "auto", provider: "auto" },
+    catalogModel: trialAutoModel,
+    preferredEffortLevel:
+      selectedModel.provider === "auto" && selectedModel.name === "auto"
+        ? selectedEffortLevel
+        : settings.modelEffortPreferences?.[
+            getModelPreferenceKey({ name: "auto", provider: "auto" })
+          ],
+  }).effortLevel;
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
     !loading && modelsByProviders
@@ -907,26 +919,33 @@ export function ModelPicker() {
                 <DropdownMenuSubContent className="w-52">
                   <DropdownMenuLabel>Effort</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {getEffortSettings(
-                    autoModels.find((model) => model.apiName === "auto"),
-                  ).possibleEffortLevels.map((effortLevel) => (
-                    <DropdownMenuItem
-                      key={effortLevel}
-                      onClick={() => {
-                        void onModelSelect({
-                          model: { name: "auto", provider: "auto" },
-                          catalogModel: autoModels.find(
-                            (model) => model.apiName === "auto",
-                          ),
-                          effortLevel,
-                          rememberEffort: true,
-                        });
-                        setOpen(false);
-                      }}
-                    >
-                      {formatEffortLevel(effortLevel)}
-                    </DropdownMenuItem>
-                  ))}
+                  {trialAutoEffortSettings.possibleEffortLevels.map(
+                    (effortLevel) => (
+                      <DropdownMenuItem
+                        key={effortLevel}
+                        onClick={() => {
+                          void onModelSelect({
+                            model: { name: "auto", provider: "auto" },
+                            catalogModel: trialAutoModel,
+                            effortLevel,
+                            rememberEffort: true,
+                          });
+                          setOpen(false);
+                        }}
+                      >
+                        <span>{formatEffortLevel(effortLevel)}</span>
+                        {effortLevel ===
+                          trialAutoEffortSettings.defaultEffortLevel && (
+                          <span className="text-xs text-muted-foreground">
+                            (default)
+                          </span>
+                        )}
+                        {effortLevel === trialAutoEffort && (
+                          <CheckIcon className="ml-auto size-3.5 text-primary" />
+                        )}
+                      </DropdownMenuItem>
+                    ),
+                  )}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             </>

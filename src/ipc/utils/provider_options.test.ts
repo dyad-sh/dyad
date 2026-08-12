@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { UserSettings } from "@/lib/schemas";
+import type { ModelSelection, UserSettings } from "@/lib/schemas";
 import { getProviderOptions } from "./provider_options";
 
 const settingsFor = (provider: string, name: string, effortLevel: string) =>
@@ -21,6 +21,7 @@ const optionsFor = (
     builtinProviderId,
     reasoningEffortProviderId,
     settings,
+    modelSelection: settings.selectedModel as ModelSelection,
   });
 
 describe("getProviderOptions model effort", () => {

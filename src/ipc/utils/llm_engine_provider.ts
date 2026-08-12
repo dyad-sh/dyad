@@ -12,7 +12,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getExtraProviderOptionsForEngine } from "./thinking_utils";
 import { getTestFetchOption } from "./test_fetch_override";
 import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
-import type { UserSettings } from "../../lib/schemas";
+import type { ModelSelection, UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -58,6 +58,7 @@ or to provide a custom fetch implementation for e.g. testing.
     enableWebSearch?: boolean;
   };
   settings: UserSettings;
+  modelSelection?: ModelSelection;
 }
 
 export interface DyadEngineProvider {
@@ -84,6 +85,12 @@ Creates a chat model for text generation.
 export function createDyadEngine(
   options: ExampleProviderSettings,
 ): DyadEngineProvider {
+  const modelSelection =
+    options.modelSelection ??
+    ({
+      ...options.settings.selectedModel,
+      effortLevel: "medium",
+    } satisfies ModelSelection);
   const baseURL = withoutTrailingSlash(options.baseURL);
   logger.debug("creating dyad engine with baseURL", baseURL);
 
@@ -164,7 +171,11 @@ export function createDyadEngine(
         // Parse the request body to manipulate it
         const parsedBody = {
           ...JSON.parse(init.body),
-          ...getExtraProviderOptionsForEngine(providerId, options.settings),
+          ...getExtraProviderOptionsForEngine(
+            providerId,
+            options.settings,
+            modelSelection,
+          ),
         };
 
         const getDyadOption = (key: string) =>

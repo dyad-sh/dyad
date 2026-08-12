@@ -24,6 +24,13 @@ vi.mock("electron-log", () => ({
   },
 }));
 
+vi.mock("./model_effort", () => ({
+  resolveModelSelection: vi.fn(async ({ model, preferredEffortLevel }) => ({
+    ...model,
+    effortLevel: preferredEffortLevel ?? "medium",
+  })),
+}));
+
 vi.mock("../shared/language_model_helpers", () => ({
   getLanguageModelProviders: vi.fn(async () => [
     {

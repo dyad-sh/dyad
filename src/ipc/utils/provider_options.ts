@@ -1,4 +1,8 @@
-import type { SmartContextMode, UserSettings } from "../../lib/schemas";
+import type {
+  ModelSelection,
+  SmartContextMode,
+  UserSettings,
+} from "../../lib/schemas";
 import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
@@ -25,6 +29,7 @@ export interface GetProviderOptionsParams {
   builtinProviderId: string | undefined;
   reasoningEffortProviderId?: string;
   settings: UserSettings;
+  modelSelection: ModelSelection;
 }
 
 /**
@@ -42,6 +47,7 @@ export function getProviderOptions({
   builtinProviderId,
   reasoningEffortProviderId,
   settings,
+  modelSelection,
 }: GetProviderOptionsParams): Record<string, any> {
   const providerOptions: Record<string, any> = {
     "dyad-engine": {
@@ -59,13 +65,13 @@ export function getProviderOptions({
     openai: {
       reasoningSummary: "auto",
       reasoningEffort: getModelEffort(
-        settings,
+        modelSelection,
       ) as OpenAIResponsesProviderOptions["reasoningEffort"],
     } satisfies OpenAIResponsesProviderOptions,
   };
   if (reasoningEffortProviderId) {
     providerOptions[reasoningEffortProviderId] = {
-      reasoningEffort: getModelEffort(settings),
+      reasoningEffort: getModelEffort(modelSelection),
     };
   }
 
@@ -77,7 +83,7 @@ export function getProviderOptions({
   const isPartnerModel = selectedModelName.includes("/");
   const isGeminiModel = selectedModelName.startsWith("gemini");
   const isFlashLite = selectedModelName.includes("flash-lite");
-  const effortLevel = getModelEffort(settings);
+  const effortLevel = getModelEffort(modelSelection);
   const thinkingConfig = {
     includeThoughts: true,
     ...(selectedModelName.startsWith("gemini-3") &&
@@ -103,7 +109,7 @@ export function getProviderOptions({
   }
 
   if (providerId === "anthropic") {
-    providerOptions.anthropic = getAnthropicProviderOptions(settings);
+    providerOptions.anthropic = getAnthropicProviderOptions(modelSelection);
   }
 
   return providerOptions;

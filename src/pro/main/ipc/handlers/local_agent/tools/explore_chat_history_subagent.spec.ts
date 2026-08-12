@@ -53,6 +53,13 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
   getModelClient: mocks.getModelClient,
 }));
 
+vi.mock("@/ipc/utils/model_effort", () => ({
+  resolveModelSelection: vi.fn(async ({ model }) => ({
+    ...model,
+    effortLevel: "medium",
+  })),
+}));
+
 vi.mock("@/ipc/utils/token_utils", () => ({
   getMaxTokens: mocks.getMaxTokens,
   getTemperature: mocks.getTemperature,
@@ -165,7 +172,13 @@ describe("runExploreChatHistorySubagent", () => {
     ]);
     expect(mocks.getModelClient).toHaveBeenCalledWith(
       { provider: "openai", name: "gpt-5.6-luna" },
-      mocks.readSettings.mock.results[0].value,
+      expect.objectContaining({
+        selectedModel: {
+          provider: "openai",
+          name: "gpt-5.6-luna",
+          effortLevel: "medium",
+        },
+      }),
     );
   });
 

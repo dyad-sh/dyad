@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { d1Endpoint } from "@/ipc/utils/data_sources/cloudflare_d1_provider";
+import { d1Endpoint } from "@/lib/data_sources/d1_endpoint";
 import type { CloudflareD1Database } from "@/ipc/types/cloudflare";
 import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";

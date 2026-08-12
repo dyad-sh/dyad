@@ -4,6 +4,11 @@ import {
 } from "@/lib/data_sources/read_only";
 import type { QueryPlan } from "@/lib/data_sources/query_plan";
 import { inlineParameters } from "@/lib/data_sources/sqlite_literal";
+import {
+  d1Endpoint,
+  isD1Endpoint,
+  parseD1Endpoint,
+} from "@/lib/data_sources/d1_endpoint";
 import { executeD1ViaWrangler } from "../cloudflare/environment";
 
 /**
@@ -20,32 +25,7 @@ import { executeD1ViaWrangler } from "../cloudflare/environment";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-/** A D1 data source's projectUrl is its REST query endpoint. */
-export function d1Endpoint(accountId: string, databaseId: string): string {
-  return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
-    accountId,
-  )}/d1/database/${encodeURIComponent(databaseId)}`;
-}
-
-/** The account and database an endpoint refers to, or null. */
-export function parseD1Endpoint(
-  value: string,
-): { accountId: string; databaseId: string } | null {
-  const match = value.match(
-    /^https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/([^/]+)\/d1\/database\/([^/]+)$/,
-  );
-  if (!match) return null;
-  return {
-    accountId: decodeURIComponent(match[1]),
-    databaseId: decodeURIComponent(match[2]),
-  };
-}
-
-export function isD1Endpoint(value: string): boolean {
-  return /^https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/[^/]+\/d1\/database\/[^/]+$/.test(
-    value,
-  );
-}
+export { d1Endpoint, isD1Endpoint, parseD1Endpoint };
 
 type D1Response = {
   success: boolean;

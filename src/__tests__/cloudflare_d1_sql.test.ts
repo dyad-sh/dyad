@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  d1Endpoint,
-  d1SqlFromPlan,
-  isD1Endpoint,
-} from "@/ipc/utils/data_sources/cloudflare_d1_provider";
+import { d1SqlFromPlan } from "@/ipc/utils/data_sources/cloudflare_d1_provider";
+import { d1Endpoint, isD1Endpoint } from "@/lib/data_sources/d1_endpoint";
 
 /**
  * This is the boundary between what a model asked for and what runs against

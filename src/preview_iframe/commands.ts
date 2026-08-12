@@ -104,6 +104,17 @@ export type PreviewSharedMachineEvent =
       dataUrl?: string;
     };
 
+/**
+ * The shim's history classification, or "replace" for anything else.
+ *
+ * The value crosses a postMessage from the previewed app's frame, so it is
+ * validated rather than trusted — and an unrecognised one falls back to the
+ * reading that never invents a history entry the browser does not have.
+ */
+function readHistoryEffect(value: unknown): "push" | "replace" | "traverse" {
+  return value === "push" || value === "traverse" ? value : "replace";
+}
+
 export function routePreviewIframeMessage(input: {
   event: MessageEvent;
   contentWindow: PreviewIframeTarget | null;
@@ -163,10 +174,12 @@ export function routePreviewIframeMessage(input: {
                 type: "NAVIGATED_IN_APP",
                 kind: "documentLoad",
                 url: url.href,
-                // Only the shim knows whether the browser grew its history for
-                // this load; absent (an older shim still in the page) keeps the
+                // Only the shim knows what the browser did to its history;
+                // anything else (an older shim still in the page) keeps the
                 // previous reading, which never invents an entry.
-                replacesEntry: event.data?.payload?.replacesEntry !== false,
+                historyEffect: readHistoryEffect(
+                  event.data?.payload?.historyEffect,
+                ),
               }
             : { type: "NAVIGATED_IN_APP", kind: type, url: url.href },
         );

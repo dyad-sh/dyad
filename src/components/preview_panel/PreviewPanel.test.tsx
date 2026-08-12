@@ -176,6 +176,16 @@ vi.mock("./PreviewToolbar", () => ({
   PreviewToolbar: () => null,
 }));
 
+// The panel only reaches the manager to put the preview back on the app root
+// before a recording; standing it up needs the whole provider stack, and this
+// suite is about the Node.js setup path and the iframe's remount identity.
+vi.mock("@/preview_iframe/PreviewIframeProvider", () => ({
+  usePreviewIframeManager: () => ({
+    getSnapshot: () => ({ currentUrl: null }),
+    send: () => {},
+  }),
+}));
+
 // The real host reaches for the chat stream to send the assertion request; this
 // suite is about the Node.js setup path and the iframe's remount identity.
 vi.mock("./RecordingBannerHost", () => ({

@@ -7,27 +7,30 @@
   const PARENT_TARGET_ORIGIN = "*";
 
   /**
-   * Whether this load landed in the current history slot instead of adding one.
-   * A plain link or a `<form>` submit pushes an entry, so the parent's history
-   * has to grow with it or its Back button — and the `page.goBack()` a
-   * recording replays with — skips the page the user came from. A server
-   * redirect, a reload and a back/forward traversal all reuse the slot.
+   * What this load did to the browser's history, so the parent's model can do
+   * the same: "push" added an entry, "replace" reused the current one, and
+   * "traverse" moved to an entry that was already there.
+   *
+   * A plain link or a `<form>` submit pushes, and the parent's history has to
+   * grow with it or its Back button — and the `page.goBack()` a recording
+   * replays with — skips the page the user came from. Deliberately NOT keyed on
+   * `redirectCount`: a link whose request is answered with a 3xx still ends in
+   * a brand-new entry, so counting redirects as replacements loses exactly the
+   * entry this exists to keep.
    *
    * A same-document `location.replace()` by the app is indistinguishable from a
    * link here and reads as a push; the parent's equality check still covers the
    * one case that matters, Dyad's own `location.replace` navigation.
    */
-  function loadReplacedHistoryEntry() {
+  function loadHistoryEffect() {
     try {
       const [navigation] = performance.getEntriesByType("navigation");
-      if (!navigation) return false;
-      return (
-        navigation.redirectCount > 0 ||
-        navigation.type === "reload" ||
-        navigation.type === "back_forward"
-      );
+      if (!navigation) return "replace";
+      if (navigation.type === "reload") return "replace";
+      if (navigation.type === "back_forward") return "traverse";
+      return "push";
     } catch {
-      return false;
+      return "replace";
     }
   }
 
@@ -42,7 +45,7 @@
       type: "dyad-document-loaded",
       payload: {
         newUrl: window.location.href,
-        replacesEntry: loadReplacedHistoryEntry(),
+        historyEffect: loadHistoryEffect(),
       },
     },
     PARENT_TARGET_ORIGIN,

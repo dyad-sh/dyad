@@ -23,9 +23,13 @@ type AnyEl = any;
 function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
   const hw = new Window({ url: "https://preview.test/" });
   const doc: AnyEl = hw.document;
+  const removedAttributes: string[] = [];
   Object.defineProperty(doc, "currentScript", {
     configurable: true,
-    value: { dataset: { dyadRecorderToken: RECORDER_TOKEN } },
+    value: {
+      dataset: { dyadRecorderToken: RECORDER_TOKEN },
+      removeAttribute: (name: string) => removedAttributes.push(name),
+    },
   });
 
   const messages: any[] = [];
@@ -129,6 +133,7 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
     keydown,
     mousemove,
     overlays,
+    removedAttributes,
     settleClick: () => vi.advanceTimersByTime(CLICK_DEBOUNCE_MS),
   };
 }
@@ -148,6 +153,22 @@ describe("dyad recorder client", () => {
     r.typeInto(r.doc.querySelector("input"), "private@example.com");
 
     expect(r.actions).toEqual([]);
+  });
+
+  // The capability is what stops an unrelated page framing the preview and
+  // receiving every captured fill value. Left on the script tag it would sit in
+  // the document for any script the app loads — including CDN code in an
+  // AI-generated app — to lift with one `querySelector`.
+  it("takes the capability out of the DOM once it has read it", () => {
+    const r = setup();
+
+    expect(r.removedAttributes).toContain("data-dyad-recorder-token");
+    // Still armed by the real token: the value was snapshotted, not lost.
+    r.setHtml(`<button>Open</button>`);
+    r.activate();
+    r.click(r.doc.querySelector("button"));
+    r.settleClick();
+    expect(r.actions).toHaveLength(1);
   });
 
   it("reports a click immediately, leaving the dblclick merge to the renderer", () => {

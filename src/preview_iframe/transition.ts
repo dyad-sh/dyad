@@ -111,14 +111,29 @@ export function transition(
       if (event.kind !== "pushState" && event.url === state.currentUrl) {
         return ignore(state, "already-current-url");
       }
+      // A cross-document back/forward moves within the history that is already
+      // here rather than rewriting any of it. Overwriting the current slot
+      // would lose both the entry the user left and the one they arrived at.
+      if (event.kind === "documentLoad" && event.historyEffect === "traverse") {
+        const position = state.history.indexOf(event.url);
+        if (position === -1) return ignore(state, "unknown-history-entry");
+        return applied({
+          ...state,
+          position,
+          currentUrl: event.url,
+          currentUrlSource: "app",
+          preservedUrl: event.url,
+        });
+      }
       // A plain link or `<form>` submit grows the browser's history exactly as
       // `pushState` does, and the preview's history has to grow with it: its
       // Back button, and the `page.goBack()` a recording replays with, would
-      // otherwise skip the page the user came from. Only `replaceState` and a
-      // load that reused its slot (a server redirect, a reload) stay put.
+      // otherwise skip the page the user came from. A link answered with a 3xx
+      // still ends in a brand-new entry, so only `replaceState` and a load that
+      // genuinely reused its slot (a reload) stay put.
       if (
         event.kind === "pushState" ||
-        (event.kind === "documentLoad" && event.replacesEntry === false)
+        (event.kind === "documentLoad" && event.historyEffect === "push")
       ) {
         const history = [
           ...state.history.slice(0, state.position + 1),

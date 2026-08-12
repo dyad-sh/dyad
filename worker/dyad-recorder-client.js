@@ -50,7 +50,17 @@
   // Minted per proxy and known only to the trusted renderer. Without this, an
   // unrelated page can frame the localhost preview, arm the recorder, and
   // receive every captured fill value through the parent message channel.
+  //
+  // Removed from the DOM once read, for the same reason the global below is
+  // deleted: the app's own scripts all run after this line, but the attribute
+  // would otherwise stay in the document for any of them — including CDN code
+  // in an AI-generated app — to lift with one `querySelector`.
   const recorderToken = document.currentScript?.dataset.dyadRecorderToken;
+  try {
+    document.currentScript?.removeAttribute("data-dyad-recorder-token");
+  } catch {
+    // Best effort: the value is already snapshotted above either way.
+  }
   try {
     delete window.__DYAD_RECORDER_ALLOW_UNTRUSTED__;
   } catch {

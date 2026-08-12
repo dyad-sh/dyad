@@ -308,15 +308,22 @@ export const PreviewIframe = ({
     // `page.goto("/that/path")` against the app — a destination the user never
     // visited. Unknown or off-origin means no hint at all.
     //
-    // Provenance is deliberately NOT a gate. The unauthenticated start is a
-    // bare remount, so a subroute the app reached itself — a link followed
-    // before Record was pressed — is still where the session records; leaving
-    // it out only means the spec opens with the default `page.goto("/")` and
-    // replays every captured action against a page the user was never on. Same
-    // rule as the Tests panel's Record button, which feeds the same start.
+    // And only for a route the user picked through Dyad's chrome: one the app
+    // reached itself is not a starting point anyone chose, and opening a
+    // session there makes replay `goto` the destination and skip the
+    // navigation — often a redirect that is the thing under test — that got to
+    // it. Same gate as the Tests panel's Record button, which feeds the same
+    // recorder start.
+    //
+    // Passing nothing does NOT leave the session on an app-driven route: the
+    // recorder navigates the preview back to the app root before it starts, so
+    // the recording begins where every spec's opening `page.goto("/")` replays
+    // from.
     // Asks first — setup clears the preview's cookies and local storage.
     recorder.requestStartRecording(
-      sameOriginStartPath(currentHistoryUrl, appUrl),
+      iframeState.currentUrlSource === "dyad"
+        ? sameOriginStartPath(currentHistoryUrl, appUrl)
+        : undefined,
     );
   };
 

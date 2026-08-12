@@ -191,11 +191,12 @@ function mountRecorder({
   if (iframe) store.set(previewIframeRefAtom, iframe.el);
   if (appUrl) setAppUrl(store, 1);
   const reload = reloadPreview ?? reloadAnnouncing(iframe);
+  const navigatePreview = vi.fn();
   const { result, unmount, rerender } = renderHook(
-    () => useTestRecorder({ reloadPreview: reload }),
+    () => useTestRecorder({ reloadPreview: reload, navigatePreview }),
     { wrapper: Wrapper },
   );
-  return { store, Wrapper, result, unmount, rerender };
+  return { store, Wrapper, result, unmount, rerender, navigatePreview };
 }
 
 /**
@@ -260,7 +261,8 @@ describe("useTestRecorder", () => {
     });
 
     const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
+      () =>
+        useTestRecorder({ reloadPreview: () => {}, navigatePreview: vi.fn() }),
       { wrapper: Wrapper },
     );
 
@@ -285,7 +287,8 @@ describe("useTestRecorder", () => {
     store.set(recordingStartRequestAtom, { appId: 1, requestedAt: Date.now() });
 
     const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
+      () =>
+        useTestRecorder({ reloadPreview: () => {}, navigatePreview: vi.fn() }),
       { wrapper: Wrapper },
     );
 
@@ -310,7 +313,8 @@ describe("useTestRecorder", () => {
     // mounts with the request already parked and StrictMode replays the effect
     // that consumes it with the same render's (still non-null) value.
     const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
+      () =>
+        useTestRecorder({ reloadPreview: () => {}, navigatePreview: vi.fn() }),
       { wrapper: Wrapper, reactStrictMode: true },
     );
 
@@ -322,6 +326,49 @@ describe("useTestRecorder", () => {
     // A second ask is rejected by the main process ("a recording session is
     // already in progress"), which toasted an error over a healthy session.
     expect(startRecordingMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Without a chosen start route the spec opens with `page.goto("/")`, so the
+  // recording has to begin there too. A bare remount would keep whatever route
+  // the app had reached on its own and replay every captured action against a
+  // page the test never visits.
+  it("puts the preview back on the app root when no start route was chosen", async () => {
+    const { navigatePreview } = await recordingSession({
+      iframe: makeIframe(),
+      appUrl: true,
+    });
+
+    expect(navigatePreview).toHaveBeenCalledWith(1, PREVIEW_URL);
+  });
+
+  // A route the user picked through Dyad's chrome IS the starting point, and it
+  // is replayed as the session's opening navigation instead.
+  it("leaves the preview alone when a start route was chosen", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
+    const navigatePreview = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useTestRecorder({
+          reloadPreview: reloadAnnouncing(iframe),
+          navigatePreview,
+        }),
+      { wrapper: Wrapper },
+    );
+
+    await act(async () => {
+      await result.current.startRecording("/settings?tab=profile");
+    });
+
+    expect(navigatePreview).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.steps).toEqual([
+        `await page.goto("/settings?tab=profile");`,
+      ]),
+    );
   });
 
   it("stops into a review phase without writing anything", async () => {
@@ -843,7 +890,11 @@ describe("useTestRecorder", () => {
     );
 
     const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: reloadAnnouncing(iframe) }),
+      () =>
+        useTestRecorder({
+          reloadPreview: reloadAnnouncing(iframe),
+          navigatePreview: vi.fn(),
+        }),
       { wrapper: Wrapper, reactStrictMode: true },
     );
 

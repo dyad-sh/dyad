@@ -400,10 +400,10 @@ describe("preview iframe transition", () => {
     expect(ignoreReasonOf(ownLoad)).toBe("already-current-url");
   });
 
-  // A plain link grows the browser's history; a server redirect or a reload
-  // reuses the slot. Reading a link as a replacement costs the preview the page
-  // the user came from — its Back button, and the `page.goBack()` a recording
-  // replays with, would skip straight past it.
+  // A plain link grows the browser's history; a reload reuses the slot.
+  // Reading a link as a replacement costs the preview the page the user came
+  // from — its Back button, and the `page.goBack()` a recording replays with,
+  // would skip straight past it.
   it("keeps the previous entry when a link loads a new document", () => {
     const appRoot = transition(INITIAL_PREVIEW_IFRAME_STATE, {
       type: "APP_URL_CHANGED",
@@ -414,7 +414,7 @@ describe("preview iframe transition", () => {
       type: "NAVIGATED_IN_APP",
       kind: "documentLoad",
       url: `${URL}/dashboard`,
-      replacesEntry: false,
+      historyEffect: "push",
     }).state;
     expect(linked.history).toEqual([URL, `${URL}/dashboard`]);
     expect(linked.position).toBe(1);
@@ -422,14 +422,55 @@ describe("preview iframe transition", () => {
     // The entry the user came from is still reachable.
     expect(transition(linked, { type: "GO_BACK" }).state.currentUrl).toBe(URL);
 
-    const redirected = transition(appRoot, {
+    const reloaded = transition(appRoot, {
       type: "NAVIGATED_IN_APP",
       kind: "documentLoad",
       url: `${URL}/login`,
-      replacesEntry: true,
+      historyEffect: "replace",
     }).state;
-    expect(redirected.history).toEqual([`${URL}/login`]);
-    expect(redirected.position).toBe(0);
+    expect(reloaded.history).toEqual([`${URL}/login`]);
+    expect(reloaded.position).toBe(0);
+  });
+
+  // A cross-document back/forward moves within the history that is already
+  // there. Overwriting the current slot would lose both the entry the user left
+  // and the one they arrived at.
+  it("moves position rather than rewriting history on a traversal", () => {
+    const appRoot = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_URL_CHANGED",
+      url: URL,
+    }).state;
+    const linked = transition(appRoot, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/dashboard`,
+      historyEffect: "push",
+    }).state;
+
+    const back = transition(linked, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: URL,
+      historyEffect: "traverse",
+    }).state;
+    expect(back.history).toEqual([URL, `${URL}/dashboard`]);
+    expect(back.position).toBe(0);
+    expect(back.currentUrl).toBe(URL);
+    // Forward is reachable again, which an overwrite would have destroyed.
+    expect(transition(back, { type: "GO_FORWARD" }).state.currentUrl).toBe(
+      `${URL}/dashboard`,
+    );
+
+    // A traversal to somewhere this model never recorded is not something it
+    // can place, and inventing a slot for it would be worse than ignoring it.
+    const unknown = transition(linked, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/elsewhere`,
+      historyEffect: "traverse",
+    });
+    expect(unknown.state).toBe(linked);
+    expect(ignoreReasonOf(unknown)).toBe("unknown-history-entry");
   });
 
   it("restores route provenance with the presentation", () => {

@@ -78,18 +78,21 @@ export class ImageGenerationService {
 
   generate(params: GenerateImageInput) {
     this.assertAcceptingGenerations(params.targetAppId);
-    // Refuse before the generation, not just before the save: the save runs
-    // behind a recording's session-long `repository` claim, and the user would
-    // otherwise pay for and wait through a full generation to be told so.
-    // The coordinator repeats this check atomically for a recording that
-    // starts mid-generation; this one is only the early exit.
-    assertNoActiveRecording(params.targetAppId, IMAGE_SAVE_ACTION);
+    // Before the recording refusal below: a cancellation that arrived first is
+    // what happened to this request, and reporting it as blocked by a recording
+    // would both misname it and leave its tombstone behind until eviction.
     if (this.cancellationTombstones.delete(params.requestId)) {
       throw new DyadError(
         "Image generation cancelled.",
         DyadErrorKind.UserCancelled,
       );
     }
+    // Refuse before the generation, not just before the save: the save runs
+    // behind a recording's session-long `repository` claim, and the user would
+    // otherwise pay for and wait through a full generation to be told so.
+    // The coordinator repeats this check atomically for a recording that
+    // starts mid-generation; this one is only the early exit.
+    assertNoActiveRecording(params.targetAppId, IMAGE_SAVE_ACTION);
     if (this.active.has(params.requestId)) {
       throw new DyadError(
         "Image generation invocation is already active",

@@ -42,6 +42,51 @@ export function getGithubOperationResources(op: GithubOperation) {
   return [readAppResource("app-path"), "repository"] as const;
 }
 
+/**
+ * The action to name when a recording refuses this operation, in the
+ * imperative — or undefined for one that never queues behind a session.
+ *
+ * Everything but `disconnect` takes `repository`, which a recording holds as a
+ * write claim for its whole life, so without this the GitHub actor sits in its
+ * running state until the session ends or hits the 30-minute cap with nothing
+ * on screen saying why. `disconnect` takes only `metadata`, which no session
+ * claims.
+ */
+export function getGithubRecordingRefusal(
+  op: GithubOperation,
+): string | undefined {
+  switch (op.type) {
+    case "disconnect":
+      return undefined;
+    case "push":
+      return "push to GitHub";
+    case "pull":
+      return "pull from GitHub";
+    case "fetch":
+      return "fetch from GitHub";
+    case "rebase":
+      return "rebase";
+    case "rebase-continue":
+      return "continue the rebase";
+    case "rebase-abort":
+      return "abort the rebase";
+    case "merge":
+      return "merge a branch";
+    case "merge-abort":
+      return "abort the merge";
+    case "switch":
+      return "switch branches";
+    case "create-branch":
+      return "create a branch";
+    case "delete-branch":
+      return "delete a branch";
+    case "rename-branch":
+      return "rename a branch";
+    case "connect-repo":
+      return "connect a GitHub repository";
+  }
+}
+
 export class GithubOpsService {
   private readonly deletionFences = new Map<number, number>();
   private readonly pendingByApp = new Map<number, Set<Promise<unknown>>>();
@@ -62,6 +107,7 @@ export class GithubOpsService {
           appId,
           operation: `github:${op.type}`,
           resources: getGithubOperationResources(op),
+          refuseWhenRecording: getGithubRecordingRefusal(op),
         },
         () => {
           this.assertAcceptingOperations(appId);

@@ -1,6 +1,7 @@
 import { useAtomValue } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
 import { usePreviewReloadToken } from "@/hooks/useAppRun";
+import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
@@ -66,7 +67,18 @@ function useHoistedRecorder() {
     () => setRecorderReloadKey((current) => current + 1),
     [],
   );
-  const recorder = useTestRecorder({ reloadPreview });
+  const previewIframeManager = usePreviewIframeManager();
+  // Through the machine, so the preview toolbar's route and the recorder agree
+  // on where the session starts. A no-op when the preview is already there,
+  // rather than a duplicate history entry.
+  const navigatePreview = useCallback(
+    (appId: number, url: string) => {
+      if (previewIframeManager.getSnapshot(appId).currentUrl === url) return;
+      previewIframeManager.send(appId, { type: "NAVIGATE", path: url });
+    },
+    [previewIframeManager],
+  );
+  const recorder = useTestRecorder({ reloadPreview, navigatePreview });
   return { recorder, recorderReloadKey };
 }
 

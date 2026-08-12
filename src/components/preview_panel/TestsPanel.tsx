@@ -1020,16 +1020,20 @@ export function TestsPanel() {
     const currentPreviewUrl =
       previewIframeState.history[previewIframeState.position] ??
       previewIframeState.currentUrl;
-    // Wherever the preview is now, however it got there. The unauthenticated
-    // start is a bare remount, so the session records on this route either way
-    // — and a spec that opened with the default `page.goto("/")` would replay
-    // every captured action against a page the user was never on. The route the
-    // app reached itself is no less where the recording begins than one picked
-    // from Dyad's chrome.
+    // Only a route the user picked through Dyad's chrome becomes the session's
+    // opening navigation. A route the app reached on its own — a redirect, a
+    // link followed before Record was pressed — is not a starting point the
+    // user chose, and recording it as one makes replay `goto` straight to the
+    // destination and skip the navigation that got there.
     //
-    // Off-origin or unknown still means no hint: `sameOriginStartPath` returns
-    // undefined rather than handing back a path that only reads as app-relative.
-    const startPath = sameOriginStartPath(currentPreviewUrl, appUrl.appUrl);
+    // Left undefined the recording does open at the app's root, because the
+    // recorder navigates the preview there before it starts; a bare remount
+    // alone would keep the app-driven route and run every captured action
+    // against a page the spec's `page.goto("/")` never visits.
+    const startPath =
+      previewIframeState.currentUrlSource === "dyad"
+        ? sameOriginStartPath(currentPreviewUrl, appUrl.appUrl)
+        : undefined;
     requestRecording({
       appId: selectedAppId,
       requestedAt: Date.now(),
@@ -1270,21 +1274,29 @@ export function TestsPanel() {
           </button>
         )}
         {testingEnabled && !isRunning && (
-          <button
-            onClick={startRecording}
-            disabled={!canStartRecording}
+          // The title sits on the wrapper, not the button: Chromium suppresses
+          // pointer events on a disabled control, so a title there never
+          // surfaces — leaving a greyed-out Record with no reason given, which
+          // is exactly when the reason matters most.
+          <span
             title={recordButtonTitle}
-            aria-label="Record a test in the preview"
-            data-testid="tests-record-button"
-            className={cn(
-              "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer transition-colors",
-              "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40",
-              !canStartRecording && "opacity-40 cursor-not-allowed",
-            )}
+            data-testid="tests-record-button-hint"
           >
-            <CircleDot size={14} />
-            Record
-          </button>
+            <button
+              onClick={startRecording}
+              disabled={!canStartRecording}
+              aria-label="Record a test in the preview"
+              data-testid="tests-record-button"
+              className={cn(
+                "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer transition-colors",
+                "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40",
+                !canStartRecording && "opacity-40 cursor-not-allowed",
+              )}
+            >
+              <CircleDot size={14} />
+              Record
+            </button>
+          </span>
         )}
         {isRunning ? (
           <button
@@ -1533,20 +1545,28 @@ export function TestsPanel() {
               <Sparkles size={16} />
               Generate a test for a critical user journey
             </button>
-            <button
-              onClick={startRecording}
-              disabled={!canStartRecording}
+            {/* Title on the wrapper for the same reason as the toolbar's
+                Record: a disabled button never fires the hover that would
+                show it. */}
+            <span
               title={recordButtonTitle}
-              data-testid="tests-empty-record-button"
-              className={cn(
-                "mt-3 flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
-                "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40",
-                !canStartRecording && "opacity-40 cursor-not-allowed",
-              )}
+              data-testid="tests-empty-record-button-hint"
+              className="mt-3"
             >
-              <CircleDot size={16} />
-              Or record one by clicking through your app
-            </button>
+              <button
+                onClick={startRecording}
+                disabled={!canStartRecording}
+                data-testid="tests-empty-record-button"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
+                  "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40",
+                  !canStartRecording && "opacity-40 cursor-not-allowed",
+                )}
+              >
+                <CircleDot size={16} />
+                Or record one by clicking through your app
+              </button>
+            </span>
           </div>
         ) : (
           <div>

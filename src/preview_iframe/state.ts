@@ -82,13 +82,16 @@ export type PreviewIframeEvent =
        */
       kind: "pushState" | "replaceState" | "documentLoad";
       /**
-       * `documentLoad` only: whether the load reused the current history slot
-       * (a server redirect, a reload) rather than adding one (a plain link, a
-       * form submit). A link that lands in the current slot costs the preview
-       * the page the user came from — its Back button, and the `page.goBack()`
-       * a recording replays with, would skip straight past it.
+       * `documentLoad` only: what the load did to the browser's history, so
+       * this model can do the same. "push" is a plain link or form submit —
+       * reading one as a replacement costs the preview the page the user came
+       * from, and its Back button and a recording's `page.goBack()` skip
+       * straight past it. "traverse" is a cross-document back/forward, which
+       * moves within the history that is already there rather than rewriting
+       * any of it. Absent (an older shim in the page) reads as "replace", which
+       * never invents an entry the browser lacks.
        */
-      replacesEntry?: boolean;
+      historyEffect?: "push" | "replace" | "traverse";
       url: string;
     }
   | { type: "GO_BACK" }
@@ -136,6 +139,7 @@ export type PreviewIframeIgnoreReason =
   | "already-current-url"
   | "empty-url"
   | "history-boundary"
+  | "unknown-history-entry"
   | "already-runtime-reset"
   | "picker-not-ready"
   | "picker-already-inactive"

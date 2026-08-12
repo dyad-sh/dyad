@@ -80,11 +80,15 @@ describe("extractJson", () => {
   // a candidate scanned in full before being charged could run a whole extra
   // pass over the text past an almost-exhausted budget.
   it("never scans past the advertised budget", () => {
-    // Every `{"` opens a candidate that never closes, so each one costs a full
-    // scan to end-of-text — the worst case the factor exists to bound.
-    const adversarial = `${'{"'.repeat(20_000)}`;
+    // Every `{"` opens a candidate, and the single trailing `}` closes only the
+    // last of them — so each of the other 19,999 costs a scan to end-of-text.
+    // The closing brace is load-bearing: without a `}` anywhere the function
+    // returns before the fallback loop and the assertion below is vacuous.
+    const adversarial = `${'{"'.repeat(20_000)}}`;
     const scan = extractJsonWithScan(adversarial);
 
+    expect(scan.candidateScans).toBeGreaterThan(0);
+    expect(scan.scannedChars).toBeGreaterThan(0);
     expect(scan.scannedChars).toBeLessThanOrEqual(
       adversarial.length * SCAN_BUDGET_FACTOR,
     );

@@ -115,7 +115,7 @@ describe("preview iframe command adapter", () => {
       url: "http://localhost:3000/dashboard",
       // No signal from the shim reads as "reused the slot" — the conservative
       // side, since it never invents a history entry the browser lacks.
-      replacesEntry: true,
+      historyEffect: "replace",
     });
     // Machine-only: the component layer has no use for it.
     expect(onComponentMessage).not.toHaveBeenCalled();
@@ -123,35 +123,46 @@ describe("preview iframe command adapter", () => {
 
   // A plain link grows the browser's history, and the preview's has to grow
   // with it or Back skips the page the user came from.
-  it("carries the shim's history-entry signal for a link navigation", () => {
-    const contentWindow = { postMessage: vi.fn() };
-    const send = vi.fn<(event: PreviewIframeEvent) => void>();
+  it.each([
+    ["push", "push"],
+    ["traverse", "traverse"],
+    ["replace", "replace"],
+    // The value crosses a postMessage from the previewed app's frame, so
+    // anything unrecognised falls back to never inventing an entry.
+    ["nonsense", "replace"],
+    [undefined, "replace"],
+  ] as const)(
+    "carries the shim's history effect %s as %s",
+    (sent, expected) => {
+      const contentWindow = { postMessage: vi.fn() };
+      const send = vi.fn<(event: PreviewIframeEvent) => void>();
 
-    routePreviewIframeMessage({
-      event: {
-        source: contentWindow,
-        data: {
-          type: "dyad-document-loaded",
-          payload: {
-            newUrl: "http://localhost:3000/dashboard",
-            replacesEntry: false,
+      routePreviewIframeMessage({
+        event: {
+          source: contentWindow,
+          data: {
+            type: "dyad-document-loaded",
+            payload: {
+              newUrl: "http://localhost:3000/dashboard",
+              historyEffect: sent,
+            },
           },
-        },
-      } as unknown as MessageEvent,
-      contentWindow,
-      appUrl: "http://localhost:3000",
-      send,
-      onSharedMachineEvent: vi.fn(),
-      onComponentMessage: vi.fn(),
-    });
+        } as unknown as MessageEvent,
+        contentWindow,
+        appUrl: "http://localhost:3000",
+        send,
+        onSharedMachineEvent: vi.fn(),
+        onComponentMessage: vi.fn(),
+      });
 
-    expect(send).toHaveBeenCalledWith({
-      type: "NAVIGATED_IN_APP",
-      kind: "documentLoad",
-      url: "http://localhost:3000/dashboard",
-      replacesEntry: false,
-    });
-  });
+      expect(send).toHaveBeenCalledWith({
+        type: "NAVIGATED_IN_APP",
+        kind: "documentLoad",
+        url: "http://localhost:3000/dashboard",
+        historyEffect: expected,
+      });
+    },
+  );
 
   // `blob:` inherits the app's origin, so the origin check alone lets it
   // through — but it is not a route the preview can load or a recording replay.

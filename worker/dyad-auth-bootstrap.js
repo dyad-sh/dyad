@@ -29,7 +29,16 @@
   // the window framing this otherwise-framable origin. The proxy embeds a
   // per-worker capability in this script tag; the trusted renderer learns the
   // matching value from main-process IPC and echoes it with the credentials.
+  //
+  // Removed from the DOM once read: leaving it there would let any script the
+  // previewed app loads lift the capability with one `querySelector` and drive
+  // this bootstrap itself.
   const authBootstrapToken = document.currentScript?.dataset.dyadAuthToken;
+  try {
+    document.currentScript?.removeAttribute("data-dyad-auth-token");
+  } catch {
+    // Best effort: the value is already snapshotted above either way.
+  }
   const PENDING_KEY = "__dyad_auth_pending__";
   const HOME_SETTLE_DELAY_MS = 500;
   const MAX_HOME_REDIRECTS = 3;

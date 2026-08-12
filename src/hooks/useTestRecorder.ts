@@ -73,9 +73,17 @@ interface StartAttempt {
  */
 export function useTestRecorder({
   reloadPreview,
+  navigatePreview,
 }: {
   /** Remount the iframe so authentication always starts in a live document. */
   reloadPreview: () => void;
+  /**
+   * Point the preview at an app URL through the preview machine, so its
+   * toolbar and the recorder agree on where the session starts. Injected for
+   * the same reason `reloadPreview` is: the machine belongs to the preview
+   * panel, not to this hook.
+   */
+  navigatePreview: (appId: number, url: string) => void;
 }) {
   const appId = useAtomValue(selectedAppIdAtom);
   const iframeEl = useAtomValue(previewIframeRefAtom);
@@ -1022,6 +1030,19 @@ export function useTestRecorder({
         const previewReady = iframeElRef.current
           ? waitForRecorderReady(targetAppId)
           : Promise.resolve();
+        // No chosen start route means the spec will open with `page.goto("/")`,
+        // so the recording has to begin there too. A bare remount would keep
+        // whatever route the app had reached on its own — a redirect, a link
+        // followed before Record was pressed — and every captured action would
+        // replay against a page the test never visits. The authenticated path
+        // gets this for free: the bootstrap's `goHome` lands on "/".
+        //
+        // Through the machine rather than the iframe, so the preview toolbar
+        // and the recorder agree on where the session starts.
+        const appRoot = appUrlRef.current;
+        if ((!startPath || startPath === "/") && appRoot) {
+          navigatePreview(targetAppId, appRoot);
+        }
         reloadPreview();
         // ...but a bare remount keeps whatever route the user was on, while
         // `recordedBodyStatements` opens every spec with `page.goto("/")`.

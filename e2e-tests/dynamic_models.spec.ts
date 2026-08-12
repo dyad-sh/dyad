@@ -31,9 +31,9 @@ testWithRemoteCatalog(
       po.page.getByText("GPT 5.2 Remote Only", { exact: true }),
     ).toBeVisible();
     await po.page
-      .getByLabel(
-        "GPT 5.2 Remote Only. Press Enter to select; press Right Arrow to configure effort.",
-      )
+      .getByRole("menuitem", {
+        name: /GPT 5\.2 Remote Only.*Effort: Minimal.*Right Arrow to configure effort/,
+      })
       .locator("[data-effort-chevron]")
       .click();
     await po.page.getByText("Xhigh", { exact: true }).click();

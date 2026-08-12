@@ -526,23 +526,6 @@ export function ModelPicker() {
         : freeModelQuota.error
           ? "Unavailable"
           : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
-    const unlockedAriaLabel = [
-      model.displayName,
-      showProvider ? getProviderDisplayName(providerId) : null,
-      showPrice && model.dollarSigns != null
-        ? model.dollarSigns === 0
-          ? "Free"
-          : `Price: ${(model.dollarSigns / 2).toFixed(1)}`
-        : null,
-      model.tag && !isFreeProRow ? model.tag : null,
-      isSelected ? "Selected" : null,
-      isFreeProRow ? freeProQuotaLabel : null,
-      shouldShowDataSharingDisclosure ? "Data sharing" : null,
-      "Press Enter to select; press Right Arrow to configure effort",
-    ]
-      .filter(Boolean)
-      .join(". ");
-
     const modelRef = {
       name: model.apiName,
       provider: providerId,
@@ -557,6 +540,24 @@ export function ModelPicker() {
           preferredEffortLevel:
             settings.modelEffortPreferences?.[getModelPreferenceKey(modelRef)],
         }).effortLevel;
+    const effortLabel = formatEffortLevel(currentEffort);
+    const unlockedAriaLabel = [
+      model.displayName,
+      showProvider ? getProviderDisplayName(providerId) : null,
+      showPrice && model.dollarSigns != null
+        ? model.dollarSigns === 0
+          ? "Free"
+          : `Price: ${(model.dollarSigns / 2).toFixed(1)}`
+        : null,
+      model.tag && !isFreeProRow ? model.tag : null,
+      isSelected ? "Selected" : null,
+      isFreeProRow ? freeProQuotaLabel : null,
+      shouldShowDataSharingDisclosure ? "Data sharing" : null,
+      `Effort: ${effortLabel}`,
+      "Press Enter to select; press Right Arrow to configure effort",
+    ]
+      .filter(Boolean)
+      .join(". ");
 
     const item = (
       <DropdownMenuSubTrigger
@@ -662,6 +663,9 @@ export function ModelPicker() {
                 </TooltipContent>
               </Tooltip>
             )}
+            <span data-effort-level className="text-xs text-muted-foreground">
+              {effortLabel}
+            </span>
             <span
               data-effort-chevron
               className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
@@ -775,6 +779,7 @@ export function ModelPicker() {
           preferredEffortLevel:
             settings.modelEffortPreferences?.[getModelPreferenceKey(modelRef)],
         }).effortLevel;
+    const effortLabel = formatEffortLevel(currentEffort);
     const selectLocalModel = (effortLevel?: string) => {
       void onModelSelect({
         model: modelRef,
@@ -788,7 +793,7 @@ export function ModelPicker() {
       <DropdownMenuSub key={`${providerId}-${model.modelName}`}>
         <DropdownMenuSubTrigger
           hideChevron
-          aria-label={`${model.displayName}. Press Enter to select; press Right Arrow to configure effort.`}
+          aria-label={`${model.displayName}. Effort: ${effortLabel}. Press Enter to select; press Right Arrow to configure effort.`}
           className={cn(
             "relative py-1.5 w-full",
             isSelected &&
@@ -816,8 +821,17 @@ export function ModelPicker() {
               <CheckIcon className="ml-auto size-3.5 text-primary shrink-0" />
             )}
             <span
+              data-effort-level
+              className={cn(
+                "text-xs text-muted-foreground",
+                !isSelected && "ml-auto",
+              )}
+            >
+              {effortLabel}
+            </span>
+            <span
               data-effort-chevron
-              className="-mr-1 ml-auto flex size-6 items-center justify-center rounded-sm hover:bg-muted"
+              className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
               aria-hidden="true"
             >
               <ChevronRightIcon className="size-4" />
@@ -893,7 +907,7 @@ export function ModelPicker() {
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger
                   hideChevron
-                  aria-label="Auto. Trial. Selected. Press Enter to select; press Right Arrow to configure effort."
+                  aria-label={`Auto. Trial. Selected. Effort: ${formatEffortLevel(trialAutoEffort)}. Press Enter to select; press Right Arrow to configure effort.`}
                   className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
                   onClick={(event) => {
                     if (
@@ -920,6 +934,12 @@ export function ModelPicker() {
                         Trial
                       </span>
                       <CheckIcon className="size-3.5 text-primary shrink-0" />
+                      <span
+                        data-effort-level
+                        className="text-xs text-muted-foreground"
+                      >
+                        {formatEffortLevel(trialAutoEffort)}
+                      </span>
                       <span
                         data-effort-chevron
                         aria-hidden="true"

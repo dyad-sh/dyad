@@ -428,12 +428,13 @@ describe("ModelPicker", () => {
     expect(screen.getByTestId("model-picker").className).toContain(
       "max-w-[220px]",
     );
-    fireEvent.click(
-      screen
-        .getAllByText("GPT 5")[0]
-        .closest("button")!
-        .querySelector("[data-effort-chevron]")!,
-    );
+    const gpt5Row = screen.getAllByText("GPT 5")[0].closest("button")!;
+    expect(
+      gpt5Row.querySelector("[data-effort-chevron]")?.previousElementSibling
+        ?.textContent,
+    ).toBe("Minimal");
+    expect(gpt5Row.getAttribute("aria-label")).toContain("Effort: Minimal");
+    fireEvent.click(gpt5Row.querySelector("[data-effort-chevron]")!);
     fireEvent.click(screen.getAllByText("Xhigh")[0]);
 
     await waitFor(() => {
@@ -490,17 +491,22 @@ describe("ModelPicker", () => {
   it("sorts the Pro flat list by price descending and groups same-price models by provider", () => {
     render(<ModelPicker />);
 
+    const modelNames = [
+      "GPT 5 Mini",
+      "Gemini 2.5 Pro",
+      "Gemini 2.5 Flash",
+      "Claude Sonnet 4.5",
+      "GPT 5",
+    ];
     const modelOrder = Array.from(document.querySelectorAll("button"))
-      .map((button) => button.textContent?.trim())
-      .filter((text) =>
-        [
-          "GPT 5 Mini",
-          "Gemini 2.5 Pro",
-          "Gemini 2.5 Flash",
-          "Claude Sonnet 4.5",
-          "GPT 5",
-        ].includes(text ?? ""),
-      );
+      .map((button) =>
+        modelNames.find((name) =>
+          Array.from(button.querySelectorAll("span")).some(
+            (span) => span.textContent === name,
+          ),
+        ),
+      )
+      .filter((name): name is string => Boolean(name));
 
     expect(modelOrder).toEqual([
       "GPT 5",
@@ -777,6 +783,11 @@ describe("ModelPicker", () => {
     expect(
       screen.getByText("Upgrade from Dyad Pro trial to unlock more models."),
     ).toBeTruthy();
+    const autoRow = screen.getByText("Auto").closest("button")!;
+    expect(
+      autoRow.querySelector("[data-effort-chevron]")?.previousElementSibling
+        ?.textContent,
+    ).toBe("Medium");
   });
 
   it("does not select Dyad Free when quota is exhausted", () => {

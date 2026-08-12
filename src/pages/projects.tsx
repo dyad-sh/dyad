@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   FolderKanban,
+  FolderOpen,
   Loader2,
   MessageSquare,
   Plus,
@@ -19,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
+import { ProjectFiles } from "@/components/projects/ProjectFiles";
 import { useSettings } from "@/hooks/useSettings";
 import {
   activeChatAgentTabAtom,
@@ -53,6 +55,7 @@ export default function ProjectsPage() {
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [filesOpen, setFilesOpen] = useState<string | null>(null);
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
@@ -327,6 +330,19 @@ export default function ProjectsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() =>
+                        setFilesOpen((current) =>
+                          current === project.id ? null : project.id,
+                        )
+                      }
+                      data-testid={`project-files-${project.id}`}
+                    >
+                      <FolderOpen className="size-3.5" />
+                      Files
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => openEditor(project)}
                     >
                       Edit
@@ -342,6 +358,10 @@ export default function ProjectsPage() {
                     </Button>
                   </div>
                 </div>
+
+                {filesOpen === project.id && (
+                  <ProjectFiles projectId={project.id} />
+                )}
 
                 {conversationsFor(project.id).length > 0 && (
                   <ul className="mt-3 space-y-1 border-t border-cyan-500/10 pt-3">

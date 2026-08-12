@@ -27,6 +27,23 @@ const ProjectInputSchema = z.object({
   instructions: z.string().max(20_000).optional(),
 });
 
+export const ProjectFileSchema = z.object({
+  name: z.string(),
+  /** Project-relative, forward slashes. */
+  path: z.string(),
+  kind: z.enum(["directory", "file"]),
+  sizeBytes: z.number().nullable(),
+  modifiedAt: z.number().nullable(),
+});
+
+export type ProjectFile = z.infer<typeof ProjectFileSchema>;
+
+export const ProjectListingSchema = z.object({
+  path: z.string(),
+  parent: z.string().nullable(),
+  entries: z.array(ProjectFileSchema),
+});
+
 export const projectContracts = {
   list: defineContract({
     channel: "project:list",
@@ -46,6 +63,39 @@ export const projectContracts = {
   delete: defineContract({
     channel: "project:delete",
     input: z.object({ id: z.string() }),
+    output: z.void(),
+  }),
+
+  /** One folder of a project's files. */
+  listFiles: defineContract({
+    channel: "project:list-files",
+    input: z.object({ id: z.string(), path: z.string().default("") }),
+    output: ProjectListingSchema,
+  }),
+  /** Copy files chosen from this machine into the project. */
+  addFiles: defineContract({
+    channel: "project:add-files",
+    input: z.object({ id: z.string(), path: z.string().default("") }),
+    output: z.object({ added: z.array(z.string()) }),
+  }),
+  createFolder: defineContract({
+    channel: "project:create-folder",
+    input: z.object({
+      id: z.string(),
+      path: z.string().default(""),
+      name: z.string().min(1),
+    }),
+    output: z.void(),
+  }),
+  deleteFile: defineContract({
+    channel: "project:delete-file",
+    input: z.object({ id: z.string(), path: z.string().min(1) }),
+    output: z.void(),
+  }),
+  /** Show a project file in the system file browser. */
+  revealFile: defineContract({
+    channel: "project:reveal-file",
+    input: z.object({ id: z.string(), path: z.string().default("") }),
     output: z.void(),
   }),
 } as const;

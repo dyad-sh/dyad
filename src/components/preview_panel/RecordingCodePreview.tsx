@@ -1,12 +1,12 @@
-import { ChevronRight, Code2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { highlightPlaywrightLine } from "./playwrightHighlight";
 
 /**
- * Live code strip that shows the Playwright statement generated for the step
- * the user just performed. It renders as the second row *inside* the recording
- * banner — no background and no edge of its own — so the status row and the
- * code read as one cohesive surface rather than two stacked banners.
+ * Inline Playwright statement generated for the step the user just performed.
+ * It takes the flexible middle of the recording status row, keeping the live
+ * feedback beside the recorder controls instead of growing a second bar below.
  *
  * Only the current (latest) step is shown — as each new interaction is recorded
  * the line is replaced and animates in, so the banner always reflects "the code
@@ -14,9 +14,11 @@ import { highlightPlaywrightLine } from "./playwrightHighlight";
  */
 export function RecordingCodePreview({
   steps,
+  className,
 }: {
   /** Playwright statements, one per collapsed step, oldest first. */
   steps: string[];
+  className?: string;
 }) {
   const stepNumber = steps.length;
   const current = stepNumber > 0 ? steps[stepNumber - 1] : null;
@@ -28,19 +30,16 @@ export function RecordingCodePreview({
       // captured. `status` announces it politely, without stealing focus from
       // the app the user is driving.
       role="status"
-      className="flex items-center gap-2 px-3 py-1.5"
+      className={cn("flex min-w-0 items-center", className)}
       data-testid="preview-recording-code"
     >
-      <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold tracking-wide text-purple-700 uppercase dark:text-purple-300">
-        <Code2 className="size-3.5" />
-        {current ? `Step ${stepNumber}` : "Live code"}
-      </span>
+      <span className="sr-only">Latest generated test code:</span>
 
       {current ? (
         <code
           key={stepNumber}
           data-testid="preview-recording-code-line"
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border bg-(--background-lightest) px-2.5 py-1 font-mono text-xs shadow-sm animate-in fade-in slide-in-from-bottom-1 duration-200"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border bg-(--background-lightest) px-2.5 py-1 font-mono text-xs animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none"
         >
           <ChevronRight
             size={12}
@@ -49,7 +48,7 @@ export function RecordingCodePreview({
           <span className="truncate">{highlightPlaywrightLine(current)}</span>
         </code>
       ) : (
-        <span className="truncate text-xs text-muted-foreground italic">
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground italic">
           Interact with your app — the generated test code shows up here.
         </span>
       )}

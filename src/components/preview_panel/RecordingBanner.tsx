@@ -20,7 +20,10 @@ import { RecordingCodePreview } from "./RecordingCodePreview";
  * as a control pasted on top rather than part of it.
  */
 const SECONDARY_BUTTON_CLASSES =
-  "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-purple-100/80 hover:text-foreground dark:hover:bg-purple-900/40";
+  "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-purple-100/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40 dark:hover:bg-purple-900/40";
+
+const ICON_BUTTON_CLASSES =
+  "relative flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors before:absolute before:-inset-2 hover:bg-purple-100/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40 dark:hover:bg-purple-900/40";
 
 const PRIMARY_BUTTON_CLASSES =
   "flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-60";
@@ -49,9 +52,8 @@ export function recordingStatusMessage(
  *
  * Deliberately a single surface — status line, live code, recorded steps and any
  * warning all sit on the same tint inside one border, or they read as a stack of
- * unrelated alerts wedged between the toolbar and the app. Everything below the
- * status line is a disclosure: collapsing keeps the decision in reach while
- * handing the preview its height back.
+ * unrelated alerts wedged between the toolbar and the app. Live code sits in
+ * the recording row; only the longer post-recording step list expands below it.
  */
 export function RecordingBanner({
   recorder,
@@ -61,7 +63,6 @@ export function RecordingBanner({
   /** Hand the recorded steps to the agent for the test proposal. */
   onGenerateAssertions: () => void;
 }) {
-  const [recordName, setRecordName] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
@@ -79,80 +80,75 @@ export function RecordingBanner({
     setConfirmingDiscard(false);
   }, [recorder.phase, recorder.draft?.draftId]);
 
-  const details: ReactNode = recorder.isRecording ? (
-    <RecordingCodePreview steps={recorder.steps} />
-  ) : recorder.phase === "reviewing" ? (
-    <RecordedStepsList steps={recorder.draftSteps} />
-  ) : null;
-  const detailsLabel = recorder.isRecording
-    ? "live test code"
-    : "recorded steps";
+  const details: ReactNode =
+    recorder.phase === "reviewing" ? (
+      <RecordedStepsList steps={recorder.draftSteps} />
+    ) : null;
 
   // The status line is split into the label the disclosure toggles and the rest
   // of the row (metadata plus this phase's actions), which stays clickable.
+  let leadingAction: ReactNode = null;
   let label: ReactNode;
   let rest: ReactNode = null;
 
   if (recorder.isRecording) {
-    label = (
-      <span className="flex items-center gap-1.5 font-medium text-purple-700 dark:text-purple-300">
-        <CircleDot size={14} className="animate-pulse" />
-        Recording
-      </span>
+    leadingAction = (
+      <button
+        type="button"
+        onClick={() => void recorder.cancelRecording()}
+        aria-label="Cancel recording"
+        title="Cancel recording"
+        data-testid="preview-recording-cancel-button"
+        className={ICON_BUTTON_CLASSES}
+      >
+        <X size={14} />
+      </button>
     );
-    rest = (
-      <>
+    label = (
+      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+        <span className="flex shrink-0 items-center gap-1.5 font-medium text-purple-700 dark:text-purple-300">
+          <CircleDot size={14} className="animate-pulse" />
+          Recording
+        </span>
         <span
-          className="text-muted-foreground"
+          className="shrink-0 text-muted-foreground"
           data-testid="preview-recording-step-count"
         >
           {recorder.entryCount} step{recorder.entryCount === 1 ? "" : "s"}
         </span>
-        {recorder.isolation && recorder.isolation.mode !== "none" && (
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-            isolated data
-          </span>
-        )}
         {recorder.isolation &&
           recorder.isolation.mode !== "none" &&
           recorder.auth?.mode === "none" && (
             <span
-              className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-muted-foreground dark:bg-purple-900/40"
+              className="shrink-0 rounded bg-purple-100 px-1.5 py-0.5 text-xs text-muted-foreground dark:bg-purple-900/40"
               data-testid="preview-recording-signed-out-badge"
             >
               signed out
             </span>
           )}
-        {/* Optional: left empty, the AI names the test from what was recorded,
-            which it can do knowing how the flow actually went. */}
-        <input
-          value={recordName}
-          onChange={(e) => setRecordName(e.target.value)}
-          placeholder="Test name (optional)"
-          aria-label="Test name (optional)"
-          title="Leave empty and the AI names the test from the recorded steps"
-          data-testid="preview-recording-name-input"
-          className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lightest) px-2 py-1 text-xs outline-none"
+      </span>
+    );
+    rest = (
+      <>
+        <RecordingCodePreview
+          steps={recorder.steps}
+          className="col-span-3 row-start-2 @xl:col-span-1 @xl:col-start-3 @xl:row-start-1"
         />
         <button
-          onClick={() => void recorder.stopAndReview(recordName)}
+          type="button"
+          onClick={() => void recorder.stopAndReview("")}
           data-testid="preview-recording-stop-button"
-          className={PRIMARY_BUTTON_CLASSES}
+          className={cn(
+            PRIMARY_BUTTON_CLASSES,
+            "col-start-3 row-start-1 @xl:col-start-4",
+          )}
         >
           <Square size={12} /> Stop
-        </button>
-        <button
-          onClick={() => void recorder.cancelRecording()}
-          data-testid="preview-recording-cancel-button"
-          className={SECONDARY_BUTTON_CLASSES}
-        >
-          Cancel
         </button>
       </>
     );
   } else if (recorder.phase === "reviewing") {
-    // Unnamed until the AI proposes a name, which is the usual case — the name
-    // input while recording is there for users who want to insist on one.
+    // Unnamed until the AI proposes a name from what was recorded.
     const named = Boolean(recorder.draft?.testName);
     label = (
       <span
@@ -289,18 +285,27 @@ export function RecordingBanner({
 
   return (
     <div
-      className="border-b border-purple-200/70 bg-purple-50/70 dark:border-purple-900/50 dark:bg-purple-950/25"
+      className="@container border-b border-purple-200/70 bg-purple-50/70 dark:border-purple-900/50 dark:bg-purple-950/25"
       data-testid="preview-recording-bar"
     >
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+      <div
+        className={cn(
+          "items-center px-3 py-2 text-sm",
+          recorder.isRecording
+            ? "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 gap-y-2 @xl:grid-cols-[auto_auto_minmax(0,1fr)_auto]"
+            : "flex flex-wrap gap-2",
+        )}
+        data-testid="preview-recording-status-row"
+      >
+        {leadingAction}
         {details ? (
           <button
             type="button"
             onClick={() => setIsExpanded((expanded) => !expanded)}
             aria-expanded={isExpanded}
             aria-controls={DETAILS_ID}
-            aria-label={`${isExpanded ? "Hide" : "Show"} ${detailsLabel}`}
-            title={`${isExpanded ? "Hide" : "Show"} ${detailsLabel}`}
+            aria-label={`${isExpanded ? "Hide" : "Show"} recorded steps`}
+            title={`${isExpanded ? "Hide" : "Show"} recorded steps`}
             data-testid="preview-recording-details-toggle"
             className="-ml-1 flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-purple-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40 dark:hover:bg-purple-900/40"
           >
@@ -331,13 +336,7 @@ export function RecordingBanner({
       {details && isExpanded && (
         <div
           id={DETAILS_ID}
-          className={cn(
-            // The live code is one more row of the same status line; a hairline
-            // there splits the recorder into two banners. The review list
-            // scrolls, so it keeps an edge for content to disappear under.
-            !recorder.isRecording &&
-              "border-t border-purple-200/60 dark:border-purple-900/40",
-          )}
+          className="border-t border-purple-200/60 dark:border-purple-900/40"
         >
           {details}
         </div>

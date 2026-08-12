@@ -9,10 +9,7 @@ import type { PageObject } from "./helpers/page-objects";
  * Not a `beforeEach`: `po` is a fixture the test body receives, and keeping this
  * an explicit call leaves each test's first lines saying what it starts from.
  */
-async function recordOneInteraction(
-  po: PageObject,
-  { testName }: { testName?: string } = {},
-): Promise<FrameLocator> {
+async function recordOneInteraction(po: PageObject): Promise<FrameLocator> {
   await po.setUp({ autoApprove: true });
   await po.importApp("recorder");
 
@@ -34,9 +31,6 @@ async function recordOneInteraction(
     po.page.getByTestId("preview-recording-step-count"),
   ).not.toHaveText("0 steps");
 
-  if (testName !== undefined) {
-    await po.page.getByTestId("preview-recording-name-input").fill(testName);
-  }
   return frame;
 }
 
@@ -161,7 +155,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "returns the recording bar to the review when the proposal turn ends without a test",
   async ({ po }) => {
-    await recordOneInteraction(po, { testName: "abandoned flow" });
+    await recordOneInteraction(po);
     await po.page.getByTestId("preview-recording-stop-button").click();
 
     const status = po.page.getByTestId("preview-recording-review-status");

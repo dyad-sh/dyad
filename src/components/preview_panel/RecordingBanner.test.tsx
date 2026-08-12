@@ -50,6 +50,28 @@ function renderBanner(recorder: TestRecorderController) {
 }
 
 describe("RecordingBanner", () => {
+  it("keeps live code and the dismiss action in the main recording row", () => {
+    const recorder = makeRecorder("recording", {
+      isolation: { mode: "neon-branch" },
+      auth: { mode: "none" },
+    });
+    renderBanner(recorder);
+
+    const row = screen.getByTestId("preview-recording-status-row");
+    const cancel = screen.getByTestId("preview-recording-cancel-button");
+    expect(row.firstElementChild).toBe(cancel);
+    expect(cancel.getAttribute("aria-label")).toBe("Cancel recording");
+    expect(cancel.textContent).toBe("");
+    expect(screen.getByTestId("preview-recording-code").parentElement).toBe(
+      row,
+    );
+    expect(screen.queryByTestId("preview-recording-name-input")).toBeNull();
+    expect(screen.queryByText("isolated data")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("preview-recording-stop-button"));
+    expect(recorder.stopAndReview).toHaveBeenCalledWith("");
+  });
+
   it("shows each recorded step in full, reachable by keyboard", () => {
     const long =
       'await page.getByRole("button", { name: "Save this rather long label" }).click();';

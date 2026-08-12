@@ -63,9 +63,10 @@ restore focus with `{ preventScroll: true }`.
 
 Base UI derives a `SubmenuTrigger`'s accessible name from all descendant text and
 labels. If a menu row contains badges, secondary text, or a separately labeled
-chevron, give the trigger an explicit `aria-label` for the row's primary action.
-This keeps keyboard and Playwright role/name selection stable while the nested
-control remains discoverable by its own label.
+chevron, give the trigger an explicit `aria-label` that describes both the row's
+primary action and how to open its submenu. Do not put a separate `aria-label` on
+a non-interactive chevron nested inside the trigger; it is not independently
+focusable or exposed as a separate control to assistive technology.
 
 ## Accordion (Base UI vs Radix/shadcn)
 

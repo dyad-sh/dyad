@@ -5,6 +5,7 @@ import { ModelPicker } from "./ModelPicker";
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   setChatMode: vi.fn(),
+  setChatModelSelection: vi.fn(),
   updateSettings: vi.fn(),
   updateChat: vi.fn(),
   navigate: vi.fn(),
@@ -15,6 +16,15 @@ const mocks = vi.hoisted(() => ({
   renderSubContent: false,
   settingsLoading: false,
   chatLoading: false,
+  chat: null as null | {
+    id: number;
+    messages: Array<{ id: number }>;
+    modelSelection?: {
+      provider: string;
+      name: string;
+      effortLevel: string;
+    };
+  },
   pathname: "/",
   search: {} as { id?: number },
   envVars: {} as Record<string, string | undefined>,
@@ -131,10 +141,11 @@ vi.mock("@/components/ui/dialog", () => ({
 
 vi.mock("@/hooks/useChatMode", () => ({
   useChatMode: () => ({
-    chat: null,
+    chat: mocks.chat,
     isLoading: mocks.chatLoading,
     selectedMode: mocks.selectedMode,
     setChatMode: mocks.setChatMode,
+    setChatModelSelection: mocks.setChatModelSelection,
   }),
 }));
 
@@ -348,6 +359,8 @@ describe("ModelPicker", () => {
     mocks.invalidateQueries.mockReset();
     mocks.setChatMode.mockReset();
     mocks.setChatMode.mockResolvedValue(undefined);
+    mocks.setChatModelSelection.mockReset();
+    mocks.setChatModelSelection.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
     mocks.updateSettings.mockResolvedValue(mocks.settings);
     mocks.updateChat.mockReset();
@@ -359,6 +372,7 @@ describe("ModelPicker", () => {
     mocks.renderSubContent = false;
     mocks.settingsLoading = false;
     mocks.chatLoading = false;
+    mocks.chat = null;
     mocks.pathname = "/";
     mocks.search = {};
     mocks.envVars = {};
@@ -405,7 +419,12 @@ describe("ModelPicker", () => {
     expect(screen.getByTestId("model-picker").textContent).toContain(
       "Auto (Medium)",
     );
-    fireEvent.click(screen.getAllByLabelText("Configure effort for GPT 5")[0]);
+    fireEvent.click(
+      screen
+        .getAllByText("GPT 5")[0]
+        .closest("button")!
+        .querySelector("[data-effort-chevron]")!,
+    );
     fireEvent.click(screen.getAllByText("Xhigh")[0]);
 
     await waitFor(() => {
@@ -429,6 +448,33 @@ describe("ModelPicker", () => {
       (screen.getByTestId("model-picker") as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(mocks.updateChat).not.toHaveBeenCalled();
+  });
+
+  it("persists an established chat model through the optimistic mutation", async () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      messages: [{ id: 1 }],
+      modelSelection: {
+        provider: "auto",
+        name: "auto",
+        effortLevel: "medium",
+      },
+    };
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+    fireEvent.click(screen.getAllByText("Xhigh")[0]);
+
+    await waitFor(() => {
+      expect(mocks.setChatModelSelection).toHaveBeenCalledWith({
+        provider: "openai",
+        name: "gpt-5",
+        effortLevel: "xhigh",
+      });
+    });
     expect(mocks.updateChat).not.toHaveBeenCalled();
   });
 

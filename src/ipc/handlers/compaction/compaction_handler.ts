@@ -271,7 +271,6 @@ export async function performCompaction(
         mentionedAppsCodebases: [],
         builtinProviderId: modelClient.builtinProviderId,
         reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
-        settings,
         modelSelection: compactionModel,
       }),
       system: COMPACTION_SYSTEM_PROMPT,

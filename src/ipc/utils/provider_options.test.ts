@@ -13,6 +13,7 @@ const optionsFor = (
   settings: UserSettings,
   builtinProviderId?: string,
   reasoningEffortProviderId?: string,
+  modelSelection = settings.selectedModel as ModelSelection,
 ) =>
   getProviderOptions({
     dyadAppId: 1,
@@ -20,8 +21,7 @@ const optionsFor = (
     mentionedAppsCodebases: [],
     builtinProviderId,
     reasoningEffortProviderId,
-    settings,
-    modelSelection: settings.selectedModel as ModelSelection,
+    modelSelection,
   });
 
 describe("getProviderOptions model effort", () => {
@@ -41,6 +41,25 @@ describe("getProviderOptions model effort", () => {
     ).toEqual({
       thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
     });
+  });
+
+  it("uses the resolved Gemini model when Auto routes to Google", () => {
+    expect(
+      optionsFor(settingsFor("auto", "auto", "medium"), "google", undefined, {
+        provider: "google",
+        name: "gemini-3.5-flash",
+        effortLevel: "high",
+      }).google,
+    ).toEqual({
+      thinkingConfig: { includeThoughts: true, thinkingLevel: "high" },
+    });
+  });
+
+  it("does not coerce catalog-defined Gemini effort levels to medium", () => {
+    expect(
+      optionsFor(settingsFor("google", "gemini-2.5-pro", "xhigh"), "google")
+        .google,
+    ).toEqual({ thinkingConfig: { includeThoughts: true } });
   });
 
   it("passes effort to OpenAI-compatible local and custom providers", () => {

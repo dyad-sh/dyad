@@ -163,6 +163,29 @@ describe("chat mode (integration)", () => {
     expect(replayMessages).toHaveLength(1);
   }, 60_000);
 
+  it("honors a requested per-turn mode without replacing the stored mode", async () => {
+    const overrideChatId = await harness.createChat();
+    await harness.db
+      .update(chats)
+      .set({ chatMode: "build" })
+      .where(eq(chats.id, overrideChatId));
+
+    const result = await harness.streamChat("[dump] per-turn ask", {
+      chatId: overrideChatId,
+      requestedChatMode: "ask",
+      userInputRequestId: "per-turn-ask",
+    });
+
+    expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+    expect(harness.getServerDump({ type: "all-messages" }).text).not.toContain(
+      "This is my codebase.",
+    );
+    const unchangedChat = await harness.db.query.chats.findFirst({
+      where: eq(chats.id, overrideChatId),
+    });
+    expect(unchangedChat?.chatMode).toBe("build");
+  }, 60_000);
+
   it("lets main resolve an implicit Google-only first turn", async () => {
     writeSettings({
       enableDyadPro: false,

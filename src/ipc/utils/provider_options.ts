@@ -1,8 +1,4 @@
-import type {
-  ModelSelection,
-  SmartContextMode,
-  UserSettings,
-} from "../../lib/schemas";
+import type { ModelSelection, SmartContextMode } from "../../lib/schemas";
 import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
@@ -28,7 +24,6 @@ export interface GetProviderOptionsParams {
   mentionedAppsCodebases: MentionedAppCodebase[];
   builtinProviderId: string | undefined;
   reasoningEffortProviderId?: string;
-  settings: UserSettings;
   modelSelection: ModelSelection;
 }
 
@@ -46,7 +41,6 @@ export function getProviderOptions({
   mentionedAppsCodebases,
   builtinProviderId,
   reasoningEffortProviderId,
-  settings,
   modelSelection,
 }: GetProviderOptionsParams): Record<string, any> {
   const providerOptions: Record<string, any> = {
@@ -76,7 +70,7 @@ export function getProviderOptions({
   }
 
   // Conditionally include Google thinking config only for supported models
-  const selectedModelName = settings.selectedModel.name || "";
+  const selectedModelName = modelSelection.name || "";
   const providerId = builtinProviderId;
   const isVertex = providerId === "vertex";
   const isGoogle = providerId === "google";
@@ -84,17 +78,22 @@ export function getProviderOptions({
   const isGeminiModel = selectedModelName.startsWith("gemini");
   const isFlashLite = selectedModelName.includes("flash-lite");
   const effortLevel = getModelEffort(modelSelection);
+  const isKnownGeminiEffort = ["minimal", "low", "medium", "high"].includes(
+    effortLevel,
+  );
   const thinkingConfig = {
     includeThoughts: true,
-    ...(selectedModelName.startsWith("gemini-3") &&
-    ["minimal", "low", "medium", "high"].includes(effortLevel)
+    ...(selectedModelName.startsWith("gemini-3") && isKnownGeminiEffort
       ? {
           thinkingLevel: effortLevel as "minimal" | "low" | "medium" | "high",
         }
-      : { thinkingBudget: getGeminiThinkingBudgetTokens(effortLevel) }),
+      : isKnownGeminiEffort
+        ? { thinkingBudget: getGeminiThinkingBudgetTokens(effortLevel) }
+        : {}),
   } satisfies GoogleGenerativeAIProviderOptions["thinkingConfig"];
 
-  // Keep Google provider behavior unchanged: always include includeThoughts
+  // Always request thought summaries; recognized effort levels additionally
+  // configure the model-family-specific effort control.
   if (isGoogle) {
     providerOptions.google = {
       thinkingConfig,

@@ -20,7 +20,7 @@ export class ModelPicker {
     return this.page
       .getByRole("menuitem", {
         name: new RegExp(
-          `^${this.escapeRegExp(name)}(?:\\s+${this.escapeRegExp(name)})?$`,
+          `^${this.escapeRegExp(name)}(?:\\s+${this.escapeRegExp(name)})?(?:\\. Press Enter to select; press Right Arrow to configure effort\\.)?$`,
           "i",
         ),
       })

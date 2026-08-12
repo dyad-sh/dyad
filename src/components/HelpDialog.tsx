@@ -83,8 +83,9 @@ function formatSettingsLines(
   selectedModel: ModelSelection | null,
 ): string {
   if (!settings) return "Settings not available";
+  const model = selectedModel ?? settings.selectedModel;
   return [
-    `- Selected Model: ${settings.selectedModel?.provider}:${settings.selectedModel?.name}`,
+    `- Selected Model: ${model.provider}:${model.name}`,
     `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
     `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
     `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,

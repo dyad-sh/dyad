@@ -119,6 +119,7 @@ export function ModelPicker() {
     isLoading: chatLoading,
     selectedMode,
     setChatMode,
+    setChatModelSelection,
   } = useChatMode(isChatRoute ? chatId : null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -167,12 +168,9 @@ export function ModelPicker() {
       : {};
     if (hasEstablishedChat && chatId) {
       await Promise.all([
-        ipc.chat.updateChat({ chatId, modelSelection }),
+        setChatModelSelection(modelSelection),
         rememberEffort ? updateSettings(preferenceUpdate) : Promise.resolve(),
       ]);
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.chats.detail({ chatId }),
-      });
     } else {
       await updateSettings({
         selectedModel: model,
@@ -553,7 +551,7 @@ export function ModelPicker() {
             ? isFreeProviderRow
               ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
               : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
-            : model.displayName
+            : `${model.displayName}. Press Enter to select; press Right Arrow to configure effort.`
         }
         disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
@@ -651,7 +649,7 @@ export function ModelPicker() {
             <span
               data-effort-chevron
               className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
-              aria-label={`Configure effort for ${model.displayName}`}
+              aria-hidden="true"
             >
               <ChevronRightIcon className="size-4" />
             </span>
@@ -665,7 +663,7 @@ export function ModelPicker() {
         {model.description ? (
           <Tooltip>
             <TooltipTrigger render={item} />
-            <TooltipContent side="right" align="start">
+            <TooltipContent side="left" align="start">
               <span className="max-w-64">{model.description}</span>
             </TooltipContent>
           </Tooltip>
@@ -774,7 +772,7 @@ export function ModelPicker() {
       <DropdownMenuSub key={`${providerId}-${model.modelName}`}>
         <DropdownMenuSubTrigger
           hideChevron
-          aria-label={model.displayName}
+          aria-label={`${model.displayName}. Press Enter to select; press Right Arrow to configure effort.`}
           className={cn(
             "relative py-1.5 w-full",
             isSelected &&
@@ -804,7 +802,7 @@ export function ModelPicker() {
             <span
               data-effort-chevron
               className="-mr-1 ml-auto flex size-6 items-center justify-center rounded-sm hover:bg-muted"
-              aria-label={`Configure effort for ${model.displayName}`}
+              aria-hidden="true"
             >
               <ChevronRightIcon className="size-4" />
             </span>
@@ -879,7 +877,7 @@ export function ModelPicker() {
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger
                   hideChevron
-                  aria-label="Auto"
+                  aria-label="Auto. Press Enter to select; press Right Arrow to configure effort."
                   className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
                   onClick={(event) => {
                     if (
@@ -908,7 +906,7 @@ export function ModelPicker() {
                       <CheckIcon className="size-3.5 text-primary shrink-0" />
                       <span
                         data-effort-chevron
-                        aria-label="Configure effort for Auto"
+                        aria-hidden="true"
                         className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
                       >
                         <ChevronRightIcon className="size-4" />

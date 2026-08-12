@@ -31,7 +31,10 @@ testWithRemoteCatalog(
       po.page.getByText("GPT 5.2 Remote Only", { exact: true }),
     ).toBeVisible();
     await po.page
-      .getByLabel("Configure effort for GPT 5.2 Remote Only")
+      .getByLabel(
+        "GPT 5.2 Remote Only. Press Enter to select; press Right Arrow to configure effort.",
+      )
+      .locator("[data-effort-chevron]")
       .click();
     await po.page.getByText("Xhigh", { exact: true }).click();
     await expect(po.page.getByTestId("model-picker")).toContainText(

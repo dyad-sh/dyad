@@ -8,7 +8,6 @@ import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
-import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { BackButton } from "@/components/ui/back-button";
@@ -531,12 +530,8 @@ export function AISettings() {
     <SettingsSection
       id={SECTION_IDS.ai}
       title="AI"
-      description="Tune how the model reasons, and how long conversations run."
+      description="Control conversation context and agent limits."
     >
-      <div id={SETTING_IDS.thinkingBudget}>
-        <ThinkingBudgetSelector />
-      </div>
-
       <div id={SETTING_IDS.maxChatTurns}>
         <MaxChatTurnsSelector />
       </div>

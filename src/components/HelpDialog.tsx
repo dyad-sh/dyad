@@ -82,7 +82,7 @@ function formatSettingsLines(settings: UserSettings | null): string {
     `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
     `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
     `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
-    `- Thinking Budget: ${settings.thinkingBudget ?? "n/a"}`,
+    `- Effort Level: ${(settings.selectedModel as { effortLevel?: string }).effortLevel ?? "medium"}`,
     `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
     `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
   ].join("\n");

@@ -13,6 +13,10 @@ export interface ModelOption {
   tagColor?: string;
   maxOutputTokens?: number;
   contextWindow?: number;
+  effortSettings?: {
+    defaultEffortLevel: string;
+    possibleEffortLevels: string[];
+  };
 }
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";

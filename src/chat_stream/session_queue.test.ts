@@ -134,6 +134,11 @@ describe("main-session follow-up queue", () => {
       chatId,
       storedChatMode: null,
       selectedChatMode: "local-agent",
+      selectedModel: {
+        provider: "auto",
+        name: "auto",
+        effortLevel: "medium",
+      },
       content: "Continue",
       userInputRequestId: "follow-up-1",
       chatTurnIntentId: "follow-up-1",
@@ -175,6 +180,11 @@ describe("main-session follow-up queue", () => {
       chatId,
       storedChatMode: null,
       selectedChatMode: "local-agent",
+      selectedModel: {
+        provider: "auto",
+        name: "auto",
+        effortLevel: "medium",
+      },
       content: intent.prompt,
       userInputRequestId: intent.userInputRequestId,
       chatTurnIntentId: intent.intentId,

@@ -3,10 +3,7 @@ import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
-import {
-  getAnthropicProviderOptions,
-  getThinkingBudgetEffort,
-} from "./thinking_utils";
+import { getAnthropicProviderOptions, getModelEffort } from "./thinking_utils";
 
 export interface MentionedAppCodebase {
   appName: string;
@@ -55,7 +52,9 @@ export function getProviderOptions({
     },
     openai: {
       reasoningSummary: "auto",
-      reasoningEffort: getThinkingBudgetEffort(settings.thinkingBudget),
+      reasoningEffort: getModelEffort(
+        settings,
+      ) as OpenAIResponsesProviderOptions["reasoningEffort"],
     } satisfies OpenAIResponsesProviderOptions,
   };
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   setChatMode: vi.fn(),
   updateSettings: vi.fn(),
+  updateChat: vi.fn(),
   navigate: vi.fn(),
   posthogCapture: vi.fn(),
   openExternalUrl: vi.fn(),
@@ -99,6 +100,9 @@ vi.mock("@/routes/settings/providers/$provider", () => ({
 vi.mock("@/ipc/types", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   ipc: {
+    chat: {
+      updateChat: mocks.updateChat,
+    },
     system: {
       openExternalUrl: mocks.openExternalUrl,
     },
@@ -124,6 +128,7 @@ vi.mock("@/components/ui/dialog", () => ({
 
 vi.mock("@/hooks/useChatMode", () => ({
   useChatMode: () => ({
+    chat: null,
     selectedMode: mocks.selectedMode,
     setChatMode: mocks.setChatMode,
   }),
@@ -178,6 +183,10 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
           displayName: "GPT 5",
           description: "OpenAI model",
           dollarSigns: 3,
+          effortSettings: {
+            defaultEffortLevel: "minimal",
+            possibleEffortLevels: ["minimal", "xhigh"],
+          },
           type: "cloud",
         },
       ],
@@ -318,9 +327,14 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuSub: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
-  DropdownMenuSubTrigger: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  DropdownMenuSubTrigger: ({
+    children,
+    hideChevron: _hideChevron,
+    ...props
+  }: {
+    children: React.ReactNode;
+    hideChevron?: boolean;
+  }) => <button {...props}>{children}</button>,
   DropdownMenuSubContent: ({ children }: { children: React.ReactNode }) =>
     mocks.renderSubContent ? <div>{children}</div> : null,
 }));
@@ -331,6 +345,9 @@ describe("ModelPicker", () => {
     mocks.setChatMode.mockReset();
     mocks.setChatMode.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
+    mocks.updateSettings.mockResolvedValue(mocks.settings);
+    mocks.updateChat.mockReset();
+    mocks.updateChat.mockResolvedValue(undefined);
     mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openExternalUrl.mockReset();
@@ -372,6 +389,26 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("xAI")).toBeNull();
     expect(screen.getByText("More models")).toBeTruthy();
     expect(screen.queryByText("Other AI providers")).toBeNull();
+  });
+
+  it("shows effort in the trigger and selects catalog-defined effort from a model submenu", async () => {
+    mocks.renderSubContent = true;
+    render(<ModelPicker />);
+
+    expect(screen.getByTestId("model-picker").textContent).toContain(
+      "Auto (Medium)",
+    );
+    fireEvent.click(screen.getAllByLabelText("Configure effort for GPT 5")[0]);
+    fireEvent.click(screen.getAllByText("Xhigh")[0]);
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedModel: { name: "gpt-5", provider: "openai" },
+        modelEffortPreferences: {
+          '["openai","gpt-5",null]': "xhigh",
+        },
+      });
+    });
   });
 
   it("sorts the Pro flat list by price descending and groups same-price models by provider", () => {
@@ -427,7 +464,7 @@ describe("ModelPicker", () => {
       screen.getByText("Claude Sonnet 4.5").closest("button")?.dataset.locked,
     ).toBeUndefined();
     expect(
-      screen.getAllByText("Auto")[1].closest("button")?.dataset.locked,
+      screen.getByText("Auto").closest("button")?.dataset.locked,
     ).toBeUndefined();
   });
 
@@ -585,9 +622,9 @@ describe("ModelPicker", () => {
 
     render(<ModelPicker />);
 
-    expect(
-      screen.getAllByText("Auto")[1].closest("button")?.textContent,
-    ).toContain("Data sharing");
+    expect(screen.getByText("Auto").closest("button")?.textContent).toContain(
+      "Data sharing",
+    );
   });
 
   it("shows data sharing disclosure on Auto for non-Pro users with OPENROUTER_API_KEY", () => {
@@ -597,9 +634,9 @@ describe("ModelPicker", () => {
 
     render(<ModelPicker />);
 
-    expect(
-      screen.getAllByText("Auto")[1].closest("button")?.textContent,
-    ).toContain("Data sharing");
+    expect(screen.getByText("Auto").closest("button")?.textContent).toContain(
+      "Data sharing",
+    );
   });
 
   it("does not show data sharing disclosure on Auto without an OpenRouter key", () => {
@@ -609,7 +646,7 @@ describe("ModelPicker", () => {
     render(<ModelPicker />);
 
     expect(
-      screen.getAllByText("Auto")[1].closest("button")?.textContent,
+      screen.getByText("Auto").closest("button")?.textContent,
     ).not.toContain("Data sharing");
   });
 
@@ -636,7 +673,7 @@ describe("ModelPicker", () => {
     expect(screen.getAllByText("Data sharing").length).toBeGreaterThan(1);
   });
 
-  it("selects flat Pro models with their source provider", () => {
+  it("selects flat Pro models with their source provider", async () => {
     render(<ModelPicker />);
 
     fireEvent.click(screen.getByText("GPT 5").closest("button")!);
@@ -647,7 +684,9 @@ describe("ModelPicker", () => {
         provider: "openai",
       }),
     });
-    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("hides Dyad Free for Dyad Pro trial users", () => {

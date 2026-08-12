@@ -193,9 +193,11 @@ function DropdownMenuSubTrigger({
   className,
   inset,
   children,
+  hideChevron = false,
   ...props
 }: MenuPrimitive.SubmenuTrigger.Props & {
   inset?: boolean;
+  hideChevron?: boolean;
 }) {
   return (
     <MenuPrimitive.SubmenuTrigger
@@ -209,7 +211,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto size-4" />
+      {!hideChevron && <ChevronRightIcon className="ml-auto size-4" />}
     </MenuPrimitive.SubmenuTrigger>
   );
 }

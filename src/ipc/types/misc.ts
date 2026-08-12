@@ -91,7 +91,7 @@ const DebugSettingsSchema = z.object({
   /** Whether Dyad Pro is enabled */
   enableDyadPro: z.boolean().nullable(),
   /** Thinking budget level: "low" | "medium" | "high" */
-  thinkingBudget: z.string().nullable(),
+  effortLevel: z.string(),
   /** Max chat turns kept in context window */
   maxChatTurnsInContext: z.number().nullable(),
   /** Whether auto-update is enabled */

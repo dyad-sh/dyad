@@ -25,6 +25,10 @@ import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
+import {
+  normalizeModelSelection,
+  resolveDefaultModelSelection,
+} from "@/ipc/utils/model_effort";
 import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
 import { isLocalAgentBackedMode, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -68,12 +72,16 @@ export function registerTokenCountHandlers() {
       const inputTokens = estimateTokens(req.input);
 
       const storedSettings = readSettings();
+      const selectedModel = chat.modelSelection
+        ? await normalizeModelSelection(chat.modelSelection)
+        : await resolveDefaultModelSelection(storedSettings);
       const { mode: selectedChatMode } = await resolveChatModeForTurn({
         storedChatMode: chat.chatMode,
-        settings: storedSettings,
+        settings: { ...storedSettings, selectedModel },
       });
       const settings = {
         ...storedSettings,
+        selectedModel,
         selectedChatMode,
       };
 

@@ -76,4 +76,13 @@ describe("migrateStoredSettings", () => {
 
     expect(migrateStoredSettings(stored)).not.toHaveProperty("enableNativeGit");
   });
+
+  it("discards the deprecated global thinking budget", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      thinkingBudget: "high",
+    });
+
+    expect(migrateStoredSettings(stored)).not.toHaveProperty("thinkingBudget");
+  });
 });

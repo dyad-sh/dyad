@@ -36,6 +36,10 @@ import {
 } from "@/ipc/utils/provider_options";
 import { escapeXmlContent } from "../../../../shared/xmlEscape";
 import { isDyadProEnabled } from "@/lib/schemas";
+import {
+  normalizeModelSelection,
+  resolveDefaultModelSelection,
+} from "@/ipc/utils/model_effort";
 
 const logger = log.scope("compaction_handler");
 
@@ -108,14 +112,21 @@ export async function checkAndMarkForCompaction(
   totalTokens: number,
 ): Promise<boolean> {
   const settings = readSettings();
+  const chat = await db.query.chats.findFirst({
+    where: eq(chats.id, chatId),
+    columns: { modelSelection: true },
+  });
+  const selectedModel = chat?.modelSelection
+    ? await normalizeModelSelection(chat.modelSelection)
+    : await resolveDefaultModelSelection(settings);
 
   // Skip if compaction is disabled
   if (settings.enableContextCompaction === false) {
     return false;
   }
 
-  const contextWindow = await getContextWindow();
-  const provider = settings.selectedModel.provider;
+  const contextWindow = await getContextWindow(selectedModel);
+  const provider = selectedModel.provider;
   const shouldCompact = shouldTriggerCompaction(
     totalTokens,
     contextWindow,
@@ -174,7 +185,15 @@ export async function performCompaction(
   compactionChatsInFlight.add(chatId);
 
   try {
-    const settings = readSettings();
+    const storedSettings = readSettings();
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: { modelSelection: true },
+    });
+    const selectedModel = chat?.modelSelection
+      ? await normalizeModelSelection(chat.modelSelection)
+      : await resolveDefaultModelSelection(storedSettings);
+    const settings = { ...storedSettings, selectedModel };
     logger.info(`Starting compaction for chat ${chatId}`);
 
     // Load all messages for the chat

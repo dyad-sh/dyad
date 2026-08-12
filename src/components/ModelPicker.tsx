@@ -31,7 +31,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CheckIcon, LockIcon, SparklesIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  LockIcon,
+  SparklesIcon,
+} from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import {
   Dialog,
@@ -51,6 +56,12 @@ import {
 } from "@/lib/freeProModel";
 import { useRouterState } from "@tanstack/react-router";
 import { useChatMode } from "@/hooks/useChatMode";
+import {
+  createModelSelection,
+  formatEffortLevel,
+  getEffortSettings,
+  getModelPreferenceKey,
+} from "@/lib/modelEffort";
 
 const SCROLL_AREA_CLASS = "max-h-100 overflow-y-auto scrollbar-on-hover";
 
@@ -103,7 +114,7 @@ export function ModelPicker() {
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
   const chatId = routerState.location.search.id as number | undefined;
-  const { selectedMode, setChatMode } = useChatMode(
+  const { chat, selectedMode, setChatMode } = useChatMode(
     isChatRoute ? chatId : null,
   );
   const queryClient = useQueryClient();
@@ -111,21 +122,63 @@ export function ModelPicker() {
   const posthog = usePostHog();
   const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
   const freeModelQuota = useFreeModelQuota();
-  const onModelSelect = async (model: LargeLanguageModel) => {
+  const hasEstablishedChat = Boolean(
+    chat && (chat.modelSelection || chat.messages.length > 0),
+  );
+
+  const onModelSelect = async ({
+    model,
+    catalogModel,
+    effortLevel,
+    rememberEffort = false,
+  }: {
+    model: LargeLanguageModel;
+    catalogModel?: LanguageModel | null;
+    effortLevel?: string;
+    rememberEffort?: boolean;
+  }) => {
+    if (!settings) return;
+    const modelSelection = createModelSelection({
+      model,
+      catalogModel,
+      preferredEffortLevel:
+        effortLevel ??
+        settings.modelEffortPreferences?.[getModelPreferenceKey(model)],
+    });
     posthog.capture("model-picker:select", {
       provider: model.provider,
       model: model.name,
+      effortLevel: modelSelection.effortLevel,
     });
     if (isFreeProBuildModeCombination(model, selectedMode)) {
       await setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE);
     }
 
-    updateSettings({
-      selectedModel: model,
-      ...(isFreeProModel(model) && settings?.defaultChatMode === "build"
-        ? { defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE }
-        : {}),
-    });
+    const preferenceUpdate = rememberEffort
+      ? {
+          modelEffortPreferences: {
+            ...settings.modelEffortPreferences,
+            [getModelPreferenceKey(model)]: modelSelection.effortLevel,
+          },
+        }
+      : {};
+    if (hasEstablishedChat && chatId) {
+      await Promise.all([
+        ipc.chat.updateChat({ chatId, modelSelection }),
+        rememberEffort ? updateSettings(preferenceUpdate) : Promise.resolve(),
+      ]);
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.chats.detail({ chatId }),
+      });
+    } else {
+      await updateSettings({
+        selectedModel: model,
+        ...preferenceUpdate,
+        ...(isFreeProModel(model) && settings.defaultChatMode === "build"
+          ? { defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE }
+          : {}),
+      });
+    }
     // Invalidate token count when model changes since different models have different context windows
     // (technically they have different tokenizers, but we don't keep track of that).
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
@@ -183,6 +236,12 @@ export function ModelPicker() {
   }, [open, loadOllamaModels, loadLMStudioModels]);
 
   // Get display name for the selected model
+  const selectedModel: LargeLanguageModel = chat?.modelSelection ??
+    settings?.selectedModel ?? {
+      provider: "auto",
+      name: "auto",
+    };
+
   const getModelDisplayName = () => {
     if (selectedModel.provider === "ollama") {
       return (
@@ -246,8 +305,21 @@ export function ModelPicker() {
   if (!settings) {
     return null;
   }
-  const selectedModel = settings?.selectedModel;
-  const modelDisplayName = getModelDisplayName();
+  const selectedCatalogModel = modelsByProviders?.[
+    selectedModel.provider
+  ]?.find((model) =>
+    selectedModel.customModelId
+      ? model.type === "custom" && model.id === selectedModel.customModelId
+      : model.apiName === selectedModel.name,
+  );
+  const selectedEffortLevel = createModelSelection({
+    model: selectedModel,
+    catalogModel: selectedCatalogModel,
+    preferredEffortLevel:
+      chat?.modelSelection?.effortLevel ??
+      settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
+  }).effortLevel;
+  const modelDisplayName = `${getModelDisplayName()} (${formatEffortLevel(selectedEffortLevel)})`;
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
     !loading && modelsByProviders
@@ -370,7 +442,11 @@ export function ModelPicker() {
     ? getProviderDisplayName(unlockTarget.providerId)
     : "";
 
-  const handleCloudModelSelect = (providerId: string, model: LanguageModel) => {
+  const handleCloudModelSelect = (
+    providerId: string,
+    model: LanguageModel,
+    effortLevel?: string,
+  ) => {
     if (isModelLocked(providerId)) {
       handleLockedModelClick(providerId, model);
       return;
@@ -384,9 +460,14 @@ export function ModelPicker() {
 
     const customModelId = model.type === "custom" ? model.id : undefined;
     void onModelSelect({
-      name: model.apiName,
-      provider: providerId,
-      customModelId,
+      model: {
+        name: model.apiName,
+        provider: providerId,
+        customModelId,
+      },
+      catalogModel: model,
+      effortLevel,
+      rememberEffort: effortLevel !== undefined,
     });
     setOpen(false);
   };
@@ -433,8 +514,23 @@ export function ModelPicker() {
           ? "Unavailable"
           : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
 
+    const modelRef = {
+      name: model.apiName,
+      provider: providerId,
+      customModelId: model.type === "custom" ? model.id : undefined,
+    };
+    const effortSettings = getEffortSettings(model);
+    const currentEffort = isSelected
+      ? selectedEffortLevel
+      : createModelSelection({
+          model: modelRef,
+          catalogModel: model,
+          preferredEffortLevel:
+            settings.modelEffortPreferences?.[getModelPreferenceKey(modelRef)],
+        }).effortLevel;
+
     const item = (
-      <DropdownMenuItem
+      <DropdownMenuSubTrigger
         key={`${providerId}-${model.apiName}`}
         data-locked={isLocked || undefined}
         aria-label={
@@ -442,7 +538,7 @@ export function ModelPicker() {
             ? isFreeProviderRow
               ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
               : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
-            : undefined
+            : model.displayName
         }
         disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
@@ -453,8 +549,11 @@ export function ModelPicker() {
           isSelected &&
             "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
         )}
-        onClick={() => {
-          handleCloudModelSelect(providerId, model);
+        hideChevron
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest("[data-effort-chevron]")) {
+            handleCloudModelSelect(providerId, model);
+          }
         }}
       >
         <div className="flex justify-between items-center gap-2 w-full">
@@ -534,22 +633,51 @@ export function ModelPicker() {
                 </TooltipContent>
               </Tooltip>
             )}
+            <span
+              data-effort-chevron
+              className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
+              aria-label={`Configure effort for ${model.displayName}`}
+            >
+              <ChevronRightIcon className="size-4" />
+            </span>
           </span>
         </div>
-      </DropdownMenuItem>
+      </DropdownMenuSubTrigger>
     );
 
-    if (!model.description) {
-      return item;
-    }
-
     return (
-      <Tooltip key={`${providerId}-${model.apiName}`}>
-        <TooltipTrigger render={item} />
-        <TooltipContent side="right" align="start">
-          <span className="max-w-64">{model.description}</span>
-        </TooltipContent>
-      </Tooltip>
+      <DropdownMenuSub key={`${providerId}-${model.apiName}`}>
+        {model.description ? (
+          <Tooltip>
+            <TooltipTrigger render={item} />
+            <TooltipContent side="right" align="start">
+              <span className="max-w-64">{model.description}</span>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          item
+        )}
+        <DropdownMenuSubContent className="w-52">
+          <DropdownMenuLabel>Effort</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {effortSettings.possibleEffortLevels.map((effortLevel) => (
+            <DropdownMenuItem
+              key={effortLevel}
+              onClick={() =>
+                handleCloudModelSelect(providerId, model, effortLevel)
+              }
+            >
+              <span>{formatEffortLevel(effortLevel)}</span>
+              {effortLevel === effortSettings.defaultEffortLevel && (
+                <span className="text-xs text-muted-foreground">(default)</span>
+              )}
+              {effortLevel === currentEffort && (
+                <CheckIcon className="ml-auto size-3.5 text-primary" />
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
     );
   };
 
@@ -602,6 +730,93 @@ export function ModelPicker() {
     );
   };
 
+  const renderLocalModelItem = (
+    providerId: "ollama" | "lmstudio",
+    model: LocalModel,
+  ) => {
+    const modelRef = { name: model.modelName, provider: providerId };
+    const isSelected =
+      selectedModel.provider === providerId &&
+      selectedModel.name === model.modelName;
+    const effortSettings = getEffortSettings();
+    const currentEffort = isSelected
+      ? selectedEffortLevel
+      : createModelSelection({
+          model: modelRef,
+          preferredEffortLevel:
+            settings.modelEffortPreferences?.[getModelPreferenceKey(modelRef)],
+        }).effortLevel;
+    const selectLocalModel = (effortLevel?: string) => {
+      void onModelSelect({
+        model: modelRef,
+        effortLevel,
+        rememberEffort: effortLevel !== undefined,
+      });
+      setOpen(false);
+    };
+
+    return (
+      <DropdownMenuSub key={`${providerId}-${model.modelName}`}>
+        <DropdownMenuSubTrigger
+          hideChevron
+          aria-label={model.displayName}
+          className={cn(
+            "relative py-1.5 w-full",
+            isSelected &&
+              "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
+          )}
+          onClick={(event) => {
+            if (
+              !(event.target as HTMLElement).closest("[data-effort-chevron]")
+            ) {
+              selectLocalModel();
+            }
+          }}
+        >
+          <div className="flex w-full items-center gap-2">
+            <ProviderIcon providerId={providerId} />
+            <div className="min-w-0 flex flex-col items-start">
+              <span className="text-[13px] leading-tight">
+                {model.displayName}
+              </span>
+              <span className="text-xs text-muted-foreground truncate">
+                {model.modelName}
+              </span>
+            </div>
+            {isSelected && (
+              <CheckIcon className="ml-auto size-3.5 text-primary shrink-0" />
+            )}
+            <span
+              data-effort-chevron
+              className="-mr-1 ml-auto flex size-6 items-center justify-center rounded-sm hover:bg-muted"
+              aria-label={`Configure effort for ${model.displayName}`}
+            >
+              <ChevronRightIcon className="size-4" />
+            </span>
+          </div>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-52">
+          <DropdownMenuLabel>Effort</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {effortSettings.possibleEffortLevels.map((effortLevel) => (
+            <DropdownMenuItem
+              key={effortLevel}
+              onClick={() => selectLocalModel(effortLevel)}
+            >
+              <span>{formatEffortLevel(effortLevel)}</span>
+              {effortLevel === effortSettings.defaultEffortLevel && (
+                <span className="text-xs text-muted-foreground">(default)</span>
+              )}
+              {effortLevel === currentEffort && (
+                <CheckIcon className="ml-auto size-3.5 text-primary" />
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    );
+  };
+
   return (
     <>
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
@@ -611,7 +826,7 @@ export function ModelPicker() {
           title={modelDisplayName}
         >
           <span className="truncate">
-            {modelDisplayName === "Auto" && (
+            {getModelDisplayName() === "Auto" && (
               <>
                 <span className="text-xs text-muted-foreground/70">
                   Model:
@@ -645,25 +860,71 @@ export function ModelPicker() {
               </div>
               <DropdownMenuSeparator />
               {/* Trial users only see the auto model */}
-              <DropdownMenuItem
-                className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
-                onClick={() => {
-                  void onModelSelect({ name: "auto", provider: "auto" });
-                  setOpen(false);
-                }}
-              >
-                <div className="flex justify-between items-center w-full gap-2">
-                  <span className="text-[13px]">Auto</span>
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className={cn(PILL_CLASS, "bg-primary/10 text-primary")}
-                    >
-                      Trial
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  hideChevron
+                  aria-label="Auto"
+                  className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
+                  onClick={(event) => {
+                    if (
+                      !(event.target as HTMLElement).closest(
+                        "[data-effort-chevron]",
+                      )
+                    ) {
+                      void onModelSelect({
+                        model: { name: "auto", provider: "auto" },
+                        catalogModel: autoModels.find(
+                          (model) => model.apiName === "auto",
+                        ),
+                      });
+                      setOpen(false);
+                    }
+                  }}
+                >
+                  <div className="flex justify-between items-center w-full gap-2">
+                    <span className="text-[13px]">Auto</span>
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <span
+                        className={cn(PILL_CLASS, "bg-primary/10 text-primary")}
+                      >
+                        Trial
+                      </span>
+                      <CheckIcon className="size-3.5 text-primary shrink-0" />
+                      <span
+                        data-effort-chevron
+                        aria-label="Configure effort for Auto"
+                        className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
+                      >
+                        <ChevronRightIcon className="size-4" />
+                      </span>
                     </span>
-                    <CheckIcon className="size-3.5 text-primary shrink-0" />
-                  </span>
-                </div>
-              </DropdownMenuItem>
+                  </div>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-52">
+                  <DropdownMenuLabel>Effort</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {getEffortSettings(
+                    autoModels.find((model) => model.apiName === "auto"),
+                  ).possibleEffortLevels.map((effortLevel) => (
+                    <DropdownMenuItem
+                      key={effortLevel}
+                      onClick={() => {
+                        void onModelSelect({
+                          model: { name: "auto", provider: "auto" },
+                          catalogModel: autoModels.find(
+                            (model) => model.apiName === "auto",
+                          ),
+                          effortLevel,
+                          rememberEffort: true,
+                        });
+                        setOpen(false);
+                      }}
+                    >
+                      {formatEffortLevel(effortLevel)}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </>
           )}
 
@@ -830,43 +1091,9 @@ export function ModelPicker() {
                           </div>
                         </div>
                       ) : (
-                        ollamaModels.map((model: LocalModel) => {
-                          const isSelected =
-                            selectedModel.provider === "ollama" &&
-                            selectedModel.name === model.modelName;
-                          return (
-                            <DropdownMenuItem
-                              key={`ollama-${model.modelName}`}
-                              className={cn(
-                                "relative py-1.5",
-                                isSelected &&
-                                  "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
-                              )}
-                              onClick={() => {
-                                void onModelSelect({
-                                  name: model.modelName,
-                                  provider: "ollama",
-                                });
-                                setOpen(false);
-                              }}
-                            >
-                              <div className="flex w-full items-center gap-2">
-                                <ProviderIcon providerId="ollama" />
-                                <div className="min-w-0 flex flex-col">
-                                  <span className="text-[13px] leading-tight">
-                                    {model.displayName}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground truncate">
-                                    {model.modelName}
-                                  </span>
-                                </div>
-                                {isSelected && (
-                                  <CheckIcon className="ml-auto size-3.5 text-primary shrink-0" />
-                                )}
-                              </div>
-                            </DropdownMenuItem>
-                          );
-                        })
+                        ollamaModels.map((model: LocalModel) =>
+                          renderLocalModelItem("ollama", model),
+                        )
                       )}
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
@@ -928,43 +1155,9 @@ export function ModelPicker() {
                           </div>
                         </div>
                       ) : (
-                        lmStudioModels.map((model: LocalModel) => {
-                          const isSelected =
-                            selectedModel.provider === "lmstudio" &&
-                            selectedModel.name === model.modelName;
-                          return (
-                            <DropdownMenuItem
-                              key={`lmstudio-${model.modelName}`}
-                              className={cn(
-                                "relative py-1.5",
-                                isSelected &&
-                                  "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
-                              )}
-                              onClick={() => {
-                                void onModelSelect({
-                                  name: model.modelName,
-                                  provider: "lmstudio",
-                                });
-                                setOpen(false);
-                              }}
-                            >
-                              <div className="flex w-full items-center gap-2">
-                                <ProviderIcon providerId="lmstudio" />
-                                <div className="min-w-0 flex flex-col">
-                                  <span className="text-[13px] leading-tight">
-                                    {model.displayName}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground truncate">
-                                    {model.modelName}
-                                  </span>
-                                </div>
-                                {isSelected && (
-                                  <CheckIcon className="ml-auto size-3.5 text-primary shrink-0" />
-                                )}
-                              </div>
-                            </DropdownMenuItem>
-                          );
-                        })
+                        lmStudioModels.map((model: LocalModel) =>
+                          renderLocalModelItem("lmstudio", model),
+                        )
                       )}
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>

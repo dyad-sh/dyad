@@ -166,6 +166,7 @@ export async function getLanguageModels({
         contextWindow: model.contextWindow,
         temperature: model.temperature,
         dollarSigns: model.dollarSigns,
+        effortSettings: model.effortSettings,
         type: "cloud" as const,
       }));
     } else {

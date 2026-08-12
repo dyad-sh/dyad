@@ -236,8 +236,18 @@ describe("performCompaction", () => {
 
     expect(result).toMatchObject({ success: true });
     expect(mockGetModelClient).toHaveBeenCalledWith(
-      { provider: "anthropic", name: "test-model" },
-      settingsState.current,
+      {
+        provider: "anthropic",
+        name: "test-model",
+        effortLevel: "medium",
+      },
+      {
+        selectedModel: {
+          provider: "anthropic",
+          name: "test-model",
+          effortLevel: "medium",
+        },
+      },
     );
   });
 
@@ -260,8 +270,19 @@ describe("performCompaction", () => {
 
     expect(result).toMatchObject({ success: true });
     expect(mockGetModelClient).toHaveBeenCalledWith(
-      { provider: "openai", name: "gpt-5.6-luna" },
-      settingsState.current,
+      {
+        provider: "openai",
+        name: "gpt-5.6-luna",
+      },
+      {
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
+        selectedModel: {
+          provider: "anthropic",
+          name: "test-model",
+          effortLevel: "medium",
+        },
+      },
     );
   });
 

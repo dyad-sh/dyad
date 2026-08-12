@@ -97,6 +97,14 @@ export const LargeLanguageModelSchema = z.object({
  */
 export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
 
+export const EffortLevelSchema = z.string().trim().min(1);
+
+export const ModelSelectionSchema = LargeLanguageModelSchema.extend({
+  effortLevel: EffortLevelSchema,
+});
+
+export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
+
 /**
  * Zod schema for provider settings
  * Regular providers use only apiKey. Vertex has additional optional fields.
@@ -386,7 +394,7 @@ const BaseUserSettingsFields = {
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
   maxToolCallSteps: z.number().optional(),
-  thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
+  modelEffortPreferences: z.record(z.string(), EffortLevelSchema).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
   proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
@@ -444,6 +452,8 @@ const BaseUserSettingsFields = {
 export const StoredUserSettingsSchema = z
   .object({
     ...BaseUserSettingsFields,
+    // Deprecated: effort is now selected per model.
+    thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
     // Use StoredChatModeSchema to allow deprecated "agent" value
     selectedChatMode: StoredChatModeSchema.optional(),
     defaultChatMode: StoredChatModeSchema.optional(),
@@ -506,6 +516,7 @@ export function migrateStoredSettings(
   const activeSettings = { ...stored };
   delete activeSettings.enableNativeGit;
   delete activeSettings.enableAutoFixProblems;
+  delete activeSettings.thinkingBudget;
 
   return {
     ...activeSettings,

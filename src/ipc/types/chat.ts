@@ -7,6 +7,7 @@ import {
 } from "../contracts/core";
 import {
   ChatModeSchema,
+  ModelSelectionSchema,
   StoredChatModeSchema,
   migrateStoredChatMode,
   type ChatMode,
@@ -67,6 +68,7 @@ export const ChatSchema = z.object({
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
   chatMode: NullableChatModeSchema,
+  modelSelection: ModelSelectionSchema.nullable().optional(),
   /**
    * Apps referenced via `@app:Name` that stay readable for the rest of the
    * chat in agent-backed modes.
@@ -315,6 +317,7 @@ export const UpdateChatParamsSchema = z.object({
   chatId: z.number(),
   title: z.string().optional(),
   chatMode: ChatModeSchema.nullable().optional(),
+  modelSelection: ModelSelectionSchema.optional(),
 });
 
 export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;

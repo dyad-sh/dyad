@@ -31,6 +31,7 @@ import {
 } from "@/ipc/services/chat_actor_deletion_service";
 import { waitForChatActorIdle } from "@/ipc/services/chat_actor_service";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import { withChatQueueLock } from "@/chat_stream/queue_lock";
 
 const logger = log.scope("chat_handlers");
 
@@ -126,6 +127,7 @@ export function registerChatHandlers() {
         title: true,
         initialCommitHash: true,
         chatMode: true,
+        modelSelection: true,
         referencedAppIds: true,
       },
       with: {
@@ -149,6 +151,7 @@ export function registerChatHandlers() {
       title: chat.title ?? "",
       initialCommitHash: chat.initialCommitHash,
       chatMode: normalizeStoredChatMode(chat.chatMode),
+      modelSelection: chat.modelSelection ?? null,
       referencedApps: await getReferencedAppsForDisplay(chat.referencedAppIds),
       messages: chat.messages.map(toRendererMessage),
     };
@@ -276,7 +279,7 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
-    const { chatId, title, chatMode } = params;
+    const { chatId, title, chatMode, modelSelection } = params;
     const updates: Partial<typeof chats.$inferInsert> = {};
     if (title !== undefined) {
       updates.title = title;
@@ -284,10 +287,19 @@ export function registerChatHandlers() {
     if (chatMode !== undefined) {
       updates.chatMode = chatMode;
     }
+    if (modelSelection !== undefined) {
+      updates.modelSelection = modelSelection;
+    }
     if (Object.keys(updates).length === 0) {
       return;
     }
-    await db.update(chats).set(updates).where(eq(chats.id, chatId));
+    if (modelSelection !== undefined) {
+      await withChatQueueLock(chatId, () =>
+        db.update(chats).set(updates).where(eq(chats.id, chatId)),
+      );
+    } else {
+      await db.update(chats).set(updates).where(eq(chats.id, chatId));
+    }
   });
 
   createTypedHandler(chatContracts.setChatFavorite, async (_, params) => {

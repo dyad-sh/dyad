@@ -5,6 +5,7 @@ import type {
   LanguageModel,
   LanguageModelProvider,
 } from "@/ipc/types/language-model";
+import { EffortSettingsSchema } from "@/ipc/types/language-model";
 import {
   ThemeGenerationModelOptionSchema,
   type ThemeGenerationModelOption,
@@ -64,6 +65,7 @@ const CatalogModelSchema = z.object({
   temperature: z.number().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  effortSettings: EffortSettingsSchema.optional(),
   lifecycle: z
     .object({
       stage: z.enum(["stable", "preview", "deprecated"]).optional(),
@@ -164,6 +166,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
       contextWindow: model.contextWindow,
       temperature: model.temperature,
       dollarSigns: model.dollarSigns,
+      effortSettings: model.effortSettings,
       type: "cloud",
     }));
   }
@@ -286,6 +289,7 @@ function convertRemoteCatalog(
           contextWindow: model.contextWindow,
           temperature: model.temperature,
           dollarSigns: model.dollarSigns,
+          effortSettings: model.effortSettings,
           type: "cloud" as const,
         })),
       ],
@@ -302,6 +306,7 @@ function convertRemoteCatalog(
     contextWindow: model.contextWindow,
     temperature: model.temperature,
     dollarSigns: model.dollarSigns,
+    effortSettings: model.effortSettings,
     type: "cloud" as const,
   }));
   if (remoteAutoModels.length === 0) {

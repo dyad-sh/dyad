@@ -30,6 +30,13 @@ testWithRemoteCatalog(
     await expect(
       po.page.getByText("GPT 5.2 Remote Only", { exact: true }),
     ).toBeVisible();
+    await po.page
+      .getByLabel("Configure effort for GPT 5.2 Remote Only")
+      .click();
+    await po.page.getByText("Xhigh", { exact: true }).click();
+    await expect(po.page.getByTestId("model-picker")).toContainText(
+      "GPT 5.2 Remote Only (Xhigh)",
+    );
 
     await po.navigation.goToLibraryTab();
     await po.page.getByRole("link", { name: "Themes" }).click();

@@ -205,7 +205,9 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     defaultChatMode: settings.defaultChatMode ?? null,
     autoApproveChanges: settings.autoApproveChanges ?? null,
     enableDyadPro: settings.enableDyadPro ?? null,
-    thinkingBudget: settings.thinkingBudget ?? null,
+    effortLevel:
+      (settings.selectedModel as { effortLevel?: string }).effortLevel ??
+      "medium",
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
     enableAutoUpdate: settings.enableAutoUpdate,
     releaseChannel: settings.releaseChannel,

@@ -59,6 +59,14 @@ restore focus with `{ preventScroll: true }`.
 - Wrapping `ToggleGroupItem` in `TooltipTrigger` without `render` also breaks `:first-child`/`:last-child` CSS selectors for rounded corners on the group.
 - For drag handles and resize rails, prefer the native `title` attribute over `Tooltip` — tooltips appear immediately on hover and interfere with drag interactions, while `title` has a built-in delay.
 
+## Submenu trigger accessible names
+
+Base UI derives a `SubmenuTrigger`'s accessible name from all descendant text and
+labels. If a menu row contains badges, secondary text, or a separately labeled
+chevron, give the trigger an explicit `aria-label` for the row's primary action.
+This keeps keyboard and Playwright role/name selection stable while the nested
+control remains discoverable by its own label.
+
 ## Accordion (Base UI vs Radix/shadcn)
 
 The `Accordion` component in `src/components/ui/accordion.tsx` wraps `@base-ui/react/accordion`, **not** Radix or shadcn. The APIs differ:

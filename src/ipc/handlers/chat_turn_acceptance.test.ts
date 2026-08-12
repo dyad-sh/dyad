@@ -41,6 +41,11 @@ describe("acceptChatTurn", () => {
       chatId,
       storedChatMode: null,
       selectedChatMode: "build",
+      selectedModel: {
+        provider: "openai",
+        name: "first-model",
+        effortLevel: "high",
+      },
       content: "first",
       userInputRequestId: "first-request",
     });
@@ -48,19 +53,36 @@ describe("acceptChatTurn", () => {
       chatId,
       storedChatMode: null,
       selectedChatMode: "ask",
+      selectedModel: {
+        provider: "anthropic",
+        name: "second-model",
+        effortLevel: "low",
+      },
       content: "second",
       userInputRequestId: "second-request",
     });
 
     expect(first.authoritativeChatMode).toBe("build");
     expect(second.authoritativeChatMode).toBe("build");
+    expect(first.authoritativeModel).toEqual({
+      provider: "openai",
+      name: "first-model",
+      effortLevel: "high",
+    });
+    expect(second.authoritativeModel).toEqual(first.authoritativeModel);
     expect(
       db
-        .select({ chatMode: chats.chatMode })
+        .select({
+          chatMode: chats.chatMode,
+          modelSelection: chats.modelSelection,
+        })
         .from(chats)
         .where(eq(chats.id, chatId))
-        .get()?.chatMode,
-    ).toBe("build");
+        .get(),
+    ).toEqual({
+      chatMode: "build",
+      modelSelection: first.authoritativeModel,
+    });
     expect(
       db
         .select({ id: messages.id })
@@ -103,6 +125,11 @@ describe("acceptChatTurn", () => {
         chatId,
         storedChatMode: null,
         selectedChatMode: "build",
+        selectedModel: {
+          provider: "auto",
+          name: "auto",
+          effortLevel: "medium",
+        },
         content: "third",
         chatTurnIntentId: "third",
       }),

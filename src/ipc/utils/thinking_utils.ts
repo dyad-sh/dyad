@@ -2,8 +2,12 @@ import { PROVIDERS_THAT_SUPPORT_THINKING as GEMINI_PROVIDERS } from "../shared/l
 import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
 import type { UserSettings } from "../../lib/schemas";
 
-type ThinkingBudget = NonNullable<UserSettings["thinkingBudget"]>;
-type ReasoningEffort = "low" | "medium" | "high";
+export function getModelEffort(settings: UserSettings): string {
+  return (
+    (settings.selectedModel as { effortLevel?: string } | undefined)
+      ?.effortLevel ?? "medium"
+  );
+}
 
 // The Dyad Engine is backed by LiteLLM using the
 // OpenAI-compatible chat completions API. This means
@@ -27,7 +31,7 @@ export function getExtraProviderOptionsForEngine(
   }
   if (GEMINI_PROVIDERS.includes(providerId)) {
     const budgetTokens = getGeminiThinkingBudgetTokens(
-      settings?.thinkingBudget,
+      getModelEffort(settings),
     );
     return {
       thinking: {
@@ -42,10 +46,8 @@ export function getExtraProviderOptionsForEngine(
   return {};
 }
 
-function getGeminiThinkingBudgetTokens(
-  thinkingBudget?: ThinkingBudget,
-): number {
-  switch (thinkingBudget) {
+function getGeminiThinkingBudgetTokens(effortLevel: string): number {
+  switch (effortLevel) {
     case "low":
       return 1_000;
     case "medium":
@@ -58,20 +60,6 @@ function getGeminiThinkingBudgetTokens(
   }
 }
 
-export function getThinkingBudgetEffort(
-  thinkingBudget?: ThinkingBudget,
-): ReasoningEffort {
-  switch (thinkingBudget) {
-    case "low":
-      return "low";
-    case "high":
-      return "high";
-    case "medium":
-    default:
-      return "medium";
-  }
-}
-
 // This is the engine-specicific (LiteLLM) thinking configuration
 function getAnthropicEngineThinkingOptions(settings: UserSettings) {
   return {
@@ -80,7 +68,7 @@ function getAnthropicEngineThinkingOptions(settings: UserSettings) {
       display: "summarized",
     },
     // Use anthropic's native effort config.
-    output_config: { effort: getThinkingBudgetEffort(settings.thinkingBudget) },
+    output_config: { effort: getModelEffort(settings) },
   };
 }
 
@@ -93,13 +81,13 @@ export function getAnthropicProviderOptions(
       type: "adaptive",
       display: "summarized",
     },
-    effort: getThinkingBudgetEffort(settings.thinkingBudget),
+    effort: getModelEffort(settings) as AnthropicProviderOptions["effort"],
     sendReasoning: true,
   };
 }
 
 export function getOpenAIProviderOptions(settings: UserSettings) {
-  const effort = getThinkingBudgetEffort(settings.thinkingBudget);
+  const effort = getModelEffort(settings);
 
   if (settings.selectedChatMode === "local-agent") {
     return {

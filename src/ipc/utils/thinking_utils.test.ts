@@ -2,22 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
   getAnthropicProviderOptions,
   getExtraProviderOptionsForEngine,
+  getModelEffort,
   getOpenAIProviderOptions,
-  getThinkingBudgetEffort,
 } from "@/ipc/utils/thinking_utils";
 import type { UserSettings } from "@/lib/schemas";
 
 const baseSettings = {
-  thinkingBudget: "medium",
+  selectedModel: {
+    provider: "openai",
+    name: "test-model",
+    effortLevel: "medium",
+  },
   selectedChatMode: "build",
-} as UserSettings;
+} as unknown as UserSettings;
 
-describe("getThinkingBudgetEffort", () => {
-  it("maps thinking budget settings to effort", () => {
-    expect(getThinkingBudgetEffort("low")).toBe("low");
-    expect(getThinkingBudgetEffort("medium")).toBe("medium");
-    expect(getThinkingBudgetEffort("high")).toBe("high");
-    expect(getThinkingBudgetEffort(undefined)).toBe("medium");
+describe("getModelEffort", () => {
+  it("reads effort from the selected model and defaults to medium", () => {
+    expect(getModelEffort(baseSettings)).toBe("medium");
+    expect(
+      getModelEffort({ selectedModel: {} } as unknown as UserSettings),
+    ).toBe("medium");
   });
 });
 
@@ -33,7 +37,10 @@ describe("getOpenAIProviderOptions", () => {
       getOpenAIProviderOptions({
         ...baseSettings,
         selectedChatMode: "local-agent",
-        thinkingBudget: "high",
+        selectedModel: {
+          ...baseSettings.selectedModel,
+          effortLevel: "high",
+        } as UserSettings["selectedModel"] & { effortLevel: string },
       }),
     ).toEqual({
       reasoning: {
@@ -51,7 +58,10 @@ describe("getExtraProviderOptions", () => {
     expect(
       getExtraProviderOptionsForEngine("openai", {
         ...baseSettings,
-        thinkingBudget: "low",
+        selectedModel: {
+          ...baseSettings.selectedModel,
+          effortLevel: "low",
+        } as UserSettings["selectedModel"] & { effortLevel: string },
       }),
     ).toEqual({
       reasoning_effort: "low",
@@ -74,7 +84,10 @@ describe("getExtraProviderOptions", () => {
     expect(
       getExtraProviderOptionsForEngine("anthropic", {
         ...baseSettings,
-        thinkingBudget: "low",
+        selectedModel: {
+          ...baseSettings.selectedModel,
+          effortLevel: "low",
+        } as UserSettings["selectedModel"] & { effortLevel: string },
       }),
     ).toEqual({
       thinking: {
@@ -87,7 +100,10 @@ describe("getExtraProviderOptions", () => {
     expect(
       getExtraProviderOptionsForEngine("anthropic", {
         ...baseSettings,
-        thinkingBudget: "high",
+        selectedModel: {
+          ...baseSettings.selectedModel,
+          effortLevel: "high",
+        } as UserSettings["selectedModel"] & { effortLevel: string },
       }),
     ).toEqual({
       thinking: {
@@ -112,7 +128,10 @@ describe("getExtraProviderOptions", () => {
     expect(
       getExtraProviderOptionsForEngine("google", {
         ...baseSettings,
-        thinkingBudget: "high",
+        selectedModel: {
+          ...baseSettings.selectedModel,
+          effortLevel: "high",
+        } as UserSettings["selectedModel"] & { effortLevel: string },
       }),
     ).toEqual({
       thinking: {

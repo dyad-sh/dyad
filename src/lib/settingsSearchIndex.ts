@@ -27,7 +27,6 @@ export const SETTING_IDS = {
   appBlueprint: "setting-app-blueprint",
   testingForNewApps: "setting-testing-for-new-apps",
   chatEventNotification: "setting-chat-event-notification",
-  thinkingBudget: "setting-thinking-budget",
   maxChatTurns: "setting-max-chat-turns",
   maxToolCallSteps: "setting-max-tool-call-steps",
   contextCompaction: "setting-context-compaction",
@@ -225,14 +224,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 
   // AI Settings
-  {
-    id: SETTING_IDS.thinkingBudget,
-    label: "Thinking Budget",
-    description: "Set the AI thinking token budget",
-    keywords: ["thinking", "tokens", "budget", "reasoning", "ai"],
-    sectionId: SECTION_IDS.ai,
-    sectionLabel: "AI",
-  },
   {
     id: SETTING_IDS.maxChatTurns,
     label: "Max Chat Turns",

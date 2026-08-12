@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
-import type { StoredChatMode } from "@/lib/schemas";
+import type { ModelSelection, StoredChatMode } from "@/lib/schemas";
 
 export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
 
@@ -143,6 +143,9 @@ export const chats = sqliteTable("chats", {
   compactionBackupPath: text("compaction_backup_path"),
   pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
   chatMode: text("chat_mode").$type<StoredChatMode | null>(),
+  modelSelection: text("model_selection", {
+    mode: "json",
+  }).$type<ModelSelection | null>(),
   // App ids referenced via `@app:Name` that stay available for the rest of the
   // chat (agent-backed modes only). Stored on the chat rather than derived from
   // message history so references survive compaction, which rewrites history.

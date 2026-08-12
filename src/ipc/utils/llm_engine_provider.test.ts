@@ -27,8 +27,12 @@ describe("createDyadEngine", () => {
         enableWebSearch: false,
       },
       settings: {
-        thinkingBudget: "medium",
-      } as UserSettings,
+        selectedModel: {
+          provider: "anthropic",
+          name: "claude-sonnet-4-20250514",
+          effortLevel: "medium",
+        },
+      } as unknown as UserSettings,
       fetch: async (input, init) => {
         requests.push({ input, init });
 

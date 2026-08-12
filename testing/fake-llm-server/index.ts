@@ -362,6 +362,10 @@ export function createFakeLlmApp(getPort: () => number) {
             apiName: "gpt-5.2-remote-only",
             displayName: "GPT 5.2 Remote Only",
             description: "Remote-only catalog OpenAI model for E2E coverage",
+            effortSettings: {
+              defaultEffortLevel: "minimal",
+              possibleEffortLevels: ["minimal", "xhigh"],
+            },
           },
         ],
         anthropic: [

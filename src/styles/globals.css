@@ -9828,3 +9828,11 @@ html.theme-switching * {
 .project-file-tile:focus-within .project-file-tile-actions {
   opacity: 1;
 }
+
+/* An active project reads as selected in the grid, the way a highlighted item
+   does in a file manager. */
+.project-file-tile--active {
+  border-color: rgb(34 211 238 / 0.4);
+  background: rgb(34 211 238 / 0.08);
+  box-shadow: 0 0 24px rgb(0 229 255 / 0.1);
+}

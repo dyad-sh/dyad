@@ -4,8 +4,8 @@ import {
   Check,
   ChevronLeft,
   FolderKanban,
-  FolderOpen,
   Loader2,
+  Pencil,
   MessageSquare,
   Plus,
   Trash2,
@@ -306,127 +306,99 @@ export default function ProjectsPage() {
           </section>
         )}
 
-        <div className="space-y-3">
+        {/* Projects as folders, opened by clicking one. Actions live on the
+            tile and appear on hover, so the page is a place to find a project
+            rather than a stack of forms. */}
+        <div className="project-file-grid">
           {projects.map((project) => {
             const isActive = project.id === activeId;
+            const conversations = conversationsFor(project.id);
             return (
-              <article
+              <div
                 key={project.id}
                 className={cn(
-                  "rounded-2xl border p-4 transition-colors",
-                  isActive
-                    ? "border-cyan-400/40 bg-cyan-500/8 shadow-[0_0_24px_rgba(0,229,255,0.1)]"
-                    : "border-cyan-500/12 bg-[rgba(6,18,34,0.55)]",
+                  "project-file-tile group",
+                  isActive && "project-file-tile--active",
                 )}
                 data-testid={`project-${project.id}`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-medium text-cyan-50">
-                        {project.name}
-                      </h2>
-                      {isActive && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-200">
-                          <Check className="size-3" />
-                          Active
-                        </span>
-                      )}
-                    </div>
-                    {project.description && (
-                      <p className="mt-1 text-sm text-cyan-100/45">
-                        {project.description}
-                      </p>
+                <button
+                  type="button"
+                  onClick={() => setFilesOpen(project.id)}
+                  className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center"
+                  data-testid={`project-open-files-${project.id}`}
+                >
+                  <FolderKanban
+                    className={cn(
+                      "size-10",
+                      isActive ? "text-cyan-300" : "text-cyan-300/70",
                     )}
-                    <p className="mt-1 text-xs text-cyan-100/30">
-                      {project.instructions
-                        ? `${project.instructions.trim().split("\n").length} lines of instructions`
-                        : "No instructions yet"}
-                      {conversationsFor(project.id).length > 0 &&
-                        ` · ${conversationsFor(project.id).length} conversation${
-                          conversationsFor(project.id).length === 1 ? "" : "s"
-                        }`}
-                    </p>
-                  </div>
+                  />
+                  <span className="w-full truncate text-sm text-cyan-50/90">
+                    {project.name}
+                  </span>
+                  <span className="w-full truncate text-[10px] text-cyan-100/35">
+                    {/* What is actually in it, rather than a description that
+                        may be empty. */}
+                    {conversations.length > 0
+                      ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"}`
+                      : project.instructions?.trim()
+                        ? "Has instructions"
+                        : "Empty"}
+                  </span>
+                  {isActive && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-cyan-200">
+                      <Check className="size-2.5" />
+                      Active
+                    </span>
+                  )}
+                </button>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => void openAsChat(project)}
-                      className="border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
-                      data-testid={`project-open-${project.id}`}
-                    >
-                      <MessageSquare className="size-3.5" />
-                      Open
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void setActive(isActive ? null : project)}
-                      className="border-cyan-400/25 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
-                      data-testid={`project-activate-${project.id}`}
-                    >
-                      {isActive ? "Deactivate" : "Use this project"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setFilesOpen((current) =>
-                          current === project.id ? null : project.id,
-                        )
-                      }
-                      data-testid={`project-files-${project.id}`}
-                    >
-                      <FolderOpen className="size-3.5" />
-                      Files
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditor(project)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-muted-foreground hover:text-destructive"
-                      aria-label={`Delete ${project.name}`}
-                      onClick={() => setDeleteTarget(project)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
+                <div className="project-file-tile-actions">
+                  <button
+                    type="button"
+                    onClick={() => void openAsChat(project)}
+                    aria-label={`Open ${project.name} chat`}
+                    title="Open chat"
+                    className="rounded p-1 text-white/35 hover:bg-cyan-500/10 hover:text-cyan-100"
+                    data-testid={`project-open-${project.id}`}
+                  >
+                    <MessageSquare className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setActive(isActive ? null : project)}
+                    aria-label={
+                      isActive
+                        ? `Deactivate ${project.name}`
+                        : `Use ${project.name}`
+                    }
+                    title={isActive ? "Deactivate" : "Use this project"}
+                    className="rounded p-1 text-white/35 hover:bg-cyan-500/10 hover:text-cyan-100"
+                    data-testid={`project-activate-${project.id}`}
+                  >
+                    <Check className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditor(project)}
+                    aria-label={`Edit ${project.name}`}
+                    title="Edit"
+                    className="rounded p-1 text-white/35 hover:bg-cyan-500/10 hover:text-cyan-100"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(project)}
+                    aria-label={`Delete ${project.name}`}
+                    title="Delete"
+                    className="rounded p-1 text-white/35 hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </div>
-
-                {conversationsFor(project.id).length > 0 && (
-                  <ul className="mt-3 space-y-1 border-t border-cyan-500/10 pt-3">
-                    {conversationsFor(project.id).map((conversation) => (
-                      <li key={conversation.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab(conversation.id);
-                            void navigate({ to: "/chat-agent" });
-                          }}
-                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-cyan-100/60 hover:bg-cyan-500/8 hover:text-cyan-50"
-                        >
-                          <MessageSquare className="size-3.5 shrink-0 opacity-60" />
-                          <span className="min-w-0 flex-1 truncate">
-                            {conversation.title}
-                          </span>
-                          <span className="shrink-0 text-[10px] text-cyan-100/25">
-                            {new Date(
-                              conversation.updatedAt,
-                            ).toLocaleDateString()}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </article>
+              </div>
             );
           })}
         </div>

@@ -20,6 +20,11 @@ import {
   testConnection,
 } from "../utils/data_sources/supabase_provider";
 import {
+  d1CatalogueToParsedSchema,
+  discoverD1Schema,
+  testD1Connection,
+} from "../utils/data_sources/cloudflare_d1_provider";
+import {
   generateKeyId,
   type ParsedSchema,
 } from "@/lib/data_sources/postgrest_schema";
@@ -279,7 +284,14 @@ export function registerDataSourceHandlers() {
       key = key ?? decryptCredential(row.encryptedCredential);
     }
 
-    const health = await testConnection({ projectUrl, key });
+    const provider = input.id
+      ? (await requireRow(input.id)).provider
+      : "supabase";
+
+    const health =
+      provider === "cloudflare-d1"
+        ? await testD1Connection({ endpoint: projectUrl, token: key })
+        : await testConnection({ projectUrl, key });
 
     if (input.id) {
       // Status is derived, never chosen: the test decides it.
@@ -316,10 +328,14 @@ export function registerDataSourceHandlers() {
       .where(eq(dataSources.id, id));
 
     try {
-      const catalogue = await discoverSchema({
-        projectUrl: row.projectUrl,
-        key,
-      });
+      // Both providers answer with the same catalogue shape, so everything
+      // downstream — persistence, the agent's schema search — is unchanged.
+      const catalogue =
+        row.provider === "cloudflare-d1"
+          ? d1CatalogueToParsedSchema(
+              await discoverD1Schema({ endpoint: row.projectUrl, token: key }),
+            )
+          : await discoverSchema({ projectUrl: row.projectUrl, key });
       const counts = await persistCatalogue(id, catalogue);
 
       await db

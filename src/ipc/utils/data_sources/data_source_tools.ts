@@ -18,6 +18,7 @@ import { wrapUntrustedRows } from "@/lib/data_sources/postgrest_query";
 import { buildResultTable } from "@/lib/data_sources/result_table";
 import type { ChatAgentToolResult } from "@/components/chat-agent/types";
 import { decryptCredential, executePlan } from "./supabase_provider";
+import { executeD1Plan } from "./cloudflare_d1_provider";
 
 /**
  * The agent's view of connected databases.
@@ -346,11 +347,20 @@ export function buildDataSourceToolSet(
         return `"${row.name}" has no usable connection key. Ask the user to re-enter it in Data Sources.`;
       }
 
-      const outcome = await executePlan({
-        projectUrl: row.projectUrl,
-        key,
-        plan: validation.plan,
-      });
+      // Which database this is decides how the plan is run. Everything after
+      // this point is the same shape whichever provider answered.
+      const outcome =
+        row.provider === "cloudflare-d1"
+          ? await executeD1Plan({
+              endpoint: row.projectUrl,
+              token: key,
+              plan: validation.plan,
+            })
+          : await executePlan({
+              projectUrl: row.projectUrl,
+              key,
+              plan: validation.plan,
+            });
 
       // The rows go to the renderer as data so it can lay out a real table.
       // The model still receives them as text, because it has to reason about

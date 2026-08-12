@@ -191,6 +191,62 @@ export type D1Column = {
 export type D1Table = { name: string; columns: D1Column[] };
 
 /**
+ * D1's catalogue in the shape the rest of the app already speaks.
+ *
+ * Converted here rather than teaching persistence and schema search about a
+ * second format, so a new provider costs one adapter instead of a change
+ * everywhere a schema is read.
+ *
+ * Relationships are left empty: SQLite records foreign keys per table through
+ * PRAGMA foreign_key_list, which is another request per table. Claiming none
+ * exist would be wrong, so they are simply absent until that is read too.
+ */
+export function d1CatalogueToParsedSchema(catalogue: { tables: D1Table[] }): {
+  tables: Array<{
+    schemaName: string;
+    tableName: string;
+    tableType: "table" | "view";
+    description: string;
+    columns: Array<{
+      columnName: string;
+      dataType: string;
+      nullable: boolean;
+      defaultValue: string | null;
+      description: string;
+      primaryKey: boolean;
+      isUnique: boolean;
+      references: { table: string; column: string } | null;
+    }>;
+  }>;
+  relationships: Array<{
+    sourceTable: string;
+    sourceColumn: string;
+    targetTable: string;
+    targetColumn: string;
+  }>;
+} {
+  return {
+    tables: catalogue.tables.map((table) => ({
+      schemaName: "main",
+      tableName: table.name,
+      tableType: "table" as const,
+      description: "",
+      columns: table.columns.map((column) => ({
+        columnName: column.name,
+        dataType: column.dataType,
+        nullable: column.isNullable,
+        defaultValue: null,
+        description: "",
+        primaryKey: column.isPrimaryKey,
+        isUnique: column.isPrimaryKey,
+        references: null,
+      })),
+    })),
+    relationships: [],
+  };
+}
+
+/**
  * The database's shape, from SQLite's own catalogue.
  *
  * PRAGMA runs per table rather than in one statement because D1 executes a

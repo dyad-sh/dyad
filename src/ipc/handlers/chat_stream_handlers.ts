@@ -2216,6 +2216,7 @@ This conversation includes one or more image attachments. When the user uploads 
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
+              modelSelectionOverride: selectedModel,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
@@ -2254,6 +2255,7 @@ This conversation includes one or more image attachments. When the user uploads 
               planModeOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
+              modelSelectionOverride: selectedModel,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment: false,
@@ -2306,6 +2308,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
+                modelSelectionOverride: selectedModel,
                 freeModelMode,
                 referencedApps: referencedAppsForAgent,
                 currentTurnHasOnDiskAttachment:

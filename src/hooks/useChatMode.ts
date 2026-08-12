@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
-import { ipc, type Chat } from "@/ipc/types";
+import { ipc, type Chat, type UpdateChatParams } from "@/ipc/types";
 import type { ChatSummary, ModelSelection } from "@/lib/schemas";
 import {
   getEffectiveDefaultChatMode,
@@ -22,6 +22,8 @@ type ChatModeMutationContext = {
   previousChat?: Chat;
   previousLists: [readonly unknown[], ChatSummary[] | undefined][];
 };
+
+type ChatSelectionPatch = Pick<UpdateChatParams, "chatMode" | "modelSelection">;
 
 const chatListQueryFilter = {
   predicate: (query: { queryKey: readonly unknown[] }) =>
@@ -75,22 +77,22 @@ export function useChatMode(chatId: number | null | undefined) {
   const effectiveMode =
     activeChatId && fallbackReason ? effectiveDefaultMode : selectedMode;
 
-  const updateChatModeMutation = useMutation<
+  const updateChatSelectionMutation = useMutation<
     void,
     Error,
-    ChatMode | null,
+    ChatSelectionPatch,
     ChatModeMutationContext
   >({
-    mutationFn: async (chatMode) => {
+    mutationFn: async (patch) => {
       if (activeChatId === null) {
         return;
       }
       await ipc.chat.updateChat({
         chatId: activeChatId,
-        chatMode,
+        ...patch,
       });
     },
-    onMutate: async (chatMode) => {
+    onMutate: async (patch) => {
       if (activeChatId === null) {
         return { previousLists: [] };
       }
@@ -108,82 +110,17 @@ export function useChatMode(chatId: number | null | undefined) {
 
       queryClient.setQueryData<Chat>(
         queryKeys.chats.detail({ chatId: activeChatId }),
-        (old) => (old ? { ...old, chatMode } : old),
+        (old) => (old ? { ...old, ...patch } : old),
       );
       queryClient.setQueriesData<ChatSummary[]>(chatListQueryFilter, (old) =>
         old?.map((chat) =>
-          chat.id === activeChatId ? { ...chat, chatMode } : chat,
+          chat.id === activeChatId ? { ...chat, ...patch } : chat,
         ),
       );
 
       return { previousChat, previousLists };
     },
-    onError: (_error, _chatMode, context) => {
-      if (activeChatId !== null && context?.previousChat) {
-        queryClient.setQueryData(
-          queryKeys.chats.detail({ chatId: activeChatId }),
-          context.previousChat,
-        );
-      }
-      for (const [queryKey, data] of context?.previousLists ?? []) {
-        queryClient.setQueryData(queryKey, data);
-      }
-    },
-    onSettled: () => {
-      if (activeChatId !== null) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.chats.detail({ chatId: activeChatId }),
-        });
-        queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      }
-    },
-    meta: { showErrorToast: true },
-  });
-
-  const updateChatModelSelectionMutation = useMutation<
-    void,
-    Error,
-    ModelSelection,
-    ChatModeMutationContext
-  >({
-    mutationFn: async (modelSelection) => {
-      if (activeChatId === null) {
-        return;
-      }
-      await ipc.chat.updateChat({
-        chatId: activeChatId,
-        modelSelection,
-      });
-    },
-    onMutate: async (modelSelection) => {
-      if (activeChatId === null) {
-        return { previousLists: [] };
-      }
-
-      await queryClient.cancelQueries({
-        queryKey: queryKeys.chats.detail({ chatId: activeChatId }),
-      });
-      await queryClient.cancelQueries(chatListQueryFilter);
-
-      const previousChat = queryClient.getQueryData<Chat>(
-        queryKeys.chats.detail({ chatId: activeChatId }),
-      );
-      const previousLists =
-        queryClient.getQueriesData<ChatSummary[]>(chatListQueryFilter);
-
-      queryClient.setQueryData<Chat>(
-        queryKeys.chats.detail({ chatId: activeChatId }),
-        (old) => (old ? { ...old, modelSelection } : old),
-      );
-      queryClient.setQueriesData<ChatSummary[]>(chatListQueryFilter, (old) =>
-        old?.map((chat) =>
-          chat.id === activeChatId ? { ...chat, modelSelection } : chat,
-        ),
-      );
-
-      return { previousChat, previousLists };
-    },
-    onError: (_error, _modelSelection, context) => {
+    onError: (_error, _patch, context) => {
       if (activeChatId !== null && context?.previousChat) {
         queryClient.setQueryData(
           queryKeys.chats.detail({ chatId: activeChatId }),
@@ -208,7 +145,7 @@ export function useChatMode(chatId: number | null | undefined) {
   const setChatMode = useCallback(
     async (mode: ChatMode | null) => {
       if (activeChatId !== null) {
-        await updateChatModeMutation.mutateAsync(mode);
+        await updateChatSelectionMutation.mutateAsync({ chatMode: mode });
         return;
       }
 
@@ -216,16 +153,16 @@ export function useChatMode(chatId: number | null | undefined) {
         await updateSettings({ selectedChatMode: mode });
       }
     },
-    [activeChatId, updateChatModeMutation, updateSettings],
+    [activeChatId, updateChatSelectionMutation, updateSettings],
   );
 
   const setChatModelSelection = useCallback(
     async (modelSelection: ModelSelection) => {
       if (activeChatId !== null) {
-        await updateChatModelSelectionMutation.mutateAsync(modelSelection);
+        await updateChatSelectionMutation.mutateAsync({ modelSelection });
       }
     },
-    [activeChatId, updateChatModelSelectionMutation],
+    [activeChatId, updateChatSelectionMutation],
   );
 
   return {
@@ -239,9 +176,7 @@ export function useChatMode(chatId: number | null | undefined) {
     fallbackReason,
     setChatMode,
     setChatModelSelection,
-    isUpdating:
-      updateChatModeMutation.isPending ||
-      updateChatModelSelectionMutation.isPending,
+    isUpdating: updateChatSelectionMutation.isPending,
     settings: settings as UserSettings | null,
   };
 }

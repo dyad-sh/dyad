@@ -62,6 +62,13 @@ describe("getProviderOptions model effort", () => {
     ).toEqual({ thinkingConfig: { includeThoughts: true } });
   });
 
+  it("does not send Gemini thinking config to other Google model families", () => {
+    expect(
+      optionsFor(settingsFor("google", "partner/model", "medium"), "google")
+        .google,
+    ).toBeUndefined();
+  });
+
   it("passes effort to OpenAI-compatible local and custom providers", () => {
     expect(
       optionsFor(

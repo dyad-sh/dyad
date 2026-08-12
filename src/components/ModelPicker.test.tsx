@@ -405,6 +405,12 @@ describe("ModelPicker", () => {
     expect(screen.getByText("Dyad Free")).toBeTruthy();
     expect(screen.getByText("2/5 left")).toBeTruthy();
     expect(screen.getByText("Data sharing")).toBeTruthy();
+    expect(
+      screen
+        .getByText("Dyad Free")
+        .closest("button")
+        ?.getAttribute("aria-label"),
+    ).toContain("2/5 left. Data sharing");
     expect(screen.getByText("Claude Sonnet 4.5")).toBeTruthy();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
     expect(screen.queryByText("xAI")).toBeNull();
@@ -418,6 +424,9 @@ describe("ModelPicker", () => {
 
     expect(screen.getByTestId("model-picker").textContent).toContain(
       "Auto (Medium)",
+    );
+    expect(screen.getByTestId("model-picker").className).toContain(
+      "max-w-[220px]",
     );
     fireEvent.click(
       screen
@@ -692,6 +701,9 @@ describe("ModelPicker", () => {
     expect(screen.getByText("Auto").closest("button")?.textContent).toContain(
       "Data sharing",
     );
+    expect(
+      screen.getByText("Auto").closest("button")?.getAttribute("aria-label"),
+    ).toContain("Data sharing");
   });
 
   it("shows data sharing disclosure on Auto for non-Pro users with OPENROUTER_API_KEY", () => {

@@ -436,6 +436,7 @@ export async function handleLocalAgentStream(
     planModeOnly = false,
     messageOverride,
     settingsOverride,
+    modelSelectionOverride,
     freeModelMode,
     referencedApps = [],
     currentTurnHasOnDiskAttachment,
@@ -459,6 +460,7 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
+    modelSelectionOverride?: ModelSelection;
     freeModelMode?: boolean;
     /**
      * Apps referenced via `@app:Name` mentions in the user's prompt.
@@ -601,17 +603,11 @@ export async function handleLocalAgentStream(
   }
 
   let chat = initialChat;
-  const configuredModelSelection = storedSettings.selectedModel;
-  selectedModel =
-    typeof configuredModelSelection === "object" &&
-    configuredModelSelection !== null &&
-    "effortLevel" in configuredModelSelection
-      ? await normalizeModelSelection(
-          configuredModelSelection as ModelSelection,
-        )
-      : chat.modelSelection
-        ? await normalizeModelSelection(chat.modelSelection)
-        : await resolveDefaultModelSelection(storedSettings);
+  selectedModel = modelSelectionOverride
+    ? await normalizeModelSelection(modelSelectionOverride)
+    : chat.modelSelection
+      ? await normalizeModelSelection(chat.modelSelection)
+      : await resolveDefaultModelSelection(storedSettings);
   settings = { ...storedSettings, selectedModel };
 
   for (const id of getMidTurnCompactionSummaryIds(chat.messages)) {

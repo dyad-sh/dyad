@@ -526,6 +526,22 @@ export function ModelPicker() {
         : freeModelQuota.error
           ? "Unavailable"
           : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
+    const unlockedAriaLabel = [
+      model.displayName,
+      showProvider ? getProviderDisplayName(providerId) : null,
+      showPrice && model.dollarSigns != null
+        ? model.dollarSigns === 0
+          ? "Free"
+          : `Price: ${(model.dollarSigns / 2).toFixed(1)}`
+        : null,
+      model.tag && !isFreeProRow ? model.tag : null,
+      isSelected ? "Selected" : null,
+      isFreeProRow ? freeProQuotaLabel : null,
+      shouldShowDataSharingDisclosure ? "Data sharing" : null,
+      "Press Enter to select; press Right Arrow to configure effort",
+    ]
+      .filter(Boolean)
+      .join(". ");
 
     const modelRef = {
       name: model.apiName,
@@ -551,7 +567,7 @@ export function ModelPicker() {
             ? isFreeProviderRow
               ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
               : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
-            : `${model.displayName}. Press Enter to select; press Right Arrow to configure effort.`
+            : `${unlockedAriaLabel}.`
         }
         disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
@@ -835,7 +851,7 @@ export function ModelPicker() {
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger
           disabled={isChatRoute && chatId != null && chatLoading}
-          className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-foreground/80 hover:text-foreground hover:bg-muted/60 h-7 max-w-[130px] px-2 gap-1.5 cursor-pointer"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-foreground/80 hover:text-foreground hover:bg-muted/60 h-7 max-w-[220px] px-2 gap-1.5 cursor-pointer"
           data-testid="model-picker"
           title={modelDisplayName}
         >
@@ -877,7 +893,7 @@ export function ModelPicker() {
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger
                   hideChevron
-                  aria-label="Auto. Press Enter to select; press Right Arrow to configure effort."
+                  aria-label="Auto. Trial. Selected. Press Enter to select; press Right Arrow to configure effort."
                   className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
                   onClick={(event) => {
                     if (

@@ -94,7 +94,7 @@ export function getProviderOptions({
 
   // Always request thought summaries; recognized effort levels additionally
   // configure the model-family-specific effort control.
-  if (isGoogle) {
+  if (isGoogle && isGeminiModel && !isFlashLite && !isPartnerModel) {
     providerOptions.google = {
       thinkingConfig,
     } satisfies GoogleGenerativeAIProviderOptions;

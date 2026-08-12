@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Check,
@@ -17,6 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { d1Endpoint } from "@/ipc/utils/data_sources/cloudflare_d1_provider";
+import type { CloudflareD1Database } from "@/ipc/types/cloudflare";
+import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 
@@ -66,13 +72,63 @@ const PROVIDERS: Array<{
   },
 ];
 
-function CloudflareSetup({ onBack }: { onBack: () => void }) {
+function CloudflareSetup({
+  onBack,
+  onConnected,
+}: {
+  onBack: () => void;
+  onConnected: () => void;
+}) {
+  const [apiToken, setApiToken] = useState("");
+  const [databases, setDatabases] = useState<CloudflareD1Database[] | null>(
+    null,
+  );
+
   const environment = useQuery({
     queryKey: ["cloudflare-environment"],
     queryFn: () => ipc.cloudflare.detectEnvironment(),
   });
 
+  const queryClient = useQueryClient();
   const env = environment.data;
+
+  const listDatabases = useMutation({
+    mutationFn: () =>
+      ipc.cloudflare.listDatabases({ apiToken: apiToken.trim() }),
+    onSuccess: setDatabases,
+    onError: (error: Error) => showError(error.message),
+  });
+
+  /**
+   * Save a database as a data source.
+   *
+   * The endpoint is the projectUrl and the token is the credential, so
+   * everything downstream — testing, schema sync, querying — works through the
+   * same rows and the same encryption as Supabase.
+   */
+  const connect = useMutation({
+    mutationFn: async (database: CloudflareD1Database) => {
+      const created = await ipc.dataSource.create({
+        name: database.name,
+        description: `Cloudflare D1 · ${database.accountName}`,
+        projectUrl: d1Endpoint(database.accountId, database.uuid),
+        environment: "production",
+        credentialType: "secret",
+        connectionKey: apiToken.trim(),
+        provider: "cloudflare-d1",
+      });
+      // Discovering the schema is what makes it answerable in chat, so it
+      // happens now rather than waiting for someone to press Sync.
+      await ipc.dataSource.syncSchema({ id: created.id });
+      return created;
+    },
+    onSuccess: async (created) => {
+      showSuccess(`${created.name} connected`);
+      await queryClient.invalidateQueries({ queryKey: ["data-sources"] });
+      onConnected();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
 
   /** Present, absent, or still being looked for. Never guessed. */
   const Row = ({
@@ -143,13 +199,60 @@ function CloudflareSetup({ onBack }: { onBack: () => void }) {
         />
       </div>
 
-      {/* Said plainly rather than shown as a button that does nothing. */}
-      <div className="rounded-xl border border-amber-400/25 bg-amber-500/8 p-3 text-xs leading-5 text-amber-100/85">
-        This is as far as Cloudflare D1 is built. Detection works; installing
-        Wrangler, signing in, listing and creating databases, the schema
-        designer, migrations and the query gateway are not implemented yet, so
-        there is nothing here that would connect a database today.
-      </div>
+      {databases === null ? (
+        <div className="space-y-2">
+          <Label htmlFor="cf-token">Cloudflare API token</Label>
+          <Input
+            id="cf-token"
+            type="password"
+            value={apiToken}
+            onChange={(event) => setApiToken(event.target.value)}
+            placeholder="Token with D1 read access"
+            data-testid="cloudflare-api-token"
+          />
+          <p className="text-xs leading-5 text-cyan-100/40">
+            Create one at Cloudflare → My Profile → API Tokens, with permission
+            to read accounts and D1. It is stored encrypted on this machine and
+            never sent anywhere but Cloudflare.
+          </p>
+          <Button
+            onClick={() => listDatabases.mutate()}
+            disabled={!apiToken.trim() || listDatabases.isPending}
+            data-testid="cloudflare-list-databases"
+          >
+            {listDatabases.isPending ? "Looking…" : "Find my databases"}
+          </Button>
+        </div>
+      ) : databases.length === 0 ? (
+        <p className="text-sm text-cyan-100/45">
+          This token can see no D1 databases. Creating one from here is not
+          built yet; create it in the Cloudflare dashboard and look again.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {databases.map((database) => (
+            <button
+              key={database.uuid}
+              type="button"
+              onClick={() => connect.mutate(database)}
+              disabled={connect.isPending}
+              className="flex w-full items-center gap-3 rounded-lg border border-cyan-400/15 bg-[rgba(5,16,31,0.6)] p-2.5 text-left hover:border-cyan-400/35 hover:bg-cyan-500/8"
+              data-testid={`cloudflare-database-${database.uuid}`}
+            >
+              <Database className="size-4 shrink-0 text-cyan-300/70" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-cyan-50">
+                  {database.name}
+                </span>
+                <span className="block truncate text-[10px] text-cyan-100/35">
+                  {database.accountName}
+                </span>
+              </span>
+              <ArrowRight className="size-4 shrink-0 text-cyan-200/50" />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex justify-between">
         <Button variant="ghost" onClick={onBack}>
@@ -205,7 +308,13 @@ export function DataSourceProviderChooser({
         </DialogHeader>
 
         {chosen === "cloudflare-d1" ? (
-          <CloudflareSetup onBack={() => onChoose(null)} />
+          <CloudflareSetup
+            onBack={() => onChoose(null)}
+            onConnected={() => {
+              onChoose(null);
+              onClose();
+            }}
+          />
         ) : (
           <div className="space-y-2">
             {PROVIDERS.map((provider) => (

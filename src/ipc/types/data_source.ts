@@ -137,6 +137,8 @@ export const dataSourceContracts = {
       environment: DataSourceEnvironmentSchema,
       credentialType: DataSourceCredentialTypeSchema,
       connectionKey: SecretInput,
+      /** Which kind of database this is. Defaults to the original one. */
+      provider: z.enum(["supabase", "cloudflare-d1"]).default("supabase"),
     }),
     output: DataSourceSchema,
   }),

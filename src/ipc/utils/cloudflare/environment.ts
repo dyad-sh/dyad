@@ -151,3 +151,87 @@ export async function detectCloudflareEnvironment(
     hasApiToken: Boolean(process.env.CLOUDFLARE_API_TOKEN),
   };
 }
+
+/**
+ * D1 databases visible to an API token.
+ *
+ * Uses Cloudflare's REST API rather than Wrangler: it needs no install, no
+ * browser sign-in and no local state, and it is the same credential the
+ * queries will use — so a token that lists databases is a token that works.
+ */
+export async function listD1Databases(apiToken: string): Promise<
+  Array<{
+    uuid: string;
+    name: string;
+    accountId: string;
+    accountName: string;
+    fileSizeBytes: number | null;
+  }>
+> {
+  const headers = {
+    Authorization: `Bearer ${apiToken}`,
+    "Content-Type": "application/json",
+  };
+
+  const accountsResponse = await fetch(
+    "https://api.cloudflare.com/client/v4/accounts",
+    { headers, signal: AbortSignal.timeout(20_000) },
+  );
+
+  if (accountsResponse.status === 401 || accountsResponse.status === 403) {
+    throw new Error(
+      "Cloudflare rejected this API token. It needs permission to read accounts and D1.",
+    );
+  }
+  if (!accountsResponse.ok) {
+    throw new Error(`Cloudflare returned ${accountsResponse.status}.`);
+  }
+
+  const accounts = (
+    (await accountsResponse.json()) as {
+      result?: Array<{ id: string; name: string }>;
+    }
+  ).result;
+
+  if (!accounts?.length) {
+    throw new Error("This token can see no Cloudflare accounts.");
+  }
+
+  const databases: Array<{
+    uuid: string;
+    name: string;
+    accountId: string;
+    accountName: string;
+    fileSizeBytes: number | null;
+  }> = [];
+
+  for (const account of accounts) {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+        account.id,
+      )}/d1/database`,
+      { headers, signal: AbortSignal.timeout(20_000) },
+    );
+    // An account the token cannot read D1 in is skipped rather than failing
+    // the whole list: tokens are often scoped to one account.
+    if (!response.ok) continue;
+
+    const result = (
+      (await response.json()) as {
+        result?: Array<{ uuid: string; name: string; file_size?: number }>;
+      }
+    ).result;
+
+    for (const database of result ?? []) {
+      databases.push({
+        uuid: database.uuid,
+        name: database.name,
+        accountId: account.id,
+        accountName: account.name,
+        fileSizeBytes: database.file_size ?? null,
+      });
+    }
+  }
+
+  return databases;
+}

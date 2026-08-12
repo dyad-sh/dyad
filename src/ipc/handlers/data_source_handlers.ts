@@ -212,7 +212,7 @@ export function registerDataSourceHandlers() {
 
     await db.insert(dataSources).values({
       id,
-      provider: "supabase",
+      provider: input.provider,
       name: input.name.trim(),
       description: input.description?.trim() ?? "",
       projectUrl: input.projectUrl.trim(),

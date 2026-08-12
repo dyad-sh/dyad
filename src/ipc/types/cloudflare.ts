@@ -29,12 +29,35 @@ export const CloudflareEnvironmentSchema = z.object({
 
 export type CloudflareEnvironment = z.infer<typeof CloudflareEnvironmentSchema>;
 
+export const CloudflareD1DatabaseSchema = z.object({
+  uuid: z.string(),
+  name: z.string(),
+  accountId: z.string(),
+  accountName: z.string(),
+  /** Cloudflare reports this only for some plans. */
+  fileSizeBytes: z.number().nullable(),
+});
+
+export type CloudflareD1Database = z.infer<typeof CloudflareD1DatabaseSchema>;
+
 export const cloudflareContracts = {
   /** Inspect the machine. Changes nothing. */
   detectEnvironment: defineContract({
     channel: "cloudflare:detect-environment",
     input: z.void(),
     output: CloudflareEnvironmentSchema,
+  }),
+  /**
+   * Every D1 database the token can see, across every account it can reach.
+   *
+   * Takes the token as an argument rather than reading a stored one: this runs
+   * before anything is saved, which is the point at which the user is deciding
+   * whether to save it at all.
+   */
+  listDatabases: defineContract({
+    channel: "cloudflare:list-databases",
+    input: z.object({ apiToken: z.string().min(1) }),
+    output: z.array(CloudflareD1DatabaseSchema),
   }),
 } as const;
 

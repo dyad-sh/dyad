@@ -393,6 +393,8 @@ function runChatAgentStream(
   agentProfile: ChatAgentStartParams["agentProfile"],
   /** Data sources the user ticked. The agent may reach no others. */
   dataSourceIds: string[],
+  /** The project this conversation belongs to, or null for none. */
+  projectId: string | null | undefined,
   abortController: AbortController,
 ) {
   void (async () => {
@@ -560,7 +562,7 @@ function runChatAgentStream(
       // Standing instructions from the active project, if there is one. Read
       // fresh per turn so an edit applies to the next message rather than the
       // next restart.
-      const projectPrompt = await activeProjectPrompt(params.projectId);
+      const projectPrompt = await activeProjectPrompt(projectId);
 
       const systemPrompt = isLovableWebDev
         ? `${LOVABLE_WEB_DEV_SYSTEM_PROMPT}\n\n${deploymentToolsPrompt(settings)}`
@@ -811,6 +813,7 @@ export function registerChatAgentHandlers() {
           : null,
         params.agentProfile,
         params.dataSourceIds ?? [],
+        params.projectId,
         abortController,
       );
       return { ok: true } as const;

@@ -93,6 +93,7 @@ describe("getInitialLoadTelemetryProperties", () => {
             auto: { apiKey: { value: "secret" } },
           },
           enableAppBlueprint: false,
+          enableTestingForNewApps: true,
         }),
         appVersion: "1.1.0",
         platform: "darwin",
@@ -105,6 +106,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       releaseChannel: "beta",
       isFirstSession: false,
       enableAppBlueprint: false,
+      enableTestingForNewApps: true,
       modelProvider: "auto",
       defaultChatMode: "ask",
       runtimeMode2: "docker",
@@ -128,6 +130,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       releaseChannel: "stable",
       isFirstSession: true,
       enableAppBlueprint: true,
+      enableTestingForNewApps: false,
       modelProvider: "auto",
       defaultChatMode: null,
       runtimeMode2: "host",
@@ -136,7 +139,7 @@ describe("getInitialLoadTelemetryProperties", () => {
 });
 
 describe("getSettingsPersonTelemetryProperties", () => {
-  it("includes pro and app blueprint settings for PostHog people properties", () => {
+  it("includes pro and settings toggles for PostHog people properties", () => {
     expect(
       getSettingsPersonTelemetryProperties(
         makeSettings({
@@ -144,11 +147,13 @@ describe("getSettingsPersonTelemetryProperties", () => {
             auto: { apiKey: { value: "secret" } },
           },
           enableAppBlueprint: false,
+          enableTestingForNewApps: true,
         }),
       ),
     ).toEqual({
       isPro: true,
       enableAppBlueprint: false,
+      enableTestingForNewApps: true,
     });
   });
 });

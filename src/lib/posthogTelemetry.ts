@@ -13,6 +13,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
   return {
     isPro: hasDyadProKey(settings),
     enableAppBlueprint: settings.enableAppBlueprint ?? true,
+    enableTestingForNewApps: settings.enableTestingForNewApps ?? false,
   };
 }
 

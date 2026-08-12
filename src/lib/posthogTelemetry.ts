@@ -9,6 +9,13 @@ export type InitialLoadTelemetryInput = {
   isFirstSession: boolean;
 };
 
+export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
+  return {
+    isPro: hasDyadProKey(settings),
+    enableAppBlueprint: settings.enableAppBlueprint ?? true,
+  };
+}
+
 export function getInitialLoadTelemetryProperties({
   settings,
   appVersion,
@@ -16,7 +23,7 @@ export function getInitialLoadTelemetryProperties({
   isFirstSession,
 }: InitialLoadTelemetryInput) {
   return {
-    isPro: hasDyadProKey(settings),
+    ...getSettingsPersonTelemetryProperties(settings),
     appVersion,
     platform,
     releaseChannel: settings.releaseChannel,

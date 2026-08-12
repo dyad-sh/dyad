@@ -57,7 +57,11 @@ When you create a new git worktree for this repository, run `npm install` inside
 
 After installation, verify that `node_modules/.bin/oxfmt` exists before running formatting. If `npm install` reports success without materializing `node_modules`, run `npm ci`; otherwise `npx` may download an unpinned formatter and rewrite unrelated files.
 
-Also run `npm install` in `testing/fake-llm-server/` before `npm run ts` **or `npm test`** in a fresh worktree. Without it the root type-check reports ~50 missing-declaration errors for that package's local `express`/`cors`, and roughly 60 Vitest files fail to collect with `Cannot find module 'git-http-mock-server/middleware'` — none of which are caused by your changes. If you see either symptom, install there first rather than debugging the diff.
+A worktree's `node_modules` can also be _sparsely_ populated — every package directory exists, so `npm install` exits 0 and repairs nothing, but files inside are missing (`Cannot find module '.../oxfmt/dist/cli.js'`, `oxlint/dist/cli.js`, or a dangling `.bin/tsgo` symlink). Deleting the broken package directories and rerunning `npm install` then aborts at the `better-sqlite3` native rebuild (`gyp ERR! not ok`) before any JS package is written. Use `npm install --ignore-scripts` to restore the JS toolchain; it skips the native rebuild, which `npm run fmt` / `lint` / `ts` do not need.
+
+Also run `npm install` in `testing/fake-llm-server/` before `npm run ts` in a fresh worktree. Otherwise the root type-check reports missing declarations for that package's local `express` and `cors` dependencies.
+
+If you symlink a worktree's `node_modules` at a shared install instead of installing into it, see [rules/git-workflow.md](rules/git-workflow.md) for why `.gitignore` must keep listing `node_modules` without a trailing slash.
 
 ## Pre-commit checks
 

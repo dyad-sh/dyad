@@ -47,13 +47,59 @@ function commitRuntimeBaselineChanges(appPath: string) {
   );
 }
 
-async function editAndSaveFile(page: Page, fileName: string, content: string) {
+function treeRow(page: Page, filePath: string) {
+  return page.locator(
+    `[data-testid="file-tree-file"][data-path="${filePath}"]`,
+  );
+}
+
+function treeDirRow(page: Page, dirPath: string) {
+  return page.locator(`[data-testid="file-tree-dir"][data-path="${dirPath}"]`);
+}
+
+async function editAndSaveFile(
+  page: Page,
+  fileName: string,
+  filePath: string,
+  content: string,
+) {
   await selectFileAndWaitForEditor(page, fileName);
+
+  const row = treeRow(page, filePath);
+  // A locator matching nothing satisfies a negated assertion, so pin the row
+  // down first: otherwise a collapsed folder or a drifted path would let every
+  // "no marker" check below pass without the feature ever running.
+  await expect(row).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(row).not.toHaveAttribute("data-marker");
+
   await replaceEditorContent(page, content);
+  // The editor still holds focus, so the buffer is dirty and the tree marks it.
+  await expect(row).toHaveAttribute("data-marker", "unsaved", {
+    timeout: Timeout.MEDIUM,
+  });
+  // The rollup carries the same state up, so a collapsed ancestor still points
+  // at the unsaved buffer buried inside it.
+  const parentDir = filePath.split("/").slice(0, -1).join("/");
+  await expect(treeDirRow(page, parentDir)).toHaveAttribute(
+    "data-marker",
+    "unsaved",
+    { timeout: Timeout.MEDIUM },
+  );
+
   await page.getByTestId("save-file-button").click();
   await expect(page.getByTestId("save-file-button")).toBeDisabled({
     timeout: Timeout.MEDIUM,
   });
+  // Saving stages the file, so the marker flips from unsaved to uncommitted —
+  // on the row and on the rollup that mirrors it.
+  await expect(row).toHaveAttribute("data-marker", "uncommitted", {
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(treeDirRow(page, parentDir)).toHaveAttribute(
+    "data-marker",
+    "uncommitted",
+    { timeout: Timeout.MEDIUM },
+  );
 }
 
 // Editing two files in the code editor and clicking "Commit" should produce a
@@ -88,8 +134,25 @@ test("editor commit menu commits multiple staged files at once", async ({
   // Edit and save two files. Saving stages (does not commit) each file.
   const madeWithDyadContent = 'export const MadeWithDyad = "commit-menu";\n';
   const robotsContent = "User-agent: *\nDisallow: /commit-menu\n";
-  await editAndSaveFile(po.page, "made-with-dyad.tsx", madeWithDyadContent);
-  await editAndSaveFile(po.page, "robots.txt", robotsContent);
+  const madeWithDyadTreePath = madeWithDyadPath.replace(/\\/g, "/");
+  const robotsTreePath = robotsPath.replace(/\\/g, "/");
+  await editAndSaveFile(
+    po.page,
+    "made-with-dyad.tsx",
+    madeWithDyadTreePath,
+    madeWithDyadContent,
+  );
+  await editAndSaveFile(po.page, "robots.txt", robotsTreePath, robotsContent);
+
+  // Collapsed or not, the ancestor folders advertise the buried changes.
+  await expect(treeDirRow(po.page, "src/components")).toHaveAttribute(
+    "data-marker",
+    "uncommitted",
+  );
+  await expect(treeDirRow(po.page, "src")).toHaveAttribute(
+    "data-marker",
+    "uncommitted",
+  );
 
   // The Commit button shows the number of staged files.
   const commitButton = po.page.getByTestId("editor-commit-button");
@@ -129,6 +192,21 @@ test("editor commit menu commits multiple staged files at once", async ({
   await messageInput.clear();
   await messageInput.fill(commitMessage);
 
+  // Clicking a file in the dialog closes it and opens that file's diff...
+  await filesList
+    .getByTestId("commit-file-item")
+    .filter({ hasText: "robots.txt" })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(po.page.getByTestId("staged-diff-view")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  // ...and leaving the diff brings the dialog back with the message intact.
+  await po.page.getByTestId("staged-diff-back-button").click();
+  await expect(dialog).toBeVisible();
+  await expect(messageInput).toHaveValue(commitMessage);
+
   await po.page.getByTestId("editor-commit-confirm-button").click();
   await po.toastNotifications.waitForToast("success");
 
@@ -137,6 +215,22 @@ test("editor commit menu commits multiple staged files at once", async ({
   await expect(commitButton).not.toContainText("2", {
     timeout: Timeout.MEDIUM,
   });
+
+  // Committing clears every tree marker, including the folder rollups. Each row
+  // is pinned down first so a missing row cannot satisfy the negated assertion.
+  const clearedRows = [
+    treeRow(po.page, madeWithDyadTreePath),
+    treeRow(po.page, robotsTreePath),
+    treeDirRow(po.page, "src/components"),
+    treeDirRow(po.page, "src"),
+    treeDirRow(po.page, "public"),
+  ];
+  for (const row of clearedRows) {
+    await expect(row).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(row).not.toHaveAttribute("data-marker", {
+      timeout: Timeout.MEDIUM,
+    });
+  }
 
   // Exactly ONE new commit was created, with our message...
   const headAfterCommit = execSync("git rev-parse HEAD", {

@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # Strip project Claude settings so the narrow allowed_tools below is authoritative.
+      # Strip project Claude settings so the narrow allowedTools below is authoritative.
       # Without this, .claude/settings.json's permissions.allow list (Bash(git:*), etc.)
       # merges in and silently widens the agent's effective allowlist — which matters here
       # because the triage prompt embeds untrusted issue title/body content.
@@ -58,9 +58,18 @@ jobs:
         with:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-opus-5
-          allowed_tools: "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Write"
           prompt: ${{ steps.render-prompt.outputs.prompt }}
+          claude_args: |
+            --model claude-opus-5
+            --setting-sources user
+            --allowedTools "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Write(tmp/issue-triage/**)"
+
+      - name: Verify issue triage output
+        run: |
+          if [[ ! -s "$TRIAGE_OUTPUT_PATH" ]]; then
+            echo "::error::Claude did not write $TRIAGE_OUTPUT_PATH"
+            exit 1
+          fi
 
       - name: Upload issue triage artifact
         uses: actions/upload-artifact@v6

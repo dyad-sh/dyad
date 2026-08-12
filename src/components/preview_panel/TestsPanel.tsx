@@ -34,7 +34,8 @@ import {
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
-import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { clearStagedDiffAtom } from "@/atoms/commitAtoms";
 import {
   currentRecordingStateAtom,
   recordingStartRequestAtom,
@@ -629,7 +630,7 @@ export function TestsPanel() {
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
-  const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
+  const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
   // long after the chunks arrive; subscribing would re-render the whole panel
   // on every flush and defeat the point of the separate output atom).
@@ -1075,11 +1076,13 @@ export function TestsPanel() {
     (file: string, line?: number) => {
       // CodeView renders a staged-file diff in preference to the selected file,
       // so a diff left open from the commit menu would swallow this request.
-      setStagedDiffFile(null);
+      // Clearing (rather than exiting) also drops any pending commit-dialog
+      // return, which would otherwise pop open over the spec.
+      clearStagedDiff(selectedAppId);
       setSelectedFile({ path: file, line: line ?? null });
       setPreviewMode("code");
     },
-    [setSelectedFile, setPreviewMode, setStagedDiffFile],
+    [setSelectedFile, setPreviewMode, clearStagedDiff, selectedAppId],
   );
 
   // The spec file awaiting delete confirmation, tagged with the app it came

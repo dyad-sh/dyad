@@ -399,6 +399,36 @@ function rewriteSetCookieHeaders(headers) {
   return headers;
 }
 
+const PROXY_FRAME_ANCESTORS_CSP =
+  "frame-ancestors 'self' file: http://localhost:* http://127.0.0.1:* http://[::1]:*";
+
+function appendHeader(headers, name, value) {
+  const lowerName = name.toLowerCase();
+  const existingName =
+    Object.keys(headers).find((key) => key.toLowerCase() === lowerName) ??
+    lowerName;
+  const existing = headers[existingName];
+
+  if (existing === undefined) {
+    headers[existingName] = value;
+  } else if (Array.isArray(existing)) {
+    headers[existingName] = [...existing, value];
+  } else {
+    headers[existingName] = [existing, value];
+  }
+
+  return headers;
+}
+
+function applyProxyFrameAncestorsCsp(headers) {
+  // Separate CSP header means app-supplied policies keep enforcing unchanged.
+  return appendHeader(
+    headers,
+    "content-security-policy",
+    PROXY_FRAME_ANCESTORS_CSP,
+  );
+}
+
 /* ----------------------------------------------------------------------- */
 /* 1. Plain HTTP request / response                                        */
 /* ----------------------------------------------------------------------- */
@@ -473,6 +503,7 @@ const server = http.createServer((clientReq, clientRes) => {
 
     if (!inject) {
       rewriteSetCookieHeaders(upRes.headers);
+      applyProxyFrameAncestorsCsp(upRes.headers);
       clientRes.writeHead(upRes.statusCode, upRes.headers);
       return void upRes.pipe(clientRes);
     }
@@ -503,6 +534,7 @@ const server = http.createServer((clientReq, clientRes) => {
         delete hdrs["expires"];
         hdrs["cache-control"] = "no-store, must-revalidate";
         rewriteSetCookieHeaders(hdrs);
+        applyProxyFrameAncestorsCsp(hdrs);
 
         clientRes.writeHead(upRes.statusCode, hdrs);
         clientRes.end(patched);

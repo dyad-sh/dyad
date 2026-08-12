@@ -3,6 +3,7 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
   getInitialLoadTelemetryProperties,
+  getSettingsPersonTelemetryProperties,
   shouldBypassNonProTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "@/lib/posthogTelemetry";
@@ -91,6 +92,7 @@ describe("getInitialLoadTelemetryProperties", () => {
           providerSettings: {
             auto: { apiKey: { value: "secret" } },
           },
+          enableAppBlueprint: false,
         }),
         appVersion: "1.1.0",
         platform: "darwin",
@@ -102,6 +104,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       platform: "darwin",
       releaseChannel: "beta",
       isFirstSession: false,
+      enableAppBlueprint: false,
       modelProvider: "auto",
       defaultChatMode: "ask",
       runtimeMode2: "docker",
@@ -124,9 +127,28 @@ describe("getInitialLoadTelemetryProperties", () => {
       platform: null,
       releaseChannel: "stable",
       isFirstSession: true,
+      enableAppBlueprint: true,
       modelProvider: "auto",
       defaultChatMode: null,
       runtimeMode2: "host",
+    });
+  });
+});
+
+describe("getSettingsPersonTelemetryProperties", () => {
+  it("includes pro and app blueprint settings for PostHog people properties", () => {
+    expect(
+      getSettingsPersonTelemetryProperties(
+        makeSettings({
+          providerSettings: {
+            auto: { apiKey: { value: "secret" } },
+          },
+          enableAppBlueprint: false,
+        }),
+      ),
+    ).toEqual({
+      isPro: true,
+      enableAppBlueprint: false,
     });
   });
 });

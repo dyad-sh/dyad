@@ -1,5 +1,5 @@
 import path from "path";
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import * as fs from "fs";
 
@@ -102,7 +102,9 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
-  await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
+  await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]", {
+    timeout: Timeout.EXTRA_LONG,
+  });
 
   // Wait for the uploaded file card to render before snapshotting. Use .first()
   // because the modified-files card at the bottom of the chat now also lists

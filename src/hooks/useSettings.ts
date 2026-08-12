@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
-import { getInitialLoadTelemetryProperties } from "@/lib/posthogTelemetry";
+import {
+  getInitialLoadTelemetryProperties,
+  getSettingsPersonTelemetryProperties,
+} from "@/lib/posthogTelemetry";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 import { queryKeys } from "@/lib/queryKeys";
@@ -65,8 +68,9 @@ export function useSettings() {
     }
 
     processSettingsForTelemetry(settingsQuery.data);
-    const isPro = hasDyadProKey(settingsQuery.data);
-    posthog?.people?.set({ isPro });
+    posthog?.people?.set(
+      getSettingsPersonTelemetryProperties(settingsQuery.data),
+    );
 
     if (
       initialLoadTelemetryState !== "idle" ||
@@ -114,7 +118,9 @@ export function useSettings() {
     onSuccess: (updatedSettings) => {
       queryClient.setQueryData(queryKeys.settings.user, updatedSettings);
       processSettingsForTelemetry(updatedSettings);
-      posthog?.people?.set({ isPro: hasDyadProKey(updatedSettings) });
+      posthog?.people?.set(
+        getSettingsPersonTelemetryProperties(updatedSettings),
+      );
     },
     meta: { showErrorToast: true },
   });

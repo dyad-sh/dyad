@@ -31,6 +31,7 @@ export function useCoolifyDeploy(appId: number | null) {
     ),
     queryFn: () => ipc.coolify.discover(),
     enabled: appId !== null && Boolean(status.data?.hasToken),
+    refetchOnWindowFocus: false,
   });
 
   const refreshStatus = useCallback(async () => {

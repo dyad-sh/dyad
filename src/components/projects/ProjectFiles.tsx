@@ -2,10 +2,17 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
-  File as FileIcon,
+  FileArchive,
+  FileAudio,
+  FileCode,
+  FileImage,
+  FileText,
+  FileVideo,
   Folder,
   FolderOpen,
   FolderPlus,
+  Grid2x2,
+  List,
   Loader2,
   Trash2,
   Upload,
@@ -18,15 +25,37 @@ import { Input } from "@/components/ui/input";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { vaultBreadcrumbs } from "@/lib/vault_paths";
 import { showError, showSuccess } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 /**
- * A project's files, browsed like a drive.
+ * A project's files, as a drive.
  *
- * Folders first, then files; a breadcrumb across the top; double-width rows so
- * a name and its size and date sit together. Adding copies the file into the
- * project rather than linking it, so the project survives the original being
- * moved or deleted.
+ * Grid by default, because a folder of things is easier to recognise by shape
+ * than to read as a list; a list view for when the dates and sizes are what
+ * you came for. Folders sort first in both.
+ *
+ * Adding copies the file into the project rather than linking it, so the
+ * project survives the original being moved or deleted.
  */
+
+const EXTENSION_ICONS: Array<[RegExp, typeof FileText]> = [
+  [/\.(png|jpe?g|gif|webp|svg|heic|bmp)$/i, FileImage],
+  [/\.(mp4|mov|avi|mkv|webm)$/i, FileVideo],
+  [/\.(mp3|wav|flac|aac|m4a|ogg)$/i, FileAudio],
+  [/\.(zip|tar|gz|rar|7z)$/i, FileArchive],
+  [
+    /\.(ts|tsx|js|jsx|py|rs|go|java|rb|sh|json|ya?ml|toml|css|html)$/i,
+    FileCode,
+  ],
+];
+
+function iconFor(entry: ProjectFile) {
+  if (entry.kind === "directory") return Folder;
+  for (const [pattern, icon] of EXTENSION_ICONS) {
+    if (pattern.test(entry.name)) return icon;
+  }
+  return FileText;
+}
 
 function formatSize(bytes: number | null): string {
   if (bytes === null) return "—";
@@ -53,20 +82,18 @@ function formatDate(epochMs: number | null): string {
 export function ProjectFiles({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [path, setPath] = useState("");
+  const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [newFolder, setNewFolder] = useState("");
   const [isNamingFolder, setIsNamingFolder] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProjectFile | null>(null);
 
-  const key = ["project-files", projectId, path] as const;
   const listing = useQuery({
-    queryKey: key,
+    queryKey: ["project-files", projectId, path],
     queryFn: () => ipc.project.listFiles({ id: projectId, path }),
   });
 
   const refresh = () =>
-    queryClient.invalidateQueries({
-      queryKey: ["project-files", projectId],
-    });
+    queryClient.invalidateQueries({ queryKey: ["project-files", projectId] });
 
   const addFiles = useMutation({
     mutationFn: () => ipc.project.addFiles({ id: projectId, path }),
@@ -110,30 +137,35 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
       .catch((error: Error) => showError(error.message));
   };
 
+  const open = (entry: ProjectFile) =>
+    entry.kind === "directory" ? setPath(entry.path) : reveal(entry.path);
+
   const data = listing.data;
+  const entries = data?.entries ?? [];
   const crumbs = vaultBreadcrumbs(path);
 
   return (
-    <div className="mt-3 rounded-xl border border-cyan-500/12 bg-[rgba(4,12,24,0.5)]">
-      <div className="flex flex-wrap items-center gap-2 border-b border-cyan-500/10 px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Toolbar */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <nav
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-xs text-cyan-100/45"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-sm text-cyan-100/50"
           aria-label="Breadcrumb"
         >
           <button
             type="button"
             onClick={() => setPath("")}
-            className="rounded px-1.5 py-0.5 hover:bg-cyan-500/10 hover:text-cyan-100"
+            className="rounded px-2 py-1 hover:bg-cyan-500/10 hover:text-cyan-100"
           >
             Files
           </button>
           {crumbs.map((crumb) => (
             <span key={crumb.path} className="flex items-center gap-1">
-              <ChevronRight className="size-3 opacity-50" />
+              <ChevronRight className="size-3.5 opacity-40" />
               <button
                 type="button"
                 onClick={() => setPath(crumb.path)}
-                className="rounded px-1.5 py-0.5 hover:bg-cyan-500/10 hover:text-cyan-100"
+                className="rounded px-2 py-1 hover:bg-cyan-500/10 hover:text-cyan-100"
               >
                 {crumb.name}
               </button>
@@ -141,16 +173,16 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
           ))}
         </nav>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1.5">
           <Button
             size="sm"
-            variant="outline"
             onClick={() => addFiles.mutate()}
             disabled={addFiles.isPending}
+            className="border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
             data-testid="project-files-add"
           >
             <Upload className="size-3.5" />
-            {addFiles.isPending ? "Adding…" : "Add files"}
+            {addFiles.isPending ? "Adding…" : "Upload"}
           </Button>
           <Button
             size="sm"
@@ -160,20 +192,46 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
             <FolderPlus className="size-3.5" />
             New folder
           </Button>
+          <div className="ml-1 flex items-center rounded-lg border border-cyan-500/15 p-0.5">
+            {(
+              [
+                ["grid", Grid2x2, "Grid view"],
+                ["list", List, "List view"],
+              ] as const
+            ).map(([value, Icon, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setLayout(value)}
+                aria-label={label}
+                title={label}
+                className={cn(
+                  "rounded-md p-1.5 transition-colors",
+                  layout === value
+                    ? "bg-cyan-500/15 text-cyan-200"
+                    : "text-cyan-100/35 hover:text-cyan-100",
+                )}
+              >
+                <Icon className="size-4" />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {isNamingFolder && (
-        <div className="flex items-center gap-2 border-b border-cyan-500/10 px-3 py-2">
+        <div className="mb-3 flex items-center gap-2">
           <Input
             value={newFolder}
             onChange={(event) => setNewFolder(event.target.value)}
             placeholder="Folder name"
-            className="h-8 text-xs"
+            autoFocus
+            className="h-9 max-w-xs"
             onKeyDown={(event) => {
               if (event.key === "Enter" && newFolder.trim()) {
                 createFolder.mutate(newFolder.trim());
               }
+              if (event.key === "Escape") setIsNamingFolder(false);
             }}
           />
           <Button
@@ -183,78 +241,157 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
           >
             Create
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setIsNamingFolder(false)}
+          >
+            Cancel
+          </Button>
         </div>
       )}
 
       {listing.isLoading && (
-        <div className="flex items-center gap-2 p-4 text-xs text-white/45">
-          <Loader2 className="size-3.5 animate-spin" />
+        <div className="flex items-center gap-2 p-6 text-sm text-white/45">
+          <Loader2 className="size-4 animate-spin" />
           Reading files…
         </div>
       )}
 
-      {data?.parent !== null && data && (
-        <button
-          type="button"
-          onClick={() => setPath(data.parent ?? "")}
-          className="flex w-full items-center gap-2 border-b border-cyan-500/8 px-3 py-2 text-left text-xs text-cyan-100/55 hover:bg-cyan-500/8"
-        >
-          <Folder className="size-3.5 shrink-0 text-cyan-300/60" />
-          ..
-        </button>
+      {!listing.isLoading && entries.length === 0 && (
+        <section className="rounded-2xl border border-dashed border-cyan-500/15 bg-[rgba(6,18,34,0.4)] p-12 text-center">
+          <FolderOpen className="mx-auto mb-3 size-7 text-cyan-300/50" />
+          <p className="text-sm text-[#7aadb8]">
+            {path ? "This folder is empty." : "Nothing in this project yet."}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-4"
+            onClick={() => addFiles.mutate()}
+          >
+            <Upload className="size-3.5" />
+            Upload files
+          </Button>
+        </section>
       )}
 
-      {data?.entries.map((entry) => (
-        <div
-          key={entry.path}
-          className="flex items-center gap-2 border-b border-cyan-500/8 px-3 py-2 text-xs last:border-b-0 hover:bg-cyan-500/8"
-          data-testid={`project-file-${entry.kind}`}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              entry.kind === "directory"
-                ? setPath(entry.path)
-                : reveal(entry.path)
-            }
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          >
-            {entry.kind === "directory" ? (
-              <Folder className="size-3.5 shrink-0 text-cyan-300/70" />
-            ) : (
-              <FileIcon className="size-3.5 shrink-0 text-white/35" />
-            )}
-            <span className="truncate text-cyan-50/85">{entry.name}</span>
-          </button>
-          <span className="w-16 shrink-0 text-right text-[10px] text-white/30">
-            {formatSize(entry.sizeBytes)}
-          </span>
-          <span className="hidden w-24 shrink-0 text-right text-[10px] text-white/25 sm:block">
-            {formatDate(entry.modifiedAt)}
-          </span>
-          <button
-            type="button"
-            onClick={() => reveal(entry.path)}
-            className="shrink-0 rounded p-1 text-white/30 hover:bg-cyan-500/10 hover:text-cyan-100"
-            aria-label={`Show ${entry.name} in Finder`}
-          >
-            <FolderOpen className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setDeleteTarget(entry)}
-            className="shrink-0 rounded p-1 text-white/30 hover:bg-rose-500/10 hover:text-rose-300"
-            aria-label={`Delete ${entry.name}`}
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+      {layout === "grid" && entries.length > 0 && (
+        <div className="project-file-grid">
+          {entries.map((entry) => {
+            const Icon = iconFor(entry);
+            return (
+              <div
+                key={entry.path}
+                className="project-file-tile group"
+                data-testid={`project-file-${entry.kind}`}
+              >
+                <button
+                  type="button"
+                  onDoubleClick={() => open(entry)}
+                  onClick={() => open(entry)}
+                  className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center"
+                >
+                  <Icon
+                    className={cn(
+                      "size-9",
+                      entry.kind === "directory"
+                        ? "text-cyan-300/80"
+                        : "text-cyan-100/35",
+                    )}
+                  />
+                  <span className="w-full truncate text-xs text-cyan-50/85">
+                    {entry.name}
+                  </span>
+                  <span className="text-[10px] text-cyan-100/30">
+                    {entry.kind === "directory"
+                      ? formatDate(entry.modifiedAt)
+                      : formatSize(entry.sizeBytes)}
+                  </span>
+                </button>
+                <div className="project-file-tile-actions">
+                  <button
+                    type="button"
+                    onClick={() => reveal(entry.path)}
+                    aria-label={`Show ${entry.name} in Finder`}
+                    className="rounded p-1 text-white/35 hover:bg-cyan-500/10 hover:text-cyan-100"
+                  >
+                    <FolderOpen className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(entry)}
+                    aria-label={`Delete ${entry.name}`}
+                    className="rounded p-1 text-white/35 hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      ))}
+      )}
 
-      {data && data.entries.length === 0 && !listing.isLoading && (
-        <p className="p-4 text-xs text-[#7aadb8]">
-          {path ? "This folder is empty." : "No files in this project yet."}
-        </p>
+      {layout === "list" && entries.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-cyan-500/12">
+          <div className="flex items-center gap-3 border-b border-cyan-500/10 bg-cyan-950/20 px-3 py-2 text-[10px] uppercase tracking-wider text-cyan-100/35">
+            <span className="flex-1">Name</span>
+            <span className="w-20 text-right">Size</span>
+            <span className="hidden w-28 text-right sm:block">Modified</span>
+            <span className="w-16" />
+          </div>
+          {entries.map((entry) => {
+            const Icon = iconFor(entry);
+            return (
+              <div
+                key={entry.path}
+                className="flex items-center gap-3 border-b border-cyan-500/8 px-3 py-2.5 text-sm last:border-b-0 hover:bg-cyan-500/8"
+                data-testid={`project-file-${entry.kind}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => open(entry)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <Icon
+                    className={cn(
+                      "size-4 shrink-0",
+                      entry.kind === "directory"
+                        ? "text-cyan-300/80"
+                        : "text-cyan-100/35",
+                    )}
+                  />
+                  <span className="truncate text-cyan-50/85">{entry.name}</span>
+                </button>
+                <span className="w-20 shrink-0 text-right text-xs text-white/30">
+                  {formatSize(entry.sizeBytes)}
+                </span>
+                <span className="hidden w-28 shrink-0 text-right text-xs text-white/25 sm:block">
+                  {formatDate(entry.modifiedAt)}
+                </span>
+                <span className="flex w-16 shrink-0 justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => reveal(entry.path)}
+                    aria-label={`Show ${entry.name} in Finder`}
+                    className="rounded p-1 text-white/30 hover:bg-cyan-500/10 hover:text-cyan-100"
+                  >
+                    <FolderOpen className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(entry)}
+                    aria-label={`Delete ${entry.name}`}
+                    className="rounded p-1 text-white/30 hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       <ConfirmationDialog

@@ -9786,3 +9786,45 @@ html.theme-switching * {
   z-index: 1;
   background: #06111f;
 }
+
+/* Project files, as tiles. A folder of things is easier to recognise by shape
+   than to read as a list, so the grid is the default and the list is there for
+   when the dates and sizes are what you came for. */
+.project-file-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+}
+
+.project-file-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.75rem;
+  border: 1px solid rgb(34 211 238 / 0.12);
+  border-radius: 0.8rem;
+  background: rgb(6 18 34 / 0.55);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.project-file-tile:hover {
+  border-color: rgb(34 211 238 / 0.35);
+  background: rgb(34 211 238 / 0.06);
+}
+
+.project-file-tile-actions {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: flex;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.project-file-tile:hover .project-file-tile-actions,
+.project-file-tile:focus-within .project-file-tile-actions {
+  opacity: 1;
+}

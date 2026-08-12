@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronLeft,
   FolderKanban,
   FolderOpen,
   Loader2,
@@ -158,6 +159,36 @@ export default function ProjectsPage() {
       .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const isEditorOpen = isCreating || editing !== null;
+  const openProject = projects.find((project) => project.id === filesOpen);
+
+  if (openProject) {
+    return (
+      <div className="settings-jarvis home-jarvis relative flex min-h-full w-full flex-col overflow-y-auto bg-background">
+        <ParticleBackground className="z-0" />
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          <div className="system-subheader">
+            <button
+              type="button"
+              onClick={() => setFilesOpen(null)}
+              className="system-back"
+              data-testid="project-files-back"
+            >
+              <ChevronLeft className="size-4" />
+              Projects
+            </button>
+            <span className="system-crumb">
+              <FolderKanban className="size-3.5" />
+              {openProject.name}
+            </span>
+          </div>
+
+          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+            <ProjectFiles projectId={openProject.id} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-jarvis home-jarvis relative flex min-h-full w-full flex-col overflow-y-auto bg-background">
@@ -368,10 +399,6 @@ export default function ProjectsPage() {
                     </Button>
                   </div>
                 </div>
-
-                {filesOpen === project.id && (
-                  <ProjectFiles projectId={project.id} />
-                )}
 
                 {conversationsFor(project.id).length > 0 && (
                   <ul className="mt-3 space-y-1 border-t border-cyan-500/10 pt-3">

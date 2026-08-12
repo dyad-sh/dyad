@@ -1,4 +1,9 @@
-import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
+import {
+  escapeXmlAttr,
+  escapeXmlContent,
+  unescapeXmlAttr,
+  unescapeXmlContent,
+} from "../../../shared/xmlEscape";
 import {
   AssertionProposalPayloadSchema,
   type AssertionProposalPayload,
@@ -166,10 +171,72 @@ export function parseAssertionsPayloadFromMessage(
   proposalId?: string,
 ): AssertionProposalPayload | null {
   const found = findAssertionsTagBlock(messageContent, proposalId);
-  if (!found) return null;
-  const unescaped = found.body
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-  return parseAssertionsPayload(unescaped);
+  return found ? parseAssertionsPayload(unescapeXmlContent(found.body)) : null;
+}
+
+export interface AssertionsTagSummary {
+  proposalId: string;
+  /** Empty once the plan settles — the rewrite drops the parked request. */
+  requestId: string;
+  status: AssertionProposalStatus;
+  /** Empty until an approval writes the spec. */
+  specPath: string;
+  /**
+   * The whole `<tag …>…</tag>` span. A stable identity for the plan: the
+   * composer memoizes the (expensive) payload parse on this string, so a plan
+   * survives the message around it being restreamed without its edits being
+   * re-seeded from the server's copy.
+   */
+  raw: string;
+}
+
+const PROPOSAL_STATUSES = new Set<string>([
+  "proposed",
+  "approved",
+  "discarded",
+] satisfies AssertionProposalStatus[]);
+
+/**
+ * Every assertions card in a message, in document order, WITHOUT parsing the
+ * payloads.
+ *
+ * This is how the composer finds the plan it should offer for review: the card
+ * lives inside an assistant message rather than in the parked user-input
+ * request, so the plan has to be read back out of the content. The scan runs
+ * on every chat re-render — which during a stream is every chunk — so it stays
+ * a regex over attributes and leaves the JSON to a memo keyed on `raw`.
+ *
+ * Only closed `<tag>…</tag>` spans match, so a card still streaming in is
+ * absent here rather than half-read: the composer waits for a whole plan
+ * before putting it up for review, and the chat message renders the
+ * "preparing…" placeholder in the meantime.
+ */
+export function listAssertionsTags(
+  messageContent: string,
+): AssertionsTagSummary[] {
+  const summaries: AssertionsTagSummary[] = [];
+  const re = assertionsTagBlockRe();
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(messageContent)) !== null) {
+    const attrs = match[1];
+    const status = unescapeXmlAttr(readAttribute(attrs, "status") ?? "");
+    summaries.push({
+      proposalId: unescapeXmlAttr(readAttribute(attrs, "proposal-id") ?? ""),
+      requestId: unescapeXmlAttr(readAttribute(attrs, "request-id") ?? ""),
+      // An unrecognized status is read as still up for review: the two settled
+      // values are the ones that must never be inferred, since either one
+      // hides a plan the user has not answered yet.
+      status: PROPOSAL_STATUSES.has(status)
+        ? (status as AssertionProposalStatus)
+        : "proposed",
+      specPath: unescapeXmlAttr(readAttribute(attrs, "spec-path") ?? ""),
+      raw: match[0],
+    });
+  }
+  return summaries;
+}
+
+/** Cheap "is there anything to scan for?" guard for the composer's hot path. */
+export function messageMayHaveAssertionsTag(messageContent: string): boolean {
+  return messageContent.includes(`<${ASSERTIONS_TAG}`);
 }

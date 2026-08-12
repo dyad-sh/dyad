@@ -67,6 +67,7 @@ import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
+import { TestAssertionsInput } from "./TestAssertionsInput";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -823,6 +824,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         >
           {/* Show active questionnaire if exists */}
           <QuestionnaireInput />
+
+          {/* Show the recorded-test plan waiting on a review, if any */}
+          <TestAssertionsInput />
 
           {/* Show todo list if there are todos for this chat */}
           {chatTodos.length > 0 && <TodoList todos={chatTodos} />}

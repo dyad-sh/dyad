@@ -4,6 +4,7 @@ import { parseFullMessage } from "../streamingMessageParser";
 import {
   ASSERTIONS_TAG,
   buildAssertionsTagContent,
+  listAssertionsTags,
   messageHasAssertionsProposal,
   parseAssertionsPayload,
   parseAssertionsPayloadFromMessage,
@@ -158,5 +159,56 @@ describe("replaceAssertionsTagInMessage", () => {
     expect(
       replaceAssertionsTagInMessage(`prose ${proposed}`, approved, "prop-9"),
     ).toBeNull();
+  });
+});
+
+describe("listAssertionsTags", () => {
+  const proposed = buildAssertionsTagContent({
+    proposalId: "prop-1",
+    requestId: "req-1",
+    status: "proposed",
+    payload: PAYLOAD,
+  });
+  const approved = buildAssertionsTagContent({
+    proposalId: "prop-2",
+    status: "approved",
+    payload: { ...PAYLOAD, specPath: "e2e-tests/second.spec.ts" },
+  });
+
+  it("reports every card in the message, in order, with its decision", () => {
+    // How the composer tells the plan it should put up for review from the ones
+    // already answered.
+    const tags = listAssertionsTags(
+      `Plan A:\n${approved}\nPlan B:\n${proposed}`,
+    );
+
+    expect(tags.map((tag) => tag.proposalId)).toEqual(["prop-2", "prop-1"]);
+    expect(tags.map((tag) => tag.status)).toEqual(["approved", "proposed"]);
+    expect(tags[0].specPath).toBe("e2e-tests/second.spec.ts");
+    // The parked request is dropped when a plan settles, so only the live one
+    // carries something to answer.
+    expect(tags[0].requestId).toBe("");
+    expect(tags[1].requestId).toBe("req-1");
+  });
+
+  it("hands back the tag verbatim so the payload parse can be memoized on it", () => {
+    const [tag] = listAssertionsTags(`prose\n${proposed}\nmore prose`);
+
+    expect(tag.raw).toBe(proposed);
+    expect(parseAssertionsPayloadFromMessage(tag.raw)).toEqual(PAYLOAD);
+  });
+
+  it("skips a card that hasn't finished streaming", () => {
+    // Offering a half-written plan for approval would generate a test from it.
+    expect(listAssertionsTags(proposed.slice(0, -20))).toEqual([]);
+  });
+
+  it("reads an unrecognized status as still up for review", () => {
+    // Only "approved" and "discarded" hide a plan, so neither may be inferred.
+    const tags = listAssertionsTags(
+      proposed.replace('status="proposed"', 'status="whatever"'),
+    );
+
+    expect(tags[0].status).toBe("proposed");
   });
 });

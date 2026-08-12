@@ -5,23 +5,33 @@ import {
   ASSERTION_PROPOSAL_VERSION,
   type AssertionProposalPayload,
 } from "@/lib/test_recorder/assertion_proposal";
+import { buildAssertionsTagContent } from "@/lib/test_recorder/assertion_tag";
 import { RECORDED_TEST_DRAFT_VERSION } from "@/lib/test_recorder/draft";
-import { DyadTestAssertionsCard } from "./DyadTestAssertionsCard";
+import {
+  TestAssertionsInput,
+  TestAssertionsPlanCard,
+} from "./TestAssertionsInput";
 
 /**
  * Which way an approval is handed back to the agent. `generate_test_assertions`
  * parks on this card, so the normal path answers that request and the turn picks
  * it up as its tool result — invisibly. Only a card whose turn is gone (reload,
  * stopped stream) may fall back to sending a visible chat message.
+ *
+ * Plus the composer's half of the deal: it puts up the plan the transcript says
+ * is still waiting on a review, and takes it down the moment that changes.
  */
 
 const REQUEST_ID = "user-input-1";
+const PROPOSAL_ID = "proposal-1";
 const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
 const mocks = vi.hoisted(() => ({
   respond: vi.fn(async () => true),
   /** The live user-input requests the read model reports, set per test. */
   liveRequests: new Map<string, { status: string }>(),
+  /** The selected chat's messages, as the composer reads them. */
+  chatMessages: [] as { role: string; content: string }[],
   streamMessage: vi.fn(),
   applyTestAssertions: vi.fn(async () => ({
     specPath: SPEC_PATH,
@@ -42,6 +52,10 @@ vi.mock("@/user_input/hooks", () => ({
 function setLiveRequests(requests: Map<string, { status: string }>): void {
   mocks.liveRequests = requests;
 }
+
+vi.mock("@/hooks/useChatMessages", () => ({
+  useChatMessages: () => mocks.chatMessages,
+}));
 
 vi.mock("@/atoms/chatAtoms", async () => {
   const { atom } = await import("jotai");
@@ -125,30 +139,39 @@ const PAYLOAD: AssertionProposalPayload = {
 
 function renderCard() {
   return render(
-    <DyadTestAssertionsCard
-      node={{
-        properties: {
-          "proposal-id": "proposal-1",
-          "request-id": REQUEST_ID,
-          status: "proposed",
-          "spec-path": "",
-          state: "finished",
-        },
-      }}
-    >
-      {JSON.stringify(PAYLOAD)}
-    </DyadTestAssertionsCard>,
+    <TestAssertionsPlanCard
+      proposalId={PROPOSAL_ID}
+      requestId={REQUEST_ID}
+      payload={PAYLOAD}
+    />,
   );
 }
 
-describe("DyadTestAssertionsCard", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.respond.mockResolvedValue(true);
-    mocks.discardTestAssertions.mockResolvedValue({ ok: true as const });
-    setLiveRequests(new Map());
-  });
+/** An assistant message carrying one card, as the tool writes it. */
+function messageWithPlan(status: "proposed" | "approved" | "discarded"): {
+  role: string;
+  content: string;
+} {
+  return {
+    role: "assistant",
+    content: `Here's what I'd check.\n\n${buildAssertionsTagContent({
+      proposalId: PROPOSAL_ID,
+      requestId: status === "proposed" ? REQUEST_ID : undefined,
+      status,
+      payload: PAYLOAD,
+    })}`,
+  };
+}
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.respond.mockResolvedValue(true);
+  mocks.discardTestAssertions.mockResolvedValue({ ok: true as const });
+  mocks.chatMessages = [];
+  setLiveRequests(new Map());
+});
+
+describe("TestAssertionsPlanCard", () => {
   it("resumes the parked turn instead of sending a chat message", async () => {
     setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
     renderCard();
@@ -251,5 +274,66 @@ describe("DyadTestAssertionsCard", () => {
 
     await waitFor(() => expect(mocks.streamMessage).toHaveBeenCalledTimes(1));
     expect(mocks.respond).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps the plan's height so a long recording can't push the composer away", () => {
+    renderCard();
+
+    const list = screen.getByRole("list");
+    expect(list.className).toContain("max-h-44");
+    expect(list.className).toContain("overflow-y-auto");
+  });
+});
+
+describe("TestAssertionsInput", () => {
+  it("puts up the plan the transcript says is still waiting on a review", () => {
+    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    mocks.chatMessages = [
+      { role: "user", content: "record this" },
+      messageWithPlan("proposed"),
+    ];
+
+    render(<TestAssertionsInput />);
+
+    expect(screen.getByTestId("dyad-test-assertions-card")).toBeTruthy();
+    expect(screen.getByTestId("dyad-test-assertions-step-0")).toBeTruthy();
+    expect(
+      screen.getByTestId("dyad-test-assertions-approve-button"),
+    ).toBeTruthy();
+  });
+
+  it.each(["approved", "discarded"] as const)(
+    "takes the plan down once the message says %s",
+    (status) => {
+      // The transcript's own receipt renders the outcome. Leaving the composer
+      // card up too would put two approve buttons — and two "Generated"
+      // badges — on screen at once.
+      mocks.chatMessages = [messageWithPlan(status)];
+
+      render(<TestAssertionsInput />);
+
+      expect(screen.queryByTestId("dyad-test-assertions-card")).toBeNull();
+    },
+  );
+
+  it("ignores a card that is still streaming in", () => {
+    // No closing tag yet: the plan is half-written, and offering a partial one
+    // for approval would generate a test from it.
+    const whole = messageWithPlan("proposed").content;
+    mocks.chatMessages = [
+      { role: "assistant", content: whole.slice(0, whole.length - 30) },
+    ];
+
+    render(<TestAssertionsInput />);
+
+    expect(screen.queryByTestId("dyad-test-assertions-card")).toBeNull();
+  });
+
+  it("shows nothing when the chat has no plan", () => {
+    mocks.chatMessages = [{ role: "assistant", content: "no cards here" }];
+
+    render(<TestAssertionsInput />);
+
+    expect(screen.queryByTestId("dyad-test-assertions-card")).toBeNull();
   });
 });

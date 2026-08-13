@@ -182,8 +182,6 @@ describe("the server and project pickers while discovery is in flight", () => {
     await user.click(screen.getByTestId("coolify-server-select"));
 
     expect(screen.getByText("Loading servers...")).toBeTruthy();
-    // The text is a plain node rather than an option, so without this a
-    // screen reader reads the list as empty rather than as still arriving.
     // Announced as an item of the list rather than as a bare text node, so a
     // screen reader hears that it is loading instead of an empty listbox.
     const option = screen.getByRole("option", { name: "Loading servers..." });
@@ -457,6 +455,149 @@ describe("the insecure-address warning in the connected view", () => {
     render(<CoolifyConnector appId={1} />);
 
     expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+  });
+
+  it("stays quiet when the server's wildcard domain serves over TLS", () => {
+    // Coolify builds the generated address from the wildcard, so an https one
+    // means the app is reachable over TLS even with no domain of its own.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: CONNECTED_NO_DOMAIN,
+      discovery: {
+        servers: [
+          {
+            uuid: "srv-1",
+            name: "box",
+            settings: { wildcard_domain: "https://apps.example.com" },
+          },
+        ],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+  });
+
+  it("warns when the server has no wildcard, which means an sslip address", () => {
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: CONNECTED_NO_DOMAIN,
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "box", settings: {} }],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    const warning = screen.getByTestId("coolify-insecure-auth-warning");
+    expect(warning.textContent).toContain("will not work once deployed");
+  });
+
+  it("says nothing for an app already on an https address", () => {
+    // Where the app actually is settles it: the server reporting no wildcard
+    // describes what it would generate, not where this app already sits.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: { ...CONNECTED_NO_DOMAIN, appUrl: "https://live.example.com" },
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "box", settings: {} }],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+  });
+
+  it("keeps warning when a wildcard is added after the app was deployed", () => {
+    // Coolify fixed this app's address at creation, so a wildcard added later
+    // does not move it — the app is still on the plain sslip address.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: {
+        ...CONNECTED_NO_DOMAIN,
+        appUrl: "http://x.203.0.113.10.sslip.io",
+      },
+      discovery: {
+        servers: [
+          {
+            uuid: "srv-1",
+            name: "box",
+            settings: { wildcard_domain: "https://apps.example.com" },
+          },
+        ],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(
+      screen.getByTestId("coolify-insecure-auth-warning").textContent,
+    ).toContain("will not work once deployed");
+  });
+
+  it("answers for the server being picked, not the one being replaced", async () => {
+    // Editing to a server with an https wildcard should clear the warning
+    // before saving, since that is where the next deploy lands.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      // Deployed to the plain server, so its address must not answer for the
+      // one being picked — the app has never been there.
+      status: {
+        ...CONNECTED_NO_DOMAIN,
+        appUrl: "http://x.203.0.113.10.sslip.io",
+      },
+      discovery: {
+        servers: [
+          { uuid: "srv-1", name: "plain-box", settings: {} },
+          {
+            uuid: "srv-2",
+            name: "tls-box",
+            settings: { wildcard_domain: "https://apps.example.com" },
+          },
+        ],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-insecure-auth-warning")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByTestId("coolify-server-select"));
+    await user.click(screen.getByRole("option", { name: "tls-box" }));
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+  });
+
+  it("stops trusting the old address when only the project changes", async () => {
+    // Coolify releases the application on a project change too, so the next
+    // deploy builds a new one and generates a fresh address for it — the old
+    // https address says nothing about where this app is going.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: { ...CONNECTED_NO_DOMAIN, appUrl: "https://live.example.com" },
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "box", settings: {} }],
+        projects: [
+          { uuid: "prj-1", name: "storefront" },
+          { uuid: "prj-2", name: "elsewhere" },
+        ],
+      },
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByTestId("coolify-project-select"));
+    await user.click(screen.getByRole("option", { name: "elsewhere" }));
+
+    // The server has no wildcard, so the new application gets an sslip address.
+    expect(
+      screen.getByTestId("coolify-insecure-auth-warning").textContent,
+    ).toContain("will not work once deployed");
   });
 
   it("still warns in the connection form, which is where it started", () => {

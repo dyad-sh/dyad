@@ -50,6 +50,14 @@ export const CoolifyServerSchema = z.object({
   uuid: z.string(),
   name: z.string(),
   ip: z.string().nullable().optional(),
+  // Coolify builds a generated address from this, so its scheme decides
+  // whether an app with no domain of its own is served over TLS. Optional:
+  // an instance too old to send it leaves the question unanswered rather
+  // than answering it wrongly.
+  settings: z
+    .object({ wildcard_domain: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
 });
 
 export type CoolifyServerInfo = z.infer<typeof CoolifyServerSchema>;

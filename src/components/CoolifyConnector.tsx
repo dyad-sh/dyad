@@ -30,8 +30,10 @@ import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 import { isHostMove } from "@/coolify_deploy/connection";
 import { getErrorMessage } from "@/lib/errors";
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
-import { coolifyInsecureWarning } from "@/coolify_deploy/insecure_warning";
-import { normalizeCoolifyDomain } from "@/coolify_deploy/domain";
+import {
+  coolifyInsecureWarning,
+  coolifyServedOverHttps,
+} from "@/coolify_deploy/insecure_warning";
 import {
   isSecureInstanceUrl,
   type CoolifyDeployStage,
@@ -170,10 +172,45 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
   const can = selectCoolifyDeployCapabilities(snapshot);
   const hasGithubRepo = Boolean(app?.githubOrg && app?.githubRepo);
+  // The server the app deploys to. Read from the form value rather than the
+  // saved connection so that picking a different server in the edit form
+  // answers for the one being chosen, not the one being replaced.
+  //
+  // Undefined when discovery has not answered, which is not the same as a
+  // server with no wildcard domain — the first is unknown, the second is a
+  // definite sslip address, and therefore plain HTTP.
+  const targetServer = discovery?.servers.find((s) => s.uuid === serverUuid);
+  // Kept from the saved connection rather than assumed. The form has no
+  // control for it, so sending a fixed value would read as a move away from
+  // whichever environment the app is actually in — and a move releases the
+  // application in Coolify. The literal is only the default for an app that
+  // has no connection yet.
+  const environmentName = status.connection?.environmentName ?? "production";
+  // Coolify releases the application when the server, project or environment
+  // changes, so the next deploy builds a new one and Coolify generates a fresh
+  // address for it. Asked through isHostMove rather than by comparing the
+  // server alone, so this and the banner below cannot disagree about whether
+  // the app is moving.
+  const movingHost =
+    status.connection !== null &&
+    isHostMove(
+      {
+        kind: "configured",
+        serverUuid: status.connection.serverUuid,
+        projectUuid: status.connection.projectUuid,
+        environmentName: status.connection.environmentName,
+        domain: status.connection.domain,
+      },
+      { serverUuid, projectUuid, environmentName },
+    );
   const insecureWarning = coolifyInsecureWarning({
-    isHttps: Boolean(
-      normalizeCoolifyDomain(domain)?.toLowerCase().startsWith("https:"),
-    ),
+    isHttps: coolifyServedOverHttps({
+      domain,
+      // Only the address of an app that is staying put. A move means the next
+      // deploy lands somewhere this app has never been.
+      deployedUrl: movingHost ? null : status.appUrl,
+      wildcardDomain: targetServer?.settings?.wildcard_domain,
+    }),
     hasNeon: Boolean(app?.neonProjectId),
     hasSupabase: Boolean(app?.supabaseProjectId),
   });
@@ -324,12 +361,6 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // --- Step 2: server, project, domain ---
   if (!status.connection || isEditingConnection) {
     const projects = discovery?.projects ?? [];
-    // Kept from the saved connection rather than assumed. The form has no
-    // control for it, so sending a fixed value would read as a move away from
-    // whichever environment the app is actually in — and a move releases the
-    // application in Coolify. The literal is only the default for an app that
-    // has no connection yet.
-    const environmentName = status.connection?.environmentName ?? "production";
     // Fetching with nothing to show yet. Not isDiscovering on its own, which
     // is isFetching and so also covers background refetches over a list the
     // user is already reading.
@@ -430,24 +461,13 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
         {/* A project belongs to the Coolify instance, not to this app, so it
             is named and created on its own before anything is picked. */}
-        {isEditingConnection &&
-          status.connection &&
-          isHostMove(
-            {
-              kind: "configured",
-              serverUuid: status.connection.serverUuid,
-              projectUuid: status.connection.projectUuid,
-              environmentName: status.connection.environmentName,
-              domain: status.connection.domain,
-            },
-            { serverUuid, projectUuid, environmentName },
-          ) && (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-              Moving this app leaves the application on its current server
-              running, and Dyad stops tracking it. Deploying here builds a new
-              one; removing the old one means going into Coolify.
-            </div>
-          )}
+        {isEditingConnection && movingHost && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            Moving this app leaves the application on its current server
+            running, and Dyad stops tracking it. Deploying here builds a new
+            one; removing the old one means going into Coolify.
+          </div>
+        )}
 
         <div className="flex items-end gap-2 rounded-md border p-3">
           <div className="flex-1">
@@ -748,7 +768,6 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             </span>
           )}
         </div>
-        {insecureWarningBlock}
         <div className="flex items-center gap-1">
           {/* Without this the server, project and domain are write-once, and
               changing one means disconnecting — which forgets the Coolify
@@ -779,14 +798,22 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 <AlertDialogTitle>
                   Disconnect this app from Coolify?
                 </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {snapshot.type === "running"
-                    ? "This also abandons the deployment currently running. "
-                    : null}
-                  The application keeps running on your server, but Dyad forgets
-                  how to reach it. Connecting this app again builds a second one
-                  beside it, and the two will compete for the same domain.
-                  Removing the first means going into Coolify.
+                <AlertDialogDescription render={<div />} className="space-y-3">
+                  <p>
+                    {snapshot.type === "running"
+                      ? "This also abandons the deployment currently running. "
+                      : null}
+                    The application keeps running on your server, but Dyad
+                    forgets how to reach it. Connecting this app again builds a
+                    second one beside it, and the two will compete for the same
+                    domain. Removing the first means going into Coolify.
+                  </p>
+                  <p>
+                    If you have deployed this app, Dyad's deploy key stays in
+                    the GitHub repository, so your server keeps read access to
+                    your code. You can remove the key by going to your
+                    repository's Deploy Key settings on GitHub.
+                  </p>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -813,6 +840,8 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           </AlertDialog>
         </div>
       </div>
+
+      {insecureWarningBlock}
 
       {!hasGithubRepo && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

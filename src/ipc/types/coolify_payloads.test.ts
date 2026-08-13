@@ -28,6 +28,10 @@ describe("real Coolify payloads survive the new validation", () => {
         uuid: "rc7cv7kbvocgj36bjgucsouc",
         name: "localhost",
         ip: "host.docker.internal",
+        // Kept, and empty rather than absent: this instance answered about its
+        // settings and named no wildcard domain, which is not the same as an
+        // instance too old to have been asked.
+        settings: {},
       });
   });
 

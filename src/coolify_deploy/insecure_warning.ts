@@ -1,3 +1,45 @@
+import { normalizeCoolifyDomain } from "./domain";
+
+/**
+ * Whether the app will be served over TLS.
+ *
+ * Three sources, in the order they settle the question:
+ *
+ * A typed domain decides on its own — it is what the next deploy sends.
+ *
+ * Otherwise, an application that already exists has its address fixed: Coolify
+ * generated the fqdn once at creation, and a redeploy without a domain sends no
+ * `domains`, so nothing regenerates it. Changing the server's wildcard later
+ * does not move an app that is already on one.
+ *
+ * Only when no application exists yet does the wildcard predict anything: that
+ * is what Coolify's generateUrl builds from, falling back to an sslip address
+ * that is always plain HTTP. A server that reported no wildcard, and one that
+ * reported nothing at all, are both handled here as "not https" — the answer is
+ * the same, and warning is the safe direction for a question we cannot settle.
+ */
+export function coolifyServedOverHttps({
+  domain,
+  deployedUrl,
+  wildcardDomain,
+}: {
+  /** What the user typed. */
+  domain: string;
+  /** Where this app already is, but only if it is on the server now selected. */
+  deployedUrl: string | null;
+  /** The selected server's wildcard domain, if it reported one. */
+  wildcardDomain: string | null | undefined;
+}): boolean {
+  const typed = normalizeCoolifyDomain(domain);
+  if (typed) return typed.toLowerCase().startsWith("https:");
+
+  if (deployedUrl) return deployedUrl.toLowerCase().startsWith("https:");
+
+  // Matched on an explicit scheme rather than normalized: Coolify reads the
+  // scheme off the wildcard as stored and does not supply a missing one.
+  return Boolean(wildcardDomain?.trim().toLowerCase().startsWith("https://"));
+}
+
 export type CoolifyInsecureWarning = "none" | "credentials-in-clear" | "breaks";
 
 /**

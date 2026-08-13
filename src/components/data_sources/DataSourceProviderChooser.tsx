@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -94,6 +94,35 @@ function CloudflareSetup({
     queryFn: () => ipc.cloudflare.detectEnvironment(),
   });
 
+  /**
+   * What we already know about reaching Cloudflare.
+   *
+   * Asked before anything is offered. Someone who signed in last week should
+   * see their databases, not a sign-in button.
+   */
+  const auth = useQuery({
+    queryKey: ["cloudflare-auth-state"],
+    queryFn: () => ipc.cloudflare.authState(),
+  });
+
+  const alreadyAuthenticated = Boolean(
+    auth.data?.signedIn || auth.data?.hasStoredToken,
+  );
+
+  // Listing runs on its own once we know there is a way in, so the databases
+  // are simply there.
+  useEffect(() => {
+    if (!alreadyAuthenticated || databases !== null) return;
+    if (auth.data?.signedIn) {
+      resumeSignedIn.mutate();
+    } else {
+      resumeWithStoredToken.mutate();
+    }
+    // Running once per authenticated state is the intent; re-running on every
+    // mutation identity change would list repeatedly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alreadyAuthenticated, auth.data?.signedIn, databases]);
+
   const queryClient = useQueryClient();
   const env = environment.data;
 
@@ -127,10 +156,45 @@ function CloudflareSetup({
   });
 
   const listDatabases = useMutation({
-    mutationFn: () =>
-      ipc.cloudflare.listDatabases({ apiToken: apiToken.trim() }),
+    mutationFn: async () => {
+      const found = await ipc.cloudflare.listDatabases({
+        apiToken: apiToken.trim(),
+      });
+      // It worked, so it is worth keeping: a second database should not mean
+      // pasting the same token again.
+      await ipc.cloudflare.saveApiToken({ apiToken: apiToken.trim() });
+      await auth.refetch();
+      return found;
+    },
     onSuccess: setDatabases,
     onError: (error: Error) => showError(error.message),
+  });
+
+  /** Lists again using the sign-in Wrangler already holds. */
+  const resumeSignedIn = useMutation({
+    mutationFn: () => ipc.cloudflare.listSignedInDatabases(),
+    onSuccess: (found) =>
+      setDatabases(
+        found.map((database) => ({
+          uuid: database.uuid,
+          name: database.name,
+          accountId: auth.data?.accountId ?? "",
+          accountName: auth.data?.email ?? "Signed in",
+          fileSizeBytes: null,
+        })),
+      ),
+    onError: (error: Error) => showError(error.message),
+  });
+
+  /** Lists using the token already stored, without showing it. */
+  const resumeWithStoredToken = useMutation({
+    mutationFn: () => ipc.cloudflare.listDatabases({ apiToken: "" }),
+    onSuccess: setDatabases,
+    onError: () => {
+      // A stored token that no longer works should not leave the user staring
+      // at a spinner: fall back to asking.
+      setUseToken(true);
+    },
   });
 
   /**
@@ -196,6 +260,19 @@ function CloudflareSetup({
       showSuccess(`${created.name} created and connected`);
       await queryClient.invalidateQueries({ queryKey: ["data-sources"] });
       onConnected();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  /** Forgets both the stored token and the browser sign-in. */
+  const signOut = useMutation({
+    mutationFn: () => ipc.cloudflare.signOut(),
+    onSuccess: async () => {
+      setDatabases(null);
+      setApiToken("");
+      setUseToken(false);
+      await Promise.all([auth.refetch(), environment.refetch()]);
+      showSuccess("Signed out of Cloudflare");
     },
     onError: (error: Error) => showError(error.message),
   });
@@ -279,7 +356,15 @@ function CloudflareSetup({
         />
       </div>
 
-      {databases === null && !useToken ? (
+      {alreadyAuthenticated && databases === null ? (
+        <div className="flex items-center gap-2 text-sm text-cyan-100/55">
+          <Loader2 className="size-4 animate-spin" />
+          {/* Already known, so this is loading rather than asking. */}
+          {auth.data?.signedIn
+            ? `Signed in${auth.data.email ? ` as ${auth.data.email}` : ""} — finding your databases…`
+            : "Using your saved Cloudflare token — finding your databases…"}
+        </div>
+      ) : databases === null && !useToken ? (
         <div className="space-y-3">
           <Button
             onClick={() => signIn.mutate()}
@@ -419,13 +504,25 @@ function CloudflareSetup({
         <Button variant="ghost" onClick={onBack}>
           Back
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => void environment.refetch()}
-          disabled={environment.isFetching}
-        >
-          {environment.isFetching ? "Checking…" : "Check again"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {alreadyAuthenticated && (
+            <Button
+              variant="ghost"
+              onClick={() => signOut.mutate()}
+              disabled={signOut.isPending}
+              data-testid="cloudflare-sign-out"
+            >
+              {signOut.isPending ? "Signing out…" : "Sign out"}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => void environment.refetch()}
+            disabled={environment.isFetching}
+          >
+            {environment.isFetching ? "Checking…" : "Check again"}
+          </Button>
+        </div>
       </div>
     </div>
   );

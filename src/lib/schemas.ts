@@ -577,6 +577,13 @@ const BaseUserSettingsFields = {
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
+  /**
+   * Cloudflare API token, for machines that cannot open a browser.
+   *
+   * Remembered so a second database does not mean pasting it again. The
+   * browser path stores nothing here: Wrangler keeps that sign-in itself.
+   */
+  cloudflareApiToken: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   vercelBlob: VercelBlobSchema.optional(),

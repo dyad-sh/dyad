@@ -54,6 +54,37 @@ export const cloudflareContracts = {
    * before anything is saved, which is the point at which the user is deciding
    * whether to save it at all.
    */
+  /**
+   * Whether we already know how to reach Cloudflare.
+   *
+   * Asked before anything is offered, so a user who signed in last week is
+   * not asked to sign in again.
+   */
+  authState: defineContract({
+    channel: "cloudflare:auth-state",
+    input: z.void(),
+    output: z.object({
+      /** Wrangler holds a browser sign-in. */
+      signedIn: z.boolean(),
+      email: z.string().nullable(),
+      accountId: z.string().nullable(),
+      /** A token is stored. Its value never leaves the main process. */
+      hasStoredToken: z.boolean(),
+    }),
+  }),
+  /** Remember an API token, encrypted, so it is not asked for again. */
+  saveApiToken: defineContract({
+    channel: "cloudflare:save-api-token",
+    input: z.object({ apiToken: z.string().min(1) }),
+    output: z.void(),
+  }),
+  /** Forget both the stored token and the browser sign-in. */
+  signOut: defineContract({
+    channel: "cloudflare:sign-out",
+    input: z.void(),
+    output: z.void(),
+  }),
+
   /** Install Wrangler if the machine does not already have a usable one. */
   ensureWrangler: defineContract({
     channel: "cloudflare:ensure-wrangler",
@@ -98,7 +129,9 @@ export const cloudflareContracts = {
 
   listDatabases: defineContract({
     channel: "cloudflare:list-databases",
-    input: z.object({ apiToken: z.string().min(1) }),
+    // Empty means "use the remembered token", so the renderer can list without
+    // ever holding the secret itself.
+    input: z.object({ apiToken: z.string() }),
     output: z.array(CloudflareD1DatabaseSchema),
   }),
 } as const;

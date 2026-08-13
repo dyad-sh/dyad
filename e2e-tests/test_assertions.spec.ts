@@ -83,8 +83,10 @@ testSkipIfWindows(
     );
     await expect(assertions.first()).toBeVisible();
 
-    // The turn is parked on the card rather than finished: the way out that
-    // only exists while something is waiting is offered.
+    // The turn is parked on the card rather than finished. Every unanswered
+    // plan offers a way out, so the close button proves nothing here — the
+    // hint that only a parked plan shows is what does.
+    await expect(card).toContainText("Dyad is waiting on this before it");
     await expect(
       po.page.getByTestId("dyad-test-assertions-discard-button"),
     ).toBeVisible();

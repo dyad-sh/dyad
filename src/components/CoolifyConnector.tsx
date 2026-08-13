@@ -178,6 +178,37 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     hasSupabase: Boolean(app?.supabaseProjectId),
   });
 
+  // Rendered by both the connection form and the connected view: the address
+  // it describes is the saved one once a connection exists, and a deploy is
+  // started from the connected view.
+  const insecureWarningBlock = insecureWarning !== "none" && (
+    <div
+      className={
+        insecureWarning === "breaks"
+          ? "mt-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+          : "mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+      }
+      data-testid="coolify-insecure-auth-warning"
+    >
+      {insecureWarning === "breaks" ? (
+        <p>
+          <strong>Without HTTPS, this app will not work once deployed.</strong>{" "}
+          Neon Auth needs an encrypted connection, and the page will fail to
+          load rather than degrade. Give this app an https:// domain — the
+          generated address is plain HTTP, and so is a domain entered as
+          http://.
+        </p>
+      ) : (
+        <p>
+          Without HTTPS the app is served in the clear, so anything your users
+          type — including passwords — can be read by anything on the network
+          between them and the server. The generated address is plain HTTP, and
+          so is a domain entered as http://.
+        </p>
+      )}
+    </div>
+  );
+
   // --- Step 1: instance URL + API token ---
   if (!status.hasToken) {
     const trimmedUrl = instanceUrl.trim();
@@ -503,7 +534,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               </SelectTrigger>
               <SelectContent>
                 {awaitingDiscovery ? (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  <div
+                    role="option"
+                    aria-disabled="true"
+                    aria-selected="false"
+                    className="px-2 py-1.5 text-sm text-muted-foreground"
+                  >
                     Loading servers...
                   </div>
                 ) : (
@@ -535,7 +571,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               </SelectTrigger>
               <SelectContent>
                 {awaitingDiscovery ? (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  <div
+                    role="option"
+                    aria-disabled="true"
+                    aria-selected="false"
+                    className="px-2 py-1.5 text-sm text-muted-foreground"
+                  >
                     Loading projects...
                   </div>
                 ) : (
@@ -562,35 +603,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             Point an A record at your server first. Left empty, Coolify
             generates an address for you over plain HTTP.
           </p>
-          {insecureWarning !== "none" && (
-            <div
-              className={
-                insecureWarning === "breaks"
-                  ? "mt-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
-                  : "mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-              }
-              data-testid="coolify-insecure-auth-warning"
-            >
-              {insecureWarning === "breaks" ? (
-                <p>
-                  <strong>
-                    Without HTTPS, this app will not work once deployed.
-                  </strong>{" "}
-                  Neon Auth needs an encrypted connection, and the page will
-                  fail to load rather than degrade. Give this app an https://
-                  domain — the generated address is plain HTTP, and so is a
-                  domain entered as http://.
-                </p>
-              ) : (
-                <p>
-                  Without HTTPS the app is served in the clear, so anything your
-                  users type — including passwords — can be read by anything on
-                  the network between them and the server. The generated address
-                  is plain HTTP, and so is a domain entered as http://.
-                </p>
-              )}
-            </div>
-          )}
+          {insecureWarningBlock}
         </div>
 
         <Button
@@ -735,6 +748,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             </span>
           )}
         </div>
+        {insecureWarningBlock}
         <div className="flex items-center gap-1">
           {/* Without this the server, project and domain are write-once, and
               changing one means disconnecting — which forgets the Coolify

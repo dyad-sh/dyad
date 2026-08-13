@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const toastMock = vi.hoisted(() => ({
   warning: vi.fn(),
@@ -46,11 +46,14 @@ vi.mock("@/hooks/useCoolifyDeploy", () => ({
 
 // Coolify deploys from GitHub, so a connected app always has a repository —
 // without one the Deploy button is disabled for that reason instead.
+const loadedApp = vi.hoisted(() => ({
+  value: { name: "demo", githubOrg: "acme", githubRepo: "demo" } as Record<
+    string,
+    unknown
+  >,
+}));
 vi.mock("@/hooks/useLoadApp", () => ({
-  useLoadApp: () => ({
-    app: { name: "demo", githubOrg: "acme", githubRepo: "demo" },
-    loading: false,
-  }),
+  useLoadApp: () => ({ app: loadedApp.value, loading: false }),
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl: vi.fn() } },
@@ -179,6 +182,12 @@ describe("the server and project pickers while discovery is in flight", () => {
     await user.click(screen.getByTestId("coolify-server-select"));
 
     expect(screen.getByText("Loading servers...")).toBeTruthy();
+    // The text is a plain node rather than an option, so without this a
+    // screen reader reads the list as empty rather than as still arriving.
+    // Announced as an item of the list rather than as a bare text node, so a
+    // screen reader hears that it is loading instead of an empty listbox.
+    const option = screen.getByRole("option", { name: "Loading servers..." });
+    expect(option.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("waits rather than saying the instance has no servers, when offline", async () => {
@@ -400,5 +409,89 @@ describe("warning about a domain while saving", () => {
     await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
     expect(toastMock.error).not.toHaveBeenCalled();
     expect(toastMock.warning.mock.calls[0][0]).toContain("no DNS record");
+  });
+});
+
+/**
+ * Where the "this will not work over HTTP" warning is shown.
+ *
+ * It was rendered only by the connection form, so once a connection was saved
+ * the view you deploy from said nothing — and the warning arrived in the log
+ * after the build had already run.
+ */
+describe("the insecure-address warning in the connected view", () => {
+  const CONNECTED_NO_DOMAIN = {
+    hasToken: true,
+    tokenId: "abc123",
+    instanceUrl: "https://coolify.test",
+    connection: {
+      instanceUrl: "https://coolify.test",
+      serverUuid: "srv-1",
+      projectUuid: "prj-1",
+      environmentName: "production",
+      domain: null,
+    },
+    appUrl: null,
+    lastDeployedAt: null,
+  };
+  const DEFAULT_APP = { name: "demo", githubOrg: "acme", githubRepo: "demo" };
+
+  afterEach(() => {
+    loadedApp.value = { ...DEFAULT_APP };
+  });
+
+  it("warns before the deploy, not after it, for a Neon app with no domain", () => {
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = { status: CONNECTED_NO_DOMAIN };
+    render(<CoolifyConnector appId={1} />);
+
+    const warning = screen.getByTestId("coolify-insecure-auth-warning");
+    expect(warning.textContent).toContain("will not work once deployed");
+  });
+
+  it("says nothing for an app with no database to break", () => {
+    // The warning is about auth over an insecure origin, so an app with
+    // neither provider has nothing to warn about and should stay quiet.
+    loadedApp.value = { ...DEFAULT_APP };
+    deploy.value = { status: CONNECTED_NO_DOMAIN };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+  });
+
+  it("still warns in the connection form, which is where it started", () => {
+    // Both views share one block now; nothing covered this side before, so a
+    // refactor could have dropped it without a test noticing.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: {
+        hasToken: true,
+        tokenId: "abc123",
+        instanceUrl: "https://coolify.test",
+        connection: null,
+        appUrl: null,
+        lastDeployedAt: null,
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    const warning = screen.getByTestId("coolify-insecure-auth-warning");
+    expect(warning.textContent).toContain("will not work once deployed");
+  });
+
+  it("says nothing once the saved domain is https", () => {
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: {
+        ...CONNECTED_NO_DOMAIN,
+        connection: {
+          ...CONNECTED_NO_DOMAIN.connection,
+          domain: "https://app.example.com",
+        },
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
   });
 });

@@ -84,6 +84,35 @@ describe("useAttachments", () => {
     );
   });
 
+  it.each([
+    { what: "a file drag", types: ["Files"], armed: true },
+    {
+      what: "a row dragged inside the composer",
+      types: ["text/plain"],
+      armed: false,
+    },
+  ])("$what: overlay armed = $armed", ({ types, armed }) => {
+    // The composer hosts draggable rows of its own — reordering a recorded
+    // test's checks — and their dragover bubbles up to the container's
+    // handler. Arming on those paints "Drop files to attach" over the very
+    // rows being dragged between.
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(useAttachments, { wrapper: Wrapper });
+    const preventDefault = vi.fn();
+
+    act(() => {
+      result.current.handleDragOver({
+        preventDefault,
+        dataTransfer: { types },
+      } as unknown as React.DragEvent);
+    });
+
+    expect(result.current.isDraggingOver).toBe(armed);
+    // Still called either way: the container stays a valid drop target, so a
+    // drop landing outside a row is a no-op rather than a browser navigation.
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
   it("clears stale draft attachments when a queued replacement is invalid", () => {
     const { store, Wrapper } = makeWrapper();
     const { result } = renderHook(useAttachments, { wrapper: Wrapper });

@@ -44,13 +44,26 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/user_input/hooks", () => ({
-  useUserInputReadModel: () => ({ respond: mocks.respond }),
+  useUserInputReadModel: () => ({
+    respond: mocks.respond,
+    // Read live rather than from the render snapshot, so the card can tell a
+    // request main has dropped from one a transient failure left parked.
+    getSnapshot: () => ({
+      requests: mocks.liveRequests,
+      respondingRequestIds: new Set<string>(),
+    }),
+  }),
   useUserInputRequests: () => mocks.liveRequests,
 }));
 
 /** The live user-input requests the projection exposes, set per test. */
 function setLiveRequests(requests: Map<string, { status: string }>): void {
   mocks.liveRequests = requests;
+}
+
+/** A turn parked on this card, as both the snapshot and the live read report it. */
+function parkTurn(): void {
+  setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
 }
 
 vi.mock("@/hooks/useChatMessages", () => ({
@@ -173,7 +186,7 @@ beforeEach(() => {
 
 describe("TestAssertionsPlanCard", () => {
   it("resumes the parked turn instead of sending a chat message", async () => {
-    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    parkTurn();
     renderCard();
 
     screen.getByTestId("dyad-test-assertions-approve-button").click();
@@ -192,7 +205,7 @@ describe("TestAssertionsPlanCard", () => {
   });
 
   it("closing the card answers the parked turn with no spec", async () => {
-    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    parkTurn();
     renderCard();
 
     screen.getByTestId("dyad-test-assertions-discard-button").click();
@@ -221,7 +234,7 @@ describe("TestAssertionsPlanCard", () => {
       order.push("respond");
       return true;
     });
-    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    parkTurn();
     renderCard();
 
     screen.getByTestId("dyad-test-assertions-discard-button").click();
@@ -233,7 +246,7 @@ describe("TestAssertionsPlanCard", () => {
     // Answering the turn against a card that still reads as approvable would
     // end the turn and leave the plan live with nothing waiting on it.
     mocks.discardTestAssertions.mockRejectedValueOnce(new Error("db down"));
-    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    parkTurn();
     renderCard();
 
     screen.getByTestId("dyad-test-assertions-discard-button").click();
@@ -254,9 +267,6 @@ describe("TestAssertionsPlanCard", () => {
     // No live request: the app restarted, or the turn was stopped.
     renderCard();
 
-    expect(
-      screen.queryByTestId("dyad-test-assertions-discard-button"),
-    ).toBeNull();
     screen.getByTestId("dyad-test-assertions-approve-button").click();
 
     await waitFor(() => expect(mocks.streamMessage).toHaveBeenCalledTimes(1));
@@ -266,14 +276,52 @@ describe("TestAssertionsPlanCard", () => {
   });
 
   it("falls back to a new turn when the parked request has expired", async () => {
-    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
-    mocks.respond.mockResolvedValue(false);
+    parkTurn();
+    // What the read model does on a NotFound: the request is dropped, and only
+    // then is there nothing left to resume.
+    mocks.respond.mockImplementation(async () => {
+      setLiveRequests(new Map());
+      return false;
+    });
     renderCard();
 
     screen.getByTestId("dyad-test-assertions-approve-button").click();
 
     await waitFor(() => expect(mocks.streamMessage).toHaveBeenCalledTimes(1));
     expect(mocks.respond).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a second turn when the hand-off fails but the turn is still parked", async () => {
+    // A transient IPC failure also answers false, but leaves the agent sitting
+    // on this card. Starting a turn there queues a second generation behind the
+    // parked one and hands the agent the same spec twice.
+    parkTurn();
+    mocks.respond.mockResolvedValue(false);
+    renderCard();
+
+    screen.getByTestId("dyad-test-assertions-approve-button").click();
+
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalledTimes(1));
+    await screen.findByTestId("dyad-test-assertions-open-file-button");
+    expect(mocks.streamMessage).not.toHaveBeenCalled();
+    expect(mocks.syncChatFromDb).not.toHaveBeenCalled();
+  });
+
+  it("closes a plan nothing is waiting on, without answering a request", async () => {
+    // A plan left over from a stopped turn or a restart is pinned to the
+    // composer, so approving a test the user doesn't want must not be its only
+    // exit. The latch is the whole close; the resync is what unpins the card.
+    renderCard();
+
+    screen.getByTestId("dyad-test-assertions-discard-button").click();
+
+    await waitFor(() =>
+      expect(mocks.discardTestAssertions).toHaveBeenCalledTimes(1),
+    );
+    await screen.findByTestId("dyad-test-assertions-discarded-note");
+    expect(mocks.respond).not.toHaveBeenCalled();
+    expect(mocks.applyTestAssertions).not.toHaveBeenCalled();
+    expect(mocks.syncChatFromDb).toHaveBeenCalledTimes(1);
   });
 
   it("caps the plan's height so a long recording can't push the composer away", () => {
@@ -287,7 +335,7 @@ describe("TestAssertionsPlanCard", () => {
 
 describe("TestAssertionsInput", () => {
   it("puts up the plan the transcript says is still waiting on a review", () => {
-    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    parkTurn();
     mocks.chatMessages = [
       { role: "user", content: "record this" },
       messageWithPlan("proposed"),
@@ -335,5 +383,46 @@ describe("TestAssertionsInput", () => {
     render(<TestAssertionsInput />);
 
     expect(screen.queryByTestId("dyad-test-assertions-card")).toBeNull();
+  });
+
+  it("keeps an unanswered plan reachable however far the chat has moved on", () => {
+    // The transcript only carries a receipt now, so a plan that scrolls out of
+    // reach is one that can never be approved OR closed. There is no cutoff.
+    mocks.chatMessages = [
+      messageWithPlan("proposed"),
+      ...Array.from({ length: 80 }, (_, i) => ({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: `chatter ${i}`,
+      })),
+    ];
+
+    render(<TestAssertionsInput />);
+
+    expect(screen.getByTestId("dyad-test-assertions-card")).toBeTruthy();
+    expect(
+      screen.getByTestId("dyad-test-assertions-approve-button"),
+    ).toBeTruthy();
+  });
+
+  it("puts the newest unanswered plan on top and says how many are behind it", () => {
+    // Two plans waiting is a queue, not a dead end: answering this one brings
+    // the older one up, so the older receipt's "waiting for your review" holds.
+    const older = messageWithPlan("proposed");
+    const newer = {
+      role: "assistant",
+      content: buildAssertionsTagContent({
+        proposalId: "proposal-2",
+        requestId: "user-input-2",
+        status: "proposed",
+        payload: { ...PAYLOAD, testTitle: "the newer flow" },
+      }),
+    };
+    mocks.chatMessages = [older, newer];
+
+    render(<TestAssertionsInput />);
+
+    const card = screen.getByTestId("dyad-test-assertions-card");
+    expect(card.textContent).toContain("the newer flow");
+    expect(card.textContent).toContain("(1 of 2)");
   });
 });

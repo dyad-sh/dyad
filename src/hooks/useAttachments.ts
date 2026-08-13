@@ -5,6 +5,17 @@ import { attachmentsAtom } from "@/atoms/chatAtoms";
 import { showError } from "@/lib/toast";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
 
+/**
+ * Is this drag carrying files, rather than something dragged within the page?
+ *
+ * `dataTransfer.files` is empty until the drop, so a dragover can only be told
+ * apart by its advertised types.
+ */
+function isFileDrag(e: React.DragEvent): boolean {
+  const types = e.dataTransfer?.types;
+  return types ? Array.from(types).includes("Files") : false;
+}
+
 export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +92,12 @@ export function useAttachments() {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    // Only a file drag arms the overlay. The composer also hosts draggable rows
+    // of its own — reordering a recorded test's checks — and their `dragover`
+    // bubbles up here; without this guard the whole composer would paint "Drop
+    // files to attach" over the very rows being dragged between, flickering as
+    // each child boundary fires `dragleave`.
+    if (!isFileDrag(e)) return;
     if (!pendingFiles) {
       setIsDraggingOver(true);
     }

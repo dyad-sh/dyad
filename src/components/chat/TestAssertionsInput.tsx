@@ -25,7 +25,7 @@ import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { ipc } from "@/ipc/types";
+import { ipc, type Message } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
@@ -80,56 +80,71 @@ const ROW_ACTION =
   "motion-reduce:transition-none";
 
 /**
- * How far back to look for a plan awaiting review.
+ * The unanswered plan in one message, cached on the message object.
  *
- * A plan is proposed by a tool that then parks on it, so a live one is all but
- * always in the last message; the slack covers a plan left unanswered when the
- * turn was stopped and the user carried on chatting. Bounded because this scan
- * re-runs on every chunk of every stream.
+ * The scan below covers the WHOLE transcript — a plan left unanswered has to
+ * stay reachable however far the conversation has moved on, because the message
+ * itself now only carries a receipt — and it re-runs on every chunk of every
+ * stream. This is what keeps that affordable: `applyStreamingPatch` rebuilds
+ * only the message being streamed into and preserves every other message's
+ * identity, so a stream re-reads one message per chunk and hits the cache for
+ * the rest.
  */
-const MAX_SCANNED_MESSAGES = 20;
+const unansweredTagCache = new WeakMap<Message, AssertionsTagSummary | null>();
 
-/**
- * The most recent plan in this chat that nobody has answered yet, as the raw
- * tag text.
- *
- * Returns the tag rather than the parsed plan so the parse can be memoized on
- * a value that only changes when the plan does: the surrounding message is
- * rewritten and restreamed while a card is open, and re-seeding the rows from
- * the server's copy on every one of those would throw away the user's edits.
- */
-function useLiveAssertionsTag(
-  chatId: number | undefined,
-): AssertionsTagSummary | null {
-  const messages = useChatMessages(chatId);
-  const raw = useMemo(() => {
-    const start = Math.max(0, messages.length - MAX_SCANNED_MESSAGES);
-    for (let i = messages.length - 1; i >= start; i--) {
-      const message = messages[i];
-      if (message.role !== "assistant") continue;
-      if (!messageMayHaveAssertionsTag(message.content)) continue;
-      const proposed = listAssertionsTags(message.content).filter(
-        (tag) => tag.status === "proposed",
-      );
-      // Last one in the message: a turn may propose twice, and the later plan
-      // is the one the agent is parked on.
-      if (proposed.length > 0) return proposed[proposed.length - 1].raw;
-    }
-    return null;
-  }, [messages]);
-
-  return useMemo(
-    () => (raw ? (listAssertionsTags(raw)[0] ?? null) : null),
-    [raw],
-  );
+function unansweredTagIn(message: Message): AssertionsTagSummary | null {
+  const cached = unansweredTagCache.get(message);
+  if (cached !== undefined) return cached;
+  let found: AssertionsTagSummary | null = null;
+  if (
+    message.role === "assistant" &&
+    messageMayHaveAssertionsTag(message.content)
+  ) {
+    const proposed = listAssertionsTags(message.content).filter(
+      (tag) => tag.status === "proposed",
+    );
+    // Last one in the message: a turn may propose twice, and the later plan is
+    // the one the agent is parked on.
+    found = proposed.at(-1) ?? null;
+  }
+  unansweredTagCache.set(message, found);
+  return found;
 }
+
+interface LiveAssertionPlans {
+  /** The one up for review: the most recent plan nobody has answered. */
+  tag: AssertionsTagSummary | null;
+  /**
+   * How many plans are unanswered in total. More than one is a queue, not a
+   * dead end — answering the one on top brings the previous one up.
+   */
+  pendingCount: number;
+}
+
+const NO_LIVE_PLANS: LiveAssertionPlans = { tag: null, pendingCount: 0 };
 
 export function TestAssertionsInput() {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const tag = useLiveAssertionsTag(chatId ?? undefined);
+  const messages = useChatMessages(chatId);
+  const { tag, pendingCount } = useMemo(() => {
+    let newest: AssertionsTagSummary | null = null;
+    let pendingCount = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const found = unansweredTagIn(messages[i]);
+      if (!found) continue;
+      pendingCount++;
+      newest ??= found;
+    }
+    return newest ? { tag: newest, pendingCount } : NO_LIVE_PLANS;
+  }, [messages]);
+
+  // Keyed on the tag TEXT, not the summary: the scan above re-runs whenever the
+  // transcript changes, and re-seeding the rows from a fresh parse of an
+  // unchanged plan would throw away the user's edits.
+  const raw = tag?.raw ?? null;
   const payload = useMemo(
-    () => (tag ? parseAssertionsPayloadFromMessage(tag.raw) : null),
-    [tag],
+    () => (raw ? parseAssertionsPayloadFromMessage(raw) : null),
+    [raw],
   );
 
   if (!tag || !payload) return null;
@@ -142,6 +157,7 @@ export function TestAssertionsInput() {
       proposalId={tag.proposalId}
       requestId={tag.requestId}
       payload={payload}
+      pendingCount={pendingCount}
     />
   );
 }
@@ -178,11 +194,14 @@ export function TestAssertionsPlanCard({
   proposalId,
   requestId,
   payload,
+  pendingCount = 1,
 }: {
   proposalId: string;
   /** Empty when no turn is parked on the plan — a reload, or a stopped stream. */
   requestId: string;
   payload: AssertionProposalPayload;
+  /** Unanswered plans in this chat, including this one. */
+  pendingCount?: number;
 }) {
   const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
@@ -203,6 +222,18 @@ export function TestAssertionsPlanCard({
     : undefined;
   const isAgentWaiting =
     parkedRequest !== undefined && parkedRequest.status !== "settled";
+
+  /**
+   * Is the turn STILL parked, read live rather than from the render snapshot?
+   *
+   * `respond` answers false for two very different things: a request main has
+   * already dropped, and a transient IPC failure that left it parked. Only the
+   * first is a licence to start a new turn.
+   */
+  const isStillParked = () => {
+    const request = userInputReadModel.getSnapshot().requests.get(requestId);
+    return request !== undefined && request.status !== "settled";
+  };
 
   const [items, setItems] = useState<AssertionPlanItem[]>(payload.items);
   // Held locally until the rewritten message makes it back through
@@ -394,7 +425,12 @@ export function TestAssertionsPlanCard({
           specPath: result.specPath || null,
           appliedCount: result.appliedCount,
         }));
-      if (!handedToParkedTurn) {
+      // A hand-off that failed on a transient IPC error leaves the turn sitting
+      // on this card. Starting a fresh turn there would queue a second
+      // generation behind the parked one and hand the agent the same spec
+      // twice; `respond` has already surfaced the error, and the turn converges
+      // on its deadline. The spec is written either way, and the card says so.
+      if (!handedToParkedTurn && !isStillParked()) {
         // The stream manager answers "is this chat streaming?" — without that
         // guard the DB snapshot would overwrite the live messages of a stream
         // that started meanwhile. The parked path skips the sync entirely: the
@@ -419,12 +455,17 @@ export function TestAssertionsPlanCard({
   };
 
   /**
-   * Close the plan without writing anything. Only offered while the agent is
-   * parked on it: it exists so a turn waiting on this card has an exit that
-   * isn't the 30-minute deadline.
+   * Close the plan without writing anything.
+   *
+   * Offered for every unanswered plan, not just a parked one. While a turn is
+   * waiting this is its exit that isn't the 30-minute deadline; with no turn
+   * waiting it is the ONLY exit, since the card is pinned to the composer
+   * rather than scrolling away up the transcript — without it, a plan left over
+   * from a stopped turn or a restart could only be dismissed by approving a
+   * test the user may not want.
    */
   const handleDiscard = async () => {
-    if (busyRef.current || isLocked || !isAgentWaiting) return;
+    if (busyRef.current || isLocked) return;
     busyRef.current = true;
     setIsDiscarding(true);
     try {
@@ -448,6 +489,18 @@ export function TestAssertionsPlanCard({
         }
       }
       setOptimisticDiscarded(true);
+      if (!isAgentWaiting) {
+        // Nothing to resume: the latch above IS the close. Re-read the chat so
+        // the message picks up its "discarded" receipt — otherwise the card
+        // would stay pinned to the composer on the optimistic latch alone, and
+        // any older unanswered plan behind it would never come up.
+        if (chatId != null) {
+          syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", (id) =>
+            chatStreamManager.getIsStreaming(id),
+          );
+        }
+        return;
+      }
       const answered = await userInputReadModel.respond(requestId, {
         kind: "test-assertions",
         specPath: null,
@@ -495,6 +548,14 @@ export function TestAssertionsPlanCard({
         <FlaskConical className={cn("size-4 shrink-0", ACCENT_TEXT)} />
         <span className="shrink-0 text-sm">
           {isApproved ? "Recorded test" : "Review recorded test"}
+          {/* A queue, not a dead end: answering this one brings the previous
+              plan up. Says so, so a receipt further up the transcript reading
+              "waiting for your review" has somewhere to point. */}
+          {pendingCount > 1 && !isLocked && (
+            <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+              (1 of {pendingCount})
+            </span>
+          )}
         </span>
         <span
           className={cn(
@@ -838,20 +899,19 @@ export function TestAssertionsPlanCard({
             {/* One group, so the decision stays together on the right when the
                 composer is too narrow to keep it on the hint's line. */}
             <div className="ml-auto flex items-center gap-2">
-              {/* Close is only offered while the turn is parked on this card:
-                  otherwise there is nothing waiting, and closing would just
-                  hide a plan that is still usable. */}
-              {isAgentWaiting && (
-                <button
-                  type="button"
-                  onClick={() => void handleDiscard()}
-                  disabled={isBusy}
-                  data-testid="dyad-test-assertions-discard-button"
-                  className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-(--background-darker) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Close without generating
-                </button>
-              )}
+              {/* Every unanswered plan gets an exit. While a turn is parked
+                  this saves it from its deadline; with none parked it is the
+                  only way to put the card down, since it no longer scrolls
+                  away up the transcript. */}
+              <button
+                type="button"
+                onClick={() => void handleDiscard()}
+                disabled={isBusy}
+                data-testid="dyad-test-assertions-discard-button"
+                className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-(--background-darker) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Close without generating
+              </button>
               <button
                 type="button"
                 onClick={() => void handleApprove()}

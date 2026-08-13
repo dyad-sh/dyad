@@ -45,25 +45,39 @@ export function isNonRoutableAddress(
     .toLowerCase();
   const family = isIP(bare);
 
-  if (family === 4) {
-    const [a, b] = bare.split(".").map(Number);
-    if (a === 10) return true; // 10.0.0.0/8
-    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-    if (a === 192 && b === 168) return true; // 192.168.0.0/16
-    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10, CGNAT
-    if (a === 169 && b === 254) return true; // 169.254.0.0/16, link-local
-    return false;
-  }
+  if (family === 4) return isNonRoutableIpv4(bare);
 
   if (family !== 6) return false;
-  // Read the leading hextet rather than matching a prefix string, so a
-  // compressed spelling is judged by its value instead of its formatting.
+
+  // The prefix decides first. Any IPv6 address may be written with a trailing
+  // dotted quad — fe80::203.0.113.5 is a link-local address that happens to
+  // end in a public-looking one — so reading the tail before the prefix would
+  // answer for the wrong half of it.
   const first = bare.startsWith("::") ? "" : bare.split(":")[0];
-  if (!first) return false;
-  const head = Number.parseInt(first, 16);
-  if (Number.isNaN(head)) return false;
-  if (head >= 0xfc00 && head <= 0xfdff) return true; // fc00::/7, unique local
-  return head >= 0xfe80 && head <= 0xfebf; // fe80::/10, link-local
+  if (first) {
+    const head = Number.parseInt(first, 16);
+    if (Number.isNaN(head)) return false;
+    if (head >= 0xfc00 && head <= 0xfdff) return true; // fc00::/7, unique local
+    if (head >= 0xfe80 && head <= 0xfebf) return true; // fe80::/10, link-local
+    // fec0::/10 is site-local. Deprecated by RFC 3879 rather than reassigned,
+    // so nothing routes it and a public record still cannot point at it.
+    return head >= 0xfec0 && head <= 0xfeff;
+  }
+
+  // Only the forms that carry an IPv4 address rather than merely ending in
+  // one: ::ffff:a.b.c.d and the deprecated ::a.b.c.d. There the v4 ranges are
+  // the ones that matter, since it names the same machine as the bare address.
+  const embedded = /^::(ffff:)?(\d+\.\d+\.\d+\.\d+)$/.exec(bare);
+  return embedded ? isNonRoutableIpv4(embedded[2]) : false;
+}
+
+function isNonRoutableIpv4(bare: string): boolean {
+  const [a, b] = bare.split(".").map(Number);
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10, CGNAT
+  return a === 169 && b === 254; // 169.254.0.0/16, link-local
 }
 
 /**

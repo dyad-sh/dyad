@@ -3,7 +3,7 @@
 When adding a new toggle/setting to the Settings page:
 
 1. Add the field to `UserSettingsSchema` in `src/lib/schemas.ts`
-2. Add the default value in `DEFAULT_SETTINGS` in `src/main/settings.ts`
+2. Add the default value in `DEFAULT_SETTINGS` in `src/shared/settings_defaults.ts` (`src/main/settings.ts` re-exports it for existing importers). Renderer-side code must import the default from the shared module — importing `src/main/settings.ts` pulls electron/node into the renderer bundle.
 3. Add a `SETTING_IDS` entry and search index entry in `src/lib/settingsSearchIndex.ts`
 4. Create a switch component (e.g., `src/components/MySwitch.tsx`) - follow `AutoApproveSwitch.tsx` as a template
 5. Import and add the switch to the relevant section in `src/pages/settings.tsx`
@@ -12,6 +12,10 @@ When adding a new toggle/setting to the Settings page:
 If the setting adds a built-in default, update the inline snapshots in
 `src/main/settings.test.ts`; otherwise `npm test` will fail with
 default settings snapshot mismatches.
+
+For settings worth tracking in telemetry:
+
+- Add the field to `getSettingsPersonTelemetryProperties` in `src/lib/posthogTelemetry.ts`, reading it as `settings.myFlag ?? DEFAULT_SETTINGS.myFlag` so the reported value matches the real default. Several branches add properties to this one object at a time, so it conflicts often on rebase — the resolution is almost always to keep both properties, not to pick a side.
 
 For settings whose default can be overridden remotely:
 

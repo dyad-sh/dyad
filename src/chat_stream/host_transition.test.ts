@@ -126,11 +126,26 @@ describe("transitionChatStreamHost", () => {
     expect(replayed.commands).toEqual([]);
   });
 
-  it("preserves queued acceptance when replaying a durable queued turn", () => {
-    const admitted = transitionChatStreamHost(initialChatStreamHostState(), {
-      type: "SUBMIT",
-      intent: intent("queued"),
-    });
+  it("returns to the authoritative paused queue when replaying a durable queued turn", () => {
+    const queuedEntry = {
+      itemId: "queued",
+      intentId: "queued",
+      prompt: "Build it",
+      persistence: "durable" as const,
+      editable: true,
+      removable: true,
+    };
+    const admitted = transitionChatStreamHost(
+      initialChatStreamHostState({
+        queueRevision: 2,
+        queuePaused: true,
+        queue: [queuedEntry],
+      }),
+      {
+        type: "SUBMIT",
+        intent: intent("queued"),
+      },
+    );
     expect(admitted.kind).toBe("applied");
     if (admitted.kind !== "applied") return;
 
@@ -142,10 +157,14 @@ describe("transitionChatStreamHost", () => {
 
     expect(replayed.kind).toBe("applied");
     if (replayed.kind !== "applied") return;
+    expect(replayed.state.phase).toBe("idle");
+    expect(replayed.state.active).toBeNull();
+    expect(replayed.state.queue).toEqual([queuedEntry]);
     expect(replayed.state.lastAcceptance).toEqual({
       intentId: "queued",
       acceptance: "queued",
     });
+    expect(replayed.commands).toEqual([]);
   });
 
   it("finalizes a rejected queued intent before draining the queue", () => {

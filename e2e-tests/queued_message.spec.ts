@@ -10,9 +10,9 @@ import * as eph from "electron-playwright-helpers";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import treeKill from "tree-kill";
 import { _electron as electron, type ElectronApplication } from "playwright";
 import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
+import { terminateElectronApp } from "./helpers/fixtures";
 
 async function queueMessage(page: Page, chatInput: Locator, message: string) {
   await expect(async () => {
@@ -80,16 +80,7 @@ async function launchDyadWithProfile({
 }
 
 async function closeDyad(electronApp: ElectronApplication) {
-  const childProcess = electronApp.process();
-  const pid = childProcess.pid;
-  await Promise.race([
-    electronApp.close().catch(() => undefined),
-    new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
-  ]);
-  if (!pid || childProcess.exitCode !== null || childProcess.signalCode) return;
-  await new Promise<void>((resolve) => {
-    treeKill(pid, "SIGKILL", () => resolve());
-  });
+  await terminateElectronApp(electronApp);
 }
 
 test.describe("queued messages", () => {

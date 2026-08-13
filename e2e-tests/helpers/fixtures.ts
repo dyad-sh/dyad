@@ -31,7 +31,7 @@ export interface ElectronConfig {
 // Close through Playwright first so it tears down its Electron protocol
 // connections as well as the OS process. Some Electron states can still leave
 // close() pending, so retain a bounded process-group kill as a fallback.
-async function terminateElectronApp(electronApp: ElectronApplication) {
+export async function terminateElectronApp(electronApp: ElectronApplication) {
   const childProcess = electronApp.process();
   const pid = childProcess.pid;
   console.log(

@@ -161,7 +161,7 @@ function createCommandRunner(
               acceptance: replay.acceptance,
               acceptedMessageId: replay.acceptedMessageId,
             });
-            if (replay.acceptance !== "queued") return;
+            return;
           }
           const invocationRef = command.intent.invocationRef;
           if (!invocationRef) {
@@ -378,60 +378,86 @@ function createCommandRunner(
       }
       case "dispatch-next": {
         try {
-          assertChatActorAdmissionOpen(context.key.chatId);
-        } catch {
-          return;
-        }
-        const claimed = await claimQueueHead(db, context.key.chatId);
-        if (claimed) {
           try {
             assertChatActorAdmissionOpen(context.key.chatId);
           } catch {
-            const queue = await restoreClaimedQueueHead(
-              db,
-              context.key.chatId,
-              claimed.intent.intentId,
-            );
-            emit({
-              type: "QUEUE_MUTATED",
-              queueRevision: queue.queueRevision,
-              paused: queue.queuePaused,
-              entries: queue.queue,
-            });
             return;
           }
-          const phaseBeforeDispatch = context.getSnapshot().phase;
-          if (
-            phaseBeforeDispatch !== "idle" &&
-            phaseBeforeDispatch !== "errored"
-          ) {
-            const queue = await restoreClaimedQueueHead(
-              db,
-              context.key.chatId,
-              claimed.intent.intentId,
-            );
+          const claimed = await retryQueueDispatchPersistence(() =>
+            claimQueueHead(db, context.key.chatId),
+          );
+          if (claimed) {
+            try {
+              assertChatActorAdmissionOpen(context.key.chatId);
+            } catch {
+              const queue = await retryQueueDispatchPersistence(() =>
+                restoreClaimedQueueHead(
+                  db,
+                  context.key.chatId,
+                  claimed.intent.intentId,
+                ),
+              );
+              emit({
+                type: "QUEUE_MUTATED",
+                queueRevision: queue.queueRevision,
+                paused: queue.queuePaused,
+                entries: queue.queue,
+              });
+              return;
+            }
+            const phaseBeforeDispatch = context.getSnapshot().phase;
+            if (
+              phaseBeforeDispatch !== "idle" &&
+              phaseBeforeDispatch !== "errored"
+            ) {
+              const queue = await retryQueueDispatchPersistence(() =>
+                restoreClaimedQueueHead(
+                  db,
+                  context.key.chatId,
+                  claimed.intent.intentId,
+                ),
+              );
+              emit({
+                type: "QUEUE_MUTATED",
+                queueRevision: queue.queueRevision,
+                paused: queue.queuePaused,
+                entries: queue.queue,
+              });
+              return;
+            }
+            // Move the actor out of idle before publishing the shorter queue so
+            // that projection refresh cannot schedule a second head concurrently.
+            emit({ type: "SUBMIT", intent: claimed.intent });
             emit({
               type: "QUEUE_MUTATED",
-              queueRevision: queue.queueRevision,
-              paused: queue.queuePaused,
-              entries: queue.queue,
+              queueRevision: claimed.queue.queueRevision,
+              paused: claimed.queue.queuePaused,
+              entries: claimed.queue.queue,
             });
-            return;
           }
-          // Move the actor out of idle before publishing the shorter queue so
-          // that projection refresh cannot schedule a second head concurrently.
-          emit({ type: "SUBMIT", intent: claimed.intent });
+        } catch (error) {
           emit({
-            type: "QUEUE_MUTATED",
-            queueRevision: claimed.queue.queueRevision,
-            paused: claimed.queue.queuePaused,
-            entries: claimed.queue.queue,
+            type: "REPORT_ERROR",
+            error: `Failed to dispatch the next queued message: ${error instanceof Error ? error.message : String(error)}`,
           });
         }
         return;
       }
     }
   };
+}
+
+async function retryQueueDispatchPersistence<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch {
+    // SQLite failures around queue dispatch are commonly transient (for
+    // example a briefly busy database). Retry once before surfacing a visible
+    // actor error so the queue does not silently stall.
+    return operation();
+  }
 }
 
 export const chatStreamDefinition = {

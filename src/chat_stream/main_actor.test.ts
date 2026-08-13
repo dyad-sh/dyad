@@ -29,6 +29,9 @@ const execution = vi.hoisted(() => ({
   observers: new Map<string, ChatStreamExecutionObserver>(),
   pendingCancellations: new Set<string>(),
   admissions: [] as string[],
+  replayedQueuedIntentIds: new Set<string>(),
+  claimFailures: 0,
+  claimAttempts: 0,
   convertAttachments: vi.fn(async () => []),
 }));
 
@@ -124,6 +127,12 @@ vi.mock("./persistence", () => ({
   })),
   stageActiveIntent: vi.fn(
     (_database: unknown, intent: SerializableChatTurnIntent) => {
+      if (execution.replayedQueuedIntentIds.has(intent.intentId)) {
+        return {
+          kind: "replayed" as const,
+          acceptance: "queued" as const,
+        };
+      }
       execution.admissions.push(intent.prompt);
       persisted.intents.set(intent.intentId, intent);
       return null;
@@ -144,6 +153,7 @@ vi.mock("./persistence", () => ({
         editable: true,
         removable: true,
       };
+      persisted.intents.set(intent.intentId, intent);
       persisted.entries.push(entry);
       persisted.revision += 1;
       return {
@@ -174,6 +184,11 @@ vi.mock("./persistence", () => ({
     queue: [...persisted.entries],
   })),
   claimQueueHead: vi.fn(async () => {
+    execution.claimAttempts += 1;
+    if (execution.claimFailures > 0) {
+      execution.claimFailures -= 1;
+      throw new Error("temporary queue database failure");
+    }
     if (persisted.paused) return null;
     const entry = persisted.entries.shift();
     if (!entry) return null;
@@ -223,12 +238,124 @@ describe("main-hosted chat stream actor", () => {
     execution.observers.clear();
     execution.pendingCancellations.clear();
     execution.admissions = [];
+    execution.replayedQueuedIntentIds.clear();
+    execution.claimFailures = 0;
+    execution.claimAttempts = 0;
     execution.convertAttachments.mockReset();
     execution.convertAttachments.mockResolvedValue([]);
     persisted.revision = 0;
     persisted.paused = false;
     persisted.entries = [];
     persisted.intents.clear();
+  });
+
+  it("keeps a replayed durable intent in its recovered paused queue", async () => {
+    const queued = turn("queued");
+    persisted.paused = true;
+    persisted.revision = 2;
+    persisted.intents.set(queued.intentId, queued);
+    persisted.entries = [
+      {
+        itemId: queued.intentId,
+        intentId: queued.intentId,
+        prompt: queued.prompt,
+        persistence: "durable",
+        editable: true,
+        removable: true,
+      },
+    ];
+    execution.replayedQueuedIntentIds.add(queued.intentId);
+
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const client = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(chatStreamClientDefinition, chatStreamKey(7));
+    const release = actor.subscribe(() => undefined);
+    await actor.resync();
+
+    await actor.dispatch({ type: "SUBMIT", intent: queued });
+    await flush();
+
+    expect(actor.getSnapshot()).toMatchObject({
+      phase: "idle",
+      queuePaused: true,
+      queue: [{ intentId: "queued" }],
+      lastAcceptance: { intentId: "queued", acceptance: "queued" },
+    });
+    expect(execution.observers.size).toBe(0);
+
+    release();
+    client.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
+
+  it("retries a transient durable queue claim failure", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const client = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(chatStreamClientDefinition, chatStreamKey(7));
+    const release = actor.subscribe(() => undefined);
+    await actor.resync();
+
+    await actor.dispatch({ type: "SUBMIT", intent: turn("first") });
+    await flush();
+    await actor.dispatch({ type: "SUBMIT", intent: turn("second") });
+    await flush();
+    execution.claimFailures = 1;
+    execution.observers.get("first")?.onEnd?.({
+      chatId: 7,
+      invocationRef: turn("first").invocationRef,
+      updatedFiles: false,
+    });
+
+    await vi.waitFor(() =>
+      expect(execution.observers.has("second")).toBe(true),
+    );
+    expect(execution.claimAttempts).toBe(2);
+    expect(actor.getSnapshot()).toMatchObject({
+      phase: "streaming",
+      queue: [],
+    });
+
+    release();
+    client.dispose();
+    await transport.dispose();
+    await host.dispose();
   });
 
   it("shares lifecycle and queue authority across reload and two windows", async () => {

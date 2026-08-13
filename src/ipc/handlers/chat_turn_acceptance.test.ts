@@ -6,6 +6,7 @@ import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
   loadChatQueue,
   disposeSessionChatQueue,
+  hydrateChatStreamPersistence,
   mutateChatQueue,
   persistQueuedIntent,
 } from "@/chat_stream/persistence";
@@ -153,6 +154,7 @@ describe("acceptChatTurn", () => {
       mutationId: "reorder-third",
     });
 
+    const thirdIntent = intent("third");
     expect(() =>
       acceptChatTurn(db, {
         chatId,
@@ -165,11 +167,40 @@ describe("acceptChatTurn", () => {
         },
         content: "third",
         chatTurnIntentId: "third",
+        chatTurnIntent: thirdIntent,
       }),
     ).not.toThrow();
 
     expect(
       loadChatQueue(db, chatId).queue.map((entry) => entry.intentId),
     ).toEqual(["first", "second"]);
+
+    disposeSessionChatQueue(chatId);
+    expect(
+      hydrateChatStreamPersistence(db, chatId).queue.map(
+        (entry) => entry.intentId,
+      ),
+    ).toEqual(["first", "second"]);
+    const replay = acceptChatTurn(db, {
+      chatId,
+      storedChatMode: "build",
+      selectedChatMode: "build",
+      selectedModel: {
+        provider: "auto",
+        name: "auto",
+        effortLevel: "medium",
+      },
+      content: "third",
+      chatTurnIntentId: "third",
+      chatTurnIntent: thirdIntent,
+    });
+    expect(replay.userMessageId).toBeNull();
+    expect(
+      db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(eq(messages.chatId, chatId))
+        .all(),
+    ).toHaveLength(1);
   });
 });

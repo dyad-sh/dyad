@@ -65,13 +65,13 @@ describe("chat stream persistence", () => {
     };
   }
 
-  it("keeps an intent and queue revision in main-process memory", () => {
+  it("durably stores an intent and queue revision", () => {
     const queued = persistQueuedIntent(database, intent("turn-1"));
 
     expect(queued).toMatchObject({
       kind: "queued",
       queueRevision: 1,
-      entry: { intentId: "turn-1", persistence: "main-session" },
+      entry: { intentId: "turn-1", persistence: "durable" },
     });
     expect(loadChatQueue(database, chatId)).toMatchObject({
       queueRevision: 1,
@@ -295,16 +295,98 @@ describe("chat stream persistence", () => {
     });
   });
 
-  it("does not restore queued work after process-lifetime state is disposed", () => {
+  it("restores durable queued work paused after process-lifetime disposal", () => {
     persistQueuedIntent(database, intent("turn-1"));
     disposeSessionChatQueue(chatId);
 
     const hydrated = hydrateChatStreamPersistence(database, chatId);
 
     expect(hydrated).toEqual({
-      queueRevision: 0,
-      queuePaused: false,
-      queue: [],
+      queueRevision: 2,
+      queuePaused: true,
+      queue: [expect.objectContaining({ intentId: "turn-1" })],
     });
+  });
+
+  it("restores a claimed durable head paused after a process crash", async () => {
+    persistQueuedIntent(database, intent("turn-1"));
+    await claimQueueHead(database, chatId);
+    disposeSessionChatQueue(chatId);
+
+    expect(hydrateChatStreamPersistence(database, chatId)).toMatchObject({
+      queueRevision: 3,
+      queuePaused: true,
+      queue: [{ intentId: "turn-1", persistence: "durable" }],
+    });
+  });
+
+  it("restores durable edits, ordering, pause state, and attachments", async () => {
+    const first = intent("first", "Original");
+    const second = {
+      ...intent("second", "Second"),
+      attachments: [
+        {
+          name: "context.txt",
+          type: "text/plain",
+          data: "data:text/plain;base64,ZHVyYWJsZSBhdHRhY2htZW50",
+          attachmentType: "chat-context" as const,
+        },
+      ],
+    };
+    second.payloadHash = computeChatTurnPayloadHash(second);
+    persistQueuedIntent(database, first);
+    persistQueuedIntent(database, second);
+    await mutateChatQueue(database, chatId, {
+      type: "mutate-queue",
+      mutation: {
+        type: "edit",
+        itemId: "first",
+        prompt: "Edited",
+      },
+      expectedQueueRevision: 2,
+      mutationId: "edit-first",
+    });
+    await mutateChatQueue(database, chatId, {
+      type: "mutate-queue",
+      mutation: { type: "reorder", itemId: "second", toIndex: 0 },
+      expectedQueueRevision: 3,
+      mutationId: "reorder-second",
+    });
+    await mutateChatQueue(database, chatId, {
+      type: "mutate-queue",
+      mutation: { type: "pause" },
+      expectedQueueRevision: 4,
+      mutationId: "pause",
+    });
+    disposeSessionChatQueue(chatId);
+
+    const restored = hydrateChatStreamPersistence(database, chatId);
+    expect(restored.queuePaused).toBe(true);
+    expect(restored.queue.map((entry) => entry.intentId)).toEqual([
+      "second",
+      "first",
+    ]);
+    expect(restored.queue[0]?.attachments).toEqual(second.attachments);
+    expect(restored.queue[1]?.prompt).toBe("Edited");
+  });
+
+  it("does not restore removed or machine-owned queue entries", async () => {
+    persistQueuedIntent(database, intent("ordinary"));
+    persistQueuedIntent(
+      database,
+      intent("plan", "Implement", {
+        kind: "plan-handoff",
+        handoffId: "handoff",
+      }),
+    );
+    await mutateChatQueue(database, chatId, {
+      type: "mutate-queue",
+      mutation: { type: "remove", itemId: "ordinary" },
+      expectedQueueRevision: 2,
+      mutationId: "remove-ordinary",
+    });
+    disposeSessionChatQueue(chatId);
+
+    expect(hydrateChatStreamPersistence(database, chatId).queue).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import * as schema from "@/db/schema";
 import { chats, messages } from "@/db/schema";
@@ -7,6 +7,7 @@ import {
   ensureIntentRecord,
   getAcceptedMessageId,
   markIntentAccepted,
+  persistAcceptedChatTurn,
 } from "@/chat_stream/persistence";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { ChatMode, ModelSelection, StoredChatMode } from "@/lib/schemas";
@@ -58,16 +59,51 @@ export function acceptChatTurn(
       role: "user",
       content: input.content,
       userInputRequestId: input.userInputRequestId,
+      chatTurnIntentId: input.chatTurnIntentId,
     });
-    const insertedUserMessage = (
-      input.userInputRequestId
-        ? insert.onConflictDoNothing({
-            target: [messages.chatId, messages.userInputRequestId],
-          })
-        : insert
-    )
+    const insertedUserMessage = insert
+      .onConflictDoNothing()
       .returning({ id: messages.id })
       .get();
+
+    const acceptedMessageId =
+      insertedUserMessage?.id ??
+      (input.chatTurnIntentId || input.userInputRequestId
+        ? tx
+            .select({ id: messages.id })
+            .from(messages)
+            .where(
+              and(
+                eq(messages.chatId, input.chatId),
+                or(
+                  ...(input.chatTurnIntentId
+                    ? [eq(messages.chatTurnIntentId, input.chatTurnIntentId)]
+                    : []),
+                  ...(input.userInputRequestId
+                    ? [
+                        eq(
+                          messages.userInputRequestId,
+                          input.userInputRequestId,
+                        ),
+                      ]
+                    : []),
+                ),
+              ),
+            )
+            .get()?.id
+        : undefined);
+    if (acceptedMessageId === undefined) {
+      throw new DyadError(
+        `Chat turn acceptance could not resolve its user message for chat ${input.chatId}`,
+        DyadErrorKind.Internal,
+      );
+    }
+    persistAcceptedChatTurn(
+      tx,
+      input.chatTurnIntent,
+      input.chatTurnIntentId,
+      acceptedMessageId,
+    );
 
     if (!insertedUserMessage) {
       // Repair chats accepted before first-turn latching became atomic.
@@ -81,6 +117,7 @@ export function acceptChatTurn(
         .run();
       return {
         userMessageId: null,
+        acceptedMessageId,
         authoritativeChatMode: null,
         authoritativeModel: null,
       };
@@ -117,12 +154,13 @@ export function acceptChatTurn(
     }
     return {
       userMessageId: insertedUserMessage.id,
+      acceptedMessageId,
       authoritativeChatMode: winningChat.chatMode,
       authoritativeModel: winningChat.modelSelection,
     };
   });
-  if (accepted.userMessageId !== null && input.chatTurnIntentId) {
-    markIntentAccepted(input.chatTurnIntentId, accepted.userMessageId);
+  if (input.chatTurnIntentId) {
+    markIntentAccepted(input.chatTurnIntentId, accepted.acceptedMessageId);
   }
   return accepted;
 }

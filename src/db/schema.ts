@@ -10,6 +10,7 @@ import {
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 import type { ModelSelection, StoredChatMode } from "@/lib/schemas";
+import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 
 export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
 
@@ -176,6 +177,9 @@ export const messages = sqliteTable(
     commitHash: text("commit_hash"),
     requestId: text("request_id"),
     userInputRequestId: text("user_input_request_id"),
+    // Stable idempotency identity for main-owned chat turn admission. Unlike
+    // userInputRequestId, ordinary queued turns also carry this identity.
+    chatTurnIntentId: text("chat_turn_intent_id"),
     // Max tokens used for this message (only for assistant messages)
     maxTokensUsed: integer("max_tokens_used"),
     // Model name used for this message (only for assistant messages)
@@ -198,6 +202,75 @@ export const messages = sqliteTable(
     uniqueIndex("messages_chat_user_input_request_unique").on(
       table.chatId,
       table.userInputRequestId,
+    ),
+    uniqueIndex("messages_chat_turn_intent_unique").on(
+      table.chatId,
+      table.chatTurnIntentId,
+    ),
+  ],
+);
+
+export const chatTurnIntents = sqliteTable(
+  "chat_turn_intents",
+  {
+    intentId: text("intent_id").primaryKey(),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    payloadHash: text("payload_hash").notNull(),
+    intent: text("intent", {
+      mode: "json",
+    }).$type<SerializableChatTurnIntent | null>(),
+    acceptance: text("acceptance", {
+      enum: ["queued", "message-accepted", "rejected"],
+    })
+      .notNull()
+      .default("queued"),
+    recovery: text("recovery", {
+      enum: ["not-started", "started", "terminal"],
+    })
+      .notNull()
+      .default("not-started"),
+    acceptedMessageId: integer("accepted_message_id"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("chat_turn_intents_chat_idx").on(table.chatId)],
+);
+
+export const chatQueueStates = sqliteTable("chat_queue_states", {
+  chatId: integer("chat_id")
+    .primaryKey()
+    .references(() => chats.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull().default(0),
+  paused: integer("paused", { mode: "boolean" }).notNull().default(false),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const chatQueueEntries = sqliteTable(
+  "chat_queue_entries",
+  {
+    intentId: text("intent_id")
+      .primaryKey()
+      .references(() => chatTurnIntents.intentId, { onDelete: "cascade" }),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    status: text("status", { enum: ["queued", "claimed"] })
+      .notNull()
+      .default("queued"),
+  },
+  (table) => [
+    index("chat_queue_entries_chat_position_idx").on(
+      table.chatId,
+      table.position,
     ),
   ],
 );

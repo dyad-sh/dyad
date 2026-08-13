@@ -467,7 +467,7 @@ export const chatStreamDefinition = {
     entityDeletion: "dispose",
     rendererOwnership: "host",
     survivesRendererReload: true,
-    restartPersistence: "ephemeral",
+    restartPersistence: "persistent",
     flushOnShutdown: false,
     onDisposed: ({ key, snapshot }) => {
       if (snapshot.active) {

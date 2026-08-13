@@ -1,6 +1,12 @@
 import { serialize } from "node:v8";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type * as schema from "@/db/schema";
+import {
+  chatQueueEntries,
+  chatQueueStates,
+  chatTurnIntents,
+} from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   hasMatchingDueFollowUp,
@@ -9,6 +15,7 @@ import {
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import {
   CHAT_STREAM_MAX_QUEUE_BYTES,
+  SerializableChatTurnIntentSchema,
   type ChatQueueEntry,
   type SerializableChatTurnIntent,
 } from "./transport";
@@ -16,6 +23,10 @@ import type { ChatStreamHostCommand } from "./host_state";
 import { withChatQueueLock } from "./queue_lock";
 
 type ChatDatabase = BetterSQLite3Database<typeof schema>;
+type ChatPersistenceDatabase = Pick<
+  ChatDatabase,
+  "select" | "insert" | "update" | "delete"
+>;
 
 interface IntentRecord {
   intent: SerializableChatTurnIntent | null;
@@ -24,6 +35,7 @@ interface IntentRecord {
   acceptance: "queued" | "message-accepted" | "rejected";
   recovery: "not-started" | "started" | "terminal";
   acceptedMessageId?: number;
+  durable: boolean;
 }
 
 interface QueueAggregate {
@@ -55,6 +67,11 @@ function releaseIntentPayload(record: IntentRecord): void {
 type LiveIntentRecord = IntentRecord & {
   intent: SerializableChatTurnIntent;
 };
+
+interface SelectedQueueRecord {
+  record: LiveIntentRecord;
+  entry: ChatQueueEntry;
+}
 
 function liveRecordFor(intentId: string): LiveIntentRecord | undefined {
   const record = recordFor(intentId);
@@ -110,7 +127,7 @@ export function toQueueEntry(
     redo: intent.redo,
     appId: intent.appId,
     requestedChatMode: intent.requestedChatMode,
-    persistence: "main-session",
+    persistence: intent.owner === undefined ? "durable" : "main-session",
     editable: intent.owner === undefined,
     removable: intent.owner?.kind !== "plan-handoff",
   };
@@ -150,6 +167,98 @@ export function hydrateChatStreamPersistence(
   database: ChatDatabase,
   chatId: number,
 ): ReturnType<typeof loadChatQueue> {
+  if (queues.has(chatId)) return loadChatQueue(database, chatId);
+
+  database.transaction((tx) => {
+    const persistedRecords = tx
+      .select()
+      .from(chatTurnIntents)
+      .where(eq(chatTurnIntents.chatId, chatId))
+      .all();
+    const persistedEntries = tx
+      .select()
+      .from(chatQueueEntries)
+      .where(eq(chatQueueEntries.chatId, chatId))
+      .orderBy(asc(chatQueueEntries.position))
+      .all();
+    const persistedState = tx
+      .select()
+      .from(chatQueueStates)
+      .where(eq(chatQueueStates.chatId, chatId))
+      .get();
+
+    for (const row of persistedRecords) {
+      let intent: SerializableChatTurnIntent | null = null;
+      if (row.intent !== null) {
+        const parsed = SerializableChatTurnIntentSchema.safeParse(row.intent);
+        if (!parsed.success) {
+          throw new DyadError(
+            `Persisted chat intent ${row.intentId} is invalid`,
+            DyadErrorKind.Internal,
+          );
+        }
+        intent = parsed.data;
+        assertChatTurnPayloadHash(intent);
+        if (
+          intent.chatId !== chatId ||
+          intent.payloadHash !== row.payloadHash
+        ) {
+          throw new DyadError(
+            `Persisted chat intent ${row.intentId} does not match its queue`,
+            DyadErrorKind.Internal,
+          );
+        }
+      }
+      intentRecords.set(row.intentId, {
+        intent,
+        chatId: row.chatId,
+        payloadHash: row.payloadHash,
+        acceptance: row.acceptance,
+        recovery: row.recovery,
+        acceptedMessageId: row.acceptedMessageId ?? undefined,
+        durable: true,
+      });
+    }
+
+    const intentIds = persistedEntries.flatMap((entry) => {
+      const record = liveRecordFor(entry.intentId);
+      if (!record) {
+        throw new DyadError(
+          `Persisted queued chat intent ${entry.intentId} has no payload`,
+          DyadErrorKind.Internal,
+        );
+      }
+      return [entry.intentId];
+    });
+    let revision = persistedState?.revision ?? 0;
+    let paused = persistedState?.paused ?? false;
+    // A process restart may happen long after admission or while the head was
+    // claimed. Restore every durable queue paused so no work runs invisibly.
+    if (
+      intentIds.length > 0 &&
+      (!paused || persistedEntries.some((e) => e.status === "claimed"))
+    ) {
+      revision += 1;
+      paused = true;
+      tx.insert(chatQueueStates)
+        .values({ chatId, revision, paused, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: chatQueueStates.chatId,
+          set: { revision, paused, updatedAt: new Date() },
+        })
+        .run();
+      tx.update(chatQueueEntries)
+        .set({ status: "queued" })
+        .where(
+          and(
+            eq(chatQueueEntries.chatId, chatId),
+            eq(chatQueueEntries.status, "claimed"),
+          ),
+        )
+        .run();
+    }
+    queues.set(chatId, { revision, paused, intentIds });
+  });
   return loadChatQueue(database, chatId);
 }
 
@@ -179,7 +288,7 @@ export function persistSessionQueuedIntent(
   intent: SerializableChatTurnIntent,
 ): PersistAdmissionResult {
   assertMatchingDueFollowUp(intent);
-  return persistIntentInQueue(database, intent);
+  return persistIntentInQueue(database, intent, false);
 }
 
 export function isSessionQueuedIntent(intentId: string): boolean {
@@ -221,11 +330,31 @@ export type PersistAdmissionResult =
     };
 
 function persistIntentInQueue(
-  _database: ChatDatabase,
+  database: ChatDatabase,
   intent: SerializableChatTurnIntent,
+  durable: boolean,
 ): PersistAdmissionResult {
   assertChatTurnPayloadHash(intent);
-  const existing = recordFor(intent.intentId);
+  let existing = recordFor(intent.intentId);
+  if (!existing && durable) {
+    const persisted = database
+      .select()
+      .from(chatTurnIntents)
+      .where(eq(chatTurnIntents.intentId, intent.intentId))
+      .get();
+    if (persisted) {
+      existing = {
+        intent: persisted.intent,
+        chatId: persisted.chatId,
+        payloadHash: persisted.payloadHash,
+        acceptance: persisted.acceptance,
+        recovery: persisted.recovery,
+        acceptedMessageId: persisted.acceptedMessageId ?? undefined,
+        durable: true,
+      };
+      intentRecords.set(intent.intentId, existing);
+    }
+  }
   if (existing) {
     assertMatchingIntent(existing, intent);
     return replay(existing);
@@ -238,15 +367,59 @@ function persistIntentInQueue(
     }),
     toQueueEntry(intent),
   ]);
+  const nextRevision = aggregate.revision + 1;
+  if (durable) {
+    database.transaction((tx) => {
+      tx.insert(chatQueueStates)
+        .values({
+          chatId: intent.chatId,
+          revision: aggregate.revision,
+          paused: aggregate.paused,
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing({ target: chatQueueStates.chatId })
+        .run();
+      tx.insert(chatTurnIntents)
+        .values({
+          intentId: intent.intentId,
+          chatId: intent.chatId,
+          payloadHash: intent.payloadHash,
+          intent,
+          acceptance: "queued",
+          recovery: "not-started",
+          updatedAt: new Date(),
+        })
+        .run();
+      const lastPosition = tx
+        .select({ position: chatQueueEntries.position })
+        .from(chatQueueEntries)
+        .where(eq(chatQueueEntries.chatId, intent.chatId))
+        .orderBy(desc(chatQueueEntries.position))
+        .get()?.position;
+      tx.insert(chatQueueEntries)
+        .values({
+          intentId: intent.intentId,
+          chatId: intent.chatId,
+          position: (lastPosition ?? -1) + 1,
+          status: "queued",
+        })
+        .run();
+      tx.update(chatQueueStates)
+        .set({ revision: nextRevision, updatedAt: new Date() })
+        .where(eq(chatQueueStates.chatId, intent.chatId))
+        .run();
+    });
+  }
   intentRecords.set(intent.intentId, {
     intent,
     chatId: intent.chatId,
     payloadHash: intent.payloadHash,
     acceptance: "queued",
     recovery: "not-started",
+    durable,
   });
   aggregate.intentIds.push(intent.intentId);
-  aggregate.revision += 1;
+  aggregate.revision = nextRevision;
   return {
     kind: "queued",
     entry: toQueueEntry(intent),
@@ -264,7 +437,7 @@ export function persistQueuedIntent(
       DyadErrorKind.Validation,
     );
   }
-  return persistIntentInQueue(database, intent);
+  return persistIntentInQueue(database, intent, intent.owner === undefined);
 }
 
 export function stageActiveIntent(
@@ -286,6 +459,7 @@ export function stageActiveIntent(
     payloadHash: intent.payloadHash,
     acceptance: "queued",
     recovery: "not-started",
+    durable: false,
   });
   return null;
 }
@@ -303,6 +477,7 @@ export function ensureIntentRecord(intent: SerializableChatTurnIntent): void {
     payloadHash: intent.payloadHash,
     acceptance: "queued",
     recovery: "not-started",
+    durable: false,
   });
 }
 
@@ -321,6 +496,160 @@ export function getRetainedIntentPayloadBytes(intentId: string): number {
   return intent ? serialize(intent).byteLength : 0;
 }
 
+export function persistAcceptedChatTurn(
+  database: ChatPersistenceDatabase,
+  intent: SerializableChatTurnIntent | undefined,
+  intentId: string | undefined,
+  acceptedMessageId: number,
+): void {
+  if (intent?.owner !== undefined) return;
+  if (intent) assertChatTurnPayloadHash(intent);
+  const durableIntentId = intent?.intentId ?? intentId;
+  if (!durableIntentId) return;
+  const existing = database
+    .select()
+    .from(chatTurnIntents)
+    .where(eq(chatTurnIntents.intentId, durableIntentId))
+    .get();
+  if (existing && intent) {
+    assertMatchingIntent(
+      {
+        intent: existing.intent,
+        chatId: existing.chatId,
+        payloadHash: existing.payloadHash,
+        acceptance: existing.acceptance,
+        recovery: existing.recovery,
+        acceptedMessageId: existing.acceptedMessageId ?? undefined,
+        durable: true,
+      },
+      intent,
+    );
+  } else if (intent) {
+    database
+      .insert(chatTurnIntents)
+      .values({
+        intentId: intent.intentId,
+        chatId: intent.chatId,
+        payloadHash: intent.payloadHash,
+        intent: null,
+        acceptance: "message-accepted",
+        recovery: "started",
+        acceptedMessageId,
+        updatedAt: new Date(),
+      })
+      .run();
+  }
+
+  const queued = database
+    .select({ status: chatQueueEntries.status })
+    .from(chatQueueEntries)
+    .where(eq(chatQueueEntries.intentId, durableIntentId))
+    .get();
+  database
+    .update(chatTurnIntents)
+    .set({
+      acceptance: "message-accepted",
+      recovery: "started",
+      acceptedMessageId,
+      intent: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(chatTurnIntents.intentId, durableIntentId))
+    .run();
+  if (queued) {
+    database
+      .delete(chatQueueEntries)
+      .where(eq(chatQueueEntries.intentId, durableIntentId))
+      .run();
+    if (queued.status === "queued") {
+      database
+        .update(chatQueueStates)
+        .set({
+          revision: sql`${chatQueueStates.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(chatQueueStates.chatId, existing?.chatId ?? intent!.chatId))
+        .run();
+    }
+  }
+}
+
+function persistDurableQueueMutation(
+  database: ChatDatabase,
+  chatId: number,
+  aggregate: QueueAggregate,
+  selected: SelectedQueueRecord[],
+  mutation: Extract<
+    ChatStreamHostCommand,
+    { type: "mutate-queue" }
+  >["mutation"],
+): void {
+  const state = database
+    .select({ chatId: chatQueueStates.chatId })
+    .from(chatQueueStates)
+    .where(eq(chatQueueStates.chatId, chatId))
+    .get();
+  if (!state) return;
+
+  database.transaction((tx) => {
+    tx.update(chatQueueStates)
+      .set({
+        revision: aggregate.revision,
+        paused: aggregate.paused,
+        updatedAt: new Date(),
+      })
+      .where(eq(chatQueueStates.chatId, chatId))
+      .run();
+
+    const claimedCount = tx
+      .select({ intentId: chatQueueEntries.intentId })
+      .from(chatQueueEntries)
+      .where(
+        and(
+          eq(chatQueueEntries.chatId, chatId),
+          eq(chatQueueEntries.status, "claimed"),
+        ),
+      )
+      .all().length;
+    let durablePosition = claimedCount;
+    for (const intentId of aggregate.intentIds) {
+      const record = liveRecordFor(intentId);
+      if (!record?.durable) continue;
+      tx.update(chatQueueEntries)
+        .set({ position: durablePosition, status: "queued" })
+        .where(eq(chatQueueEntries.intentId, intentId))
+        .run();
+      tx.update(chatTurnIntents)
+        .set({
+          intent: record.intent,
+          payloadHash: record.payloadHash,
+          updatedAt: new Date(),
+        })
+        .where(eq(chatTurnIntents.intentId, intentId))
+        .run();
+      durablePosition += 1;
+    }
+
+    if (mutation.type === "remove" || mutation.type === "clear") {
+      for (const { record } of selected) {
+        if (!record.durable) continue;
+        tx.delete(chatQueueEntries)
+          .where(eq(chatQueueEntries.intentId, record.intent.intentId))
+          .run();
+        tx.update(chatTurnIntents)
+          .set({
+            acceptance: "rejected",
+            recovery: "terminal",
+            intent: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(chatTurnIntents.intentId, record.intent.intentId))
+          .run();
+      }
+    }
+  });
+}
+
 export function markIntentAccepted(
   intentId: string | undefined,
   acceptedMessageId: number,
@@ -333,6 +662,7 @@ export function markIntentAccepted(
   record.acceptance = "message-accepted";
   record.recovery = "started";
   record.acceptedMessageId = acceptedMessageId;
+  if (record.intent?.owner === undefined) record.durable = true;
   const aggregate = queueFor(record.chatId);
   const index = aggregate.intentIds.indexOf(intentId);
   if (index >= 0) {
@@ -387,6 +717,19 @@ export async function mutateChatQueue(
     }
 
     const originalIntentIds = [...aggregate.intentIds];
+    const originalPaused = aggregate.paused;
+    const originalRevision = aggregate.revision;
+    const originalRecords = new Map(
+      selected.map(({ record }) => [
+        record,
+        {
+          intent: record.intent,
+          payloadHash: record.payloadHash,
+          acceptance: record.acceptance,
+          recovery: record.recovery,
+        },
+      ]),
+    );
     switch (mutation.type) {
       case "pause":
         aggregate.paused = true;
@@ -462,6 +805,27 @@ export async function mutateChatQueue(
     }
     aggregate.revision += 1;
 
+    try {
+      persistDurableQueueMutation(
+        database,
+        chatId,
+        aggregate,
+        selected,
+        mutation,
+      );
+    } catch (error) {
+      aggregate.intentIds = originalIntentIds;
+      aggregate.paused = originalPaused;
+      aggregate.revision = originalRevision;
+      for (const [record, original] of originalRecords) {
+        record.intent = original.intent;
+        record.payloadHash = original.payloadHash;
+        record.acceptance = original.acceptance;
+        record.recovery = original.recovery;
+      }
+      throw error;
+    }
+
     const sessionRecords = selected.filter(
       ({ record }) =>
         record.intent.owner?.kind === "user-input-follow-up" &&
@@ -524,6 +888,16 @@ export function markIntentTerminal(
     throw new DyadError("Chat turn intent not found", DyadErrorKind.NotFound);
   }
   const aggregate = queueFor(record.chatId);
+  const originalAggregate = {
+    revision: aggregate.revision,
+    paused: aggregate.paused,
+    intentIds: [...aggregate.intentIds],
+  };
+  const originalRecord = {
+    intent: record.intent,
+    acceptance: record.acceptance,
+    recovery: record.recovery,
+  };
   let changed = false;
   if (rejectBeforeAcceptance && record.acceptance === "queued") {
     const index = aggregate.intentIds.indexOf(intent.intentId);
@@ -539,6 +913,42 @@ export function markIntentTerminal(
     changed = true;
   }
   if (changed) aggregate.revision += 1;
+  if (record.durable) {
+    try {
+      database.transaction((tx) => {
+        if (rejectBeforeAcceptance && record.acceptance === "rejected") {
+          tx.delete(chatQueueEntries)
+            .where(eq(chatQueueEntries.intentId, intent.intentId))
+            .run();
+        }
+        tx.update(chatTurnIntents)
+          .set({
+            acceptance: record.acceptance,
+            recovery: "terminal",
+            intent: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(chatTurnIntents.intentId, intent.intentId))
+          .run();
+        tx.update(chatQueueStates)
+          .set({
+            revision: aggregate.revision,
+            paused: aggregate.paused,
+            updatedAt: new Date(),
+          })
+          .where(eq(chatQueueStates.chatId, record.chatId))
+          .run();
+      });
+    } catch (error) {
+      aggregate.revision = originalAggregate.revision;
+      aggregate.paused = originalAggregate.paused;
+      aggregate.intentIds = originalAggregate.intentIds;
+      record.intent = originalRecord.intent;
+      record.acceptance = originalRecord.acceptance;
+      record.recovery = originalRecord.recovery;
+      throw error;
+    }
+  }
   const queue = loadChatQueue(database, record.chatId);
   // Terminal replay only needs the immutable identity/hash and acceptance
   // receipt retained above. Release prompts and base64 attachments immediately
@@ -565,8 +975,33 @@ export async function claimQueueHead(
       aggregate.revision += 1;
       return null;
     }
+    const nextRevision = aggregate.revision + 1;
+    if (record.durable) {
+      database.transaction((tx) => {
+        const claimed = tx
+          .update(chatQueueEntries)
+          .set({ status: "claimed" })
+          .where(
+            and(
+              eq(chatQueueEntries.intentId, intentId),
+              eq(chatQueueEntries.status, "queued"),
+            ),
+          )
+          .run();
+        if (claimed.changes !== 1) {
+          throw new DyadError(
+            "Queued chat intent could not be claimed",
+            DyadErrorKind.Conflict,
+          );
+        }
+        tx.update(chatQueueStates)
+          .set({ revision: nextRevision, updatedAt: new Date() })
+          .where(eq(chatQueueStates.chatId, chatId))
+          .run();
+      });
+    }
     aggregate.intentIds.shift();
-    aggregate.revision += 1;
+    aggregate.revision = nextRevision;
     return {
       intent: record.intent,
       queue: loadChatQueue(database, chatId),
@@ -586,8 +1021,21 @@ export async function restoreClaimedQueueHead(
       record?.acceptance === "queued" &&
       !aggregate.intentIds.includes(intentId)
     ) {
+      const nextRevision = aggregate.revision + 1;
+      if (record.durable) {
+        database.transaction((tx) => {
+          tx.update(chatQueueEntries)
+            .set({ status: "queued", position: 0 })
+            .where(eq(chatQueueEntries.intentId, intentId))
+            .run();
+          tx.update(chatQueueStates)
+            .set({ revision: nextRevision, updatedAt: new Date() })
+            .where(eq(chatQueueStates.chatId, chatId))
+            .run();
+        });
+      }
       aggregate.intentIds.unshift(intentId);
-      aggregate.revision += 1;
+      aggregate.revision = nextRevision;
     }
     return loadChatQueue(database, chatId);
   });

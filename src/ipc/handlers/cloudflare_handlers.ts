@@ -9,7 +9,15 @@ import {
 
 import { createTypedHandler } from "./base";
 import { cloudflareContracts } from "../types/cloudflare";
+import { generateText } from "ai";
+
 import { sanitiseD1DatabaseName } from "@/lib/data_sources/d1_name";
+import {
+  ProposedSchemaSchema,
+  schemaToStatements,
+} from "@/lib/data_sources/d1_schema_design";
+import { getModelClient } from "../utils/get_model_client";
+import { getChatAgentModel } from "@/lib/chat_agent_model";
 import {
   createD1ViaToken,
   createD1ViaWrangler,
@@ -17,6 +25,7 @@ import {
   ensureWrangler,
   listD1Databases,
   listD1DatabasesViaWrangler,
+  applyD1Statements,
   loginWithBrowser,
   run,
 } from "../utils/cloudflare/environment";
@@ -40,6 +49,35 @@ export function storedCloudflareToken(): string | null {
     return null;
   }
 }
+
+/**
+ * What the designer is told about its job.
+ *
+ * The description is quoted as data rather than pasted into the instructions,
+ * because it is user input that may contain anything, including something that
+ * reads like an instruction. The model's output is a structure that is then
+ * validated, so the worst a hostile description achieves is a bad design the
+ * user is shown before anything is created.
+ */
+const SCHEMA_DESIGNER_PROMPT = [
+  "You design SQLite database schemas for Cloudflare D1.",
+  "",
+  "Reply with JSON only, matching this shape:",
+  '{ "summary": string, "tables": [ { "name": string, "description": string,',
+  '  "columns": [ { "name": string, "type": "TEXT"|"INTEGER"|"REAL"|"BLOB"|"NUMERIC",',
+  '    "nullable": boolean, "primaryKey": boolean, "unique": boolean,',
+  '    "description": string, "references": { "table": string, "column": string } | null } ] } ] }',
+  "",
+  "Rules:",
+  "- Table and column names must be plain: letters, digits and underscores only.",
+  "- Give every table an INTEGER PRIMARY KEY called id unless the user says otherwise.",
+  "- Add created_at as TEXT to tables that record events or records over time.",
+  "- Use a junction table for many-to-many relationships.",
+  "- Every references.table must be another table in this same design.",
+  "- Prefer fewer, clearer tables over an exhaustive model.",
+  "- Do not store large binary files; reference them by key or URL instead.",
+  "- summary: one or two sentences on what you decided and why.",
+].join("\n");
 
 export function registerCloudflareHandlers() {
   createTypedHandler(cloudflareContracts.detectEnvironment, async () => {
@@ -99,6 +137,66 @@ export function registerCloudflareHandlers() {
   createTypedHandler(cloudflareContracts.listSignedInDatabases, async () =>
     listD1DatabasesViaWrangler(process.cwd()),
   );
+
+  createTypedHandler(
+    cloudflareContracts.designSchema,
+    async (_event, input) => {
+      const settings = readSettings();
+      const { modelClient } = await getModelClient(
+        getChatAgentModel(settings),
+        settings,
+      );
+
+      const { text } = await generateText({
+        model: modelClient.model,
+        system: SCHEMA_DESIGNER_PROMPT,
+        // Fenced as data: a description is user input and may read like an
+        // instruction, and this makes clear which part is which.
+        prompt: `Design a database for the following requirement.\n\n<requirement>\n${input.description.trim()}\n</requirement>`,
+        maxOutputTokens: 4000,
+        temperature: 0.2,
+        maxRetries: 1,
+      });
+
+      // Models fence JSON in markdown often enough that finding the object is
+      // more reliable than insisting they did not.
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      if (start < 0 || end <= start) {
+        throw new Error("The designer did not return a database design.");
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text.slice(start, end + 1));
+      } catch {
+        throw new Error(
+          "The designer returned something that was not a design.",
+        );
+      }
+
+      const result = ProposedSchemaSchema.safeParse(parsed);
+      if (!result.success) {
+        throw new Error(
+          "The design was not in a usable shape. Try describing it again.",
+        );
+      }
+
+      // Rejected here rather than at creation time, remotely.
+      schemaToStatements(result.data);
+      return result.data;
+    },
+  );
+
+  createTypedHandler(cloudflareContracts.applySchema, async (_event, input) => {
+    const statements = schemaToStatements(input.schema);
+    const applied = await applyD1Statements({
+      projectRoot: process.cwd(),
+      databaseId: input.databaseId,
+      statements,
+    });
+    return { tablesCreated: applied };
+  });
 
   createTypedHandler(
     cloudflareContracts.createDatabase,

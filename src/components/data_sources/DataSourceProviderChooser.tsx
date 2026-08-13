@@ -8,6 +8,7 @@ import {
   HardDrive,
   Loader2,
   Plus,
+  Sparkles,
   X,
 } from "lucide-react";
 
@@ -21,6 +22,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import type { ProposedSchema } from "@/lib/data_sources/d1_schema_design";
 import { d1Endpoint } from "@/lib/data_sources/d1_endpoint";
 import type { CloudflareD1Database } from "@/ipc/types/cloudflare";
 import { showError, showSuccess } from "@/lib/toast";
@@ -85,6 +88,8 @@ function CloudflareSetup({
   // cannot open a browser.
   const [useToken, setUseToken] = useState(false);
   const [newName, setNewName] = useState("");
+  const [description, setDescription] = useState("");
+  const [design, setDesign] = useState<ProposedSchema | null>(null);
   const [databases, setDatabases] = useState<CloudflareD1Database[] | null>(
     null,
   );
@@ -228,6 +233,13 @@ function CloudflareSetup({
     return created;
   };
 
+  /** Asks the designer for a structure. Creates nothing. */
+  const designSchema = useMutation({
+    mutationFn: () => ipc.cloudflare.designSchema({ description }),
+    onSuccess: setDesign,
+    onError: (error: Error) => showError(error.message),
+  });
+
   /**
    * Create a database, then connect it.
    *
@@ -244,6 +256,15 @@ function CloudflareSetup({
         apiToken: useToken ? apiToken.trim() : undefined,
         accountId: useToken ? databases?.[0]?.accountId : undefined,
       });
+      // The approved design is applied before the source is connected, so the
+      // schema sync that follows sees the tables rather than an empty database.
+      if (design) {
+        await ipc.cloudflare.applySchema({
+          databaseId: created.uuid,
+          schema: design,
+        });
+      }
+
       return connectDatabase({
         uuid: created.uuid,
         name: created.name,
@@ -492,9 +513,89 @@ function CloudflareSetup({
                 )}
               </Button>
             </div>
+            {/* Describing it is optional: an empty database is a legitimate
+                thing to want, and this is the other thing to want. */}
+            <Label htmlFor="cf-describe">
+              What should it store?{" "}
+              <span className="text-cyan-100/35">optional</span>
+            </Label>
+            <Textarea
+              id="cf-describe"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Customers, the projects they order, quotes and invoices for each project, and who worked on them."
+              className="min-h-20 text-xs"
+              data-testid="cloudflare-describe-database"
+            />
+
+            {description.trim().length > 2 && !design && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => designSchema.mutate()}
+                disabled={designSchema.isPending}
+                data-testid="cloudflare-design-schema"
+              >
+                {designSchema.isPending ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Designing…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-3.5" />
+                    Design the tables for me
+                  </>
+                )}
+              </Button>
+            )}
+
+            {design && (
+              <div className="space-y-2 rounded-lg border border-cyan-500/15 bg-[rgba(4,12,24,0.5)] p-3">
+                {design.summary && (
+                  <p className="text-xs leading-5 text-cyan-100/55">
+                    {design.summary}
+                  </p>
+                )}
+                <p className="text-[10px] uppercase tracking-wider text-cyan-100/35">
+                  {design.tables.length}{" "}
+                  {design.tables.length === 1 ? "table" : "tables"} · created
+                  when you press Create
+                </p>
+                <ul className="space-y-1">
+                  {design.tables.map((table) => (
+                    <li key={table.name} className="text-xs">
+                      <span className="text-cyan-50/85">{table.name}</span>
+                      <span className="ml-2 text-cyan-100/35">
+                        {table.columns.map((c) => c.name).join(", ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDesign(null)}
+                  >
+                    Discard design
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => designSchema.mutate()}
+                    disabled={designSchema.isPending}
+                  >
+                    Design again
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <p className="text-xs leading-5 text-cyan-100/40">
-              Created empty and connected straight away. Letters, numbers,
-              hyphens and underscores; anything else is removed.
+              {design
+                ? "Nothing has been created yet. Create makes the database and its tables."
+                : "Created empty unless you describe what it should store."}
             </p>
           </div>
         </div>

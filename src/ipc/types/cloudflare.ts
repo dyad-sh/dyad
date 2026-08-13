@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createClient, defineContract } from "../contracts/core";
+import { ProposedSchemaSchema } from "@/lib/data_sources/d1_schema_design";
 
 /**
  * Contracts for the Cloudflare D1 data source provider.
@@ -125,6 +126,32 @@ export const cloudflareContracts = {
       name: z.string(),
       accountId: z.string().nullable(),
     }),
+  }),
+
+  /**
+   * Design a database from a description.
+   *
+   * Returns a structure, never SQL. The application writes the statements from
+   * that structure, so nothing the model produces is executed.
+   */
+  designSchema: defineContract({
+    channel: "cloudflare:design-schema",
+    input: z.object({ description: z.string().min(3).max(4000) }),
+    output: ProposedSchemaSchema,
+  }),
+  /**
+   * Create the approved tables in a database.
+   *
+   * Separate from every read path and reached only after the user has seen the
+   * design, because this is the one Cloudflare call here that writes.
+   */
+  applySchema: defineContract({
+    channel: "cloudflare:apply-schema",
+    input: z.object({
+      databaseId: z.string().min(1),
+      schema: ProposedSchemaSchema,
+    }),
+    output: z.object({ tablesCreated: z.number() }),
   }),
 
   listDatabases: defineContract({

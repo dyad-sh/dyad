@@ -493,3 +493,48 @@ export async function createD1ViaToken(input: {
     accountId: input.accountId,
   };
 }
+
+/**
+ * Runs statements that change a database, through Wrangler.
+ *
+ * Deliberately separate from the read path: that one refuses anything but a
+ * SELECT, and this one exists so creating tables does not require weakening
+ * it. It is only reachable from schema application, after a person has seen
+ * and approved the design.
+ */
+export async function applyD1Statements(input: {
+  projectRoot: string;
+  databaseId: string;
+  statements: string[];
+}): Promise<number> {
+  let applied = 0;
+
+  for (const statement of input.statements) {
+    const result = await run(
+      "npx",
+      [
+        "wrangler",
+        "d1",
+        "execute",
+        input.databaseId,
+        "--remote",
+        "--yes",
+        "--command",
+        statement,
+      ],
+      { cwd: input.projectRoot, timeoutMs: 120_000 },
+    );
+
+    if (result.code !== 0) {
+      const detail = summariseWranglerError(result.stdout + result.stderr);
+      throw new Error(
+        detail
+          ? `Could not create the tables: ${detail}`
+          : "Could not create the tables.",
+      );
+    }
+    applied += 1;
+  }
+
+  return applied;
+}

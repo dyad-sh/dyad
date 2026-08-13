@@ -3,6 +3,11 @@ import fs from "node:fs";
 import nodePath from "node:path";
 import os from "node:os";
 
+import {
+  parseCreatedDatabaseId,
+  summariseWranglerError,
+} from "@/lib/data_sources/wrangler_output";
+
 /**
  * What is already on this machine, before anything is installed.
  *
@@ -404,11 +409,13 @@ export async function createD1ViaWrangler(input: {
   projectRoot: string;
   name: string;
 }): Promise<{ uuid: string; name: string; accountId: string | null }> {
-  const result = await run(
-    "npx",
-    ["wrangler", "d1", "create", input.name, "--json"],
-    { cwd: input.projectRoot, timeoutMs: 120_000 },
-  );
+  // No --json here: wrangler d1 create does not accept it, and passing it made
+  // every creation fail with an unknown-argument error that never reached the
+  // user. The id is read from the binding block it prints instead.
+  const result = await run("npx", ["wrangler", "d1", "create", input.name], {
+    cwd: input.projectRoot,
+    timeoutMs: 120_000,
+  });
 
   const output = result.stdout + result.stderr;
 
@@ -419,32 +426,24 @@ export async function createD1ViaWrangler(input: {
     if (/not authenticated|not logged in/i.test(output)) {
       throw new Error("Cloudflare is not signed in.");
     }
-    throw new Error("Cloudflare would not create that database.");
+    // Cloudflare's own words, when it has any. A generic message here is what
+    // made this hard to diagnose the first time.
+    const detail = summariseWranglerError(output);
+    throw new Error(
+      detail
+        ? `Cloudflare would not create that database: ${detail}`
+        : "Cloudflare would not create that database.",
+    );
   }
 
-  // Wrangler prints a banner before the JSON on some versions.
-  const start = result.stdout.indexOf("{");
-  if (start < 0) throw new Error("Could not read the new database's details.");
-
-  try {
-    const parsed = JSON.parse(result.stdout.slice(start)) as {
-      uuid?: string;
-      name?: string;
-      account_id?: string;
-    };
-    if (!parsed.uuid) {
-      throw new Error("Cloudflare did not return a database id.");
-    }
-    return {
-      uuid: parsed.uuid,
-      name: parsed.name ?? input.name,
-      accountId: parsed.account_id ?? null,
-    };
-  } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error("Could not read the new database's details.");
+  const uuid = parseCreatedDatabaseId(output);
+  if (!uuid) {
+    throw new Error(
+      "The database was created but Cloudflare did not report its id. Look for it in the list.",
+    );
   }
+
+  return { uuid, name: input.name, accountId: null };
 }
 
 /** Creates a D1 database through the REST API, for the token path. */

@@ -1,4 +1,5 @@
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
 
 type TelemetryProperties = Record<string, unknown> | undefined;
 
@@ -13,7 +14,9 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
   return {
     isPro: hasDyadProKey(settings),
     enableAppBlueprint: settings.enableAppBlueprint ?? true,
-    enableTestingForNewApps: settings.enableTestingForNewApps ?? false,
+    enableTestingForNewApps:
+      settings.enableTestingForNewApps ??
+      DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
   };
 }
 

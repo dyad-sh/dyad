@@ -39,15 +39,21 @@ describe("domainCheckVerdict", () => {
     ).toBe("ok");
   });
 
-  it("stays silent when there is nothing to compare against", () => {
+  it("stays silent when a resolved domain cannot be compared", () => {
     // Saying "could not confirm" here would fire for every user on Coolify's
     // own server, which teaches people to ignore the one that matters.
-    expect(domainCheckVerdict({ expectedIps: [], actualIps: [] })).toBe(
-      "unknown",
-    );
     expect(
       domainCheckVerdict({ expectedIps: [], actualIps: ["1.2.3.4"] }),
     ).toBe("unknown");
+  });
+
+  it("still reports a domain with no records at all", () => {
+    // Not the same silence: where the domain resolves, we lack only the
+    // comparison. Where it resolves to nothing, that is a complete answer on
+    // its own and holds whatever address the server turns out to have.
+    expect(domainCheckVerdict({ expectedIps: [], actualIps: [] })).toBe(
+      "no-records",
+    );
   });
 });
 
@@ -165,6 +171,78 @@ describe("expectedServerAddress over every address shape", () => {
       serverIp: "::",
       expected: { kind: "ip", ip: "143.244.162.54" },
       why: "every interface is not a reachable host",
+    },
+    {
+      shape: "private 10/8",
+      serverIp: "10.0.0.5",
+      expected: null,
+      why: "a real machine, but not one a public record can be pointed at",
+    },
+    {
+      shape: "private 192.168/16",
+      serverIp: "192.168.1.50",
+      expected: null,
+      why: "the common homelab shape, and the advice would be impossible",
+    },
+    {
+      shape: "private 172.16/12 low edge",
+      serverIp: "172.16.0.1",
+      expected: null,
+      why: "the range starts at 172.16, not at 172.0",
+    },
+    {
+      shape: "private 172.16/12 high edge",
+      serverIp: "172.31.255.254",
+      expected: null,
+      why: "the range ends at 172.31",
+    },
+    {
+      shape: "public 172 below the range",
+      serverIp: "172.15.0.1",
+      expected: { kind: "ip", ip: "172.15.0.1" },
+      why: "172 alone is not private, so this one is answerable",
+    },
+    {
+      shape: "public 172 above the range",
+      serverIp: "172.32.0.1",
+      expected: { kind: "ip", ip: "172.32.0.1" },
+      why: "172 alone is not private, so this one is answerable",
+    },
+    {
+      shape: "carrier-grade NAT",
+      serverIp: "100.64.0.1",
+      expected: null,
+      why: "shared address space, unreachable from outside the carrier",
+    },
+    {
+      shape: "public 100 below the NAT range",
+      serverIp: "100.63.255.255",
+      expected: { kind: "ip", ip: "100.63.255.255" },
+      why: "100/8 is otherwise ordinary public space",
+    },
+    {
+      shape: "link-local IPv4",
+      serverIp: "169.254.1.1",
+      expected: null,
+      why: "an address a machine gave itself when nothing answered",
+    },
+    {
+      shape: "unique local IPv6",
+      serverIp: "fd00::1",
+      expected: null,
+      why: "the IPv6 equivalent of a private range",
+    },
+    {
+      shape: "link-local IPv6",
+      serverIp: "fe80::1",
+      expected: null,
+      why: "scoped to one link, so no record can point at it",
+    },
+    {
+      shape: "public IPv6 just past link-local",
+      serverIp: "fec0::1",
+      expected: { kind: "ip", ip: "fec0::1" },
+      why: "fe80::/10 stops at febf, so this is outside it",
     },
     {
       shape: "empty",

@@ -23,6 +23,8 @@ import {
 import {
   domainCheckVerdict,
   expectedServerAddress,
+  isLoopbackAddress,
+  isNonRoutableAddress,
 } from "@/coolify_deploy/domain_check";
 import {
   applyCoolifyConnectionChange,
@@ -308,7 +310,15 @@ export function registerCoolifyHandlers() {
       if (address?.kind === "ip") {
         expectedIps = [address.ip];
       } else if (address?.kind === "resolve") {
-        expectedIps = (await resolveBoth(address.hostname)).addresses;
+        // Both tests the literal path gets, applied to what the name
+        // resolved to: a server known as nas.local is as unreachable from a
+        // public record as one reported as 192.168.1.50, and a name answering
+        // on loopback is no more pointable than the literal 127.0.0.1 is.
+        // Filtered rather than rejected outright, so a name answering on both
+        // a public and a private address keeps the one a domain could point at.
+        expectedIps = (await resolveBoth(address.hostname)).addresses.filter(
+          (ip) => !isNonRoutableAddress(ip) && !isLoopbackAddress(ip),
+        );
       }
       const expectedIp = expectedIps[0] ?? null;
 

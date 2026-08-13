@@ -9,7 +9,7 @@ const DOCKER_HOST_ALIAS = "host.docker.internal";
  * Covers both spellings, because answering with either would have us tell the
  * user to point a public domain at a loopback address.
  */
-function isLoopbackAddress(value: string | null | undefined): boolean {
+export function isLoopbackAddress(value: string | null | undefined): boolean {
   if (!value) return false;
   const bare = value
     .trim()
@@ -23,6 +23,47 @@ function isLoopbackAddress(value: string | null | undefined): boolean {
     isIP(bare) === 6 &&
     (bare === "::1" || bare === "0:0:0:0:0:0:0:1" || bare === "::")
   );
+}
+
+/**
+ * Whether an address is real but unreachable from the public internet.
+ *
+ * Distinct from loopback, which means "wherever Coolify is" and falls back to
+ * the instance URL. A server on 192.168.1.50 is a genuine machine somewhere
+ * else — it just is not somewhere a public DNS record can be pointed, so the
+ * only honest answer about where a domain should point is that we do not know.
+ * Homelab and NAT installs are a common Coolify shape, and telling one of them
+ * to point a domain at a private address is advice nobody can follow.
+ */
+export function isNonRoutableAddress(
+  value: string | null | undefined,
+): boolean {
+  if (!value) return false;
+  const bare = value
+    .trim()
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  const family = isIP(bare);
+
+  if (family === 4) {
+    const [a, b] = bare.split(".").map(Number);
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10, CGNAT
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16, link-local
+    return false;
+  }
+
+  if (family !== 6) return false;
+  // Read the leading hextet rather than matching a prefix string, so a
+  // compressed spelling is judged by its value instead of its formatting.
+  const first = bare.startsWith("::") ? "" : bare.split(":")[0];
+  if (!first) return false;
+  const head = Number.parseInt(first, 16);
+  if (Number.isNaN(head)) return false;
+  if (head >= 0xfc00 && head <= 0xfdff) return true; // fc00::/7, unique local
+  return head >= 0xfe80 && head <= 0xfebf; // fe80::/10, link-local
 }
 
 /**
@@ -50,9 +91,12 @@ export function domainCheckVerdict({
   expectedIps: string[];
   actualIps: string[];
 }): DomainCheckVerdict {
+  // A domain with no records at all is a fact about the domain, true whatever
+  // the server's address turns out to be — so it is said even when there is
+  // nothing to compare it against.
+  if (actualIps.length === 0) return "no-records";
   // Nothing to compare against: we know nothing, so we claim nothing.
   if (expectedIps.length === 0) return "unknown";
-  if (actualIps.length === 0) return "no-records";
   const expected = new Set(expectedIps.map(canonicalAddress));
   // Any overlap is enough: a dual-stack host answering on one family is
   // correctly configured, not pointed somewhere else.
@@ -109,6 +153,11 @@ export function expectedServerAddress({
     // be handed to the resolver as though it were a hostname, which is the
     // same mistake the instance-URL path already avoids.
     const bare = serverIp.trim().replace(/^\[|\]$/g, "");
+    // Checked here rather than folded into the loopback test: loopback means
+    // the server is wherever Coolify is, and falls through to the instance
+    // URL below. A private address names a different machine entirely, so
+    // there is nothing to fall through to.
+    if (isNonRoutableAddress(bare)) return null;
     return isIP(bare)
       ? { kind: "ip", ip: bare }
       : { kind: "resolve", hostname: bare };
@@ -128,7 +177,9 @@ export function expectedServerAddress({
   // The same test the reported address gets: a Coolify reached on localhost
   // says nothing about where a public domain should point, and answering with
   // it would produce the one instruction guaranteed to be wrong.
-  if (!host || isLoopbackAddress(host)) return null;
+  if (!host || isLoopbackAddress(host) || isNonRoutableAddress(host)) {
+    return null;
+  }
   if (isIP(host)) return { kind: "ip", ip: host };
   return { kind: "resolve", hostname: host };
 }

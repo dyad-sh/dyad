@@ -81,11 +81,29 @@ vi.mock("@/coolify_deploy/controller", () => ({
 }));
 
 const cancelDeploy = vi.hoisted(() => vi.fn());
-const listServers = vi.fn(async () => [] as Array<{ uuid: string }>);
+const listServers = vi.fn(
+  async () => [] as Array<{ uuid: string; ip?: string }>,
+);
 vi.mock("../utils/coolify_client", () => ({
   CoolifyClient: class {
     listServers = listServers;
     listProjects = async () => [];
+  },
+}));
+
+const dnsAnswers: Record<string, string[]> = {};
+vi.mock("node:dns/promises", () => ({
+  resolve4: async (h: string) => {
+    const answers = (dnsAnswers[h] ?? []).filter((a) => a.includes("."));
+    if (answers.length === 0)
+      throw Object.assign(new Error("no data"), { code: "ENODATA" });
+    return answers;
+  },
+  resolve6: async (h: string) => {
+    const answers = (dnsAnswers[h] ?? []).filter((a) => a.includes(":"));
+    if (answers.length === 0)
+      throw Object.assign(new Error("no data"), { code: "ENODATA" });
+    return answers;
   },
 }));
 
@@ -125,6 +143,9 @@ beforeEach(() => {
   rows.length = 0;
   rows.push({ ...APP_ROW });
   connection = { ...CONNECTED };
+  listServers.mockReset();
+  listServers.mockResolvedValue([]);
+  for (const key of Object.keys(dnsAnswers)) delete dnsAnswers[key];
   for (const key of Object.keys(settings)) delete settings[key];
   settings.coolify = {
     instanceUrl: "https://coolify.example.com",
@@ -424,5 +445,75 @@ describe("moving an app that never got an application", () => {
     });
 
     expect(cancelDeploy).toHaveBeenCalledWith(1);
+  });
+});
+
+/**
+ * Where a domain is told to point when the server is not on the public
+ * internet.
+ *
+ * A homelab Coolify is a common shape, and the address it reports — directly
+ * or through a name — is one no registrar will accept. Naming it anyway
+ * produces the one instruction guaranteed to be impossible to follow.
+ */
+describe("checking a domain against a server that is not publicly reachable", () => {
+  it("says nothing when the server's name resolves to a private address", async () => {
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "nas.local" }]);
+    dnsAnswers["nas.local"] = ["192.168.1.50"];
+    dnsAnswers["app.example.com"] = ["203.0.113.5"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("unknown");
+    expect(result.expectedIp).toBeNull();
+  });
+
+  it("says nothing when the server's name resolves to loopback", async () => {
+    // The literal path already refuses 127.0.0.1; a name answering with it is
+    // the same address wearing a different hat.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["127.0.0.1"];
+    dnsAnswers["app.example.com"] = ["203.0.113.5"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("unknown");
+    expect(result.expectedIp).toBeNull();
+  });
+
+  it("keeps the public address when a name answers on both", async () => {
+    // Filtered rather than rejected: the public half is the one a domain can
+    // actually be pointed at, so the comparison still has something to make.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["192.168.1.50", "203.0.113.5"];
+    dnsAnswers["app.example.com"] = ["203.0.113.5"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("ok");
+    expect(result.expectedIp).toBe("203.0.113.5");
+  });
+
+  it("still compares a name that resolves publicly", async () => {
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["203.0.113.5"];
+    dnsAnswers["app.example.com"] = ["198.51.100.9"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("points-elsewhere");
+    expect(result.expectedIp).toBe("203.0.113.5");
   });
 });

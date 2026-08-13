@@ -19,7 +19,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         domain: "https://a.example.com",
         ...NOTHING_KNOWN,
       }),
-    ).toBe(true);
+    ).toBe("secure");
   });
 
   it("takes a typed http domain as the answer", () => {
@@ -28,7 +28,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         domain: "http://a.example.com",
         ...NOTHING_KNOWN,
       }),
-    ).toBe(false);
+    ).toBe("insecure");
   });
 
   it("prefers what was typed over where the app already is", () => {
@@ -40,7 +40,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         deployedUrl: "https://live.example.com",
         wildcardDomain: "https://apps.example.com",
       }),
-    ).toBe(false);
+    ).toBe("insecure");
   });
 
   it("keeps an existing app's address over the server's wildcard", () => {
@@ -53,7 +53,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         deployedUrl: "http://x.203.0.113.10.sslip.io",
         wildcardDomain: "https://apps.example.com",
       }),
-    ).toBe(false);
+    ).toBe("insecure");
   });
 
   it("reports an existing app on an https address as secure", () => {
@@ -63,7 +63,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         deployedUrl: "https://live.example.com",
         wildcardDomain: null,
       }),
-    ).toBe(true);
+    ).toBe("secure");
   });
 
   it("predicts from the wildcard when no application exists yet", () => {
@@ -73,7 +73,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         deployedUrl: null,
         wildcardDomain: "https://apps.example.com",
       }),
-    ).toBe(true);
+    ).toBe("secure");
   });
 
   it("says plain when the wildcard itself is plain", () => {
@@ -83,7 +83,7 @@ describe("predicting the scheme a deploy will be served on", () => {
         deployedUrl: null,
         wildcardDomain: "http://apps.example.com",
       }),
-    ).toBe(false);
+    ).toBe("insecure");
   });
 
   it("says plain when the server reported no wildcard, which means sslip", () => {
@@ -93,19 +93,43 @@ describe("predicting the scheme a deploy will be served on", () => {
         deployedUrl: null,
         wildcardDomain: null,
       }),
-    ).toBe(false);
+    ).toBe("insecure");
+  });
+
+  it("claims nothing when a deploy landed with no address to check", () => {
+    // The application exists and its address is fixed, so the wildcard
+    // describes what a new one would get rather than what this one has.
+    expect(
+      coolifyServedOverHttps({
+        domain: "",
+        deployedUrl: null,
+        wildcardDomain: "https://apps.example.com",
+        hasAddresslessDeploy: true,
+      }),
+    ).toBe("unknown");
+  });
+
+  it("still prefers a known address over an addressless earlier deploy", () => {
+    expect(
+      coolifyServedOverHttps({
+        domain: "",
+        deployedUrl: "https://live.example.com",
+        wildcardDomain: null,
+        hasAddresslessDeploy: true,
+      }),
+    ).toBe("secure");
   });
 
   it("warns rather than guesses when the server reported nothing at all", () => {
     expect(coolifyServedOverHttps({ domain: "", ...NOTHING_KNOWN })).toBe(
-      false,
+      "insecure",
     );
   });
 });
 
 const ask = (o: Partial<Parameters<typeof coolifyInsecureWarning>[0]>) =>
   coolifyInsecureWarning({
-    isHttps: false,
+    served: "insecure" as const,
     hasNeon: false,
     hasSupabase: false,
     ...o,
@@ -113,17 +137,26 @@ const ask = (o: Partial<Parameters<typeof coolifyInsecureWarning>[0]>) =>
 
 describe("coolifyInsecureWarning", () => {
   it("says nothing once the app is served over TLS", () => {
-    expect(ask({ isHttps: true, hasNeon: true })).toBe("none");
-    expect(ask({ isHttps: true, hasSupabase: true })).toBe("none");
+    expect(ask({ served: "secure", hasNeon: true })).toBe("none");
+    expect(ask({ served: "secure", hasSupabase: true })).toBe("none");
   });
 
   it("still warns for a domain the user typed as http", () => {
     // Coolify serves an explicit http:// domain without TLS, so this is the
     // same insecure context as having no domain at all.
-    expect(ask({ isHttps: false, hasNeon: true })).toBe("breaks");
-    expect(ask({ isHttps: false, hasSupabase: true })).toBe(
+    expect(ask({ served: "insecure", hasNeon: true })).toBe("breaks");
+    expect(ask({ served: "insecure", hasSupabase: true })).toBe(
       "credentials-in-clear",
     );
+  });
+
+  it("says it cannot tell, rather than guessing, for an unknown address", () => {
+    expect(ask({ served: "unknown", hasNeon: true })).toBe("unverified");
+    expect(ask({ served: "unknown", hasSupabase: true })).toBe("unverified");
+  });
+
+  it("stays quiet about an unknown address when no database is at stake", () => {
+    expect(ask({ served: "unknown" })).toBe("none");
   });
 
   it("says nothing for an app with no database, which has no sign-in", () => {

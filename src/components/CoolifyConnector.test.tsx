@@ -600,6 +600,80 @@ describe("the insecure-address warning in the connected view", () => {
     ).toContain("will not work once deployed");
   });
 
+  it("says it cannot tell when a deploy returned no address", () => {
+    // Both the panel and the deploy log otherwise report clean success for a
+    // deploy that reached nothing.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: { ...CONNECTED_NO_DOMAIN, appUrl: null, lastDeployedAt: 1 },
+      discovery: {
+        servers: [
+          {
+            uuid: "srv-1",
+            name: "box",
+            settings: { wildcard_domain: "https://apps.example.com" },
+          },
+        ],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(
+      screen.getByTestId("coolify-insecure-auth-warning").textContent,
+    ).toContain("reported no address");
+  });
+
+  it("does not claim a deploy is broken when it only lacks an address", () => {
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: { ...CONNECTED_NO_DOMAIN, appUrl: null, lastDeployedAt: 1 },
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "box", settings: {} }],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    const text = screen.getByTestId(
+      "coolify-insecure-auth-warning",
+    ).textContent;
+    expect(text).toContain("reported no address");
+    expect(text).not.toContain("will not work once deployed");
+  });
+
+  it("can answer again once the app is moving somewhere new", async () => {
+    // A move recreates the application, so the destination's wildcard predicts
+    // its address — the missing address of the old one says nothing about it.
+    loadedApp.value = { ...DEFAULT_APP, neonProjectId: "neon-1" };
+    deploy.value = {
+      status: { ...CONNECTED_NO_DOMAIN, appUrl: null, lastDeployedAt: 1 },
+      discovery: {
+        servers: [
+          { uuid: "srv-1", name: "plain-box", settings: {} },
+          {
+            uuid: "srv-2",
+            name: "tls-box",
+            settings: { wildcard_domain: "https://apps.example.com" },
+          },
+        ],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    expect(
+      screen.getByTestId("coolify-insecure-auth-warning").textContent,
+    ).toContain("reported no address");
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByTestId("coolify-server-select"));
+    await user.click(screen.getByRole("option", { name: "tls-box" }));
+
+    expect(screen.queryByTestId("coolify-insecure-auth-warning")).toBeNull();
+  });
+
   it("still warns in the connection form, which is where it started", () => {
     // Both views share one block now; nothing covered this side before, so a
     // refactor could have dropped it without a test noticing.

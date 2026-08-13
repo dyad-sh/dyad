@@ -1,9 +1,11 @@
 import { normalizeCoolifyDomain } from "./domain";
 
+export type CoolifyServedScheme = "secure" | "insecure" | "unknown";
+
 /**
  * Whether the app will be served over TLS.
  *
- * Three sources, in the order they settle the question:
+ * Four sources, in the order they settle the question:
  *
  * A typed domain decides on its own — it is what the next deploy sends.
  *
@@ -12,16 +14,21 @@ import { normalizeCoolifyDomain } from "./domain";
  * `domains`, so nothing regenerates it. Changing the server's wildcard later
  * does not move an app that is already on one.
  *
+ * Otherwise, an application that deployed without Coolify naming an address is
+ * one whose address exists but cannot be seen from here, so nothing is claimed
+ * about it — the wildcard would describe a new application rather than this one.
+ *
  * Only when no application exists yet does the wildcard predict anything: that
  * is what Coolify's generateUrl builds from, falling back to an sslip address
  * that is always plain HTTP. A server that reported no wildcard, and one that
- * reported nothing at all, are both handled here as "not https" — the answer is
- * the same, and warning is the safe direction for a question we cannot settle.
+ * reported nothing at all, are both read as plain here — the answer is the
+ * same, and warning is the safe direction for a question we cannot settle.
  */
 export function coolifyServedOverHttps({
   domain,
   deployedUrl,
   wildcardDomain,
+  hasAddresslessDeploy = false,
 }: {
   /** What the user typed. */
   domain: string;
@@ -29,18 +36,40 @@ export function coolifyServedOverHttps({
   deployedUrl: string | null;
   /** The selected server's wildcard domain, if it reported one. */
   wildcardDomain: string | null | undefined;
-}): boolean {
+  /**
+   * A deploy succeeded and Coolify named no address for it. The application
+   * exists and its address is fixed, so the wildcard describes what a new one
+   * would get rather than what this one has.
+   */
+  hasAddresslessDeploy?: boolean;
+}): CoolifyServedScheme {
   const typed = normalizeCoolifyDomain(domain);
-  if (typed) return typed.toLowerCase().startsWith("https:");
+  if (typed) {
+    return typed.toLowerCase().startsWith("https:") ? "secure" : "insecure";
+  }
 
-  if (deployedUrl) return deployedUrl.toLowerCase().startsWith("https:");
+  if (deployedUrl) {
+    return deployedUrl.toLowerCase().startsWith("https:")
+      ? "secure"
+      : "insecure";
+  }
+
+  // Nothing to answer from, so nothing is claimed — the same reasoning the
+  // DNS pre-check applies when it has no address to compare against.
+  if (hasAddresslessDeploy) return "unknown";
 
   // Matched on an explicit scheme rather than normalized: Coolify reads the
   // scheme off the wildcard as stored and does not supply a missing one.
-  return Boolean(wildcardDomain?.trim().toLowerCase().startsWith("https://"));
+  return wildcardDomain?.trim().toLowerCase().startsWith("https://")
+    ? "secure"
+    : "insecure";
 }
 
-export type CoolifyInsecureWarning = "none" | "credentials-in-clear" | "breaks";
+export type CoolifyInsecureWarning =
+  | "none"
+  | "credentials-in-clear"
+  | "breaks"
+  | "unverified";
 
 /**
  * What to tell the user about deploying without a domain.
@@ -54,21 +83,26 @@ export type CoolifyInsecureWarning = "none" | "credentials-in-clear" | "breaks";
  * are readable in transit.
  */
 export function coolifyInsecureWarning({
-  isHttps,
+  served,
   hasNeon,
   hasSupabase,
 }: {
-  /** Whether the app will actually be served over TLS. */
-  isHttps: boolean;
+  /** What the app will be served over, where that can be established. */
+  served: CoolifyServedScheme;
   hasNeon: boolean;
   hasSupabase: boolean;
 }): CoolifyInsecureWarning {
   // Keyed on the scheme, not on whether a domain was typed: an explicit
   // http:// domain is accepted and served without TLS, which is the same
   // insecure context as the generated address.
-  if (isHttps) return "none";
+  if (served === "secure") return "none";
+  // An app with no database has no sign-in to protect, so an address we
+  // cannot establish costs it nothing either.
+  if (!hasNeon && !hasSupabase) return "none";
+  // Saying "this will not work" would be a guess, and a guess that is wrong
+  // teaches people to close the box. Saying nothing hides the one case where
+  // both this panel and the deploy log report a success that reached nothing.
+  if (served === "unknown") return "unverified";
   if (hasNeon) return "breaks";
-  if (hasSupabase) return "credentials-in-clear";
-  // An app with no database has no sign-in to protect.
-  return "none";
+  return "credentials-in-clear";
 }

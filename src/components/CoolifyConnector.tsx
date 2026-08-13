@@ -204,12 +204,16 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       { serverUuid, projectUuid, environmentName },
     );
   const insecureWarning = coolifyInsecureWarning({
-    isHttps: coolifyServedOverHttps({
+    served: coolifyServedOverHttps({
       domain,
       // Only the address of an app that is staying put. A move means the next
       // deploy lands somewhere this app has never been.
       deployedUrl: movingHost ? null : status.appUrl,
       wildcardDomain: targetServer?.settings?.wildcard_domain,
+      // A deploy landed but Coolify named no address for it, so an
+      // application exists whose address nothing here can see.
+      hasAddresslessDeploy:
+        !movingHost && status.lastDeployedAt !== null && status.appUrl === null,
     }),
     hasNeon: Boolean(app?.neonProjectId),
     hasSupabase: Boolean(app?.supabaseProjectId),
@@ -227,7 +231,14 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       }
       data-testid="coolify-insecure-auth-warning"
     >
-      {insecureWarning === "breaks" ? (
+      {insecureWarning === "unverified" ? (
+        <p>
+          Coolify reported no address for this app on its last deploy, so
+          nothing here can tell whether it is served over HTTPS. Without it, an
+          app that signs users in is either broken or sending credentials in the
+          clear — open it in Coolify to see the address it ended up on.
+        </p>
+      ) : insecureWarning === "breaks" ? (
         <p>
           <strong>Without HTTPS, this app will not work once deployed.</strong>{" "}
           Neon Auth needs an encrypted connection, and the page will fail to
@@ -669,17 +680,28 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                   const consequence =
                     "The app will still deploy, but HTTPS will not work.";
                   if (dns.verdict === "points-elsewhere") {
+                    // A proxied domain deliberately resolves to the proxy
+                    // rather than the origin, so the mismatch is what a
+                    // correct setup looks like there. We cannot tell one from
+                    // the other — a CDN address is public like any other — so
+                    // the reading is offered rather than the instruction.
                     warn = () =>
                       toast.warning(
                         `${dns.hostname} points at ${dns.actualIps.join(", ")}, not your server at ${dns.expectedIp}.`,
                         {
-                          description: `${consequence} Saved anyway; point it at ${dns.expectedIp} and redeploy.`,
+                          description: `Saved anyway. If your domain is behind a proxy or CDN, this is expected. Otherwise the app will still deploy, but HTTPS will not work — point it at ${dns.expectedIp} and redeploy.`,
                         },
                       );
                   } else if (dns.verdict === "no-records") {
+                    // Where to point it is only named when it is known. A
+                    // server on a private address has no address a public
+                    // record could use, but the domain still has no records.
+                    const where = dns.expectedIp
+                      ? ` point a DNS record at ${dns.expectedIp} and redeploy.`
+                      : " point a DNS record at your server and redeploy.";
                     warn = () =>
                       toast.warning(`${dns.hostname} has no DNS record yet.`, {
-                        description: `${consequence} Saved anyway; point a DNS record at ${dns.expectedIp} and redeploy.`,
+                        description: `${consequence} Saved anyway;${where}`,
                       });
                   }
                 } catch {

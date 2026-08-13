@@ -36,4 +36,13 @@ describe("isFragileCssLocator", () => {
       }),
     ).toBe(false);
   });
+
+  it("does not count an escaped greater-than sign as a child combinator", () => {
+    expect(
+      isFragileCssLocator({
+        kind: "css",
+        value: "#panel\\>details > section > form > input",
+      }),
+    ).toBe(false);
+  });
 });

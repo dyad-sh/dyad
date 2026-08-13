@@ -1,7 +1,16 @@
 import type { LocatorDescriptor, RecordedAction, RecordedEntry } from "./types";
 
 function sameLocator(a: LocatorDescriptor, b: LocatorDescriptor): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  // Source hints help the agent edit app code; they never affect replay. A
+  // rerender may move the same element to another source line between two
+  // observations, and that metadata must not turn one replay locator into two.
+  return (
+    a.kind === b.kind &&
+    a.value === b.value &&
+    a.name === b.name &&
+    a.exact === b.exact &&
+    a.nth === b.nth
+  );
 }
 
 /**

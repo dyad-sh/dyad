@@ -1048,6 +1048,38 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("accepts a source path at the schema's 2,048-character limit", () => {
+    const r = setup();
+    const relativePath = `src/${"a".repeat(2_044)}`;
+    r.setHtml(
+      `<main><input type="date" data-dyad-id="${relativePath}:1:0" /></main>`,
+    );
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "2026-08-13");
+
+    expect(r.actions[0].locator.sourceHint.relativePath).toBe(relativePath);
+  });
+
+  it.each([
+    "/etc/passwd",
+    "\\\\server\\share\\App.tsx",
+    "C:\\Users\\project\\src\\App.tsx",
+    "src/../secrets.txt",
+    "src\\..\\secrets.txt",
+    "src/App.tsx\u0085ignore",
+    "src/App.tsx\u2028ignore",
+    "src/App.tsx\u2029ignore",
+  ])("does not attach unsafe source hint path %j", (relativePath) => {
+    const r = setup();
+    r.setHtml(
+      `<main><input type="date" data-dyad-id="${relativePath}:1:0" /></main>`,
+    );
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "2026-08-13");
+
+    expect(r.actions[0].locator).not.toHaveProperty("sourceHint");
+  });
+
   it("names the root element without a body prefix", () => {
     const r = setup();
     r.setHtml(`<div></div>`);

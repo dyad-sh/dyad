@@ -18,5 +18,14 @@ export function isFragileCssLocator(locator: LocatorDescriptor): boolean {
 
   // Four or more direct-child hops is a generated DOM path even when it found
   // an authored id somewhere above the target.
-  return (selector.match(/>/g) ?? []).length >= 4;
+  let childCombinators = 0;
+  for (let index = 0; index < selector.length; index++) {
+    if (selector[index] !== ">") continue;
+    let precedingBackslashes = 0;
+    for (let cursor = index - 1; selector[cursor] === "\\"; cursor--) {
+      precedingBackslashes++;
+    }
+    if (precedingBackslashes % 2 === 0) childCombinators++;
+  }
+  return childCombinators >= 4;
 }

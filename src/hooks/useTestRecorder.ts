@@ -768,6 +768,7 @@ export function useTestRecorder({
     const unsub = ipc.events.recording.onDraftNamed(
       ({ appId: namedAppId, draftId, testName, selectorRepairs }) => {
         if (namedAppId == null || !testName) return;
+        let repairProblems: string[] = [];
         patchState(namedAppId, (prev) => {
           if (!prev.draft || prev.draft.draftId !== draftId) return prev;
           const repaired = selectorRepairs
@@ -776,6 +777,7 @@ export function useTestRecorder({
                 repairs: selectorRepairs,
               })
             : { draft: prev.draft, problems: [] };
+          repairProblems = repaired.problems;
           return {
             ...prev,
             draft: {
@@ -784,6 +786,11 @@ export function useTestRecorder({
             },
           };
         });
+        if (repairProblems.length > 0) {
+          showError(
+            `The saved test proposal and recorder review are out of sync: ${repairProblems.join(" ")} Close this proposal and record the flow again.`,
+          );
+        }
       },
     );
     return unsub;

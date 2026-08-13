@@ -13,6 +13,7 @@ import {
   setRecordingStateForAppAtom,
 } from "@/atoms/recorderAtoms";
 import { useTestRecorder } from "@/hooks/useTestRecorder";
+import { showError } from "@/lib/toast";
 
 /**
  * The preview's URL, as the recorder sees it. Driven through an atom rather than
@@ -240,6 +241,7 @@ describe("useTestRecorder", () => {
     onDraftConsumedMock.mockReturnValue(() => {});
     onDraftNamedMock.mockReset();
     onDraftNamedMock.mockReturnValue(() => {});
+    vi.mocked(showError).mockReset();
     startRecordingMock.mockResolvedValue({
       appId: 1,
       isolation: { mode: "none" },
@@ -774,6 +776,48 @@ describe("useTestRecorder", () => {
     expect(result.current.draftSteps).toContain(
       `await page.getByTestId("due-date-input").fill("2026-08-13");`,
     );
+  });
+
+  it("surfaces selector repairs that cannot be synchronized", async () => {
+    const iframe = makeIframe();
+    const { result } = await recordingSession({ iframe, appUrl: true });
+    act(() => {
+      iframe.send({
+        type: "dyad-recorder-action",
+        action: {
+          kind: "fill",
+          locator: { kind: "css", value: "body > main > input" },
+          value: "Ada",
+        },
+      });
+    });
+    await waitFor(() => expect(result.current.entryCount).toBe(1));
+    await act(async () => {
+      await result.current.stopAndReview("");
+    });
+
+    const onDraftNamed = onDraftNamedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onDraftNamed({
+        appId: 1,
+        draftId: result.current.draft!.draftId,
+        testName: "Enter a name",
+        selectorRepairs: [
+          {
+            actionIndex: 0,
+            originalCss: "body > main > textarea",
+            testId: "name-input",
+          },
+        ],
+      });
+    });
+
+    expect(showError).toHaveBeenCalledWith(
+      expect.stringContaining("does not match recorded action 0"),
+    );
+    expect(result.current.draft?.actions[0]).toMatchObject({
+      locator: { kind: "css", value: "body > main > input" },
+    });
   });
 
   it("ignores messages from a preview that navigated off the app's origin", async () => {

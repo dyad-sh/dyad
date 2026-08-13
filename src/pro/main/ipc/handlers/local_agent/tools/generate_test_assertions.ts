@@ -133,7 +133,7 @@ Use this when the user asks for assertions for a flow they just recorded with Dy
 <how_to_use>
 1. Read the numbered statements in the user's message. Those indices are the ones this tool expects — don't renumber them.
 2. If the request lists fragile selectors, inspect each source hint before calling this tool. For every element you can identify safely, reuse an existing data-testid or edit the app source to add a descriptive static kebab-case data-testid. Do not guess when the hint is missing or ambiguous, and do not put one static id on repeated list items.
-3. Send a \`testName\` for the flow, one \`steps\` entry per statement translating it into one plain-English sentence, plus the assertions you want to propose. Include one \`selectorRepairs\` entry per source edit that succeeded, copying its recorded action index and original CSS exactly. Copy the recording id from the request into \`recordingId\` exactly — it ties the plan and repairs to the recording they describe.
+3. Send a \`testName\` for the flow, one \`steps\` entry per statement translating it into one plain-English sentence, plus the assertions you want to propose. Include one \`selectorRepairs\` entry per recorded action that should use a completed source edit, copying its recorded action index and original CSS exactly. Copy the recording id from the request into \`recordingId\` exactly — it ties the plan and repairs to the recording they describe.
 4. Wait. The call does not come back until the user approves the card or closes it, and the tool result tells you which. Do NOT call it a second time, and do NOT try to write or run anything while it is open — the spec does not exist yet.
 5. Do what the tool result says: run the spec it names, or stop if the user closed the card.
 </how_to_use>
@@ -141,7 +141,7 @@ Use this when the user asks for assertions for a flow they just recorded with Dy
 <selector_repairs>
 - A repair is valid only after you have confirmed and, when needed, edited the corresponding app source. The tool updates the recorded draft; it does not edit source code for you.
 - Use the recorded ACTION index shown in the fragile-selector details, not the displayed statement index. Setup statements such as signIn and page.goto are not recorded actions.
-- One repair updates every recorded action with the same original CSS. Do not send duplicates.
+- One repair updates only its recorded action. When the request groups several action indices for the same source element, send a repair for each action that should use the completed source edit.
 - If you cannot make a safe source edit, omit the repair. Keeping the original CSS is better than changing the wrong element.
 </selector_repairs>
 

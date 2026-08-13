@@ -42,7 +42,7 @@ describe("applyRecordedSelectorRepairs", () => {
     ).toBe(false);
   });
 
-  it("atomically repairs every action using the same fragile CSS", () => {
+  it("repairs only the indexed action when another route uses the same CSS", () => {
     const original = draft();
     const result = applyRecordedSelectorRepairs({
       draft: original,
@@ -50,7 +50,7 @@ describe("applyRecordedSelectorRepairs", () => {
     });
 
     expect(result.problems).toEqual([]);
-    expect(result.repairedActionCount).toBe(2);
+    expect(result.repairedActionCount).toBe(1);
     expect(result.draft.actions).toEqual([
       {
         kind: "fill",
@@ -59,7 +59,7 @@ describe("applyRecordedSelectorRepairs", () => {
       },
       {
         kind: "fill",
-        locator: { kind: "testid", value: "due-date-input" },
+        locator: { kind: "css", value: CSS },
         value: "b",
       },
       original.actions[2],
@@ -110,5 +110,50 @@ describe("applyRecordedSelectorRepairs", () => {
       expect.stringContaining('reuses data-testid "target-control"'),
     ]);
     expect(result.draft).toBe(original);
+  });
+
+  it("rejects a test id already used by the parked draft", () => {
+    const original = draft();
+    original.actions.push({
+      kind: "click",
+      locator: { kind: "testid", value: "due-date-input" },
+    });
+
+    const result = applyRecordedSelectorRepairs({
+      draft: original,
+      repairs: [{ actionIndex: 0, originalCss: CSS, testId: "due-date-input" }],
+    });
+
+    expect(result.problems).toEqual([
+      expect.stringContaining('data-testid "due-date-input"'),
+    ]);
+    expect(result.draft).toBe(original);
+  });
+
+  it("allows explicit repairs to reuse an id for the same source element", () => {
+    const original = draft();
+    const sourceHint = {
+      relativePath: "src/EventForm.tsx",
+      line: 84,
+      column: 10,
+      tagName: "input",
+      exact: true,
+    } as const;
+    for (const action of original.actions.slice(0, 2)) {
+      if ("locator" in action && action.locator) {
+        action.locator.sourceHint = sourceHint;
+      }
+    }
+
+    const result = applyRecordedSelectorRepairs({
+      draft: original,
+      repairs: [
+        { actionIndex: 0, originalCss: CSS, testId: "due-date-input" },
+        { actionIndex: 1, originalCss: CSS, testId: "due-date-input" },
+      ],
+    });
+
+    expect(result.problems).toEqual([]);
+    expect(result.repairedActionCount).toBe(2);
   });
 });

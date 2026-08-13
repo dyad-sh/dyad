@@ -973,10 +973,26 @@
    * generated Playwright test never locates by `data-dyad-id`.
    */
   function sourceHintFor(el) {
+    // Keep these bounds aligned with LocatorSourceHintSchema. The suffix can
+    // contain two MAX_SAFE_INTEGER values in addition to the 2,048-char path.
+    const MAX_SOURCE_HINT_PATH_LENGTH = 2048;
+    const MAX_SOURCE_HINT_ATTRIBUTE_LENGTH =
+      MAX_SOURCE_HINT_PATH_LENGTH +
+      2 * String(Number.MAX_SAFE_INTEGER).length +
+      2;
+    const unsafeSourceHintText = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+    const isRelativeInAppSourcePath = (value) =>
+      !/^[\\/]/.test(value) &&
+      !/^[a-z][a-z0-9+.-]*:/i.test(value) &&
+      !/(^|[\\/])\.\.([\\/]|$)/.test(value);
     let source = el;
     while (source && source.nodeType === 1) {
       const raw = source.getAttribute && source.getAttribute("data-dyad-id");
-      if (raw && raw.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(raw)) {
+      if (
+        raw &&
+        raw.length <= MAX_SOURCE_HINT_ATTRIBUTE_LENGTH &&
+        !unsafeSourceHintText.test(raw)
+      ) {
         // Paths may themselves contain colons (notably a Windows drive), so
         // take the final two colon-delimited integers as line and column.
         const match = /^(.*):(\d+):(\d+)$/.exec(raw);
@@ -985,6 +1001,8 @@
         if (
           match &&
           match[1] &&
+          match[1].length <= MAX_SOURCE_HINT_PATH_LENGTH &&
+          isRelativeInAppSourcePath(match[1]) &&
           Number.isSafeInteger(line) &&
           line > 0 &&
           Number.isSafeInteger(column) &&
@@ -1006,7 +1024,7 @@
             if (
               inputType &&
               inputType.length <= 128 &&
-              !/[\u0000-\u001f\u007f]/.test(inputType)
+              !unsafeSourceHintText.test(inputType)
             ) {
               hint.inputType = inputType;
             }

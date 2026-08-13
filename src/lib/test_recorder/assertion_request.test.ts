@@ -40,6 +40,36 @@ describe("buildRecordedTestProposalPrompt", () => {
     expect(prompt).toContain("do not guess");
   });
 
+  it("deduplicates diagnostics for actions with the same CSS and source", () => {
+    const locator = {
+      kind: "css" as const,
+      value: "body > main > input",
+      sourceHint: {
+        relativePath: "src/App.tsx",
+        line: 12,
+        column: 4,
+        tagName: "input",
+        exact: true,
+      },
+    };
+    const draft: RecordedTestDraft = {
+      version: RECORDED_TEST_DRAFT_VERSION,
+      draftId: "recording-many-fills",
+      authMode: "none",
+      actions: [
+        { kind: "fill", locator, value: "a" },
+        { kind: "fill", locator, value: "ab" },
+      ],
+    };
+
+    const prompt = buildRecordedTestProposalPrompt(draft);
+
+    expect(prompt).toContain("Statements 1, 2; recorded actions 0, 1");
+    expect(prompt.match(/Original CSS:/g)).toHaveLength(1);
+    expect(prompt.match(/Source hint:/g)).toHaveLength(1);
+    expect(prompt).toContain("Each repair updates only its referenced action");
+  });
+
   it("does not add stabilization instructions for stable locators", () => {
     const draft: RecordedTestDraft = {
       version: RECORDED_TEST_DRAFT_VERSION,

@@ -26,7 +26,17 @@ export const MAX_LOCATOR_LENGTH = 1_024;
 const MAX_VALUE_LEN = 10_000;
 const MAX_KEY_LEN = 64;
 const MAX_SELECT_VALUES = 100;
+export const MAX_SOURCE_HINT_PATH_LENGTH = 2_048;
 const MAX_PATH_LEN = 2_048;
+
+const SAFE_SOURCE_HINT_TEXT = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/;
+
+function isRelativeInAppSourcePath(value: string): boolean {
+  if (/^[\\/]/.test(value) || /^[a-z][a-z0-9+.-]*:/i.test(value)) {
+    return false;
+  }
+  return !/(^|[\\/])\.\.([\\/]|$)/.test(value);
+}
 
 /**
  * Development-only source information injected by Dyad's component tagger.
@@ -40,11 +50,14 @@ export const LocatorSourceHintSchema = z.object({
   relativePath: z
     .string()
     .min(1)
-    .max(MAX_PATH_LEN)
+    .max(MAX_SOURCE_HINT_PATH_LENGTH)
     // Keep an app-controlled attribute from breaking the structured agent
     // prompt onto a new line. The path is displayed as JSON too, but the trust
     // boundary should reject control characters rather than relying on that.
-    .regex(/^[^\u0000-\u001f\u007f]+$/),
+    .regex(SAFE_SOURCE_HINT_TEXT)
+    .refine(isRelativeInAppSourcePath, {
+      message: "source hint path must be relative and stay inside the app",
+    }),
   line: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   // Babel's JSX locations use a zero-based column.
   column: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -54,12 +67,7 @@ export const LocatorSourceHintSchema = z.object({
     .min(1)
     .max(128)
     .regex(/^[a-z][a-z0-9-]*$/i),
-  inputType: z
-    .string()
-    .min(1)
-    .max(128)
-    .regex(/^[^\u0000-\u001f\u007f]+$/)
-    .optional(),
+  inputType: z.string().min(1).max(128).regex(SAFE_SOURCE_HINT_TEXT).optional(),
   /** False when the nearest tagged ancestor supplied the source location. */
   exact: z.boolean(),
 });

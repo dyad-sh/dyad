@@ -24,6 +24,76 @@ describe("collapseActions", () => {
     ]);
   });
 
+  it("ignores source-hint changes when collapsing replay locators", () => {
+    const css = "body > main > input";
+    const entries: RecordedEntry[] = [
+      {
+        action: {
+          kind: "fill",
+          locator: {
+            kind: "css",
+            value: css,
+            sourceHint: {
+              relativePath: "src/App.tsx",
+              line: 10,
+              column: 2,
+              tagName: "input",
+              exact: true,
+            },
+          },
+          value: "a",
+        },
+      },
+      {
+        action: {
+          kind: "fill",
+          locator: {
+            kind: "css",
+            value: css,
+            sourceHint: {
+              relativePath: "src/App.tsx",
+              line: 11,
+              column: 2,
+              tagName: "input",
+              exact: true,
+            },
+          },
+          value: "ab",
+        },
+      },
+    ];
+
+    expect(collapseActions(entries)).toEqual([entries[1].action]);
+  });
+
+  it("absorbs a double-click lead-in despite changed source metadata", () => {
+    const locator = {
+      kind: "css" as const,
+      value: "body > main > button",
+      sourceHint: {
+        relativePath: "src/App.tsx",
+        line: 10,
+        column: 2,
+        tagName: "button",
+        exact: true,
+      },
+    };
+    const entries: RecordedEntry[] = [
+      { action: { kind: "click", locator } },
+      {
+        action: {
+          kind: "dblclick",
+          locator: {
+            ...locator,
+            sourceHint: { ...locator.sourceHint, line: 11 },
+          },
+        },
+      },
+    ];
+
+    expect(collapseActions(entries)).toEqual([entries[1].action]);
+  });
+
   it("absorbs the click the browser dispatches before a double-click", () => {
     // The in-page recorder reports the first click as it happens (a stalled
     // click is lost when the click navigates) and drops the rest of the

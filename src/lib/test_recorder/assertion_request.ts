@@ -5,25 +5,54 @@ import { isFragileCssLocator } from "./selector_quality";
 function fragileSelectorDetails(draft: RecordedTestDraft): string[] {
   const statementOffset =
     recordedBodyStatements(draft).length - draft.actions.length;
-  const fragile = draft.actions.flatMap((action, actionIndex) => {
+  const groups = new Map<
+    string,
+    {
+      actionIndexes: number[];
+      statementIndexes: number[];
+      css: string;
+      sourceHint: unknown;
+    }
+  >();
+
+  draft.actions.forEach((action, actionIndex) => {
     const locator = "locator" in action ? action.locator : undefined;
     if (!locator || !isFragileCssLocator(locator)) {
-      return [];
+      return;
     }
 
-    const hint = locator.sourceHint;
+    const sourceHint = locator.sourceHint
+      ? {
+          file: locator.sourceHint.relativePath,
+          line: locator.sourceHint.line,
+          column: locator.sourceHint.column,
+          element: locator.sourceHint.tagName,
+          ...(locator.sourceHint.inputType
+            ? { inputType: locator.sourceHint.inputType }
+            : {}),
+          exactElement: locator.sourceHint.exact,
+        }
+      : null;
+    const key = JSON.stringify({ css: locator.value, sourceHint });
+    const group = groups.get(key) ?? {
+      actionIndexes: [],
+      statementIndexes: [],
+      css: locator.value,
+      sourceHint,
+    };
+    group.actionIndexes.push(actionIndex);
+    group.statementIndexes.push(statementOffset + actionIndex);
+    groups.set(key, group);
+  });
+
+  const fragile = [...groups.values()].flatMap((group) => {
+    const statements = group.statementIndexes.join(", ");
+    const actions = group.actionIndexes.join(", ");
     return [
-      `- Statement ${statementOffset + actionIndex}; recorded action ${actionIndex}`,
-      `  Original CSS: ${JSON.stringify(locator.value)}`,
-      hint
-        ? `  Source hint: ${JSON.stringify({
-            file: hint.relativePath,
-            line: hint.line,
-            column: hint.column,
-            element: hint.tagName,
-            ...(hint.inputType ? { inputType: hint.inputType } : {}),
-            exactElement: hint.exact,
-          })}`
+      `- Statement${group.statementIndexes.length === 1 ? "" : "s"} ${statements}; recorded action${group.actionIndexes.length === 1 ? "" : "s"} ${actions}`,
+      `  Original CSS: ${JSON.stringify(group.css)}`,
+      group.sourceHint
+        ? `  Source hint: ${JSON.stringify(group.sourceHint)}`
         : "  Source hint: unavailable — search the app code and only repair it if the element is unambiguous.",
     ];
   });
@@ -36,7 +65,7 @@ function fragileSelectorDetails(draft: RecordedTestDraft): string[] {
     "",
     "For each element you can identify safely:",
     "1. Inspect the hinted app source. Reuse an existing stable data-testid, or add one with the normal file-editing tools. Use a descriptive static kebab-case value; do not use an ordinal such as input-3.",
-    "2. After the source edit succeeds, include one selectorRepairs entry in generate_test_assertions with the recorded action index, exact original CSS, and test id. One repair updates every action with that CSS.",
+    "2. After the source edit succeeds, include one selectorRepairs entry in generate_test_assertions for every listed recorded action that should use it, with that action index, exact original CSS, and test id. Each repair updates only its referenced action.",
     "3. Use the repaired getByTestId locator in any assertion that targets that element.",
     "If the hint is missing, points only to an ancestor, identifies a repeated list item, or is otherwise ambiguous, do not guess: omit that repair and keep the recorded CSS locator.",
   ];

@@ -40,8 +40,8 @@ function locatorFor(action: RecordedAction) {
 
 /**
  * Validate selector repairs against the exact parked recording, then apply all
- * of them atomically. One repair rewrites every action carrying the same CSS
- * locator so repeated fills/clicks keep using the same source test hook.
+ * of them atomically. Each repair updates only the indexed action: two routes
+ * can produce the same structural CSS for unrelated source elements.
  */
 export function applyRecordedSelectorRepairs({
   draft,
@@ -59,9 +59,16 @@ export function applyRecordedSelectorRepairs({
   }
 
   const problems: string[] = [];
-  const testIdByCss = new Map<string, string>();
-  const cssByTestId = new Map<string, string>();
+  const testIdByActionIndex = new Map<number, string>();
+  const sourceByTestId = new Map<string, string | null>();
+  const testIdBySource = new Map<string, string>();
   const seenActionIndexes = new Set<number>();
+  const reservedTestIds = new Set(
+    draft.actions.flatMap((action) => {
+      const locator = locatorFor(action);
+      return locator?.kind === "testid" ? [locator.value] : [];
+    }),
+  );
 
   repairs.forEach((repair, position) => {
     const label = `selector repair ${position + 1}`;
@@ -76,7 +83,7 @@ export function applyRecordedSelectorRepairs({
     }
     if (seenActionIndexes.has(repair.actionIndex)) {
       problems.push(
-        `${label} repeats recorded action ${repair.actionIndex}; send one repair for a CSS selector because it updates every matching action.`,
+        `${label} repeats recorded action ${repair.actionIndex}; send at most one repair per recorded action.`,
       );
       return;
     }
@@ -107,23 +114,38 @@ export function applyRecordedSelectorRepairs({
       return;
     }
 
-    const priorTestId = testIdByCss.get(repair.originalCss);
-    if (priorTestId) {
+    if (reservedTestIds.has(repair.testId)) {
       problems.push(
-        `${label} repeats CSS ${JSON.stringify(repair.originalCss)}; the earlier repair already updates every matching action.`,
-      );
-      return;
-    }
-    const priorCss = cssByTestId.get(repair.testId);
-    if (priorCss && priorCss !== repair.originalCss) {
-      problems.push(
-        `${label} reuses data-testid ${JSON.stringify(repair.testId)} for a different CSS locator, which could make the Playwright locator ambiguous.`,
+        `${label} reuses data-testid ${JSON.stringify(repair.testId)}, which is already used by another recorded locator and could make the Playwright locator ambiguous.`,
       );
       return;
     }
 
-    testIdByCss.set(repair.originalCss, repair.testId);
-    cssByTestId.set(repair.testId, repair.originalCss);
+    const sourceKey = locator.sourceHint
+      ? JSON.stringify(locator.sourceHint)
+      : null;
+    if (
+      sourceByTestId.has(repair.testId) &&
+      (sourceKey === null || sourceByTestId.get(repair.testId) !== sourceKey)
+    ) {
+      problems.push(
+        `${label} reuses data-testid ${JSON.stringify(repair.testId)} for a different or unverified source element, which could make the Playwright locator ambiguous.`,
+      );
+      return;
+    }
+    if (sourceKey !== null) {
+      const priorTestId = testIdBySource.get(sourceKey);
+      if (priorTestId && priorTestId !== repair.testId) {
+        problems.push(
+          `${label} assigns a second data-testid to the same source element; use ${JSON.stringify(priorTestId)} consistently.`,
+        );
+        return;
+      }
+      testIdBySource.set(sourceKey, repair.testId);
+    }
+
+    testIdByActionIndex.set(repair.actionIndex, repair.testId);
+    sourceByTestId.set(repair.testId, sourceKey);
   });
 
   if (problems.length > 0) {
@@ -131,10 +153,8 @@ export function applyRecordedSelectorRepairs({
   }
 
   let repairedActionCount = 0;
-  const actions = draft.actions.map((action): RecordedAction => {
-    const locator = locatorFor(action);
-    if (!locator || locator.kind !== "css") return action;
-    const testId = testIdByCss.get(locator.value);
+  const actions = draft.actions.map((action, actionIndex): RecordedAction => {
+    const testId = testIdByActionIndex.get(actionIndex);
     if (!testId) return action;
     repairedActionCount++;
     return {

@@ -196,10 +196,7 @@ describe("chat stream persistence", () => {
       intent: { prompt: "Build the edited version" },
       queue: { queueRevision: 3, queue: [] },
     });
-    expect(stageActiveIntent(database, claimed!.intent)).toEqual({
-      kind: "replayed",
-      acceptance: "queued",
-    });
+    expect(stageActiveIntent(database, claimed!.intent)).toBeNull();
   });
 
   it("makes a claimed queue head immutable before asynchronous admission", async () => {

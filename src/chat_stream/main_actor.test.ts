@@ -133,6 +133,15 @@ vi.mock("./persistence", () => ({
           acceptance: "queued" as const,
         };
       }
+      if (
+        persisted.intents.has(intent.intentId) &&
+        persisted.entries.some((entry) => entry.intentId === intent.intentId)
+      ) {
+        return {
+          kind: "replayed" as const,
+          acceptance: "queued" as const,
+        };
+      }
       execution.admissions.push(intent.prompt);
       persisted.intents.set(intent.intentId, intent);
       return null;

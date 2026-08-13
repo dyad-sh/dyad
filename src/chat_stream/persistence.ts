@@ -457,6 +457,14 @@ export function stageActiveIntent(
   const existing = recordFor(intent.intentId);
   if (existing) {
     assertMatchingIntent(existing, intent);
+    if (
+      existing.acceptance === "queued" &&
+      !queueFor(intent.chatId).intentIds.includes(intent.intentId)
+    ) {
+      // The dispatcher has already claimed this queued turn. It is no longer
+      // a duplicate admission and must continue into execution.
+      return null;
+    }
     return replay(existing);
   }
   if (intent.owner?.kind === "user-input-follow-up") {

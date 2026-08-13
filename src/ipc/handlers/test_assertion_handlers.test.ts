@@ -47,6 +47,12 @@ vi.mock("../utils/get_model_client", () => ({
   }),
 }));
 
+vi.mock("../utils/model_effort", () => ({
+  resolveDefaultModelSelection: async (settings: {
+    selectedModel: { provider: string; name: string };
+  }) => ({ ...settings.selectedModel, effortLevel: "medium" }),
+}));
+
 vi.mock("../utils/provider_options", () => ({
   getAiHeaders: () => ({}),
   getProviderOptions: () => ({}),

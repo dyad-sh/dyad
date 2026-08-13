@@ -24,6 +24,7 @@ import {
 } from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
 import { getModelClient } from "../utils/get_model_client";
+import { resolveDefaultModelSelection } from "../utils/model_effort";
 import { fastTextOutput } from "../utils/stream_text_utils";
 import { getAiHeaders, getProviderOptions } from "../utils/provider_options";
 import {
@@ -678,8 +679,16 @@ async function callStructuredModel<T>({
     // operation, and `getModelClient` can reach the provider registry. Without
     // this the budget only ever covered the streaming half, and a slow client
     // resolution aborted a stream that did not exist yet.
-    const { modelClient } = await Promise.race([
-      getModelClient(settings.selectedModel, settings),
+    const { modelClient, modelSelection } = await Promise.race([
+      (async () => {
+        const modelSelection = await resolveDefaultModelSelection(settings);
+        const { modelClient } = await getModelClient(
+          modelSelection,
+          settings,
+          modelSelection,
+        );
+        return { modelClient, modelSelection };
+      })(),
       timeout,
     ]);
     const dyadRequestId = crypto.randomUUID();
@@ -700,7 +709,8 @@ async function callStructuredModel<T>({
         files: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelClient.builtinProviderId,
-        settings,
+        reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
+        modelSelection,
       }),
       messages: [{ role: "user", content: payload }],
     });

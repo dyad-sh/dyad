@@ -68,7 +68,9 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 - Pass an authoritative per-turn model selection through an explicit
   `ModelSelection` parameter. Do not hide it inside a `UserSettings` override or
   detect it by duck-typing `settings.selectedModel`; that reverses chat/model
-  precedence and creates an undeclared type contract.
+  precedence and creates an undeclared type contract. When changing
+  `GetProviderOptionsParams`, audit every `getProviderOptions` caller, including
+  assertion synthesis, compaction, and local-agent subagents.
 - Keep durable first-turn acceptance atomic with latching an implicit chat
   mode. The idempotent user-message insert and conditional mode update belong
   in one synchronous SQLite transaction, duplicate replay must repair legacy

@@ -9,6 +9,7 @@ import { TestIsolationSchema } from "./tests";
 // Relative import: this module is pulled into the preload bundle, which cannot
 // resolve the "@/" alias.
 import { RecordedTestDraftSchema } from "../../lib/test_recorder/draft";
+import { RecordedSelectorRepairSchema } from "../../lib/test_recorder/selector_repair";
 
 // =============================================================================
 // Recording Schemas
@@ -170,7 +171,8 @@ export type RecordingDraftConsumedPayload = z.infer<
 >;
 
 /**
- * The AI named the recording while proposing a test for it.
+ * The AI named the recording and may have stabilized its fragile selectors
+ * while proposing a test for it.
  *
  * The recorder bar holds its own copy of the draft, minted when the session
  * stopped — and for the common case (the user didn't name it) that copy has no
@@ -183,6 +185,8 @@ export const RecordingDraftNamedPayloadSchema = z.object({
   /** Scoped to one recording: a newer draft must not be renamed by an old card. */
   draftId: z.string(),
   testName: z.string(),
+  /** Compact patches keep the renderer's copy aligned without broadcasting recorded values. */
+  selectorRepairs: z.array(RecordedSelectorRepairSchema).max(5_000).optional(),
 });
 export type RecordingDraftNamedPayload = z.infer<
   typeof RecordingDraftNamedPayloadSchema

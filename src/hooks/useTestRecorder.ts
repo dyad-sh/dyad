@@ -34,6 +34,7 @@ import {
   RECORDED_TEST_DRAFT_VERSION,
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
+import { applyRecordedSelectorRepairs } from "@/lib/test_recorder/selector_repair";
 import { parseRecorderAction } from "@/lib/test_recorder/types";
 import type { RecordingAuth } from "@/ipc/types";
 
@@ -759,19 +760,30 @@ export function useTestRecorder({
     return unsub;
   }, [patchState]);
 
-  // The AI named this recording while proposing a test for it. Adopt the name
-  // so the review stops calling it "Untitled recording" while the card beside
-  // it shows the name the spec will be written under. Scoped by draft id: an
-  // older card settling after a newer recording was parked must not rename it.
+  // The AI named this recording and may have repaired fragile selectors while
+  // proposing it. Adopt both so the review and any later "Ask again" prompt
+  // describe the same draft the main process has parked. Scoped by draft id: an
+  // older card settling after a newer recording was parked must not update it.
   useEffect(() => {
     const unsub = ipc.events.recording.onDraftNamed(
-      ({ appId: namedAppId, draftId, testName }) => {
+      ({ appId: namedAppId, draftId, testName, selectorRepairs }) => {
         if (namedAppId == null || !testName) return;
-        patchState(namedAppId, (prev) =>
-          prev.draft && prev.draft.draftId === draftId
-            ? { ...prev, draft: { ...prev.draft, testName } }
-            : prev,
-        );
+        patchState(namedAppId, (prev) => {
+          if (!prev.draft || prev.draft.draftId !== draftId) return prev;
+          const repaired = selectorRepairs
+            ? applyRecordedSelectorRepairs({
+                draft: prev.draft,
+                repairs: selectorRepairs,
+              })
+            : { draft: prev.draft, problems: [] };
+          return {
+            ...prev,
+            draft: {
+              ...(repaired.problems.length === 0 ? repaired.draft : prev.draft),
+              testName,
+            },
+          };
+        });
       },
     );
     return unsub;

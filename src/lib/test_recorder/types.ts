@@ -22,17 +22,54 @@ export type LocatorKind = z.infer<typeof LocatorKindSchema>;
  * previewed app is untrusted, so an unbounded schema lets it park megabytes per
  * action in renderer memory. Far above anything a real recording reaches.
  */
-const MAX_LOCATOR_LEN = 1_024;
+export const MAX_LOCATOR_LENGTH = 1_024;
 const MAX_VALUE_LEN = 10_000;
 const MAX_KEY_LEN = 64;
 const MAX_SELECT_VALUES = 100;
 const MAX_PATH_LEN = 2_048;
 
+/**
+ * Development-only source information injected by Dyad's component tagger.
+ *
+ * This is never a replay locator: line-based `data-dyad-id` values move as the
+ * app is edited and are absent from production builds. A fragile CSS fallback
+ * carries the hint only so the agent can find the JSX element and add a stable
+ * `data-testid` before it proposes the recorded test.
+ */
+export const LocatorSourceHintSchema = z.object({
+  relativePath: z
+    .string()
+    .min(1)
+    .max(MAX_PATH_LEN)
+    // Keep an app-controlled attribute from breaking the structured agent
+    // prompt onto a new line. The path is displayed as JSON too, but the trust
+    // boundary should reject control characters rather than relying on that.
+    .regex(/^[^\u0000-\u001f\u007f]+$/),
+  line: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  // Babel's JSX locations use a zero-based column.
+  column: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  /** The DOM element the user interacted with, not necessarily the tagged ancestor. */
+  tagName: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-z][a-z0-9-]*$/i),
+  inputType: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[^\u0000-\u001f\u007f]+$/)
+    .optional(),
+  /** False when the nearest tagged ancestor supplied the source location. */
+  exact: z.boolean(),
+});
+export type LocatorSourceHint = z.infer<typeof LocatorSourceHintSchema>;
+
 export const LocatorDescriptorSchema = z.object({
   kind: LocatorKindSchema,
-  value: z.string().max(MAX_LOCATOR_LEN),
+  value: z.string().max(MAX_LOCATOR_LENGTH),
   /** Accessible name, only for `kind: "role"`. */
-  name: z.string().max(MAX_LOCATOR_LEN).optional(),
+  name: z.string().max(MAX_LOCATOR_LENGTH).optional(),
   /**
    * Match the name/text exactly instead of Playwright's default case-insensitive
    * substring. The recorder checks uniqueness with `===`, so the generated
@@ -42,6 +79,8 @@ export const LocatorDescriptorSchema = z.object({
   exact: z.boolean().optional(),
   /** Zero-based index when the locator matches multiple elements. */
   nth: z.number().int().nonnegative().optional(),
+  /** Present on CSS fallbacks when Dyad can trace the DOM node to app source. */
+  sourceHint: LocatorSourceHintSchema.optional(),
 });
 export type LocatorDescriptor = z.infer<typeof LocatorDescriptorSchema>;
 

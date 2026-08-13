@@ -728,6 +728,54 @@ describe("useTestRecorder", () => {
     expect(result.current.draftSteps).toEqual([`await page.goto("/");`]);
   });
 
+  it("adopts selector repairs made while the AI proposes the draft", async () => {
+    const iframe = makeIframe();
+    const { result } = await recordingSession({ iframe, appUrl: true });
+    act(() => {
+      iframe.send({
+        type: "dyad-recorder-action",
+        action: {
+          kind: "fill",
+          locator: { kind: "css", value: "body > main > input" },
+          value: "2026-08-13",
+        },
+      });
+    });
+    await waitFor(() => expect(result.current.entryCount).toBe(1));
+    await act(async () => {
+      await result.current.stopAndReview("");
+    });
+
+    const draftId = result.current.draft!.draftId;
+    const onDraftNamed = onDraftNamedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onDraftNamed({
+        appId: 1,
+        draftId,
+        testName: "Set the due date",
+        selectorRepairs: [
+          {
+            actionIndex: 0,
+            originalCss: "body > main > input",
+            testId: "due-date-input",
+          },
+        ],
+      });
+    });
+
+    expect(result.current.draft?.testName).toBe("Set the due date");
+    expect(result.current.draft?.actions).toEqual([
+      {
+        kind: "fill",
+        locator: { kind: "testid", value: "due-date-input" },
+        value: "2026-08-13",
+      },
+    ]);
+    expect(result.current.draftSteps).toContain(
+      `await page.getByTestId("due-date-input").fill("2026-08-13");`,
+    );
+  });
+
   it("ignores messages from a preview that navigated off the app's origin", async () => {
     const iframe = makeIframe();
     const { result } = await recordingSession({ iframe, appUrl: true });

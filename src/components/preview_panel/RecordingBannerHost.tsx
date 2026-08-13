@@ -8,45 +8,10 @@ import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { TestRecorderController } from "@/hooks/useTestRecorder";
+import { buildRecordedTestProposalPrompt } from "@/lib/test_recorder/assertion_request";
 import { showError, showInfo } from "@/lib/toast";
 import { MAX_CHAT_PROMPT_CHARS } from "@/shared/chatAttachmentLimits";
 import { RecordingBanner } from "./RecordingBanner";
-
-/**
- * The prompt that starts the test proposal. The recording isn't a file yet, so
- * the statements travel in the message — the agent names the test, describes the
- * steps and proposes checks, and its `generate_test_assertions` tool validates
- * what it sends back against the draft Dyad parked when recording stopped.
- */
-function buildAssertionsPrompt(
-  testName: string | undefined,
-  recordingId: string,
-  steps: string[],
-): string {
-  return [
-    `Add assertions to the test I just recorded${testName ? `: "${testName}"` : ""}`,
-    "",
-    // Named in the prompt and echoed back through the tool, so a request that
-    // sat queued while a *newer* recording replaced this one is rejected
-    // instead of annotating the wrong flow.
-    `Recording id: ${recordingId}`,
-    "",
-    // The steps are all there is to name it from, which is why the naming
-    // happens here rather than being guessed before the flow was performed.
-    testName
-      ? `Use "${testName}" as the test name — I chose it.`
-      : "I didn't name it, so name it yourself from what the steps actually do.",
-    "",
-    "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
-    ...steps.map((step, index) => `${index}: ${step}`),
-    "",
-    // The recorder bar and the assertion card both number these from 1, so a
-    // user who says "step 3" means the statement listed as 2 here.
-    'Note: I see these numbered from 1, not 0 — if I ask for a check after "step N", that\'s the statement you see as N-1.',
-    "",
-    "Call generate_test_assertions with that recording id, a test name, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the proposal, and Dyad generates the test file when I approve it.",
-  ].join("\n");
-}
 
 /**
  * The recording bar, mounted alongside the hoisted recorder rather than inside
@@ -103,11 +68,7 @@ function ActiveRecordingBanner({
       return;
     }
     const requestAppId = selectedAppId;
-    const prompt = buildAssertionsPrompt(
-      draft.testName,
-      draft.draftId,
-      recorder.draftSteps,
-    );
+    const prompt = buildRecordedTestProposalPrompt(draft, recorder.draftSteps);
     // The recording travels in the message, so a long enough one can't be sent
     // at all — 5,000 actions is the recorder's cap and a single `fill` carries
     // up to 10,000 characters of value. `streamMessage` would refuse it anyway,

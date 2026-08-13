@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UserInputParkValue } from "@/user_input/state";
-import { setRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
+import {
+  getRecordedTestDraft,
+  setRecordedTestDraft,
+} from "@/ipc/services/recorded_test_drafts";
 import {
   RECORDED_TEST_DRAFT_VERSION,
   type RecordedTestDraft,
@@ -168,6 +171,95 @@ describe("generate_test_assertions", () => {
     // Approving rewrote this card's tag in the message row; the turn has to
     // adopt that before it appends anything else.
     expect(ctx.resyncResponseFromDb).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs fragile selectors in the parked and proposed drafts", async () => {
+    const css = "#root > main > form > div:nth-of-type(2) > input";
+    const fragileDraft: RecordedTestDraft = {
+      ...DRAFT,
+      actions: [
+        {
+          kind: "fill",
+          locator: {
+            kind: "css",
+            value: css,
+            sourceHint: {
+              relativePath: "src/EventForm.tsx",
+              line: 84,
+              column: 10,
+              tagName: "input",
+              inputType: "date",
+              exact: true,
+            },
+          },
+          value: "2026-08-13",
+        },
+      ],
+    };
+    setRecordedTestDraft(APP_ID, fragileDraft);
+    const ctx = makeCtx();
+
+    await generateTestAssertionsTool.execute(
+      {
+        ...VALID_ARGS,
+        steps: [
+          { index: 0, text: "Open the home page" },
+          { index: 1, text: "Set the due date" },
+        ],
+        selectorRepairs: [
+          { actionIndex: 0, originalCss: css, testId: "due-date-input" },
+        ],
+      },
+      ctx,
+    );
+
+    const expectedAction = {
+      kind: "fill",
+      locator: { kind: "testid", value: "due-date-input" },
+      value: "2026-08-13",
+    };
+    expect(getRecordedTestDraft(APP_ID)?.actions).toEqual([expectedAction]);
+    expect(
+      parseAssertionsPayloadFromMessage(committedXml(ctx))?.draft.actions,
+    ).toEqual([expectedAction]);
+  });
+
+  it("rejects a stale selector repair without partially changing the draft", async () => {
+    const css = "body > main > input";
+    const fragileDraft: RecordedTestDraft = {
+      ...DRAFT,
+      actions: [
+        {
+          kind: "fill",
+          locator: { kind: "css", value: css },
+          value: "Ada",
+        },
+      ],
+    };
+    setRecordedTestDraft(APP_ID, fragileDraft);
+    const ctx = makeCtx();
+
+    const result = await generateTestAssertionsTool.execute(
+      {
+        ...VALID_ARGS,
+        steps: [
+          { index: 0, text: "Open the home page" },
+          { index: 1, text: "Enter a name" },
+        ],
+        selectorRepairs: [
+          {
+            actionIndex: 0,
+            originalCss: "body > main > textarea",
+            testId: "name-input",
+          },
+        ],
+      },
+      ctx,
+    );
+
+    expect(result).toContain("does not match recorded action 0");
+    expect(getRecordedTestDraft(APP_ID)).toEqual(fragileDraft);
+    expect(registry.requests).toEqual([]);
   });
 
   it("names the test from the model when the user didn't name the recording", async () => {

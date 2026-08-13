@@ -68,6 +68,23 @@ describe("locatorToCode", () => {
     ).toBe(`getByRole("button", { name: "Item" }).nth(1)`);
   });
 
+  it("never emits development source hints into Playwright code", () => {
+    expect(
+      locatorToCode({
+        kind: "css",
+        value: "body > input",
+        sourceHint: {
+          relativePath: "src/EventForm.tsx",
+          line: 84,
+          column: 10,
+          tagName: "input",
+          inputType: "date",
+          exact: true,
+        },
+      }),
+    ).toBe(`locator("body > input")`);
+  });
+
   it("carries exact through every name-matching builder", () => {
     // The recorder decides uniqueness by exact equality, but getByRole/getByLabel
     // /getByPlaceholder match case-insensitive substrings by default — so a

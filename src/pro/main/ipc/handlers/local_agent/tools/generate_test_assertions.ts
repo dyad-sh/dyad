@@ -26,6 +26,10 @@ import {
   type AssertionProposalPayload,
 } from "@/lib/test_recorder/assertion_proposal";
 import { buildAssertionsTagContent } from "@/lib/test_recorder/assertion_tag";
+import {
+  applyRecordedSelectorRepairs,
+  RecordedSelectorRepairSchema,
+} from "@/lib/test_recorder/selector_repair";
 
 const logger = log.scope("generate_test_assertions");
 
@@ -97,6 +101,13 @@ const generateTestAssertionsSchema = z.object({
     .describe(
       "The assertions to propose. An empty array is a valid answer for a flow with no meaningful outcome to check.",
     ),
+  selectorRepairs: z
+    .array(RecordedSelectorRepairSchema)
+    .max(5_000)
+    .optional()
+    .describe(
+      "Fragile recorded CSS locators whose app source you already edited to add or reuse the given data-testid. Omit this field when no safe repair was completed. Never claim a repair before the source edit succeeds.",
+    ),
 });
 
 type GenerateTestAssertionsArgs = z.infer<typeof generateTestAssertionsSchema>;
@@ -121,15 +132,23 @@ Use this when the user asks for assertions for a flow they just recorded with Dy
 
 <how_to_use>
 1. Read the numbered statements in the user's message. Those indices are the ones this tool expects — don't renumber them.
-2. Send a \`testName\` for the flow, one \`steps\` entry per statement translating it into one plain-English sentence, plus the assertions you want to propose. Copy the recording id from the request into \`recordingId\` exactly — it is what ties your plan to the recording it describes.
-3. Wait. The call does not come back until the user approves the card or closes it, and the tool result tells you which. Do NOT call it a second time, and do NOT try to write or run anything while it is open — the spec does not exist yet.
-4. Do what the tool result says: run the spec it names, or stop if the user closed the card.
+2. If the request lists fragile selectors, inspect each source hint before calling this tool. For every element you can identify safely, reuse an existing data-testid or edit the app source to add a descriptive static kebab-case data-testid. Do not guess when the hint is missing or ambiguous, and do not put one static id on repeated list items.
+3. Send a \`testName\` for the flow, one \`steps\` entry per statement translating it into one plain-English sentence, plus the assertions you want to propose. Include one \`selectorRepairs\` entry per source edit that succeeded, copying its recorded action index and original CSS exactly. Copy the recording id from the request into \`recordingId\` exactly — it ties the plan and repairs to the recording they describe.
+4. Wait. The call does not come back until the user approves the card or closes it, and the tool result tells you which. Do NOT call it a second time, and do NOT try to write or run anything while it is open — the spec does not exist yet.
+5. Do what the tool result says: run the spec it names, or stop if the user closed the card.
 </how_to_use>
+
+<selector_repairs>
+- A repair is valid only after you have confirmed and, when needed, edited the corresponding app source. The tool updates the recorded draft; it does not edit source code for you.
+- Use the recorded ACTION index shown in the fragile-selector details, not the displayed statement index. Setup statements such as signIn and page.goto are not recorded actions.
+- One repair updates every recorded action with the same original CSS. Do not send duplicates.
+- If you cannot make a safe source edit, omit the repair. Keeping the original CSS is better than changing the wrong element.
+</selector_repairs>
 
 <assertions>
 BE CONSERVATIVE. Most recorded tests need one to three assertions. Many need zero.
 - Assert only an OUTCOME the preceding statements should have produced.
-- Never invent text, URLs, counts, roles, or test ids that don't already appear in the statements. If you can't ground it, don't propose it.
+- Never invent text, URLs, counts, roles, or test ids that don't already appear in the statements, except a test id from a completed \`selectorRepairs\` source edit. If you can't ground it, don't propose it.
 - Never assert that an element you just interacted with exists.
 - Don't assert after \`signIn(page)\` or \`page.goto(...)\` unless navigation is the point of the flow.
 - At most one assertion per statement.
@@ -270,13 +289,21 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
         return body;
       }
 
-      const bodyStatements = recordedBodyStatements(draft);
-      const userName = normalizeTestName(draft.testName);
-      const problems = collectProblems({
-        args,
-        statementCount: bodyStatements.length,
-        needsName: !userName,
+      const repairResult = applyRecordedSelectorRepairs({
+        draft,
+        repairs: args.selectorRepairs ?? [],
       });
+      const repairedDraft = repairResult.draft;
+      const bodyStatements = recordedBodyStatements(repairedDraft);
+      const userName = normalizeTestName(draft.testName);
+      const problems = [
+        ...repairResult.problems,
+        ...collectProblems({
+          args,
+          statementCount: bodyStatements.length,
+          needsName: !userName,
+        }),
+      ];
       if (problems.length > 0) {
         const body = [
           `Your plan doesn't line up with the recording, so nothing was shown to the user:`,
@@ -308,7 +335,7 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
       // above — and exists so nothing downstream can be handed an unnamed test.
       const testName =
         userName || normalizeTestName(args.testName) || "recorded test";
-      const namedDraft: RecordedTestDraft = { ...draft, testName };
+      const namedDraft: RecordedTestDraft = { ...repairedDraft, testName };
 
       // The recorder bar is still showing this recording, under the name it had
       // when the session stopped — which for an unnamed one is "Untitled
@@ -321,6 +348,10 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
         appId: ctx.appId,
         draftId: namedDraft.draftId,
         testName,
+        // Keep the recorder bar's renderer copy in sync without broadcasting
+        // the recording's fill values. If the card is closed and the user asks
+        // again, its next prompt must not resend the old CSS paths.
+        selectorRepairs: args.selectorRepairs,
       });
 
       const proposalId = crypto.randomUUID();
@@ -358,7 +389,7 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
 
       const assertionCount = countAssertions(items);
       logger.info(
-        `Proposed ${assertionCount} assertion(s) for recorded test "${testName}" (chat ${ctx.chatId}), awaiting review as ${requestId}`,
+        `Proposed ${assertionCount} assertion(s) for recorded test "${testName}" after repairing ${repairResult.repairedActionCount} action locator(s) (chat ${ctx.chatId}), awaiting review as ${requestId}`,
       );
 
       const result = await userInputRegistry.park(requestId, ctx.abortSignal);

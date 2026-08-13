@@ -170,32 +170,34 @@ export function hydrateChatStreamPersistence(
   if (queues.has(chatId)) return loadChatQueue(database, chatId);
 
   database.transaction((tx) => {
-    const persistedRecords = tx
-      .select()
-      .from(chatTurnIntents)
-      .where(eq(chatTurnIntents.chatId, chatId))
-      .all();
     const persistedEntries = tx
       .select()
       .from(chatQueueEntries)
       .where(eq(chatQueueEntries.chatId, chatId))
       .orderBy(asc(chatQueueEntries.position))
-      .all();
+      .all()
+      .sort((left, right) => {
+        if (left.status === right.status) return left.position - right.position;
+        return left.status === "claimed" ? -1 : 1;
+      });
     const persistedState = tx
       .select()
       .from(chatQueueStates)
       .where(eq(chatQueueStates.chatId, chatId))
       .get();
 
-    for (const row of persistedRecords) {
+    const intentIds = persistedEntries.flatMap((entry) => {
+      const row = tx
+        .select()
+        .from(chatTurnIntents)
+        .where(eq(chatTurnIntents.intentId, entry.intentId))
+        .get();
       let intent: SerializableChatTurnIntent | null = null;
-      if (row.intent !== null) {
+      try {
+        if (!row?.intent) throw new Error("missing intent payload");
         const parsed = SerializableChatTurnIntentSchema.safeParse(row.intent);
         if (!parsed.success) {
-          throw new DyadError(
-            `Persisted chat intent ${row.intentId} is invalid`,
-            DyadErrorKind.Internal,
-          );
+          throw new Error("invalid intent payload");
         }
         intent = parsed.data;
         assertChatTurnPayloadHash(intent);
@@ -203,13 +205,30 @@ export function hydrateChatStreamPersistence(
           intent.chatId !== chatId ||
           intent.payloadHash !== row.payloadHash
         ) {
-          throw new DyadError(
-            `Persisted chat intent ${row.intentId} does not match its queue`,
-            DyadErrorKind.Internal,
-          );
+          throw new Error("intent does not match its queue row");
         }
+      } catch (error) {
+        console.error(
+          `[chat-stream] Quarantining unusable persisted intent ${entry.intentId}`,
+          error,
+        );
+        tx.delete(chatQueueEntries)
+          .where(eq(chatQueueEntries.intentId, entry.intentId))
+          .run();
+        if (row) {
+          tx.update(chatTurnIntents)
+            .set({
+              acceptance: "rejected",
+              recovery: "terminal",
+              intent: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(chatTurnIntents.intentId, entry.intentId))
+            .run();
+        }
+        return [];
       }
-      intentRecords.set(row.intentId, {
+      intentRecords.set(entry.intentId, {
         intent,
         chatId: row.chatId,
         payloadHash: row.payloadHash,
@@ -218,16 +237,6 @@ export function hydrateChatStreamPersistence(
         acceptedMessageId: row.acceptedMessageId ?? undefined,
         durable: true,
       });
-    }
-
-    const intentIds = persistedEntries.flatMap((entry) => {
-      const record = liveRecordFor(entry.intentId);
-      if (!record) {
-        throw new DyadError(
-          `Persisted queued chat intent ${entry.intentId} has no payload`,
-          DyadErrorKind.Internal,
-        );
-      }
       return [entry.intentId];
     });
     let revision = persistedState?.revision ?? 0;
@@ -601,8 +610,11 @@ function persistDurableQueueMutation(
       .where(eq(chatQueueStates.chatId, chatId))
       .run();
 
-    const claimedCount = tx
-      .select({ intentId: chatQueueEntries.intentId })
+    const claimedEntries = tx
+      .select({
+        intentId: chatQueueEntries.intentId,
+        position: chatQueueEntries.position,
+      })
       .from(chatQueueEntries)
       .where(
         and(
@@ -610,8 +622,15 @@ function persistDurableQueueMutation(
           eq(chatQueueEntries.status, "claimed"),
         ),
       )
-      .all().length;
-    let durablePosition = claimedCount;
+      .orderBy(asc(chatQueueEntries.position))
+      .all();
+    for (const [position, entry] of claimedEntries.entries()) {
+      tx.update(chatQueueEntries)
+        .set({ position })
+        .where(eq(chatQueueEntries.intentId, entry.intentId))
+        .run();
+    }
+    let durablePosition = claimedEntries.length;
     for (const intentId of aggregate.intentIds) {
       const record = liveRecordFor(intentId);
       if (!record?.durable) continue;
@@ -916,11 +935,9 @@ export function markIntentTerminal(
   if (record.durable) {
     try {
       database.transaction((tx) => {
-        if (rejectBeforeAcceptance && record.acceptance === "rejected") {
-          tx.delete(chatQueueEntries)
-            .where(eq(chatQueueEntries.intentId, intent.intentId))
-            .run();
-        }
+        tx.delete(chatQueueEntries)
+          .where(eq(chatQueueEntries.intentId, intent.intentId))
+          .run();
         tx.update(chatTurnIntents)
           .set({
             acceptance: record.acceptance,

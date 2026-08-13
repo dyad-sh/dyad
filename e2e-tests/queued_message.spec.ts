@@ -6,13 +6,12 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
-import * as eph from "electron-playwright-helpers";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
-import { terminateElectronApp } from "./helpers/fixtures";
+import { launchElectronApp, terminateElectronApp } from "./helpers/fixtures";
 
 async function queueMessage(page: Page, chatInput: Locator, message: string) {
   await expect(async () => {
@@ -27,27 +26,6 @@ async function queueMessage(page: Page, chatInput: Locator, message: string) {
   });
 }
 
-function configureE2eEnv(fakeLlmPort: number, parallelIndex: number) {
-  process.env.FAKE_LLM_PORT = String(fakeLlmPort);
-  process.env.DYAD_E2E_PORT_BLOCK_INDEX = String(parallelIndex);
-  process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
-  process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
-  process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
-  process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
-  process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
-  process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
-  process.env.E2E_TEST_BUILD = "true";
-  process.env.OPENAI_API_KEY = "sk-test";
-}
-
-function definedProcessEnv() {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  );
-}
-
 async function launchDyadWithProfile({
   userDataDir,
   fakeLlmPort,
@@ -57,12 +35,10 @@ async function launchDyadWithProfile({
   fakeLlmPort: number;
   testInfo: TestInfo;
 }) {
-  configureE2eEnv(fakeLlmPort, testInfo.parallelIndex);
-  const appInfo = eph.parseElectronApp(eph.findLatestBuild());
-  const electronApp = await electron.launch({
-    args: [appInfo.main, "--enable-logging", `--user-data-dir=${userDataDir}`],
-    executablePath: appInfo.executable,
-    env: definedProcessEnv(),
+  const electronApp = await launchElectronApp({
+    userDataDir,
+    fakeLlmPort,
+    parallelIndex: testInfo.parallelIndex,
   });
   const page = await electronApp.firstWindow();
   const po = new PageObject(electronApp, page, {

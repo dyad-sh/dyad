@@ -28,6 +28,46 @@ export interface ElectronConfig {
   launchArgs?: string[];
 }
 
+export async function launchElectronApp({
+  userDataDir,
+  fakeLlmPort,
+  parallelIndex,
+  showSetupScreen = false,
+  launchArgs = [],
+}: {
+  userDataDir: string;
+  fakeLlmPort: number;
+  parallelIndex: number;
+  showSetupScreen?: boolean;
+  launchArgs?: string[];
+}): Promise<ElectronApplication> {
+  const appInfo = eph.parseElectronApp(eph.findLatestBuild());
+  process.env.FAKE_LLM_PORT = String(fakeLlmPort);
+  process.env.DYAD_E2E_PORT_BLOCK_INDEX = String(parallelIndex);
+  process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
+  process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
+  process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
+  process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
+  process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
+  process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
+  process.env.E2E_TEST_BUILD = "true";
+  if (showSetupScreen) delete process.env.OPENAI_API_KEY;
+  else process.env.OPENAI_API_KEY = "sk-test";
+
+  const electronApp = await electron.launch({
+    args: [
+      appInfo.main,
+      "--enable-logging",
+      `--user-data-dir=${userDataDir}`,
+      ...launchArgs,
+    ],
+    executablePath: appInfo.executable,
+  });
+  (electronApp as any).$dyadUserDataDir = userDataDir;
+  (electronApp as any).$fakeLlmPort = fakeLlmPort;
+  return electronApp;
+}
+
 // Close through Playwright first so it tears down its Electron protocol
 // connections as well as the OS process. Some Electron states can still leave
 // close() pending, so retain a bounded process-group kill as a fallback.
@@ -175,30 +215,10 @@ export const test = base.extend<{
   ],
   electronApp: [
     async ({ electronConfig }, use, testInfo) => {
-      // find the latest build in the out directory
-      const latestBuild = eph.findLatestBuild();
-      // parse the directory and find paths and other info
-      const appInfo = eph.parseElectronApp(latestBuild);
-
       // Calculate worker-specific port for fake LLM server
       // Each parallel worker gets its own server to avoid test interference
       const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
 
-      process.env.FAKE_LLM_PORT = String(fakeLlmPort);
-      process.env.DYAD_E2E_PORT_BLOCK_INDEX = String(testInfo.parallelIndex);
-      process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
-      process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
-      process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
-      process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
-      process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
-      process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
-      process.env.E2E_TEST_BUILD = "true";
-      if (!electronConfig.showSetupScreen) {
-        // This is just a hack to avoid the AI setup screen.
-        process.env.OPENAI_API_KEY = "sk-test";
-      } else {
-        delete process.env.OPENAI_API_KEY;
-      }
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(
         baseTmpDir,
@@ -207,22 +227,13 @@ export const test = base.extend<{
       if (electronConfig.preLaunchHook) {
         await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
       }
-      const electronApp = await electron.launch({
-        args: [
-          appInfo.main,
-          "--enable-logging",
-          `--user-data-dir=${userDataDir}`,
-          ...(electronConfig.launchArgs ?? []),
-        ],
-        executablePath: appInfo.executable,
-        // Strong suspicion this is causing issues on Windows with tests hanging due to error:
-        // ffmpeg failed to write: Error [ERR_STREAM_WRITE_AFTER_END]: write after end
-        // recordVideo: {
-        //   dir: "test-results",
-        // },
+      const electronApp = await launchElectronApp({
+        userDataDir,
+        fakeLlmPort,
+        parallelIndex: testInfo.parallelIndex,
+        showSetupScreen: electronConfig.showSetupScreen,
+        launchArgs: electronConfig.launchArgs,
       });
-      (electronApp as any).$dyadUserDataDir = userDataDir;
-      (electronApp as any).$fakeLlmPort = fakeLlmPort;
 
       console.log("electronApp launched!");
       if (showDebugLogs) {
@@ -263,6 +274,7 @@ export const test = base.extend<{
       // Windows' strict resource locking (e.g. file locking).
       if (os.platform() === "win32") {
         try {
+          const appInfo = eph.parseElectronApp(eph.findLatestBuild());
           const executableName = path.basename(appInfo.executable);
           console.log(`[cleanup:start] Killing ${executableName}`);
           console.time("taskkill");

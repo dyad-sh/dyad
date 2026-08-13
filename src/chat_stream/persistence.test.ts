@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { apps, chats } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { apps, chats, chatQueueEntries, chatTurnIntents } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
   assertQueueSnapshotWithinLimit,
   claimQueueHead,
   disposeSessionChatQueue,
+  getAcceptedMessageId,
   getRetainedIntentPayloadBytes,
   hydrateChatStreamPersistence,
   loadChatQueue,
   markIntentAccepted,
   markIntentTerminal,
   mutateChatQueue,
+  persistAcceptedChatTurn,
   persistQueuedIntent,
   restoreClaimedQueueHead,
   stageActiveIntent,
@@ -318,6 +321,78 @@ describe("chat stream persistence", () => {
       queuePaused: true,
       queue: [{ intentId: "turn-1", persistence: "durable" }],
     });
+  });
+
+  it("quarantines an unusable persisted intent without blocking the chat", () => {
+    persistQueuedIntent(database, intent("broken"));
+    persistQueuedIntent(database, intent("healthy"));
+    database
+      .update(chatTurnIntents)
+      .set({
+        intent: {
+          schemaVersion: 999,
+        } as unknown as SerializableChatTurnIntent,
+      })
+      .where(eq(chatTurnIntents.intentId, "broken"))
+      .run();
+    disposeSessionChatQueue(chatId);
+
+    expect(
+      hydrateChatStreamPersistence(database, chatId).queue.map(
+        (entry) => entry.intentId,
+      ),
+    ).toEqual(["healthy"]);
+    expect(
+      database
+        .select()
+        .from(chatQueueEntries)
+        .where(eq(chatQueueEntries.intentId, "broken"))
+        .get(),
+    ).toBeUndefined();
+  });
+
+  it("restores a claimed head before later queued entries after compaction", async () => {
+    const first = intent("first");
+    persistQueuedIntent(database, first);
+    persistQueuedIntent(database, intent("second"));
+    persistQueuedIntent(database, intent("third"));
+    persistAcceptedChatTurn(database, first, first.intentId, 1);
+    markIntentAccepted(first.intentId, 1);
+    await claimQueueHead(database, chatId);
+    await mutateChatQueue(database, chatId, {
+      type: "mutate-queue",
+      mutation: { type: "pause" },
+      expectedQueueRevision: 5,
+      mutationId: "pause-with-claimed-head",
+    });
+    disposeSessionChatQueue(chatId);
+
+    expect(
+      hydrateChatStreamPersistence(database, chatId).queue.map(
+        (entry) => entry.intentId,
+      ),
+    ).toEqual(["second", "third"]);
+  });
+
+  it("does not retain a terminal claimed row after releasing its payload", async () => {
+    const turn = intent("terminal-claimed");
+    persistQueuedIntent(database, turn);
+    await claimQueueHead(database, chatId);
+    markIntentTerminal(database, turn, false);
+    disposeSessionChatQueue(chatId);
+
+    expect(hydrateChatStreamPersistence(database, chatId).queue).toEqual([]);
+  });
+
+  it("does not hydrate terminal receipts into main-process memory", () => {
+    const turn = intent("accepted-receipt");
+    persistQueuedIntent(database, turn);
+    persistAcceptedChatTurn(database, turn, turn.intentId, 42);
+    markIntentAccepted(turn.intentId, 42);
+    disposeSessionChatQueue(chatId);
+
+    hydrateChatStreamPersistence(database, chatId);
+    expect(getAcceptedMessageId(turn.intentId)).toBeUndefined();
   });
 
   it("restores durable edits, ordering, pause state, and attachments", async () => {

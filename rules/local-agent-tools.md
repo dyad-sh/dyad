@@ -44,6 +44,11 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   `finally`; releasing the lock alone leaves the socket, deadline timer, and
   turn-signal listeners alive.
 
+## Git subprocesses and mutation tracking
+
+- Local-agent Git commands must use `execGit` from `git_utils.ts`. When a command needs streaming or a bounded process runner, spawn the executable and environment from `getGitProcessEnvironment`; importing Dugite directly bypasses the Windows WSL-PATH filtering and Linux libcurl shim.
+- `fileMutationCount` is for Git-visible workspace mutations, not every file or provider change. Exclude ignored media such as `.dyad/media` and provider-only state changes, and use a result-aware `shouldTrackMutation` predicate for tools that write files only after user approval.
+
 ## App lifecycle tools
 
 - Tools that start or restart the app preview must route through the main-owned

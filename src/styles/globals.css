@@ -6701,43 +6701,38 @@ html:not(.dark) .jarvis-workspace {
 }
 
 /*
- * Dashboard HUD panels.
+ * A status pill on the dashboard.
  *
- * Cut corners rather than rounded ones, a hairline edge, and a lit top rule —
- * the panel reads as an instrument housing instead of a card. The clip-path
- * does the corners, so there is no border image to scale.
+ * Light enough to sit around the orb without competing with it: a hairline
+ * edge and a faint wash, no card. The corner is cut on one side only, which is
+ * the detail that keeps it in the same language as the panels.
  */
-.hud-panel {
-  position: relative;
+.hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.1rem;
+  white-space: nowrap;
   clip-path: polygon(
-    0.85rem 0,
+    0.4rem 0,
     100% 0,
-    100% calc(100% - 0.85rem),
-    calc(100% - 0.85rem) 100%,
-    0 100%,
-    0 0.85rem
+    100% 100%,
+    0.4rem 100%,
+    0 calc(100% - 0.4rem),
+    0 0.4rem
   );
-  background: linear-gradient(
-    160deg,
-    rgb(8 24 44 / 0.72),
-    rgb(4 12 26 / 0.62)
-  );
-  box-shadow: inset 0 0 0 1px rgb(103 232 249 / 0.14);
+  background: rgb(8 24 44 / 0.55);
+  box-shadow: inset 0 0 0 1px rgb(103 232 249 / 0.13);
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
-/* The lit edge along the top, brightest at the cut corner. */
-.hud-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgb(103 232 249 / 0.55),
-    rgb(103 232 249 / 0.06) 55%,
-    transparent
-  );
-  pointer-events: none;
+.hud-pill:hover {
+  background: rgb(14 40 68 / 0.7);
+  box-shadow: inset 0 0 0 1px rgb(103 232 249 / 0.32);
 }
 
 /* Corner brackets framing the dashboard itself. */

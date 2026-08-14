@@ -34,49 +34,16 @@ const TONE_TEXT: Record<HealthTone, string> = {
 };
 
 /**
- * A heading in the HUD's voice.
+ * The label at the head of a row of pills.
  *
- * The rule running to the right of it is the instrument-panel detail that
- * makes a label read as a channel heading rather than a card title.
+ * Fixed width so the rows line up down the left edge, which is what makes a
+ * loose collection of pills read as instrumentation.
  */
-function PanelTitle({
-  children,
-  index,
-}: {
-  children: React.ReactNode;
-  /** The channel number on the right, when there is a count worth showing. */
-  index?: string;
-}) {
+function ChannelLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-2 flex shrink-0 items-center gap-2">
-      <h2 className="text-[10px] font-semibold tracking-[0.28em] text-cyan-100/55">
-        {children}
-      </h2>
-      <span className="h-px flex-1 bg-gradient-to-r from-cyan-400/25 to-transparent" />
-      {index && (
-        <span className="font-mono text-[10px] text-cyan-100/30">{index}</span>
-      )}
-    </div>
-  );
-}
-
-/**
- * A panel that keeps its overflow to itself.
- *
- * The dashboard is one screen with no page scroll, so a list that outgrows its
- * panel scrolls inside it rather than pushing the orb off the bottom.
- */
-function Panel({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("hud-panel flex min-h-0 flex-col p-4", className)}>
+    <span className="w-14 shrink-0 text-[10px] font-semibold tracking-[0.22em] text-cyan-100/40">
       {children}
-    </section>
+    </span>
   );
 }
 
@@ -251,16 +218,12 @@ export default function DashboardPage() {
       {/* One screen. The page itself never scrolls; anything that outgrows its
           panel scrolls inside that panel. */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4 sm:px-7">
-        {/* Title row: what this is, and whether it is well. */}
+        {/* Title row: what this is, and whether it is well. The name belongs to
+            the orb now, so this says what the screen is instead. */}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-cyan-400/10 pb-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xs font-semibold tracking-[0.35em] text-cyan-100/60">
-              META HUMAN OS
-            </h1>
-            <span className="hidden font-mono text-[10px] tracking-widest text-cyan-100/25 sm:inline">
-              // COMMAND CENTER
-            </span>
-          </div>
+          <h1 className="text-xs font-semibold tracking-[0.35em] text-cyan-100/60">
+            COMMAND CENTER
+          </h1>
           <p
             className={cn(
               "flex items-center gap-2 font-mono text-xs font-medium tracking-wider uppercase",
@@ -280,154 +243,133 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Three columns on a wide window: when and where on the left, the orb
-            in the middle, what is connected on the right. Narrower windows
-            stack them, and each column keeps its own overflow. */}
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
-          <div className="flex min-h-0 flex-col gap-3">
-            <Panel className="shrink-0">
-              <TimePanel />
-            </Panel>
+        {/* When and where, in the top corners as bare readouts. No panels: a
+            box either side of the orb is what made this look heavy, and this
+            information is legible without one. */}
+        <div className="flex shrink-0 items-start justify-between gap-6">
+          <TimePanel />
+          <ConditionsPanel />
+        </div>
 
-            <Panel className="min-h-0 flex-1">
-              <PanelTitle index={`${health.length}`}>SYSTEM HEALTH</PanelTitle>
+        {/* The orb has the middle of the screen to itself, with the machine's
+            own counts read out beneath it. */}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+          <JarvisOrb
+            state={orbState}
+            detail={
+              orbState === "offline"
+                ? "No AI provider configured yet"
+                : undefined
+            }
+          />
+
+          <div
+            className="flex items-center gap-6"
+            data-testid="dashboard-readouts"
+          >
+            <Readout
+              label="NODES"
+              value={formatRatio(metrics.devicesHealthy, metrics.devices)}
+            />
+            <Readout label="SOURCES" value={formatReadout(metrics.sources)} />
+            <Readout label="CHUNKS" value={formatReadout(metrics.chunks)} />
+            <Readout
+              label="COLLECTIONS"
+              value={formatReadout(metrics.collections)}
+            />
+          </div>
+
+          {metrics.embeddingModel && (
+            <p className="font-mono text-[10px] tracking-widest text-cyan-100/25">
+              EMBED · {metrics.embeddingModel.toUpperCase()}
+            </p>
+          )}
+        </div>
+
+        {/* Health and connections along the bottom as status pills rather than
+            lists in boxes: the same information, reading as instrumentation
+            around the orb instead of competing with it. */}
+        <div className="shrink-0 space-y-2 border-t border-cyan-400/10 pt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <ChannelLabel>SYSTEM</ChannelLabel>
+            <ul
+              className="flex flex-wrap items-center gap-2"
+              data-testid="dashboard-health"
+            >
+              {health.map((row) => (
+                <li key={row.id}>
+                  <Link to={row.to} className="hud-pill" title={row.status}>
+                    <span
+                      className={cn(
+                        "size-1.5 shrink-0 rounded-full",
+                        TONE_DOT[row.tone],
+                      )}
+                    />
+                    <span className="text-cyan-50/85">{row.label}</span>
+                    <span className={cn("text-[11px]", TONE_TEXT[row.tone])}>
+                      {row.status}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <ChannelLabel>LINKED</ChannelLabel>
+            {services.length === 0 ? (
+              <p className="text-xs text-cyan-100/35">Nothing connected yet.</p>
+            ) : (
               <ul
-                className="min-h-0 flex-1 space-y-0.5 overflow-y-auto"
-                data-testid="dashboard-health"
+                className="flex max-h-16 flex-wrap items-center gap-2 overflow-y-auto"
+                data-testid="dashboard-services"
               >
-                {health.map((row) => (
-                  <li key={row.id}>
+                {services.map((service) => (
+                  <li key={service.id}>
                     <Link
-                      to={row.to}
-                      className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-cyan-500/8"
+                      to={service.to}
+                      className="hud-pill"
+                      title={service.detail}
                     >
-                      <span
-                        className={cn(
-                          "size-2 shrink-0 rounded-full",
-                          TONE_DOT[row.tone],
-                        )}
-                      />
-                      <span className="flex-1 truncate text-sm text-cyan-50/90">
-                        {row.label}
-                      </span>
-                      <span
-                        className={cn("shrink-0 text-xs", TONE_TEXT[row.tone])}
-                      >
-                        {row.status}
-                      </span>
+                      <span className="size-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+                      <span className="text-cyan-50/85">{service.name}</span>
                     </Link>
                   </li>
                 ))}
               </ul>
-            </Panel>
-          </div>
-
-          {/* The centrepiece, given the middle of the screen to itself, with
-              the machine's own counts read out beneath it. */}
-          <div className="flex min-h-0 flex-col items-center justify-center gap-4">
-            <JarvisOrb
-              state={orbState}
-              detail={
-                orbState === "offline"
-                  ? "No AI provider configured yet"
-                  : undefined
-              }
-            />
-
-            <div
-              className="flex items-center gap-5 border-t border-cyan-400/10 pt-3"
-              data-testid="dashboard-readouts"
-            >
-              <Readout
-                label="NODES"
-                value={formatRatio(metrics.devicesHealthy, metrics.devices)}
-              />
-              <Readout label="SOURCES" value={formatReadout(metrics.sources)} />
-              <Readout label="CHUNKS" value={formatReadout(metrics.chunks)} />
-              <Readout
-                label="COLLECTIONS"
-                value={formatReadout(metrics.collections)}
-              />
-            </div>
-
-            {metrics.embeddingModel && (
-              <p className="font-mono text-[10px] tracking-widest text-cyan-100/25">
-                EMBED · {metrics.embeddingModel.toUpperCase()}
-              </p>
             )}
           </div>
 
-          <div className="flex min-h-0 flex-col gap-3">
-            <Panel className="shrink-0">
-              <ConditionsPanel />
-            </Panel>
-
-            <Panel className="min-h-0 flex-1">
-              <PanelTitle index={`${services.length}`}>
-                CONNECTED SERVICES
-              </PanelTitle>
-              {services.length === 0 ? (
-                <p className="px-2 py-1.5 text-sm text-cyan-100/35">
-                  Nothing connected yet.
-                </p>
-              ) : (
-                <ul
-                  className="min-h-0 flex-1 space-y-0.5 overflow-y-auto"
-                  data-testid="dashboard-services"
-                >
-                  {services.map((service) => (
-                    <li key={service.id}>
-                      <Link
-                        to={service.to}
-                        className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-cyan-500/8"
-                      >
-                        <span className="size-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                        <span className="flex-1 truncate text-sm text-cyan-50/90">
-                          {service.name}
-                        </span>
-                        {service.detail && (
-                          <span className="shrink-0 text-xs text-cyan-100/35">
-                            {service.detail}
-                          </span>
-                        )}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Panel>
-          </div>
+          {/* Activity, only where something already records it. One line: it is
+              the least urgent thing on the screen. */}
+          {activity.length > 0 && (
+            <div className="flex items-center gap-3">
+              <ChannelLabel>LOG</ChannelLabel>
+              <ul
+                className="flex min-w-0 flex-1 items-center gap-4 overflow-x-auto"
+                data-testid="dashboard-activity"
+              >
+                {activity.slice(0, 3).map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex shrink-0 items-center gap-2 text-xs"
+                  >
+                    <Activity className="size-3 shrink-0 text-cyan-300/40" />
+                    <span className="max-w-64 truncate text-cyan-50/60">
+                      {entry.message}
+                    </span>
+                    <span className="font-mono text-[10px] text-cyan-100/25">
+                      {new Date(entry.at).toLocaleTimeString(undefined, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
-
-        {/* Activity, only where something already records it. A strip along the
-            bottom: it is the least urgent thing here, so it gets one line. */}
-        {activity.length > 0 && (
-          <Panel className="shrink-0">
-            <PanelTitle>RECENT ACTIVITY</PanelTitle>
-            <ul
-              className="flex gap-2 overflow-x-auto"
-              data-testid="dashboard-activity"
-            >
-              {activity.slice(0, 4).map((entry) => (
-                <li
-                  key={entry.id}
-                  className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg border border-cyan-400/10 bg-cyan-500/5 px-3 py-1.5 text-xs"
-                >
-                  <Activity className="size-3.5 shrink-0 text-cyan-300/50" />
-                  <span className="max-w-64 truncate text-cyan-50/80">
-                    {entry.message}
-                  </span>
-                  <span className="shrink-0 text-cyan-100/30">
-                    {new Date(entry.at).toLocaleTimeString(undefined, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        )}
       </div>
     </div>
   );

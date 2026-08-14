@@ -252,7 +252,7 @@ export function JarvisOrb({
 
       <div className="text-center">
         <p className="text-[10px] font-semibold tracking-[0.45em] text-cyan-100/60">
-          JARVIS
+          META HUMAN OS
         </p>
         <p
           className={cn(

@@ -116,6 +116,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // the fields rather than leave the previous app's server and project in a
   // form whose Save button would then attach them to the wrong app.
   useEffect(() => {
+    // Not while the form is open: a save or disconnect elsewhere hands back a
+    // changed connection, and refilling would take back what is being typed.
+    // Leaving the edit refills, since this keys on that too.
+    if (isEditingConnection) return;
     const connection = status?.connection;
     setInstanceUrl(connection?.instanceUrl ?? status?.instanceUrl ?? "");
     setServerUuid(connection?.serverUuid ?? "");
@@ -125,7 +129,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     // only on keystrokes left a tick given for a typed address sitting over the
     // remembered one this puts back.
     setAcknowledgedInsecure(false);
-  }, [appId, status?.connection, status?.instanceUrl]);
+  }, [appId, status?.connection, status?.instanceUrl, isEditingConnection]);
 
   // Only on an app change. Keying this to the connection would close the form
   // under the user whenever a background refetch handed back a new object.
@@ -454,13 +458,8 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               variant="ghost"
               size="sm"
               onClick={() => {
-                // The prefill effect will not re-run, so put the saved values
-                // back here or an abandoned edit sits in the form and the
-                // next Save commits it.
-                const saved = status.connection;
-                setServerUuid(saved?.serverUuid ?? "");
-                setProjectUuid(saved?.projectUuid ?? "");
-                setDomain(saved?.domain ?? "");
+                // Only the flag. The prefill effect waits on it and puts
+                // every field back, the address and its consent included.
                 setIsEditingConnection(false);
               }}
             >

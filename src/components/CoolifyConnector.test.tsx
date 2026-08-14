@@ -330,6 +330,100 @@ describe("naming the target in the connected view", () => {
 });
 
 /**
+ * An open edit form against a connection that changes underneath it.
+ *
+ * The status object is replaced whenever a save or a disconnect elsewhere
+ * invalidates the query, and the effect that fills these fields keys on it.
+ */
+describe("editing while the saved connection changes", () => {
+  const CONNECTION = {
+    instanceUrl: "https://coolify.test",
+    serverUuid: "srv-1",
+    projectUuid: "prj-1",
+    environmentName: "production",
+    domain: "saved.example.com",
+  };
+
+  function statusWith(connection: Record<string, unknown>) {
+    return {
+      status: {
+        hasToken: true,
+        instanceUrl: "https://coolify.test",
+        connection,
+        appUrl: null,
+        lastDeployedAt: null,
+      },
+      discovery: { servers: [], projects: [] },
+    };
+  }
+
+  it("keeps what the user typed when the connection changes elsewhere", async () => {
+    deploy.value = statusWith(CONNECTION);
+    const user = userEvent.setup();
+    const { rerender } = render(<CoolifyConnector appId={1} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const domain = screen.getByLabelText(
+      "Domain (optional)",
+    ) as HTMLInputElement;
+    await user.clear(domain);
+    await user.type(domain, "typed.example.com");
+
+    // A save in another window: same app, a new object with a new domain.
+    deploy.value = statusWith({ ...CONNECTION, domain: "elsewhere.test" });
+    rerender(<CoolifyConnector appId={1} />);
+
+    expect(
+      (screen.getByLabelText("Domain (optional)") as HTMLInputElement).value,
+    ).toBe("typed.example.com");
+  });
+
+  it("puts the saved values back when the edit is abandoned", async () => {
+    // Cancel only drops the flag; refilling is the effect's job.
+    deploy.value = statusWith(CONNECTION);
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const domain = screen.getByLabelText(
+      "Domain (optional)",
+    ) as HTMLInputElement;
+    await user.clear(domain);
+    await user.type(domain, "abandoned.example.com");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(
+      (screen.getByLabelText("Domain (optional)") as HTMLInputElement).value,
+    ).toBe("saved.example.com");
+  });
+
+  it("shows the app switched to, not the one being edited", async () => {
+    // Switching apps closes the form, so the fields behind it have to be the
+    // new app's — otherwise Edit would offer one app's target for another.
+    deploy.value = statusWith(CONNECTION);
+    const user = userEvent.setup();
+    const { rerender } = render(<CoolifyConnector appId={1} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const domain = screen.getByLabelText(
+      "Domain (optional)",
+    ) as HTMLInputElement;
+    await user.clear(domain);
+    await user.type(domain, "typed.example.com");
+
+    deploy.value = statusWith({ ...CONNECTION, domain: "other-app.test" });
+    rerender(<CoolifyConnector appId={2} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      (screen.getByLabelText("Domain (optional)") as HTMLInputElement).value,
+    ).toBe("other-app.test");
+  });
+});
+
+/**
  * What the DNS warnings claim about the save that follows them.
  *
  * Every one of them ends "Saved anyway", so firing them before the save turns

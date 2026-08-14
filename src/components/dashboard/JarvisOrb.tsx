@@ -34,11 +34,14 @@ export function JarvisOrb({
 
   return (
     <div
-      className={cn("flex flex-col items-center gap-4", className)}
+      className={cn("flex flex-col items-center gap-3", className)}
       data-testid="jarvis-orb"
       data-state={state}
     >
-      <div className="relative grid size-44 place-items-center sm:size-52">
+      {/* Sized against the viewport height, not a fixed width: the dashboard
+          fits on one screen, so the orb has to give way when the window is
+          short rather than pushing everything else off the bottom. */}
+      <div className="relative grid size-[clamp(7rem,22vh,13rem)] place-items-center">
         {/* Rings. Each turns at its own rate so the movement reads as depth
             rather than one spinning object. Motion is disabled outright for
             anyone who asked for less of it. */}
@@ -55,7 +58,7 @@ export function JarvisOrb({
         />
         <span
           className={cn(
-            "absolute inset-4 rounded-full border border-cyan-300/20",
+            "absolute inset-[9%] rounded-full border border-cyan-300/20",
             "motion-safe:animate-[spin_18s_linear_infinite_reverse]",
             isOffline && "border-slate-500/15",
           )}
@@ -66,7 +69,7 @@ export function JarvisOrb({
         />
         <span
           className={cn(
-            "absolute inset-9 rounded-full border border-cyan-200/15",
+            "absolute inset-[20%] rounded-full border border-cyan-200/15",
             "motion-safe:animate-[spin_40s_linear_infinite]",
             isOffline && "border-slate-500/10",
           )}
@@ -76,7 +79,7 @@ export function JarvisOrb({
         {/* Glow. Kept to one soft halo: the brief asks for restraint. */}
         <span
           className={cn(
-            "absolute inset-10 rounded-full blur-2xl",
+            "absolute inset-[22%] rounded-full blur-2xl",
             isOffline ? "bg-slate-500/10" : "bg-cyan-400/25",
             state === "processing" &&
               "motion-safe:animate-[pulse_2s_ease-in-out_infinite]",
@@ -86,7 +89,7 @@ export function JarvisOrb({
         {/* Core. */}
         <span
           className={cn(
-            "relative size-16 rounded-full sm:size-20",
+            "relative size-[36%] rounded-full",
             isOffline
               ? "bg-gradient-to-br from-slate-400/30 to-slate-600/20"
               : "bg-gradient-to-br from-cyan-200/90 via-cyan-400/70 to-teal-500/60",

@@ -77,11 +77,13 @@ export default function AgentsPage() {
   const openTabIds = new Set(openWorkspaceTabs.map((tab) => tab.id));
 
   return (
-    <div className="settings-jarvis home-jarvis relative flex min-h-full w-full flex-col overflow-auto bg-background">
+    /* One screen, like the dashboard: the page does not scroll, and a group
+       with more entries than fit scrolls within its own column. */
+    <div className="settings-jarvis home-jarvis relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-background">
       <ParticleBackground className="z-0" />
-      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 lg:px-8">
-        <header className="mb-8">
-          <div className="mb-3 flex items-center gap-2.5">
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="shrink-0">
+          <div className="mb-2 flex items-center gap-2.5">
             <div className="manager-brand-icon">
               <AGENTS_SECTION_ICON className="size-4" />
             </div>
@@ -97,82 +99,88 @@ export default function AgentsPage() {
           </p>
         </header>
 
-        {AGENT_GROUPS.map((group) => (
-          <section key={group} className="mb-6">
-            <h2 className="system-group-label">{group}</h2>
-            <div className="system-grid">
-              {/* The coding agents themselves, in the same row shape as the
+        {/* The groups sit beside one another rather than stacking, which is
+            what made this page taller than the window. */}
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-3">
+          {AGENT_GROUPS.map((group) => (
+            <section key={group} className="flex min-h-0 flex-col">
+              <h2 className="system-group-label shrink-0">{group}</h2>
+              <div className="system-grid system-grid--single-column min-h-0 flex-1 overflow-y-auto pr-1">
+                {/* The coding agents themselves, in the same row shape as the
                   ones above, from the component that owns their status. */}
-              {group === "Coding" && <CodingAgentRows />}
+                {group === "Coding" && <CodingAgentRows />}
 
-              {group === "My Agents"
-                ? myAgents.map((agent) => (
-                    <button
-                      key={agent.id}
-                      type="button"
-                      onClick={() => openAgent(agent)}
-                      className="system-card"
-                      data-testid={`agents-open-${agent.id}`}
-                    >
-                      <AgentAvatar
-                        agent={agent}
-                        className="size-10 rounded-lg text-base"
-                      />
-                      <span className="min-w-0 flex-1 text-left">
-                        <span className="system-card-title">{agent.name}</span>
-                        <span className="system-card-summary">
-                          {agent.description}
-                        </span>
-                      </span>
-                      {/* The dashboard's own status treatment, unchanged. */}
-                      <span className="flex items-center gap-1.5">
-                        {openTabIds.has(agent.id) && (
-                          <span className="system-card-status">Open</span>
-                        )}
-                        <StatusDot status={agent.status} />
-                      </span>
-                    </button>
-                  ))
-                : agentDestinationsInGroup(group).map((destination) => (
-                    <button
-                      key={destination.id}
-                      type="button"
-                      onClick={() => openDestination(destination)}
-                      className="system-card"
-                      data-testid={`agents-open-${destination.id}`}
-                    >
-                      {destination.image ? (
-                        <img
-                          src={destination.image}
-                          alt=""
-                          className="size-10 shrink-0 rounded-lg object-cover"
-                          draggable={false}
+                {group === "My Agents"
+                  ? myAgents.map((agent) => (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        onClick={() => openAgent(agent)}
+                        className="system-card"
+                        data-testid={`agents-open-${agent.id}`}
+                      >
+                        <AgentAvatar
+                          agent={agent}
+                          className="size-10 rounded-lg text-base"
                         />
-                      ) : (
-                        <span className="system-card-icon">
-                          <destination.icon className="size-4" />
+                        <span className="min-w-0 flex-1 text-left">
+                          <span className="system-card-title">
+                            {agent.name}
+                          </span>
+                          <span className="system-card-summary">
+                            {agent.description}
+                          </span>
                         </span>
-                      )}
-                      <span className="min-w-0 flex-1 text-left">
-                        <span className="system-card-title">
-                          {destination.label}
+                        {/* The dashboard's own status treatment, unchanged. */}
+                        <span className="flex items-center gap-1.5">
+                          {openTabIds.has(agent.id) && (
+                            <span className="system-card-status">Open</span>
+                          )}
+                          <StatusDot status={agent.status} />
                         </span>
-                        <span className="system-card-summary">
-                          {destination.summary}
+                      </button>
+                    ))
+                  : agentDestinationsInGroup(group).map((destination) => (
+                      <button
+                        key={destination.id}
+                        type="button"
+                        onClick={() => openDestination(destination)}
+                        className="system-card"
+                        data-testid={`agents-open-${destination.id}`}
+                      >
+                        {destination.image ? (
+                          <img
+                            src={destination.image}
+                            alt=""
+                            className="size-10 shrink-0 rounded-lg object-cover"
+                            draggable={false}
+                          />
+                        ) : (
+                          <span className="system-card-icon">
+                            <destination.icon className="size-4" />
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1 text-left">
+                          <span className="system-card-title">
+                            {destination.label}
+                          </span>
+                          <span className="system-card-summary">
+                            {destination.summary}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  ))}
-            </div>
+                      </button>
+                    ))}
+              </div>
 
-            {group === "My Agents" && myAgents.length === 0 && (
-              <p className="text-xs text-cyan-100/40">
-                No agents registered yet. Add one under Configuration → Hermes
-                Agents.
-              </p>
-            )}
-          </section>
-        ))}
+              {group === "My Agents" && myAgents.length === 0 && (
+                <p className="shrink-0 text-xs text-cyan-100/40">
+                  No agents registered yet. Add one under Configuration → Hermes
+                  Agents.
+                </p>
+              )}
+            </section>
+          ))}
+        </div>
       </main>
     </div>
   );

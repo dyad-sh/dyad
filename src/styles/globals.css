@@ -9621,6 +9621,17 @@ html.theme-switching * {
   grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
 }
 
+/*
+ * One card per row, for a grid that is already inside a narrow column.
+ *
+ * The Agents page puts each group in its own column, so the auto-fill above
+ * would be fighting a container that only ever has room for one card.
+ */
+.system-grid--single-column {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
 .system-card {
   display: flex;
   align-items: center;

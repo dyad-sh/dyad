@@ -15,6 +15,7 @@ import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinato
 import type { AgentContext } from "./types";
 
 const mocks = vi.hoisted(() => ({
+  cloudSync: vi.fn(),
   loggerWarn: vi.fn(),
   runBufferedProcess: vi.fn(),
 }));
@@ -34,6 +35,10 @@ vi.mock("electron-log", () => ({
 vi.mock("@/ipc/utils/buffered_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/ipc/utils/buffered_process")>()),
   runBufferedProcess: mocks.runBufferedProcess,
+}));
+
+vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
+  queueCloudSandboxSnapshotSync: mocks.cloudSync,
 }));
 
 import {
@@ -81,6 +86,10 @@ function context(appPath: string, overrides: Partial<AgentContext> = {}) {
   return {
     appId: 42,
     appPath,
+    isSharedModulesChanged: false,
+    sharedServerModulePaths: [],
+    pendingFunctionDeploys: [],
+    supabaseProjectId: null,
     fileMutationCount: 1,
     preCommitHookAvailable: true,
     onXmlStream: vi.fn(),
@@ -277,6 +286,10 @@ describe("runPreCommitTool", () => {
     expect(second).not.toContain("no files have changed");
     expect(hookRuns).toBe(2);
     expect(mocks.loggerWarn).toHaveBeenCalled();
+    expect(mocks.cloudSync).toHaveBeenCalledWith({
+      appId: 42,
+      fullSync: true,
+    });
   });
 
   it("reports a clean pass and refuses an unchanged rerun", async () => {
@@ -306,6 +319,45 @@ describe("runPreCommitTool", () => {
     expect(ctx.fileMutationCount).toBe(3);
     expect(second).toContain("passed, but the hook changed files");
     expect(hookRuns).toBe(2);
+    expect(mocks.cloudSync).toHaveBeenCalledWith({
+      appId: 42,
+      fullSync: true,
+    });
+  });
+
+  it("queues Supabase function paths changed in the hook for redeployment", async () => {
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") {
+          return processResult();
+        }
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          return processResult();
+        }
+        if (
+          options.args?.includes("--name-only") ||
+          options.args?.includes("ls-files")
+        ) {
+          options.onStdout?.(
+            "supabase/functions/hello/index.ts\0supabase/functions/_shared/util.ts\0",
+            {} as never,
+          );
+          return processResult();
+        }
+        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        return processResult();
+      },
+    );
+    const ctx = context(repo, { supabaseProjectId: "project-id" });
+
+    await runPreCommitTool.execute({}, ctx);
+
+    expect(ctx.pendingFunctionDeploys).toEqual(["hello"]);
+    expect(ctx.isSharedModulesChanged).toBe(true);
+    expect(ctx.sharedServerModulePaths).toEqual([
+      "supabase/functions/_shared/util.ts",
+    ]);
   });
 
   it("counts timed-out runs and enforces the per-turn limit", async () => {

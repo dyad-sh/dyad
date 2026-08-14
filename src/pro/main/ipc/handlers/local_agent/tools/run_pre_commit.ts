@@ -9,6 +9,12 @@ import {
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import {
+  extractFunctionNameFromPath,
+  isServerFunction,
+  isSharedServerModule,
+} from "@/supabase_admin/supabase_utils";
 import {
   AgentContext,
   ToolDefinition,
@@ -20,6 +26,7 @@ export const MAX_PRE_COMMIT_RUNS_PER_TURN = 4;
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 12_000;
 const FINGERPRINT_TIMEOUT_MS = 60_000;
+const MAX_HOOK_CHANGED_PATHS = 10_000;
 const logger = log.scope("run_pre_commit");
 
 const runPreCommitSchema = z.object({});
@@ -129,6 +136,109 @@ async function tryGetGitStateFingerprint(
   } catch (error) {
     logger.warn(`Failed to fingerprint Git state ${phase} pre-commit:`, error);
     return undefined;
+  }
+}
+
+async function collectCurrentChangedPaths(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<Set<string>> {
+  const paths = new Set<string>();
+  let exceededPathLimit = false;
+  const commands = [
+    ["diff", "--cached", "--name-only", "-z", "--no-ext-diff", "--"],
+    ["diff", "--name-only", "-z", "--no-ext-diff", "--"],
+    ["ls-files", "--others", "--exclude-standard", "-z", "--"],
+  ];
+
+  for (const command of commands) {
+    let pending = "";
+    const consume = (chunk: string, final = false) => {
+      const parts = `${pending}${chunk}`.split("\0");
+      pending = final ? "" : (parts.pop() ?? "");
+      for (const filePath of parts) {
+        if (!filePath || paths.has(filePath)) {
+          continue;
+        }
+        if (paths.size >= MAX_HOOK_CHANGED_PATHS) {
+          exceededPathLimit = true;
+        } else {
+          paths.add(filePath);
+        }
+      }
+    };
+    const { env, gitLocation } = getGitProcessEnvironment();
+    const args = ["-c", "core.fsmonitor=false", ...command];
+    const result = await runBufferedProcess({
+      command: gitLocation,
+      args,
+      cwd: appPath,
+      env,
+      signal,
+      timeoutMs: FINGERPRINT_TIMEOUT_MS,
+      maxOutputBytes: 1_024,
+      captureOutputOnSuccess: false,
+      onStdout: (chunk) => consume(chunk),
+    });
+    consume("", true);
+    if (result.code !== 0 || result.aborted || result.timedOut) {
+      throw new Error(`Git changed-path command failed: git ${args.join(" ")}`);
+    }
+  }
+
+  if (exceededPathLimit) {
+    throw new Error(
+      `Git changed-path scan exceeded ${MAX_HOOK_CHANGED_PATHS} paths`,
+    );
+  }
+
+  return paths;
+}
+
+async function scheduleHookGeneratedFileSideEffects(
+  ctx: AgentContext,
+): Promise<void> {
+  queueCloudSandboxSnapshotSync({ appId: ctx.appId, fullSync: true });
+  if (!ctx.supabaseProjectId) {
+    return;
+  }
+
+  // Use the current dirty-path set as a conservative superset: a function that
+  // was already dirty before the hook may have been rewritten again by it.
+  let changedPaths: Set<string>;
+  try {
+    changedPaths = await collectCurrentChangedPaths(
+      ctx.appPath,
+      ctx.abortSignal,
+    );
+  } catch (error) {
+    logger.warn(
+      "Failed to identify Supabase paths changed by pre-commit; redeploying all functions:",
+      error,
+    );
+    ctx.isSharedModulesChanged = true;
+    return;
+  }
+
+  for (const filePath of changedPaths) {
+    if (isSharedServerModule(filePath)) {
+      ctx.isSharedModulesChanged = true;
+      if (!ctx.sharedServerModulePaths.includes(filePath)) {
+        ctx.sharedServerModulePaths.push(filePath);
+      }
+      continue;
+    }
+    if (!isServerFunction(filePath)) {
+      continue;
+    }
+    try {
+      const functionName = extractFunctionNameFromPath(filePath);
+      if (!ctx.pendingFunctionDeploys.includes(functionName)) {
+        ctx.pendingFunctionDeploys.push(functionName);
+      }
+    } catch {
+      // Ignore malformed/special function paths; valid paths are queued above.
+    }
   }
 }
 
@@ -331,6 +441,7 @@ export const runPreCommitTool: ToolDefinition<
           !fingerprintUnknown && beforeFingerprint !== afterFingerprint;
         if (!result.aborted && (hookChangedFiles || fingerprintUnknown)) {
           ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
+          await scheduleHookGeneratedFileSideEffects(ctx);
         }
 
         if (result.aborted) {

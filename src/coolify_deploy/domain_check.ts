@@ -60,6 +60,8 @@ export function isNonRoutableAddress(
   const head = Number.parseInt(first, 16);
   if (Number.isNaN(head)) return false;
   if (head >= 0xfc00 && head <= 0xfdff) return true; // fc00::/7, unique local
+  // fec0::/10 was deprecated rather than reassigned, so nothing routes it.
+  if (head >= 0xfec0 && head <= 0xfeff) return true;
   return head >= 0xfe80 && head <= 0xfebf; // fe80::/10, link-local
 }
 

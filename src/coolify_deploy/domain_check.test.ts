@@ -16,7 +16,8 @@ describe("isNonRoutableAddress on IPv6", () => {
     ["fe80::1", true, "link-local"],
     ["febf::1", true, "the top of that /10"],
     ["2606:4700::1", false, "ordinary public space"],
-    ["fec0::1", false, "deprecated site-local, deliberately not covered"],
+    ["fec0::1", true, "deprecated rather than reassigned, so still unroutable"],
+    ["feff:ffff::1", true, "the top of that /10"],
     ["::ffff:192.168.1.50", false, "a mapped form, deliberately not covered"],
     ["fe80::203.0.113.5", true, "the prefix decides, not the dotted tail"],
   ])("reads %s as non-routable=%s (%s)", (address, expected) => {

@@ -29,6 +29,11 @@ same global order. Use direct unlocked service primitives only when the outer
 operation already owns the required resources, and document that ownership at
 the call site.
 
+When a coordinated callback starts parallel subprocesses, wait for every
+subprocess to settle before returning or throwing. `Promise.all` rejects early
+and can release the claim while sibling processes are still mutating or reading
+the protected resource; use an all-settled barrier and rethrow afterward.
+
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only

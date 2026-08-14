@@ -1,7 +1,10 @@
 import { test } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("create next.js app", async ({ po }) => {
+const PREVIEW_START_TIMEOUT = process.env.CI ? 300_000 : 100_000;
+
+test("create next.js app", async ({ po }, testInfo) => {
+  testInfo.setTimeout(PREVIEW_START_TIMEOUT + 60_000);
   // This test covers template creation and preview startup, not the proposal
   // review flow. Auto-approve keeps the generated edit deterministic while
   // the imported template may still be installing dependencies.
@@ -18,7 +21,7 @@ test("create next.js app", async ({ po }) => {
 
   // This can be pretty slow because it's waiting for the app to build.
   await expect(po.previewPanel.getPreviewIframeElement()).toBeVisible({
-    timeout: 100_000,
+    timeout: PREVIEW_START_TIMEOUT,
   });
   await po.previewPanel.snapshotPreview();
 });

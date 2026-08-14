@@ -726,22 +726,35 @@ describe("index entry snapshot and restore", () => {
   // them to the first blob would hand the user back a resolved-looking file
   // they never resolved.
   it("round-trips every stage of a conflicted path", async () => {
-    repoDir = await initRepo();
-    await fs.promises.writeFile(path.join(repoDir, "c.txt"), "base\n");
-    await commitAll(repoDir, "base");
-    await runGit(repoDir, ["checkout", "-b", "theirs"]);
-    await fs.promises.writeFile(path.join(repoDir, "c.txt"), "theirs\n");
-    await commitAll(repoDir, "theirs");
-    await runGit(repoDir, ["checkout", "main"]);
-    await fs.promises.writeFile(path.join(repoDir, "c.txt"), "ours\n");
-    await commitAll(repoDir, "ours");
-    await expect(runGit(repoDir, ["merge", "theirs"])).rejects.toThrow();
+    const workingDir = await initRepo();
+    repoDir = workingDir;
+    const conflictVersions = ["base", "ours", "theirs"] as const;
+    const before = await Promise.all(
+      conflictVersions.map(async (version, index) => {
+        const blobPath = `${version}.txt`;
+        await fs.promises.writeFile(
+          path.join(workingDir, blobPath),
+          `${version}\n`,
+        );
+        return {
+          mode: "100644",
+          oid: await runGitOutput(workingDir, ["hash-object", "-w", blobPath]),
+          stage: index + 1,
+        };
+      }),
+    );
+    await fs.promises.writeFile(path.join(workingDir, "c.txt"), "conflicted\n");
+    await restoreGitIndexEntries({
+      path: repoDir,
+      filepath: "c.txt",
+      entries: before,
+    });
 
-    const before = await readGitIndexEntries({
+    const snapshot = await readGitIndexEntries({
       path: repoDir,
       filepath: "c.txt",
     });
-    expect(before.map((entry) => entry.stage)).toEqual([1, 2, 3]);
+    expect(snapshot.map((entry) => entry.stage)).toEqual([1, 2, 3]);
 
     // Staging over the conflict is exactly what collapses it to stage 0.
     await runGit(repoDir, ["add", "c.txt"]);
@@ -754,12 +767,12 @@ describe("index entry snapshot and restore", () => {
     await restoreGitIndexEntries({
       path: repoDir,
       filepath: "c.txt",
-      entries: before,
+      entries: snapshot,
     });
 
     expect(
       await readGitIndexEntries({ path: repoDir, filepath: "c.txt" }),
-    ).toEqual(before);
+    ).toEqual(snapshot);
     // And git agrees the path is unmerged again.
     expect(
       await runGitOutput(repoDir, ["diff", "--name-only", "--diff-filter=U"]),

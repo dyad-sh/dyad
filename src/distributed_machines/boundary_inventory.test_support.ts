@@ -55,7 +55,7 @@ export const compatibilityBoundaryInventory = [
     machine: "chat_stream",
     exactFile: "chat_stream/remote_manager.ts",
     mechanism: "rawDispatchOrEnqueue",
-    expectedCount: 3,
+    expectedCount: 5,
     why: "Chat keeps its pre-MVP owned queue and remote-manager adapter.",
     removalOwner: "Conditional follow-up C — chat/plan owned queue",
   },

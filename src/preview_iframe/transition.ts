@@ -108,14 +108,20 @@ export function transition(
       // before the document loaded, so it is ignored rather than downgrading
       // provenance to "app". `replaceState` shares the check for the same
       // reason — it too can only restate the slot it is already in.
-      if (event.kind !== "pushState" && event.url === state.currentUrl) {
+      if (
+        event.kind !== "pushState" &&
+        state.currentUrl !== null &&
+        sameUrl(event.url, state.currentUrl)
+      ) {
         return ignore(state, "already-current-url");
       }
       // A cross-document back/forward moves within the history that is already
       // here rather than rewriting any of it. Overwriting the current slot
       // would lose both the entry the user left and the one they arrived at.
       if (event.kind === "documentLoad" && event.historyEffect === "traverse") {
-        const position = state.history.indexOf(event.url);
+        const position = state.history.findIndex((entry) =>
+          sameUrl(entry, event.url),
+        );
         if (position === -1) return ignore(state, "unknown-history-entry");
         return applied({
           ...state,
@@ -393,6 +399,15 @@ export function transition(
 function sameOrigin(left: string, right: string): boolean {
   try {
     return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+function sameUrl(left: string, right: string): boolean {
+  if (left === right) return true;
+  try {
+    return new URL(left).href === new URL(right).href;
   } catch {
     return false;
   }

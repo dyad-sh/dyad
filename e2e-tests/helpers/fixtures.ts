@@ -49,7 +49,7 @@ export async function launchElectronApp({
   process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
   process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
   process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
-  process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
+  process.env.DYAD_TEST_PNPM_VERSION ??= "11.1.2";
   process.env.E2E_TEST_BUILD = "true";
   if (showSetupScreen) delete process.env.OPENAI_API_KEY;
   else process.env.OPENAI_API_KEY = "sk-test";

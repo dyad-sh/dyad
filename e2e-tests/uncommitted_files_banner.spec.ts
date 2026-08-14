@@ -46,9 +46,12 @@ function commitRuntimeBaselineChanges(appPath: string) {
   );
 }
 
+const APP_START_TIMEOUT = process.env.CI ? 180_000 : Timeout.EXTRA_LONG;
+
 const runDiscardChangesTest = async (po: PageObject) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
+  await po.previewPanel.expectPreviewIframeIsVisible(APP_START_TIMEOUT);
 
   const appPath = await po.appManagement.getCurrentAppPath();
   if (!appPath) {
@@ -120,6 +123,7 @@ const runDiscardChangesTest = async (po: PageObject) => {
 const runUncommittedFilesBannerTest = async (po: PageObject) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
+  await po.previewPanel.expectPreviewIframeIsVisible(APP_START_TIMEOUT);
 
   const appPath = await po.appManagement.getCurrentAppPath();
   if (!appPath) {
@@ -224,10 +228,12 @@ const runUncommittedFilesBannerTest = async (po: PageObject) => {
   expect(lastCommitFiles).toContain("new-file.txt");
 };
 
-test("uncommitted files banner", async ({ po }) => {
+test("uncommitted files banner", async ({ po }, testInfo) => {
+  testInfo.setTimeout(APP_START_TIMEOUT + 120_000);
   await runUncommittedFilesBannerTest(po);
 });
 
-test("discard all uncommitted changes", async ({ po }) => {
+test("discard all uncommitted changes", async ({ po }, testInfo) => {
+  testInfo.setTimeout(APP_START_TIMEOUT + 120_000);
   await runDiscardChangesTest(po);
 });

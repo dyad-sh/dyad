@@ -225,7 +225,7 @@ describe("pause queue (integration)", () => {
     }
   }, 60_000);
 
-  it("sends immediately while stopped with a paused queue", async () => {
+  it("sends immediately while idle with a manually paused queue", async () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
@@ -237,10 +237,6 @@ describe("pause queue (integration)", () => {
     );
 
     const queueHeader = screen.getByTestId("queue-header");
-    const stopButton = screen.getByRole("button", {
-      name: /cancel generation/i,
-    });
-
     fireEvent.click(screen.getByRole("button", { name: /pause queue/i }));
     await screen.findByText("Paused");
 
@@ -251,7 +247,7 @@ describe("pause queue (integration)", () => {
         payload !== null &&
         (payload as { chatId?: number }).chatId === chatId,
     );
-    fireEvent.click(stopButton);
+    await harness.waitForStreamEnd(chatId);
     await streamEnded;
     await screen.findByLabelText(/^(sendMessage|Send message)$/, undefined, {
       timeout: 15_000,

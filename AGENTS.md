@@ -149,6 +149,8 @@ The pinned Vitest version does not support `--repeat`; it fails with `Unknown op
 
 Tests that inspect repository text files must account for Git's platform-specific line endings. Normalize newlines or match `\r?\n`; for a Windows-only failure, exercise synthetic LF and CRLF inputs locally so the regression does not depend on the runner OS.
 
+When a Git unit test needs an unmerged index, seed explicit stage 1/2/3 blob entries instead of relying on `git merge` to reject. On Windows, a merge can reject later in the workflow while leaving a stage-0 entry, so rejection alone does not prove the intended conflict fixture exists.
+
 When mocking a widely imported module such as `@/lib/schemas`, prefer a partial mock with `importOriginal` and override only the target exports. A full replacement can make unrelated transitive imports fail with `No "<export>" export is defined` as the module graph evolves.
 
 When adding another suite or prerequisite to the root `test` script, keep Vitest as the final shell command. `npm test -- <path>` appends its arguments only to the final command, so placing another runner last silently turns a targeted Vitest run into the full suite.

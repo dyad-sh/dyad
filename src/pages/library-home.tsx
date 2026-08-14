@@ -17,6 +17,7 @@ import {
 } from "@/components/LibraryFilterTabs";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { MediaGallery } from "@/components/library/MediaGallery";
+import { StockImageGallery } from "@/components/library/StockImageGallery";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
@@ -35,7 +36,8 @@ export default function LibraryHomePage() {
       filter === "prompts" ||
       filter === "media" ||
       filter === "images" ||
-      filter === "videos"
+      filter === "videos" ||
+      filter === "stock"
     )
       return filter;
     return "all";
@@ -72,7 +74,7 @@ export default function LibraryHomePage() {
   const isLoading = promptsLoading || themesLoading || mediaLoading;
 
   const filteredItems = useMemo(() => {
-    if (activeFilter === "media") return [];
+    if (activeFilter === "media" || activeFilter === "stock") return [];
 
     let items: LibraryItem[] = [];
 
@@ -120,7 +122,13 @@ export default function LibraryHomePage() {
   }, [customThemes, prompts, activeFilter, searchQuery]);
 
   const filteredMediaApps = useMemo(() => {
-    if (activeFilter === "themes" || activeFilter === "prompts") return [];
+    if (
+      activeFilter === "themes" ||
+      activeFilter === "prompts" ||
+      // Stock results come from Pixabay, not from the apps on this machine.
+      activeFilter === "stock"
+    )
+      return [];
 
     return filterMediaAppsByQuery(mediaApps, searchQuery);
   }, [mediaApps, activeFilter, searchQuery]);
@@ -162,14 +170,18 @@ export default function LibraryHomePage() {
             trigger={<span />}
           />
 
-          {/* Search Bar */}
-          <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
+          {/* Search Bar. Stock has its own, which searches Pixabay. */}
+          {activeFilter !== "stock" && (
+            <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
+          )}
 
           {/* Filter Tabs */}
           <LibraryFilterTabs active={activeFilter} onChange={setActiveFilter} />
 
           {/* Grid */}
-          {activeFilter === "images" || activeFilter === "videos" ? (
+          {activeFilter === "stock" ? (
+            <StockImageGallery />
+          ) : activeFilter === "images" || activeFilter === "videos" ? (
             <MediaGallery kind={activeFilter} searchQuery={searchQuery} />
           ) : isLoading ? (
             <div className="flex items-center justify-center py-12">

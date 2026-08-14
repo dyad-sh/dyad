@@ -1,4 +1,11 @@
-import { Palette, FileText, BookOpen, Image, Video } from "lucide-react";
+import {
+  Palette,
+  FileText,
+  BookOpen,
+  Image,
+  Images,
+  Video,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type FilterType =
@@ -7,7 +14,8 @@ export type FilterType =
   | "prompts"
   | "media"
   | "images"
-  | "videos";
+  | "videos"
+  | "stock";
 
 const FILTER_OPTIONS: {
   key: FilterType;
@@ -20,6 +28,7 @@ const FILTER_OPTIONS: {
   { key: "media", label: "Media", icon: Image },
   { key: "images", label: "Images", icon: Image },
   { key: "videos", label: "Videos", icon: Video },
+  { key: "stock", label: "Stock", icon: Images },
 ];
 
 export function LibraryFilterTabs({

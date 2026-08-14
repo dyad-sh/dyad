@@ -387,7 +387,6 @@ export function registerSupabaseHandlers() {
           supabaseProjectId: app.supabaseProjectId,
           supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-          pruneWhenNoLocalFunctions: true,
           onSummary: (nextSummary) => {
             summary = nextSummary;
           },

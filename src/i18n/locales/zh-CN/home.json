@@ -593,7 +593,8 @@
       "redeployProgress": "正在部署 {{completed}}/{{total}}…",
       "redeploySucceeded_one": "已重新部署 {{count}} 个边缘函数",
       "redeploySucceeded_other": "已重新部署 {{count}} 个边缘函数",
-      "redeploySucceededWithPruning": "已重新部署 {{count}} 个边缘函数，并移除仅存在于远程的函数：{{functions}}",
+      "redeploySucceededWithPruning_one": "已重新部署 {{count}} 个边缘函数，并移除仅存在于远程的函数：{{functions}}",
+      "redeploySucceededWithPruning_other": "已重新部署 {{count}} 个边缘函数，并移除仅存在于远程的函数：{{functions}}",
       "redeployPrunedOnly": "已移除仅存在于远程的边缘函数：{{functions}}",
       "noFunctionsToRedeploy": "未找到可重新部署的本地边缘函数",
       "redeployFailed": "边缘函数重新部署完成，但出现问题：{{error}}"

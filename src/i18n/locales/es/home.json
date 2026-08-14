@@ -597,7 +597,8 @@
       "redeployProgress": "Desplegando {{completed}}/{{total}}…",
       "redeploySucceeded_one": "Se volvió a desplegar {{count}} función Edge",
       "redeploySucceeded_other": "Se volvieron a desplegar {{count}} funciones Edge",
-      "redeploySucceededWithPruning": "Se volvieron a desplegar {{count}} funciones Edge y se eliminaron las funciones remotas: {{functions}}",
+      "redeploySucceededWithPruning_one": "Se volvió a desplegar {{count}} función Edge y se eliminaron las funciones remotas: {{functions}}",
+      "redeploySucceededWithPruning_other": "Se volvieron a desplegar {{count}} funciones Edge y se eliminaron las funciones remotas: {{functions}}",
       "redeployPrunedOnly": "Se eliminaron las funciones Edge que solo existían de forma remota: {{functions}}",
       "noFunctionsToRedeploy": "No se encontraron funciones Edge locales para volver a desplegar",
       "redeployFailed": "El despliegue de las funciones Edge finalizó con problemas: {{error}}"

@@ -262,7 +262,6 @@ export async function deploySupabaseFunctions({
   supabaseProjectId,
   supabaseOrganizationSlug,
   skipPruneEdgeFunctions,
-  pruneWhenNoLocalFunctions = false,
   functionNames,
   onProgress,
   onSummary,
@@ -271,7 +270,6 @@ export async function deploySupabaseFunctions({
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
-  pruneWhenNoLocalFunctions?: boolean;
   functionNames?: string[];
   onProgress?: (progress: SupabaseDeployProgress) => void;
   onSummary?: (summary: SupabaseDeploySummary) => void;
@@ -325,14 +323,16 @@ export async function deploySupabaseFunctions({
 
     if (validFunctions.length === 0) {
       logger.info("No valid functions to deploy");
-      if (
-        !requestedFunctionNames &&
-        (!pruneWhenNoLocalFunctions || skipPruneEdgeFunctions)
-      ) {
-        return finish([]);
-      }
       if (errors.length > 0) {
         return finish(errors);
+      }
+      // An empty complete local set is not enough evidence that every remote
+      // function should be deleted. The project may have been connected with
+      // remote-only production functions, or the last local function may have
+      // just been removed. Manual whole-set sync therefore falls back to a
+      // deploy-only no-op instead of pruning the entire remote project.
+      if (allValidFunctions.length === 0) {
+        return finish([]);
       }
     }
 
@@ -504,7 +504,6 @@ export async function deployAllSupabaseFunctions(args: {
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
-  pruneWhenNoLocalFunctions?: boolean;
   onProgress?: (progress: SupabaseDeployProgress) => void;
   onSummary?: (summary: SupabaseDeploySummary) => void;
 }): Promise<string[]> {

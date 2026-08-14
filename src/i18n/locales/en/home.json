@@ -619,7 +619,8 @@
       "redeployProgress": "Deploying {{completed}}/{{total}}…",
       "redeploySucceeded_one": "Redeployed {{count}} edge function",
       "redeploySucceeded_other": "Redeployed {{count}} edge functions",
-      "redeploySucceededWithPruning": "Redeployed {{count}} edge functions and removed remote-only functions: {{functions}}",
+      "redeploySucceededWithPruning_one": "Redeployed {{count}} edge function and removed remote-only functions: {{functions}}",
+      "redeploySucceededWithPruning_other": "Redeployed {{count}} edge functions and removed remote-only functions: {{functions}}",
       "redeployPrunedOnly": "Removed remote-only edge functions: {{functions}}",
       "noFunctionsToRedeploy": "No local edge functions found to redeploy",
       "redeployFailed": "Edge function redeployment finished with issues: {{error}}"

@@ -220,7 +220,7 @@ describe("deployAllSupabaseFunctions progress", () => {
     });
   });
 
-  it("prunes remote functions when a manual sync has no valid local functions", async () => {
+  it("does not prune remote functions when a manual sync has no valid local functions", async () => {
     let summary: {
       functionCount: number;
       prunedFunctionNames: string[];
@@ -241,7 +241,6 @@ describe("deployAllSupabaseFunctions progress", () => {
         supabaseProjectId: "project-id",
         supabaseOrganizationSlug: "org",
         skipPruneEdgeFunctions: false,
-        pruneWhenNoLocalFunctions: true,
         onSummary: (nextSummary) => {
           summary = nextSummary;
         },
@@ -249,14 +248,11 @@ describe("deployAllSupabaseFunctions progress", () => {
     ).resolves.toEqual([]);
 
     expect(deploySupabaseFunction).not.toHaveBeenCalled();
-    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
-      supabaseProjectId: "project-id",
-      functionName: "old-fn",
-      organizationSlug: "org",
-    });
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).not.toHaveBeenCalled();
     expect(summary).toEqual({
       functionCount: 0,
-      prunedFunctionNames: ["old-fn"],
+      prunedFunctionNames: [],
     });
   });
 
@@ -274,7 +270,6 @@ describe("deployAllSupabaseFunctions progress", () => {
         supabaseProjectId: "project-id",
         supabaseOrganizationSlug: null,
         skipPruneEdgeFunctions: false,
-        pruneWhenNoLocalFunctions: true,
       }),
     ).resolves.toEqual([]);
 
@@ -296,7 +291,6 @@ describe("deployAllSupabaseFunctions progress", () => {
         supabaseProjectId: "project-id",
         supabaseOrganizationSlug: null,
         skipPruneEdgeFunctions: true,
-        pruneWhenNoLocalFunctions: true,
       }),
     ).resolves.toEqual([]);
 

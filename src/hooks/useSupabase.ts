@@ -2,7 +2,7 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
-  useIsMutating,
+  useMutationState,
 } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -262,7 +262,22 @@ export function useRedeploySupabaseFunctions(appId: number) {
   const [progress, setProgress] = useState<SupabaseRedeployProgress | null>(
     null,
   );
-  const activeOperationIdRef = useRef<string | null>(null);
+  const mutationKey = queryKeys.supabase.redeploy({ appId });
+  const activeOperationIds = useMutationState<string | null>({
+    filters: { mutationKey, status: "pending" },
+    select: (pendingMutation) => {
+      const variables = pendingMutation.state.variables as
+        | { appId: number; operationId: string }
+        | undefined;
+      return variables?.operationId ?? null;
+    },
+  });
+  const cachedOperationId = activeOperationIds.at(-1) ?? null;
+  const activeOperationIdRef = useRef<string | null>(cachedOperationId);
+
+  useEffect(() => {
+    activeOperationIdRef.current = cachedOperationId;
+  }, [cachedOperationId]);
 
   useEffect(() => {
     return ipc.events.supabase.onRedeployProgress((nextProgress) => {
@@ -273,12 +288,9 @@ export function useRedeploySupabaseFunctions(appId: number) {
   }, []);
 
   const mutation = useMutation({
-    mutationKey: queryKeys.supabase.redeploy({ appId }),
+    mutationKey,
     mutationFn: (params: { appId: number; operationId: string }) =>
       ipc.supabase.redeployAllFunctions(params),
-  });
-  const matchingMutations = useIsMutating({
-    mutationKey: queryKeys.supabase.redeploy({ appId }),
   });
 
   const redeployAllFunctions = useCallback(async () => {
@@ -295,6 +307,6 @@ export function useRedeploySupabaseFunctions(appId: number) {
   return {
     redeployAllFunctions,
     redeployProgress: progress,
-    isRedeployingFunctions: matchingMutations > 0,
+    isRedeployingFunctions: activeOperationIds.length > 0,
   };
 }

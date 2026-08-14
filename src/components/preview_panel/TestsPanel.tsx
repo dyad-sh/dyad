@@ -110,6 +110,8 @@ function StatusIcon({ status }: { status: TestStatus }) {
       return (
         <Loader2
           size={16}
+          role="status"
+          aria-label="Running"
           className="animate-spin text-blue-500 dark:text-blue-400 shrink-0"
         />
       );
@@ -700,7 +702,16 @@ export function TestsPanel() {
   const parallel = settings?.testParallel ?? false;
 
   const devServerRunning = appUrl.appUrl !== null;
+  // Owns the run's whole lifecycle, teardown included. Gates every action that
+  // must not interleave with it (Run, Record, Delete), because the per-app lock
+  // is still held during `cleaning-up`.
   const isRunning = runState.phase !== "idle";
+  // Narrower: tests are actually executing. Once the Stop lands, nothing more
+  // can be produced, so the per-test spinners must not keep implying otherwise.
+  const isExecuting =
+    runState.phase === "setup" || runState.phase === "running";
+  const isStopping = runState.phase === "stopping";
+  const isCleaningUp = runState.phase === "cleaning-up";
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
     queryFn: async () => {
@@ -886,10 +897,26 @@ export function TestsPanel() {
   // root-level useTestRunEvents subscriber — NOT here — so the terminal
   // "finished" event still lands when this panel is unmounted mid-run.
 
+  // Optimistic latch. The authoritative `stopping` phase comes back over IPC,
+  // and the main process is busy streaming runner output when the user clicks,
+  // so the round trip can miss a frame. The click must never look ignored.
+  const [stopRequested, setStopRequested] = useState(false);
+  // Every run gets a fresh `startedAt`, so this drops the latch on the next run
+  // and on an app switch without needing to observe the run ending.
+  useEffect(() => {
+    setStopRequested(false);
+  }, [selectedAppId, runState.startedAt]);
+
   const stop = useCallback(() => {
     if (selectedAppId == null) return;
+    setStopRequested(true);
     ipc.tests.stopAppTests({ appId: selectedAppId }).catch(() => {});
   }, [selectedAppId]);
+
+  // The kill is under way. Covers the optimistic latch and the authoritative
+  // phase, so the label survives a remount mid-stop and covers agent runs the
+  // user stopped from the chat.
+  const showStopping = isStopping || (stopRequested && !isCleaningUp);
 
   // User-initiated: hand the failure back into an Agent-mode chat turn so the
   // agent can read the failure, fix it, and re-run it with the run_tests tool.
@@ -1147,17 +1174,17 @@ export function TestsPanel() {
   // otherwise the parsed run result (or not-run).
   const fileStatus = useCallback(
     (file: string): TestStatus => {
-      if (isRunning && runState.runningFiles.includes(file)) return "running";
+      if (isExecuting && runState.runningFiles.includes(file)) return "running";
       return runState.results[file]?.status ?? "not-run";
     },
-    [isRunning, runState.runningFiles, runState.results],
+    [isExecuting, runState.runningFiles, runState.results],
   );
 
   // Per-test status. A test spins when it's the specific test being run, or
   // when its whole file is running (no single test targeted).
   const caseStatus = useCallback(
     (file: string, testCase: TestCase): TestStatus => {
-      if (isRunning) {
+      if (isExecuting) {
         const runningTests = runState.runningTests ?? [];
         const isThisRunning =
           runningTests.length > 0
@@ -1169,7 +1196,12 @@ export function TestsPanel() {
         findCaseResult(runState.results[file], testCase)?.status ?? "not-run"
       );
     },
-    [isRunning, runState.runningFiles, runState.runningTests, runState.results],
+    [
+      isExecuting,
+      runState.runningFiles,
+      runState.runningTests,
+      runState.results,
+    ],
   );
 
   const caseResult = useCallback(
@@ -1302,13 +1334,32 @@ export function TestsPanel() {
           </span>
         )}
         {isRunning ? (
+          // During `cleaning-up` the tests are already gone and only the
+          // isolation teardown remains, so there is nothing left to stop. The
+          // button reports that state instead of offering a dead action.
           <button
             onClick={stop}
-            aria-label="Stop running tests"
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 cursor-pointer"
+            disabled={showStopping || isCleaningUp}
+            aria-label={
+              isCleaningUp
+                ? "Restoring your app"
+                : showStopping
+                  ? "Stopping tests"
+                  : "Stop running tests"
+            }
+            className={cn(
+              "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md",
+              showStopping || isCleaningUp
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 cursor-default"
+                : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 cursor-pointer",
+            )}
           >
-            <Square size={14} />
-            Stop
+            {showStopping || isCleaningUp ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Square size={14} />
+            )}
+            {isCleaningUp ? "Restoring…" : showStopping ? "Stopping…" : "Stop"}
           </button>
         ) : (
           testingEnabled &&
@@ -1346,10 +1397,25 @@ export function TestsPanel() {
               className="px-4 py-1.5 text-xs text-muted-foreground border-b border-border/60"
             >
               {isRunning && (
-                <span className="text-blue-600 dark:text-blue-400">
-                  {runState.phase === "setup"
-                    ? "Setting up testing… "
-                    : "Running… "}
+                <span
+                  className={cn(
+                    showStopping || isCleaningUp
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-blue-600 dark:text-blue-400",
+                  )}
+                >
+                  {isCleaningUp
+                    ? // The Neon teardown restarts the dev server, so the
+                      // preview visibly reloads and the copy has to account for
+                      // it. The Supabase teardown only deletes the test user.
+                      runState.isolation?.mode === "neon-branch"
+                      ? "Restoring your database and preview… "
+                      : "Cleaning up the test data… "
+                    : showStopping
+                      ? "Stopping the tests… "
+                      : runState.phase === "setup"
+                        ? "Setting up testing… "
+                        : "Running… "}
                 </span>
               )}
               <span className="text-green-600 dark:text-green-500">

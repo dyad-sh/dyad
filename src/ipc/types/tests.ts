@@ -421,7 +421,15 @@ export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
 export const TestsRunStatePayloadSchema = z.object({
   appId: z.number(),
   source: z.enum(["panel", "agent"]),
-  state: z.enum(["started", "finished"]),
+  /**
+   * `stopping` and `cleaning-up` are progress-only states covering the two
+   * waits between a Stop and the terminal `finished`: the kill of the
+   * Playwright process tree, then the isolation teardown (env restore,
+   * dev-server restart, temporary branch/user delete) that no caller can
+   * abort. Unlike `finished`, both are consumed for BOTH sources — the panel
+   * writes its own start/finish state directly but cannot observe these two.
+   */
+  state: z.enum(["started", "stopping", "cleaning-up", "finished"]),
   /** Single spec targeted, when set; absent = whole suite. */
   testFile: z.string().optional(),
   /** With testFile: only the test at this 1-based line was run. */

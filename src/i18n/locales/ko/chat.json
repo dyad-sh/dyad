@@ -78,6 +78,7 @@
   "dismissError": "오류 무시",
   "askDyadToBuild": "Dyad에게 빌드 요청하기...",
   "cancelGeneration": "생성 취소",
+  "stoppingGeneration": "중지하는 중…",
   "sendMessage": "메시지 보내기",
   "loadingProposal": "제안을 불러오는 중...",
   "errorLoadingProposal": "제안 불러오기 오류: {{message}}",

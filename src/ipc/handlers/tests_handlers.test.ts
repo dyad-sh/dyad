@@ -254,6 +254,87 @@ describe("tests handlers", () => {
     });
   });
 
+  describe("stop progress events", () => {
+    /** `tests:run-state` values broadcast so far, in order. */
+    function runStates(): string[] {
+      return broadcastToRegisteredWindowsMock.mock.calls
+        .filter(([, channel]) => channel === "tests:run-state")
+        .map(([, , payload]) => payload.state);
+    }
+
+    function seedTestableApp(name: string): number {
+      const appId = seedApp(name);
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      return appId;
+    }
+
+    it("announces the teardown before it starts", async () => {
+      // The teardown takes no AbortSignal and routinely outlasts the process
+      // kill, so it has to be announced up front — not reported afterwards.
+      const appId = seedTestableApp("app");
+      let statesWhenTeardownRan: string[] = [];
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        teardown: vi.fn().mockImplementation(async () => {
+          statesWhenTeardownRan = runStates();
+          return { envRestored: true };
+        }),
+      });
+
+      await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(statesWhenTeardownRan).toContain("cleaning-up");
+      // And it is not terminal: `finished` still lands after the teardown.
+      expect(statesWhenTeardownRan).not.toContain("finished");
+      expect(runStates()).toContain("finished");
+    });
+
+    it("stays quiet when there is no isolation to tear down", async () => {
+      // `NOOP_TEARDOWN` returns immediately, so a `cleaning-up` label would
+      // flash for a frame and read as a glitch.
+      const appId = seedTestableApp("app");
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+
+      await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(runStates()).not.toContain("cleaning-up");
+    });
+
+    it("reports the kill for a run stopped from the chat", async () => {
+      // The agent turn's cancellation reaches the same controller as the
+      // panel's Stop button, so one listener has to cover both surfaces.
+      const appId = seedTestableApp("app");
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+
+      await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "agent",
+        externalSignal: AbortSignal.abort(),
+      });
+
+      expect(runStates()).toContain("stopping");
+    });
+  });
+
   describe("tests:delete", () => {
     it("deletes the spec file and commits the removal on its own", async () => {
       const appId = seedApp("app");

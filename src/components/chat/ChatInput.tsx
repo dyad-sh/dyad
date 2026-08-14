@@ -64,6 +64,7 @@ import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
+import { CancellationBanner } from "./CancellationBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
@@ -802,12 +803,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             contextWindow={tokenCountResult.contextWindow}
           />
         )}
+        {/* Cancelling a turn can take a minute when the agent is mid-tool (a
+            test run has to be killed and its isolation torn down). Pinned here
+            rather than inline in the transcript, which scrolls away. */}
+        {isCancellationSettling && <CancellationBanner />}
         <div
           className={cn(
             "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
             "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
             isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
-            (showBanner || showPromo) && "rounded-t-none border-t-0",
+            (showBanner || showPromo || isCancellationSettling) &&
+              "rounded-t-none border-t-0",
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -1032,19 +1038,41 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             )}
 
             {isStreaming ? (
+              // Cancelling is not instant — an in-flight tool has to unwind
+              // first. Confirm the click here (the banner above carries the
+              // reason) and refuse a second one, which would only re-abort an
+              // already-aborted controller.
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <button
                       onClick={handleCancel}
-                      aria-label={t("cancelGeneration")}
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
+                      disabled={isCancellationSettling}
+                      aria-label={
+                        isCancellationSettling
+                          ? t("stoppingGeneration", "Stopping…")
+                          : t("cancelGeneration")
+                      }
+                      className={cn(
+                        "px-2 py-2 mb-0.5 mr-1 rounded-lg transition-colors duration-150",
+                        isCancellationSettling
+                          ? "text-amber-600 dark:text-amber-500 cursor-default"
+                          : "text-muted-foreground hover:text-destructive cursor-pointer",
+                      )}
                     />
                   }
                 >
-                  <StopCircleIcon size={20} />
+                  {isCancellationSettling ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <StopCircleIcon size={20} />
+                  )}
                 </TooltipTrigger>
-                <TooltipContent>{t("cancelGeneration")}</TooltipContent>
+                <TooltipContent>
+                  {isCancellationSettling
+                    ? t("stoppingGeneration", "Stopping…")
+                    : t("cancelGeneration")}
+                </TooltipContent>
               </Tooltip>
             ) : (
               <Tooltip>

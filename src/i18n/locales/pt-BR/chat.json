@@ -78,6 +78,7 @@
   "dismissError": "Dispensar erro",
   "askDyadToBuild": "Peça ao Dyad para construir...",
   "cancelGeneration": "Cancelar geração",
+  "stoppingGeneration": "Parando…",
   "sendMessage": "Enviar mensagem",
   "loadingProposal": "Carregando proposta...",
   "errorLoadingProposal": "Erro ao carregar proposta: {{message}}",

@@ -19,6 +19,7 @@ import type {
   MigrateLegacyTestResult,
   RunAppTestsResult,
   TestCase,
+  TestIsolation,
   TestResult,
   TestsRunStatePayload,
 } from "../types/tests";
@@ -597,6 +598,38 @@ export async function runAppTestsWithIsolation({
   });
   testRunControllers.set(appId, { controller, done });
 
+  /**
+   * Progress-only run-state events for the two waits a Stop cannot skip. Both
+   * carry the run's identity so a late event can be attributed, but neither
+   * carries results — only `finished` is terminal.
+   */
+  const emitProgress = (
+    state: "stopping" | "cleaning-up",
+    isolation?: TestIsolation,
+  ) =>
+    emitRunState(event, {
+      appId,
+      source,
+      state,
+      testFile: normalizedTestFile ?? undefined,
+      testLine,
+      grep,
+      // Only `cleaning-up` carries this, and only so the UI can name the work
+      // accurately: the Neon path restarts the preview, the Supabase path
+      // touches nothing the user can see.
+      isolation,
+    });
+
+  // Announce the kill the moment either Stop path fires. The panel button and
+  // the agent turn's cancellation both land on this one controller, so a single
+  // listener covers both surfaces. Registered BEFORE the external-signal wiring
+  // below, which can abort synchronously when the caller is already cancelled.
+  // An abort that beats `started` is harmless: the renderer ignores a progress
+  // event for an idle app.
+  controller.signal.addEventListener("abort", () => emitProgress("stopping"), {
+    once: true,
+  });
+
   // Cancelling the caller's lifecycle (e.g. the agent turn) aborts the run,
   // just like the Stop button does via the same controller.
   const onExternalAbort = () => controller.abort();
@@ -762,6 +795,16 @@ export async function runAppTestsWithIsolation({
           // already restored).
           if (prepared) {
             try {
+              // Announce the teardown before it starts. It restores
+              // `.env.local`, restarts the dev server and deletes the temporary
+              // branch/user, takes no AbortSignal, and routinely outlasts the
+              // process kill by a wide margin (the Neon branch delete retries
+              // with backoff). Without this the UI reports "running" for the
+              // whole wait. Skipped for `none`, whose teardown is a NOOP that
+              // would only flash the label.
+              if (prepared.isolation.mode !== "none") {
+                emitProgress("cleaning-up", prepared.isolation);
+              }
               // Fail closed across the await: a teardown that throws has said
               // nothing about whether the env came back, and "unknown" has to
               // read the same as "no".

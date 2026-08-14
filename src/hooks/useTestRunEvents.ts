@@ -20,6 +20,8 @@ const PHASE_ORDER: Record<TestRunPhase, number> = {
   idle: 0,
   setup: 1,
   running: 2,
+  stopping: 3,
+  "cleaning-up": 4,
 };
 
 /**
@@ -134,6 +136,31 @@ export function useTestRunEvents() {
           // here. (Agent runs already clear via applyStarted above.)
           clearOutput(appId);
         }
+        return;
+      }
+      // Progress-only states, consumed for BOTH sources. The panel writes its
+      // own start/finish state directly, but the process kill and the
+      // isolation teardown happen entirely in the main process, so a
+      // panel-initiated run has no other way to learn it is in one of them.
+      // The PHASE_ORDER guard keeps a run moving forward only: `idle` means the
+      // run already finished, so a late event must not restore a spinner.
+      if (payload.state === "stopping" || payload.state === "cleaning-up") {
+        const nextPhase = payload.state;
+        setRunState({
+          appId,
+          update: (prev) =>
+            prev.phase === "idle" ||
+            PHASE_ORDER[nextPhase] <= PHASE_ORDER[prev.phase]
+              ? prev
+              : {
+                  ...prev,
+                  phase: nextPhase,
+                  // Carried on `cleaning-up` only, so the panel can name the
+                  // teardown accurately. The terminal `finished` event resends
+                  // it, so this never becomes the badge's only source.
+                  isolation: payload.isolation ?? prev.isolation,
+                },
+        });
         return;
       }
       if (payload.source === "panel") {

@@ -42,7 +42,9 @@ export type RuntimeTestResult = Omit<TestResult, "status"> & {
 export type TestRunPhase =
   | "idle" // not running
   | "setup" // first-run Playwright bootstrap streaming
-  | "running"; // playwright test executing
+  | "running" // playwright test executing
+  | "stopping" // Stop pressed; killing the Playwright process tree
+  | "cleaning-up"; // tests gone; isolation teardown still restoring the app
 
 export interface TestRunState {
   phase: TestRunPhase;

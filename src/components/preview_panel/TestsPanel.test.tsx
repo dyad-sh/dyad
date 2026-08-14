@@ -12,6 +12,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
+import {
+  EMPTY_TEST_RUN_STATE,
+  testRunStateByAppIdAtom,
+  type TestRunState,
+} from "@/atoms/testRuntimeAtoms";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
 
@@ -306,5 +311,112 @@ describe("TestsPanel", () => {
     expect(
       (screen.getByTestId("tests-record-button") as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  describe("stopping a run", () => {
+    /** Put the panel's app into `phase` as if a run had reached it. */
+    function setPhase(
+      store: ReturnType<typeof createStore>,
+      state: Partial<TestRunState> & Pick<TestRunState, "phase">,
+    ) {
+      act(() => {
+        store.set(
+          testRunStateByAppIdAtom,
+          new Map([
+            [
+              1,
+              {
+                ...EMPTY_TEST_RUN_STATE,
+                runningFiles: [SPEC_FILE],
+                startedAt: 1000,
+                ...state,
+              },
+            ],
+          ]),
+        );
+      });
+    }
+
+    it("latches the button before the main process answers", async () => {
+      // The whole complaint this addresses is a Stop that looks ignored. The
+      // main process is busy streaming runner output when the click lands, so
+      // the round trip can miss a frame — the button cannot wait for it.
+      const { store } = renderPanel();
+      setPhase(store, { phase: "running" });
+      let resolveStop: () => void = () => {};
+      mocks.stopAppTests.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveStop = resolve;
+        }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Stop running tests" }),
+      );
+
+      const button = screen.getByRole("button", { name: "Stopping tests" });
+      expect(button.textContent).toContain("Stopping…");
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      resolveStop();
+    });
+
+    it("reports the kill, and refuses a second Stop", () => {
+      const { store } = renderPanel();
+      setPhase(store, { phase: "stopping" });
+
+      const button = screen.getByRole("button", { name: "Stopping tests" });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText(/Stopping the tests/)).toBeTruthy();
+
+      fireEvent.click(button);
+      expect(mocks.stopAppTests).not.toHaveBeenCalled();
+    });
+
+    it("names the Neon teardown, which restarts the preview", () => {
+      // This is the wait that can pass a minute (the branch delete retries with
+      // backoff), and it visibly reloads the user's preview. Calling it
+      // "Running…" — as the panel used to — reads as a hang.
+      const { store } = renderPanel();
+      setPhase(store, {
+        phase: "cleaning-up",
+        isolation: { mode: "neon-branch" },
+      });
+
+      expect(
+        screen.getByText(/Restoring your database and preview/),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Restoring your app" }).textContent,
+      ).toContain("Restoring…");
+    });
+
+    it("does not promise a database restore on the Supabase path", () => {
+      // That teardown only deletes the temporary test user. It never swaps
+      // `.env.local` and never restarts the app, so the Neon copy would lie.
+      const { store } = renderPanel();
+      setPhase(store, {
+        phase: "cleaning-up",
+        isolation: { mode: "supabase-test-user" },
+      });
+
+      expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
+      expect(screen.queryByText(/Restoring your database/)).toBeNull();
+    });
+
+    it("clears the per-test spinners once the tests are gone", async () => {
+      // Nothing can produce a result after the kill. A spinner that keeps
+      // turning through the teardown claims otherwise.
+      const { store } = renderPanel();
+      // The rows carry the spinners, so wait for the spec list to land first.
+      await screen.findByRole("button", {
+        name: "Open in code editor: signup.spec.ts",
+      });
+      setPhase(store, { phase: "running" });
+      expect(screen.getAllByLabelText("Running").length).toBeGreaterThan(0);
+
+      setPhase(store, { phase: "cleaning-up" });
+
+      expect(screen.queryAllByLabelText("Running")).toEqual([]);
+    });
   });
 });

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { isPathIgnoredByGitIgnore } from "@/ipc/utils/gitignore_utils";
+import { safeJoin } from "@/ipc/utils/path_utils";
 
 const copyFileSchema = z.object({
   from: z
@@ -29,6 +31,11 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
   shouldTrackMutation: (_args, result) =>
     result.startsWith("Successfully copied") ||
     result.startsWith("File copied,"),
+  shouldTrackFileMutation: async (args, _result, ctx) =>
+    !(await isPathIgnoredByGitIgnore({
+      basePath: ctx.appPath,
+      filePath: safeJoin(ctx.appPath, args.to),
+    })),
 
   buildXml: (args, _isComplete) => {
     if (!args.from || !args.to) return undefined;

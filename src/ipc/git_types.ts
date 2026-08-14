@@ -14,7 +14,7 @@ export interface GitBaseParams {
 export interface GitCommitParams extends GitBaseParams {
   message: string;
   amend?: boolean;
-  /** Bypass pre-commit and commit-msg hooks for internal checkpoint commits. */
+  /** Bypass hooks for internal Dyad commits (defaults to true). */
   noVerify?: boolean;
   /**
    * Paths (relative to the repo root) to commit. When set, git makes a partial

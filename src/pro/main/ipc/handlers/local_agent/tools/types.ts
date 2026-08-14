@@ -433,7 +433,7 @@ export interface ToolDefinition<T = any> {
     args: T,
     result: ToolResult,
     ctx: AgentContext,
-  ) => boolean;
+  ) => boolean | Promise<boolean>;
 
   /**
    * Build XML from parsed partial args.

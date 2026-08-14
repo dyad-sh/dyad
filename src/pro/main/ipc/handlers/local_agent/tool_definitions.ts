@@ -671,7 +671,7 @@ export function buildAgentToolSet(
                 result,
                 invocationCtx,
               ),
-              tool.shouldTrackFileMutation?.(
+              await tool.shouldTrackFileMutation?.(
                 processedArgs,
                 result,
                 invocationCtx,

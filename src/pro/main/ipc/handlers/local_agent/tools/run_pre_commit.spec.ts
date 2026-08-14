@@ -228,7 +228,7 @@ describe("runPreCommitTool", () => {
     const second = await runPreCommitTool.execute({}, ctx);
 
     expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
-      expect.objectContaining({ args: ["add", "-A"], cwd: repo }),
+      expect.objectContaining({ args: ["add", "--", "."], cwd: repo }),
     );
     expect(first).toContain("lint failed");
     expect(second).toContain("no files have changed");
@@ -245,20 +245,22 @@ describe("runPreCommitTool", () => {
     );
   });
 
-  it("runs hooks with Dyad's package-manager command environment", async () => {
-    await runPreCommitTool.execute({}, context(repo));
+  it("preserves the project's package-manager environment for hooks", async () => {
+    vi.stubEnv("COREPACK_ENABLE_PROJECT_SPEC", "1");
+    try {
+      await runPreCommitTool.execute({}, context(repo));
 
-    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
-      expect.objectContaining({
-        args: ["hook", "run", "pre-commit"],
-        env: expect.objectContaining({
-          COREPACK_ENABLE_PROJECT_SPEC: "0",
-          COREPACK_ENABLE_STRICT: "0",
-          npm_config_package_manager_strict: "false",
-          npm_config_pm_on_fail: "ignore",
+      expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args: ["hook", "run", "pre-commit"],
+          env: expect.objectContaining({
+            COREPACK_ENABLE_PROJECT_SPEC: "1",
+          }),
         }),
-      }),
-    );
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("allows a follow-up run when Git fingerprinting fails", async () => {
@@ -410,7 +412,7 @@ describe("runPreCommitTool", () => {
 
     const result = await runPreCommitTool.execute({}, ctx);
 
-    expect(result).toContain("Staging the workspace exceeded 10 minutes");
+    expect(result).toContain("Staging the workspace exceeded 1 minute");
     expect(ctx.preCommitRunCount).toBeUndefined();
     expect(hookRuns).toBe(0);
   });
@@ -433,15 +435,17 @@ describe("runPreCommitTool", () => {
       context(repo, { appId: 99 }),
     );
 
-    await Promise.resolve();
-    expect(mocks.runBufferedProcess).not.toHaveBeenCalled();
-
-    releaseRepository();
+    try {
+      await Promise.resolve();
+      expect(mocks.runBufferedProcess).not.toHaveBeenCalled();
+    } finally {
+      releaseRepository();
+    }
     await repositoryBlocker;
     await pendingRun;
 
     expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
-      expect.objectContaining({ args: ["add", "-A"], cwd: repo }),
+      expect.objectContaining({ args: ["add", "--", "."], cwd: repo }),
     );
     expect(hookRuns).toBe(1);
   });

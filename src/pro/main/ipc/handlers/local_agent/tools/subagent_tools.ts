@@ -73,10 +73,13 @@ export function buildSubagentContext(
     subagentPersona: persona,
     subagentPathScope: scope.map(normalizeMutationScope),
     abortSignal,
-    onWorkspaceMutation: () => {
+    onWorkspaceMutation: (didMutateFile) => {
       ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
+      if (didMutateFile) {
+        ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
+      }
       ctx.workspaceMutated = true;
-      ctx.onWorkspaceMutation?.();
+      ctx.onWorkspaceMutation?.(didMutateFile);
     },
     requireConsent: (consent) =>
       ctx.requireConsent({

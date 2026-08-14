@@ -122,7 +122,6 @@ describe("gitCommit", () => {
     const commitHash = await gitCommit({
       path: repoDir,
       message: "internal checkpoint",
-      noVerify: true,
     });
 
     expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);

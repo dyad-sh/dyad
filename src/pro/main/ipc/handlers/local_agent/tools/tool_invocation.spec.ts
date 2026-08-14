@@ -69,7 +69,7 @@ describe("trackAppMutation", () => {
     expect(ctx.fileMutationCount).toBe(1);
   });
 
-  it.each(["generate_image", "add_integration"])(
+  it.each(["generate_image"])(
     "does not count %s as a Git-visible file mutation",
     (toolName) => {
       const ctx = {} as AgentContext;
@@ -101,5 +101,14 @@ describe("add_integration file mutation tracking", () => {
         frameworkType: "nextjs",
       } as AgentContext),
     ).toBe(false);
+
+    const ctx = { frameworkType: "vite" } as AgentContext;
+    trackAppMutation(
+      ctx,
+      "add_integration",
+      true,
+      didMutateFile({}, "User completed the neon integration.", ctx) === true,
+    );
+    expect(ctx.fileMutationCount).toBe(1);
   });
 });

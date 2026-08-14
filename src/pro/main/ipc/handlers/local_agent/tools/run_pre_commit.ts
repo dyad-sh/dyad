@@ -2,8 +2,11 @@ import { createHash } from "node:crypto";
 import fs, { promises as fsPromises } from "node:fs";
 import log from "electron-log";
 import { z } from "zod";
-import { execGit, getGitProcessEnvironment } from "@/ipc/utils/git_utils";
-import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
+import {
+  ensureGitLineEndingPolicy,
+  execGit,
+  getGitProcessEnvironment,
+} from "@/ipc/utils/git_utils";
 import {
   runBufferedProcess,
   type BufferedProcessResult,
@@ -24,12 +27,23 @@ import {
 
 export const MAX_PRE_COMMIT_RUNS_PER_TURN = 4;
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
+export const PRE_COMMIT_STAGING_TIMEOUT_MS = 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 12_000;
-const FINGERPRINT_TIMEOUT_MS = 60_000;
+const FINGERPRINT_TIMEOUT_MS = 30_000;
 const MAX_HOOK_CHANGED_PATHS = 10_000;
 const logger = log.scope("run_pre_commit");
 
 const runPreCommitSchema = z.object({});
+
+async function waitForAll<T>(promises: Promise<T>[]): Promise<T[]> {
+  const results = await Promise.allSettled(promises);
+  return results.map((result) => {
+    if (result.status === "rejected") {
+      throw result.reason;
+    }
+    return result.value;
+  });
+}
 
 async function resolvePreCommitHookPath(
   appPath: string,
@@ -93,36 +107,38 @@ async function getGitStateFingerprint(
   appPath: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const staged = await hashGitOutput(
-    appPath,
-    [
-      "-c",
-      "core.fsmonitor=false",
-      "diff",
-      "--cached",
-      "--binary",
-      "--no-ext-diff",
-      "--",
-    ],
-    signal,
-  );
-  const unstaged = await hashGitOutput(
-    appPath,
-    ["-c", "core.fsmonitor=false", "diff", "--binary", "--no-ext-diff", "--"],
-    signal,
-  );
-  const status = await hashGitOutput(
-    appPath,
-    [
-      "-c",
-      "core.fsmonitor=false",
-      "status",
-      "--porcelain=v1",
-      "-z",
-      "--untracked-files=all",
-    ],
-    signal,
-  );
+  const [staged, unstaged, status] = await waitForAll([
+    hashGitOutput(
+      appPath,
+      [
+        "-c",
+        "core.fsmonitor=false",
+        "diff",
+        "--cached",
+        "--binary",
+        "--no-ext-diff",
+        "--",
+      ],
+      signal,
+    ),
+    hashGitOutput(
+      appPath,
+      ["-c", "core.fsmonitor=false", "diff", "--binary", "--no-ext-diff", "--"],
+      signal,
+    ),
+    hashGitOutput(
+      appPath,
+      [
+        "-c",
+        "core.fsmonitor=false",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+      ],
+      signal,
+    ),
+  ]);
   return `${staged}\0${unstaged}\0${status}`;
 }
 
@@ -151,40 +167,44 @@ async function collectCurrentChangedPaths(
     ["ls-files", "--others", "--exclude-standard", "-z", "--"],
   ];
 
-  for (const command of commands) {
-    let pending = "";
-    const consume = (chunk: string, final = false) => {
-      const parts = `${pending}${chunk}`.split("\0");
-      pending = final ? "" : (parts.pop() ?? "");
-      for (const filePath of parts) {
-        if (!filePath || paths.has(filePath)) {
-          continue;
+  await waitForAll(
+    commands.map(async (command) => {
+      let pending = "";
+      const consume = (chunk: string, final = false) => {
+        const parts = `${pending}${chunk}`.split("\0");
+        pending = final ? "" : (parts.pop() ?? "");
+        for (const filePath of parts) {
+          if (!filePath || paths.has(filePath)) {
+            continue;
+          }
+          if (paths.size >= MAX_HOOK_CHANGED_PATHS) {
+            exceededPathLimit = true;
+          } else {
+            paths.add(filePath);
+          }
         }
-        if (paths.size >= MAX_HOOK_CHANGED_PATHS) {
-          exceededPathLimit = true;
-        } else {
-          paths.add(filePath);
-        }
+      };
+      const { env, gitLocation } = getGitProcessEnvironment();
+      const args = ["-c", "core.fsmonitor=false", ...command];
+      const result = await runBufferedProcess({
+        command: gitLocation,
+        args,
+        cwd: appPath,
+        env,
+        signal,
+        timeoutMs: FINGERPRINT_TIMEOUT_MS,
+        maxOutputBytes: 1_024,
+        captureOutputOnSuccess: false,
+        onStdout: (chunk) => consume(chunk),
+      });
+      consume("", true);
+      if (result.code !== 0 || result.aborted || result.timedOut) {
+        throw new Error(
+          `Git changed-path command failed: git ${args.join(" ")}`,
+        );
       }
-    };
-    const { env, gitLocation } = getGitProcessEnvironment();
-    const args = ["-c", "core.fsmonitor=false", ...command];
-    const result = await runBufferedProcess({
-      command: gitLocation,
-      args,
-      cwd: appPath,
-      env,
-      signal,
-      timeoutMs: FINGERPRINT_TIMEOUT_MS,
-      maxOutputBytes: 1_024,
-      captureOutputOnSuccess: false,
-      onStdout: (chunk) => consume(chunk),
-    });
-    consume("", true);
-    if (result.code !== 0 || result.aborted || result.timedOut) {
-      throw new Error(`Git changed-path command failed: git ${args.join(" ")}`);
-    }
-  }
+    }),
+  );
 
   if (exceededPathLimit) {
     throw new Error(
@@ -330,18 +350,17 @@ export const runPreCommitTool: ToolDefinition<
           );
         }
 
-        const { env, gitLocation } = getGitProcessEnvironment(
-          getPackageManagerCommandEnv(),
-        );
+        const { env, gitLocation } = getGitProcessEnvironment();
         let stageResult: BufferedProcessResult;
         try {
+          await ensureGitLineEndingPolicy({ path: ctx.appPath });
           stageResult = await runBufferedProcess({
             command: gitLocation,
-            args: ["add", "-A"],
+            args: ["add", "--", "."],
             cwd: ctx.appPath,
             env,
             signal: ctx.abortSignal,
-            timeoutMs: PRE_COMMIT_TIMEOUT_MS,
+            timeoutMs: PRE_COMMIT_STAGING_TIMEOUT_MS,
             maxOutputBytes: 256_000,
           });
         } catch (error) {
@@ -366,7 +385,7 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit staging timed out",
-            `Staging the workspace exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped. The hook was not run.\n\n${formatProcessOutput(stageResult.stdout, stageResult.stderr)}`,
+            `Staging the workspace exceeded ${Math.round(PRE_COMMIT_STAGING_TIMEOUT_MS / 60_000)} minute and was stopped. The hook was not run.\n\n${formatProcessOutput(stageResult.stdout, stageResult.stderr)}`,
             "warning",
           );
         }

@@ -273,9 +273,6 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
     getConsentPreview: (args) =>
       `Propose "${normalizeTestName(args.testName)}" with ${args.assertions.length} assertion(s)`,
 
-    shouldTrackMutation: (_args, result) =>
-      result.startsWith("The user approved the plan."),
-
     execute: async (args, ctx: AgentContext) => {
       const draft = getRecordedTestDraft(ctx.appId);
       if (!draft) {

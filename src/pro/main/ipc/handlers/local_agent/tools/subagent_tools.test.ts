@@ -93,6 +93,7 @@ describe("spawn_agent schema", () => {
 
     expect(child.mutationCount).toBe(1);
     expect(root.mutationCount).toBe(1);
+    expect(root.fileMutationCount).toBe(1);
     expect(root.workspaceMutated).toBe(true);
   });
 

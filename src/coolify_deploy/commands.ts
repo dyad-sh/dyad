@@ -391,6 +391,9 @@ async function resolveApplication({
   // cancelled says nothing either way, and the message below is worth having
   // precisely because it is not a guess.
   let removedPrevious = false;
+  // Not removedPrevious, which means "we deleted it". A 404 also shows the
+  // application is gone; a failed delete shows nothing either way.
+  let previousConfirmedGone = false;
   if (savedUuid) {
     try {
       const existing = await client.getApplication(savedUuid);
@@ -415,6 +418,7 @@ async function resolveApplication({
         try {
           await client.deleteApplication(savedUuid);
           removedPrevious = true;
+          previousConfirmedGone = true;
         } catch {
           // A cancelled request is not a request that did not happen. The
           // client cancels through the deploy's own signal, so a disconnect
@@ -453,6 +457,7 @@ async function resolveApplication({
       report.log(
         "The application no longer exists in Coolify; recreating it.\n",
       );
+      previousConfirmedGone = true;
     }
     // Coolify calls above can park for a long time, so re-check before going
     // on to create an application: one abandoned meanwhile must not leave a
@@ -462,7 +467,10 @@ async function resolveApplication({
     // fails, the panel would otherwise keep offering the address of an
     // application Coolify has already confirmed is gone. Handed back rather
     // than written here, so this stays free of the database.
-    await onPreviousGone();
+    //
+    // Guarded: a failed delete leaves the application running and holding the
+    // domain, and forgetting its id would leave nothing able to name it again.
+    if (previousConfirmedGone) await onPreviousGone();
   }
   if (!removedPrevious) return create();
   try {

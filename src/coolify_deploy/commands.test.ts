@@ -552,6 +552,95 @@ describe("resuming a previous deployment", () => {
     expect(coolifyCalls()).toContain(`POST /applications/${APP_UUID}/start`);
   });
 
+  it("keeps the application id when the removal failed", async () => {
+    // The old application is still running and likely still holding the
+    // domain, which is why the replacement cannot be created.
+    const app = await seedApp({
+      connection: { applicationUuid: "stale-uuid", appUrl: "https://old.test" },
+    });
+    happyPathRoutes();
+    route("GET /applications/stale-uuid", {
+      uuid: "stale-uuid",
+      private_key_id: 999,
+    });
+    route("DELETE /applications/stale-uuid", { message: "denied" }, 500);
+    route("POST /applications/private-deploy-key", { message: "in use" }, 409);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const saved = await readApp(app.id);
+    expect(saved?.applicationUuid).toBe("stale-uuid");
+    expect(saved?.appUrl).toBe("https://old.test");
+  });
+
+  it("forgets the application id once the removal succeeded", async () => {
+    // The replacement could not be created, but the old application is gone
+    // all the same — so the panel must stop offering its address.
+    const app = await seedApp({
+      connection: { applicationUuid: "stale-uuid", appUrl: "https://old.test" },
+    });
+    happyPathRoutes();
+    route("GET /applications/stale-uuid", {
+      uuid: "stale-uuid",
+      private_key_id: 999,
+    });
+    route("DELETE /applications/stale-uuid", {});
+    route("POST /applications/private-deploy-key", { message: "nope" }, 409);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const saved = await readApp(app.id);
+    expect(saved?.applicationUuid).toBeNull();
+  });
+
+  it("forgets the application id when Coolify no longer has it", async () => {
+    // A 404 settles it, so the panel must stop offering that address.
+    const app = await seedApp({
+      connection: { applicationUuid: "gone-uuid", appUrl: "https://old.test" },
+    });
+    happyPathRoutes();
+    route("GET /applications/gone-uuid", { message: "not found" }, 404);
+    route("POST /applications/private-deploy-key", { message: "in use" }, 409);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const saved = await readApp(app.id);
+    expect(saved?.applicationUuid).toBeNull();
+  });
+
   it("drops the resumed deployment when the application was recreated", async () => {
     const app = await seedApp({
       connection: { applicationUuid: "stale-uuid" },

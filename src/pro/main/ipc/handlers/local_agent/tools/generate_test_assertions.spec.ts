@@ -185,6 +185,9 @@ describe("generate_test_assertions", () => {
     expect(result).toContain("e2e-tests/recorded-add-an-item.spec.ts");
     expect(result).toContain("1 assertion(s)");
     expect(result).toContain("run_tests");
+    expect(
+      generateTestAssertionsTool.shouldTrackMutation?.(VALID_ARGS, result, ctx),
+    ).toBe(true);
     // Approving rewrote this card's tag in the message row; the turn has to
     // adopt that before it appends anything else.
     expect(ctx.resyncResponseFromDb).toHaveBeenCalledTimes(1);
@@ -331,6 +334,10 @@ describe("generate_test_assertions", () => {
     const ctx = makeCtx();
 
     const result = await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
+
+    expect(
+      generateTestAssertionsTool.shouldTrackMutation?.(VALID_ARGS, result, ctx),
+    ).toBe(false);
 
     expect(committedXml(ctx)).toContain(`status="proposed"`);
     expect(result).toContain("closed the review card without approving");

@@ -58,6 +58,7 @@ export const APP_MUTATING_TOOL_NAMES = [
   "add_integration",
   "enable_nitro",
   "generate_image",
+  "generate_test_assertions",
   "git_restore_file",
 <<<<<<< HEAD
   "generate_test_assertions",

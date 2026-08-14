@@ -1,21 +1,44 @@
-import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exec } from "dugite";
 import type { BufferedProcessOptions } from "@/ipc/utils/buffered_process";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import type { AgentContext } from "./types";
 
 const mocks = vi.hoisted(() => ({
   gitAddAll: vi.fn(),
+  loggerWarn: vi.fn(),
   runBufferedProcess: vi.fn(),
 }));
 
-vi.mock("@/ipc/utils/git_utils", () => ({
+vi.mock("electron-log", () => ({
+  default: {
+    scope: () => ({
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      log: vi.fn(),
+      warn: mocks.loggerWarn,
+    }),
+  },
+}));
+
+vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
   gitAddAll: mocks.gitAddAll,
 }));
 
-vi.mock("@/ipc/utils/buffered_process", () => ({
+vi.mock("@/ipc/utils/buffered_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/buffered_process")>()),
   runBufferedProcess: mocks.runBufferedProcess,
 }));
 
@@ -62,6 +85,7 @@ async function makeRepo(options?: {
 
 function context(appPath: string, overrides: Partial<AgentContext> = {}) {
   return {
+    appId: 42,
     appPath,
     fileMutationCount: 1,
     preCommitHookAvailable: true,
@@ -204,6 +228,43 @@ describe("runPreCommitTool", () => {
     expect(hookRuns).toBe(1);
   });
 
+  it("disables repository fsmonitor while fingerprinting", async () => {
+    await runPreCommitTool.execute({}, context(repo));
+
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining(["-c", "core.fsmonitor=false", "status"]),
+      }),
+    );
+  });
+
+  it("allows a follow-up run when Git fingerprinting fails", async () => {
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          return processResult();
+        }
+        if (options.args?.[0] === "-c") {
+          return processResult({ code: 1 });
+        }
+        options.onStdout?.("fingerprint", {} as never);
+        return processResult();
+      },
+    );
+    const ctx = context(repo);
+
+    const first = await runPreCommitTool.execute({}, ctx);
+    const second = await runPreCommitTool.execute({}, ctx);
+
+    expect(first).toContain(
+      "could not determine whether the hook changed files",
+    );
+    expect(second).not.toContain("no files have changed");
+    expect(hookRuns).toBe(2);
+    expect(mocks.loggerWarn).toHaveBeenCalled();
+  });
+
   it("reports a clean pass and refuses an unchanged rerun", async () => {
     hookResults.push(processResult({ stdout: "checks passed" }));
     const ctx = context(repo);
@@ -265,5 +326,67 @@ describe("runPreCommitTool", () => {
     expect(result).toContain("did not consume a run");
     expect(ctx.preCommitRunCount).toBe(0);
     expect(ctx.preCommitFileMutationCountAtLastRun).toBeUndefined();
+  });
+
+  it("serializes the complete hook run with other repository operations", async () => {
+    let releaseRepository!: () => void;
+    const repositoryBlocker = appOperationCoordinator.run(
+      {
+        appId: 99,
+        operation: "test-repository-blocker",
+        resources: ["repository"],
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          releaseRepository = resolve;
+        }),
+    );
+    const pendingRun = runPreCommitTool.execute(
+      {},
+      context(repo, { appId: 99 }),
+    );
+
+    await Promise.resolve();
+    expect(mocks.gitAddAll).not.toHaveBeenCalled();
+
+    releaseRepository();
+    await repositoryBlocker;
+    await pendingRun;
+
+    expect(mocks.gitAddAll).toHaveBeenCalledOnce();
+    expect(hookRuns).toBe(1);
+  });
+
+  it("executes a real hook and permits re-verification after hook changes", async () => {
+    const actualGitUtils = await vi.importActual<
+      typeof import("@/ipc/utils/git_utils")
+    >("@/ipc/utils/git_utils");
+    const actualBufferedProcess = await vi.importActual<
+      typeof import("@/ipc/utils/buffered_process")
+    >("@/ipc/utils/buffered_process");
+    mocks.gitAddAll.mockImplementation(actualGitUtils.gitAddAll);
+    mocks.runBufferedProcess.mockImplementation(
+      actualBufferedProcess.runBufferedProcess,
+    );
+    const hookPath = path.join(repo, ".git", "hooks", "pre-commit");
+    await writeFile(
+      hookPath,
+      "#!/bin/sh\nprintf 'hook ran\\n' >> hook-output.txt\nexit 1\n",
+    );
+    if (process.platform !== "win32") {
+      await chmod(hookPath, 0o755);
+    }
+    await writeFile(path.join(repo, "source.txt"), "source\n");
+    const ctx = context(repo);
+
+    const first = await runPreCommitTool.execute({}, ctx);
+    const second = await runPreCommitTool.execute({}, ctx);
+
+    expect(first).toContain("Pre-commit failed with exit code 1");
+    expect(second).not.toContain("no files have changed");
+    expect(ctx.preCommitRunCount).toBe(2);
+    expect(await readFile(path.join(repo, "hook-output.txt"), "utf8")).toBe(
+      "hook ran\nhook ran\n",
+    );
   });
 });

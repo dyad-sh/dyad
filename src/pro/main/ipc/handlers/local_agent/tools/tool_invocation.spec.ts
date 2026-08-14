@@ -58,4 +58,25 @@ describe("trackAppMutation", () => {
     expect(ctx.mutationCount).toBe(1);
     expect(ctx.fileMutationCount).toBe(1);
   });
+
+  it("counts approved generated tests as workspace-file mutations", () => {
+    const ctx = {} as AgentContext;
+
+    trackAppMutation(ctx, "generate_test_assertions");
+
+    expect(ctx.mutationCount).toBe(1);
+    expect(ctx.fileMutationCount).toBe(1);
+  });
+
+  it.each(["generate_image", "add_integration"])(
+    "does not count %s as a Git-visible file mutation",
+    (toolName) => {
+      const ctx = {} as AgentContext;
+
+      trackAppMutation(ctx, toolName);
+
+      expect(ctx.mutationCount).toBe(1);
+      expect(ctx.fileMutationCount).toBeUndefined();
+    },
+  );
 });

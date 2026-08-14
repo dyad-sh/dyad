@@ -1,12 +1,17 @@
 import { createHash } from "node:crypto";
 import fs, { promises as fsPromises } from "node:fs";
+import log from "electron-log";
 import { z } from "zod";
-import { exec, setupEnvironment } from "dugite";
-import { gitAddAll } from "@/ipc/utils/git_utils";
+import {
+  execGit,
+  getGitProcessEnvironment,
+  gitAddAll,
+} from "@/ipc/utils/git_utils";
 import {
   runBufferedProcess,
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import {
   AgentContext,
   ToolDefinition,
@@ -18,6 +23,7 @@ export const MAX_PRE_COMMIT_RUNS_PER_TURN = 4;
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 12_000;
 const FINGERPRINT_TIMEOUT_MS = 60_000;
+const logger = log.scope("run_pre_commit");
 
 const runPreCommitSchema = z.object({});
 
@@ -25,7 +31,7 @@ async function resolvePreCommitHookPath(
   appPath: string,
 ): Promise<string | null> {
   try {
-    const result = await exec(
+    const result = await execGit(
       ["rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit"],
       appPath,
       { maxBuffer: 64_000 },
@@ -54,17 +60,13 @@ export async function isPreCommitHookAvailable(
   }
 }
 
-function gitProcessEnvironment() {
-  return setupEnvironment({});
-}
-
 async function hashGitOutput(
   appPath: string,
   args: string[],
   signal?: AbortSignal,
 ): Promise<string> {
   const hash = createHash("sha256");
-  const { env, gitLocation } = gitProcessEnvironment();
+  const { env, gitLocation } = getGitProcessEnvironment();
   const result = await runBufferedProcess({
     command: gitLocation,
     args,
@@ -89,23 +91,48 @@ async function getGitStateFingerprint(
 ): Promise<string> {
   const staged = await hashGitOutput(
     appPath,
-    ["diff", "--cached", "--binary", "--no-ext-diff", "--"],
+    [
+      "-c",
+      "core.fsmonitor=false",
+      "diff",
+      "--cached",
+      "--binary",
+      "--no-ext-diff",
+      "--",
+    ],
     signal,
   );
   const unstaged = await hashGitOutput(
     appPath,
-    ["diff", "--binary", "--no-ext-diff", "--"],
+    ["-c", "core.fsmonitor=false", "diff", "--binary", "--no-ext-diff", "--"],
     signal,
   );
-  const status = await exec(
-    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+  const status = await hashGitOutput(
     appPath,
-    { maxBuffer: 1_000_000, signal },
+    [
+      "-c",
+      "core.fsmonitor=false",
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ],
+    signal,
   );
-  if (status.exitCode !== 0) {
-    throw new Error("Failed to fingerprint Git status");
+  return `${staged}\0${unstaged}\0${status}`;
+}
+
+async function tryGetGitStateFingerprint(
+  appPath: string,
+  phase: "before" | "after",
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  try {
+    return await getGitStateFingerprint(appPath, signal);
+  } catch (error) {
+    logger.warn(`Failed to fingerprint Git state ${phase} pre-commit:`, error);
+    return undefined;
   }
-  return `${staged}\0${unstaged}\0${status.stdout}`;
 }
 
 function tail(value: string): string {
@@ -148,153 +175,181 @@ export const runPreCommitTool: ToolDefinition<
   isEnabled: (ctx) => ctx.preCommitHookAvailable === true,
   getConsentPreview: () => "Stage all changes and run the pre-commit hook",
 
-  execute: async (_args, ctx) => {
-    const fileMutationCount = ctx.fileMutationCount ?? 0;
-    if (fileMutationCount === 0) {
-      return complete(
-        ctx,
-        "Pre-commit not run",
-        "No files have been successfully modified this turn. Finish the file edits before running pre-commit.",
-        "warning",
-      );
-    }
+  execute: async (_args, ctx) =>
+    appOperationCoordinator.run(
+      {
+        appId: ctx.appId,
+        operation: "run-local-agent-pre-commit",
+        resources: ["repository"],
+        refuseWhenRecording: "run pre-commit checks",
+      },
+      async () => {
+        const fileMutationCount = ctx.fileMutationCount ?? 0;
+        if (fileMutationCount === 0) {
+          return complete(
+            ctx,
+            "Pre-commit not run",
+            "No files have been successfully modified this turn. Finish the file edits before running pre-commit.",
+            "warning",
+          );
+        }
 
-    if ((ctx.preCommitRunCount ?? 0) >= MAX_PRE_COMMIT_RUNS_PER_TURN) {
-      return complete(
-        ctx,
-        "Pre-commit run limit reached",
-        `The pre-commit hook has already run ${MAX_PRE_COMMIT_RUNS_PER_TURN} times this turn. Do not run it again. Stop editing and summarize what still fails and what you tried.`,
-        "warning",
-      );
-    }
+        if ((ctx.preCommitRunCount ?? 0) >= MAX_PRE_COMMIT_RUNS_PER_TURN) {
+          return complete(
+            ctx,
+            "Pre-commit run limit reached",
+            `The pre-commit hook has already run ${MAX_PRE_COMMIT_RUNS_PER_TURN} times this turn. Do not run it again. Stop editing and summarize what still fails and what you tried.`,
+            "warning",
+          );
+        }
 
-    if (ctx.preCommitFileMutationCountAtLastRun === fileMutationCount) {
-      const previous = ctx.preCommitLastRunPassed ? "passed" : "failed";
-      return complete(
-        ctx,
-        "Files unchanged since pre-commit",
-        `The last pre-commit run ${previous}, and no files have changed since then. Do not rerun it until you make a targeted file change.`,
-        "warning",
-      );
-    }
+        if (ctx.preCommitFileMutationCountAtLastRun === fileMutationCount) {
+          const previous = ctx.preCommitLastRunPassed ? "passed" : "failed";
+          return complete(
+            ctx,
+            "Files unchanged since pre-commit",
+            `The last pre-commit run ${previous}, and no files have changed since then. Do not rerun it until you make a targeted file change.`,
+            "warning",
+          );
+        }
 
-    if (!(await isPreCommitHookAvailable(ctx.appPath))) {
-      ctx.preCommitHookAvailable = false;
-      return complete(
-        ctx,
-        "Pre-commit hook unavailable",
-        "The configured pre-commit hook is missing or is not executable, so it was not run.",
-        "warning",
-      );
-    }
+        if (!(await isPreCommitHookAvailable(ctx.appPath))) {
+          ctx.preCommitHookAvailable = false;
+          return complete(
+            ctx,
+            "Pre-commit hook unavailable",
+            "The configured pre-commit hook is missing or is not executable, so it was not run.",
+            "warning",
+          );
+        }
 
-    await gitAddAll({ path: ctx.appPath });
-    const beforeFingerprint = await getGitStateFingerprint(
-      ctx.appPath,
-      ctx.abortSignal,
-    ).catch(() => undefined);
-    if (ctx.abortSignal?.aborted) {
-      return complete(
-        ctx,
-        "Pre-commit cancelled",
-        "The pre-commit hook was cancelled before it started.",
-        "warning",
-      );
-    }
-
-    const previousRunCount = ctx.preCommitRunCount ?? 0;
-    const previousMutationCountAtLastRun =
-      ctx.preCommitFileMutationCountAtLastRun;
-    ctx.preCommitRunCount = previousRunCount + 1;
-    ctx.preCommitFileMutationCountAtLastRun = fileMutationCount;
-    ctx.onXmlStream(
-      `<dyad-status title="${escapeXmlAttr(`Running pre-commit (${ctx.preCommitRunCount}/${MAX_PRE_COMMIT_RUNS_PER_TURN})`)}"></dyad-status>`,
-    );
-
-    const { env, gitLocation } = gitProcessEnvironment();
-    let result: BufferedProcessResult;
-    try {
-      result = await runBufferedProcess({
-        command: gitLocation,
-        args: ["hook", "run", "pre-commit"],
-        cwd: ctx.appPath,
-        env,
-        signal: ctx.abortSignal,
-        timeoutMs: PRE_COMMIT_TIMEOUT_MS,
-        maxOutputBytes: 256_000,
-      });
-    } catch (error) {
-      // A process that never spawned is not an actual hook run and should not
-      // consume the retry budget or require a file edit before retrying.
-      ctx.preCommitRunCount = previousRunCount;
-      ctx.preCommitFileMutationCountAtLastRun = previousMutationCountAtLastRun;
-      const message = error instanceof Error ? error.message : String(error);
-      return complete(
-        ctx,
-        "Pre-commit could not start",
-        `The pre-commit hook process could not be started. This did not consume a run.\n\n${message}`,
-        "warning",
-      );
-    }
-
-    const afterFingerprint = result.aborted
-      ? undefined
-      : await getGitStateFingerprint(ctx.appPath, ctx.abortSignal).catch(
-          () => undefined,
+        await gitAddAll({ path: ctx.appPath });
+        const beforeFingerprint = await tryGetGitStateFingerprint(
+          ctx.appPath,
+          "before",
+          ctx.abortSignal,
         );
-    const hookChangedFiles =
-      beforeFingerprint !== undefined &&
-      afterFingerprint !== undefined &&
-      beforeFingerprint !== afterFingerprint;
-    if (hookChangedFiles) {
-      ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
-    }
+        if (ctx.abortSignal?.aborted) {
+          return complete(
+            ctx,
+            "Pre-commit cancelled",
+            "The pre-commit hook was cancelled before it started.",
+            "warning",
+          );
+        }
 
-    if (result.aborted) {
-      ctx.preCommitLastRunPassed = false;
-      return complete(
-        ctx,
-        "Pre-commit cancelled",
-        "The pre-commit hook was cancelled before it completed.",
-        "warning",
-      );
-    }
-    if (result.timedOut) {
-      ctx.preCommitLastRunPassed = false;
-      return complete(
-        ctx,
-        "Pre-commit timed out",
-        `The pre-commit hook exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped.\n\n${formatProcessOutput(result.stdout, result.stderr)}`,
-        "warning",
-      );
-    }
+        const previousRunCount = ctx.preCommitRunCount ?? 0;
+        const previousMutationCountAtLastRun =
+          ctx.preCommitFileMutationCountAtLastRun;
+        ctx.preCommitRunCount = previousRunCount + 1;
+        ctx.preCommitFileMutationCountAtLastRun = fileMutationCount;
+        ctx.onXmlStream(
+          `<dyad-status title="${escapeXmlAttr(`Running pre-commit (${ctx.preCommitRunCount}/${MAX_PRE_COMMIT_RUNS_PER_TURN})`)}"></dyad-status>`,
+        );
 
-    const output = formatProcessOutput(result.stdout, result.stderr);
-    if (result.code !== 0) {
-      ctx.preCommitLastRunPassed = false;
-      const remaining =
-        MAX_PRE_COMMIT_RUNS_PER_TURN - (ctx.preCommitRunCount ?? 0);
-      return complete(
-        ctx,
-        "Pre-commit failed",
-        `Pre-commit failed with exit code ${result.code ?? "unknown"}. Fix the reported errors before retrying. ${remaining} run(s) remain this turn.\n\n${output}`,
-        "warning",
-      );
-    }
+        const { env, gitLocation } = getGitProcessEnvironment();
+        let result: BufferedProcessResult;
+        try {
+          result = await runBufferedProcess({
+            command: gitLocation,
+            args: ["hook", "run", "pre-commit"],
+            cwd: ctx.appPath,
+            env,
+            signal: ctx.abortSignal,
+            timeoutMs: PRE_COMMIT_TIMEOUT_MS,
+            maxOutputBytes: 256_000,
+          });
+        } catch (error) {
+          // A process that never spawned is not an actual hook run and should not
+          // consume the retry budget or require a file edit before retrying.
+          ctx.preCommitRunCount = previousRunCount;
+          ctx.preCommitFileMutationCountAtLastRun =
+            previousMutationCountAtLastRun;
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return complete(
+            ctx,
+            "Pre-commit could not start",
+            `The pre-commit hook process could not be started. This did not consume a run.\n\n${message}`,
+            "warning",
+          );
+        }
 
-    ctx.preCommitLastRunPassed = true;
-    if (hookChangedFiles) {
-      return complete(
-        ctx,
-        "Pre-commit passed and changed files",
-        `Pre-commit passed, but the hook changed files. Run pre-commit again to verify the resulting files.\n\n${output}`,
-        "warning",
-      );
-    }
-    return complete(
-      ctx,
-      "Pre-commit passed",
-      `Pre-commit passed. Do not run it again unless files change.\n\n${output}`,
-    );
-  },
+        const afterFingerprint = result.aborted
+          ? undefined
+          : await tryGetGitStateFingerprint(
+              ctx.appPath,
+              "after",
+              ctx.abortSignal,
+            );
+        const fingerprintUnknown =
+          beforeFingerprint === undefined || afterFingerprint === undefined;
+        const hookChangedFiles =
+          !fingerprintUnknown && beforeFingerprint !== afterFingerprint;
+        if (!result.aborted && (hookChangedFiles || fingerprintUnknown)) {
+          ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
+        }
+
+        if (result.aborted) {
+          ctx.preCommitLastRunPassed = false;
+          return complete(
+            ctx,
+            "Pre-commit cancelled",
+            "The pre-commit hook was cancelled before it completed.",
+            "warning",
+          );
+        }
+        if (result.timedOut) {
+          ctx.preCommitLastRunPassed = false;
+          const fingerprintNote = fingerprintUnknown
+            ? "\n\nDyad could not determine whether the hook changed files. A follow-up run is allowed to verify any hook-generated changes."
+            : "";
+          return complete(
+            ctx,
+            "Pre-commit timed out",
+            `The pre-commit hook exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped.\n\n${formatProcessOutput(result.stdout, result.stderr)}${fingerprintNote}`,
+            "warning",
+          );
+        }
+
+        const output = formatProcessOutput(result.stdout, result.stderr);
+        if (result.code !== 0) {
+          ctx.preCommitLastRunPassed = false;
+          const remaining =
+            MAX_PRE_COMMIT_RUNS_PER_TURN - (ctx.preCommitRunCount ?? 0);
+          const fingerprintNote = fingerprintUnknown
+            ? "\n\nDyad could not determine whether the hook changed files. A follow-up run is allowed to verify any hook-generated changes."
+            : "";
+          return complete(
+            ctx,
+            "Pre-commit failed",
+            `Pre-commit failed with exit code ${result.code ?? "unknown"}. Fix the reported errors before retrying. ${remaining} run(s) remain this turn.\n\n${output}${fingerprintNote}`,
+            "warning",
+          );
+        }
+
+        ctx.preCommitLastRunPassed = true;
+        if (hookChangedFiles) {
+          return complete(
+            ctx,
+            "Pre-commit passed and changed files",
+            `Pre-commit passed, but the hook changed files. Run pre-commit again to verify the resulting files.\n\n${output}`,
+            "warning",
+          );
+        }
+        if (fingerprintUnknown) {
+          return complete(
+            ctx,
+            "Pre-commit passed; file changes unknown",
+            `Pre-commit passed, but Dyad could not determine whether the hook changed files. Run pre-commit once more to verify any hook-generated changes.\n\n${output}`,
+            "warning",
+          );
+        }
+        return complete(
+          ctx,
+          "Pre-commit passed",
+          `Pre-commit passed. Do not run it again unless files change.\n\n${output}`,
+        );
+      },
+    ),
 };

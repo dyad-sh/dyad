@@ -24,7 +24,13 @@ const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
 const APP_MUTATING_TOOLS: Set<string> = new Set(APP_MUTATING_TOOL_NAMES);
 const FILE_MUTATING_TOOLS = new Set<string>([
   ...FILE_EDIT_TOOL_NAMES,
-  ...APP_MUTATING_TOOL_NAMES.filter((name) => name !== "execute_sql"),
+  "copy_file",
+  "delete_file",
+  "rename_file",
+  "add_dependency",
+  "enable_nitro",
+  "generate_test_assertions",
+  "git_restore_file",
 ]);
 
 /**

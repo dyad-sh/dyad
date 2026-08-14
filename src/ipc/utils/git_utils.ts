@@ -2,6 +2,7 @@ import { getGitAuthor } from "./git_author";
 import {
   exec,
   ExecError,
+  setupEnvironment,
   type IGitStringExecutionOptions,
   type IGitStringResult,
 } from "dugite";
@@ -147,57 +148,55 @@ function getWindowsSanitizedEnv():
   };
 }
 
+/** Build caller overrides for Dugite without bypassing Dyad's platform fixes. */
+function getSanitizedGitEnv(
+  callerEnv?: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const sanitizedEnv = getWindowsSanitizedEnv();
+
+  if (sanitizedEnv) {
+    const pathKey = getPathEnvKey(sanitizedEnv);
+    return {
+      ...sanitizedEnv,
+      ...callerEnv,
+      // Keep the sanitized PATH authoritative even when a caller supplies env.
+      [pathKey]: sanitizedEnv[pathKey],
+    };
+  }
+
+  const shimDir = ensureLibcurlShimOnLinux();
+  if (shimDir) {
+    const existingLdPath =
+      callerEnv?.LD_LIBRARY_PATH ?? process.env.LD_LIBRARY_PATH;
+    return {
+      ...callerEnv,
+      LD_LIBRARY_PATH: [shimDir, existingLdPath].filter(Boolean).join(":"),
+    };
+  }
+
+  return callerEnv ?? {};
+}
+
 /**
- * Wrapper around dugite's exec that uses a sanitized environment on Windows
- * to prevent WSL interop issues.
+ * Return the bundled Git executable and hardened environment used by Dyad.
+ * Use this for Git processes that need streaming or bounded execution and
+ * therefore cannot go through {@link execGit}.
  */
-async function execGit(
+export function getGitProcessEnvironment(
+  callerEnv?: Record<string, string | undefined>,
+): ReturnType<typeof setupEnvironment> {
+  return setupEnvironment(getSanitizedGitEnv(callerEnv));
+}
+
+export async function execGit(
   args: string[],
   path: string,
   options?: IGitStringExecutionOptions,
 ): Promise<IGitStringResult> {
-  const sanitizedEnv = getWindowsSanitizedEnv();
-
-  // Only create execOptions if we need to modify the environment
-  // On Windows: merge sanitized env with any caller-provided env, ensuring sanitized PATH takes precedence
-  // On non-Windows: pass through options unchanged (dugite will use process.env by default)
-  if (sanitizedEnv) {
-    // Find the PATH key used in the sanitized env
-    const pathKey = getPathEnvKey(sanitizedEnv);
-    const execOptions: IGitStringExecutionOptions = {
-      ...options,
-      env: {
-        ...sanitizedEnv,
-        ...options?.env,
-        // Ensure sanitized PATH always takes precedence to prevent WSL contamination
-        [pathKey]: sanitizedEnv[pathKey],
-      },
-    };
-    return exec(args, path, execOptions);
-  }
-
-  // On Linux, the bundled git http helpers are linked against
-  // libcurl-gnutls.so.4, which RHEL-based distros don't ship. When needed,
-  // prepend a shim directory to LD_LIBRARY_PATH that exposes the system
-  // libcurl under that soname. No-op (returns undefined) on distros that
-  // already have libcurl-gnutls.so.4.
-  const shimDir = ensureLibcurlShimOnLinux();
-  if (shimDir) {
-    const existingLdPath =
-      options?.env?.LD_LIBRARY_PATH ?? process.env.LD_LIBRARY_PATH;
-    const ldLibraryPath = [shimDir, existingLdPath].filter(Boolean).join(":");
-    return exec(args, path, {
-      ...options,
-      env: {
-        ...process.env,
-        ...options?.env,
-        LD_LIBRARY_PATH: ldLibraryPath,
-      },
-    });
-  }
-
-  // On non-Windows without a shim, pass options through unchanged
-  return exec(args, path, options);
+  return exec(args, path, {
+    ...options,
+    env: getSanitizedGitEnv(options?.env),
+  });
 }
 import type {
   GitBaseParams,

@@ -19,6 +19,12 @@ export function useVercelAccount() {
   const connectMutation = useMutation({
     mutationFn: (token: string) => ipc.vercel.saveToken({ token }),
     onSuccess: async () => {
+      // Settings first: the connected flag is read from there, and the main
+      // process wrote the token, so the renderer's cached copy is stale until
+      // this runs. Without it the toast says connected and nothing changes.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.all,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.vercel.all });
       showSuccess("Connected to Vercel");
     },
@@ -31,6 +37,12 @@ export function useVercelAccount() {
       if (!ok) throw new Error("Failed to disconnect Vercel");
     },
     onSuccess: async () => {
+      // Settings first: the connected flag is read from there, and the main
+      // process wrote the token, so the renderer's cached copy is stale until
+      // this runs. Without it the toast says connected and nothing changes.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.all,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.vercel.all });
       showSuccess("Disconnected from Vercel");
     },

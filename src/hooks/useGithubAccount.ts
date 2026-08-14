@@ -19,6 +19,12 @@ export function useGithubAccount() {
   const setTokenMutation = useMutation({
     mutationFn: (token: string) => ipc.github.setAccessToken({ token }),
     onSuccess: async () => {
+      // Settings first: the connected flag is read from there, and the main
+      // process wrote the token, so the renderer's cached copy is stale until
+      // this runs. Without it the toast says connected and nothing changes.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.all,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.github.all });
       showSuccess("Connected to GitHub");
     },
@@ -34,6 +40,12 @@ export function useGithubAccount() {
       if (!ok) throw new Error("Failed to disconnect GitHub");
     },
     onSuccess: async () => {
+      // Settings first: the connected flag is read from there, and the main
+      // process wrote the token, so the renderer's cached copy is stale until
+      // this runs. Without it the toast says connected and nothing changes.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.all,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.github.all });
       showSuccess("Disconnected from GitHub");
     },

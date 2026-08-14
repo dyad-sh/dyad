@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useSetAtom } from "jotai";
 import { Activity, MapPin, Loader2 } from "lucide-react";
+
+import {
+  activeAgentWorkspaceTabAtom,
+  agentWorkspaceTabsAtom,
+} from "@/atoms/chatAgentAtoms";
+import { useAgentOsAgents } from "@/hooks/useAgentOsAgents";
+import { openHermesWorkspaceTab } from "@/lib/hermes_workspace_tabs";
+import {
+  dashboardAgents,
+  isAgentReachable,
+  reachableAgentCount,
+} from "@/lib/dashboard/dashboard_agents";
+import { StatusDot } from "@/pages/agent-os/ui";
+import type { Agent } from "@/pages/agent-os/data";
 
 import { ParticleBackground } from "@/components/home/ParticleBackground";
 import {
@@ -198,6 +213,30 @@ function ConditionsPanel() {
 
 export default function DashboardPage() {
   const { health, overall, services, activity, metrics } = useDashboardState();
+  const navigate = useNavigate();
+  const { agents } = useAgentOsAgents();
+  const setWorkspaceTabs = useSetAtom(agentWorkspaceTabsAtom);
+  const setActiveWorkspaceTab = useSetAtom(activeAgentWorkspaceTabAtom);
+
+  const hermesAgents = useMemo(() => dashboardAgents(agents), [agents]);
+
+  /**
+   * Opens the agent's chat the way the Agents page does.
+   *
+   * The same workspace-tab atoms, so the chat that appears is the one that was
+   * already there rather than a second way into it.
+   */
+  const openAgent = (agent: Agent) => {
+    setWorkspaceTabs((current) =>
+      openHermesWorkspaceTab(current, {
+        id: agent.id,
+        name: agent.name,
+        icon: agent.icon || "🪽",
+      }),
+    );
+    setActiveWorkspaceTab(agent.id);
+    void navigate({ to: "/agent-os" });
+  };
 
   /**
    * The orb's state, from what is actually known.
@@ -314,6 +353,46 @@ export default function DashboardPage() {
               ))}
             </ul>
           </div>
+
+          {/* The registered Hermes agents. A pill opens that agent's chat,
+              through the same tabs the Agents page uses. */}
+          {hermesAgents.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <ChannelLabel>AGENTS</ChannelLabel>
+              <ul
+                className="flex max-h-16 flex-wrap items-center gap-2 overflow-y-auto"
+                data-testid="dashboard-agents"
+              >
+                {hermesAgents.map((agent) => (
+                  <li key={agent.id}>
+                    <button
+                      type="button"
+                      onClick={() => openAgent(agent)}
+                      className="hud-pill"
+                      title={`${agent.name} · ${agent.model || agent.type} · last active ${agent.lastActivity}`}
+                      data-testid={`dashboard-agent-${agent.id}`}
+                    >
+                      <StatusDot status={agent.status} />
+                      <span
+                        className={cn(
+                          // An unreachable agent is still listed, just not
+                          // dressed up as one you can use.
+                          isAgentReachable(agent.status)
+                            ? "text-cyan-50/85"
+                            : "text-cyan-50/40",
+                        )}
+                      >
+                        {agent.name}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <span className="font-mono text-[10px] text-cyan-100/25">
+                {reachableAgentCount(hermesAgents)}/{hermesAgents.length}
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <ChannelLabel>LINKED</ChannelLabel>

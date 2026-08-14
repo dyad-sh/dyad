@@ -6700,6 +6700,72 @@ html:not(.dark) .jarvis-workspace {
   }
 }
 
+/*
+ * Dashboard HUD panels.
+ *
+ * Cut corners rather than rounded ones, a hairline edge, and a lit top rule —
+ * the panel reads as an instrument housing instead of a card. The clip-path
+ * does the corners, so there is no border image to scale.
+ */
+.hud-panel {
+  position: relative;
+  clip-path: polygon(
+    0.85rem 0,
+    100% 0,
+    100% calc(100% - 0.85rem),
+    calc(100% - 0.85rem) 100%,
+    0 100%,
+    0 0.85rem
+  );
+  background: linear-gradient(
+    160deg,
+    rgb(8 24 44 / 0.72),
+    rgb(4 12 26 / 0.62)
+  );
+  box-shadow: inset 0 0 0 1px rgb(103 232 249 / 0.14);
+}
+
+/* The lit edge along the top, brightest at the cut corner. */
+.hud-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgb(103 232 249 / 0.55),
+    rgb(103 232 249 / 0.06) 55%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* Corner brackets framing the dashboard itself. */
+.hud-frame::before,
+.hud-frame::after {
+  content: "";
+  position: absolute;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-color: rgb(103 232 249 / 0.28);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.hud-frame::before {
+  top: 0.5rem;
+  left: 0.5rem;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.hud-frame::after {
+  right: 0.5rem;
+  bottom: 0.5rem;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
 /* Segmented progress ring used while tools execute. */
 .jarvis-orb-ring--segments {
   border: none;

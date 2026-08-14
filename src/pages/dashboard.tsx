@@ -16,6 +16,7 @@ import {
   useDashboardState,
 } from "@/hooks/useDashboardState";
 import type { HealthTone } from "@/lib/dashboard/system_health";
+import { formatRatio, formatReadout } from "@/lib/dashboard/readout";
 import { cn } from "@/lib/utils";
 
 const TONE_DOT: Record<HealthTone, string> = {
@@ -32,12 +33,30 @@ const TONE_TEXT: Record<HealthTone, string> = {
   unknown: "text-slate-400",
 };
 
-/** A heading in the HUD's voice: small, spaced, quiet. */
-function PanelTitle({ children }: { children: React.ReactNode }) {
+/**
+ * A heading in the HUD's voice.
+ *
+ * The rule running to the right of it is the instrument-panel detail that
+ * makes a label read as a channel heading rather than a card title.
+ */
+function PanelTitle({
+  children,
+  index,
+}: {
+  children: React.ReactNode;
+  /** The channel number on the right, when there is a count worth showing. */
+  index?: string;
+}) {
   return (
-    <h2 className="mb-2 shrink-0 text-[10px] font-semibold tracking-[0.28em] text-cyan-100/45">
-      {children}
-    </h2>
+    <div className="mb-2 flex shrink-0 items-center gap-2">
+      <h2 className="text-[10px] font-semibold tracking-[0.28em] text-cyan-100/55">
+        {children}
+      </h2>
+      <span className="h-px flex-1 bg-gradient-to-r from-cyan-400/25 to-transparent" />
+      {index && (
+        <span className="font-mono text-[10px] text-cyan-100/30">{index}</span>
+      )}
+    </div>
   );
 }
 
@@ -55,12 +74,7 @@ function Panel({
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        "flex min-h-0 flex-col rounded-2xl border border-cyan-400/15 bg-[rgba(5,16,31,0.55)] p-4 backdrop-blur",
-        className,
-      )}
-    >
+    <section className={cn("hud-panel flex min-h-0 flex-col p-4", className)}>
       {children}
     </section>
   );
@@ -107,6 +121,8 @@ function TimePanel() {
     year: "numeric",
   });
 
+  const seconds = now.toLocaleTimeString(undefined, { second: "2-digit" });
+
   return (
     <div data-testid="dashboard-clock">
       <p className="text-sm text-cyan-100/60">
@@ -114,12 +130,33 @@ function TimePanel() {
       </p>
       {/* Scales with the window's height so a short window shrinks the clock
           rather than losing the panel below it. */}
-      <p className="mt-1 text-[clamp(2.5rem,7vh,3.75rem)] leading-none font-semibold tracking-tight text-cyan-50 tabular-nums">
-        {time}
+      <p className="mt-1 flex items-baseline gap-2">
+        <span className="text-[clamp(2.5rem,7vh,3.75rem)] leading-none font-semibold tracking-tight text-cyan-50 tabular-nums">
+          {time}
+        </span>
+        {/* Seconds set apart: they are the part that proves the clock is live
+            without making the hour harder to read. */}
+        <span className="font-mono text-sm text-cyan-300/50 tabular-nums">
+          {seconds.padStart(2, "0")}
+        </span>
       </p>
       <p className="mt-1.5 text-xs tracking-[0.2em] text-cyan-100/50 uppercase">
         {weekday} · {date}
       </p>
+    </div>
+  );
+}
+
+/** One number and its label, in the readout row under the orb. */
+function Readout({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="font-mono text-sm text-cyan-100/85 tabular-nums">
+        {value}
+      </span>
+      <span className="text-[9px] tracking-[0.18em] text-cyan-100/35">
+        {label}
+      </span>
     </div>
   );
 }
@@ -193,7 +230,7 @@ function ConditionsPanel() {
 }
 
 export default function DashboardPage() {
-  const { health, overall, services, activity } = useDashboardState();
+  const { health, overall, services, activity, metrics } = useDashboardState();
 
   /**
    * The orb's state, from what is actually known.
@@ -209,25 +246,35 @@ export default function DashboardPage() {
   }, [health]);
 
   return (
-    <div className="home-jarvis relative flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div className="home-jarvis hud-frame relative flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       <ParticleBackground className="z-0" />
       {/* One screen. The page itself never scrolls; anything that outgrows its
           panel scrolls inside that panel. */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4 sm:px-7">
         {/* Title row: what this is, and whether it is well. */}
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xs font-semibold tracking-[0.35em] text-cyan-100/50">
-            META HUMAN OS
-          </h1>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-cyan-400/10 pb-2">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xs font-semibold tracking-[0.35em] text-cyan-100/60">
+              META HUMAN OS
+            </h1>
+            <span className="hidden font-mono text-[10px] tracking-widest text-cyan-100/25 sm:inline">
+              // COMMAND CENTER
+            </span>
+          </div>
           <p
             className={cn(
-              "flex items-center gap-2 text-xs font-medium tracking-wider uppercase",
+              "flex items-center gap-2 font-mono text-xs font-medium tracking-wider uppercase",
               TONE_TEXT[overall.tone],
             )}
             data-testid="dashboard-overall-status"
           >
             <span
-              className={cn("size-2 rounded-full", TONE_DOT[overall.tone])}
+              className={cn(
+                "size-2 rounded-full",
+                TONE_DOT[overall.tone],
+                overall.tone !== "healthy" &&
+                  "motion-safe:animate-[pulse_1.8s_ease-in-out_infinite]",
+              )}
             />
             {overall.message}
           </p>
@@ -243,7 +290,7 @@ export default function DashboardPage() {
             </Panel>
 
             <Panel className="min-h-0 flex-1">
-              <PanelTitle>SYSTEM HEALTH</PanelTitle>
+              <PanelTitle index={`${health.length}`}>SYSTEM HEALTH</PanelTitle>
               <ul
                 className="min-h-0 flex-1 space-y-0.5 overflow-y-auto"
                 data-testid="dashboard-health"
@@ -275,8 +322,9 @@ export default function DashboardPage() {
             </Panel>
           </div>
 
-          {/* The centrepiece, given the middle of the screen to itself. */}
-          <div className="flex min-h-0 items-center justify-center">
+          {/* The centrepiece, given the middle of the screen to itself, with
+              the machine's own counts read out beneath it. */}
+          <div className="flex min-h-0 flex-col items-center justify-center gap-4">
             <JarvisOrb
               state={orbState}
               detail={
@@ -285,6 +333,28 @@ export default function DashboardPage() {
                   : undefined
               }
             />
+
+            <div
+              className="flex items-center gap-5 border-t border-cyan-400/10 pt-3"
+              data-testid="dashboard-readouts"
+            >
+              <Readout
+                label="NODES"
+                value={formatRatio(metrics.devicesHealthy, metrics.devices)}
+              />
+              <Readout label="SOURCES" value={formatReadout(metrics.sources)} />
+              <Readout label="CHUNKS" value={formatReadout(metrics.chunks)} />
+              <Readout
+                label="COLLECTIONS"
+                value={formatReadout(metrics.collections)}
+              />
+            </div>
+
+            {metrics.embeddingModel && (
+              <p className="font-mono text-[10px] tracking-widest text-cyan-100/25">
+                EMBED · {metrics.embeddingModel.toUpperCase()}
+              </p>
+            )}
           </div>
 
           <div className="flex min-h-0 flex-col gap-3">
@@ -293,7 +363,9 @@ export default function DashboardPage() {
             </Panel>
 
             <Panel className="min-h-0 flex-1">
-              <PanelTitle>CONNECTED SERVICES</PanelTitle>
+              <PanelTitle index={`${services.length}`}>
+                CONNECTED SERVICES
+              </PanelTitle>
               {services.length === 0 ? (
                 <p className="px-2 py-1.5 text-sm text-cyan-100/35">
                   Nothing connected yet.

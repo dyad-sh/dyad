@@ -106,6 +106,22 @@ export function useDashboardState() {
     health: rows,
     overall: summariseHealth(rows),
     services,
+    /**
+     * Counts the HUD reads out under the orb.
+     *
+     * Every one is a number some subsystem already keeps. Null means it has
+     * not reported, and the readout shows a dash rather than a zero — a zero
+     * is a claim, and this is the part of the screen most likely to be taken
+     * at face value.
+     */
+    metrics: {
+      devices: infrastructure.data?.summary.total ?? null,
+      devicesHealthy: infrastructure.data?.summary.healthy ?? null,
+      collections: vector.data?.collectionCount ?? null,
+      sources: vector.data?.sourceCount ?? null,
+      chunks: vector.data?.chunkCount ?? null,
+      embeddingModel: vector.data?.embeddingModel ?? null,
+    },
     // The vector service is the only subsystem that already keeps an activity
     // log, so it is the only honest source for the activity panel.
     activity: vector.data?.activity ?? [],

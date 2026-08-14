@@ -118,6 +118,7 @@ import {
   executeSandboxScriptTool,
 } from "./tools/execute_sandbox_script";
 import { writeFileTool } from "./tools/write_file";
+import { isPreCommitHookAvailable } from "./tools/run_pre_commit";
 import {
   collectMcpToolDefs,
   estimateMcpInlineTokens,
@@ -782,6 +783,8 @@ export async function handleLocalAgentStream(
     );
     const effectiveFreeModelMode =
       freeModelMode ?? isFreeProModel(settings.selectedModel);
+    const preCommitHookAvailable =
+      !readOnly && !planModeOnly && (await isPreCommitHookAvailable(appPath));
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -805,6 +808,7 @@ export async function handleLocalAgentStream(
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
+      preCommitHookAvailable,
       testingEnabled: Boolean(chat.app.testingEnabled),
       testRunAttempts: new Map(),
       isDyadPro: isDyadProEnabled(settings),

@@ -63,6 +63,11 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## User-visible tool output
 
+- Hook availability must be based on Git's effective executable hook path, but
+  remember that Husky's tracked `.husky/pre-commit` delegates through generated
+  `.husky/_` shims. A history restore can preserve the tracked hook while dropping
+  those shims, so surface the resolved missing path and require Husky reinitialization
+  rather than claiming the repository has no hook configuration.
 - Treat model-generated code as untrusted executable input whenever its prompt
   contains app-, tool-, or user-controlled text. Model provenance plus a
   one-statement/shape check is not a security boundary: before writing or

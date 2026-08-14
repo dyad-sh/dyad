@@ -59,7 +59,10 @@ export const APP_MUTATING_TOOL_NAMES = [
   "enable_nitro",
   "generate_image",
   "git_restore_file",
+<<<<<<< HEAD
   "generate_test_assertions",
+=======
+>>>>>>> c9305196a (Add pre-commit verification tool for local agent)
 ] as const;
 
 export interface AgentContext {
@@ -98,6 +101,8 @@ export interface AgentContext {
   workspaceMutated?: boolean;
   /** True after any directly registered or sandbox-hosted MCP tool succeeds. */
   mcpToolRan?: boolean;
+  /** Successful workspace-file mutations completed during this turn. */
+  fileMutationCount?: number;
   /**
    * Turn-scoped count of successfully completed tool invocations that change
    * the app or its data: file edits (including sandbox write_file host calls)
@@ -107,7 +112,15 @@ export interface AgentContext {
    */
   mutationCount?: number;
   /** Propagates successful child-tool mutations to the owning root turn. */
-  onWorkspaceMutation?: () => void;
+  onWorkspaceMutation?: (didMutateFile?: boolean) => void;
+  /** Whether Git had an executable pre-commit hook when this turn started. */
+  preCommitHookAvailable?: boolean;
+  /** Actual pre-commit hook processes started during this turn. */
+  preCommitRunCount?: number;
+  /** File mutation count observed when the last pre-commit run started. */
+  preCommitFileMutationCountAtLastRun?: number;
+  /** Whether the last completed pre-commit run passed. */
+  preCommitLastRunPassed?: boolean;
   /**
    * If true, the user has Dyad Pro enabled.
    * Engine-dependent tools require this to access the Dyad Pro API.

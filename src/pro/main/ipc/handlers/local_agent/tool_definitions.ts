@@ -35,6 +35,7 @@ import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { runTestsTool } from "./tools/run_tests";
+import { runPreCommitTool } from "./tools/run_pre_commit";
 import { generateTestAssertionsTool } from "./tools/generate_test_assertions";
 import { rebuildAppTool, restartAppTool } from "./tools/app_lifecycle";
 import { grepTool } from "./tools/grep";
@@ -161,6 +162,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
+  runPreCommitTool,
   runTestsTool,
   generateTestAssertionsTool,
   restartAppTool,

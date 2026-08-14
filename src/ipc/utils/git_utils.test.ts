@@ -32,6 +32,8 @@ import {
   inspectRepositoryHealth,
   readGitIndexEntries,
   restoreGitIndexEntries,
+  gitAddAll,
+  gitCommit,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
@@ -88,6 +90,44 @@ async function runGitOutput(repoDir: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: repoDir });
   return stdout.trim();
 }
+
+describe("gitCommit", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      repoDir = undefined;
+    }
+  });
+
+  it("can create an internal checkpoint while bypassing a failing pre-commit hook", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-no-verify-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hookPath = path.join(repoDir, ".git", "hooks", "pre-commit");
+    await fs.promises.writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(hookPath, 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+
+    const commitHash = await gitCommit({
+      path: repoDir,
+      message: "internal checkpoint",
+      noVerify: true,
+    });
+
+    expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
+  });
+});
 
 describe("gitLog", () => {
   let repoDir: string | undefined;

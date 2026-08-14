@@ -14,6 +14,8 @@ export interface GitBaseParams {
 export interface GitCommitParams extends GitBaseParams {
   message: string;
   amend?: boolean;
+  /** Bypass pre-commit and commit-msg hooks for internal checkpoint commits. */
+  noVerify?: boolean;
   /**
    * Paths (relative to the repo root) to commit. When set, git makes a partial
    * commit: it records the working-tree state of exactly these paths and leaves

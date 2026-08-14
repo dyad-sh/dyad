@@ -51,7 +51,7 @@ export interface StreamFinishedEvent {
 interface PendingSubmission {
   request: StreamRequest;
   invocationRef: NonNullable<ChatStreamRemoteSnapshot["invocationRef"]>;
-  dispatch: Promise<boolean>;
+  dispatchResult: Promise<boolean>;
   observedStopPolicyVersion: Promise<
     { kind: "observed"; value: number } | { kind: "failed"; error: unknown }
   >;
@@ -369,7 +369,7 @@ export class ChatStreamRemoteManager {
           this.notifySnapshotListeners(chatId);
           pending?.request.onSettled?.({ success: false });
           if (pending) {
-            void pending.dispatch
+            void pending.dispatchResult
               .then(async (wasDispatched) => {
                 if (!wasDispatched || this.disposed) return;
                 const actor = this.actor(chatId);
@@ -480,7 +480,7 @@ export class ChatStreamRemoteManager {
     const pending: PendingSubmission = {
       request,
       invocationRef,
-      dispatch: Promise.resolve(false),
+      dispatchResult: Promise.resolve(false),
       observedStopPolicyVersion,
       acceptanceDelivered: false,
       releaseSubscription: release,
@@ -498,7 +498,7 @@ export class ChatStreamRemoteManager {
           invocationRef,
         ),
       );
-    pending.dispatch = submission;
+    pending.dispatchResult = submission;
     this.submissionTails.set(request.chatId, submission);
     void submission.finally(() => {
       if (this.submissionTails.get(request.chatId) === submission) {

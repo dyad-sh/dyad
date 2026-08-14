@@ -468,7 +468,7 @@ describe("preview iframe transition", () => {
     const back = transition(linked, {
       type: "NAVIGATED_IN_APP",
       kind: "documentLoad",
-      url: URL,
+      url: `${URL}/`,
       historyEffect: "traverse",
     }).state;
     expect(back.history).toEqual([URL, `${URL}/dashboard`]);
@@ -489,6 +489,38 @@ describe("preview iframe transition", () => {
     });
     expect(unknown.state).toBe(linked);
     expect(ignoreReasonOf(unknown)).toBe("unknown-history-entry");
+  });
+
+  it("prefers an exact history slot over an equivalent canonical URL", () => {
+    const appRoot = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_URL_CHANGED",
+      url: URL,
+    }).state;
+    const pushedRoot = transition(appRoot, {
+      type: "NAVIGATED_IN_APP",
+      kind: "pushState",
+      url: `${URL}/`,
+    }).state;
+    const linked = transition(pushedRoot, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/dashboard`,
+      historyEffect: "push",
+    }).state;
+
+    const back = transition(linked, {
+      type: "NAVIGATED_IN_APP",
+      kind: "documentLoad",
+      url: `${URL}/`,
+      historyEffect: "traverse",
+    }).state;
+
+    expect(back.history).toEqual([URL, `${URL}/`, `${URL}/dashboard`]);
+    expect(back.position).toBe(1);
+    expect(back.currentUrl).toBe(back.history[back.position]);
+    expect(transition(back, { type: "GO_FORWARD" }).state.currentUrl).toBe(
+      `${URL}/dashboard`,
+    );
   });
 
   it("restores route provenance with the presentation", () => {

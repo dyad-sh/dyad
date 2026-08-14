@@ -224,6 +224,9 @@ export const test = base.extend<{
         baseTmpDir,
         `dyad-e2e-tests-worker-${testInfo.parallelIndex}-${Date.now()}`,
       );
+      // Each launch starts from the supported default unless its own hook
+      // selects another version. Do not inherit a previous scenario's value.
+      delete process.env.DYAD_TEST_PNPM_VERSION;
       if (electronConfig.preLaunchHook) {
         await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
       }

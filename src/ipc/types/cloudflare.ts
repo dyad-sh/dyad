@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createClient, defineContract } from "../contracts/core";
-import { ProposedSchemaSchema } from "@/lib/data_sources/d1_schema_design";
+import { ProposedSchemaSchema } from "../../lib/data_sources/d1_schema_design";
 
 /**
  * Contracts for the Cloudflare D1 data source provider.

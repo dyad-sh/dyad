@@ -129,10 +129,11 @@ function normalizeResources(
     .map(([resource, mode]) => ({ resource, mode }));
 }
 
-function requestsConflict(
+function conflictingResources(
   left: NormalizedAppOperationRequest,
   right: NormalizedAppOperationRequest,
-): boolean {
+): readonly AppOperationResource[] {
+  const conflicts: AppOperationResource[] = [];
   for (const leftAccess of left.resources) {
     const rightAccess = right.resources.find(
       ({ resource }) => resource === leftAccess.resource,
@@ -141,10 +142,17 @@ function requestsConflict(
       rightAccess &&
       (leftAccess.mode === "write" || rightAccess.mode === "write")
     ) {
-      return true;
+      conflicts.push(leftAccess.resource);
     }
   }
-  return false;
+  return conflicts;
+}
+
+function requestsConflict(
+  left: NormalizedAppOperationRequest,
+  right: NormalizedAppOperationRequest,
+): boolean {
+  return conflictingResources(left, right).length > 0;
 }
 
 function canBypassBlockedOperation(
@@ -155,8 +163,23 @@ function canBypassBlockedOperation(
   const directBlockers = blockers.filter((blocker) =>
     requestsConflict(blocker.request, blocked.request),
   );
+  const blockerResources = new Set(
+    directBlockers.flatMap((blocker) =>
+      blocker.request.resources.map(({ resource }) => resource),
+    ),
+  );
+  // The session may relax fairness only inside domains it currently owns.
+  // Otherwise a repository writer blocked by the session could reorder two
+  // operations that conflict only on an unrelated resource such as chat data.
+  const bypassedConflictResources = conflictingResources(
+    blocked.request,
+    pending.request,
+  );
   return (
     directBlockers.length > 0 &&
+    bypassedConflictResources.every((resource) =>
+      blockerResources.has(resource),
+    ) &&
     directBlockers.every(
       (blocker) =>
         blocker.request.allowCompatibleQueueBypass === true &&

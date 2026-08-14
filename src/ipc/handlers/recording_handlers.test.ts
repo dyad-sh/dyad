@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (event: any, params: any) => Promise<any>>(),
   findFirst: vi.fn(),
+  insert: vi.fn(),
+  insertValues: vi.fn(),
+  insertReturning: vi.fn(),
+  getCurrentCommitHash: vi.fn(),
   prepareIsolatedTestDatabase: vi.fn(),
   isTestRunActive: vi.fn().mockReturnValue(false),
   clearStorageData: vi.fn().mockResolvedValue(undefined),
@@ -18,9 +22,15 @@ vi.mock("./base", () => ({
   },
 }));
 vi.mock("../../db", () => ({
-  db: { query: { apps: { findFirst: mocks.findFirst } } },
+  db: {
+    query: { apps: { findFirst: mocks.findFirst } },
+    insert: mocks.insert,
+  },
 }));
-vi.mock("../../db/schema", () => ({ apps: { id: "id" } }));
+vi.mock("../../db/schema", () => ({
+  apps: { id: "id" },
+  chats: { id: "chat-id" },
+}));
 vi.mock("electron", () => ({
   session: { defaultSession: { clearStorageData: mocks.clearStorageData } },
 }));
@@ -35,6 +45,12 @@ vi.mock("../services/isolated_test_db", () => ({
 }));
 vi.mock("../utils/neon_test_branch", () => ({
   restoreAppFromTestBranch: mocks.restoreAppFromTestBranch,
+}));
+vi.mock("../utils/git_utils", () => ({
+  getCurrentCommitHash: mocks.getCurrentCommitHash,
+}));
+vi.mock("../../paths/paths", () => ({
+  getDyadAppPath: (appPath: string) => `/apps/${appPath}`,
 }));
 vi.mock("./tests_handlers", () => ({ isTestRunActive: mocks.isTestRunActive }));
 vi.mock("@/main/settings", () => ({ readSettings: mocks.readSettings }));
@@ -68,6 +84,7 @@ import {
   RECORDED_TEST_DRAFT_VERSION,
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
+import { createChatForApp } from "../utils/chat_creation_utils";
 
 registerRecordingHandlers();
 const startHandler = mocks.handlers.get("recording:start")!;
@@ -110,7 +127,15 @@ beforeEach(() => {
     proxyUrl: "http://localhost:42100",
     authBootstrapToken: "00000000-0000-4000-8000-000000000001",
   });
-  mocks.findFirst.mockResolvedValue({ id: 1, testingEnabled: true });
+  mocks.findFirst.mockResolvedValue({
+    id: 1,
+    path: "test-app",
+    testingEnabled: true,
+  });
+  mocks.insert.mockReturnValue({ values: mocks.insertValues });
+  mocks.insertValues.mockReturnValue({ returning: mocks.insertReturning });
+  mocks.insertReturning.mockResolvedValue([{ id: 42 }]);
+  mocks.getCurrentCommitHash.mockResolvedValue("abc123");
   mocks.restoreAppFromTestBranch.mockReset();
   mocks.restoreAppFromTestBranch.mockResolvedValue(true);
   mocks.isTestRunActive.mockReturnValue(false);
@@ -501,7 +526,7 @@ describe("recording:start / recording:stop", () => {
     expect(ranWhileRecording).toBe(true);
   });
 
-  it("allows a Git ref snapshot while the session owns the working tree", async () => {
+  it("creates a chat while the session owns the working tree", async () => {
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
     const { event } = makeEvent();
     await startHandler(event, { appId: 1 });
@@ -518,17 +543,29 @@ describe("recording:start / recording:stop", () => {
           releaseWriter = resolve;
         }),
     );
-    const snapshot = vi.fn();
-    await appOperationCoordinator.run(
+    const runSpy = vi.spyOn(appOperationCoordinator, "run");
+    const chatId = await createChatForApp({ appId: 1, title: "New chat" });
+
+    expect(chatId).toBe(42);
+    expect(runSpy).toHaveBeenCalledWith(
       {
         appId: 1,
         operation: "create-chat",
-        resources: [readAppResource("repository-ref")],
+        resources: [
+          readAppResource("app-path"),
+          "chat-membership",
+          readAppResource("repository-ref"),
+        ],
       },
-      async () => snapshot(),
+      expect.any(Function),
     );
-
-    expect(snapshot).toHaveBeenCalledOnce();
+    expect(mocks.insertValues).toHaveBeenCalledWith({
+      appId: 1,
+      title: "New chat",
+      initialCommitHash: "abc123",
+      chatMode: null,
+    });
+    runSpy.mockRestore();
     await stopHandler(event, { appId: 1 });
     await vi.waitFor(() => expect(releaseWriter).toBeTypeOf("function"));
     releaseWriter();

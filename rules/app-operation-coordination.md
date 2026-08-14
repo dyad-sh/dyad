@@ -70,7 +70,10 @@ repository writer can queue behind their working-tree claim and would otherwise
 become a fairness barrier for later ref-only snapshots such as New Chat. Use
 this flag only on a long-lived owner: bypass is allowed only while every direct
 blocker of the queued operation opts in and the later operation is compatible
-with those blockers. Normal writer fairness resumes when the owner releases.
+with those blockers. Every conflict being bypassed must also be on a resource
+owned by those blockers, so a repository session cannot reorder operations in
+an unrelated domain such as chat content. Normal writer fairness resumes when
+the owner releases.
 
 For cross-app operations, apply recording refusal per app according to that
 app's claims, not to the whole operation indiscriminately. For example, moving

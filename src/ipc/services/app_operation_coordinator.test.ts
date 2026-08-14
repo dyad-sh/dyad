@@ -258,6 +258,54 @@ describe("AppOperationCoordinator", () => {
     expect(order).toEqual(["snapshot-1", "writer", "snapshot-2"]);
   });
 
+  it("does not let a session reorder resources it does not own", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const sessionRelease = deferred();
+    const restoreRelease = deferred();
+    const order: string[] = [];
+
+    const session = coordinator.run(
+      {
+        appId: 1,
+        operation: "recording",
+        resources: [readAppResource("repository-ref"), "repository-worktree"],
+        allowCompatibleQueueBypass: true,
+      },
+      () => sessionRelease.promise,
+    );
+    const restore = coordinator.run(
+      {
+        appId: 1,
+        operation: "restore-version",
+        resources: ["chat-content", "repository"],
+      },
+      async () => {
+        order.push("restore");
+        await restoreRelease.promise;
+      },
+    );
+    const deleteMessage = coordinator.run(
+      {
+        appId: 1,
+        operation: "delete-message",
+        resources: ["chat-content"],
+      },
+      async () => {
+        order.push("delete-message");
+      },
+    );
+
+    await Promise.resolve();
+    expect(order).toEqual([]);
+
+    sessionRelease.resolve();
+    await session;
+    await vi.waitFor(() => expect(order).toEqual(["restore"]));
+    restoreRelease.resolve();
+    await Promise.all([restore, deleteMessage]);
+    expect(order).toEqual(["restore", "delete-message"]);
+  });
+
   it("acquires multi-resource operations atomically without deadlock", async () => {
     const coordinator = new AppOperationCoordinator();
     const release = deferred();

@@ -57,6 +57,7 @@ export const APP_MUTATING_TOOL_NAMES = [
   "add_integration",
   "enable_nitro",
   "generate_image",
+  "git_restore_file",
 ] as const;
 
 export interface AgentContext {
@@ -93,6 +94,8 @@ export interface AgentContext {
   fileEditTracker: FileEditTracker;
   /** True after a tool has successfully changed workspace contents this turn. */
   workspaceMutated?: boolean;
+  /** Successful workspace-file mutations completed during this turn. */
+  fileMutationCount?: number;
   /**
    * Turn-scoped count of successfully completed tool invocations that change
    * the app or its data: file edits (including sandbox write_file host calls)
@@ -101,6 +104,14 @@ export interface AgentContext {
    * through ANY mutating tool — not just write_file/search_replace.
    */
   mutationCount?: number;
+  /** Whether Git had an executable pre-commit hook when this turn started. */
+  preCommitHookAvailable?: boolean;
+  /** Actual pre-commit hook processes started during this turn. */
+  preCommitRunCount?: number;
+  /** File mutation count observed when the last pre-commit run started. */
+  preCommitFileMutationCountAtLastRun?: number;
+  /** Whether the last completed pre-commit run passed. */
+  preCommitLastRunPassed?: boolean;
   /**
    * If true, the user has Dyad Pro enabled.
    * Engine-dependent tools require this to access the Dyad Pro API.

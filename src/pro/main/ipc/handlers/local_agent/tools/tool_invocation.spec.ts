@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentContext, ToolDefinition } from "./types";
-import { shouldTrackToolMutation } from "./tool_invocation";
+import { shouldTrackToolMutation, trackAppMutation } from "./tool_invocation";
 
 function tool(
   name: string,
@@ -36,5 +36,26 @@ describe("shouldTrackToolMutation", () => {
     expect(
       shouldTrackToolMutation(tool("write_file"), {}, "success", ctx),
     ).toBe(true);
+  });
+});
+
+describe("trackAppMutation", () => {
+  it("tracks workspace-file mutations separately from database mutations", () => {
+    const ctx = {} as AgentContext;
+
+    trackAppMutation(ctx, "write_file");
+    trackAppMutation(ctx, "execute_sql");
+
+    expect(ctx.mutationCount).toBe(2);
+    expect(ctx.fileMutationCount).toBe(1);
+  });
+
+  it("counts restored files as workspace-file mutations", () => {
+    const ctx = {} as AgentContext;
+
+    trackAppMutation(ctx, "git_restore_file");
+
+    expect(ctx.mutationCount).toBe(1);
+    expect(ctx.fileMutationCount).toBe(1);
   });
 });

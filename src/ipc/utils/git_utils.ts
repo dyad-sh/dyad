@@ -528,12 +528,16 @@ export async function gitCommit({
   path,
   message,
   amend,
+  noVerify,
   paths,
 }: GitCommitParams): Promise<string> {
   // Perform the commit using dugite with -c user.name/email config
   const commitArgs = ["commit", "-m", message];
   if (amend) {
     commitArgs.push("--amend");
+  }
+  if (noVerify) {
+    commitArgs.push("--no-verify");
   }
   if (paths?.length) {
     // `--` scopes the commit to these paths, so unrelated staged changes stay

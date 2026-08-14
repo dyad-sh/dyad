@@ -22,6 +22,10 @@ import {
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
 const APP_MUTATING_TOOLS: Set<string> = new Set(APP_MUTATING_TOOL_NAMES);
+const FILE_MUTATING_TOOLS = new Set<string>([
+  ...FILE_EDIT_TOOL_NAMES,
+  ...APP_MUTATING_TOOL_NAMES.filter((name) => name !== "execute_sql"),
+]);
 
 /**
  * Track file edit tool usage for retry/fallback telemetry. This intentionally
@@ -69,6 +73,9 @@ export function trackAppMutation(
     return;
   }
   ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
+  if (FILE_MUTATING_TOOLS.has(toolName)) {
+    ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
+  }
 }
 
 /**

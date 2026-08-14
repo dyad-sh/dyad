@@ -441,6 +441,7 @@ export const gitRestoreFileTool: ToolDefinition<
   inputSchema: gitRestoreFileSchema,
   defaultConsent: "always",
   modifiesState: true,
+  shouldTrackMutation: () => true,
   getConsentPreview: (args) =>
     `Restore ${args.path} from ${args.revision} without staging it`,
   buildXml: (args, isComplete) =>

@@ -62,6 +62,7 @@ describe("commitAllChanges", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/mock/app",
       message: "(1 files changed)",
+      noVerify: true,
     });
     expect(result).toEqual({ commitHash: "commit-hash" });
   });

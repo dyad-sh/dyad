@@ -171,9 +171,23 @@ export function hydrateChatStreamPersistence(
 
   database.transaction((tx) => {
     const persistedEntries = tx
-      .select()
+      .select({
+        intentId: chatQueueEntries.intentId,
+        position: chatQueueEntries.position,
+        status: chatQueueEntries.status,
+        chatId: chatTurnIntents.chatId,
+        payloadHash: chatTurnIntents.payloadHash,
+        intent: chatTurnIntents.intent,
+        acceptance: chatTurnIntents.acceptance,
+        recovery: chatTurnIntents.recovery,
+        acceptedMessageId: chatTurnIntents.acceptedMessageId,
+      })
       .from(chatQueueEntries)
-      .where(eq(chatQueueEntries.chatId, chatId))
+      .innerJoin(
+        chatTurnIntents,
+        eq(chatQueueEntries.intentId, chatTurnIntents.intentId),
+      )
+      .where(eq(chatTurnIntents.chatId, chatId))
       .orderBy(asc(chatQueueEntries.position))
       .all()
       .sort((left, right) => {
@@ -187,15 +201,10 @@ export function hydrateChatStreamPersistence(
       .get();
 
     const intentIds = persistedEntries.flatMap((entry) => {
-      const row = tx
-        .select()
-        .from(chatTurnIntents)
-        .where(eq(chatTurnIntents.intentId, entry.intentId))
-        .get();
       let intent: SerializableChatTurnIntent | null = null;
       try {
-        if (!row?.intent) throw new Error("missing intent payload");
-        const parsed = SerializableChatTurnIntentSchema.safeParse(row.intent);
+        if (!entry.intent) throw new Error("missing intent payload");
+        const parsed = SerializableChatTurnIntentSchema.safeParse(entry.intent);
         if (!parsed.success) {
           throw new Error("invalid intent payload");
         }
@@ -203,7 +212,7 @@ export function hydrateChatStreamPersistence(
         assertChatTurnPayloadHash(intent);
         if (
           intent.chatId !== chatId ||
-          intent.payloadHash !== row.payloadHash
+          intent.payloadHash !== entry.payloadHash
         ) {
           throw new Error("intent does not match its queue row");
         }
@@ -215,26 +224,24 @@ export function hydrateChatStreamPersistence(
         tx.delete(chatQueueEntries)
           .where(eq(chatQueueEntries.intentId, entry.intentId))
           .run();
-        if (row) {
-          tx.update(chatTurnIntents)
-            .set({
-              acceptance: "rejected",
-              recovery: "terminal",
-              intent: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(chatTurnIntents.intentId, entry.intentId))
-            .run();
-        }
+        tx.update(chatTurnIntents)
+          .set({
+            acceptance: "rejected",
+            recovery: "terminal",
+            intent: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(chatTurnIntents.intentId, entry.intentId))
+          .run();
         return [];
       }
       intentRecords.set(entry.intentId, {
         intent,
-        chatId: row.chatId,
-        payloadHash: row.payloadHash,
-        acceptance: row.acceptance,
-        recovery: row.recovery,
-        acceptedMessageId: row.acceptedMessageId ?? undefined,
+        chatId: entry.chatId,
+        payloadHash: entry.payloadHash,
+        acceptance: entry.acceptance,
+        recovery: entry.recovery,
+        acceptedMessageId: entry.acceptedMessageId ?? undefined,
         durable: true,
       });
       return [entry.intentId];
@@ -256,15 +263,13 @@ export function hydrateChatStreamPersistence(
           set: { revision, paused, updatedAt: new Date() },
         })
         .run();
-      tx.update(chatQueueEntries)
-        .set({ status: "queued" })
-        .where(
-          and(
-            eq(chatQueueEntries.chatId, chatId),
-            eq(chatQueueEntries.status, "claimed"),
-          ),
-        )
-        .run();
+      for (const entry of persistedEntries) {
+        if (entry.status !== "claimed") continue;
+        tx.update(chatQueueEntries)
+          .set({ status: "queued" })
+          .where(eq(chatQueueEntries.intentId, entry.intentId))
+          .run();
+      }
     }
     queues.set(chatId, { revision, paused, intentIds });
   });
@@ -402,13 +407,16 @@ function persistIntentInQueue(
       const lastPosition = tx
         .select({ position: chatQueueEntries.position })
         .from(chatQueueEntries)
-        .where(eq(chatQueueEntries.chatId, intent.chatId))
+        .innerJoin(
+          chatTurnIntents,
+          eq(chatQueueEntries.intentId, chatTurnIntents.intentId),
+        )
+        .where(eq(chatTurnIntents.chatId, intent.chatId))
         .orderBy(desc(chatQueueEntries.position))
         .get()?.position;
       tx.insert(chatQueueEntries)
         .values({
           intentId: intent.intentId,
-          chatId: intent.chatId,
           position: (lastPosition ?? -1) + 1,
           status: "queued",
         })
@@ -621,9 +629,13 @@ function persistDurableQueueMutation(
         position: chatQueueEntries.position,
       })
       .from(chatQueueEntries)
+      .innerJoin(
+        chatTurnIntents,
+        eq(chatQueueEntries.intentId, chatTurnIntents.intentId),
+      )
       .where(
         and(
-          eq(chatQueueEntries.chatId, chatId),
+          eq(chatTurnIntents.chatId, chatId),
           eq(chatQueueEntries.status, "claimed"),
         ),
       )

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e79b383e-563a-4246-9c5e-a96690b72994",
+  "id": "ab967f19-ffe8-4a53-a605-9003e44427dd",
   "prevId": "9143bf90-b735-4ede-94e0-07a5f3386b87",
   "tables": {
     "app_collections": {
@@ -315,13 +315,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "chat_id": {
-          "name": "chat_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "position": {
           "name": "position",
           "type": "integer",
@@ -338,16 +331,7 @@
           "default": "'queued'"
         }
       },
-      "indexes": {
-        "chat_queue_entries_chat_position_idx": {
-          "name": "chat_queue_entries_chat_position_idx",
-          "columns": [
-            "chat_id",
-            "position"
-          ],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "chat_queue_entries_intent_id_chat_turn_intents_intent_id_fk": {
           "name": "chat_queue_entries_intent_id_chat_turn_intents_intent_id_fk",
@@ -358,19 +342,6 @@
           ],
           "columnsTo": [
             "intent_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "chat_queue_entries_chat_id_chats_id_fk": {
-          "name": "chat_queue_entries_chat_id_chats_id_fk",
-          "tableFrom": "chat_queue_entries",
-          "tableTo": "chats",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"

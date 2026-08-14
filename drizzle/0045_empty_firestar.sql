@@ -1,13 +1,10 @@
 CREATE TABLE `chat_queue_entries` (
 	`intent_id` text PRIMARY KEY NOT NULL,
-	`chat_id` integer NOT NULL,
 	`position` integer NOT NULL,
 	`status` text DEFAULT 'queued' NOT NULL,
-	FOREIGN KEY (`intent_id`) REFERENCES `chat_turn_intents`(`intent_id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`chat_id`) REFERENCES `chats`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`intent_id`) REFERENCES `chat_turn_intents`(`intent_id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `chat_queue_entries_chat_position_idx` ON `chat_queue_entries` (`chat_id`,`position`);--> statement-breakpoint
 CREATE TABLE `chat_queue_states` (
 	`chat_id` integer PRIMARY KEY NOT NULL,
 	`revision` integer DEFAULT 0 NOT NULL,

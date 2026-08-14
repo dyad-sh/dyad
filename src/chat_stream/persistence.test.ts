@@ -83,6 +83,15 @@ describe("chat stream persistence", () => {
     });
   });
 
+  it("cascades queue entries through their parent intents", () => {
+    persistQueuedIntent(database, intent("turn-1"));
+
+    database.delete(chats).where(eq(chats.id, chatId)).run();
+
+    expect(database.select().from(chatTurnIntents).all()).toEqual([]);
+    expect(database.select().from(chatQueueEntries).all()).toEqual([]);
+  });
+
   it("bounds the aggregate queue projection before transport", () => {
     expect(() =>
       assertQueueSnapshotWithinLimit(

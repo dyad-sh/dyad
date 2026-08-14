@@ -253,27 +253,15 @@ export const chatQueueStates = sqliteTable("chat_queue_states", {
     .default(sql`(unixepoch())`),
 });
 
-export const chatQueueEntries = sqliteTable(
-  "chat_queue_entries",
-  {
-    intentId: text("intent_id")
-      .primaryKey()
-      .references(() => chatTurnIntents.intentId, { onDelete: "cascade" }),
-    chatId: integer("chat_id")
-      .notNull()
-      .references(() => chats.id, { onDelete: "cascade" }),
-    position: integer("position").notNull(),
-    status: text("status", { enum: ["queued", "claimed"] })
-      .notNull()
-      .default("queued"),
-  },
-  (table) => [
-    index("chat_queue_entries_chat_position_idx").on(
-      table.chatId,
-      table.position,
-    ),
-  ],
-);
+export const chatQueueEntries = sqliteTable("chat_queue_entries", {
+  intentId: text("intent_id")
+    .primaryKey()
+    .references(() => chatTurnIntents.intentId, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  status: text("status", { enum: ["queued", "claimed"] })
+    .notNull()
+    .default("queued"),
+});
 
 export const versions = sqliteTable(
   "versions",

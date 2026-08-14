@@ -687,7 +687,9 @@ export function DataSourceProviderChooser({
             }}
           />
         ) : (
-          <div className="space-y-2">
+          /* A grid with equal rows rather than a stack: the cards then match
+             the tallest one instead of each sizing to its own description. */
+          <div className="grid auto-rows-fr gap-2">
             {PROVIDERS.map((provider) => (
               <button
                 key={provider.id}
@@ -721,7 +723,7 @@ export function DataSourceProviderChooser({
                       {provider.summary}
                     </span>
                   </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-cyan-100/45">
+                  <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-cyan-100/45">
                     {/* An unavailable option says so here rather than looking
                         clickable and doing nothing. */}
                     {provider.available

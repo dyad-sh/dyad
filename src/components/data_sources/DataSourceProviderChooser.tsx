@@ -236,7 +236,15 @@ function CloudflareSetup({
   /** Asks the designer for a structure. Creates nothing. */
   const designSchema = useMutation({
     mutationFn: () => ipc.cloudflare.designSchema({ description }),
-    onSuccess: setDesign,
+    onSuccess: (proposed) => {
+      setDesign(proposed);
+      // Someone who described what they want has not necessarily thought of a
+      // name, and Create stays disabled without one. Suggest something from
+      // the design rather than leaving a dead button and no reason why.
+      if (!newName.trim() && proposed.tables[0]) {
+        setNewName(`${proposed.tables[0].name.toLowerCase()}-db`);
+      }
+    },
     onError: (error: Error) => showError(error.message),
   });
 
@@ -334,272 +342,276 @@ function CloudflareSetup({
   );
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-cyan-500/12 bg-[rgba(4,12,24,0.5)] px-3">
-        <Row
-          label="Operating system"
-          value={env ? `${env.platform} ${env.arch}` : "checking…"}
-          ok={env ? true : null}
-        />
-        <Row
-          label="Node"
-          value={
-            env?.nodeVersion ??
-            (environment.isLoading ? "checking…" : "not found")
-          }
-          ok={env ? Boolean(env.nodeVersion) : null}
-        />
-        <Row
-          label="Package manager"
-          value={env?.packageManager ?? "checking…"}
-          ok={env ? true : null}
-        />
-        <Row
-          label="Wrangler"
-          value={
-            env?.wranglerVersion ??
-            (environment.isLoading ? "checking…" : "not installed")
-          }
-          ok={env ? Boolean(env.wranglerVersion) : null}
-        />
-        <Row
-          label="Cloudflare account"
-          value={
-            env?.account?.email ??
-            env?.account?.accountId ??
-            (environment.isLoading
-              ? "checking…"
-              : env?.hasApiToken
-                ? "API token present"
-                : "not signed in")
-          }
-          ok={env ? Boolean(env.account || env.hasApiToken) : null}
-        />
-      </div>
-
-      {alreadyAuthenticated && databases === null ? (
-        <div className="flex items-center gap-2 text-sm text-cyan-100/55">
-          <Loader2 className="size-4 animate-spin" />
-          {/* Already known, so this is loading rather than asking. */}
-          {auth.data?.signedIn
-            ? `Signed in${auth.data.email ? ` as ${auth.data.email}` : ""} — finding your databases…`
-            : "Using your saved Cloudflare token — finding your databases…"}
-        </div>
-      ) : databases === null && !useToken ? (
-        <div className="space-y-3">
-          <Button
-            onClick={() => signIn.mutate()}
-            disabled={signIn.isPending}
-            className="w-full border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
-            data-testid="cloudflare-sign-in"
-          >
-            {signIn.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Waiting for Cloudflare authorization…
-              </>
-            ) : (
-              <>
-                <Cloud className="size-4" />
-                Sign in with Cloudflare
-              </>
-            )}
-          </Button>
-          <p className="text-xs leading-5 text-cyan-100/40">
-            Opens Cloudflare in your browser to approve access. Wrangler is
-            installed first if this machine does not already have it, and the
-            sign-in is kept by Wrangler rather than stored here.
-          </p>
-          <button
-            type="button"
-            onClick={() => setUseToken(true)}
-            className="text-xs text-cyan-200/60 underline-offset-2 hover:underline"
-          >
-            Use an API token instead
-          </button>
-        </div>
-      ) : databases === null ? (
-        <div className="space-y-2">
-          <Label htmlFor="cf-token">Cloudflare API token</Label>
-          <Input
-            id="cf-token"
-            type="password"
-            value={apiToken}
-            onChange={(event) => setApiToken(event.target.value)}
-            placeholder="Token with D1 read access"
-            data-testid="cloudflare-api-token"
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      {/* The body scrolls on its own so a long design cannot push the
+          actions past the bottom of the window. */}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="rounded-xl border border-cyan-500/12 bg-[rgba(4,12,24,0.5)] px-3">
+          <Row
+            label="Operating system"
+            value={env ? `${env.platform} ${env.arch}` : "checking…"}
+            ok={env ? true : null}
           />
-          <p className="text-xs leading-5 text-cyan-100/40">
-            Create one at Cloudflare → My Profile → API Tokens, with permission
-            to read accounts and D1. It is stored encrypted on this machine and
-            never sent anywhere but Cloudflare.
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => listDatabases.mutate()}
-              disabled={!apiToken.trim() || listDatabases.isPending}
-              data-testid="cloudflare-list-databases"
-            >
-              {listDatabases.isPending ? "Looking…" : "Find my databases"}
-            </Button>
-            <Button variant="ghost" onClick={() => setUseToken(false)}>
-              Back to sign-in
-            </Button>
-          </div>
+          <Row
+            label="Node"
+            value={
+              env?.nodeVersion ??
+              (environment.isLoading ? "checking…" : "not found")
+            }
+            ok={env ? Boolean(env.nodeVersion) : null}
+          />
+          <Row
+            label="Package manager"
+            value={env?.packageManager ?? "checking…"}
+            ok={env ? true : null}
+          />
+          <Row
+            label="Wrangler"
+            value={
+              env?.wranglerVersion ??
+              (environment.isLoading ? "checking…" : "not installed")
+            }
+            ok={env ? Boolean(env.wranglerVersion) : null}
+          />
+          <Row
+            label="Cloudflare account"
+            value={
+              env?.account?.email ??
+              env?.account?.accountId ??
+              (environment.isLoading
+                ? "checking…"
+                : env?.hasApiToken
+                  ? "API token present"
+                  : "not signed in")
+            }
+            ok={env ? Boolean(env.account || env.hasApiToken) : null}
+          />
         </div>
-      ) : (
-        <div className="space-y-3">
-          {databases.length === 0 && (
-            <p className="text-sm text-cyan-100/45">
-              No D1 databases here yet. Create the first one below.
-            </p>
-          )}
 
-          <div className="space-y-1.5">
-            {databases.map((database) => (
-              <button
-                key={database.uuid}
-                type="button"
-                onClick={() => connect.mutate(database)}
-                disabled={connect.isPending}
-                className="flex w-full items-center gap-3 rounded-lg border border-cyan-400/15 bg-[rgba(5,16,31,0.6)] p-2.5 text-left hover:border-cyan-400/35 hover:bg-cyan-500/8"
-                data-testid={`cloudflare-database-${database.uuid}`}
-              >
-                <Database className="size-4 shrink-0 text-cyan-300/70" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-cyan-50">
-                    {database.name}
-                  </span>
-                  <span className="block truncate text-[10px] text-cyan-100/35">
-                    {database.accountName}
-                  </span>
-                </span>
-                <ArrowRight className="size-4 shrink-0 text-cyan-200/50" />
-              </button>
-            ))}
+        {alreadyAuthenticated && databases === null ? (
+          <div className="flex items-center gap-2 text-sm text-cyan-100/55">
+            <Loader2 className="size-4 animate-spin" />
+            {/* Already known, so this is loading rather than asking. */}
+            {auth.data?.signedIn
+              ? `Signed in${auth.data.email ? ` as ${auth.data.email}` : ""} — finding your databases…`
+              : "Using your saved Cloudflare token — finding your databases…"}
           </div>
-
-          <div className="space-y-2 border-t border-cyan-500/10 pt-3">
-            <Label htmlFor="cf-new-db">Create a new database</Label>
+        ) : databases === null && !useToken ? (
+          <div className="space-y-3">
+            <Button
+              onClick={() => signIn.mutate()}
+              disabled={signIn.isPending}
+              className="w-full border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+              data-testid="cloudflare-sign-in"
+            >
+              {signIn.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Waiting for Cloudflare authorization…
+                </>
+              ) : (
+                <>
+                  <Cloud className="size-4" />
+                  Sign in with Cloudflare
+                </>
+              )}
+            </Button>
+            <p className="text-xs leading-5 text-cyan-100/40">
+              Opens Cloudflare in your browser to approve access. Wrangler is
+              installed first if this machine does not already have it, and the
+              sign-in is kept by Wrangler rather than stored here.
+            </p>
+            <button
+              type="button"
+              onClick={() => setUseToken(true)}
+              className="text-xs text-cyan-200/60 underline-offset-2 hover:underline"
+            >
+              Use an API token instead
+            </button>
+          </div>
+        ) : databases === null ? (
+          <div className="space-y-2">
+            <Label htmlFor="cf-token">Cloudflare API token</Label>
+            <Input
+              id="cf-token"
+              type="password"
+              value={apiToken}
+              onChange={(event) => setApiToken(event.target.value)}
+              placeholder="Token with D1 read access"
+              data-testid="cloudflare-api-token"
+            />
+            <p className="text-xs leading-5 text-cyan-100/40">
+              Create one at Cloudflare → My Profile → API Tokens, with
+              permission to read accounts and D1. It is stored encrypted on this
+              machine and never sent anywhere but Cloudflare.
+            </p>
             <div className="flex items-center gap-2">
-              <Input
-                id="cf-new-db"
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                placeholder="customers-db"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && newName.trim()) {
-                    createAndConnect.mutate();
-                  }
-                }}
-                data-testid="cloudflare-new-database-name"
-              />
               <Button
-                onClick={() => createAndConnect.mutate()}
-                disabled={!newName.trim() || createAndConnect.isPending}
-                className="shrink-0 border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
-                data-testid="cloudflare-create-database"
+                onClick={() => listDatabases.mutate()}
+                disabled={!apiToken.trim() || listDatabases.isPending}
+                data-testid="cloudflare-list-databases"
               >
-                {createAndConnect.isPending ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Creating…
-                  </>
-                ) : (
-                  <>
-                    <Plus className="size-4" />
-                    Create
-                  </>
-                )}
+                {listDatabases.isPending ? "Looking…" : "Find my databases"}
+              </Button>
+              <Button variant="ghost" onClick={() => setUseToken(false)}>
+                Back to sign-in
               </Button>
             </div>
-            {/* Describing it is optional: an empty database is a legitimate
-                thing to want, and this is the other thing to want. */}
-            <Label htmlFor="cf-describe">
-              What should it store?{" "}
-              <span className="text-cyan-100/35">optional</span>
-            </Label>
-            <Textarea
-              id="cf-describe"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Customers, the projects they order, quotes and invoices for each project, and who worked on them."
-              className="min-h-20 text-xs"
-              data-testid="cloudflare-describe-database"
-            />
-
-            {description.trim().length > 2 && !design && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => designSchema.mutate()}
-                disabled={designSchema.isPending}
-                data-testid="cloudflare-design-schema"
-              >
-                {designSchema.isPending ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    Designing…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="size-3.5" />
-                    Design the tables for me
-                  </>
-                )}
-              </Button>
-            )}
-
-            {design && (
-              <div className="space-y-2 rounded-lg border border-cyan-500/15 bg-[rgba(4,12,24,0.5)] p-3">
-                {design.summary && (
-                  <p className="text-xs leading-5 text-cyan-100/55">
-                    {design.summary}
-                  </p>
-                )}
-                <p className="text-[10px] uppercase tracking-wider text-cyan-100/35">
-                  {design.tables.length}{" "}
-                  {design.tables.length === 1 ? "table" : "tables"} · created
-                  when you press Create
-                </p>
-                <ul className="space-y-1">
-                  {design.tables.map((table) => (
-                    <li key={table.name} className="text-xs">
-                      <span className="text-cyan-50/85">{table.name}</span>
-                      <span className="ml-2 text-cyan-100/35">
-                        {table.columns.map((c) => c.name).join(", ")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setDesign(null)}
-                  >
-                    Discard design
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => designSchema.mutate()}
-                    disabled={designSchema.isPending}
-                  >
-                    Design again
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <p className="text-xs leading-5 text-cyan-100/40">
-              {design
-                ? "Nothing has been created yet. Create makes the database and its tables."
-                : "Created empty unless you describe what it should store."}
-            </p>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="space-y-3">
+            {databases.length === 0 && (
+              <p className="text-sm text-cyan-100/45">
+                No D1 databases here yet. Create the first one below.
+              </p>
+            )}
+
+            <div className="space-y-1.5">
+              {databases.map((database) => (
+                <button
+                  key={database.uuid}
+                  type="button"
+                  onClick={() => connect.mutate(database)}
+                  disabled={connect.isPending}
+                  className="flex w-full items-center gap-3 rounded-lg border border-cyan-400/15 bg-[rgba(5,16,31,0.6)] p-2.5 text-left hover:border-cyan-400/35 hover:bg-cyan-500/8"
+                  data-testid={`cloudflare-database-${database.uuid}`}
+                >
+                  <Database className="size-4 shrink-0 text-cyan-300/70" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-cyan-50">
+                      {database.name}
+                    </span>
+                    <span className="block truncate text-[10px] text-cyan-100/35">
+                      {database.accountName}
+                    </span>
+                  </span>
+                  <ArrowRight className="size-4 shrink-0 text-cyan-200/50" />
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-2 border-t border-cyan-500/10 pt-3">
+              <Label htmlFor="cf-new-db">Create a new database</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="cf-new-db"
+                  value={newName}
+                  onChange={(event) => setNewName(event.target.value)}
+                  placeholder="customers-db"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && newName.trim()) {
+                      createAndConnect.mutate();
+                    }
+                  }}
+                  data-testid="cloudflare-new-database-name"
+                />
+                <Button
+                  onClick={() => createAndConnect.mutate()}
+                  disabled={!newName.trim() || createAndConnect.isPending}
+                  className="shrink-0 border-cyan-400/25 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+                  data-testid="cloudflare-create-database"
+                >
+                  {createAndConnect.isPending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Creating…
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="size-4" />
+                      Create
+                    </>
+                  )}
+                </Button>
+              </div>
+              {/* Describing it is optional: an empty database is a legitimate
+                thing to want, and this is the other thing to want. */}
+              <Label htmlFor="cf-describe">
+                What should it store?{" "}
+                <span className="text-cyan-100/35">optional</span>
+              </Label>
+              <Textarea
+                id="cf-describe"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Customers, the projects they order, quotes and invoices for each project, and who worked on them."
+                className="min-h-20 text-xs"
+                data-testid="cloudflare-describe-database"
+              />
+
+              {description.trim().length > 2 && !design && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => designSchema.mutate()}
+                  disabled={designSchema.isPending}
+                  data-testid="cloudflare-design-schema"
+                >
+                  {designSchema.isPending ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Designing…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-3.5" />
+                      Design the tables for me
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {design && (
+                <div className="space-y-2 rounded-lg border border-cyan-500/15 bg-[rgba(4,12,24,0.5)] p-3">
+                  {design.summary && (
+                    <p className="text-xs leading-5 text-cyan-100/55">
+                      {design.summary}
+                    </p>
+                  )}
+                  <p className="text-[10px] uppercase tracking-wider text-cyan-100/35">
+                    {design.tables.length}{" "}
+                    {design.tables.length === 1 ? "table" : "tables"} · created
+                    when you press Create
+                  </p>
+                  <ul className="space-y-1">
+                    {design.tables.map((table) => (
+                      <li key={table.name} className="text-xs">
+                        <span className="text-cyan-50/85">{table.name}</span>
+                        <span className="ml-2 text-cyan-100/35">
+                          {table.columns.map((c) => c.name).join(", ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDesign(null)}
+                    >
+                      Discard design
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => designSchema.mutate()}
+                      disabled={designSchema.isPending}
+                    >
+                      Design again
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs leading-5 text-cyan-100/40">
+                {design
+                  ? "Nothing has been created yet. Create makes the database and its tables."
+                  : "Created empty unless you describe what it should store."}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="flex justify-between">
         <Button variant="ghost" onClick={onBack}>
@@ -652,7 +664,7 @@ export function DataSourceProviderChooser({
         }
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {chosen === "cloudflare-d1"

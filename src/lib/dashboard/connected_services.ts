@@ -32,10 +32,10 @@ export function buildConnectedServices(input: {
   const services: ConnectedService[] = [];
 
   if (settings?.githubAccessToken) {
-    services.push({ id: "github", name: "GitHub", to: "/github-manager" });
+    services.push({ id: "github", name: "GitHub", to: "/devops/github" });
   }
   if (settings?.vercelAccessToken) {
-    services.push({ id: "vercel", name: "Vercel", to: "/vercel-manager" });
+    services.push({ id: "vercel", name: "Vercel", to: "/devops/vercel" });
   }
   if (isSupabaseConnected(settings)) {
     services.push({ id: "supabase", name: "Supabase", to: "/data-sources" });

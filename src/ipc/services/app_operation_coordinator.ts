@@ -8,7 +8,9 @@ export const APP_OPERATION_RESOURCES = [
   "media", // Uploaded, generated, and screenshot files in the media library.
   "metadata", // General app fields not owned by a more specific resource.
   "provider", // Supabase/Neon associations and provider lifecycle state.
-  "repository", // Code files plus Git commits, refs, index, and working tree.
+  "repository", // Umbrella for Git refs plus the index and working tree.
+  "repository-ref", // Git HEAD and refs, excluding index and working-tree files.
+  "repository-worktree", // Git index and working-tree files.
   "runtime", // The preview process, port, proxy, and sandbox lifecycle.
   "runtime-config", // Environment/configuration consumed by the runtime.
   "test-files", // Test inputs, generated configuration, and test artifacts.
@@ -96,9 +98,18 @@ function normalizeResources(
   for (const access of resources) {
     const resource = typeof access === "string" ? access : access.resource;
     const mode = typeof access === "string" ? "write" : access.mode;
-    const current = normalized.get(resource);
-    if (current === "write" || current === mode) continue;
-    normalized.set(resource, mode);
+    // `repository` remains the broad, backwards-compatible claim. Expanding
+    // it here lets callers opt into the narrower ref/worktree domains without
+    // auditing every existing repository operation at once.
+    const expandedResources =
+      resource === "repository"
+        ? (["repository-ref", "repository-worktree"] as const)
+        : ([resource] as const);
+    for (const expandedResource of expandedResources) {
+      const current = normalized.get(expandedResource);
+      if (current === "write" || current === mode) continue;
+      normalized.set(expandedResource, mode);
+    }
   }
   return [...normalized.entries()]
     .sort(([left], [right]) => left.localeCompare(right))

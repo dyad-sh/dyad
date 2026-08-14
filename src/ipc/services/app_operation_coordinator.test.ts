@@ -121,6 +121,83 @@ describe("AppOperationCoordinator", () => {
     expect(order).toEqual(["reader-1", "writer", "reader-2"]);
   });
 
+  it("allows ref snapshots during a working-tree session", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const sessionRelease = deferred();
+    const refSnapshot = vi.fn();
+    const generalRepositoryRead = vi.fn();
+
+    const session = coordinator.run(
+      {
+        appId: 1,
+        operation: "run-app-tests",
+        resources: [readAppResource("repository-ref"), "repository-worktree"],
+      },
+      () => sessionRelease.promise,
+    );
+    const concurrentSnapshot = coordinator.run(
+      {
+        appId: 1,
+        operation: "create-chat",
+        resources: [readAppResource("repository-ref")],
+      },
+      async () => refSnapshot(),
+    );
+    const blockedGeneralRead = coordinator.run(
+      {
+        appId: 1,
+        operation: "read-repository",
+        resources: [readAppResource("repository")],
+      },
+      async () => generalRepositoryRead(),
+    );
+
+    await concurrentSnapshot;
+    expect(refSnapshot).toHaveBeenCalledOnce();
+    expect(generalRepositoryRead).not.toHaveBeenCalled();
+
+    sessionRelease.resolve();
+    await Promise.all([session, blockedGeneralRead]);
+    expect(generalRepositoryRead).toHaveBeenCalledOnce();
+  });
+
+  it("keeps broad repository writers exclusive with both subresources", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const writerRelease = deferred();
+    const refReader = vi.fn();
+    const worktreeReader = vi.fn();
+
+    const writer = coordinator.run(
+      { appId: 1, operation: "checkout", resources: ["repository"] },
+      () => writerRelease.promise,
+    );
+    const refRead = coordinator.run(
+      {
+        appId: 1,
+        operation: "read-head",
+        resources: [readAppResource("repository-ref")],
+      },
+      async () => refReader(),
+    );
+    const worktreeRead = coordinator.run(
+      {
+        appId: 1,
+        operation: "read-files",
+        resources: [readAppResource("repository-worktree")],
+      },
+      async () => worktreeReader(),
+    );
+
+    await Promise.resolve();
+    expect(refReader).not.toHaveBeenCalled();
+    expect(worktreeReader).not.toHaveBeenCalled();
+
+    writerRelease.resolve();
+    await Promise.all([writer, refRead, worktreeRead]);
+    expect(refReader).toHaveBeenCalledOnce();
+    expect(worktreeReader).toHaveBeenCalledOnce();
+  });
+
   it("acquires multi-resource operations atomically without deadlock", async () => {
     const coordinator = new AppOperationCoordinator();
     const release = deferred();

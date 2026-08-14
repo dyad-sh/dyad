@@ -7,7 +7,10 @@ import { eq } from "drizzle-orm";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import type { RemoveFileAndCommitResult } from "../services/git_service";
 import { apps } from "@/db/schema";
-import { appOperationCoordinator } from "../services/app_operation_coordinator";
+import {
+  appOperationCoordinator,
+  type AppOperationRequest,
+} from "../services/app_operation_coordinator";
 import { activeRecordings } from "../services/recording_registry";
 import {
   type HandlerTestHarness,
@@ -139,6 +142,53 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it("owns the working tree without excluding Git ref snapshots", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        infraError: { message: "setup stopped" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+      const requests: AppOperationRequest[] = [];
+      const originalRun = appOperationCoordinator.run.bind(
+        appOperationCoordinator,
+      );
+      const runSpy = vi
+        .spyOn(appOperationCoordinator, "run")
+        .mockImplementation((request, operation) => {
+          requests.push(request);
+          return originalRun(request, operation);
+        });
+
+      try {
+        await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+      } finally {
+        runSpy.mockRestore();
+      }
+
+      expect(
+        requests.find(({ operation }) => operation === "run-app-tests")
+          ?.resources,
+      ).toEqual([
+        { resource: "app-path", mode: "read" },
+        { resource: "repository-ref", mode: "read" },
+        "repository-worktree",
+        "provider",
+        "runtime",
+        "runtime-config",
+        "test-files",
+      ]);
+    });
+
     it("refuses atomically when a recording starts at coordinator admission", async () => {
       const appId = seedApp("app");
       harness.db

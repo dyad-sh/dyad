@@ -32,12 +32,8 @@ export async function createChatForApp({
       resources: [
         readAppResource("app-path"),
         "chat-membership",
-        readAppResource("repository"),
+        readAppResource("repository-ref"),
       ],
-      // A recording holds `repository` as a write claim for its whole session,
-      // and a read conflicts with it, so every New Chat entry point would sit
-      // unresponsive until the session ends or hits the 30-minute cap.
-      refuseWhenRecording: "start a new chat",
     },
     async () => {
       // App deletion installs its fences before draining admitted operations.

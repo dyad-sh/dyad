@@ -675,7 +675,8 @@ export async function runAppTestsWithIsolation({
     // and dev-server restart with reconciliation and use the real database.
     const testRunResources = [
       readAppResource("app-path"),
-      "repository",
+      readAppResource("repository-ref"),
+      "repository-worktree",
       "provider",
       "runtime",
       "runtime-config",

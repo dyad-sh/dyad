@@ -223,7 +223,8 @@ export function registerRecordingHandlers() {
         // with startup reconciliation.
         const recordingResources = [
           readAppResource("app-path"),
-          "repository",
+          readAppResource("repository-ref"),
+          "repository-worktree",
           "provider",
           "runtime",
           "runtime-config",

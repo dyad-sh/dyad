@@ -6,18 +6,20 @@ actually touches; never use a raw numeric `appId` with `withLock`.
 
 ## Resource domains
 
-| Resource          | Protects                                                                                                                                             |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app-path`        | The app row's path and directory identity. Path consumers take read access; rename, relocation, template path swaps, and deletion take write access. |
-| `chat-content`    | Destructive chat/message mutations.                                                                                                                  |
-| `chat-membership` | Chat creation and app-deletion child snapshots.                                                                                                      |
-| `media`           | Files in the app media collection.                                                                                                                   |
-| `metadata`        | Read-modify-write app metadata fields.                                                                                                               |
-| `provider`        | Neon/Supabase associations and provider lifecycle state.                                                                                             |
-| `repository`      | Git HEAD, refs, index, and working-tree mutations. Read access is sufficient for a stable snapshot such as a new chat's initial commit.              |
-| `runtime`         | Process, proxy, port, and sandbox lifecycle.                                                                                                         |
-| `runtime-config`  | Environment/configuration consumed when starting the runtime. Runtime lifecycle reads it; test/provider environment swaps write it.                  |
-| `test-files`      | Test execution inputs and test artifact mutations.                                                                                                   |
+| Resource              | Protects                                                                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app-path`            | The app row's path and directory identity. Path consumers take read access; rename, relocation, template path swaps, and deletion take write access.          |
+| `chat-content`        | Destructive chat/message mutations.                                                                                                                           |
+| `chat-membership`     | Chat creation and app-deletion child snapshots.                                                                                                               |
+| `media`               | Files in the app media collection.                                                                                                                            |
+| `metadata`            | Read-modify-write app metadata fields.                                                                                                                        |
+| `provider`            | Neon/Supabase associations and provider lifecycle state.                                                                                                      |
+| `repository`          | Umbrella claim for both repository subresources below. Existing general repository operations should keep using it.                                           |
+| `repository-ref`      | Git HEAD and refs. A read captures a stable commit without excluding a working-tree-only session such as E2E execution or recording.                          |
+| `repository-worktree` | Git index and working-tree files. Test and recording sessions write this while reading `repository-ref`, keeping code stable without blocking HEAD snapshots. |
+| `runtime`             | Process, proxy, port, and sandbox lifecycle.                                                                                                                  |
+| `runtime-config`      | Environment/configuration consumed when starting the runtime. Runtime lifecycle reads it; test/provider environment swaps write it.                           |
+| `test-files`          | Test execution inputs and test artifact mutations.                                                                                                            |
 
 For one app, operations acquire all resources atomically, so callers must
 declare the full set up front rather than nesting another operation for that
@@ -52,8 +54,9 @@ global `withLock(appId, ...)` pattern from returning.
 
 ## Sessions that hold claims for a user-controlled duration
 
-A recording session holds `repository`, `provider`, `runtime`, `runtime-config`
-and `test-files` until the user ends it (capped at 30 minutes), and the
+A recording session holds `repository-worktree`, `provider`, `runtime`,
+`runtime-config` and `test-files` until the user ends it (capped at 30 minutes),
+while retaining read access to `repository-ref`. The
 coordinator queues conflicting work with **no timeout** — read-vs-write counts
 as a conflict. So every handler taking one of those resources becomes an
 indefinite spinner with nothing on screen explaining it. Each such path must

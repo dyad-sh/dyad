@@ -501,6 +501,25 @@ describe("recording:start / recording:stop", () => {
     expect(ranWhileRecording).toBe(true);
   });
 
+  it("allows a Git ref snapshot while the session owns the working tree", async () => {
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+    await startHandler(event, { appId: 1 });
+
+    const snapshot = vi.fn();
+    await appOperationCoordinator.run(
+      {
+        appId: 1,
+        operation: "create-chat",
+        resources: [readAppResource("repository-ref")],
+      },
+      async () => snapshot(),
+    );
+
+    expect(snapshot).toHaveBeenCalledOnce();
+    await stopHandler(event, { appId: 1 });
+  });
+
   it("returns the infra error and does not start when isolation fails", async () => {
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(
       makePrepared({

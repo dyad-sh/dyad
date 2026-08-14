@@ -7,6 +7,7 @@ import {
   getGitProcessEnvironment,
   gitAddAll,
 } from "@/ipc/utils/git_utils";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import {
   runBufferedProcess,
   type BufferedProcessResult,
@@ -247,7 +248,9 @@ export const runPreCommitTool: ToolDefinition<
           `<dyad-status title="${escapeXmlAttr(`Running pre-commit (${ctx.preCommitRunCount}/${MAX_PRE_COMMIT_RUNS_PER_TURN})`)}"></dyad-status>`,
         );
 
-        const { env, gitLocation } = getGitProcessEnvironment();
+        const { env, gitLocation } = getGitProcessEnvironment(
+          getPackageManagerCommandEnv(),
+        );
         let result: BufferedProcessResult;
         try {
           result = await runBufferedProcess({

@@ -86,6 +86,7 @@ import {
   clearPendingLocalAgentInputsForChat,
   handleLocalAgentStream,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { isPreCommitHookAvailable } from "../../pro/main/ipc/handlers/local_agent/tools/run_pre_commit";
 import { userInputRegistry } from "../../user_input/main";
 
 import { safeSend, type SafeSender } from "../utils/safe_sender";
@@ -1789,6 +1790,10 @@ ${componentSnippet}
           settings.agentToolConsents?.["restart_app"] !== "never";
         const rebuildAppToolAvailable =
           settings.agentToolConsents?.["rebuild_app"] !== "never";
+        const preCommitHookAvailable =
+          selectedChatMode === "local-agent" &&
+          settings.agentToolConsents?.["run_pre_commit"] !== "never" &&
+          (await isPreCommitHookAvailable(appPath));
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -1806,6 +1811,7 @@ ${componentSnippet}
           historyExplorerAvailable,
           implementerAvailable,
           testingEnabled: !!updatedChat.app?.testingEnabled,
+          preCommitHookAvailable,
           restartAppToolAvailable,
           rebuildAppToolAvailable,
         });
@@ -2337,6 +2343,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 settingsOverride: settings,
                 modelSelectionOverride: selectedModel,
                 freeModelMode,
+                preCommitHookAvailable,
                 referencedApps: referencedAppsForAgent,
                 currentTurnHasOnDiskAttachment:
                   hasScriptReadableAttachment(storedAttachments),

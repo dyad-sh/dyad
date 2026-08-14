@@ -681,6 +681,7 @@ export const constructSystemPrompt = ({
   historyExplorerAvailable,
   implementerAvailable,
   testingEnabled,
+  preCommitHookAvailable,
   restartAppToolAvailable,
   rebuildAppToolAvailable,
 }: {
@@ -726,6 +727,8 @@ export const constructSystemPrompt = ({
    * test-writing and `run_tests` guidance (see `constructLocalAgentPrompt`).
    */
   testingEnabled?: boolean;
+  /** Whether the writable local-agent turn exposes `run_pre_commit`. */
+  preCommitHookAvailable?: boolean;
   restartAppToolAvailable?: boolean;
   rebuildAppToolAvailable?: boolean;
 }) => {
@@ -745,6 +748,7 @@ export const constructSystemPrompt = ({
       historyExplorerAvailable,
       implementerAvailable,
       testingEnabled,
+      preCommitHookAvailable,
       restartAppToolAvailable,
       rebuildAppToolAvailable,
     });

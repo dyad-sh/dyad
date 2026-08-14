@@ -174,6 +174,21 @@ describe("local_agent_prompt", () => {
     expect(enabled).toContain("# Writing end-to-end tests");
   });
 
+  it("gates pre-commit workflow guidance on hook availability", () => {
+    const unavailable = constructLocalAgentPrompt(undefined);
+    expect(unavailable).not.toContain("call `run_pre_commit`");
+
+    for (const basicAgentMode of [false, true]) {
+      const available = constructLocalAgentPrompt(undefined, undefined, {
+        basicAgentMode,
+        preCommitHookAvailable: true,
+      });
+      expect(available).toContain(
+        "After finishing file edits and the other relevant verification, call `run_pre_commit`",
+      );
+    }
+  });
+
   it("ask mode system prompt", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       readOnly: true,

@@ -238,6 +238,22 @@ describe("runPreCommitTool", () => {
     );
   });
 
+  it("runs hooks with Dyad's package-manager command environment", async () => {
+    await runPreCommitTool.execute({}, context(repo));
+
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ["hook", "run", "pre-commit"],
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
+          npm_config_pm_on_fail: "ignore",
+        }),
+      }),
+    );
+  });
+
   it("allows a follow-up run when Git fingerprinting fails", async () => {
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {

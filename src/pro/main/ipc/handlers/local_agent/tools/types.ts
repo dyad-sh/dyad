@@ -60,10 +60,6 @@ export const APP_MUTATING_TOOL_NAMES = [
   "generate_image",
   "generate_test_assertions",
   "git_restore_file",
-<<<<<<< HEAD
-  "generate_test_assertions",
-=======
->>>>>>> c9305196a (Add pre-commit verification tool for local agent)
 ] as const;
 
 export interface AgentContext {

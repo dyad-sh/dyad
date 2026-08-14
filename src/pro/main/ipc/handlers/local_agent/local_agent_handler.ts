@@ -118,7 +118,6 @@ import {
   executeSandboxScriptTool,
 } from "./tools/execute_sandbox_script";
 import { writeFileTool } from "./tools/write_file";
-import { isPreCommitHookAvailable } from "./tools/run_pre_commit";
 import {
   collectMcpToolDefs,
   estimateMcpInlineTokens,
@@ -452,6 +451,7 @@ export async function handleLocalAgentStream(
     settingsOverride,
     modelSelectionOverride,
     freeModelMode,
+    preCommitHookAvailable = false,
     referencedApps = [],
     currentTurnHasOnDiskAttachment,
   }: {
@@ -476,6 +476,8 @@ export async function handleLocalAgentStream(
     settingsOverride?: UserSettings;
     modelSelectionOverride?: ModelSelection;
     freeModelMode?: boolean;
+    /** Snapshot shared by the prompt and toolset for this writable turn. */
+    preCommitHookAvailable?: boolean;
     /**
      * Apps referenced via `@app:Name` mentions in the user's prompt.
      * Read-only tools can target these via an `app_name` parameter.
@@ -783,8 +785,6 @@ export async function handleLocalAgentStream(
     );
     const effectiveFreeModelMode =
       freeModelMode ?? isFreeProModel(settings.selectedModel);
-    const preCommitHookAvailable =
-      !readOnly && !planModeOnly && (await isPreCommitHookAvailable(appPath));
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,

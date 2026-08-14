@@ -4,6 +4,7 @@ export type AgentSidebarItemTitle = "Chat Agent" | "Coding Agent" | "Planner";
 
 export type AppSidebarItemTitle =
   | AgentSidebarItemTitle
+  | "Dashboard"
   | "Memory"
   | "Build"
   | "Agents"
@@ -85,8 +86,9 @@ export function isSidebarItemActive({
   if (title === "Coding Agent") {
     return isCodingAgentRoute(pathname);
   }
-  if (title === "Chat Agent" && pathname === "/") {
-    return true;
+  if (title === "Dashboard") {
+    // "/" is the dashboard now, so both paths light the same entry.
+    return pathname === "/" || pathname.startsWith("/dashboard");
   }
   if (title === "Planner" && pathname === "/social-media-agent") {
     return true;

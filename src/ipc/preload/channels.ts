@@ -64,6 +64,7 @@ import { dataSourceContracts } from "../types/data_source";
 import { infrastructureContracts } from "../types/infrastructure";
 import { jarvisContracts, jarvisEvents } from "../types/jarvis";
 import { stockImageContracts } from "../types/stock_images";
+import { dashboardContracts } from "../types/dashboard";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -146,6 +147,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(infrastructureContracts),
   ...getInvokeChannels(jarvisContracts),
   ...getInvokeChannels(stockImageContracts),
+  ...getInvokeChannels(dashboardContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

@@ -7,6 +7,7 @@ import {
   DraftingCompass,
   FolderKanban,
   HardDrive,
+  LayoutDashboard,
   type LucideIcon,
   MessageSquare,
   Workflow,
@@ -37,6 +38,8 @@ import {
 } from "./app-sidebar-state";
 
 const mainNavItems = [
+  // The home surface sits above everything, because that is what it is.
+  { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
   { title: "Planner", to: "/planner", icon: CalendarDays },
   { title: "Library", to: "/library", icon: BookOpen },

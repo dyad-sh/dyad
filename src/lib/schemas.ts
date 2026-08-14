@@ -591,6 +591,13 @@ const BaseUserSettingsFields = {
    * this value never reaches the renderer.
    */
   pixabayApiKey: SecretSchema.optional(),
+  /**
+   * The place the dashboard reports weather for.
+   *
+   * Absent means "work it out from the machine's timezone", which is what it
+   * does until someone pins somewhere else.
+   */
+  dashboardLocation: z.string().optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   vercelBlob: VercelBlobSchema.optional(),

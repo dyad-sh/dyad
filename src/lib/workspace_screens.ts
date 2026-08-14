@@ -74,6 +74,7 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/library", title: "Library", icon: Library },
   { path: "/library/media", title: "Media", icon: Image },
   { path: "/library/stock", title: "Stock Images", icon: Images },
+  { path: "/dashboard", title: "Dashboard", icon: LayoutDashboard },
   { path: "/apps", title: "Apps", icon: Boxes },
   { path: "/hub", title: "Hub", icon: Blocks },
   { path: "/library/themes", title: "Themes", icon: Palette },
@@ -115,12 +116,21 @@ export function screenForPath(pathname: string): WorkspaceScreen | undefined {
 /** Chats own their tabs already; those routes must not also open a screen tab. */
 const CHAT_OWNED_PREFIXES = ["/chat-agent", "/agent-os", "/chat"];
 
+/**
+ * Paths that must not open a screen tab.
+ *
+ * Chats already have their own, and the dashboard is where closing the last
+ * tab lands — a tab for it would be a tab that closes onto itself.
+ */
 export function isChatOwnedPath(pathname: string): boolean {
-  if (pathname === "/") return true;
+  if (pathname === "/" || pathname === HOME_PATH) return true;
   return CHAT_OWNED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }
+
+/** Where the app goes when nothing else is open. */
+export const HOME_PATH = "/dashboard";
 
 export type ScreenTab = {
   path: string;

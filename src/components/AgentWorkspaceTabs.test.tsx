@@ -125,13 +125,15 @@ describe("screen tabs", () => {
     await screen.findByTestId("hermes-dashboard-tab");
   });
 
-  it("goes to chat when the last screen tab closes", async () => {
+  it("goes to the dashboard when the last screen tab closes", async () => {
+    // Closing the screen you are looking at has to land somewhere, and the
+    // dashboard is the app's home surface.
     render(<AgentWorkspaceTabs />);
     await screen.findByTestId("screen-tab-/settings");
 
     await userEvent.click(screen.getByTestId("screen-close-tab-/settings"));
 
-    expect(navigate).toHaveBeenCalledWith({ to: "/chat-agent" });
+    expect(navigate).toHaveBeenCalledWith({ to: "/dashboard" });
   });
 
   it("does not navigate when closing a tab that is not being viewed", async () => {

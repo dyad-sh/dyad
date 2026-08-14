@@ -9,11 +9,11 @@ import { hubRoute } from "./routes/hub";
 import { githubManagerRoute } from "./routes/github-manager";
 import { vercelManagerRoute } from "./routes/vercel-manager";
 import {
-  chatAgentHomeRoute,
   chatAgentRoute,
   legacySocialMediaAgentRoute,
   plannerRoute,
 } from "./routes/agents";
+import { dashboardIndexRoute, dashboardRoute } from "./routes/dashboard";
 import {
   codingAgentsRoute,
   helixAgentRoute,
@@ -55,7 +55,9 @@ const routeTree = rootRoute.addChildren([
   jarvisSettingsRoute,
   knowledgeBaseRoute,
   knowledgeCoreRoute,
-  chatAgentHomeRoute,
+  // The dashboard is the app's home surface, so it answers "/".
+  dashboardIndexRoute,
+  dashboardRoute,
   chatAgentRoute,
   homeRoute,
   codingAgentsRoute,

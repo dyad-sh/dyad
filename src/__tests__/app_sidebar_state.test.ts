@@ -40,8 +40,15 @@ describe("app sidebar state", () => {
   });
 
   it("highlights agent nav items on their routes", () => {
-    expect(isSidebarItemActive({ title: "Chat Agent", pathname: "/" })).toBe(
+    // "/" is the dashboard now, so it lights that entry rather than Chat.
+    expect(isSidebarItemActive({ title: "Dashboard", pathname: "/" })).toBe(
       true,
+    );
+    expect(
+      isSidebarItemActive({ title: "Dashboard", pathname: "/dashboard" }),
+    ).toBe(true);
+    expect(isSidebarItemActive({ title: "Chat Agent", pathname: "/" })).toBe(
+      false,
     );
     expect(
       isSidebarItemActive({ title: "Coding Agent", pathname: "/coder" }),

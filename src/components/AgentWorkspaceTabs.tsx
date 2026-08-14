@@ -18,7 +18,7 @@ import {
 import { closeHermesWorkspaceTab } from "@/lib/hermes_workspace_tabs";
 import { closeChatAgentTab } from "@/lib/chat_agent_tabs";
 import { useScreenTabs } from "@/hooks/useScreenTabs";
-import { screenForPath } from "@/lib/workspace_screens";
+import { HOME_PATH, screenForPath } from "@/lib/workspace_screens";
 import { cn } from "@/lib/utils";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -63,7 +63,8 @@ export function AgentWorkspaceTabs() {
   // Coder chats are a family in this bar rather than a second row above it.
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const [activeChatId, setActiveChatId] = useAtom(activeChatAgentTabAtom);
-  const isChatAgent = pathname === "/" || pathname.startsWith("/chat-agent");
+  // "/" is the dashboard now, so only the chat agent's own route counts.
+  const isChatAgent = pathname.startsWith("/chat-agent");
 
   // Every other screen — Helix, Settings, Knowledge Base — also keeps a tab.
   const {
@@ -84,11 +85,12 @@ export function AgentWorkspaceTabs() {
   const closeScreenAndLeave = (path: string) => {
     const fallback = closeScreen(path);
     // Closing the screen being viewed has to go somewhere; a browser moves to
-    // the neighbouring tab, and Chat is the equivalent of a new tab page.
+    // the neighbouring tab, and the dashboard is the home surface when there is
+    // no neighbour left.
     if (fallback) {
       void navigate({ to: fallback.path });
     } else if (activeScreen?.path === path) {
-      void navigate({ to: "/chat-agent" });
+      void navigate({ to: HOME_PATH });
     }
   };
 
@@ -110,8 +112,13 @@ export function AgentWorkspaceTabs() {
   const closeChat = (tabId: string) => {
     const { tabs: remaining, fallback } = closeChatAgentTab(chatTabs, tabId);
     setChatTabs(remaining);
-    if (activeChatId === tabId) {
-      setActiveChatId(fallback?.id ?? null);
+    if (activeChatId !== tabId) return;
+
+    setActiveChatId(fallback?.id ?? null);
+    // Closing the last conversation while looking at it leaves nothing to look
+    // at, so the app returns to its home surface rather than an empty chat.
+    if (!fallback && isChatAgent) {
+      void navigate({ to: HOME_PATH });
     }
   };
 

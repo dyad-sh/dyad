@@ -69,6 +69,7 @@ export { helixContracts } from "./helix";
 export { openWorkerContracts } from "./openworker";
 export { vectorContracts, vectorEvents } from "./vector";
 export { stockImageContracts } from "./stock_images";
+export { dashboardContracts } from "./dashboard";
 
 // =============================================================================
 // Client Exports
@@ -121,6 +122,7 @@ export { helixClient } from "./helix";
 export { openWorkerClient } from "./openworker";
 export { vectorClient, vectorEventClient } from "./vector";
 export { stockImageClient } from "./stock_images";
+export { dashboardClient } from "./dashboard";
 
 // =============================================================================
 // Type Exports
@@ -482,6 +484,7 @@ import { cloudflareClient } from "./cloudflare";
 import { infrastructureClient } from "./infrastructure";
 import { vectorClient, vectorEventClient } from "./vector";
 import { stockImageClient } from "./stock_images";
+import { dashboardClient } from "./dashboard";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -560,6 +563,7 @@ export const ipc = {
   openWorker: openWorkerClient,
   vector: vectorClient,
   stockImages: stockImageClient,
+  dashboard: dashboardClient,
 
   // Event clients for main->renderer pub/sub
   events: {

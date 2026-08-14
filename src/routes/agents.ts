@@ -3,12 +3,6 @@ import ChatAgentPage from "../pages/chat-agent";
 import SocialMediaAgentPage from "../pages/social-media/SocialMediaAgentPage";
 import { rootRoute } from "./root";
 
-export const chatAgentHomeRoute = new Route({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  component: ChatAgentPage,
-});
-
 export const chatAgentRoute = new Route({
   getParentRoute: () => rootRoute,
   path: "/chat-agent",

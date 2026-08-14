@@ -2,11 +2,7 @@ import { createHash } from "node:crypto";
 import fs, { promises as fsPromises } from "node:fs";
 import log from "electron-log";
 import { z } from "zod";
-import {
-  execGit,
-  getGitProcessEnvironment,
-  gitAddAll,
-} from "@/ipc/utils/git_utils";
+import { execGit, getGitProcessEnvironment } from "@/ipc/utils/git_utils";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import {
   runBufferedProcess,
@@ -224,7 +220,54 @@ export const runPreCommitTool: ToolDefinition<
           );
         }
 
-        await gitAddAll({ path: ctx.appPath });
+        const { env, gitLocation } = getGitProcessEnvironment(
+          getPackageManagerCommandEnv(),
+        );
+        let stageResult: BufferedProcessResult;
+        try {
+          stageResult = await runBufferedProcess({
+            command: gitLocation,
+            args: ["add", "-A"],
+            cwd: ctx.appPath,
+            env,
+            signal: ctx.abortSignal,
+            timeoutMs: PRE_COMMIT_TIMEOUT_MS,
+            maxOutputBytes: 256_000,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return complete(
+            ctx,
+            "Pre-commit staging could not start",
+            `Git could not stage the workspace before pre-commit. The hook was not run.\n\n${message}`,
+            "warning",
+          );
+        }
+        if (stageResult.aborted) {
+          return complete(
+            ctx,
+            "Pre-commit cancelled",
+            "Pre-commit was cancelled while staging the workspace. The hook was not run.",
+            "warning",
+          );
+        }
+        if (stageResult.timedOut) {
+          return complete(
+            ctx,
+            "Pre-commit staging timed out",
+            `Staging the workspace exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped. The hook was not run.\n\n${formatProcessOutput(stageResult.stdout, stageResult.stderr)}`,
+            "warning",
+          );
+        }
+        if (stageResult.code !== 0) {
+          return complete(
+            ctx,
+            "Pre-commit staging failed",
+            `Git could not stage the workspace before pre-commit (exit code ${stageResult.code ?? "unknown"}). The hook was not run.\n\n${formatProcessOutput(stageResult.stdout, stageResult.stderr)}`,
+            "warning",
+          );
+        }
         const beforeFingerprint = await tryGetGitStateFingerprint(
           ctx.appPath,
           "before",
@@ -248,9 +291,6 @@ export const runPreCommitTool: ToolDefinition<
           `<dyad-status title="${escapeXmlAttr(`Running pre-commit (${ctx.preCommitRunCount}/${MAX_PRE_COMMIT_RUNS_PER_TURN})`)}"></dyad-status>`,
         );
 
-        const { env, gitLocation } = getGitProcessEnvironment(
-          getPackageManagerCommandEnv(),
-        );
         let result: BufferedProcessResult;
         try {
           result = await runBufferedProcess({

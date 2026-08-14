@@ -426,6 +426,16 @@ export interface ToolDefinition<T = any> {
   ) => boolean;
 
   /**
+   * Overrides whether a successful app mutation changed Git-visible workspace
+   * files. Use for tools whose file impact depends on their result or context.
+   */
+  shouldTrackFileMutation?: (
+    args: T,
+    result: ToolResult,
+    ctx: AgentContext,
+  ) => boolean;
+
+  /**
    * Build XML from parsed partial args.
    * Called by the handler during streaming and on completion.
    *

@@ -671,6 +671,11 @@ export function buildAgentToolSet(
                 result,
                 invocationCtx,
               ),
+              tool.shouldTrackFileMutation?.(
+                processedArgs,
+                result,
+                invocationCtx,
+              ),
             );
 
             if (toolCallId && invocationCtx.onToolActivity) {

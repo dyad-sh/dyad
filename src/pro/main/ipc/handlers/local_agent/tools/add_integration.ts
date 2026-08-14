@@ -29,6 +29,9 @@ export const addIntegrationTool: ToolDefinition<
 
   shouldTrackMutation: (_args, result) =>
     !result.startsWith("The user dismissed the integration setup"),
+  shouldTrackFileMutation: (_args, result, ctx) =>
+    ctx.frameworkType === "vite" &&
+    result.startsWith("User completed the neon integration."),
 
   buildXml: (args, _isComplete) => {
     if (args.provider && args.provider !== "none") {

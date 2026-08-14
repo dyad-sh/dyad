@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentContext, ToolDefinition } from "./types";
+import { addIntegrationTool } from "./add_integration";
 import { shouldTrackToolMutation, trackAppMutation } from "./tool_invocation";
 
 function tool(
@@ -79,4 +80,26 @@ describe("trackAppMutation", () => {
       expect(ctx.fileMutationCount).toBeUndefined();
     },
   );
+});
+
+describe("add_integration file mutation tracking", () => {
+  it("counts only Neon setup that adds Nitro to a Vite app", () => {
+    const didMutateFile = addIntegrationTool.shouldTrackFileMutation!;
+
+    expect(
+      didMutateFile({}, "User completed the neon integration.", {
+        frameworkType: "vite",
+      } as AgentContext),
+    ).toBe(true);
+    expect(
+      didMutateFile({}, "User completed the supabase integration.", {
+        frameworkType: "vite",
+      } as AgentContext),
+    ).toBe(false);
+    expect(
+      didMutateFile({}, "User completed the neon integration.", {
+        frameworkType: "nextjs",
+      } as AgentContext),
+    ).toBe(false);
+  });
 });

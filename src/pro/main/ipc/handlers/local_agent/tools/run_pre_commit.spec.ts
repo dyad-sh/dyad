@@ -15,7 +15,6 @@ import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinato
 import type { AgentContext } from "./types";
 
 const mocks = vi.hoisted(() => ({
-  gitAddAll: vi.fn(),
   loggerWarn: vi.fn(),
   runBufferedProcess: vi.fn(),
 }));
@@ -30,11 +29,6 @@ vi.mock("electron-log", () => ({
       warn: mocks.loggerWarn,
     }),
   },
-}));
-
-vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
-  gitAddAll: mocks.gitAddAll,
 }));
 
 vi.mock("@/ipc/utils/buffered_process", async (importOriginal) => ({
@@ -159,9 +153,11 @@ describe("runPreCommitTool", () => {
     hookRuns = 0;
     hookChangesFiles = false;
     hookResults = [];
-    mocks.gitAddAll.mockResolvedValue(undefined);
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") {
+          return processResult();
+        }
         if (options.args?.[0] === "hook") {
           hookRuns++;
           return hookResults.shift() ?? processResult();
@@ -211,7 +207,7 @@ describe("runPreCommitTool", () => {
     const result = await runPreCommitTool.execute({}, ctx);
 
     expect(result).toContain("No files have been successfully modified");
-    expect(mocks.gitAddAll).not.toHaveBeenCalled();
+    expect(mocks.runBufferedProcess).not.toHaveBeenCalled();
     expect(hookRuns).toBe(0);
   });
 
@@ -222,7 +218,9 @@ describe("runPreCommitTool", () => {
     const first = await runPreCommitTool.execute({}, ctx);
     const second = await runPreCommitTool.execute({}, ctx);
 
-    expect(mocks.gitAddAll).toHaveBeenCalledWith({ path: repo });
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({ args: ["add", "-A"], cwd: repo }),
+    );
     expect(first).toContain("lint failed");
     expect(second).toContain("no files have changed");
     expect(hookRuns).toBe(1);
@@ -344,6 +342,27 @@ describe("runPreCommitTool", () => {
     expect(ctx.preCommitFileMutationCountAtLastRun).toBeUndefined();
   });
 
+  it("bounds staging and does not start the hook when staging times out", async () => {
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") {
+          return processResult({ code: 124, timedOut: true });
+        }
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+        }
+        return processResult();
+      },
+    );
+    const ctx = context(repo);
+
+    const result = await runPreCommitTool.execute({}, ctx);
+
+    expect(result).toContain("Staging the workspace exceeded 10 minutes");
+    expect(ctx.preCommitRunCount).toBeUndefined();
+    expect(hookRuns).toBe(0);
+  });
+
   it("serializes the complete hook run with other repository operations", async () => {
     let releaseRepository!: () => void;
     const repositoryBlocker = appOperationCoordinator.run(
@@ -363,24 +382,22 @@ describe("runPreCommitTool", () => {
     );
 
     await Promise.resolve();
-    expect(mocks.gitAddAll).not.toHaveBeenCalled();
+    expect(mocks.runBufferedProcess).not.toHaveBeenCalled();
 
     releaseRepository();
     await repositoryBlocker;
     await pendingRun;
 
-    expect(mocks.gitAddAll).toHaveBeenCalledOnce();
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({ args: ["add", "-A"], cwd: repo }),
+    );
     expect(hookRuns).toBe(1);
   });
 
   it("executes a real hook and permits re-verification after hook changes", async () => {
-    const actualGitUtils = await vi.importActual<
-      typeof import("@/ipc/utils/git_utils")
-    >("@/ipc/utils/git_utils");
     const actualBufferedProcess = await vi.importActual<
       typeof import("@/ipc/utils/buffered_process")
     >("@/ipc/utils/buffered_process");
-    mocks.gitAddAll.mockImplementation(actualGitUtils.gitAddAll);
     mocks.runBufferedProcess.mockImplementation(
       actualBufferedProcess.runBufferedProcess,
     );

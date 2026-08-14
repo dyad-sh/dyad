@@ -10,6 +10,13 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -85,7 +92,19 @@ function ApiKeyPrompt({ onSave }: { onSave: (key: string) => Promise<void> }) {
   );
 }
 
-function ImageTile({ image }: { image: StockImageResult }) {
+/**
+ * The three things you can do with a result.
+ *
+ * Shared by the tile and the preview so the buttons cannot drift apart, and so
+ * saving from either place goes through the same library path.
+ */
+function ImageActions({
+  image,
+  saveLabel,
+}: {
+  image: StockImageResult;
+  saveLabel: string;
+}) {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -118,55 +137,108 @@ function ImageTile({ image }: { image: StockImageResult }) {
   };
 
   return (
-    <div className="group bg-card/60 relative overflow-hidden rounded-xl border backdrop-blur">
-      <img
-        src={image.previewUrl}
-        alt={image.tags.join(", ")}
-        loading="lazy"
-        className="h-44 w-full object-cover"
-      />
+    <div className="flex gap-2">
+      <Button
+        size="sm"
+        className="flex-1"
+        onClick={() => void saveToLibrary()}
+        disabled={saving}
+      >
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saveLabel}
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        title="Copy image URL"
+        onClick={() => void copyUrl()}
+      >
+        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        title="Open on Pixabay"
+        onClick={() => ipc.system.openExternalUrl(image.pageUrl)}
+        disabled={!image.pageUrl}
+      >
+        <ExternalLink className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/85 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            className="flex-1"
-            onClick={() => void saveToLibrary()}
-            disabled={saving}
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "Save to Library"
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            title="Copy image URL"
-            onClick={() => void copyUrl()}
-          >
-            {copied ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            title="Open on Pixabay"
-            onClick={() => ipc.system.openExternalUrl(image.pageUrl)}
-            disabled={!image.pageUrl}
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Button>
-        </div>
+function ImageTile({
+  image,
+  onOpen,
+}: {
+  image: StockImageResult;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="group bg-card/60 relative overflow-hidden rounded-xl border backdrop-blur">
+      {/* A button, not a bare image: the preview has to be reachable from the
+          keyboard as well as the mouse. */}
+      <button
+        type="button"
+        onClick={onOpen}
+        title="Open larger preview"
+        className="focus-visible:ring-ring block w-full cursor-zoom-in focus-visible:ring-2 focus-visible:outline-none"
+      >
+        <img
+          src={image.previewUrl}
+          alt={image.tags.join(", ")}
+          loading="lazy"
+          className="h-44 w-full object-cover"
+        />
+      </button>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/85 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [&>*]:pointer-events-auto">
+        <ImageActions image={image} saveLabel="Save to Library" />
         <p className="truncate text-xs text-white/80">
           {image.width}×{image.height} · {image.author}
         </p>
       </div>
     </div>
+  );
+}
+
+/** The full-size look, opened by clicking a thumbnail. */
+function ImagePreviewDialog({
+  image,
+  onClose,
+}: {
+  image: StockImageResult | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(image)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[90vh] w-full flex-col gap-4 sm:max-w-4xl">
+        {image && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="truncate pr-8">
+                {image.tags.slice(0, 5).join(", ") || "Stock image"}
+              </DialogTitle>
+              <DialogDescription>
+                {image.width}×{image.height} · by {image.author} · Pixabay
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* min-h-0 so a tall image scrolls inside the dialog rather than
+                pushing the actions off the bottom of the screen. */}
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto">
+              <img
+                src={image.imageUrl}
+                alt={image.tags.join(", ")}
+                className="max-h-[65vh] w-auto max-w-full rounded-lg object-contain"
+              />
+            </div>
+
+            <ImageActions image={image} saveLabel="Save to Library" />
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -183,6 +255,7 @@ export function StockImageGallery() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [orientation, setOrientation] = useState<StockImageOrientation>("all");
+  const [preview, setPreview] = useState<StockImageResult | null>(null);
 
   const { data, isFetching, error } = useStockImageSearch(
     { query, page, orientation },
@@ -274,9 +347,18 @@ export function StockImageGallery() {
             className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
           >
             {data?.images.map((image) => (
-              <ImageTile key={image.id} image={image} />
+              <ImageTile
+                key={image.id}
+                image={image}
+                onOpen={() => setPreview(image)}
+              />
             ))}
           </div>
+
+          <ImagePreviewDialog
+            image={preview}
+            onClose={() => setPreview(null)}
+          />
 
           {lastPage > 1 && (
             <div className="mt-6 flex items-center justify-center gap-3">

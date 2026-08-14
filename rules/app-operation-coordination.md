@@ -65,6 +65,13 @@ own the app going away) or refuse when the session is the thing the user is
 doing. Adding a resource to a long-lived operation means auditing every other
 handler that declares it.
 
+Test runs and recordings set `allowCompatibleQueueBypass` because an ordinary
+repository writer can queue behind their working-tree claim and would otherwise
+become a fairness barrier for later ref-only snapshots such as New Chat. Use
+this flag only on a long-lived owner: bypass is allowed only while every direct
+blocker of the queued operation opts in and the later operation is compatible
+with those blockers. Normal writer fairness resumes when the owner releases.
+
 For cross-app operations, apply recording refusal per app according to that
 app's claims, not to the whole operation indiscriminately. For example, moving
 media claims `media` on both apps but `repository` only on the target (where it

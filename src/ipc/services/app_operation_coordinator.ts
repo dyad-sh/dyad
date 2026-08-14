@@ -44,6 +44,18 @@ export interface AppOperationRequest {
   operation: string;
   resources: readonly (AppOperationResource | AppOperationAccess)[];
   /**
+   * While this operation is active, later compatible work may pass an earlier
+   * queued operation that is blocked exclusively by bypass-enabled active
+   * operations. Intended for long-lived sessions: a working-tree writer queued
+   * behind one must not turn that session into a transitive barrier for a ref
+   * snapshot the session itself permits.
+   *
+   * Once the session releases, ordinary writer fairness resumes. A compatible
+   * operation that already bypassed may finish first, but new readers cannot
+   * continue bypassing the queued writer behind that ordinary operation.
+   */
+  allowCompatibleQueueBypass?: boolean;
+  /**
    * Refuse this operation outright while a recording session holds the app,
    * instead of queueing behind it. Names the action in the imperative, e.g.
    * "delete a test".
@@ -67,6 +79,7 @@ interface NormalizedAppOperationRequest {
   appId: number;
   operation: string;
   resources: readonly AppOperationAccess[];
+  allowCompatibleQueueBypass?: boolean;
 }
 
 interface PendingOperation {
@@ -132,6 +145,24 @@ function requestsConflict(
     }
   }
   return false;
+}
+
+function canBypassBlockedOperation(
+  blocked: PendingOperation,
+  pending: PendingOperation,
+  blockers: readonly PendingOperation[],
+): boolean {
+  const directBlockers = blockers.filter((blocker) =>
+    requestsConflict(blocker.request, blocked.request),
+  );
+  return (
+    directBlockers.length > 0 &&
+    directBlockers.every(
+      (blocker) =>
+        blocker.request.allowCompatibleQueueBypass === true &&
+        !requestsConflict(blocker.request, pending.request),
+    )
+  );
 }
 
 /**
@@ -278,11 +309,14 @@ export class AppOperationCoordinator {
     const ready: PendingOperation[] = [];
 
     for (const pending of state.queue) {
-      const conflictsWithActive = [...state.active, ...ready].some((active) =>
+      const activeAndReady = [...state.active, ...ready];
+      const conflictsWithActive = activeAndReady.some((active) =>
         requestsConflict(active.request, pending.request),
       );
-      const wouldBypassBlocked = blocked.some((earlier) =>
-        requestsConflict(earlier.request, pending.request),
+      const wouldBypassBlocked = blocked.some(
+        (earlier) =>
+          requestsConflict(earlier.request, pending.request) &&
+          !canBypassBlockedOperation(earlier, pending, activeAndReady),
       );
       if (conflictsWithActive || wouldBypassBlocked) {
         blocked.push(pending);

@@ -176,17 +176,19 @@ describe("tests handlers", () => {
       }
 
       expect(
-        requests.find(({ operation }) => operation === "run-app-tests")
-          ?.resources,
-      ).toEqual([
-        { resource: "app-path", mode: "read" },
-        { resource: "repository-ref", mode: "read" },
-        "repository-worktree",
-        "provider",
-        "runtime",
-        "runtime-config",
-        "test-files",
-      ]);
+        requests.find(({ operation }) => operation === "run-app-tests"),
+      ).toMatchObject({
+        resources: [
+          { resource: "app-path", mode: "read" },
+          { resource: "repository-ref", mode: "read" },
+          "repository-worktree",
+          "provider",
+          "runtime",
+          "runtime-config",
+          "test-files",
+        ],
+        allowCompatibleQueueBypass: true,
+      });
     });
 
     it("refuses atomically when a recording starts at coordinator admission", async () => {

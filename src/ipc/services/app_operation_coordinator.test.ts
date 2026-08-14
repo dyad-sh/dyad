@@ -198,6 +198,66 @@ describe("AppOperationCoordinator", () => {
     expect(worktreeReader).toHaveBeenCalledOnce();
   });
 
+  it("lets a long-lived session prevent transitive writer blocking", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const sessionRelease = deferred();
+    const firstSnapshotRelease = deferred();
+    const writerRelease = deferred();
+    const order: string[] = [];
+
+    const session = coordinator.run(
+      {
+        appId: 1,
+        operation: "recording",
+        resources: [readAppResource("repository-ref"), "repository-worktree"],
+        allowCompatibleQueueBypass: true,
+      },
+      () => sessionRelease.promise,
+    );
+    const writer = coordinator.run(
+      { appId: 1, operation: "write-repository", resources: ["repository"] },
+      async () => {
+        order.push("writer");
+        await writerRelease.promise;
+      },
+    );
+    const firstSnapshot = coordinator.run(
+      {
+        appId: 1,
+        operation: "create-chat-1",
+        resources: [readAppResource("repository-ref")],
+      },
+      async () => {
+        order.push("snapshot-1");
+        await firstSnapshotRelease.promise;
+      },
+    );
+
+    await vi.waitFor(() => expect(order).toEqual(["snapshot-1"]));
+    sessionRelease.resolve();
+    await session;
+
+    const secondSnapshot = coordinator.run(
+      {
+        appId: 1,
+        operation: "create-chat-2",
+        resources: [readAppResource("repository-ref")],
+      },
+      async () => {
+        order.push("snapshot-2");
+      },
+    );
+    await Promise.resolve();
+    expect(order).toEqual(["snapshot-1"]);
+
+    firstSnapshotRelease.resolve();
+    await firstSnapshot;
+    await vi.waitFor(() => expect(order).toEqual(["snapshot-1", "writer"]));
+    writerRelease.resolve();
+    await Promise.all([writer, secondSnapshot]);
+    expect(order).toEqual(["snapshot-1", "writer", "snapshot-2"]);
+  });
+
   it("acquires multi-resource operations atomically without deadlock", async () => {
     const coordinator = new AppOperationCoordinator();
     const release = deferred();

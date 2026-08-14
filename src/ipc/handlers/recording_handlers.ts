@@ -296,6 +296,7 @@ export function registerRecordingHandlers() {
               appId,
               operation: "start-recording",
               resources: recordingResources,
+              allowCompatibleQueueBypass: true,
             },
             async () => {
               let prepared: PreparedIsolation | undefined;

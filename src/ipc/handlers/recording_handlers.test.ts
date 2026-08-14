@@ -506,6 +506,18 @@ describe("recording:start / recording:stop", () => {
     const { event } = makeEvent();
     await startHandler(event, { appId: 1 });
 
+    let releaseWriter!: () => void;
+    const writer = appOperationCoordinator.run(
+      {
+        appId: 1,
+        operation: "write-repository",
+        resources: ["repository"],
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWriter = resolve;
+        }),
+    );
     const snapshot = vi.fn();
     await appOperationCoordinator.run(
       {
@@ -518,6 +530,9 @@ describe("recording:start / recording:stop", () => {
 
     expect(snapshot).toHaveBeenCalledOnce();
     await stopHandler(event, { appId: 1 });
+    await vi.waitFor(() => expect(releaseWriter).toBeTypeOf("function"));
+    releaseWriter();
+    await writer;
   });
 
   it("returns the infra error and does not start when isolation fails", async () => {

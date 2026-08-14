@@ -600,6 +600,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Exercise every reachable state against every event type and assert totality.
 - Assert ignored transitions retain the exact state reference and changed
   transitions do not create value-equal snapshots.
+- When state stores both history position and current entry, derive the current
+  value from the matched slot. Traversal lookup must prefer an exact entry before
+  canonical equivalence, and tests must cover duplicate equivalent entries.
 - Use fake command runners. Tests must get isolation from constructed owners,
   never from a module-global reset helper.
 - Run `runControllerConformanceSuite` for controllers built on the shared

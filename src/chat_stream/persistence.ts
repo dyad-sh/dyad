@@ -457,10 +457,7 @@ export function stageActiveIntent(
   const existing = recordFor(intent.intentId);
   if (existing) {
     assertMatchingIntent(existing, intent);
-    if (
-      existing.acceptance === "queued" &&
-      !queueFor(intent.chatId).intentIds.includes(intent.intentId)
-    ) {
+    if (existing.acceptance === "queued" && existing.recovery === "started") {
       // The dispatcher has already claimed this queued turn. It is no longer
       // a duplicate admission and must continue into execution.
       return null;
@@ -1026,6 +1023,7 @@ export async function claimQueueHead(
       });
     }
     aggregate.intentIds.shift();
+    record.recovery = "started";
     aggregate.revision = nextRevision;
     return {
       intent: record.intent,
@@ -1060,6 +1058,7 @@ export async function restoreClaimedQueueHead(
         });
       }
       aggregate.intentIds.unshift(intentId);
+      record.recovery = "not-started";
       aggregate.revision = nextRevision;
     }
     return loadChatQueue(database, chatId);

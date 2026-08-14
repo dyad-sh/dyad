@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PIXABAY_RESULT_CEILING,
   PixabayError,
+  STOCK_IMAGES_PER_PAGE,
   buildPixabayUrl,
+  pageCount,
   parsePixabayResponse,
   redactKey,
 } from "@/lib/stock_images/pixabay";
@@ -43,12 +46,47 @@ describe("building a Pixabay search", () => {
     );
   });
 
+  it("asks for the page size the page count is computed from", () => {
+    // If these disagree, the last page is a stub or promises images that are
+    // not there.
+    expect(
+      new URL(buildPixabayUrl({ key: "k", query: "x" })).searchParams.get(
+        "per_page",
+      ),
+    ).toBe(String(STOCK_IMAGES_PER_PAGE));
+  });
+
   it("never asks for a page below one", () => {
     expect(
       new URL(
         buildPixabayUrl({ key: "k", query: "x", page: 0 }),
       ).searchParams.get("page"),
     ).toBe("1");
+  });
+});
+
+describe("counting pages", () => {
+  it("fills every page when the ceiling is reached", () => {
+    // The point of the page size: 500 divides exactly, so there is no stub
+    // final page.
+    expect(pageCount(PIXABAY_RESULT_CEILING)).toBe(
+      PIXABAY_RESULT_CEILING / STOCK_IMAGES_PER_PAGE,
+    );
+    expect(PIXABAY_RESULT_CEILING % STOCK_IMAGES_PER_PAGE).toBe(0);
+  });
+
+  it("never offers a page past what Pixabay will serve", () => {
+    // Asking beyond the ceiling returns an error, not more images.
+    expect(pageCount(50_000)).toBe(pageCount(PIXABAY_RESULT_CEILING));
+  });
+
+  it("counts a partial result set", () => {
+    expect(pageCount(1)).toBe(1);
+    expect(pageCount(STOCK_IMAGES_PER_PAGE + 1)).toBe(2);
+  });
+
+  it("is one page when there is nothing", () => {
+    expect(pageCount(0)).toBe(1);
   });
 });
 
@@ -102,15 +140,25 @@ describe("reading the response", () => {
 
   it("prefers totalHits, which is what can actually be paged through", () => {
     // total is the whole library and would promise pages that return nothing.
-    expect(
-      parsePixabayResponse({ total: 9999, totalHits: 40, hits: [] }).total,
-    ).toBe(40);
+    const parsed = parsePixabayResponse({
+      total: 9999,
+      totalHits: 40,
+      hits: [],
+    });
+    expect(parsed.total).toBe(40);
+    // Kept separately so the UI can say how much is out of reach.
+    expect(parsed.totalAvailable).toBe(9999);
   });
 
   it("survives a response that is not what was expected", () => {
-    expect(parsePixabayResponse(null)).toEqual({ total: 0, images: [] });
+    expect(parsePixabayResponse(null)).toEqual({
+      total: 0,
+      totalAvailable: 0,
+      images: [],
+    });
     expect(parsePixabayResponse({ hits: "nope" })).toEqual({
       total: 0,
+      totalAvailable: 0,
       images: [],
     });
   });

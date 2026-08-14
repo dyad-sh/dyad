@@ -38,7 +38,9 @@ function storedPixabayKey(): string | null {
 /** What went wrong, in words, without the status code jargon. */
 function describeFailure(status: number): string {
   if (status === 400) {
-    return "Pixabay rejected that search. Check the API key in the gallery settings.";
+    // Also what a page past the 500-result ceiling returns, which the page
+    // count is meant to prevent from ever being asked for.
+    return "Pixabay rejected that search. Check the API key, or try a narrower search.";
   }
   if (status === 429) {
     return "Pixabay is rate limiting this key. Wait a minute and search again.";

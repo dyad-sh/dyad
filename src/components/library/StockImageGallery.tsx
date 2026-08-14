@@ -27,10 +27,12 @@ import {
 } from "@/components/ui/select";
 import { ipc } from "@/ipc/types";
 import type { StockImageResult } from "@/ipc/types/stock_images";
-import type { StockImageOrientation } from "@/lib/stock_images/pixabay";
+import {
+  PIXABAY_RESULT_CEILING,
+  pageCount,
+  type StockImageOrientation,
+} from "@/lib/stock_images/pixabay";
 import { useStockImageAuth, useStockImageSearch } from "@/hooks/useStockImages";
-
-const PER_PAGE = 30;
 
 /**
  * Asked for once, when there is no key.
@@ -267,7 +269,11 @@ export function StockImageGallery() {
     setPage(1);
   };
 
-  const lastPage = data ? Math.ceil(data.total / PER_PAGE) : 1;
+  const lastPage = data ? pageCount(data.total) : 1;
+  // Pixabay serves at most 500 results per search, however many it holds.
+  const isCapped = Boolean(
+    data && data.totalAvailable > PIXABAY_RESULT_CEILING,
+  );
 
   if (authLoading) {
     return (
@@ -342,6 +348,14 @@ export function StockImageGallery() {
         </div>
       ) : (
         <>
+          {data && (
+            <p className="text-muted-foreground mb-3 text-xs">
+              {isCapped
+                ? `Showing the ${data.total.toLocaleString()} results Pixabay serves per search, of ${data.totalAvailable.toLocaleString()} matches. Narrow the search to reach different ones.`
+                : `${data.total.toLocaleString()} results`}
+            </p>
+          )}
+
           <div
             data-testid="stock-image-grid"
             className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"

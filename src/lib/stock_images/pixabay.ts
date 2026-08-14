@@ -30,6 +30,18 @@ export type StockImageOrientation = "all" | "horizontal" | "vertical";
 export class PixabayError extends Error {}
 
 /**
+ * How many results a page holds.
+ *
+ * Pixabay lets a key reach 500 results per search and no further, so this is
+ * chosen to divide 500 exactly: ten full pages rather than sixteen full ones
+ * and a stub. It lives here so the request and the page count cannot disagree.
+ */
+export const STOCK_IMAGES_PER_PAGE = 50;
+
+/** The most results Pixabay will hand out for one search. */
+export const PIXABAY_RESULT_CEILING = 500;
+
+/**
  * The search URL.
  *
  * safesearch is always on: this is a general-purpose gallery inside someone's
@@ -52,12 +64,29 @@ export function buildPixabayUrl(input: {
   url.searchParams.set("q", query);
   url.searchParams.set("image_type", "photo");
   url.searchParams.set("safesearch", "true");
-  url.searchParams.set("per_page", String(input.perPage ?? 30));
+  url.searchParams.set(
+    "per_page",
+    String(input.perPage ?? STOCK_IMAGES_PER_PAGE),
+  );
   url.searchParams.set("page", String(Math.max(1, input.page ?? 1)));
   if (input.orientation && input.orientation !== "all") {
     url.searchParams.set("orientation", input.orientation);
   }
   return url.toString();
+}
+
+/**
+ * How many pages a result count actually has.
+ *
+ * Anything past the ceiling is not a page Pixabay will serve: asking for it
+ * returns an error rather than more images, so it is not offered.
+ */
+export function pageCount(
+  total: number,
+  perPage: number = STOCK_IMAGES_PER_PAGE,
+): number {
+  const reachable = Math.min(total, PIXABAY_RESULT_CEILING);
+  return Math.max(1, Math.ceil(reachable / perPage));
 }
 
 /** A URL safe to show in an error or a log: the key is removed. */
@@ -90,7 +119,10 @@ type PixabayHit = {
  * the grid should only contain things that will actually appear.
  */
 export function parsePixabayResponse(payload: unknown): {
+  /** Results this search can actually page through. */
   total: number;
+  /** Everything Pixabay holds for the query, most of it out of reach. */
+  totalAvailable: number;
   images: StockImage[];
 } {
   const body = payload as {
@@ -122,10 +154,13 @@ export function parsePixabayResponse(payload: unknown): {
     ];
   });
 
+  const reachable = body?.totalHits ?? body?.total ?? images.length;
+
   return {
     // totalHits is what this key may actually page through; total is the whole
     // library and would promise pages that return nothing.
-    total: body?.totalHits ?? body?.total ?? images.length,
+    total: reachable,
+    totalAvailable: body?.total ?? reachable,
     images,
   };
 }

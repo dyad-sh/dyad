@@ -50,7 +50,10 @@ export const stockImageContracts = {
       orientation: z.enum(["all", "horizontal", "vertical"]).optional(),
     }),
     output: z.object({
+      /** Results this search can page through. */
       total: z.number(),
+      /** Everything Pixabay holds for the query, most of it out of reach. */
+      totalAvailable: z.number(),
       images: z.array(StockImageSchema),
     }),
   }),

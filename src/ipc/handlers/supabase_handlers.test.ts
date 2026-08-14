@@ -81,9 +81,11 @@ describe("Supabase handlers", () => {
         { appId: 7 },
       ],
     ])("refuses %s while recording", async (_label, channel, input) => {
-      await expect(harness.invokeHandler(channel, input)).rejects.toMatchObject({
-        kind: DyadErrorKind.Precondition,
-      });
+      await expect(harness.invokeHandler(channel, input)).rejects.toMatchObject(
+        {
+          kind: DyadErrorKind.Precondition,
+        },
+      );
     });
   });
 

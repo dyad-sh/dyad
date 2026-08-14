@@ -584,6 +584,13 @@ const BaseUserSettingsFields = {
    * browser path stores nothing here: Wrangler keeps that sign-in itself.
    */
   cloudflareApiToken: SecretSchema.optional(),
+  /**
+   * Pixabay key for the stock image gallery.
+   *
+   * Kept here so it is asked for once. The search runs in the main process, so
+   * this value never reaches the renderer.
+   */
+  pixabayApiKey: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   vercelBlob: VercelBlobSchema.optional(),

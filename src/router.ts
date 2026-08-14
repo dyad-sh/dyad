@@ -22,6 +22,7 @@ import {
   engineeringRoute,
 } from "./routes/coding-agents";
 import { libraryRoute } from "./routes/library";
+import { stockImagesRoute } from "./routes/stock-images";
 import { appsRoute } from "./routes/apps";
 import { themesRoute } from "./routes/themes";
 import { promptsRoute } from "./routes/prompts";
@@ -85,6 +86,7 @@ const routeTree = rootRoute.addChildren([
   githubManagerRoute,
   vercelManagerRoute,
   libraryRoute,
+  stockImagesRoute,
   appsRoute,
   themesRoute,
   promptsRoute,

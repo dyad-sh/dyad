@@ -63,6 +63,7 @@ import { cloudflareContracts } from "../types/cloudflare";
 import { dataSourceContracts } from "../types/data_source";
 import { infrastructureContracts } from "../types/infrastructure";
 import { jarvisContracts, jarvisEvents } from "../types/jarvis";
+import { stockImageContracts } from "../types/stock_images";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -144,6 +145,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(dataSourceContracts),
   ...getInvokeChannels(infrastructureContracts),
   ...getInvokeChannels(jarvisContracts),
+  ...getInvokeChannels(stockImageContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

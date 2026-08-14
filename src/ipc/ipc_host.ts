@@ -60,6 +60,7 @@ import { registerMiscHandlers } from "./handlers/misc_handlers";
 import { registerStorageHandlers } from "./handlers/storage_handlers";
 import { registerProjectHandlers } from "./handlers/project_handlers";
 import { registerCloudflareHandlers } from "./handlers/cloudflare_handlers";
+import { registerStockImageHandlers } from "./handlers/stock_image_handlers";
 import { registerDataSourceHandlers } from "./handlers/data_source_handlers";
 import { registerInfrastructureHandlers } from "./handlers/infrastructure_handlers";
 import { registerVectorHandlers } from "./handlers/vector_handlers";
@@ -129,6 +130,7 @@ export function registerIpcHandlers() {
   registerStorageHandlers();
   registerProjectHandlers();
   registerCloudflareHandlers();
+  registerStockImageHandlers();
   registerDataSourceHandlers();
   registerInfrastructureHandlers();
   registerVectorHandlers();

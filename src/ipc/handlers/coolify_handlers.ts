@@ -25,6 +25,7 @@ import {
   expectedServerAddress,
   isLoopbackAddress,
   isNonRoutableAddress,
+  isDeferredIpv6,
 } from "@/coolify_deploy/domain_check";
 import {
   applyCoolifyConnectionChange,
@@ -50,6 +51,19 @@ async function getApp(appId: number) {
 const NO_RECORD_CODES = new Set(["ENOTFOUND", "ENODATA", "NOTFOUND"]);
 
 /**
+ * Bounded, because Save waits on it.
+ *
+ * The check is advisory, so a resolver that never answers must not be able to
+ * hold the button indefinitely. The bound is per attempt per configured
+ * nameserver, so the wait scales with how many the machine has: six seconds
+ * against a single stub resolver, and proportionally more where several are
+ * listed. Two tries rather than the default four keeps that multiple small. A
+ * timeout still arrives as an error code the caller reads as "could not ask"
+ * rather than as a missing record.
+ */
+const resolver = new dns.Resolver({ timeout: 3_000, tries: 2 });
+
+/**
  * Both families, distinguishing "no record" from "could not ask".
  *
  * A timeout or an unreachable resolver must not be reported as a missing
@@ -68,8 +82,8 @@ async function resolveBoth(
     }
   };
   const [v4, v6] = await Promise.all([
-    attempt(dns.resolve4),
-    attempt(dns.resolve6),
+    attempt((h) => resolver.resolve4(h)),
+    attempt((h) => resolver.resolve6(h)),
   ]);
   return {
     addresses: [...v4.addresses, ...v6.addresses],
@@ -316,11 +330,19 @@ export function registerCoolifyHandlers() {
         // on loopback is no more pointable than the literal 127.0.0.1 is.
         // Filtered rather than rejected outright, so a name answering on both
         // a public and a private address keeps the one a domain could point at.
+        //
+        // IPv6 stays in. Declining to reason about it is about which address
+        // we are willing to name, not about what counts as evidence — and a
+        // name that resolved here told us the server's AAAA in the same
+        // breath. Dropping it would leave us calling a mismatch we can plainly
+        // see unknowable.
         expectedIps = (await resolveBoth(address.hostname)).addresses.filter(
           (ip) => !isNonRoutableAddress(ip) && !isLoopbackAddress(ip),
         );
       }
-      const expectedIp = expectedIps[0] ?? null;
+      // The address the advice will name, which is the one place the IPv6
+      // deferral applies: every verdict below still weighs the full set.
+      const expectedIp = expectedIps.find((ip) => !isDeferredIpv6(ip)) ?? null;
 
       const hostname = coolifyDomainHostname(domain);
       if (!hostname) {
@@ -333,11 +355,18 @@ export function registerCoolifyHandlers() {
       }
 
       const resolved = await resolveBoth(hostname);
+      // A resolver we could not reach tells us nothing about the domain.
+      const verdict = resolved.failed
+        ? ("unknown" as const)
+        : domainCheckVerdict({ expectedIps, actualIps: resolved.addresses });
       return {
-        // A resolver we could not reach tells us nothing about the domain.
-        verdict: resolved.failed
-          ? ("unknown" as const)
-          : domainCheckVerdict({ expectedIps, actualIps: resolved.addresses }),
+        // Nor does a mismatch we cannot name an address for. The whole of that
+        // advice is "point it at this instead", so with nothing to offer there
+        // is no advice left — only an accusation.
+        verdict:
+          verdict === "points-elsewhere" && !expectedIp
+            ? ("unknown" as const)
+            : verdict,
         hostname,
         expectedIp,
         actualIps: resolved.addresses,

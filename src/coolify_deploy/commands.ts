@@ -225,46 +225,61 @@ async function ensureGithubDeployKey({
   }
   const body = await githubBody(() => res.text(), signal);
   if (res.status === 422 && /already in use/i.test(body)) {
-    const listed = await githubFetch(
-      `${getGitHubApiBase()}/repos/${owner}/${repo}/keys`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github+json",
+    // Paged, because the answer decides whether the user is told their key
+    // belongs to another repository — and that message asks them to delete a
+    // key. A default page is thirty, so a repository holding more than that
+    // could hide our own key behind it and earn the user destructive advice
+    // about a key that was already correct.
+    const PER_PAGE = 100;
+    const keys: Array<{ key?: string }> = [];
+    for (let page = 1; ; page++) {
+      const listed = await githubFetch(
+        `${getGitHubApiBase()}/repos/${owner}/${repo}/keys?per_page=${PER_PAGE}&page=${page}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github+json",
+          },
         },
-      },
-      signal,
-    );
-    // A failed lookup is not evidence the key belongs elsewhere; saying so would
-    // send the user to delete a key that is very likely already correct.
-    if (!listed.ok) {
-      throw new DyadError(
-        `GitHub rejected the deploy key for ${owner}/${repo} as already in use, ` +
-          `and listing that repository's keys to check whether it is ours failed ` +
-          `(${listed.status}). Try again in a moment.`,
-        DyadErrorKind.External,
+        signal,
       );
+      // A failed lookup is not evidence the key belongs elsewhere; saying so would
+      // send the user to delete a key that is very likely already correct.
+      if (!listed.ok) {
+        throw new DyadError(
+          `GitHub rejected the deploy key for ${owner}/${repo} as already in use, ` +
+            `and listing that repository's keys to check whether it is ours failed ` +
+            `(${listed.status}). Try again in a moment.`,
+          DyadErrorKind.External,
+        );
+      }
+      const listedBody = await githubBody(() => listed.text(), signal);
+      let pageKeys: Array<{ key?: string }>;
+      try {
+        const parsed: unknown = JSON.parse(listedBody);
+        // Parsing is not enough: GitHub answers errors as a JSON object, and an
+        // object reaching .some below is a TypeError naming neither GitHub nor
+        // the key — which is the whole point of classifying this.
+        if (!Array.isArray(parsed)) throw new Error("not a key list");
+        pageKeys = parsed as Array<{ key?: string }>;
+      } catch {
+        // A proxy or a sign-in page answers 200 with HTML. Left bare that is a
+        // SyntaxError with no mention of GitHub or the deploy key, which is the
+        // whole explanation the user gets for a failed deploy.
+        throw new DyadError(
+          `GitHub returned something other than a key list for ${owner}/${repo}, ` +
+            `so Dyad could not tell whether the deploy key it holds is already ` +
+            `registered there. Try again in a moment.`,
+          DyadErrorKind.External,
+        );
+      }
+      keys.push(...pageKeys);
+      // A short page is the last one. Stopping on it rather than on an empty
+      // one saves a request, and a full page that happens to be the last costs
+      // exactly that one extra.
+      if (pageKeys.length < PER_PAGE) break;
     }
-    const listedBody = await githubBody(() => listed.text(), signal);
-    let keys: Array<{ key?: string }>;
-    try {
-      const parsed: unknown = JSON.parse(listedBody);
-      // Parsing is not enough: GitHub answers errors as a JSON object, and an
-      // object reaching .some below is a TypeError naming neither GitHub nor
-      // the key — which is the whole point of classifying this.
-      if (!Array.isArray(parsed)) throw new Error("not a key list");
-      keys = parsed as Array<{ key?: string }>;
-    } catch {
-      // A proxy or a sign-in page answers 200 with HTML. Left bare that is a
-      // SyntaxError with no mention of GitHub or the deploy key, which is the
-      // whole explanation the user gets for a failed deploy.
-      throw new DyadError(
-        `GitHub returned something other than a key list for ${owner}/${repo}, ` +
-          `so Dyad could not tell whether the deploy key it holds is already ` +
-          `registered there. Try again in a moment.`,
-        DyadErrorKind.External,
-      );
-    }
+
     // GitHub returns the key without its trailing comment.
     const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
     if (keys.some((k) => (k.key ?? "").startsWith(ours))) {

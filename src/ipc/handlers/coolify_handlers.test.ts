@@ -92,20 +92,30 @@ vi.mock("../utils/coolify_client", () => ({
 }));
 
 const dnsAnswers: Record<string, string[]> = {};
-vi.mock("node:dns/promises", () => ({
-  resolve4: async (h: string) => {
-    const answers = (dnsAnswers[h] ?? []).filter((a) => a.includes("."));
-    if (answers.length === 0)
-      throw Object.assign(new Error("no data"), { code: "ENODATA" });
-    return answers;
-  },
-  resolve6: async (h: string) => {
-    const answers = (dnsAnswers[h] ?? []).filter((a) => a.includes(":"));
-    if (answers.length === 0)
-      throw Object.assign(new Error("no data"), { code: "ENODATA" });
-    return answers;
-  },
-}));
+vi.mock("node:dns/promises", () => {
+  // The lookup is a method rather than a closed-over function because the real
+  // Resolver's methods are: they read state off the instance, so one passed
+  // around unbound throws. A double that ignored `this` would keep answering,
+  // and the one edit that breaks this call site — handing resolve4 straight to
+  // a helper instead of calling it on the resolver — would pass here and fail
+  // in production, where the check just goes quiet.
+  return {
+    Resolver: class {
+      private answers(h: string, sep: string) {
+        const answers = (dnsAnswers[h] ?? []).filter((a) => a.includes(sep));
+        if (answers.length === 0)
+          throw Object.assign(new Error("no data"), { code: "ENODATA" });
+        return answers;
+      }
+      async resolve4(h: string) {
+        return this.answers(h, ".");
+      }
+      async resolve6(h: string) {
+        return this.answers(h, ":");
+      }
+    },
+  };
+});
 
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 
@@ -469,6 +479,124 @@ describe("checking a domain against a server that is not publicly reachable", ()
 
     expect(result.verdict).toBe("unknown");
     expect(result.expectedIp).toBeNull();
+  });
+
+  it("says nothing when the server's name resolves to private IPv6", async () => {
+    // The literal path declines every IPv6 address; a name answering with one
+    // reaches the same machine, so answering here would defer on paper only.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "nas.local" }]);
+    dnsAnswers["nas.local"] = ["fd00::1"];
+    dnsAnswers["app.example.com"] = ["203.0.113.5"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("unknown");
+    expect(result.expectedIp).toBeNull();
+  });
+
+  it("accepts a domain that reaches a dual-stack server only over IPv6", async () => {
+    // Declining to name an IPv6 address is not the same as refusing to count
+    // one: the domain is pointed at this very machine, and saying so costs
+    // nothing, since the answer names no address at all.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["203.0.113.5", "2606:4700::1"];
+    dnsAnswers["app.example.com"] = ["2606:4700::1"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("ok");
+  });
+
+  it("says nothing when only the server's IPv4 is known and the domain is AAAA-only", async () => {
+    // Coolify reported a bare address, so nothing here says whether the
+    // machine also answers on IPv6. The domain may well be pointed at it.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "203.0.113.5" }]);
+    dnsAnswers["app.example.com"] = ["2606:4700::1"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("unknown");
+  });
+
+  it("does not let a private IPv6 match vouch for a domain", async () => {
+    // Both sides answer with the same ULA, but nothing on the public internet
+    // reaches it — so the only address that decides anything here is the IPv4,
+    // and it says the domain arrives at a different machine. The same shape
+    // with a private IPv4 has always warned; this keeps the families honest.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["203.0.113.5", "fd00::1"];
+    dnsAnswers["app.example.com"] = ["198.51.100.9", "fd00::1"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("points-elsewhere");
+    expect(result.expectedIp).toBe("203.0.113.5");
+  });
+
+  it("warns when a dual-stack server's domain names a different machine", async () => {
+    // The AAAA belongs to neither of the server's addresses, and we learned
+    // both when the name resolved — so this mismatch is one we can see, and
+    // the IPv4 we hold is a real answer to give.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["203.0.113.5", "2606:4700::1"];
+    dnsAnswers["app.example.com"] = ["2001:4860:4860::8888"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("points-elsewhere");
+    expect(result.expectedIp).toBe("203.0.113.5");
+  });
+
+  it("says nothing when a mismatch leaves no address to name", async () => {
+    // A server reachable only over IPv6, against a domain pointed somewhere
+    // else entirely. The mismatch is real and both addresses are routable —
+    // but the only one we could offer is an IPv6 address, and naming one is
+    // the thing this check does not do. So the warning has nothing to say.
+    //
+    // The server's address has to be public for this to reach the downgrade:
+    // a private one is dropped as evidence first, and the verdict then turns
+    // on there being no expectation at all, which is a different rule.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["2606:4700::1"];
+    dnsAnswers["app.example.com"] = ["2001:db8::99"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("unknown");
+    expect(result.expectedIp).toBeNull();
+  });
+
+  it("keeps the IPv4 answer when a name resolves to both families", async () => {
+    // Declining IPv6 must not cost a dual-stack server its check.
+    listServers.mockResolvedValue([{ uuid: "srv-1", ip: "box.example.com" }]);
+    dnsAnswers["box.example.com"] = ["203.0.113.5", "2606:4700::1"];
+    dnsAnswers["app.example.com"] = ["203.0.113.5"];
+
+    const result = (await call("coolify:check-domain", {
+      serverUuid: "srv-1",
+      domain: "app.example.com",
+    })) as { verdict: string; expectedIp: string | null };
+
+    expect(result.verdict).toBe("ok");
+    expect(result.expectedIp).toBe("203.0.113.5");
   });
 
   it("says nothing when the server's name resolves to loopback", async () => {

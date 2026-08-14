@@ -1227,6 +1227,78 @@ describe("adopting a previous deployment", () => {
   });
 });
 
+/**
+ * Deciding whether the key GitHub already holds is ours.
+ *
+ * The answer chooses between carrying on and telling the user their key
+ * belongs to another repository — a message that asks them to delete a key. A
+ * default page holds thirty, so a repository with more than that could hide
+ * our own key behind the first page and earn them that advice wrongly.
+ */
+describe("checking a deploy key GitHub reports as already in use", () => {
+  const OURS = "ssh-ed25519 AAAAPUBLIC comment";
+
+  function filler(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      key: `ssh-ed25519 AAAAOTHER${i} someone-else`,
+    }));
+  }
+
+  it("keeps paging until it finds the key it holds", async () => {
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
+    happyPathRoutes();
+    route(
+      "POST /api/repos/acme/demo/keys",
+      { message: "key is already in use" },
+      422,
+    );
+    // A full page of other people's keys, then ours on the next one.
+    routeSequence("GET /api/repos/acme/demo/keys", [
+      filler(100),
+      [{ key: OURS }],
+    ]);
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).toContain("Deploy key already present");
+  });
+
+  it("still reports a key that really is on another repository", async () => {
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
+    happyPathRoutes();
+    route(
+      "POST /api/repos/acme/demo/keys",
+      { message: "key is already in use" },
+      422,
+    );
+    // A short page is the last one, and ours is not on it.
+    routeSequence("GET /api/repos/acme/demo/keys", [filler(3)]);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow(/already registered on a different repository/);
+  });
+});
+
 describe("pre-deploy warnings", () => {
   it("warns when the branch has commits that are not on GitHub", async () => {
     // Coolify clones from GitHub, so unpushed work is silently not deployed.

@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { domainCheckVerdict, expectedServerAddress } from "./domain_check";
+import {
+  domainCheckVerdict,
+  expectedServerAddress,
+  isNonRoutableAddress,
+} from "./domain_check";
+
+describe("isNonRoutableAddress on IPv6", () => {
+  // Named separately from the server-shape matrix because there every IPv6
+  // address answers null anyway, via the deferral — so the matrix cannot tell
+  // these prefixes from any other address.
+  it.each([
+    ["fd00::1", true, "unique local"],
+    ["fc00::1", true, "the bottom of the same /7"],
+    ["fdff:ffff::1", true, "the top of it"],
+    ["fe80::1", true, "link-local"],
+    ["febf::1", true, "the top of that /10"],
+    ["2606:4700::1", false, "ordinary public space"],
+    ["fec0::1", false, "deprecated site-local, deliberately not covered"],
+    ["::ffff:192.168.1.50", false, "a mapped form, deliberately not covered"],
+    ["fe80::203.0.113.5", true, "the prefix decides, not the dotted tail"],
+  ])("reads %s as non-routable=%s (%s)", (address, expected) => {
+    expect(isNonRoutableAddress(address)).toBe(expected);
+  });
+});
 
 describe("domainCheckVerdict", () => {
   it("confirms a domain pointing at the server", () => {
@@ -27,6 +50,28 @@ describe("domainCheckVerdict", () => {
     expect(
       domainCheckVerdict({ expectedIps: ["1.2.3.4"], actualIps: [] }),
     ).toBe("no-records");
+  });
+
+  it("says nothing when the two sides are different families", () => {
+    // Not a mismatch, an unanswerable question: the server is known only by
+    // its IPv4 address and the domain carries only an AAAA record, so there is
+    // nothing here that says the domain points at the wrong machine.
+    expect(
+      domainCheckVerdict({
+        expectedIps: ["203.0.113.5"],
+        actualIps: ["2606:4700::1"],
+      }),
+    ).toBe("unknown");
+  });
+
+  it("still compares when one family is shared", () => {
+    // The guard above must not swallow a real mismatch that shares a family.
+    expect(
+      domainCheckVerdict({
+        expectedIps: ["203.0.113.5"],
+        actualIps: ["198.51.100.9", "2606:4700::1"],
+      }),
+    ).toBe("points-elsewhere");
   });
 
   it("accepts an IPv6 server address", () => {
@@ -115,14 +160,14 @@ describe("expectedServerAddress over every address shape", () => {
     {
       shape: "IPv6",
       serverIp: "2606:4700::1",
-      expected: { kind: "ip", ip: "2606:4700::1" },
-      why: "an address, used as given",
+      expected: null,
+      why: "public, and still declined — IPv6 is not read here at all",
     },
     {
       shape: "bracketed IPv6",
       serverIp: "[2606:4700::1]",
-      expected: { kind: "ip", ip: "2606:4700::1" },
-      why: "an address wearing the brackets URL adds, not a hostname",
+      expected: null,
+      why: "the brackets come off first, so it is declined for the same reason",
     },
     {
       shape: "bracketed loopback IPv6",
@@ -230,61 +275,13 @@ describe("expectedServerAddress over every address shape", () => {
       shape: "unique local IPv6",
       serverIp: "fd00::1",
       expected: null,
-      why: "the IPv6 equivalent of a private range",
-    },
-    {
-      shape: "link-local IPv6",
-      serverIp: "fe80::1",
-      expected: null,
-      why: "scoped to one link, so no record can point at it",
-    },
-    {
-      shape: "site-local IPv6",
-      serverIp: "fec0::1",
-      expected: null,
-      why: "deprecated rather than reassigned, so still nothing routes it",
-    },
-    {
-      shape: "global unicast IPv6",
-      serverIp: "2606:4700::1111",
-      expected: { kind: "ip", ip: "2606:4700::1111" },
-      why: "ordinary public space, and the control for the ranges above",
+      why: "private, and the same answer the public one gets — that is the rule",
     },
     {
       shape: "IPv4-mapped private IPv6",
       serverIp: "::ffff:192.168.1.50",
       expected: null,
-      why: "the same machine as 192.168.1.50, written the other way",
-    },
-    {
-      shape: "link-local IPv6 with a dotted tail",
-      serverIp: "fe80::203.0.113.5",
-      expected: null,
-      why: "the prefix decides; the tail only looks routable",
-    },
-    {
-      shape: "unique local IPv6 with a dotted tail",
-      serverIp: "fd00::8.8.8.8",
-      expected: null,
-      why: "same shape, and the tail is a public resolver's address",
-    },
-    {
-      shape: "global unicast with a private dotted tail",
-      serverIp: "2001:db8::10.0.0.1",
-      expected: { kind: "ip", ip: "2001:db8::10.0.0.1" },
-      why: "reading the tail here would suppress a routable address",
-    },
-    {
-      shape: "deprecated IPv4-compatible IPv6",
-      serverIp: "::192.168.1.50",
-      expected: null,
-      why: "carries the address rather than merely ending in one",
-    },
-    {
-      shape: "IPv4-mapped public IPv6",
-      serverIp: "::ffff:203.0.113.5",
-      expected: { kind: "ip", ip: "::ffff:203.0.113.5" },
-      why: "a mapped address is only as private as the address inside it",
+      why: "the spelling that made reading IPv6 here not worth attempting",
     },
     {
       shape: "empty",
@@ -330,7 +327,9 @@ describe("expectedServerAddress over every address shape", () => {
     {
       shape: "bracketed IPv6",
       instanceUrl: "http://[2606:4700::1]:8000",
-      expected: { kind: "ip", ip: "2606:4700::1" },
+      // Declined on this side too, so a Coolify reached over IPv6 gets the
+      // same silence as a server reported over it.
+      expected: null,
     },
     {
       shape: "hostname",

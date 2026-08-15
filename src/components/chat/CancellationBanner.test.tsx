@@ -70,7 +70,7 @@ describe("CancellationBanner", () => {
     expect(
       screen.getByText(/Restoring your app's database and preview/),
     ).toBeTruthy();
-    expect(screen.getByText(/up to a minute/)).toBeTruthy();
+    expect(screen.getByText(/can take a while/)).toBeTruthy();
   });
 
   it("does not claim a restore on the Supabase path", () => {

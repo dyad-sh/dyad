@@ -24,7 +24,7 @@ export function CancellationBanner() {
   const detail =
     runState.phase === "cleaning-up"
       ? runState.isolation?.mode === "neon-branch"
-        ? "Restoring your app's database and preview. This can take up to a minute."
+        ? "Restoring your app's database and preview. This can take a while."
         : "Cleaning up the test data from this run."
       : runState.phase === "stopping"
         ? "Ending the test run."

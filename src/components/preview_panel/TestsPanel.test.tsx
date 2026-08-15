@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   runAppTests: vi.fn(),
   stopAppTests: vi.fn(),
   getTestScreenshot: vi.fn(),
+  showError: vi.fn(),
   /** Null stands in for a dev server that isn't up. */
   appUrl: "http://localhost:32100" as string | null,
   previewUrl: "http://localhost:32100/" as string | null,
@@ -45,7 +46,7 @@ vi.mock("@/ipc/types", () => ({
 }));
 
 vi.mock("@/lib/toast", () => ({
-  showError: vi.fn(),
+  showError: mocks.showError,
   showInfo: vi.fn(),
   showSuccess: vi.fn(),
 }));
@@ -372,6 +373,24 @@ describe("TestsPanel", () => {
       expect(mocks.stopAppTests).not.toHaveBeenCalled();
     });
 
+    it("unlatches and reports a failed stop so the user can retry", async () => {
+      const { store } = renderPanel();
+      setPhase(store, { phase: "running" });
+      const error = new Error("stop failed");
+      mocks.stopAppTests.mockRejectedValue(error);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Stop running tests" }),
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "Stop running tests" }),
+        ).toBeTruthy();
+      });
+      expect(mocks.showError).toHaveBeenCalledWith(error);
+    });
+
     it("names the Neon teardown, which restarts the preview", () => {
       // This is the wait that can pass a minute (the branch delete retries with
       // backoff), and it visibly reloads the user's preview. Calling it
@@ -403,7 +422,20 @@ describe("TestsPanel", () => {
       expect(screen.queryByText(/Restoring your database/)).toBeNull();
     });
 
-    it("clears the per-test spinners once the tests are gone", async () => {
+    it("keeps per-test spinners while successful results await cleanup", async () => {
+      const { store } = renderPanel();
+      await screen.findByRole("button", {
+        name: "Open in code editor: signup.spec.ts",
+      });
+      setPhase(store, { phase: "running" });
+      expect(screen.getAllByLabelText("Running").length).toBeGreaterThan(0);
+
+      setPhase(store, { phase: "cleaning-up", wasStopped: false });
+
+      expect(screen.getAllByLabelText("Running").length).toBeGreaterThan(0);
+    });
+
+    it("clears the per-test spinners once a stopped run is gone", async () => {
       // Nothing can produce a result after the kill. A spinner that keeps
       // turning through the teardown claims otherwise.
       const { store } = renderPanel();
@@ -414,7 +446,7 @@ describe("TestsPanel", () => {
       setPhase(store, { phase: "running" });
       expect(screen.getAllByLabelText("Running").length).toBeGreaterThan(0);
 
-      setPhase(store, { phase: "cleaning-up" });
+      setPhase(store, { phase: "cleaning-up", wasStopped: true });
 
       expect(screen.queryAllByLabelText("Running")).toEqual([]);
     });

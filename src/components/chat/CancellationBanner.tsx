@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useAtomValue } from "jotai";
+import { useTranslation } from "react-i18next";
 
 import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 
@@ -17,6 +18,7 @@ import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
  * the composer the user just clicked Stop in, so the wait is never unexplained.
  */
 export function CancellationBanner() {
+  const { t } = useTranslation("chat");
   const runState = useAtomValue(currentTestRunStateAtom);
 
   // Only the test run knows why the stop is slow. Without an active run the
@@ -24,10 +26,10 @@ export function CancellationBanner() {
   const detail =
     runState.phase === "cleaning-up"
       ? runState.isolation?.mode === "neon-branch"
-        ? "Restoring your app's database and preview. This can take a while."
-        : "Cleaning up the test data from this run."
+        ? t("cancellationRestoringTestApp")
+        : t("cancellationCleaningTestData")
       : runState.phase === "stopping"
-        ? "Ending the test run."
+        ? t("cancellationEndingTestRun")
         : null;
 
   return (
@@ -39,7 +41,7 @@ export function CancellationBanner() {
     >
       <Loader2 className="h-3.5 w-3.5 shrink-0 mt-px animate-spin" />
       <span className="flex flex-col gap-0.5">
-        <span className="font-medium">Stopping…</span>
+        <span className="font-medium">{t("stoppingGeneration")}</span>
         {detail && <span className="opacity-80">{detail}</span>}
       </span>
     </div>

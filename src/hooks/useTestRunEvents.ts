@@ -155,6 +155,7 @@ export function useTestRunEvents() {
               : {
                   ...prev,
                   phase: nextPhase,
+                  wasStopped: nextPhase === "stopping" ? true : prev.wasStopped,
                   // Carried on `cleaning-up` only, so the panel can name the
                   // teardown accurately. The terminal `finished` event resends
                   // it, so this never becomes the badge's only source.

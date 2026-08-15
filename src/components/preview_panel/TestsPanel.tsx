@@ -706,10 +706,13 @@ export function TestsPanel() {
   // must not interleave with it (Run, Record, Delete), because the per-app lock
   // is still held during `cleaning-up`.
   const isRunning = runState.phase !== "idle";
-  // Narrower: tests are actually executing. Once the Stop lands, nothing more
-  // can be produced, so the per-test spinners must not keep implying otherwise.
+  // Narrower: tests are executing or their completed results are waiting for
+  // teardown to finish. A stopped run cannot produce more results, so only
+  // that cleanup path drops the per-test spinners.
   const isExecuting =
-    runState.phase === "setup" || runState.phase === "running";
+    runState.phase === "setup" ||
+    runState.phase === "running" ||
+    (runState.phase === "cleaning-up" && !runState.wasStopped);
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
   const specsQuery = useQuery({
@@ -910,7 +913,10 @@ export function TestsPanel() {
   const stop = useCallback(() => {
     if (selectedAppId == null) return;
     setStopRequested(true);
-    ipc.tests.stopAppTests({ appId: selectedAppId }).catch(() => {});
+    ipc.tests.stopAppTests({ appId: selectedAppId }).catch((error) => {
+      setStopRequested(false);
+      showError(error);
+    });
   }, [selectedAppId]);
 
   // The kill is under way. Covers the optimistic latch and the authoritative

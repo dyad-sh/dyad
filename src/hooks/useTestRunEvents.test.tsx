@@ -160,6 +160,26 @@ describe("useTestRunEvents", () => {
     }
   });
 
+  it("remembers when cleanup follows a stopped run", () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({ appId: 1, source: "agent", state: "started" });
+      emitRunState({ appId: 1, source: "agent", state: "stopping" });
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "cleaning-up",
+        isolation: { mode: "neon-branch" },
+      });
+    });
+
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.phase).toBe("cleaning-up");
+    expect(state.wasStopped).toBe(true);
+  });
+
   it("refreshes the spec list before reconciling a finished run, so a spec written this turn shows its result", async () => {
     const { store, queryClient, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });

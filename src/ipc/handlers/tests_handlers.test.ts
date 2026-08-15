@@ -333,6 +333,51 @@ describe("tests handlers", () => {
 
       expect(runStates()).toContain("stopping");
     });
+
+    it("does not emit stale progress when a newer run supersedes it", async () => {
+      const appId = seedTestableApp("app");
+      let resolveFirstPrepare!: (value: {
+        isolation: { mode: "neon-branch" };
+        infraError: { message: string };
+        teardown: () => Promise<{ envRestored: boolean }>;
+      }) => void;
+      prepareIsolatedTestDatabaseMock
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirstPrepare = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({
+          isolation: { mode: "none" },
+          infraError: { message: "second run stopped before execution" },
+          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        });
+
+      const firstRun = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      await vi.waitFor(() => {
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1);
+      });
+
+      const secondRun = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      resolveFirstPrepare({
+        isolation: { mode: "neon-branch" },
+        infraError: { message: "first run stopped before execution" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+
+      await Promise.all([firstRun, secondRun]);
+
+      expect(runStates()).not.toContain("stopping");
+      expect(runStates()).not.toContain("cleaning-up");
+    });
   });
 
   describe("tests:delete", () => {

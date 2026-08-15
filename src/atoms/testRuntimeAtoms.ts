@@ -48,6 +48,8 @@ export type TestRunPhase =
 
 export interface TestRunState {
   phase: TestRunPhase;
+  /** Whether this run entered cleanup after being stopped by the user/agent. */
+  wasStopped?: boolean;
   /** Results keyed by spec file path. */
   results: Record<string, RuntimeTestResult>;
   /** Spec files in the current in-flight run (drives per-file spinners). */
@@ -244,6 +246,7 @@ export const applyTestRunStartedAtom = atom(
         // both run before the first test does. Setup-phase output keeps it
         // here; the first running-phase output advances it.
         phase: "setup",
+        wasStopped: false,
         runningFiles: targetFiles,
         runningTests:
           testFile != null && testLine != null
@@ -323,6 +326,7 @@ export const applyTestRunFinishedAtom = atom(
         return {
           ...prev,
           phase: "idle",
+          wasStopped: false,
           runningFiles: [],
           runningTests: [],
           results: nextResults,

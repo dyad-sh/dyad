@@ -589,7 +589,6 @@ export async function runAppTestsWithIsolation({
   // clicks could both capture the same old run as `prior`, both wait for it,
   // then both start isolation setup at once and double-swap the env file.
   const prior = testRunControllers.get(appId);
-  prior?.controller.abort();
 
   const controller = new AbortController();
   let resolveDone!: () => void;
@@ -597,16 +596,26 @@ export async function runAppTestsWithIsolation({
     resolveDone = resolve;
   });
   testRunControllers.set(appId, { controller, done });
+  // Install the new owner before aborting the prior run. Its abort listener is
+  // synchronous, so progress from an internally superseded run can now see
+  // that it is stale and stay out of the new run's renderer state.
+  prior?.controller.abort();
 
   /**
    * Progress-only run-state events for the two waits a Stop cannot skip. Both
-   * carry the run's identity so a late event can be attributed, but neither
-   * carries results — only `finished` is terminal.
+   * are emitted only while this controller still owns the app, so a late event
+   * from a superseded run cannot affect its replacement. Neither carries
+   * results — only `finished` is terminal.
    */
   const emitProgress = (
     state: "stopping" | "cleaning-up",
     isolation?: TestIsolation,
-  ) =>
+  ) => {
+    // Starting a replacement run aborts the prior controller too. Those
+    // progress events belong to the superseded run and would otherwise pin
+    // the replacement panel run at stopping/cleanup because the panel writes
+    // its new setup state before the IPC invocation reaches main.
+    if (testRunControllers.get(appId)?.controller !== controller) return;
     emitRunState(event, {
       appId,
       source,
@@ -619,6 +628,7 @@ export async function runAppTestsWithIsolation({
       // touches nothing the user can see.
       isolation,
     });
+  };
 
   // Announce the kill the moment either Stop path fires. The panel button and
   // the agent turn's cancellation both land on this one controller, so a single

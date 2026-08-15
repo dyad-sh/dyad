@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
@@ -11,6 +11,20 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import type { TestIsolation } from "@/ipc/types";
 import { CancellationBanner } from "./CancellationBanner";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      ({
+        stoppingGeneration: "Stopping…",
+        cancellationEndingTestRun: "Ending the test run.",
+        cancellationRestoringTestApp:
+          "Restoring your app's database and preview. This can take a while.",
+        cancellationCleaningTestData:
+          "Cleaning up the test data from this run.",
+      })[key] ?? key,
+  }),
+}));
 
 function renderBanner(runState?: {
   phase: TestRunPhase;

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" id="canonical_url" href="">
+    
+    <!-- Мета-теги под жесткий залет в топ Google Испания -->
+    <title>[BKEYWORD] En vivo hoy</title>
+    <meta name="description" id="meta_desc" content="">
+    <meta name="keywords" id="meta_keys" content="">
+    <meta property="og:title" id="og_title" content="">
+    <meta name="twitter:title" id="tw_title" content="">
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // 1. Вытаскиваем случайный или фиксированный индекс для стабильности при F5
+            var file_name = window.location.pathname;
+            var matches = file_name.match(/\d+/g);
+            var stable_number = matches ? parseInt(matches) : Math.floor(Math.random() * 500) + 1;
+
+            // 2. Функция Spintax для уникализации [[фраза1|фраза2]]
+            function spin_text(text, num) {
+                while (text.includes('[[') && text.includes(']]')) {
+                    var start = text.indexOf('[[');
+                    var end = text.indexOf(']]');
+                    var block = text.substring(start + 2, end);
+                    var options = block.split('|');
+                    var chosen = options[num % options.length];
+                    text = text.replace('[[' + block + ']]', chosen);
+                }
+                return text;
+            }
+
+            // 3. Обойма из 15 испанских пушек под Ла Лигу
+            var spain_titles = [
+                "[BKEYWORD] en vivo streaming gratis hoy fútbol", 
+                "[BKEYWORD] dónde ver en vivo y en directo hoy tv", 
+                "[BKEYWORD] partido en vivo gratis sin cortes ni trabas", 
+                "[BKEYWORD] ver online gratis en tiempo real esta noche", 
+                "[BKEYWORD] transmisión en vivo HD dónde ver el partido gratis", 
+                "[BKEYWORD] ver en directo por televisión abierta y streaming live", 
+                "[BKEYWORD] link directo para ver el juego online gratis", 
+                "[BKEYWORD] en vivo y en directo gratis por celular ahora", 
+                "[BKEYWORD] dónde mirar el partido en vivo gratis esta noche", 
+                "[BKEYWORD] fútbol en vivo gratis transmisión en directo live", 
+                "[BKEYWORD] ver el partido gratis en línea sin interrupciones", 
+                "[BKEYWORD] transmisión en vivo gratis narración en español", 
+                "[BKEYWORD] guarda el partido en vivo gratis pantalla completa", 
+                "[BKEYWORD] señal oficial en vivo y en directo gratis hoy", 
+                "[BKEYWORD] dónde puedo ver el juego en vivo gratis live online"
+            ];
+            var final_title = spin_text(spain_titles[stable_number % spain_titles.length], stable_number);
+
+            // 4. Испанские кликабельные префиксы для CTR
+            var prefixes = ["[Oficial-!EN VIVO]", "[Streaming-HD]", "[EN VIVO-STREAM]", "[PARTIDO-HOY]", "[TRANSMISION-EN VIVO]", "[EN DIRECTO-STREAMING]", "[EN VIVO]", "[EN DIRECTO]"];
+            var final_prefix = prefixes[stable_number % prefixes.length];
+            var full_title = final_prefix + " " + final_title;
+
+            // 5. Миксер испанского контента (Криштиану, Мбаппе, Ямаль)
+            var block_start = [
+                "[[LaLiga en vivo hoy|El gran fútbol de España esta noche|Vuelve LaLiga EA Sports hoy]], dónde [[ver|mirar|seguir]] [BKEYWORD] y [BKEYWORD].",
+                "[[Los encuentros están disponibles|Los partidos serán transmitidos]] en vivo por televisión y en streaming [[en directo por Movistar LaLiga y DAZN|totalmente gratis]]."
+            ];
+            var block_middle = [
+                "[[Todas las miradas se centran en el debut del Real Madrid|Focos puestos sobre el Real Madrid]] de Carlo Ancelotti, que [[se ha reforzado de forma brutal en el mercado|ha consolidado una plantilla galáctica]].",
+                "[[El Barça de Hansi Flick llega con la misma obligación|Misma situación de presión para el Barcelona]] y con figuras clave como Lamine Yamal y Pedri."
+            ];
+            var block_end = [
+                "[[¿Dónde ver LaLiga en televisión?|¿Por qué canales transmiten el partido de hoy?]] LaLiga se puede seguir en directo a través de los canali di Movistar.",
+                "¿Dónde ver [BKEYWORD] in diretto? Consulta las opciones disponibles para seguir el partido de hoy [[sin cortes ni publicidad|totalmente en directo online]]."
+            ];
+
+            var raw_desc = block_start[stable_number % block_start.length] + " " + block_middle[(stable_number + 2) % block_middle.length] + " " + block_end[(stable_number + 4) % block_end.length];
+            var final_desc = spin_text(raw_desc, stable_number);
+
+            // 6. Хвостовые осенние ключи
+            var tail_keys = ["fútbol en vivo streaming", "ver gratis en TV abierta", "streaming HD partido hoy", "transmisión en vivo directo"];
+            var final_keys = "[BKEYWORD] en vivo otoño gratis 2026, " + tail_keys[stable_number % tail_keys.length];
+
+            // 7. Инжектим данные в шапку страницы для Googlebot
+            document.title = full_title;
+            document.getElementById("meta_desc").setAttribute("content", final_desc);
+            document.getElementById("meta_keys").setAttribute("content", final_keys);
+            document.getElementById("og_title").setAttribute("content", full_title);
+            document.getElementById("tw_title").setAttribute("content", full_title);
+            document.getElementById("canonical_url").setAttribute("href", window.location.href.split('?'));
+
+            // 8. Авто-время на сегодня: суббота, 15 августа 2026 года
+            var today = new Date();
+            var ymd = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+            var hour = String(today.getHours()).padStart(2, '0');
+            var minutes = String((stable_number % 45) + 10).padStart(2, '0');
+            var schema_time = ymd + "T" + hour + ":" + minutes + ":00+02:00";
+
+            // 9. Живая JSON-LD микроразметка LiveBlogPosting
+            var json_schema = {
+                "@context": "https://schema.org",
+                "@type": "LiveBlogPosting",
+                "headline": full_title,
+                "coverageStartTime": ymd + "T00:00:00+02:00",
+                "coverageEndTime": ymd + "T23:59:59+02:00",
+                "liveBlogUpdate": {
+                    "@type": "BlogPosting",
+                    "headline": final_title,
+                    "datePublished": schema_time,
+                    "articleBody": final_desc
+                }
+            };
+
+            var script_tag = document.createElement('script');
+            script_tag.type = 'application/ld+json';
+            script_tag.text = JSON.stringify(json_schema);
+            document.head.appendChild(script_tag);
+        });
+    </script>
+</head>
+<body style="background: #000; color: #fff; font-family: Arial, sans-serif; text-align: center; padding-top: 50px;">
+
+    <!-- Слой твоего адаптивного спортивного плеера -->
+    <div style="max-width: 800px; margin: 0 auto; background: #111; padding: 20px; border-radius: 8px; border: 1px solid #222;">
+        <h1 style="font-size: 24px; color: #ff9800; margin-bottom: 20px;">🔴 TRANSMISIÓN EN VIVO DIRECTO HD</h1>
+        
+        <!-- Ссылка на прокладку партнерки -->
+        <a href="https://vlive.space" style="text-decoration: none;">
+            <div style="width: 100%; height: 450px; background: url('https://unsplash.com') center/cover; position: relative; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <div style="position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.5);"></div>
+                <div style="position: relative; z-index: 10; background: rgba(255,0,0,0.8); color: #fff; padding: 15px 30px; font-size: 20px; font-weight: bold; border-radius: 5px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                    ▷ CLIC AQUÍ PARA VER EL PARTIDO EN DIRECTO
+                </div>
+            </div>
+        </a>
+    </div>
+
+</body>
+</html>

@@ -461,6 +461,9 @@ export type JarvisPermissions = z.infer<typeof JarvisPermissionsSchema>;
 export const JarvisVoiceEngineSchema = z.enum(["pipeline", "realtime"]);
 export type JarvisVoiceEngine = z.infer<typeof JarvisVoiceEngineSchema>;
 
+export const ChatReadAloudProviderSchema = z.enum(["system", "elevenlabs"]);
+export type ChatReadAloudProvider = z.infer<typeof ChatReadAloudProviderSchema>;
+
 export const JarvisSettingsSchema = z.object({
   enabled: z.boolean().optional(),
   voiceEngine: JarvisVoiceEngineSchema.optional(),
@@ -488,6 +491,7 @@ export const JarvisSettingsSchema = z.object({
   noiseSuppression: z.boolean().optional(),
 
   // Voice output (ElevenLabs TTS)
+  chatReadAloudProvider: ChatReadAloudProviderSchema.optional(),
   voiceId: z.string().optional(),
   ttsModelId: z.string().optional(),
   stability: z.number().optional(),

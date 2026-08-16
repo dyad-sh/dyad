@@ -116,7 +116,7 @@ export default function AgentsPage() {
                         key={agent.id}
                         type="button"
                         onClick={() => openAgent(agent)}
-                        className="system-card"
+                        className="system-card agents-card"
                         data-testid={`agents-open-${agent.id}`}
                       >
                         <AgentAvatar
@@ -132,7 +132,7 @@ export default function AgentsPage() {
                           </span>
                         </span>
                         {/* The dashboard's own status treatment, unchanged. */}
-                        <span className="flex items-center gap-1.5">
+                        <span className="agents-card-status-slot">
                           {openTabIds.has(agent.id) && (
                             <span className="system-card-status">Open</span>
                           )}
@@ -145,7 +145,7 @@ export default function AgentsPage() {
                         key={destination.id}
                         type="button"
                         onClick={() => openDestination(destination)}
-                        className="system-card"
+                        className="system-card agents-card"
                         data-testid={`agents-open-${destination.id}`}
                       >
                         {destination.image ? (
@@ -168,6 +168,10 @@ export default function AgentsPage() {
                             {destination.summary}
                           </span>
                         </span>
+                        <span
+                          className="agents-card-status-slot"
+                          aria-hidden="true"
+                        />
                       </button>
                     ))}
               </div>

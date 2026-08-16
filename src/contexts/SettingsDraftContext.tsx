@@ -23,6 +23,10 @@ export type SettingsDraftContextValue = {
   effectiveSettings: UserSettings | null;
   patchDraft: (partial: Partial<UserSettings>) => Promise<UserSettings>;
   saveTab: (tabId: SettingsTabId) => Promise<void>;
+  saveTabPatch: (
+    tabId: SettingsTabId,
+    partial: Partial<UserSettings>,
+  ) => Promise<UserSettings>;
   discardTab: (tabId: SettingsTabId) => void;
   isTabDirty: (tabId: SettingsTabId) => boolean;
   isSaving: boolean;
@@ -83,6 +87,33 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
     [draftsByTab, persistSettings, saved],
   );
 
+  /**
+   * Persist a change that has its own Save action. Passing the new patch into
+   * this function avoids waiting for React to publish a staged draft before
+   * saveTab reads it.
+   */
+  const saveTabPatch = useCallback(
+    async (tabId: SettingsTabId, partial: Partial<UserSettings>) => {
+      if (!saved) {
+        throw new Error("Settings not loaded");
+      }
+
+      const combinedDraft = mergeSettingsPatch(
+        draftsByTab[tabId] ?? {},
+        partial,
+      );
+      const updated = await persistSettings(combinedDraft);
+      setDraftsByTab((prev) => {
+        const next = { ...prev };
+        delete next[tabId];
+        return next;
+      });
+      showSuccess("Settings saved");
+      return updated;
+    },
+    [draftsByTab, persistSettings, saved],
+  );
+
   const discardTab = useCallback((tabId: SettingsTabId) => {
     setDraftsByTab((prev) => {
       const next = { ...prev };
@@ -102,6 +133,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       effectiveSettings,
       patchDraft,
       saveTab,
+      saveTabPatch,
       discardTab,
       isTabDirty,
       isSaving: isUpdatePending,
@@ -113,6 +145,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       isUpdatePending,
       patchDraft,
       saveTab,
+      saveTabPatch,
     ],
   );
 

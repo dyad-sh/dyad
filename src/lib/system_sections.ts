@@ -1,5 +1,6 @@
 import {
   Activity,
+  AudioLines,
   FlaskConical,
   Cpu,
   Database,
@@ -22,9 +23,6 @@ import type { SettingsTabId } from "./settingsTabs";
  * landing overview and the tests. A second copy anywhere would drift, and the
  * first symptom of drift is a destination nobody can reach.
  *
- * Meta Human OS voice settings are not here: they live on the Meta Human OS screen, which is
- * what they configure.
- *
  * Every destination either renders an existing page or an existing settings
  * tab. Nothing here is new functionality: this is where things live, not what
  * they do.
@@ -37,6 +35,7 @@ export type SystemDestinationId =
   | "notes-vault"
   | "ai-providers"
   | "model-roles"
+  | "voice-assistant"
   | "mcp"
   | "plugins"
   | "security"
@@ -116,6 +115,15 @@ export const SYSTEM_DESTINATIONS: SystemDestination[] = [
     group: "Intelligence",
     icon: Cpu,
     renders: { kind: "settings-tab", tab: "modelRoles" },
+  },
+  {
+    id: "voice-assistant",
+    label: "Voice Assistant",
+    summary: "ElevenLabs voices, chat read-aloud and listening",
+    group: "Intelligence",
+    icon: AudioLines,
+    renders: { kind: "settings-tab", tab: "jarvis" },
+    legacyRoute: "/jarvis/settings",
   },
   {
     id: "data-sources",

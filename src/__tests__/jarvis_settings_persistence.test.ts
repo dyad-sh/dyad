@@ -122,6 +122,20 @@ describe("JARVIS settings persistence", () => {
     expect(settings.jarvis?.brainAgentId).toBe("agent-7");
   });
 
+  it("persists the chat read-aloud provider with the ElevenLabs voice", () => {
+    writeSettings({
+      jarvis: {
+        chatReadAloudProvider: "elevenlabs",
+        voiceId: "voice-123",
+      },
+    });
+
+    expect(readSettings().jarvis).toMatchObject({
+      chatReadAloudProvider: "elevenlabs",
+      voiceId: "voice-123",
+    });
+  });
+
   it("clears the key when it is removed", () => {
     writeSettings({ jarvis: { elevenLabsApiKey: { value: "xi-my-secret" } } });
 

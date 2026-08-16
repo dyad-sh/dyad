@@ -5,6 +5,13 @@ import { jarvisContracts } from "../types/jarvis";
 import { JarvisSession } from "../utils/jarvis/jarvis_session";
 import { readSettings } from "../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  DEFAULT_ELEVENLABS_TTS_MODEL,
+  DEFAULT_ELEVENLABS_VOICE_ID,
+  ElevenLabsHttpError,
+  listElevenLabsVoices,
+  synthesizeElevenLabsSpeech,
+} from "../utils/jarvis/elevenlabs_http_tts";
 
 const logger = log.scope("jarvis_handlers");
 
@@ -15,6 +22,45 @@ const logger = log.scope("jarvis_handlers");
  * is what prevents two live microphone streams after a reconnect.
  */
 const sessionsByWindow = new Map<number, JarvisSession>();
+
+function requireElevenLabsSettings() {
+  const jarvis = readSettings().jarvis;
+  const apiKey = jarvis?.elevenLabsApiKey?.value?.trim();
+  if (!apiKey) {
+    throw new DyadError(
+      "Add an ElevenLabs API key in Settings → Voice Assistant first.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  return { jarvis, apiKey };
+}
+
+function throwElevenLabsError(error: unknown): never {
+  if (error instanceof ElevenLabsHttpError) {
+    const kind =
+      error.status === 401 || error.status === 403
+        ? DyadErrorKind.Auth
+        : error.status === 422
+          ? DyadErrorKind.Validation
+          : error.status === 429
+            ? DyadErrorKind.RateLimited
+            : DyadErrorKind.External;
+    const message =
+      error.code === "insufficient_permissions"
+        ? "The ElevenLabs API key is valid but lacks permission to read voices. Enable Voices and Text to Speech for this key in ElevenLabs Developers → API Keys."
+        : error.status === 401
+          ? "ElevenLabs rejected or expired the API key. Create or update it in ElevenLabs Developers → API Keys."
+          : error.status === 403
+            ? "ElevenLabs blocked this request. Check the key's Voices and Text to Speech permissions and any IP allowlist."
+            : error.status === 422
+              ? "ElevenLabs could not use that voice or text. Check the selected Voice ID."
+              : error.status === 429
+                ? "ElevenLabs rate limit or voice quota reached. Try again shortly or check your plan."
+                : error.message;
+    throw new DyadError(message, kind);
+  }
+  throw error;
+}
 
 export function getActiveJarvisSession(
   sender: WebContents,
@@ -201,6 +247,33 @@ export function registerJarvisHandlers() {
 
     const result = (await response.json()) as { text?: string };
     return { text: result.text?.trim() ?? "" };
+  });
+
+  createTypedHandler(jarvisContracts.listVoices, async () => {
+    const { apiKey } = requireElevenLabsSettings();
+    try {
+      return { voices: await listElevenLabsVoices(apiKey) };
+    } catch (error) {
+      throwElevenLabsError(error);
+    }
+  });
+
+  createTypedHandler(jarvisContracts.synthesizeSpeech, async (_, params) => {
+    const { jarvis, apiKey } = requireElevenLabsSettings();
+    try {
+      const result = await synthesizeElevenLabsSpeech({
+        apiKey,
+        voiceId: jarvis?.voiceId?.trim() || DEFAULT_ELEVENLABS_VOICE_ID,
+        modelId: jarvis?.ttsModelId?.trim() || DEFAULT_ELEVENLABS_TTS_MODEL,
+        text: params.text,
+        stability: jarvis?.stability,
+        similarityBoost: jarvis?.similarityBoost,
+        speed: jarvis?.speed,
+      });
+      return { ...result, provider: "elevenlabs" as const };
+    } catch (error) {
+      throwElevenLabsError(error);
+    }
   });
 
   createTypedHandler(

@@ -125,7 +125,7 @@ export function CodingAgentRows() {
           <Link
             key={agent.id}
             to={agent.route}
-            className="system-card"
+            className="system-card agents-card"
             data-testid={`agents-open-${agent.id}`}
           >
             <img
@@ -140,7 +140,7 @@ export function CodingAgentRows() {
                 {status.note ?? agent.description}
               </span>
             </span>
-            <span className="flex items-center gap-1.5">
+            <span className="agents-card-status-slot">
               <span className="system-card-status">{status.label}</span>
               <span
                 className={cn("size-1.5 rounded-full", STATE_DOT[status.state])}

@@ -162,6 +162,7 @@ import {
 } from "../utils/ripgrep_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { detectFrameworkType } from "../utils/framework_utils";
+import { ensurePreviewBranding } from "../utils/preview_branding";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -296,6 +297,14 @@ async function executeApp({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
+  try {
+    await ensurePreviewBranding(appPath);
+  } catch (error) {
+    // A read-only imported project should still be previewable; branding is a
+    // presentation enhancement, not a reason to block its development server.
+    logger.warn(`Could not apply preview branding for app ${appId}:`, error);
+  }
+
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 

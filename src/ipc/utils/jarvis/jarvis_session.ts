@@ -34,6 +34,10 @@ import {
   ElevenLabsTtsSession,
   sampleRateFromOutputFormat,
 } from "./elevenlabs_tts";
+import {
+  DEFAULT_ELEVENLABS_TTS_MODEL,
+  DEFAULT_ELEVENLABS_VOICE_ID,
+} from "./elevenlabs_http_tts";
 
 const logger = log.scope("jarvis-session");
 
@@ -52,8 +56,6 @@ export const DEFAULT_GREETING = "Meta Human OS online. How can I assist?";
 const END_SESSION_PHRASES = ["end session", "go offline", "goodbye jarvis"];
 
 const DEFAULT_STT_MODEL = "scribe_v2_realtime";
-const DEFAULT_TTS_MODEL = "eleven_turbo_v2_5";
-const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
 const DEFAULT_OUTPUT_FORMAT = "pcm_24000";
 const DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 300;
 const MAX_HISTORY_ENTRIES = 40;
@@ -577,8 +579,8 @@ export class JarvisSession {
       new ElevenLabsTtsSession(
         {
           apiKey,
-          voiceId: jarvis?.voiceId || DEFAULT_VOICE_ID,
-          modelId: jarvis?.ttsModelId || DEFAULT_TTS_MODEL,
+          voiceId: jarvis?.voiceId || DEFAULT_ELEVENLABS_VOICE_ID,
+          modelId: jarvis?.ttsModelId || DEFAULT_ELEVENLABS_TTS_MODEL,
           outputFormat: outputFormat.startsWith("pcm_")
             ? outputFormat
             : DEFAULT_OUTPUT_FORMAT,

@@ -33,6 +33,11 @@ export const queryKeys = {
     envVars: ["settings", "envVars"] as const,
   },
 
+  jarvis: {
+    all: ["jarvis"] as const,
+    voices: ["jarvis", "voices"] as const,
+  },
+
   storage: {
     all: ["storage"] as const,
     status: (localVaultPath?: string) =>

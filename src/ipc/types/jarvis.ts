@@ -152,6 +152,29 @@ export const jarvisContracts = {
     }),
     output: z.object({ text: z.string() }),
   }),
+  listVoices: defineContract({
+    channel: "jarvis:voices:list",
+    input: z.void(),
+    output: z.object({
+      voices: z.array(
+        z.object({
+          voiceId: z.string(),
+          name: z.string(),
+          category: z.string().optional(),
+          previewUrl: z.string().url().nullable().optional(),
+        }),
+      ),
+    }),
+  }),
+  synthesizeSpeech: defineContract({
+    channel: "jarvis:speech:synthesize",
+    input: z.object({ text: z.string().trim().min(1).max(10_000) }),
+    output: z.object({
+      audioBase64: z.string(),
+      mimeType: z.string(),
+      provider: z.literal("elevenlabs"),
+    }),
+  }),
   respondToConfirmation: defineContract({
     channel: "jarvis:session:confirm",
     input: JarvisConfirmationResponseParamsSchema,

@@ -1,21 +1,30 @@
 import { useEffect, useState } from "react";
 import {
+  AlertCircle,
   AudioLines,
   Bot,
   Brain,
+  CheckCircle2,
+  CircleOff,
   KeyRound,
+  Loader2,
   Mic,
+  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useSettings } from "@/hooks/useSettings";
 import { useSettingsDraftContext } from "@/contexts/SettingsDraftContext";
 import { MicrophoneTester } from "./MicrophoneTester";
-import { SECTION_IDS } from "@/lib/settingsSearchIndex";
+import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
 import type { JarvisSettings as JarvisSettingsValue } from "@/lib/schemas";
+import { jarvisClient } from "@/ipc/types/jarvis";
+import { queryKeys } from "@/lib/queryKeys";
+import { cn } from "@/lib/utils";
 
 const cardClass =
   "rounded-xl border border-cyan-500/15 bg-[rgba(8,18,36,0.72)] p-6 shadow-[0_0_24px_rgba(0,229,255,0.06)] backdrop-blur-md";
@@ -23,6 +32,62 @@ const headingClass =
   "font-jarvis-ui text-sm font-medium uppercase tracking-widest text-cyan-300/70";
 const rowClass =
   "flex items-center justify-between gap-4 rounded-xl border border-cyan-400/15 bg-slate-950/35 px-4 py-3";
+
+export function getElevenLabsConnectionStatus({
+  hasKey,
+  isFetching,
+  isError,
+  hasResponse,
+  voiceCount,
+}: {
+  hasKey: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  hasResponse: boolean;
+  voiceCount: number;
+}) {
+  if (!hasKey) {
+    return {
+      state: "not-configured" as const,
+      label: "Not configured",
+      description: "Add an API key to connect",
+    };
+  }
+  if (isFetching && !hasResponse) {
+    return {
+      state: "checking" as const,
+      label: "Checking",
+      description: "Contacting ElevenLabs",
+    };
+  }
+  if (isError) {
+    return {
+      state: "error" as const,
+      label: "Needs attention",
+      description: "Could not connect to ElevenLabs",
+    };
+  }
+  if (hasResponse) {
+    return {
+      state: "connected" as const,
+      label: "Connected",
+      description: `${voiceCount} ${voiceCount === 1 ? "voice" : "voices"} available`,
+    };
+  }
+  return {
+    state: "checking" as const,
+    label: "Checking",
+    description: "Waiting to verify the connection",
+  };
+}
+
+export function getElevenLabsConnectionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/^Error invoking remote method '[^']+':\s*/i, "")
+    .replace(/^DyadError:\s*/i, "")
+    .trim();
+}
 
 function ToggleRow({
   title,
@@ -104,6 +169,21 @@ export function JarvisSettings() {
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [apiKeySaved, setApiKeySaved] = useState(false);
   const hasStoredKey = !!jarvis?.elevenLabsApiKey?.value;
+  const voicesQuery = useQuery({
+    queryKey: queryKeys.jarvis.voices,
+    queryFn: () => jarvisClient.listVoices(undefined),
+    enabled: hasStoredKey,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const voices = voicesQuery.data?.voices ?? [];
+  const connectionStatus = getElevenLabsConnectionStatus({
+    hasKey: hasStoredKey,
+    isFetching: voicesQuery.isFetching,
+    isError: voicesQuery.isError,
+    hasResponse: voicesQuery.data !== undefined,
+    voiceCount: voices.length,
+  });
 
   useEffect(() => {
     setApiKeySaved(false);
@@ -120,17 +200,21 @@ export function JarvisSettings() {
    * of leaving it staged behind the tab's save bar.
    */
   const patchNow = async (changes: Partial<JarvisSettingsValue>) => {
+    if (draft) {
+      await draft.saveTabPatch("jarvis", { jarvis: changes });
+      return;
+    }
     await updateSettings({ jarvis: changes });
-    await draft?.saveTab("jarvis");
   };
 
-  const saveApiKey = () => {
+  const saveApiKey = async () => {
     const trimmed = apiKeyDraft.trim();
     if (!trimmed) return;
     // The key is encrypted by the main process before it reaches disk.
-    void patchNow({ elevenLabsApiKey: { value: trimmed } });
+    await patchNow({ elevenLabsApiKey: { value: trimmed } });
     setApiKeyDraft("");
     setApiKeySaved(true);
+    void voicesQuery.refetch();
   };
 
   const clearApiKey = () => {
@@ -235,6 +319,35 @@ export function JarvisSettings() {
         <div className="mb-5 flex items-center gap-2">
           <KeyRound className="size-4 text-cyan-300/70" />
           <h2 className={headingClass}>ElevenLabs</h2>
+          <div
+            className={cn(
+              "ml-auto flex items-center gap-2 rounded-full border px-3 py-1.5",
+              connectionStatus.state === "connected" &&
+                "border-emerald-400/25 bg-emerald-400/8 text-emerald-200",
+              connectionStatus.state === "checking" &&
+                "border-cyan-400/25 bg-cyan-400/8 text-cyan-200",
+              connectionStatus.state === "error" &&
+                "border-rose-400/25 bg-rose-400/8 text-rose-200",
+              connectionStatus.state === "not-configured" &&
+                "border-slate-400/20 bg-slate-400/5 text-slate-300/70",
+            )}
+            title={connectionStatus.description}
+            data-testid="elevenlabs-connection-status"
+            data-state={connectionStatus.state}
+          >
+            {connectionStatus.state === "connected" ? (
+              <CheckCircle2 className="size-3.5" />
+            ) : connectionStatus.state === "checking" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : connectionStatus.state === "error" ? (
+              <AlertCircle className="size-3.5" />
+            ) : (
+              <CircleOff className="size-3.5" />
+            )}
+            <span className="text-[11px] font-medium tracking-wide uppercase">
+              {connectionStatus.label}
+            </span>
+          </div>
         </div>
 
         <div className={rowClass}>
@@ -248,7 +361,7 @@ export function JarvisSettings() {
             <p className="mt-1 text-xs leading-5 text-cyan-100/45">
               {hasStoredKey
                 ? "A key is saved and encrypted with your OS credential store."
-                : "Required for speech input and voice output. Stored encrypted; never sent to the renderer."}
+                : "Required for speech input and voice output. Enable Voices and Text to Speech permissions on restricted keys."}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -259,13 +372,13 @@ export function JarvisSettings() {
               placeholder={hasStoredKey ? "••••••••••••" : "xi-..."}
               onChange={(event) => setApiKeyDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") saveApiKey();
+                if (event.key === "Enter") void saveApiKey();
               }}
               className="w-56"
             />
             <button
               type="button"
-              onClick={saveApiKey}
+              onClick={() => void saveApiKey()}
               disabled={!apiKeyDraft.trim()}
               className="rounded-lg border border-cyan-400/25 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-400/10 disabled:opacity-40"
             >
@@ -284,6 +397,34 @@ export function JarvisSettings() {
         </div>
 
         <div className="mt-3 space-y-3">
+          <div id={SETTING_IDS.jarvisChatReadAloud} className={rowClass}>
+            <div className="min-w-0 flex-1">
+              <Label
+                htmlFor="jarvis-chat-read-aloud-provider"
+                className="text-sm font-medium text-cyan-50"
+              >
+                Chat read-aloud provider
+              </Label>
+              <p className="mt-1 text-xs leading-5 text-cyan-100/45">
+                Voice used by the audio button on AI-generated chat messages.
+              </p>
+            </div>
+            <select
+              id="jarvis-chat-read-aloud-provider"
+              value={jarvis?.chatReadAloudProvider ?? "system"}
+              onChange={(event) =>
+                patch({
+                  chatReadAloudProvider: event.target
+                    .value as JarvisSettingsValue["chatReadAloudProvider"],
+                })
+              }
+              className="h-10 w-64 shrink-0 rounded-lg border border-cyan-400/20 bg-slate-950/70 px-3 text-sm text-cyan-50 outline-none focus:border-cyan-300/60"
+            >
+              <option value="system">System voice</option>
+              <option value="elevenlabs">ElevenLabs</option>
+            </select>
+          </div>
+
           <div className={rowClass}>
             <div className="min-w-0 flex-1">
               <Label
@@ -293,17 +434,76 @@ export function JarvisSettings() {
                 Voice ID
               </Label>
               <p className="mt-1 text-xs leading-5 text-cyan-100/45">
-                The ElevenLabs voice used for spoken replies.
+                The ElevenLabs voice used for live replies and chat read-aloud.
               </p>
             </div>
-            <Input
-              id="jarvis-voice-id"
-              value={jarvis?.voiceId ?? ""}
-              placeholder="21m00Tcm4TlvDq8ikWAM"
-              onChange={(event) => patch({ voiceId: event.target.value })}
-              className="w-64 shrink-0"
-            />
+            <div className="flex w-64 shrink-0 items-center gap-2">
+              {voices.length > 0 ? (
+                <select
+                  id="jarvis-voice-id"
+                  value={jarvis?.voiceId ?? ""}
+                  onChange={(event) => patch({ voiceId: event.target.value })}
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-cyan-400/20 bg-slate-950/70 px-3 text-sm text-cyan-50 outline-none focus:border-cyan-300/60"
+                >
+                  <option value="">Rachel (default)</option>
+                  {jarvis?.voiceId &&
+                    !voices.some(
+                      (voice) => voice.voiceId === jarvis.voiceId,
+                    ) && (
+                      <option value={jarvis.voiceId}>
+                        Custom voice ({jarvis.voiceId})
+                      </option>
+                    )}
+                  {voices.map((voice) => (
+                    <option key={voice.voiceId} value={voice.voiceId}>
+                      {voice.name}
+                      {voice.category ? ` · ${voice.category}` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  id="jarvis-voice-id"
+                  value={jarvis?.voiceId ?? ""}
+                  placeholder="21m00Tcm4TlvDq8ikWAM"
+                  onChange={(event) => patch({ voiceId: event.target.value })}
+                  className="min-w-0 flex-1"
+                />
+              )}
+              <button
+                type="button"
+                title="Refresh ElevenLabs voices"
+                aria-label="Refresh ElevenLabs voices"
+                disabled={!hasStoredKey || voicesQuery.isFetching}
+                onClick={() => void voicesQuery.refetch()}
+                className="grid size-10 shrink-0 place-items-center rounded-lg border border-cyan-400/20 text-cyan-200/70 hover:bg-cyan-400/10 disabled:opacity-40"
+              >
+                {voicesQuery.isFetching ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+              </button>
+            </div>
           </div>
+          {hasStoredKey && voicesQuery.isError && (
+            <div
+              className="rounded-lg border border-rose-400/20 bg-rose-400/6 px-4 py-3"
+              role="alert"
+            >
+              <p className="text-xs font-medium text-rose-100">
+                ElevenLabs connection failed
+              </p>
+              <p className="mt-1 text-xs leading-5 text-rose-100/70">
+                {getElevenLabsConnectionError(voicesQuery.error)}
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-rose-100/45">
+                In ElevenLabs, open Developers → API Keys and enable Voices and
+                Text to Speech. Also check expiry, credit limits, and IP
+                restrictions.
+              </p>
+            </div>
+          )}
 
           <div className={rowClass}>
             <div className="min-w-0 flex-1">

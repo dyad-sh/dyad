@@ -88,6 +88,7 @@ export const SETTING_IDS = {
   modelRoleVideo: "setting-model-role-video",
   modelRoleEmbeddings: "setting-model-role-embeddings",
   modelRoleOcr: "setting-model-role-ocr",
+  jarvisChatReadAloud: "setting-jarvis-chat-read-aloud",
 } as const;
 
 type SearchableSettingItem = {
@@ -115,6 +116,22 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Meta Human OS voice",
     description: "Voice ID, speed, stability and similarity for spoken replies",
     keywords: ["voice", "jarvis", "speed", "stability", "similarity", "speak"],
+    sectionId: SECTION_IDS.jarvis,
+    sectionLabel: "Voice Assistant",
+  },
+  {
+    id: SETTING_IDS.jarvisChatReadAloud,
+    label: "Chat read-aloud voice",
+    description:
+      "Choose the system voice or an ElevenLabs voice for AI messages",
+    keywords: [
+      "chat",
+      "read aloud",
+      "elevenlabs",
+      "voice provider",
+      "tts",
+      "audio",
+    ],
     sectionId: SECTION_IDS.jarvis,
     sectionLabel: "Voice Assistant",
   },

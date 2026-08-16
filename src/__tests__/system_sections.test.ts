@@ -26,6 +26,7 @@ const REQUIRED = [
   "notes-vault",
   "ai-providers",
   "model-roles",
+  "voice-assistant",
   "mcp",
   "plugins",
   "security",
@@ -74,13 +75,7 @@ describe("System destinations", () => {
       ),
     );
 
-    /**
-     * Tabs reached from the screen they configure rather than from System,
-     * with where to find each. Not an escape hatch: the assertion below still
-     * fails if a tab has no route at all, and this list has to name a real
-     * screen for anyone reading it to check.
-     */
-    const reachedElsewhere = new Map([["jarvis", "/jarvis/settings"]]);
+    const reachedElsewhere = new Map<string, string>();
 
     const stranded = SETTINGS_TABS.map((tab) => tab.id).filter(
       (id) => !routed.has(id) && !reachedElsewhere.has(id),
@@ -121,6 +116,7 @@ describe("System destinations", () => {
 
   it("resolves a destination by id and rejects an unknown one", () => {
     expect(findDestination("mcp")?.label).toBe("MCP");
+    expect(findDestination("voice-assistant")?.label).toBe("Voice Assistant");
     expect(findDestination("skills")).toBeUndefined();
     expect(findDestination("nonsense")).toBeUndefined();
     expect(findDestination(null)).toBeUndefined();

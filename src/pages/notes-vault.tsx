@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import {
   FileText,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { notesVaultAtom, type VaultNote } from "@/atoms/notesVaultAtoms";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +29,13 @@ import {
   searchVaultNotes,
 } from "@/lib/notes_vault";
 import { cn } from "@/lib/utils";
+import { ipc } from "@/ipc/types";
+
+type VaultSyncState = {
+  phase: "saving" | "synced" | "cache" | "error";
+  destination?: "local" | "cloud";
+  detail?: string;
+};
 
 function notePreview(note: VaultNote) {
   return note.body.trim().replace(/\s+/g, " ") || "No additional text";
@@ -44,6 +52,10 @@ export default function NotesVaultPage() {
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [vaultSync, setVaultSync] = useState<VaultSyncState>({
+    phase: "saving",
+  });
+  const syncSequenceRef = useRef(0);
 
   const visibleNotes = useMemo(
     () => searchVaultNotes(notes, query),
@@ -73,6 +85,38 @@ export default function NotesVaultPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setNotes]);
+
+  useEffect(() => {
+    const sequence = ++syncSequenceRef.current;
+    setVaultSync({ phase: "saving" });
+    const timeout = window.setTimeout(() => {
+      void ipc.storage
+        .syncVaultNotes({ notes })
+        .then((result) => {
+          if (syncSequenceRef.current !== sequence) return;
+          if (result.destination === "cache") {
+            setVaultSync({
+              phase: "cache",
+              detail: result.reason ?? undefined,
+            });
+            return;
+          }
+          setVaultSync({
+            phase: "synced",
+            destination: result.destination,
+            detail: result.location ?? undefined,
+          });
+        })
+        .catch((error: unknown) => {
+          if (syncSequenceRef.current !== sequence) return;
+          setVaultSync({
+            phase: "error",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }, 450);
+    return () => window.clearTimeout(timeout);
+  }, [notes]);
 
   const createNote = () => {
     const note = createVaultNote();
@@ -104,13 +148,14 @@ export default function NotesVaultPage() {
 
   return (
     <div
-      className="notes-vault mx-auto flex h-full min-h-[32rem] w-full max-w-6xl overflow-hidden p-3 sm:p-5"
+      className="notes-vault settings-jarvis home-jarvis relative flex h-full min-h-[32rem] w-full overflow-hidden bg-background p-3 sm:p-5"
       data-testid="notes-vault"
     >
-      <div className="flex min-h-0 w-full overflow-hidden rounded-3xl border border-border/70 bg-card/90 text-card-foreground shadow-xl backdrop-blur-xl">
+      <ParticleBackground className="z-0" />
+      <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-6xl overflow-hidden rounded-3xl border border-primary/15 bg-card/72 text-card-foreground shadow-[0_0_32px_rgba(0,229,255,0.08)] backdrop-blur-xl">
         <aside
           className={cn(
-            "min-h-0 shrink-0 border-r border-border/70 bg-muted/25 transition-[width] duration-200",
+            "min-h-0 shrink-0 border-r border-border/70 bg-muted/35 backdrop-blur-xl transition-[width] duration-200",
             sidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0",
           )}
         >
@@ -235,8 +280,26 @@ export default function NotesVaultPage() {
                     "minute",
                   )}
                 </span>
-                <span className="text-[11px] text-emerald-600">
-                  Saved locally
+                <span
+                  className={cn(
+                    "text-[11px]",
+                    vaultSync.phase === "error"
+                      ? "text-rose-400"
+                      : vaultSync.phase === "saving"
+                        ? "text-amber-500"
+                        : "text-emerald-500",
+                  )}
+                  title={vaultSync.detail}
+                >
+                  {vaultSync.phase === "saving"
+                    ? "Saving to vault…"
+                    : vaultSync.phase === "synced"
+                      ? vaultSync.destination === "cloud"
+                        ? "Saved to cloud vault"
+                        : "Saved to vault"
+                      : vaultSync.phase === "error"
+                        ? "Vault sync failed"
+                        : "Saved locally"}
                 </span>
                 <Button
                   variant="ghost"

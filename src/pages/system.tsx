@@ -152,7 +152,16 @@ export default function SystemPage({
           </span>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          className={cn(
+            "relative min-h-0 flex-1 overflow-auto",
+            activeDestination.renders.kind === "settings-tab" &&
+              "settings-jarvis home-jarvis bg-background",
+          )}
+        >
+          {activeDestination.renders.kind === "settings-tab" && (
+            <ParticleBackground className="z-0" />
+          )}
           {/* The original component, unchanged. */}
           {activeDestination.renders.kind === "page" ? (
             activeDestination.renders.route === "/infrastructure" ? (
@@ -163,7 +172,7 @@ export default function SystemPage({
               <DataSourcesPage />
             )
           ) : (
-            <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8">
+            <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-6 sm:px-8">
               {/* The draft context the settings screen provides. Without it the
                   save bar and the tabs that use drafts lose their edits. */}
               <SettingsDraftProvider>

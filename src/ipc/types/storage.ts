@@ -23,6 +23,16 @@ const ChatAgentConversationSchema = z.object({
   ),
 });
 
+export const VaultNoteSchema = z.object({
+  id: z.string().min(1).max(200),
+  title: z.string().max(500),
+  body: z.string().max(1_000_000),
+  pinned: z.boolean(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type VaultNote = z.infer<typeof VaultNoteSchema>;
+
 export const StorageStatusSchema = z.object({
   localVaultReady: z.boolean(),
   cloudConnected: z.boolean(),
@@ -101,6 +111,17 @@ export const storageContracts = {
       chatAgentConversations: z.array(ChatAgentConversationSchema),
     }),
     output: StorageSyncResultSchema,
+  }),
+  syncVaultNotes: defineContract({
+    channel: "storage:sync-vault-notes",
+    input: z.object({ notes: z.array(VaultNoteSchema).max(10_000) }),
+    output: z.object({
+      destination: z.enum(["local", "cloud", "cache"]),
+      files: z.number(),
+      syncedAt: z.number().nullable(),
+      location: z.string().nullable(),
+      reason: z.string().nullable(),
+    }),
   }),
 } as const;
 

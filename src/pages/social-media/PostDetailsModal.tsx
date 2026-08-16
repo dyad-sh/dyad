@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
   BarChart3,
@@ -71,17 +71,57 @@ export function PostDetailsModal({
   const [content, setContent] = useState("");
   const [metrics, setMetrics] = useState<SocialPostMetrics | null>(null);
   const [metricsUpdatedAt, setMetricsUpdatedAt] = useState<number | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const autoRefreshKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || !post) return;
+    if (!open || !post) {
+      autoRefreshKeyRef.current = null;
+      return;
+    }
     setBusy(null);
     setContent(post.content);
     setMetrics(post.metrics ?? null);
     setMetricsUpdatedAt(post.metricsUpdatedAt ?? null);
+    setMetricsError(null);
     const base = post.scheduledFor ?? Date.now();
     setScheduleDate(format(base, "yyyy-MM-dd"));
     setScheduleTime(format(base, "HH:mm"));
   }, [open, post]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !post ||
+      post.platform !== "x" ||
+      post.status !== "posted" ||
+      !post.externalId
+    ) {
+      return;
+    }
+
+    // React Strict Mode remounts effects in development. Keep one X lookup per
+    // modal opening so opening details never double-charges or races the API.
+    const refreshKey = `${post.id}:${post.externalId}`;
+    if (autoRefreshKeyRef.current === refreshKey) return;
+    autoRefreshKeyRef.current = refreshKey;
+
+    setBusy("metrics");
+    setMetricsError(null);
+    void refreshPostMetrics(post.id)
+      .then((updated) => {
+        if (autoRefreshKeyRef.current !== refreshKey) return;
+        setMetrics(updated.metrics ?? null);
+        setMetricsUpdatedAt(updated.metricsUpdatedAt ?? null);
+      })
+      .catch((error: unknown) => {
+        if (autoRefreshKeyRef.current !== refreshKey) return;
+        setMetricsError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (autoRefreshKeyRef.current === refreshKey) setBusy(null);
+      });
+  }, [open, post, refreshPostMetrics]);
 
   if (!post) return null;
 
@@ -193,13 +233,16 @@ export function PostDetailsModal({
 
   const handleRefreshMetrics = async () => {
     setBusy("metrics");
+    setMetricsError(null);
     try {
       const updated = await refreshPostMetrics(post.id);
       setMetrics(updated.metrics ?? null);
       setMetricsUpdatedAt(updated.metricsUpdatedAt ?? null);
       showSuccess("Performance updated");
     } catch (e) {
-      showError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setMetricsError(message);
+      showError(message);
     } finally {
       setBusy(null);
     }
@@ -325,9 +368,11 @@ export function PostDetailsModal({
                     Performance
                   </p>
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    {metricsUpdatedAt
-                      ? `Updated ${format(metricsUpdatedAt, "MMM d 'at' HH:mm")}`
-                      : "Pull the latest public engagement from X"}
+                    {busy === "metrics" && !metricsUpdatedAt
+                      ? "Retrieving live performance from X…"
+                      : metricsUpdatedAt
+                        ? `Updated ${format(metricsUpdatedAt, "MMM d 'at' HH:mm")}`
+                        : "Pull the latest public engagement from X"}
                   </p>
                 </div>
                 <Button
@@ -366,6 +411,14 @@ export function PostDetailsModal({
                   value={metrics?.impressions}
                 />
               </div>
+              {metricsError && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-[11px] leading-5 text-rose-300"
+                >
+                  Could not retrieve X performance: {metricsError}
+                </p>
+              )}
             </div>
           )}
 

@@ -26,6 +26,7 @@ export const VAULT_FOLDERS: readonly string[] = [
   "Conversations/Hermes Agents",
   "Notes/Apps",
   "Notes/Daily",
+  "Notes/Vault",
   "Media/Images",
   // Everything the app generates lands here, so images are never scattered
   // across app-private folders.
@@ -64,7 +65,7 @@ export function vaultStarterFiles(): Record<string, string> {
     "Conversations.md":
       "# Conversations\n\nConversation links appear here automatically after the first sync.\n",
     "Notes.md":
-      "# Notes\n\n- [[Notes/System Notes|System Notes]]\n- `Notes/Apps` contains durable context for each app.\n- `Notes/Daily` is yours for daily notes.\n",
+      "# Notes\n\n- [[Notes/System Notes|System Notes]]\n- `Notes/Vault` contains notes created in Notes Vault.\n- `Notes/Apps` contains durable context for each app.\n- `Notes/Daily` is yours for daily notes.\n",
     "Documents.md":
       "---\ntype: documents-index\ntags:\n  - meta-human\n  - knowledge-base\n---\n\n# Documents\n\nDrop documents in the `Documents` folder to add them to your Knowledge Base. Choose **Index now** on the Knowledge Base screen and every file here becomes searchable by your agents.\n\nDocuments you attach in chat are filed here automatically once read, together with a `.md` of their extracted text — that sidecar is what the embedder indexes, since the vector store reads text rather than PDF bytes.\n\nMarkdown, text, code and data files are indexed. Private keys and certificates are skipped.\n",
     "Media.md":

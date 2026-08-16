@@ -40,4 +40,21 @@ describe("storage IPC contracts", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts portable Notes Vault records for filesystem mirroring", () => {
+    expect(
+      storageContracts.syncVaultNotes.input.safeParse({
+        notes: [
+          {
+            id: "note-1",
+            title: "A durable note",
+            body: "Stored as Markdown.",
+            pinned: false,
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
 });

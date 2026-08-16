@@ -1,13 +1,7 @@
 import { atomWithStorage } from "jotai/utils";
+import type { VaultNote } from "@/ipc/types/storage";
 
-export type VaultNote = {
-  id: string;
-  title: string;
-  body: string;
-  pinned: boolean;
-  createdAt: number;
-  updatedAt: number;
-};
+export type { VaultNote } from "@/ipc/types/storage";
 
 /** Plain-text notes stored in Electron's durable renderer storage. */
 export const notesVaultAtom = atomWithStorage<VaultNote[]>(

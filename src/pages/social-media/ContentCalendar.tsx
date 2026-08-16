@@ -25,7 +25,7 @@ import type { PlannerTask } from "@/lib/planner_tasks";
 import { POST_STATUS_META, postCalendarTime } from "./post-meta";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MAX_CHIPS_PER_DAY = 3;
+const MAX_CHIPS_PER_DAY = 2;
 
 function buildMonthGrid(month: Date): Date[] {
   const start = startOfWeek(startOfMonth(month), { weekStartsOn: 0 });
@@ -54,7 +54,7 @@ function PostChip({
       }}
       title={post.content}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-md border px-1.5 py-1 text-left text-[11px] leading-none transition hover:brightness-125",
+        "flex h-5 w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-left text-[10px] leading-none transition hover:brightness-125",
         status.chip,
       )}
       data-testid={`calendar-post-${post.id}`}
@@ -64,12 +64,12 @@ function PostChip({
         <img
           src={post.image}
           alt=""
-          className="size-4 shrink-0 rounded object-cover ring-1 ring-white/15"
+          className="size-3.5 shrink-0 rounded object-cover ring-1 ring-white/15"
         />
       )}
       <SocialPlatformIcon
         platform={post.platform}
-        className="size-3 shrink-0"
+        className="size-2.5 shrink-0"
       />
       <span className="truncate">
         {format(postCalendarTime(post), "HH:mm")} ·{" "}
@@ -95,7 +95,7 @@ function TaskChip({
       }}
       title={task.title}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-md border px-1.5 py-1 text-left text-[11px] leading-none transition hover:brightness-125",
+        "flex h-5 w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-left text-[10px] leading-none transition hover:brightness-125",
         task.completed
           ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 line-through"
           : task.priority === "high"
@@ -269,7 +269,7 @@ export function ContentCalendar({
                 }
               }}
               className={cn(
-                "group relative flex min-h-24 flex-col gap-1 border-b border-r border-border/50 p-1.5 text-left align-top transition last:border-r-0 hover:bg-accent/45",
+                "group relative flex min-h-[4.5rem] flex-col gap-0.5 border-b border-r border-border/50 p-1 text-left align-top transition last:border-r-0 hover:bg-accent/45",
                 !inMonth && "bg-muted/45",
                 today && "bg-primary/10",
               )}
@@ -279,7 +279,7 @@ export function ContentCalendar({
                 <CalendarPlus className="size-3.5 text-primary/0 transition group-hover:text-primary/70" />
                 <span
                   className={cn(
-                    "grid size-6 place-items-center rounded-full text-xs tabular-nums",
+                    "grid size-5 place-items-center rounded-full text-[11px] tabular-nums",
                     today
                       ? "bg-primary font-semibold text-primary-foreground shadow-sm"
                       : inMonth

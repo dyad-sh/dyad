@@ -419,10 +419,7 @@ export function SettingsTabbedContent({
           value="plugins"
           className="space-y-6 focus-visible:outline-none"
         >
-          <div
-            id={SECTION_IDS.plugins}
-            className={`${settingsCardClass} overflow-hidden !p-0`}
-          >
+          <div id={SECTION_IDS.plugins} className="scroll-mt-24">
             <Tabs
               value={extensionView}
               onValueChange={(value) => {
@@ -437,7 +434,7 @@ export function SettingsTabbedContent({
               }}
               className="gap-0"
             >
-              <div className="flex justify-center border-b border-border/60 bg-muted/20 px-5 py-4">
+              <div className="flex justify-center px-5 py-2">
                 <TabsList className="h-10 rounded-full border border-border/70 bg-muted/70 p-1 shadow-inner">
                   <TabsTrigger
                     value="plugins"
@@ -460,7 +457,7 @@ export function SettingsTabbedContent({
                 </TabsList>
               </div>
 
-              <div className="p-5 sm:p-7">
+              <div className="px-1 pt-6 sm:px-2 sm:pt-7">
                 <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <h2 className="font-jarvis-display text-2xl font-semibold tracking-tight text-foreground">

@@ -20,6 +20,11 @@ import {
   syncVault,
 } from "../utils/storage_vault";
 import {
+  syncVaultNotesToCloud,
+  syncVaultNotesToLocal,
+} from "../utils/vault_notes";
+import { withLock } from "../utils/lock_utils";
+import {
   restoreSecretsFromVault,
   syncSecretsToVault,
 } from "../utils/vault_secrets_sync";
@@ -249,4 +254,62 @@ export function registerStorageHandlers() {
     });
     return { destination: input.preferences.destination, ...counts, syncedAt };
   });
+
+  createTypedHandler(storageContracts.syncVaultNotes, async (_, { notes }) =>
+    withLock("notes-vault-sync", async () => {
+      const storage = readSettings().storage;
+      if (storage?.destination === "cloud") {
+        if (!isBlobConnected()) {
+          return {
+            destination: "cache" as const,
+            files: 0,
+            syncedAt: null,
+            location: null,
+            reason: "Connect cloud storage to mirror Notes Vault.",
+          };
+        }
+        try {
+          const result = await syncVaultNotesToCloud(notes);
+          return {
+            destination: "cloud" as const,
+            ...result,
+            syncedAt: Date.now(),
+            reason: null,
+          };
+        } catch (error) {
+          throw new DyadError(
+            `Could not mirror Notes Vault to cloud storage: ${error instanceof Error ? error.message : String(error)}`,
+            DyadErrorKind.External,
+          );
+        }
+      }
+
+      if (!storage?.localVaultPath?.trim()) {
+        return {
+          destination: "cache" as const,
+          files: 0,
+          syncedAt: null,
+          location: null,
+          reason: "Choose a local vault in Storage to create Markdown files.",
+        };
+      }
+      try {
+        const result = await syncVaultNotesToLocal(
+          storage.localVaultPath,
+          notes,
+        );
+        return {
+          destination: "local" as const,
+          ...result,
+          syncedAt: Date.now(),
+          reason: null,
+        };
+      } catch (error) {
+        throw new DyadError(
+          `Could not mirror Notes Vault to the selected folder: ${error instanceof Error ? error.message : String(error)}`,
+          DyadErrorKind.External,
+        );
+      }
+    }),
+  );
 }

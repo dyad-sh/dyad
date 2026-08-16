@@ -16,3 +16,7 @@ default settings snapshot mismatches.
 For settings whose default can be overridden remotely:
 
 - Prefer leaving the raw stored field unset until the user explicitly changes it, then compute the effective value as `stored value ?? remote default ?? built-in fallback`. Do not persist remote-applied defaults into `user-settings.json`.
+
+## Nested settings tabs
+
+- When consolidating sections behind an inner tab, map every nested `SECTION_ID` to the outer entry in `SETTINGS_TABS` and derive the visible inner tab from `activeSettingsSectionAtom`. Otherwise Settings search navigates to the right outer screen while leaving the matched control hidden.

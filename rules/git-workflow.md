@@ -50,6 +50,10 @@ If `gh pr create` from a fork fails with `GraphQL: Fork collab Fork collab can't
 gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --title "..." --body "..."
 ```
 
+## `gh pr create` token permission fallback
+
+If `gh pr create` fails with `GraphQL: Resource not accessible by personal access token (createPullRequest)` after the branch pushed successfully, create the PR through REST using a JSON body file: `gh api repos/<owner>/<repo>/pulls --method POST --input <file>`. The same token may have REST pull-request permission even when the CLI GraphQL mutation is denied.
+
 ## `gh pr create` body quoting
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.

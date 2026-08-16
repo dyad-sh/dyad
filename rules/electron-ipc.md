@@ -46,6 +46,8 @@ const unsub = ipc.events.agent.onTodosUpdate((payload) => { ... });
 ipc.chatStream.start(params, { onChunk, onEnd, onError });
 ```
 
+- Pass fields with Zod `.default(...)` explicitly from generated IPC clients when `npm run ts` requires them. The runtime default still protects raw IPC input, but client input types may require values such as `provider: "supabase"` or `encoding: "utf-8"`.
+
 ## Stream client notes
 
 - `createStreamClient(...).start()` returns `void`, not a cleanup/unsubscribe function. You cannot capture a handle to abort or clean up an active stream from the caller side.

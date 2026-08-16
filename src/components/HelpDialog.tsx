@@ -14,7 +14,7 @@ import {
   CheckIcon,
   XIcon,
   SparklesIcon,
-  ExternalLinkIcon,
+  Github,
   AlertCircleIcon,
   MessageSquareIcon,
   CopyIcon,
@@ -29,28 +29,37 @@ import {
   useCallback,
 } from "react";
 import { useAtom, useAtomValue } from "jotai";
+import { usePostHog } from "posthog-js/react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
-import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
+import { type SessionDebugBundle } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { useTranslation } from "react-i18next";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
-import { BugScreenshotDialog } from "./BugScreenshotDialog";
+import {
+  BugScreenshotDialog,
+  type ScreenshotPromptSource,
+} from "./BugScreenshotDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { type ModelSelection, type UserSettings } from "@/lib/schemas";
-import { type UserBudgetInfo } from "@/ipc/types/system";
 import { motion, AnimatePresence } from "framer-motion";
-import { formatUpdaterLogsForIssueBody } from "@/lib/debugLogFormatting";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 import { createModelSelection, getModelPreferenceKey } from "@/lib/modelEffort";
+import {
+  buildBugReportBody,
+  buildSessionReportBody,
+  buildSessionReportFallbackBody,
+  type ScreenshotOutcome,
+} from "@/lib/issueBody";
 
 // =============================================================================
 // Animation constants
 // =============================================================================
 
 type DialogScreen = "main" | "review" | "upload-complete";
+
+type PendingReport = { kind: "bug" } | { kind: "session"; sessionId: string };
 
 const SCREEN_ORDER: DialogScreen[] = ["main", "review", "upload-complete"];
 
@@ -77,55 +86,6 @@ const screenTransition = {
 
 const GITHUB_ISSUES_BASE =
   "https://github.com/dyad-sh/dyad/issues/new" as const;
-
-function formatSettingsLines(
-  settings: UserSettings | null,
-  selectedModel: ModelSelection | null,
-): string {
-  if (!settings) return "Settings not available";
-  const model = selectedModel ?? settings.selectedModel;
-  return [
-    `- Selected Model: ${model.provider}:${model.name}`,
-    `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
-    `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
-    `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
-    `- Effort Level: ${selectedModel?.effortLevel ?? "medium"}`,
-    `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
-    `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
-  ].join("\n");
-}
-
-function formatSystemInfoSection(
-  debugInfo: SystemDebugInfo,
-  userBudget: UserBudgetInfo | undefined,
-): string {
-  return `## System Information
-- Dyad Version: ${debugInfo.dyadVersion}
-- Platform: ${debugInfo.platform}
-- Architecture: ${debugInfo.architecture}
-- Node Version: ${debugInfo.nodeVersion || "n/a"}
-- PNPM Version: ${debugInfo.pnpmVersion || "n/a"}
-- Node Path: ${debugInfo.nodePath || "n/a"}
-- Pro User ID: ${userBudget?.redactedUserId || "n/a"}
-- Telemetry ID: ${debugInfo.telemetryId || "n/a"}
-- Model: ${debugInfo.selectedLanguageModel || "n/a"}`;
-}
-
-function formatLogsSection(debugInfo: SystemDebugInfo): string {
-  // Keep the updater section small: the issue body travels in the GitHub URL.
-  const updaterSection = debugInfo.updaterLogs
-    ? `
-
-## Auto-Updater Logs
-\`\`\`
-${formatUpdaterLogsForIssueBody(debugInfo.updaterLogs)}
-\`\`\``
-    : "";
-  return `## Logs
-\`\`\`
-${debugInfo.logs.slice(-3_500) || "No logs available"}
-\`\`\`${updaterSection}`;
-}
 
 function openGitHubIssue(params: {
   title: string;
@@ -204,15 +164,19 @@ function ReviewDetailsSection({
 /** Copy button with animated feedback. */
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const posthog = usePostHog();
 
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(text);
+      // Reported so we can see copies that land after a screenshot capture and
+      // overwrite the image the reporter was about to paste.
+      posthog.capture("session-report:copy-session-id");
       setCopied(true);
     } catch (err) {
       console.error("Failed to copy:", err);
     }
-  }, [text]);
+  }, [text, posthog]);
 
   useEffect(() => {
     if (!copied) return;
@@ -271,7 +235,13 @@ export function HelpDialog() {
   );
   const [sessionId, setSessionId] = useState("");
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
-  const [isBugScreenshotOpen, setIsBugScreenshotOpen] = useState(false);
+  const [isScreenshotPromptOpen, setIsScreenshotPromptOpen] = useState(false);
+  // What the screenshot prompt should file once the reporter answers it.
+  // Opening the prompt closes this dialog, which runs resetDialogState, so the
+  // session ID is snapshotted here rather than read back from state later.
+  const [pendingReport, setPendingReport] = useState<PendingReport | null>(
+    null,
+  );
   const hasNavigated = useRef(false);
   // Tracks which chat (if any) we've already preloaded for the crash-triggered
   // upload flow, so the preload effect fires once per open.
@@ -325,9 +295,13 @@ export function HelpDialog() {
     preloadedChatId.current = null;
   };
 
+  // Hold this dialog's state while a report is waiting on the screenshot
+  // prompt. The prompt closes this dialog only to keep it out of the capture,
+  // and backing out of the prompt has to land the reporter where they were,
+  // with an uploaded session ID still on screen.
   useEffect(() => {
-    if (!isOpen) resetDialogState();
-  }, [isOpen]);
+    if (!isOpen && !pendingReport) resetDialogState();
+  }, [isOpen, pendingReport]);
 
   // Crash-triggered upload: when opened with a uploadChatId, skip the main
   // screen, preload that chat's debug bundle, and jump straight to review.
@@ -376,26 +350,17 @@ export function HelpDialog() {
   // Actions
   // ---------------------------------------------------------------------------
 
-  const handleReportBug = async () => {
+  const handleReportBug = async (screenshot: ScreenshotOutcome) => {
     setIsLoading(true);
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
-      const body = `\
-<!-- Please fill in all fields in English -->
-
-## Bug Description (required)
-<!-- Please describe the issue you're experiencing and how to reproduce it -->
-
-## Screenshot (recommended)
-<!-- Screenshot of the bug -->
-
-${formatSystemInfoSection(debugInfo, userBudget ?? undefined)}
-
-## Settings
-${formatSettingsLines(settings, diagnosticModelSelection)}
-
-${formatLogsSection(debugInfo)}
-`;
+      const body = buildBugReportBody({
+        debugInfo,
+        settings,
+        selectedModel: diagnosticModelSelection,
+        userBudget: userBudget ?? undefined,
+        screenshot,
+      });
       openGitHubIssue({
         title: "[bug] <WRITE TITLE HERE>",
         labels: ["bug"],
@@ -470,36 +435,26 @@ ${formatLogsSection(debugInfo)}
     setDebugBundle(null);
   };
 
-  const handleOpenGitHubIssue = async () => {
+  // reportedSessionId is passed in rather than read from state: the screenshot
+  // prompt closes this dialog before this runs, which clears sessionId.
+  const handleOpenGitHubIssue = async (
+    screenshot: ScreenshotOutcome,
+    reportedSessionId: string,
+  ) => {
+    setIsLoading(true);
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
-      const body = `\
-<!-- Please fill in all fields in English -->
-
-Session ID: ${sessionId}
-Session Schema: v2.0
-Pro User ID: ${userBudget?.redactedUserId || "n/a"}
-
-## Issue Description (required)
-<!-- Please describe the issue you're experiencing -->
-
-## Expected Behavior (required)
-<!-- What did you expect to happen? -->
-
-## Actual Behavior (required)
-<!-- What actually happened? -->
-
-${formatSystemInfoSection(debugInfo, userBudget ?? undefined)}
-
-## Settings
-${formatSettingsLines(settings, diagnosticModelSelection)}
-
-${formatLogsSection(debugInfo)}
-`;
       openGitHubIssue({
         title: "[session report] <add title>",
         labels: ["support"],
-        body,
+        body: buildSessionReportBody({
+          debugInfo,
+          settings,
+          selectedModel: diagnosticModelSelection,
+          userBudget: userBudget ?? undefined,
+          screenshot,
+          sessionId: reportedSessionId,
+        }),
         isDyadProUser,
       });
     } catch (error) {
@@ -507,11 +462,56 @@ ${formatLogsSection(debugInfo)}
       openGitHubIssue({
         title: "[session report] <add title>",
         labels: ["support"],
-        body: `Session ID: ${sessionId}\nSession Schema: v2.0\nPro User ID: ${userBudget?.redactedUserId || "n/a"}`,
+        body: buildSessionReportFallbackBody({
+          userBudget: userBudget ?? undefined,
+          screenshot,
+          sessionId: reportedSessionId,
+        }),
         isDyadProUser,
       });
+    } finally {
+      setIsLoading(false);
     }
     handleClose();
+  };
+
+  // Both report paths funnel through the screenshot prompt, so the issue body
+  // always records whether a screenshot was taken.
+  const openScreenshotPrompt = (report: PendingReport) => {
+    // A report already in flight owns isLoading, which gates every exit from
+    // the prompt. Opening a second one would mount a dialog that is sealed
+    // shut and labelled for the other report.
+    if (isLoading) return;
+    setPendingReport(report);
+    handleClose();
+    setIsScreenshotPromptOpen(true);
+  };
+
+  const handleScreenshotPromptContinue = async (
+    screenshot: ScreenshotOutcome,
+  ) => {
+    const report = pendingReport;
+    if (!report) return;
+    if (report.kind === "session") {
+      await handleOpenGitHubIssue(screenshot, report.sessionId);
+    } else {
+      await handleReportBug(screenshot);
+    }
+    // Release only the report this call filed, so a later one is never cleared
+    // out from under itself. Clearing lets the next open start fresh.
+    setPendingReport((current) => (current === report ? null : current));
+  };
+
+  // The prompt is a stop on the way to the issue, not a place to lose an
+  // upload: backing out of it reopens the help dialog as the reporter left it.
+  const handleScreenshotPromptDismiss = () => {
+    // A report already being prepared cannot be called off: it will open the
+    // issue regardless. Ignoring the dismissal keeps the prompt honest about
+    // that rather than reopening a dialog the report is about to close.
+    if (isLoading) return;
+    setIsScreenshotPromptOpen(false);
+    setPendingReport(null);
+    setHelpDialog({ open: true });
   };
 
   // ---------------------------------------------------------------------------
@@ -605,10 +605,7 @@ ${formatLogsSection(debugInfo)}
             </p>
             <Button
               variant="outline"
-              onClick={() => {
-                handleClose();
-                setIsBugScreenshotOpen(true);
-              }}
+              onClick={() => openScreenshotPrompt({ kind: "bug" })}
               disabled={isLoading}
               className="w-full bg-(--background-lightest)"
             >
@@ -741,11 +738,12 @@ ${formatLogsSection(debugInfo)}
       </div>
 
       <Button
-        onClick={handleOpenGitHubIssue}
+        onClick={() => openScreenshotPrompt({ kind: "session", sessionId })}
+        disabled={isLoading}
         className="w-full py-5 text-base mt-4"
         size="lg"
       >
-        <ExternalLinkIcon className="mr-2 h-5 w-5" />
+        <Github className="mr-2 h-5 w-5" />
         Create GitHub Issue
       </Button>
 
@@ -785,6 +783,8 @@ ${formatLogsSection(debugInfo)}
   // ---------------------------------------------------------------------------
 
   const isCrashPreloading = helpDialog.uploadChatId != null;
+  const screenshotPromptSource: ScreenshotPromptSource =
+    pendingReport?.kind === "session" ? "upload-session" : "report-bug";
 
   return (
     <>
@@ -811,10 +811,12 @@ ${formatLogsSection(debugInfo)}
         onClose={() => setIsHelpBotOpen(false)}
       />
       <BugScreenshotDialog
-        isOpen={isBugScreenshotOpen}
-        onClose={() => setIsBugScreenshotOpen(false)}
-        handleReportBug={handleReportBug}
+        isOpen={isScreenshotPromptOpen}
+        onClose={() => setIsScreenshotPromptOpen(false)}
+        onDismiss={handleScreenshotPromptDismiss}
+        onContinue={handleScreenshotPromptContinue}
         isLoading={isLoading}
+        source={screenshotPromptSource}
       />
     </>
   );

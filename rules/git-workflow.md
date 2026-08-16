@@ -58,11 +58,12 @@ If `gh pr create` fails with `GraphQL: Resource not accessible by personal acces
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
 
-## Formatter Touching Unrelated Skill Files
+## Formatter Touching Unrelated Files
 
 `npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After
-formatting, check `git status` and revert unrelated skill-file churn before
-committing unless the task intentionally changes those skill docs.
+formatting, check `git status` and revert unrelated churn before committing;
+this can also expose and rewrite pre-existing formatting in source files that
+were outside the task scope.
 
 ## Skipping automated review
 

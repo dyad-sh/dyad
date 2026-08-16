@@ -335,7 +335,12 @@ export function registerDataSourceHandlers() {
           ? d1CatalogueToParsedSchema(
               await discoverD1Schema({ endpoint: row.projectUrl, token: key }),
             )
-          : await discoverSchema({ projectUrl: row.projectUrl, key });
+          : await discoverSchema({
+              projectUrl: row.projectUrl,
+              // The precondition above guarantees Supabase has a key. D1 is
+              // the only provider allowed to reach this point without one.
+              key: key ?? "",
+            });
       const counts = await persistCatalogue(id, catalogue);
 
       await db

@@ -33,7 +33,7 @@ type ResearchPluginId =
   | "duffel";
 
 const controlClass =
-  "border-cyan-400/15 bg-slate-950/45 text-cyan-50 placeholder:text-cyan-100/25";
+  "border-border bg-background/70 text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-primary/15";
 
 function StatusLine({
   connected,
@@ -43,7 +43,7 @@ function StatusLine({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 text-xs text-cyan-100/50">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span
         className={`size-2 rounded-full ${
           connected
@@ -66,10 +66,10 @@ function ChatAgentAccessToggle({
   unavailableReason?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-cyan-400/12 bg-cyan-950/20 px-3.5 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/35 px-3.5 py-3">
       <div>
-        <Label className="text-sm text-cyan-50">Chat Agent access</Label>
-        <p className="mt-0.5 text-xs text-cyan-100/40">
+        <Label className="text-sm text-foreground">Chat Agent access</Label>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {checked
             ? unavailableReason
               ? `Enabled, but unavailable: ${unavailableReason}`

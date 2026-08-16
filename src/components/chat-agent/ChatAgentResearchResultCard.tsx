@@ -16,7 +16,7 @@ import { ChatAgentWeatherCard } from "./ChatAgentWeatherCard";
 
 type ResearchPresentation = Exclude<
   ChatAgentToolPresentation,
-  { kind: "lovable-projects" }
+  { kind: "lovable-projects" | "x-profile" | "x-post-composer" }
 >;
 type FlightPresentation = Extract<
   ResearchPresentation,

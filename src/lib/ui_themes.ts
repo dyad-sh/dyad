@@ -42,8 +42,8 @@ export const UI_THEMES: UiThemeMeta[] = [
   },
   {
     id: "macos",
-    label: "macOS",
-    description: "Frosted neutral surfaces, restrained blue, native calm.",
+    label: "macOS Native",
+    description: "Apple typography, luminous materials, native window calm.",
     preview: {
       background: "#ececee",
       sidebar: "#f0f0f2",

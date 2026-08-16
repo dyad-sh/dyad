@@ -72,4 +72,10 @@ describe("theme catalogue", () => {
       }
     }
   });
+
+  it("presents the Apple-inspired option as a native macOS theme", () => {
+    expect(UI_THEMES.find((theme) => theme.id === "macos")?.label).toBe(
+      "macOS Native",
+    );
+  });
 });

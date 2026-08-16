@@ -365,18 +365,54 @@ export const FacebookConnectionSchema = z.object({
 });
 export type FacebookConnection = z.infer<typeof FacebookConnectionSchema>;
 
-/**
- * X (Twitter) connection used by the Social Media Agent.
- * Posting uses OAuth 1.0a user-context credentials from an X developer app.
- */
-export const XConnectionSchema = z.object({
+/** X OAuth 2.0 user-context connection used for new integrations. */
+const XOAuth2ConnectionSchema = z.object({
+  authType: z.literal("oauth2"),
+  accessToken: SecretSchema,
+  clientId: z.string().optional(),
+  clientSecret: SecretSchema.optional(),
+  refreshToken: SecretSchema.optional(),
+  tokenExpiresAt: z.number().optional(),
+  scopes: z.array(z.string()).optional(),
+  displayName: z.string().optional(),
+  profileImageUrl: z.string().optional(),
+  bio: z.string().optional(),
+  verified: z.boolean().optional(),
+  verifiedType: z.string().optional(),
+  followersCount: z.number().optional(),
+  followingCount: z.number().optional(),
+  postCount: z.number().optional(),
+  listedCount: z.number().optional(),
+  profileSyncedAt: z.number().optional(),
+  username: z.string().optional(),
+  connectedAt: z.number().optional(),
+});
+
+/** Legacy OAuth 1.0a connection retained so existing users stay connected. */
+const XOAuth1ConnectionSchema = z.object({
+  authType: z.literal("oauth1").optional(),
   apiKey: SecretSchema,
   apiSecret: SecretSchema,
   accessToken: SecretSchema,
   accessTokenSecret: SecretSchema,
+  displayName: z.string().optional(),
+  profileImageUrl: z.string().optional(),
+  bio: z.string().optional(),
+  verified: z.boolean().optional(),
+  verifiedType: z.string().optional(),
+  followersCount: z.number().optional(),
+  followingCount: z.number().optional(),
+  postCount: z.number().optional(),
+  listedCount: z.number().optional(),
+  profileSyncedAt: z.number().optional(),
   username: z.string().optional(),
   connectedAt: z.number().optional(),
 });
+
+export const XConnectionSchema = z.union([
+  XOAuth2ConnectionSchema,
+  XOAuth1ConnectionSchema,
+]);
 export type XConnection = z.infer<typeof XConnectionSchema>;
 
 export const SocialMediaConnectionsSchema = z.object({

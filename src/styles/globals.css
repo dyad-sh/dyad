@@ -6961,6 +6961,84 @@ button:hover .jarvis-sidebar-orb-ring {
   --sidebar-border: rgba(20, 25, 35, 0.08);
 }
 
+/* Agent OS originally scoped the holographic tokens onto itself. Restore the
+   selected plain-theme palette inside that scope so a light shell cannot
+   contain dark cards, inputs, calendars, or popovers from another theme. */
+:root[data-ui-theme="dark"] .agent-os {
+  --background-lightest: #1b1f24;
+  --background-lighter: #14171b;
+  --background: #0d0f12;
+  --background-darker: #0a0c0f;
+  --background-darkest: #060708;
+  --foreground: #f3f4f6;
+  --card: #14171b;
+  --card-foreground: #f3f4f6;
+  --popover: #16191e;
+  --popover-foreground: #f3f4f6;
+  --primary: #22d3ee;
+  --primary-foreground: #06282e;
+  --secondary: #1b1f24;
+  --secondary-foreground: #f3f4f6;
+  --muted: #171a1f;
+  --muted-foreground: #a7adb7;
+  --accent: #1e232a;
+  --accent-foreground: #f3f4f6;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: #22d3ee;
+  color-scheme: dark;
+}
+
+:root[data-ui-theme="macos"] .agent-os {
+  --background-lightest: #ffffff;
+  --background-lighter: #f5f5f7;
+  --background: #ececee;
+  --background-darker: #e4e4e7;
+  --background-darkest: #d9d9de;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --popover: rgba(250, 250, 252, 0.96);
+  --popover-foreground: #1d1d1f;
+  --primary: #007aff;
+  --primary-foreground: #ffffff;
+  --secondary: #e8e8ea;
+  --secondary-foreground: #1d1d1f;
+  --muted: #e8e8ea;
+  --muted-foreground: #6e6e73;
+  --accent: #e5f0ff;
+  --accent-foreground: #1d1d1f;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: rgba(0, 0, 0, 0.06);
+  --ring: #007aff;
+  color-scheme: light;
+}
+
+:root[data-ui-theme="light"] .agent-os {
+  --background-lightest: #ffffff;
+  --background-lighter: #fafbfc;
+  --background: #f4f5f7;
+  --background-darker: #eceff3;
+  --background-darkest: #e2e6ec;
+  --foreground: #17191d;
+  --card: #ffffff;
+  --card-foreground: #17191d;
+  --popover: #ffffff;
+  --popover-foreground: #17191d;
+  --primary: #0891b2;
+  --primary-foreground: #ffffff;
+  --secondary: #eceff3;
+  --secondary-foreground: #17191d;
+  --muted: #eceff3;
+  --muted-foreground: #555d68;
+  --accent: #e3f5fa;
+  --accent-foreground: #17191d;
+  --border: rgba(20, 25, 35, 0.1);
+  --input: rgba(20, 25, 35, 0.07);
+  --ring: #0891b2;
+  color-scheme: light;
+}
+
 /* --- Decorative holography exists only in the flagship theme -------------- */
 :root:not([data-ui-theme="holographic"]) .particle-background,
 :root:not([data-ui-theme="holographic"]) .desktop-wallpaper-ring,
@@ -7360,6 +7438,143 @@ html.theme-switching * {
 /* Workspace tab strip */
 :root:not([data-ui-theme="holographic"]) .chat-agent-messages,
 :root:not([data-ui-theme="holographic"]) .chat-agent-page {
+  color: var(--foreground);
+}
+
+/* Chat Agent carries a complete holographic palette in literal rgba values.
+   Rebuild its reading hierarchy from semantic tokens under every plain theme;
+   otherwise pale cyan copy and controls disappear against Light/macOS cards. */
+:root:not([data-ui-theme="holographic"]) .chat-agent-page {
+  --chat-agent-cyan: var(--primary);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-header {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--foreground);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-title-trigger {
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-header-btn,
+:root:not([data-ui-theme="holographic"]) .chat-agent-message-action-btn,
+:root:not([data-ui-theme="holographic"]) .chat-agent-composer-icon-btn {
+  color: var(--muted-foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-header-btn:hover,
+:root:not([data-ui-theme="holographic"]) .chat-agent-message-action-btn:hover,
+:root:not([data-ui-theme="holographic"])
+  .chat-agent-composer-icon-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-assistant-avatar {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--primary);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-markdown,
+:root:not([data-ui-theme="holographic"]) .chat-agent-assistant-body--glass {
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"])
+  .chat-agent-markdown
+  :is(h1, h2, h3, h4) {
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-markdown blockquote {
+  border-color: var(--primary);
+  color: var(--muted-foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-markdown :not(pre) > code {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-markdown :is(th, td) {
+  border-color: var(--border);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-markdown th {
+  background: var(--muted);
+}
+
+:root:not([data-ui-theme="holographic"])
+  .chat-agent-turn--assistant:hover
+  .chat-agent-assistant-body--glass {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--card) 94%, var(--accent));
+}
+
+:root:not([data-ui-theme="holographic"])
+  .chat-agent-message-action-btn--pressed,
+:root:not([data-ui-theme="holographic"]) .chat-agent-composer-icon-btn--active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+:root:not([data-ui-theme="holographic"])
+  .chat-agent-composer-input
+  [contenteditable="true"] {
+  color: var(--foreground);
+  caret-color: var(--primary);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-composer:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-tool-menu {
+  border-color: var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-tool-menu-item {
+  color: var(--popover-foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-tool-menu-item:focus,
+:root:not([data-ui-theme="holographic"]) .chat-agent-tool-menu-item--selected {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-composer-shortcuts,
+:root:not([data-ui-theme="holographic"]) .chat-agent-composer-footnote-model {
+  color: var(--muted-foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-composer-shortcuts kbd {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-selected-tool-chip {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-artifact {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+:root:not([data-ui-theme="holographic"]) .chat-agent-artifact-title {
   color: var(--foreground);
 }
 
@@ -9907,4 +10122,348 @@ html.theme-switching * {
   border-color: rgb(34 211 238 / 0.4);
   background: rgb(34 211 238 / 0.08);
   box-shadow: 0 0 24px rgb(0 229 255 / 0.1);
+}
+
+/* ==========================================================================
+   Appearance integrity layer
+
+   This block intentionally lives at the end of the stylesheet. A number of
+   feature skins above pre-date selectable UI themes and declare literal HUD
+   colours late in the cascade. Re-expressing their surfaces with semantic
+   tokens here prevents Holographic navy/cyan from leaking into macOS, Dark,
+   and Light while leaving the flagship theme completely untouched.
+   ========================================================================== */
+
+:root {
+  --app-canvas:
+    radial-gradient(
+      900px 520px at 12% -8%,
+      rgb(0 229 255 / 0.09),
+      transparent 62%
+    ),
+    radial-gradient(
+      780px 480px at 92% 108%,
+      rgb(0 255 200 / 0.06),
+      transparent 60%
+    ),
+    var(--background);
+  --surface-raised: var(--card);
+  --surface-subtle: var(--muted);
+  --surface-hover: var(--accent);
+  --surface-border: var(--border);
+  --surface-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+}
+
+:root[data-ui-theme="dark"] {
+  --app-canvas:
+    radial-gradient(
+      850px 480px at 15% -10%,
+      rgb(34 211 238 / 0.055),
+      transparent 62%
+    ),
+    radial-gradient(
+      700px 420px at 95% 110%,
+      rgb(59 130 246 / 0.035),
+      transparent 60%
+    ),
+    linear-gradient(155deg, #111419 0%, #0d0f12 48%, #090b0e 100%);
+  --surface-raised: #15191e;
+  --surface-subtle: #191d23;
+  --surface-hover: #20262d;
+  --surface-shadow: 0 14px 38px rgb(0 0 0 / 0.32);
+  color-scheme: dark;
+}
+
+:root[data-ui-theme="light"] {
+  --app-canvas:
+    radial-gradient(
+      900px 500px at 8% -8%,
+      rgb(8 145 178 / 0.075),
+      transparent 62%
+    ),
+    radial-gradient(
+      720px 460px at 96% 108%,
+      rgb(99 102 241 / 0.045),
+      transparent 60%
+    ),
+    linear-gradient(155deg, #fafbfd 0%, #f4f5f7 50%, #edf0f4 100%);
+  --surface-raised: rgb(255 255 255 / 0.94);
+  --surface-subtle: #eef1f5;
+  --surface-hover: #e7edf2;
+  --surface-shadow: 0 12px 32px rgb(31 41 55 / 0.1);
+  color-scheme: light;
+}
+
+:root[data-ui-theme="macos"] {
+  --app-canvas:
+    radial-gradient(
+      950px 560px at 5% -12%,
+      rgb(0 122 255 / 0.16),
+      transparent 64%
+    ),
+    radial-gradient(
+      800px 520px at 96% 112%,
+      rgb(175 82 222 / 0.12),
+      transparent 60%
+    ),
+    linear-gradient(145deg, #f3f5f9 0%, #e9edf4 48%, #dfe4ed 100%);
+  --surface-raised: rgb(255 255 255 / 0.72);
+  --surface-subtle: rgb(246 247 250 / 0.7);
+  --surface-hover: rgb(255 255 255 / 0.82);
+  --surface-border: rgb(255 255 255 / 0.7);
+  --surface-shadow:
+    0 18px 50px rgb(43 54 75 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.92);
+  --radius: 0.75rem;
+  color-scheme: light;
+}
+
+body,
+#root,
+#layout-main-content-container {
+  background: var(--app-canvas);
+}
+
+/* Every full-page route gets a continuous backdrop beneath optional animated
+   particles. This is the non-canvas continuation that removes scroll seams. */
+:root[data-ui-theme="holographic"] :is(.home-jarvis, .settings-jarvis) {
+  background-color: #02040a;
+  background-image:
+    linear-gradient(rgb(0 229 255 / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(0 229 255 / 0.028) 1px, transparent 1px),
+    radial-gradient(
+      1000px 600px at 50% 0%,
+      rgb(8 40 66 / 0.28),
+      transparent 70%
+    );
+  background-size:
+    52px 52px,
+    52px 52px,
+    auto;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.home-jarvis, .settings-jarvis, .manager-page, .agent-os) {
+  background: var(--app-canvas);
+  color: var(--foreground);
+}
+
+/* Apple system typography and material depth are scoped to the native theme;
+   branded display faces should not survive a theme change. */
+:root[data-ui-theme="macos"] body,
+:root[data-ui-theme="macos"]
+  :is(.font-jarvis-ui, .font-jarvis-display, .manager-page) {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    sans-serif;
+}
+
+:root[data-ui-theme="macos"]
+  :is(.font-jarvis-ui, .font-jarvis-display, .manager-brand-label) {
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.font-jarvis-ui, .font-jarvis-display) {
+  font-family: var(--default-font-family);
+  text-shadow: none;
+}
+
+/* Shared System, Infrastructure and Manager surfaces. */
+:root:not([data-ui-theme="holographic"]) .manager-page {
+  --manager-cyan: var(--primary);
+  --manager-surface: var(--surface-raised);
+  --manager-border: var(--surface-border);
+  --manager-border-bright: color-mix(
+    in srgb,
+    var(--primary) 36%,
+    var(--border)
+  );
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(
+    .system-card,
+    .infra-card,
+    .manager-panel,
+    .manager-sidebar,
+    .manager-main-panel,
+    .manager-connect-card,
+    .ops-holo-card,
+    .project-file-tile
+  ) {
+  border-color: var(--surface-border);
+  background: var(--surface-raised);
+  color: var(--foreground);
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: none;
+}
+
+:root[data-ui-theme="macos"]
+  :is(
+    .system-card,
+    .infra-card,
+    .manager-panel,
+    .manager-sidebar,
+    .manager-main-panel,
+    .manager-connect-card,
+    .ops-holo-card,
+    .project-file-tile,
+    .settings-jarvis .rounded-xl
+  ) {
+  border-color: var(--surface-border);
+  background: var(--surface-raised);
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: blur(24px) saturate(1.35);
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.ops-holo-card, .project-file-tile):hover,
+:root:not([data-ui-theme="holographic"]) .system-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--border));
+  background: var(--surface-hover);
+  box-shadow: var(--surface-shadow);
+}
+
+:root:not([data-ui-theme="holographic"]) .ops-holo-card::before,
+:root:not([data-ui-theme="holographic"]) .ops-holo-card::after {
+  display: none;
+  animation: none;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(
+    .system-card-icon,
+    .manager-brand-icon,
+    .manager-grid-icon-wrap,
+    .desktop-launcher-icon
+  ) {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+  box-shadow: none;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(
+    .manager-title,
+    .manager-connect-header,
+    .manager-panel-title,
+    .manager-grid-name,
+    .system-card-title,
+    .infra-name
+  ) {
+  color: var(--foreground);
+  text-shadow: none;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(
+    .manager-subtitle,
+    .manager-connect-desc,
+    .manager-label,
+    .manager-grid-meta,
+    .manager-loading,
+    .manager-empty-msg,
+    .system-card-summary,
+    .infra-facts,
+    .infra-sources,
+    .infra-latency,
+    .infra-event-time
+  ) {
+  color: var(--muted-foreground);
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(
+    .manager-brand-label,
+    .manager-link,
+    .manager-code,
+    .manager-panel-count,
+    .system-group-label,
+    .system-card-status,
+    .system-back,
+    .manager-breadcrumb-root,
+    .manager-editor-path
+  ) {
+  color: var(--primary);
+  text-shadow: none;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.manager-panel-header, .infra-card-head, .system-subheader) {
+  border-color: var(--surface-border);
+  background: var(--surface-subtle);
+  color: var(--foreground);
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.system-nav-item, .system-crumb, .manager-breadcrumb-seg) {
+  color: var(--muted-foreground);
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.system-nav-item:hover, .system-nav-item--active) {
+  background: var(--surface-hover);
+  color: var(--foreground);
+  box-shadow: none;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(
+    .manager-input,
+    .manager-search-input,
+    .manager-commit-input,
+    .manager-code-editor
+  ) {
+  border-color: var(--input) !important;
+  background: var(--background-lighter) !important;
+  color: var(--foreground) !important;
+  box-shadow: none !important;
+}
+
+:root:not([data-ui-theme="holographic"])
+  :is(.manager-action-btn, .manager-connect-btn, .manager-save-btn) {
+  border-color: color-mix(
+    in srgb,
+    var(--primary) 34%,
+    var(--border)
+  ) !important;
+  background: color-mix(in srgb, var(--primary) 9%, transparent) !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+}
+
+/* macOS-specific window chrome and controls across Standard and Desktop mode. */
+:root[data-ui-theme="macos"] :is(.app-region-drag, .desktop-window-titlebar) {
+  background: rgb(246 247 250 / 0.78);
+  border-color: rgb(0 0 0 / 0.08);
+  backdrop-filter: blur(28px) saturate(1.4);
+}
+
+:root[data-ui-theme="macos"] button,
+:root[data-ui-theme="macos"] input,
+:root[data-ui-theme="macos"] textarea,
+:root[data-ui-theme="macos"] select {
+  font-family: inherit;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-ui-theme="macos"]
+    :is(
+      .system-card,
+      .infra-card,
+      .manager-panel,
+      .manager-sidebar,
+      .manager-main-panel,
+      .manager-connect-card,
+      .ops-holo-card,
+      .project-file-tile,
+      .settings-jarvis .rounded-xl
+    ) {
+    background: #ffffff;
+    backdrop-filter: none;
+  }
 }

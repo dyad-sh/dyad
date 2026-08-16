@@ -19,6 +19,10 @@ export function useSocialConnections() {
   const connectionsQuery = useQuery({
     queryKey: queryKeys.socialMedia.connections,
     queryFn: () => ipc.socialMedia.getConnections(),
+    // Connections live in encrypted main-process settings. Always rehydrate
+    // from that durable source when an integrations surface is opened.
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const setConnections = (status: SocialConnectionsStatus) => {
@@ -36,6 +40,11 @@ export function useSocialConnections() {
     onSuccess: setConnections,
   });
 
+  const refreshXProfileMutation = useMutation({
+    mutationFn: () => ipc.socialMedia.refreshXProfile(),
+    onSuccess: setConnections,
+  });
+
   const disconnectMutation = useMutation({
     mutationFn: (platform: SocialPlatform) =>
       ipc.socialMedia.disconnect({ platform }),
@@ -49,6 +58,8 @@ export function useSocialConnections() {
     isConnectingFacebook: connectFacebookMutation.isPending,
     connectX: connectXMutation.mutateAsync,
     isConnectingX: connectXMutation.isPending,
+    refreshXProfile: refreshXProfileMutation.mutateAsync,
+    isRefreshingXProfile: refreshXProfileMutation.isPending,
     disconnect: disconnectMutation.mutateAsync,
     isDisconnecting: disconnectMutation.isPending,
   };
@@ -91,6 +102,11 @@ export function useSocialPosts() {
     onSettled: invalidatePosts,
   });
 
+  const refreshPostMetricsMutation = useMutation({
+    mutationFn: (id: string) => ipc.socialMedia.refreshPostMetrics({ id }),
+    onSettled: invalidatePosts,
+  });
+
   return {
     posts: postsQuery.data ?? [],
     isLoading: postsQuery.isLoading,
@@ -103,6 +119,8 @@ export function useSocialPosts() {
     isDeleting: deletePostMutation.isPending,
     publishPost: publishPostMutation.mutateAsync,
     isPublishing: publishPostMutation.isPending,
+    refreshPostMetrics: refreshPostMetricsMutation.mutateAsync,
+    isRefreshingPostMetrics: refreshPostMetricsMutation.isPending,
   };
 }
 

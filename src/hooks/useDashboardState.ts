@@ -37,7 +37,10 @@ export function useDashboardState() {
 
   const storage = useQuery({
     queryKey: ["dashboard", "storage"],
-    queryFn: () => ipc.storage.status(),
+    queryFn: () =>
+      ipc.storage.status({
+        localVaultPath: settings?.storage?.localVaultPath,
+      }),
     staleTime: 60_000,
   });
 

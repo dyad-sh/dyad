@@ -1,6 +1,7 @@
-import { useAtom } from "jotai";
-import type { ReactNode } from "react";
+import { useAtom, useAtomValue } from "jotai";
+import { useEffect, useState, type ReactNode } from "react";
 import { activeSettingsTabAtom } from "@/atoms/viewAtoms";
+import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SETTINGS_TABS, type SettingsTabId } from "@/lib/settingsTabs";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -12,6 +13,7 @@ import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { useSettings } from "@/hooks/useSettings";
@@ -25,6 +27,13 @@ import { ResearchPluginSettings } from "@/components/settings/ResearchPluginSett
 import { ChatAgentSystemAccessSettings } from "@/components/settings/ChatAgentSystemAccessSettings";
 import { SocialConnectionCard } from "@/components/social/SocialConnectionCard";
 import {
+  INTEGRATIONS,
+  PLUGIN_CATEGORIES,
+  type IntegrationCatalogId,
+  type PluginCatalogId,
+  type PluginCategory,
+} from "@/lib/connection_catalog";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -32,6 +41,7 @@ import {
 } from "@/components/ui/accordion";
 import {
   AtSign,
+  Braces,
   Compass,
   Database,
   Github,
@@ -41,19 +51,47 @@ import {
   MapPinned,
   Plane,
   Search,
+  SearchX,
   Share2,
   TicketCheck,
   Triangle,
+  UserRoundCheck,
 } from "lucide-react";
 
 const settingsCardClass =
-  "rounded-xl p-6 scroll-mt-24 border border-cyan-500/15 bg-[rgba(8,18,36,0.72)] shadow-[0_0_24px_rgba(0,229,255,0.06)] backdrop-blur-md";
+  "rounded-2xl border border-border/70 bg-card/90 p-5 shadow-sm backdrop-blur-md scroll-mt-24 sm:p-6";
 
 const sectionHeadingClass =
-  "font-jarvis-ui text-sm font-medium uppercase tracking-widest text-cyan-300/70 mb-4";
+  "mb-4 font-jarvis-ui text-xs font-semibold uppercase tracking-[0.18em] text-primary";
 
 const integrationAccordionItemClass =
-  "overflow-hidden rounded-xl border border-cyan-400/15 bg-slate-950/35 shadow-[0_0_18px_rgba(0,229,255,0.04)]";
+  "group/connection overflow-hidden rounded-xl border border-border/70 bg-background/45 shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-primary/30 hover:shadow-md";
+
+const pluginIcons: Record<PluginCatalogId, typeof Github> = {
+  github: Github,
+  vercel: Triangle,
+  lovable: HeartHandshake,
+  duckduckgo: Search,
+  coingecko: Coins,
+  weather: CloudSun,
+  maps: MapPinned,
+  "travel-search": Compass,
+  amadeus: TicketCheck,
+  skyscanner: Plane,
+  duffel: Plane,
+};
+
+const integrationIcons: Record<IntegrationCatalogId, typeof Github> = {
+  supabase: Database,
+  facebook: Share2,
+  x: AtSign,
+};
+
+const categoryIcons: Record<PluginCategory["id"], typeof Github> = {
+  developer: Braces,
+  "live-data": Search,
+  travel: Plane,
+};
 
 function IntegrationRow({
   value,
@@ -72,24 +110,154 @@ function IntegrationRow({
     <AccordionItem value={value} className={integrationAccordionItemClass}>
       <AccordionTrigger className="items-center px-4 py-3.5 hover:no-underline">
         <span className="flex min-w-0 items-center gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-cyan-400/15 bg-cyan-400/8 text-cyan-300">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/8 text-primary transition-colors group-hover/connection:bg-primary/12">
             <Icon className="size-4.5" />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-medium text-cyan-50">
+            <span className="block text-sm font-semibold text-foreground">
               {title}
             </span>
-            <span className="block truncate text-xs font-normal text-cyan-100/40">
+            <span className="mt-0.5 block text-left text-xs leading-5 font-normal text-muted-foreground sm:truncate">
               {description}
             </span>
           </span>
         </span>
       </AccordionTrigger>
-      <AccordionContent className="border-t border-cyan-400/10 px-4 pt-4">
+      <AccordionContent className="border-t border-border/60 px-4 pt-4">
         {children}
       </AccordionContent>
     </AccordionItem>
   );
+}
+
+function PluginCategorySection({
+  category,
+  children,
+}: {
+  category: PluginCategory;
+  children: ReactNode;
+}) {
+  const Icon = categoryIcons[category.id];
+  return (
+    <section aria-labelledby={`plugin-category-${category.id}`}>
+      <div className="mb-3 flex items-center gap-3 px-1">
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+          <Icon className="size-4" />
+        </span>
+        <div>
+          <h3
+            id={`plugin-category-${category.id}`}
+            className="text-sm font-semibold text-foreground"
+          >
+            {category.title}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {category.description}
+          </p>
+        </div>
+        <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+          {category.plugins.length}
+        </span>
+      </div>
+      <Accordion className="grid gap-2.5 md:grid-cols-2">{children}</Accordion>
+    </section>
+  );
+}
+
+function PluginSettingsBody({ id }: { id: PluginCatalogId }) {
+  switch (id) {
+    case "github":
+      return (
+        <div id={SETTING_IDS.github}>
+          <GitHubIntegration />
+        </div>
+      );
+    case "vercel":
+      return (
+        <div id={SETTING_IDS.vercel}>
+          <VercelIntegration />
+        </div>
+      );
+    case "lovable":
+      return (
+        <div id={SETTING_IDS.lovable}>
+          <LovablePluginSettings />
+        </div>
+      );
+    case "travel-search":
+      return (
+        <div id={SETTING_IDS.travelSearch}>
+          <ResearchPluginSettings plugin="travel-search" />
+        </div>
+      );
+    case "duckduckgo":
+      return (
+        <div id={SETTING_IDS.duckDuckGo}>
+          <ResearchPluginSettings plugin="duckduckgo" />
+        </div>
+      );
+    case "coingecko":
+      return (
+        <div id={SETTING_IDS.coinGecko}>
+          <ResearchPluginSettings plugin="coingecko" />
+        </div>
+      );
+    case "weather":
+      return (
+        <div id={SETTING_IDS.weather}>
+          <ResearchPluginSettings plugin="weather" />
+        </div>
+      );
+    case "maps":
+      return (
+        <div id={SETTING_IDS.maps}>
+          <ResearchPluginSettings plugin="maps" />
+        </div>
+      );
+    case "amadeus":
+      return (
+        <div id={SETTING_IDS.amadeus}>
+          <ResearchPluginSettings plugin="amadeus" />
+        </div>
+      );
+    case "skyscanner":
+      return (
+        <div id={SETTING_IDS.skyscanner}>
+          <ResearchPluginSettings plugin="skyscanner" />
+        </div>
+      );
+    case "duffel":
+      return (
+        <div id={SETTING_IDS.duffel}>
+          <ResearchPluginSettings plugin="duffel" />
+        </div>
+      );
+  }
+}
+
+function IntegrationSettingsBody({ id }: { id: IntegrationCatalogId }) {
+  switch (id) {
+    case "supabase":
+      return (
+        <div id={SECTION_IDS.connections} className="scroll-mt-24">
+          <div id={SETTING_IDS.supabase}>
+            <SupabaseConnectionSettings />
+          </div>
+        </div>
+      );
+    case "facebook":
+      return (
+        <div id={SETTING_IDS.facebook}>
+          <SocialConnectionCard platform="facebook" />
+        </div>
+      );
+    case "x":
+      return (
+        <div id={SETTING_IDS.xIntegration}>
+          <SocialConnectionCard platform="x" />
+        </div>
+      );
+  }
 }
 
 type SettingsTabbedContentProps = {
@@ -105,7 +273,63 @@ export function SettingsTabbedContent({
   hideTabList = false,
 }: SettingsTabbedContentProps & { hideTabList?: boolean }) {
   const [activeTab, setActiveTab] = useAtom(activeSettingsTabAtom);
+  const activeSection = useAtomValue(activeSettingsSectionAtom);
+  const [extensionView, setExtensionView] = useState<
+    "plugins" | "skills" | "integrations"
+  >("plugins");
+  const [extensionQuery, setExtensionQuery] = useState("");
   const { settings, updateSettings } = useSettings();
+
+  const normalizedExtensionQuery = extensionQuery.trim().toLowerCase();
+  const filteredPluginCategories = PLUGIN_CATEGORIES.map((category) => ({
+    ...category,
+    plugins: category.plugins.filter(
+      (plugin) =>
+        normalizedExtensionQuery.length === 0 ||
+        plugin.title.toLowerCase().includes(normalizedExtensionQuery) ||
+        plugin.description.toLowerCase().includes(normalizedExtensionQuery),
+    ),
+  })).filter((category) => category.plugins.length > 0);
+  const filteredIntegrations = INTEGRATIONS.filter(
+    (integration) =>
+      normalizedExtensionQuery.length === 0 ||
+      integration.title.toLowerCase().includes(normalizedExtensionQuery) ||
+      integration.description.toLowerCase().includes(normalizedExtensionQuery),
+  );
+  const builtInPlugins = PLUGIN_CATEGORIES.flatMap(
+    (category) => category.plugins,
+  );
+  const extensionViewCopy = {
+    plugins: {
+      title: "Plugins",
+      description:
+        "Work with Meta Human across your favourite tools and live services.",
+      search: "Search plugins",
+    },
+    skills: {
+      title: "Skills",
+      description: "Choose which built-in capabilities the Chat Agent can use.",
+      search: "Search skills",
+    },
+    integrations: {
+      title: "Integrations",
+      description:
+        "Connect your accounts, private data and publishing destinations.",
+      search: "Search integrations",
+    },
+  }[extensionView];
+
+  useEffect(() => {
+    if (activeTab !== "plugins") return;
+    if (
+      activeSection === SECTION_IDS.integrations ||
+      activeSection === SECTION_IDS.connections
+    ) {
+      setExtensionView("integrations");
+    } else if (activeSection === SECTION_IDS.systemAccess) {
+      setExtensionView("skills");
+    }
+  }, [activeSection, activeTab]);
 
   const handleTabChange = (value: string | null) => {
     if (value && SETTINGS_TABS.some((tab) => tab.id === value)) {
@@ -197,196 +421,231 @@ export function SettingsTabbedContent({
         >
           <div
             id={SECTION_IDS.plugins}
-            className={`${settingsCardClass} space-y-6`}
+            className={`${settingsCardClass} overflow-hidden !p-0`}
           >
-            <div>
-              <h2 className={sectionHeadingClass}>Plugins</h2>
-              <p className="text-sm text-cyan-100/45">
-                Connect developer services, research data and MCP-backed
-                platforms. Enabled research plugins are available to the default
-                Chat Agent.
-              </p>
-            </div>
+            <Tabs
+              value={extensionView}
+              onValueChange={(value) => {
+                if (
+                  value === "plugins" ||
+                  value === "skills" ||
+                  value === "integrations"
+                ) {
+                  setExtensionView(value);
+                  setExtensionQuery("");
+                }
+              }}
+              className="gap-0"
+            >
+              <div className="flex justify-center border-b border-border/60 bg-muted/20 px-5 py-4">
+                <TabsList className="h-10 rounded-full border border-border/70 bg-muted/70 p-1 shadow-inner">
+                  <TabsTrigger
+                    value="plugins"
+                    className="min-w-28 rounded-full px-5 data-active:bg-background data-active:shadow-sm"
+                  >
+                    Plugins
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="skills"
+                    className="min-w-28 rounded-full px-5 data-active:bg-background data-active:shadow-sm"
+                  >
+                    Skills
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="integrations"
+                    className="min-w-28 rounded-full px-5 data-active:bg-background data-active:shadow-sm"
+                  >
+                    Integrations
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-            <Accordion className="gap-3">
-              <IntegrationRow
-                value="github"
-                title="GitHub"
-                description="Repository and file management"
-                icon={Github}
-              >
-                <div id={SETTING_IDS.github}>
-                  <GitHubIntegration />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="vercel"
-                title="Vercel"
-                description="Project and deployment management"
-                icon={Triangle}
-              >
-                <div id={SETTING_IDS.vercel}>
-                  <VercelIntegration />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="lovable"
-                title="Lovable"
-                description="MCP access for projects, builds and published sites"
-                icon={HeartHandshake}
-              >
-                <div id={SETTING_IDS.lovable}>
-                  <LovablePluginSettings />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="travel-search"
-                title="Travel Search"
-                description="Keyless flight searches that open current fares"
-                icon={Compass}
-              >
-                <div id={SETTING_IDS.travelSearch}>
-                  <ResearchPluginSettings plugin="travel-search" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="duckduckgo"
-                title="DuckDuckGo"
-                description="Keyless web lookups and Instant Answers"
-                icon={Search}
-              >
-                <div id={SETTING_IDS.duckDuckGo}>
-                  <ResearchPluginSettings plugin="duckduckgo" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="coingecko"
-                title="CoinGecko"
-                description="Live cryptocurrency prices and market data"
-                icon={Coins}
-              >
-                <div id={SETTING_IDS.coinGecko}>
-                  <ResearchPluginSettings plugin="coingecko" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="weather"
-                title="Open-Meteo Weather"
-                description="Keyless live weather and forecasts"
-                icon={CloudSun}
-              >
-                <div id={SETTING_IDS.weather}>
-                  <ResearchPluginSettings plugin="weather" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="maps"
-                title="Maps"
-                description="Place search with interactive OpenFreeMap maps"
-                icon={MapPinned}
-              >
-                <div id={SETTING_IDS.maps}>
-                  <ResearchPluginSettings plugin="maps" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="amadeus"
-                title="Amadeus Flight Offers"
-                description="Structured fares with a free monthly API quota"
-                icon={TicketCheck}
-              >
-                <div id={SETTING_IDS.amadeus}>
-                  <ResearchPluginSettings plugin="amadeus" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="skyscanner"
-                title="Skyscanner"
-                description="Live flight prices for approved API partners"
-                icon={Plane}
-              >
-                <div id={SETTING_IDS.skyscanner}>
-                  <ResearchPluginSettings plugin="skyscanner" />
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="duffel"
-                title="Duffel Sandbox"
-                description="Simulated test fares for development"
-                icon={Plane}
-              >
-                <div id={SETTING_IDS.duffel}>
-                  <ResearchPluginSettings plugin="duffel" />
-                </div>
-              </IntegrationRow>
-            </Accordion>
-          </div>
-          <SettingsTabSaveBar tabId="plugins" />
-        </TabsContent>
-
-        <TabsContent
-          value="integrations"
-          className="space-y-6 focus-visible:outline-none"
-        >
-          <div
-            id={SECTION_IDS.integrations}
-            className={`${settingsCardClass} space-y-6`}
-          >
-            <div>
-              <h2 className={sectionHeadingClass}>Integrations</h2>
-              <p className="text-sm text-cyan-100/45">
-                Connect databases and publishing services from one place.
-              </p>
-            </div>
-
-            <Accordion className="gap-3">
-              <IntegrationRow
-                value="supabase"
-                title="Supabase"
-                description="Postgres, authentication and app storage"
-                icon={Database}
-              >
-                <div id={SECTION_IDS.connections} className="scroll-mt-24">
-                  <div id={SETTING_IDS.supabase}>
-                    <SupabaseConnectionSettings />
+              <div className="p-5 sm:p-7">
+                <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="font-jarvis-display text-2xl font-semibold tracking-tight text-foreground">
+                      {extensionViewCopy.title}
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {extensionViewCopy.description}
+                    </p>
+                  </div>
+                  <div className="relative w-full sm:w-72">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      value={extensionQuery}
+                      onChange={(event) =>
+                        setExtensionQuery(event.currentTarget.value)
+                      }
+                      placeholder={extensionViewCopy.search}
+                      aria-label={extensionViewCopy.search}
+                      className="h-10 rounded-full border-border/80 bg-muted/45 pr-4 pl-9 shadow-none"
+                    />
                   </div>
                 </div>
-              </IntegrationRow>
 
-              <IntegrationRow
-                value="facebook"
-                title="Facebook"
-                description="Publish posts and images to a Facebook Page"
-                icon={Share2}
-              >
-                <div id={SETTING_IDS.facebook}>
-                  <SocialConnectionCard platform="facebook" />
-                </div>
-              </IntegrationRow>
+                <TabsContent
+                  value="plugins"
+                  className="mt-0 space-y-8 focus-visible:outline-none"
+                >
+                  <section aria-labelledby="built-in-plugins-title">
+                    <h3
+                      id="built-in-plugins-title"
+                      className="mb-3 text-sm font-semibold text-foreground"
+                    >
+                      Built in
+                    </h3>
+                    <div className="flex flex-wrap gap-2.5">
+                      {builtInPlugins.map((plugin) => {
+                        const Icon = pluginIcons[plugin.id];
+                        return (
+                          <button
+                            key={plugin.id}
+                            type="button"
+                            title={plugin.title}
+                            aria-label={`Find ${plugin.title}`}
+                            onClick={() => setExtensionQuery(plugin.title)}
+                            className="group grid size-11 place-items-center rounded-xl border border-border/70 bg-muted/55 text-muted-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/10 hover:text-primary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Icon className="size-5 transition-transform group-hover:scale-105" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
 
-              <IntegrationRow
-                value="x"
-                title="X"
-                description="Publish posts and images to an X account"
-                icon={AtSign}
-              >
-                <div id={SETTING_IDS.xIntegration}>
-                  <SocialConnectionCard platform="x" />
-                </div>
-              </IntegrationRow>
-            </Accordion>
+                  <div className="space-y-8">
+                    {filteredPluginCategories.map((category) => (
+                      <PluginCategorySection
+                        key={category.id}
+                        category={category}
+                      >
+                        {category.plugins.map((plugin) => (
+                          <IntegrationRow
+                            key={plugin.id}
+                            value={plugin.id}
+                            title={plugin.title}
+                            description={plugin.description}
+                            icon={pluginIcons[plugin.id]}
+                          >
+                            <PluginSettingsBody id={plugin.id} />
+                          </IntegrationRow>
+                        ))}
+                      </PluginCategorySection>
+                    ))}
+                    {filteredPluginCategories.length === 0 && (
+                      <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 text-center">
+                        <div>
+                          <SearchX className="mx-auto size-6 text-muted-foreground" />
+                          <p className="mt-3 text-sm font-medium text-foreground">
+                            No plugins found
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Try a provider name or capability.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent
+                  value="skills"
+                  className="mt-0 focus-visible:outline-none"
+                >
+                  <ChatAgentSystemAccessSettings
+                    embedded
+                    searchQuery={extensionQuery}
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="integrations"
+                  className="mt-0 space-y-8 focus-visible:outline-none"
+                >
+                  <section
+                    id={SECTION_IDS.integrations}
+                    aria-labelledby="available-integrations-title"
+                  >
+                    <h3
+                      id="available-integrations-title"
+                      className="mb-3 text-sm font-semibold text-foreground"
+                    >
+                      Built in
+                    </h3>
+                    <div className="flex flex-wrap gap-2.5">
+                      {INTEGRATIONS.map((integration) => {
+                        const Icon = integrationIcons[integration.id];
+                        return (
+                          <button
+                            key={integration.id}
+                            type="button"
+                            title={integration.title}
+                            aria-label={`Find ${integration.title}`}
+                            onClick={() => setExtensionQuery(integration.title)}
+                            className="group grid size-11 place-items-center rounded-xl border border-border/70 bg-muted/55 text-muted-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/10 hover:text-primary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Icon className="size-5 transition-transform group-hover:scale-105" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {filteredIntegrations.length > 0 ? (
+                    <section aria-labelledby="integration-directory-title">
+                      <div className="mb-3 flex items-center gap-3 px-1">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                          <UserRoundCheck className="size-4" />
+                        </span>
+                        <div>
+                          <h3
+                            id="integration-directory-title"
+                            className="text-sm font-semibold text-foreground"
+                          >
+                            Your services
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            Accounts and data you explicitly authorize.
+                          </p>
+                        </div>
+                        <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {filteredIntegrations.length}
+                        </span>
+                      </div>
+                      <Accordion className="grid gap-2.5 md:grid-cols-2">
+                        {filteredIntegrations.map((integration) => (
+                          <IntegrationRow
+                            key={integration.id}
+                            value={integration.id}
+                            title={integration.title}
+                            description={integration.description}
+                            icon={integrationIcons[integration.id]}
+                          >
+                            <IntegrationSettingsBody id={integration.id} />
+                          </IntegrationRow>
+                        ))}
+                      </Accordion>
+                    </section>
+                  ) : (
+                    <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 text-center">
+                      <div>
+                        <SearchX className="mx-auto size-6 text-muted-foreground" />
+                        <p className="mt-3 text-sm font-medium text-foreground">
+                          No integrations found
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Try Supabase, Facebook or X.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+              </div>
+            </Tabs>
           </div>
-          <SettingsTabSaveBar tabId="integrations" />
+          <SettingsTabSaveBar tabId="plugins" />
         </TabsContent>
 
         <TabsContent
@@ -539,14 +798,6 @@ export function SettingsTabbedContent({
           </div>
 
           <SettingsTabSaveBar tabId="advanced" />
-        </TabsContent>
-
-        <TabsContent
-          value="skills"
-          className="space-y-6 pb-24 focus-visible:outline-none"
-        >
-          <ChatAgentSystemAccessSettings />
-          <SettingsTabSaveBar tabId="skills" />
         </TabsContent>
 
         <TabsContent

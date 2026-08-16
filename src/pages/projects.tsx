@@ -194,6 +194,7 @@ export default function ProjectsPage() {
           id: stored.id,
           title: stored.title,
           messages: stored.messages.map((message) => ({
+            id: crypto.randomUUID(),
             role: message.role as "user" | "assistant",
             content: message.content,
           })),

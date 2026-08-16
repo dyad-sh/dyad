@@ -4,6 +4,23 @@ import { ContentCalendar } from "./ContentCalendar";
 import type { PlannerTask } from "@/lib/planner_tasks";
 
 describe("ContentCalendar", () => {
+  it("uses semantic theme surfaces instead of a forced dark calendar", () => {
+    render(
+      <ContentCalendar
+        posts={[]}
+        tasks={[]}
+        onSelectDay={vi.fn()}
+        onSelectPost={vi.fn()}
+        onSelectTask={vi.fn()}
+      />,
+    );
+
+    const calendar = screen.getByTestId("content-calendar");
+    expect(calendar.className).toContain("bg-card");
+    expect(calendar.className).toContain("border-border");
+    expect(calendar.className).not.toContain("rgba(8,20,40");
+  });
+
   it("shows custom tasks and opens their editor", () => {
     const onSelectTask = vi.fn();
     const task: PlannerTask = {

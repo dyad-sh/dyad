@@ -8,6 +8,7 @@ import { cancelOrphanedBaseStream } from "../stream_text_utils";
 import { getModelClient } from "../get_model_client";
 import { getMaxTokens, getTemperature } from "../token_utils";
 import { getChatAgentModel } from "@/lib/chat_agent_model";
+import { buildSocialAccountContext } from "@/lib/social_account_context";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import {
   JarvisStateMachine,
@@ -413,7 +414,7 @@ export class JarvisSession {
         apiKey,
         model: this.settings.jarvis?.realtimeModel,
         voice: this.settings.jarvis?.realtimeVoice,
-        instructions: JARVIS_SYSTEM_PROMPT,
+        instructions: `${JARVIS_SYSTEM_PROMPT}${buildSocialAccountContext(readSettings())}`,
       },
       {
         onReady: () => {
@@ -664,7 +665,7 @@ export class JarvisSession {
     let assistantText = "";
     try {
       assistantText = await this.llm({
-        system: JARVIS_SYSTEM_PROMPT,
+        system: `${JARVIS_SYSTEM_PROMPT}${buildSocialAccountContext(readSettings())}`,
         messages: this.historyForLlm(),
         abortSignal: abortController.signal,
         onDelta: (delta) => {

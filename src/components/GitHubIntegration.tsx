@@ -35,7 +35,7 @@ export function GitHubIntegration() {
           <p className="text-sm text-cyan-50">
             Connected{account?.login ? ` as ${account.login}` : ""}
           </p>
-          <p className="mt-1 text-xs text-cyan-100/40">
+          <p className="mt-1 text-xs text-muted-foreground">
             This token is encrypted on this device.
           </p>
         </div>
@@ -53,7 +53,7 @@ export function GitHubIntegration() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs leading-5 text-cyan-100/50">
+      <p className="text-xs leading-5 text-muted-foreground">
         Enter a fine-grained or classic personal access token with repository
         access. Credentials are verified before being stored.
       </p>

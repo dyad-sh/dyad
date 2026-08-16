@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
-  CalendarDays,
   CalendarClock,
   CalendarPlus,
+  BarChart3,
   CheckCircle2,
   Circle,
   CircleCheck,
@@ -16,6 +16,7 @@ import { useAtom } from "jotai";
 
 import { ParticleBackground } from "@/components/home/ParticleBackground";
 import { SocialConnectDialog } from "@/components/social/SocialConnectDialog";
+import { XProfileInsightsCard } from "@/components/social/XProfileInsightsCard";
 import {
   SOCIAL_PLATFORM_META,
   SocialPlatformIcon,
@@ -23,6 +24,7 @@ import {
 import { useSocialConnections, useSocialPosts } from "@/hooks/useSocialMedia";
 import type { SocialPlatform, SocialPost } from "@/ipc/types/social_media";
 import { cn } from "@/lib/utils";
+import { showError } from "@/lib/toast";
 import { ContentCalendar } from "./ContentCalendar";
 import { PostComposerModal } from "./PostComposerModal";
 import { PostDetailsModal } from "./PostDetailsModal";
@@ -47,16 +49,18 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-cyan-400/12 bg-[rgba(8,20,40,0.5)] px-4 py-3 backdrop-blur-xl">
+    <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card/85 px-4 py-3 shadow-sm backdrop-blur-xl">
       <span
-        className="grid size-9 place-items-center rounded-xl border border-white/10"
+        className="grid size-9 place-items-center rounded-xl border border-border/60"
         style={{ background: `${accent}1a`, color: accent }}
       >
         <Icon className="size-4.5" />
       </span>
       <div className="leading-tight">
-        <p className="text-xl font-semibold tabular-nums text-white">{value}</p>
-        <p className="font-jarvis-ui text-[10px] uppercase tracking-[0.18em] text-white/40">
+        <p className="text-xl font-semibold tabular-nums text-foreground">
+          {value}
+        </p>
+        <p className="font-jarvis-ui text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           {label}
         </p>
       </div>
@@ -82,14 +86,14 @@ function ConnectionChip({
       onClick={connected ? undefined : onConnect}
       title={
         connected
-          ? `${meta.label} connected${label ? ` as ${label}` : ""} — manage in Settings → Integrations`
+          ? `${meta.label} connected${label ? ` as ${label}` : ""} — manage in Settings → Plugins → Integrations`
           : `Connect ${meta.label}`
       }
       className={cn(
         "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition",
         connected
-          ? "cursor-default border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-          : "border-white/15 bg-white/5 text-white/60 hover:border-cyan-400/40 hover:text-white",
+          ? "cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+          : "border-border bg-card/70 text-muted-foreground hover:border-primary/45 hover:text-foreground",
       )}
       data-testid={`connection-chip-${platform}`}
     >
@@ -97,7 +101,7 @@ function ConnectionChip({
       {connected
         ? (label ?? `${meta.label} connected`)
         : `Connect ${meta.label}`}
-      {connected && <CheckCircle2 className="size-3.5 text-emerald-300" />}
+      {connected && <CheckCircle2 className="size-3.5 text-emerald-500" />}
     </button>
   );
 }
@@ -114,7 +118,7 @@ function QueueItem({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-start gap-2.5 rounded-xl border border-white/8 bg-white/4 p-2.5 text-left transition hover:border-cyan-400/30 hover:bg-cyan-500/5"
+      className="flex w-full items-start gap-2.5 rounded-xl border border-border/60 bg-muted/35 p-2.5 text-left transition hover:border-primary/35 hover:bg-accent/60"
     >
       <span
         className={cn(
@@ -125,7 +129,7 @@ function QueueItem({
         <SocialPlatformIcon platform={post.platform} className="size-3.5" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs leading-snug text-white/85">
+        <span className="block truncate text-xs leading-snug text-foreground/90">
           {post.content.replace(/\s+/g, " ")}
         </span>
         <span className="mt-1 flex items-center gap-2">
@@ -138,7 +142,7 @@ function QueueItem({
             <span className={cn("size-1.5 rounded-full", status.dot)} />
             {status.label}
           </span>
-          <span className="text-[10px] tabular-nums text-white/35">
+          <span className="text-[10px] tabular-nums text-muted-foreground">
             {format(postCalendarTime(post), "MMM d · HH:mm")}
           </span>
         </span>
@@ -157,11 +161,11 @@ function TaskQueueItem({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-xl border border-violet-400/15 bg-violet-500/5 p-2.5">
+    <div className="flex items-start gap-2.5 rounded-xl border border-border/60 bg-muted/35 p-2.5">
       <button
         type="button"
         onClick={onToggle}
-        className="mt-0.5 text-violet-300 transition hover:text-white"
+        className="mt-0.5 text-violet-500 transition hover:text-foreground"
         aria-label={task.completed ? "Mark task incomplete" : "Complete task"}
       >
         {task.completed ? (
@@ -177,13 +181,13 @@ function TaskQueueItem({
       >
         <span
           className={cn(
-            "block truncate text-xs leading-snug text-white/85",
-            task.completed && "text-white/35 line-through",
+            "block truncate text-xs leading-snug text-foreground/90",
+            task.completed && "text-muted-foreground line-through",
           )}
         >
           {task.title}
         </span>
-        <span className="mt-1 flex items-center gap-2 text-[10px] text-white/35">
+        <span className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
           <span
             className={cn(
               "size-1.5 rounded-full",
@@ -207,7 +211,8 @@ function TaskQueueItem({
  * Banana image), and everything lands in the planner queue.
  */
 export default function SocialMediaAgentPage() {
-  const { connections } = useSocialConnections();
+  const { connections, refreshXProfile, isRefreshingXProfile } =
+    useSocialConnections();
   const { posts, isLoading } = useSocialPosts();
   const [tasks, setTasks] = useAtom(plannerTasksAtom);
 
@@ -229,6 +234,14 @@ export default function SocialMediaAgentPage() {
       ).length,
       posted: posts.filter((p) => p.status === "posted").length,
       drafts: posts.filter((p) => p.status === "draft").length,
+      engagement: posts.reduce(
+        (total, post) =>
+          total +
+          (post.metrics?.likes ?? 0) +
+          (post.metrics?.reposts ?? 0) +
+          (post.metrics?.replies ?? 0),
+        0,
+      ),
       openTasks: tasks.filter((task) => !task.completed).length,
       completedTasks: tasks.filter((task) => task.completed).length,
     }),
@@ -307,7 +320,7 @@ export default function SocialMediaAgentPage() {
 
   return (
     <div
-      className="agent-os no-app-region-drag relative flex min-h-0 w-full flex-1 overflow-hidden"
+      className="agent-os social-studio no-app-region-drag relative flex min-h-0 w-full flex-1 overflow-hidden text-foreground"
       data-testid="planner-page"
     >
       <ParticleBackground className="z-0" />
@@ -315,15 +328,15 @@ export default function SocialMediaAgentPage() {
       <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-y-auto p-5 sm:p-6">
         {/* Header */}
         <header className="mb-5 flex flex-wrap items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-emerald-400 text-[#04101f] shadow-[0_0_18px_rgba(0,229,255,0.45)]">
-            <CalendarDays className="size-5.5" />
+          <div className="grid size-11 place-items-center rounded-2xl border border-border/70 bg-card text-foreground shadow-sm">
+            <SocialPlatformIcon platform="x" className="size-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="font-jarvis-display text-2xl font-semibold tracking-tight text-white">
-              Planner
+            <h1 className="font-jarvis-display text-2xl font-semibold tracking-tight text-foreground">
+              Social Studio
             </h1>
-            <p className="font-jarvis-ui text-xs tracking-wide text-white/40">
-              Tasks, reminders and social content in one calendar
+            <p className="font-jarvis-ui text-xs tracking-wide text-muted-foreground">
+              Create with AI, publish beautifully, learn what resonates
             </p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -350,45 +363,58 @@ export default function SocialMediaAgentPage() {
               data-testid="new-task-button"
             >
               <Plus className="size-4" />
-              New task
+              Add task
             </button>
             <button
               type="button"
               onClick={() => openComposer(new Date())}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-3.5 py-2 text-sm font-medium text-cyan-50 transition hover:bg-cyan-500/15"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/15"
               data-testid="new-post-button"
             >
               <CalendarPlus className="size-4" />
-              New post
+              Create X post
             </button>
           </div>
         </header>
 
+        {connections?.x.connected && (
+          <div className="mb-5">
+            <XProfileInsightsCard
+              profile={connections.x}
+              posts={posts}
+              refreshing={isRefreshingXProfile}
+              onRefresh={() => {
+                void refreshXProfile().catch(showError);
+              }}
+            />
+          </div>
+        )}
+
         {/* Stats */}
         <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
-            label="Open tasks"
-            value={counts.openTasks}
+            label="Scheduled"
+            value={counts.scheduled}
             icon={CalendarClock}
-            accent="#a78bfa"
+            accent="#fbbf24"
           />
           <StatCard
-            label="Completed"
-            value={counts.completedTasks}
+            label="Published"
+            value={counts.posted}
             icon={CircleCheck}
             accent="#34d399"
           />
           <StatCard
-            label="Scheduled posts"
-            value={counts.scheduled}
-            icon={Send}
-            accent="#fbbf24"
-          />
-          <StatCard
-            label="Social drafts"
+            label="Drafts"
             value={counts.drafts}
             icon={FileText}
-            accent="#00e5ff"
+            accent="#38bdf8"
+          />
+          <StatCard
+            label="Engagement"
+            value={counts.engagement}
+            icon={BarChart3}
+            accent="#c084fc"
           />
         </div>
 
@@ -396,8 +422,8 @@ export default function SocialMediaAgentPage() {
         <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
           <div className="flex min-h-[560px] min-w-0 flex-1 flex-col">
             {isLoading ? (
-              <div className="flex flex-1 items-center justify-center rounded-2xl border border-cyan-400/12 bg-[rgba(8,20,40,0.5)]">
-                <Loader2 className="size-6 animate-spin text-cyan-300/70" />
+              <div className="flex flex-1 items-center justify-center rounded-2xl border border-border/70 bg-card/85">
+                <Loader2 className="size-6 animate-spin text-primary/70" />
               </div>
             ) : (
               <ContentCalendar
@@ -412,13 +438,13 @@ export default function SocialMediaAgentPage() {
 
           {/* Planner queue */}
           <aside className="w-full shrink-0 space-y-4 xl:w-80">
-            <div className="rounded-2xl border border-cyan-400/12 bg-[rgba(8,20,40,0.5)] p-4 backdrop-blur-xl">
-              <h2 className="font-jarvis-ui text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/55">
+            <div className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm backdrop-blur-xl">
+              <h2 className="font-jarvis-ui text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                 Up next
               </h2>
               <div className="mt-3 space-y-2">
                 {upcomingTasks.length === 0 && queue.length === 0 ? (
-                  <p className="text-xs text-white/35">
+                  <p className="text-xs text-muted-foreground">
                     Nothing scheduled. Click a day to add your first task.
                   </p>
                 ) : (
@@ -443,13 +469,13 @@ export default function SocialMediaAgentPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-cyan-400/12 bg-[rgba(8,20,40,0.5)] p-4 backdrop-blur-xl">
-              <h2 className="font-jarvis-ui text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/55">
+            <div className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm backdrop-blur-xl">
+              <h2 className="font-jarvis-ui text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                 Recent activity
               </h2>
               <div className="mt-3 space-y-2">
                 {history.length === 0 && completedTasks.length === 0 ? (
-                  <p className="text-xs text-white/35">
+                  <p className="text-xs text-muted-foreground">
                     Completed tasks and social activity appear here.
                   </p>
                 ) : (

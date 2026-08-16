@@ -21,6 +21,8 @@ import { showError, showSuccess } from "@/lib/toast";
 import InfrastructurePage from "./infrastructure";
 import DataSourcesPage from "./data-sources";
 import { ParticleBackground } from "@/components/home/ParticleBackground";
+import NotesVaultPage from "./notes-vault";
+import { notesVaultAtom } from "@/atoms/notesVaultAtoms";
 
 /**
  * The System section.
@@ -48,6 +50,7 @@ export default function SystemPage({
   followActiveSettingsTab?: boolean;
 } = {}) {
   const [settingsTab, setSettingsTab] = useAtom(activeSettingsTabAtom);
+  const [vaultNotes] = useAtom(notesVaultAtom);
   const [active, setActive] = useState<SystemDestinationId | null>(() =>
     followActiveSettingsTab
       ? (destinationForTab(settingsTab)?.id ?? null)
@@ -122,6 +125,9 @@ export default function SystemPage({
         ? "None connected"
         : `${connected} of ${sources.length} connected`;
     }
+    if (destination.id === "notes-vault") {
+      return `${vaultNotes.length} ${vaultNotes.length === 1 ? "note" : "notes"}`;
+    }
     return null;
   };
 
@@ -151,6 +157,8 @@ export default function SystemPage({
           {activeDestination.renders.kind === "page" ? (
             activeDestination.renders.route === "/infrastructure" ? (
               <InfrastructurePage />
+            ) : activeDestination.renders.route === "notes-vault" ? (
+              <NotesVaultPage />
             ) : (
               <DataSourcesPage />
             )

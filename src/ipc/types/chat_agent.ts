@@ -203,6 +203,32 @@ const LovableProjectsPresentationSchema = z.object({
   ),
 });
 
+const XProfilePresentationSchema = z.object({
+  kind: z.literal("x-profile"),
+  username: z.string(),
+  displayName: z.string().optional(),
+  profileImageUrl: z.string().url().optional(),
+  bio: z.string().optional(),
+  verified: z.boolean().optional(),
+  verifiedType: z.string().optional(),
+  followersCount: z.number().optional(),
+  followingCount: z.number().optional(),
+  postCount: z.number().optional(),
+  profileSyncedAt: z.number().optional(),
+  profileUrl: z.string().url(),
+});
+
+const XPostComposerPresentationSchema = z.object({
+  kind: z.literal("x-post-composer"),
+  username: z.string(),
+  displayName: z.string().optional(),
+  profileImageUrl: z.string().url().optional(),
+  verified: z.boolean().optional(),
+  content: z.string().max(280),
+  prompt: z.string().optional(),
+  imagePrompt: z.string().optional(),
+});
+
 /**
  * Rows returned from a connected database.
  *
@@ -233,6 +259,8 @@ export const ChatAgentToolPresentationSchema = z.discriminatedUnion("kind", [
   MapPlacesPresentationSchema,
   FlightSearchPresentationSchema,
   LovableProjectsPresentationSchema,
+  XProfilePresentationSchema,
+  XPostComposerPresentationSchema,
 ]);
 export type ChatAgentToolPresentation = z.infer<
   typeof ChatAgentToolPresentationSchema

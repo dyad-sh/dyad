@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useSocialConnections } from "@/hooks/useSocialMedia";
 import type { SocialPlatform } from "@/ipc/types/social_media";
 import { showSuccess } from "@/lib/toast";
+import { X_OAUTH_REDIRECT_URI } from "@/lib/xOAuth";
 import {
   SOCIAL_PLATFORM_META,
   SocialPlatformIcon,
@@ -67,8 +68,8 @@ function HelpLink({ href, children }: { href: string; children: string }) {
 
 /**
  * Credential dialog for connecting Facebook (Page id + Page access token) or
- * X (the four OAuth 1.0a keys from an X developer app). Credentials are
- * verified against the platform API before being stored (encrypted) locally.
+ * X (OAuth 2.0 Authorization Code with PKCE). Credentials are verified against
+ * the platform API before the resulting tokens are stored encrypted locally.
  */
 export function SocialConnectDialog({
   platform,
@@ -90,16 +91,14 @@ export function SocialConnectDialog({
     pageAccessToken: "",
   });
   const [xForm, setXForm] = useState({
-    apiKey: "",
-    apiSecret: "",
-    accessToken: "",
-    accessTokenSecret: "",
+    clientId: "",
+    clientSecret: "",
   });
 
   const canSubmit =
     platform === "facebook"
       ? facebookForm.pageId.trim() && facebookForm.pageAccessToken.trim()
-      : Object.values(xForm).every((v) => v.trim());
+      : xForm.clientId.trim();
 
   const handleConnect = async () => {
     setError(null);
@@ -111,10 +110,8 @@ export function SocialConnectDialog({
         });
       } else {
         await connectX({
-          apiKey: xForm.apiKey.trim(),
-          apiSecret: xForm.apiSecret.trim(),
-          accessToken: xForm.accessToken.trim(),
-          accessTokenSecret: xForm.accessTokenSecret.trim(),
+          clientId: xForm.clientId.trim(),
+          clientSecret: xForm.clientSecret.trim() || undefined,
         });
       }
       showSuccess(`${meta.label} connected`);
@@ -139,7 +136,7 @@ export function SocialConnectDialog({
           <DialogDescription>
             {platform === "facebook"
               ? "Post to a Facebook Page from Planner. Use a Page access token with the pages_manage_posts permission."
-              : "Post to X from Planner. Use the keys from an X developer app with Read and Write permissions."}
+              : "Sign in to X with OAuth 2.0 User Context. Your app credentials never leave this device."}
           </DialogDescription>
         </DialogHeader>
 
@@ -180,39 +177,37 @@ export function SocialConnectDialog({
           ) : (
             <>
               <FieldRow
-                id="x-api-key"
-                label="API key (consumer key)"
-                value={xForm.apiKey}
-                onChange={(apiKey) => setXForm((f) => ({ ...f, apiKey }))}
+                id="x-client-id"
+                label="OAuth 2.0 Client ID"
+                type="text"
+                placeholder="Your X app Client ID"
+                value={xForm.clientId}
+                onChange={(clientId) => setXForm((f) => ({ ...f, clientId }))}
               />
               <FieldRow
-                id="x-api-secret"
-                label="API key secret"
-                value={xForm.apiSecret}
-                onChange={(apiSecret) => setXForm((f) => ({ ...f, apiSecret }))}
-              />
-              <FieldRow
-                id="x-access-token"
-                label="Access token"
-                value={xForm.accessToken}
-                onChange={(accessToken) =>
-                  setXForm((f) => ({ ...f, accessToken }))
+                id="x-client-secret"
+                label="OAuth 2.0 Client Secret"
+                placeholder="Optional for public/native apps"
+                value={xForm.clientSecret}
+                onChange={(clientSecret) =>
+                  setXForm((f) => ({ ...f, clientSecret }))
                 }
               />
-              <FieldRow
-                id="x-access-token-secret"
-                label="Access token secret"
-                value={xForm.accessTokenSecret}
-                onChange={(accessTokenSecret) =>
-                  setXForm((f) => ({ ...f, accessTokenSecret }))
-                }
-              />
+              <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+                <p className="font-medium text-foreground">Callback URI</p>
+                <code className="mt-1 block break-all text-muted-foreground">
+                  {X_OAUTH_REDIRECT_URI}
+                </code>
+              </div>
               <p className="text-xs text-muted-foreground">
-                Create an app with Read and Write permissions in the{" "}
+                Add the callback URI above to your X app, enable OAuth 2.0 with
+                read and write permissions, then enter the Client ID from the{" "}
                 <HelpLink href="https://developer.x.com/en/portal/dashboard">
                   X developer portal
                 </HelpLink>
-                , then copy the four keys from “Keys and tokens”.
+                . Clicking connect opens X to grant tweet.read, users.read,
+                tweet.write, media.write, and offline.access. Do not paste the
+                app-only Bearer Token.
               </p>
             </>
           )}

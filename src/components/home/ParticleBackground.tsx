@@ -16,6 +16,18 @@ const CONNECT_DISTANCE = 128;
 const MOUSE_RADIUS = 150;
 const MOUSE_FORCE = 0.12;
 
+export function particleCanvasHeight({
+  visibleHeight,
+  scrollHeight,
+  clientHeight,
+}: {
+  visibleHeight: number;
+  scrollHeight?: number;
+  clientHeight?: number;
+}) {
+  return Math.max(scrollHeight ?? 0, clientHeight ?? 0, visibleHeight);
+}
+
 export function ParticleBackground({ className }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,6 +40,7 @@ export function ParticleBackground({ className }: { className?: string }) {
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
+    const scrollOwner = container.parentElement;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -47,15 +60,44 @@ export function ParticleBackground({ className }: { className?: string }) {
 
     const resize = () => {
       const rect = container.getBoundingClientRect();
+      const previousWidth = width;
+      const previousHeight = height;
+      const contentHeight = scrollOwner
+        ? Array.from(scrollOwner.children).reduce((largest, child) => {
+            if (child === container || !(child instanceof HTMLElement)) {
+              return largest;
+            }
+            return Math.max(
+              largest,
+              child.offsetTop +
+                Math.max(child.scrollHeight, child.offsetHeight),
+            );
+          }, 0)
+        : 0;
       width = rect.width;
-      height = rect.height;
+      // Most pages scroll inside their route root. An absolutely positioned
+      // child otherwise measures only the visible client box and leaves a hard
+      // edge once content extends below it (the missing background in Settings).
+      height = particleCanvasHeight({
+        visibleHeight: rect.height,
+        // Measure real content instead of the owner's scrollHeight: the
+        // absolute canvas itself participates in scroll overflow and would
+        // otherwise prevent the background from shrinking after navigation.
+        scrollHeight: contentHeight,
+        clientHeight: scrollOwner?.clientHeight,
+      });
+      container.style.height = `${height}px`;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (particlesRef.current.length === 0) {
+      if (
+        particlesRef.current.length === 0 ||
+        Math.abs(width - previousWidth) > 80 ||
+        Math.abs(height - previousHeight) > 160
+      ) {
         initParticles();
       }
     };
@@ -183,11 +225,25 @@ export function ParticleBackground({ className }: { className?: string }) {
 
     const ro = new ResizeObserver(resize);
     ro.observe(container);
+    if (scrollOwner) {
+      ro.observe(scrollOwner);
+      for (const child of scrollOwner.children) {
+        if (child !== container) ro.observe(child);
+      }
+    }
+    const mutationObserver = new MutationObserver(resize);
+    if (scrollOwner) {
+      mutationObserver.observe(scrollOwner, {
+        childList: true,
+        subtree: true,
+      });
+    }
     window.addEventListener("mousemove", onMouseMove);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       ro.disconnect();
+      mutationObserver.disconnect();
       window.removeEventListener("mousemove", onMouseMove);
     };
   }, []);
@@ -196,7 +252,7 @@ export function ParticleBackground({ className }: { className?: string }) {
     <div
       ref={containerRef}
       className={cn(
-        "particle-background pointer-events-none absolute inset-0 overflow-hidden",
+        "particle-background pointer-events-none absolute left-0 top-0 min-h-full w-full overflow-hidden",
         className,
       )}
       aria-hidden

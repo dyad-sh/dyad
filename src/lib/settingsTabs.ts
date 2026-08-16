@@ -1,7 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
-  Blocks,
   Brain,
   FlaskConical,
   GalleryVerticalEnd,
@@ -9,7 +8,6 @@ import {
   Plug,
   Settings2,
   ShieldCheck,
-  Wand2,
   Wrench,
 } from "lucide-react";
 
@@ -20,10 +18,8 @@ export const SETTINGS_TAB_IDS = [
   "ai",
   "modelRoles",
   "jarvis",
-  "skills",
   "plugins",
   "mcp",
-  "integrations",
   "storage",
   "agent",
   "advanced",
@@ -68,18 +64,16 @@ export const SETTINGS_TABS: SettingsTabDefinition[] = [
     sectionIds: [SECTION_IDS.jarvis],
   },
   {
-    id: "skills",
-    label: "Skills",
-    description: "Computer, terminal and browser use",
-    icon: Wand2,
-    sectionIds: [SECTION_IDS.systemAccess],
-  },
-  {
     id: "plugins",
     label: "Plugins",
-    description: "Developer, search and market services",
+    description: "Plugins, skills and integrations",
     icon: Plug,
-    sectionIds: [SECTION_IDS.plugins],
+    sectionIds: [
+      SECTION_IDS.plugins,
+      SECTION_IDS.systemAccess,
+      SECTION_IDS.integrations,
+      SECTION_IDS.connections,
+    ],
   },
   {
     id: "mcp",
@@ -87,13 +81,6 @@ export const SETTINGS_TABS: SettingsTabDefinition[] = [
     description: "Tool servers and workflows",
     icon: Wrench,
     sectionIds: [SECTION_IDS.toolsMcp],
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    description: "Databases and social accounts",
-    icon: Blocks,
-    sectionIds: [SECTION_IDS.integrations, SECTION_IDS.connections],
   },
   {
     id: "storage",

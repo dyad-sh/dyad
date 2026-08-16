@@ -310,9 +310,8 @@ export async function executeD1Plan(input: {
   token: string | null;
   plan: QueryPlan;
 }): Promise<{
-  columns: string[];
-  rows: string[][];
-  rowCount: number;
+  rows: unknown[];
+  totalRows: number | null;
   executionMs: number;
 }> {
   const { sql, params } = d1SqlFromPlan(input.plan);
@@ -326,7 +325,6 @@ export async function executeD1Plan(input: {
 
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
   return {
-    columns,
     rows: rows.map((row) =>
       columns.map((column) => {
         const value = row[column];
@@ -336,7 +334,7 @@ export async function executeD1Plan(input: {
           : String(value);
       }),
     ),
-    rowCount: rows.length,
+    totalRows: rows.length,
     executionMs: durationMs,
   };
 }

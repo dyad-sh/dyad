@@ -429,7 +429,12 @@ export default function ChatAgentPage() {
     setMessages([]);
     setVectorCollectionIds([]);
     setMessageFeedback({});
-  }, [persistedActiveId, setOpenTabs, setPersistedActiveId]);
+  }, [
+	persistedActiveId,
+	setOpenTabs,
+	setPersistedActiveId,
+	activeProjectId
+]);
 
   // The tab bar lives in the app chrome now, so a selection there arrives as
   // a change to the persisted active id. Load that conversation when it does.

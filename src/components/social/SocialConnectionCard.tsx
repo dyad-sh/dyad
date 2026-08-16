@@ -8,6 +8,7 @@ import { useSocialConnections } from "@/hooks/useSocialMedia";
 import { ipc } from "@/ipc/types";
 import type { SocialPlatform } from "@/ipc/types/social_media";
 import { showError, showSuccess } from "@/lib/toast";
+import { X_OAUTH_REDIRECT_URI } from "@/lib/xOAuth";
 import { SOCIAL_PLATFORM_META } from "./social-platform-meta";
 
 function CredentialField({
@@ -62,10 +63,8 @@ export function SocialConnectionCard({
     pageAccessToken: "",
   });
   const [x, setX] = useState({
-    apiKey: "",
-    apiSecret: "",
-    accessToken: "",
-    accessTokenSecret: "",
+    clientId: "",
+    clientSecret: "",
   });
 
   const status = connections?.[platform];
@@ -91,22 +90,15 @@ export function SocialConnectionCard({
         });
         setFacebook({ pageId: "", pageAccessToken: "" });
       } else {
-        if (Object.values(x).some((value) => !value.trim())) {
-          showError("Enter all four X API credentials.");
+        if (!x.clientId.trim()) {
+          showError("Enter the X OAuth 2.0 Client ID.");
           return;
         }
         await connectX({
-          apiKey: x.apiKey.trim(),
-          apiSecret: x.apiSecret.trim(),
-          accessToken: x.accessToken.trim(),
-          accessTokenSecret: x.accessTokenSecret.trim(),
+          clientId: x.clientId.trim(),
+          clientSecret: x.clientSecret.trim() || undefined,
         });
-        setX({
-          apiKey: "",
-          apiSecret: "",
-          accessToken: "",
-          accessTokenSecret: "",
-        });
+        setX({ clientId: "", clientSecret: "" });
       }
       showSuccess(`${meta.label} connected`);
     } catch (error) {
@@ -115,18 +107,18 @@ export function SocialConnectionCard({
   };
 
   if (isLoading) {
-    return <Loader2 className="size-4 animate-spin text-cyan-300/70" />;
+    return <Loader2 className="size-4 animate-spin text-primary/70" />;
   }
 
   if (isConnected) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="inline-flex items-center gap-2 text-sm text-cyan-50">
-            <CheckCircle2 className="size-4 text-emerald-300" />
+          <p className="inline-flex items-center gap-2 text-sm text-foreground">
+            <CheckCircle2 className="size-4 text-emerald-500" />
             Connected{accountLabel ? ` as ${accountLabel}` : ""}
           </p>
-          <p className="mt-1 text-xs text-cyan-100/40">
+          <p className="mt-1 text-xs text-muted-foreground">
             Credentials are encrypted on this device.
           </p>
         </div>
@@ -172,37 +164,36 @@ export function SocialConnectionCard({
           />
         </>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
           <CredentialField
-            id="settings-x-api-key"
-            label="API key"
-            value={x.apiKey}
-            onChange={(apiKey) => setX((current) => ({ ...current, apiKey }))}
-          />
-          <CredentialField
-            id="settings-x-api-secret"
-            label="API key secret"
-            value={x.apiSecret}
-            onChange={(apiSecret) =>
-              setX((current) => ({ ...current, apiSecret }))
+            id="settings-x-client-id"
+            label="OAuth 2.0 Client ID"
+            type="text"
+            value={x.clientId}
+            onChange={(clientId) =>
+              setX((current) => ({ ...current, clientId }))
             }
           />
           <CredentialField
-            id="settings-x-access-token"
-            label="Access token"
-            value={x.accessToken}
-            onChange={(accessToken) =>
-              setX((current) => ({ ...current, accessToken }))
+            id="settings-x-client-secret"
+            label="OAuth 2.0 Client Secret"
+            placeholder="Optional for public/native apps"
+            value={x.clientSecret}
+            onChange={(clientSecret) =>
+              setX((current) => ({ ...current, clientSecret }))
             }
           />
-          <CredentialField
-            id="settings-x-access-token-secret"
-            label="Access token secret"
-            value={x.accessTokenSecret}
-            onChange={(accessTokenSecret) =>
-              setX((current) => ({ ...current, accessTokenSecret }))
-            }
-          />
+          <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+            <p className="font-medium text-foreground">Callback URI</p>
+            <code className="mt-1 block break-all text-muted-foreground">
+              {X_OAUTH_REDIRECT_URI}
+            </code>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Allow-list this callback in the X app and enable read and write.
+            Connect opens X to grant user-context publishing permissions; the
+            app-only Bearer Token cannot publish.
+          </p>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">

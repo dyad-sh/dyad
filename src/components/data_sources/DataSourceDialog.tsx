@@ -121,6 +121,7 @@ export function DataSourceDialog({
             connectionKey: connectionKey.trim() || undefined,
           })
         : await ipc.dataSource.create({
+            provider: "supabase",
             name,
             description,
             projectUrl,

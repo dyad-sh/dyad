@@ -115,6 +115,7 @@ export function useChatAgentStream(
         selectedMcpWorkflowKeys?: string[];
         vectorCollectionIds?: string[];
         dataSourceIds?: string[];
+        projectId?: string | null;
         regenerate?: boolean;
       },
       callbacks: {
@@ -197,6 +198,7 @@ export function useChatAgentStream(
             selectedMcpWorkflowKeys?: string[];
             vectorCollectionIds?: string[];
             dataSourceIds?: string[];
+            projectId?: string | null;
             agentProfile?: "lovable-web-dev";
             conversationHistory?: Array<{
               role: "user" | "assistant";

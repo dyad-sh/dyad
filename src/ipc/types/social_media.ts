@@ -17,6 +17,16 @@ export const SocialPostStatusSchema = z.enum([
 ]);
 export type SocialPostStatus = z.infer<typeof SocialPostStatusSchema>;
 
+export const SocialPostMetricsSchema = z.object({
+  replies: z.number(),
+  reposts: z.number(),
+  likes: z.number(),
+  quotes: z.number(),
+  bookmarks: z.number().optional(),
+  impressions: z.number().optional(),
+});
+export type SocialPostMetrics = z.infer<typeof SocialPostMetricsSchema>;
+
 /** A post in the content planner (drafts, scheduled, and published copies). */
 export const SocialPostSchema = z.object({
   id: z.string(),
@@ -37,6 +47,9 @@ export const SocialPostSchema = z.object({
   externalUrl: z.string().nullish(),
   /** Last publish error, when status is "failed". */
   error: z.string().nullish(),
+  /** Latest performance snapshot returned by the platform. */
+  metrics: SocialPostMetricsSchema.nullish(),
+  metricsUpdatedAt: z.number().nullish(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -77,6 +90,16 @@ export const SocialConnectionsStatusSchema = z.object({
   x: z.object({
     connected: z.boolean(),
     username: z.string().optional(),
+    displayName: z.string().optional(),
+    profileImageUrl: z.string().optional(),
+    bio: z.string().optional(),
+    verified: z.boolean().optional(),
+    verifiedType: z.string().optional(),
+    followersCount: z.number().optional(),
+    followingCount: z.number().optional(),
+    postCount: z.number().optional(),
+    listedCount: z.number().optional(),
+    profileSyncedAt: z.number().optional(),
     connectedAt: z.number().optional(),
   }),
 });
@@ -91,10 +114,8 @@ export const ConnectFacebookParamsSchema = z.object({
 export type ConnectFacebookParams = z.infer<typeof ConnectFacebookParamsSchema>;
 
 export const ConnectXParamsSchema = z.object({
-  apiKey: z.string().min(1),
-  apiSecret: z.string().min(1),
-  accessToken: z.string().min(1),
-  accessTokenSecret: z.string().min(1),
+  clientId: z.string().min(1),
+  clientSecret: z.string().optional(),
 });
 export type ConnectXParams = z.infer<typeof ConnectXParamsSchema>;
 
@@ -137,6 +158,11 @@ export const socialMediaContracts = {
     input: ConnectXParamsSchema,
     output: SocialConnectionsStatusSchema,
   }),
+  refreshXProfile: defineContract({
+    channel: "social-media:refresh-x-profile",
+    input: z.void(),
+    output: SocialConnectionsStatusSchema,
+  }),
   disconnect: defineContract({
     channel: "social-media:disconnect",
     input: z.object({ platform: SocialPlatformSchema }),
@@ -169,6 +195,11 @@ export const socialMediaContracts = {
   }),
   publishPost: defineContract({
     channel: "social-media:publish-post",
+    input: z.object({ id: z.string() }),
+    output: SocialPostSchema,
+  }),
+  refreshPostMetrics: defineContract({
+    channel: "social-media:refresh-post-metrics",
     input: z.object({ id: z.string() }),
     output: SocialPostSchema,
   }),

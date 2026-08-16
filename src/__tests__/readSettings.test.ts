@@ -162,6 +162,62 @@ describe("readSettings", () => {
     });
   });
 
+  it("restores encrypted social connections and profile state after restart", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockSafeStorage.decryptString.mockImplementation((value) =>
+      value.toString().replace(/^encrypted:/, ""),
+    );
+    const secret = (value: string) => ({
+      value: Buffer.from(`encrypted:${value}`).toString("base64"),
+      encryptionType: "electron-safe-storage" as const,
+    });
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        socialMedia: {
+          facebook: {
+            pageId: "facebook-page-1",
+            pageName: "Example Page",
+            pageAccessToken: secret("facebook-page-token"),
+            connectedAt: 100,
+          },
+          x: {
+            authType: "oauth2",
+            clientId: "x-client-id",
+            clientSecret: secret("x-client-secret"),
+            accessToken: secret("x-access-token"),
+            refreshToken: secret("x-refresh-token"),
+            tokenExpiresAt: 9_999_999_999_999,
+            scopes: ["tweet.read", "users.read", "tweet.write"],
+            username: "example_user",
+            displayName: "Example User",
+            followersCount: 12500,
+            connectedAt: 200,
+          },
+        },
+      }),
+    );
+
+    const result = readSettings();
+
+    expect(result.socialMedia?.facebook).toMatchObject({
+      pageId: "facebook-page-1",
+      pageName: "Example Page",
+      pageAccessToken: { value: "facebook-page-token" },
+      connectedAt: 100,
+    });
+    expect(result.socialMedia?.x).toMatchObject({
+      authType: "oauth2",
+      clientId: "x-client-id",
+      clientSecret: { value: "x-client-secret" },
+      accessToken: { value: "x-access-token" },
+      refreshToken: { value: "x-refresh-token" },
+      username: "example_user",
+      displayName: "Example User",
+      followersCount: 12500,
+      connectedAt: 200,
+    });
+  });
+
   describe("when settings file exists", () => {
     it("should read and merge settings with defaults", () => {
       const mockFileContent = {
@@ -969,6 +1025,55 @@ describe("writeSettings", () => {
       value: Buffer.from("encrypted:duffel_test_token").toString("base64"),
       encryptionType: "electron-safe-storage",
     });
+  });
+
+  it("encrypts X OAuth 2.0 access, refresh, and client secrets", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        providerSettings: {},
+        selectedModel: { name: "auto", provider: "auto" },
+        selectedTemplateId: "react",
+        enableAutoUpdate: true,
+        releaseChannel: "stable",
+      }),
+    );
+
+    writeSettings({
+      socialMedia: {
+        x: {
+          authType: "oauth2",
+          clientId: "oauth2-client-id",
+          clientSecret: { value: " oauth2-client-secret " },
+          accessToken: { value: " oauth2-user-token " },
+          refreshToken: { value: " oauth2-refresh-token " },
+          username: "example_user",
+        },
+      },
+    });
+
+    const written = JSON.parse(
+      String(mockFs.writeFileSync.mock.calls.at(-1)?.[1]),
+    );
+    expect(written.socialMedia.x).toMatchObject({
+      authType: "oauth2",
+      accessToken: {
+        value: Buffer.from("encrypted:oauth2-user-token").toString("base64"),
+        encryptionType: "electron-safe-storage",
+      },
+      refreshToken: {
+        value: Buffer.from("encrypted:oauth2-refresh-token").toString("base64"),
+        encryptionType: "electron-safe-storage",
+      },
+      clientSecret: {
+        value: Buffer.from("encrypted:oauth2-client-secret").toString("base64"),
+        encryptionType: "electron-safe-storage",
+      },
+      clientId: "oauth2-client-id",
+      username: "example_user",
+    });
+    expect(written.socialMedia.x.apiKey).toBeUndefined();
+    expect(written.socialMedia.x.accessTokenSecret).toBeUndefined();
   });
 });
 

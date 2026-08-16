@@ -34,6 +34,7 @@ import { ChatAgentLovableProjectCards } from "./ChatAgentLovableProjectCards";
 import { ChatAgentToolResultCard } from "./ChatAgentToolResultCard";
 import type { ChatAgentToolPresentation } from "@/ipc/types/chat_agent";
 import { ChatAgentRagSources } from "./ChatAgentRagSources";
+import { ChatAgentSocialCard } from "./ChatAgentSocialCard";
 import { selectCitedRagSources } from "@/lib/rag_sources";
 
 type LovablePresentation = Extract<
@@ -245,6 +246,12 @@ export function ChatAgentMessageRow({
                       presentation={mergedLovablePresentation}
                     />
                   ) : null
+                ) : result.presentation.kind === "x-profile" ||
+                  result.presentation.kind === "x-post-composer" ? (
+                  <ChatAgentSocialCard
+                    key={`${result.serverName}-${result.toolName}-${index}`}
+                    presentation={result.presentation}
+                  />
                 ) : (
                   <ChatAgentResearchResultCard
                     key={`${result.serverName}-${result.toolName}-${index}`}

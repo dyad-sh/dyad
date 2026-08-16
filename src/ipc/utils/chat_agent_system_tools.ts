@@ -6,6 +6,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import type { ToolExecutionOptions, ToolSet } from "ai";
 import { z } from "zod";
 import type { UserSettings } from "@/lib/schemas";
+import type { ChatAgentToolPresentation } from "../types/chat_agent";
 import { waitForConsent } from "./mcp_consent";
 
 const execFileAsync = promisify(execFile);
@@ -18,6 +19,7 @@ type ToolResultCallback = (result: {
   toolName: string;
   result: string;
   status: "completed" | "error";
+  presentation?: ChatAgentToolPresentation;
 }) => void;
 
 async function confirmSystemAction(
@@ -257,6 +259,74 @@ export function buildChatAgentSystemToolSet(
 ): ToolSet {
   const access = settings.chatAgentSystemAccess;
   const tools: ToolSet = {};
+
+  const x = settings.socialMedia?.x;
+  if (x?.username) {
+    const profileUrl = `https://x.com/${encodeURIComponent(x.username)}`;
+    const profile = {
+      username: x.username,
+      displayName: x.displayName,
+      profileImageUrl: x.profileImageUrl,
+      bio: x.bio,
+      verified: x.verified,
+      verifiedType: x.verifiedType,
+      followersCount: x.followersCount,
+      followingCount: x.followingCount,
+      postCount: x.postCount,
+      profileSyncedAt: x.profileSyncedAt,
+      profileUrl,
+    };
+
+    tools.get_connected_x_profile = {
+      description:
+        "Show the connected X account as a native profile card. Always call this for requests about the user's X profile, handle, bio, verification, followers, following, or post count; do not restate the card as Markdown.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const result = JSON.stringify(profile);
+        onToolResult({
+          serverName: "X",
+          toolName: "Connected X profile",
+          result,
+          status: "completed",
+          presentation: { kind: "x-profile", ...profile },
+        });
+        return result;
+      },
+    };
+
+    tools.compose_x_post = {
+      description:
+        "Open a native, editable X post composer for the connected account. Use whenever the user asks to create, write, draft, refine, or prepare an X post. Write the strongest ready-to-publish copy in content (maximum 280 characters). The card provides image generation, attachments, refinements, Post Now, and Schedule.",
+      inputSchema: z.object({
+        content: z.string().min(1).max(280),
+        prompt: z.string().max(4_000).optional(),
+        imagePrompt: z.string().max(4_000).optional(),
+      }),
+      execute: async (input: {
+        content: string;
+        prompt?: string;
+        imagePrompt?: string;
+      }) => {
+        const payload = { ...profile, ...input };
+        const result = JSON.stringify(payload);
+        onToolResult({
+          serverName: "X",
+          toolName: "X post composer",
+          result,
+          status: "completed",
+          presentation: {
+            kind: "x-post-composer",
+            username: profile.username,
+            displayName: profile.displayName,
+            profileImageUrl: profile.profileImageUrl,
+            verified: profile.verified,
+            ...input,
+          },
+        });
+        return result;
+      },
+    };
+  }
 
   if (access?.terminal === true) {
     const description =

@@ -392,10 +392,19 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       }
       const x = newSettings.socialMedia.x;
       if (x) {
-        x.apiKey = encrypt(x.apiKey.value);
-        x.apiSecret = encrypt(x.apiSecret.value);
         x.accessToken = encrypt(x.accessToken.value);
-        x.accessTokenSecret = encrypt(x.accessTokenSecret.value);
+        if (x.authType === "oauth2") {
+          if (x.clientSecret) {
+            x.clientSecret = encrypt(x.clientSecret.value);
+          }
+          if (x.refreshToken) {
+            x.refreshToken = encrypt(x.refreshToken.value);
+          }
+        } else {
+          x.apiKey = encrypt(x.apiKey.value);
+          x.apiSecret = encrypt(x.apiSecret.value);
+          x.accessTokenSecret = encrypt(x.accessTokenSecret.value);
+        }
       }
     }
     for (const provider in newSettings.providerSettings) {
@@ -609,18 +618,40 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   }
   if (socialMedia?.x) {
     const x = socialMedia.x;
-    const apiKey = decryptStoredSecret(x.apiKey, "X API key");
-    const apiSecret = decryptStoredSecret(x.apiSecret, "X API secret");
     const accessToken = decryptStoredSecret(x.accessToken, "X access token");
-    const accessTokenSecret = decryptStoredSecret(
-      x.accessTokenSecret,
-      "X access token secret",
-    );
-    if (apiKey && apiSecret && accessToken && accessTokenSecret) {
-      x.apiKey = apiKey;
-      x.apiSecret = apiSecret;
+    if (x.authType === "oauth2" && accessToken) {
       x.accessToken = accessToken;
-      x.accessTokenSecret = accessTokenSecret;
+      if (x.clientSecret) {
+        const clientSecret = decryptStoredSecret(
+          x.clientSecret,
+          "X OAuth client secret",
+        );
+        if (clientSecret) x.clientSecret = clientSecret;
+        else delete x.clientSecret;
+      }
+      if (x.refreshToken) {
+        const refreshToken = decryptStoredSecret(
+          x.refreshToken,
+          "X OAuth refresh token",
+        );
+        if (refreshToken) x.refreshToken = refreshToken;
+        else delete x.refreshToken;
+      }
+    } else if (x.authType !== "oauth2") {
+      const apiKey = decryptStoredSecret(x.apiKey, "X API key");
+      const apiSecret = decryptStoredSecret(x.apiSecret, "X API secret");
+      const accessTokenSecret = decryptStoredSecret(
+        x.accessTokenSecret,
+        "X access token secret",
+      );
+      if (apiKey && apiSecret && accessToken && accessTokenSecret) {
+        x.apiKey = apiKey;
+        x.apiSecret = apiSecret;
+        x.accessToken = accessToken;
+        x.accessTokenSecret = accessTokenSecret;
+      } else {
+        delete socialMedia.x;
+      }
     } else {
       delete socialMedia.x;
     }

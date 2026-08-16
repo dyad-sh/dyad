@@ -29,14 +29,20 @@ import type {
   XConnection,
 } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  authorizeXUser,
+  refreshXUserToken,
+  X_OAUTH_SCOPES,
+} from "../utils/x_oauth";
 
 const logger = log.scope("social_media_handlers");
 
 const POSTS_FILE = "social-media-posts.json";
 const POSTS_LOCK = "social-media-posts";
 const GRAPH_API_BASE = "https://graph.facebook.com/v23.0";
-const X_API_BASE = "https://api.twitter.com";
-const X_UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json";
+const X_API_BASE = "https://api.x.com";
+const X_OAUTH1_UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json";
+const X_OAUTH2_UPLOAD_URL = `${X_API_BASE}/2/media/upload`;
 const REQUEST_TIMEOUT_MS = 60_000;
 const SCHEDULER_INTERVAL_MS = 30_000;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // platform-side limits are lower anyway
@@ -146,6 +152,16 @@ function toConnectionsStatus(settings: UserSettings): SocialConnectionsStatus {
       ? {
           connected: true,
           username: x.username,
+          displayName: x.displayName,
+          profileImageUrl: x.profileImageUrl,
+          bio: x.bio,
+          verified: x.verified,
+          verifiedType: x.verifiedType,
+          followersCount: x.followersCount,
+          followingCount: x.followingCount,
+          postCount: x.postCount,
+          listedCount: x.listedCount,
+          profileSyncedAt: x.profileSyncedAt,
           connectedAt: x.connectedAt,
         }
       : { connected: false },
@@ -165,12 +181,14 @@ function requireFacebookConnection(settings: UserSettings): FacebookConnection {
 
 function requireXConnection(settings: UserSettings): XConnection {
   const x = settings.socialMedia?.x;
-  if (
-    !x?.apiKey?.value ||
-    !x.apiSecret?.value ||
-    !x.accessToken?.value ||
-    !x.accessTokenSecret?.value
-  ) {
+  const isOAuth2 = x?.authType === "oauth2" && x.accessToken.value;
+  const isOAuth1 =
+    x?.authType !== "oauth2" &&
+    x?.apiKey.value &&
+    x.apiSecret.value &&
+    x.accessToken.value &&
+    x.accessTokenSecret.value;
+  if (!isOAuth2 && !isOAuth1) {
     throw new DyadError(
       "X is not connected. Connect your X account in Settings → Integrations or the Social Media Agent first.",
       DyadErrorKind.Auth,
@@ -307,7 +325,7 @@ async function publishToFacebook(
 }
 
 // =============================================================================
-// X / Twitter (OAuth 1.0a user context)
+// X / Twitter (OAuth 2.0 user context + legacy OAuth 1.0a compatibility)
 // =============================================================================
 
 interface XCredentials {
@@ -318,12 +336,63 @@ interface XCredentials {
 }
 
 function xCredentials(connection: XConnection): XCredentials {
+  if (connection.authType === "oauth2") {
+    throw new Error("OAuth 1.0a credentials were requested for OAuth 2.0");
+  }
   return {
     apiKey: connection.apiKey.value,
     apiSecret: connection.apiSecret.value,
     accessToken: connection.accessToken.value,
     accessTokenSecret: connection.accessTokenSecret.value,
   };
+}
+
+async function activeXConnection(
+  connection: XConnection,
+): Promise<XConnection> {
+  if (
+    connection.authType !== "oauth2" ||
+    !connection.tokenExpiresAt ||
+    connection.tokenExpiresAt > Date.now() + 60_000
+  ) {
+    return connection;
+  }
+  if (!connection.clientId || !connection.refreshToken?.value) {
+    throw new DyadError(
+      "The X user access token expired. Disconnect and reconnect X to authorize it again.",
+      DyadErrorKind.Auth,
+    );
+  }
+  const refreshed = await refreshXUserToken(
+    connection.clientId,
+    connection.clientSecret?.value,
+    connection.refreshToken.value,
+  );
+  const updated: XConnection = {
+    ...connection,
+    accessToken: { value: refreshed.accessToken },
+    refreshToken: {
+      value: refreshed.refreshToken ?? connection.refreshToken.value,
+    },
+    tokenExpiresAt: refreshed.expiresAt,
+    scopes: refreshed.scopes.length ? refreshed.scopes : connection.scopes,
+  };
+  const settings = readSettings();
+  writeSettings({
+    socialMedia: { ...settings.socialMedia, x: updated },
+  });
+  return updated;
+}
+
+async function xAuthorizationHeader(
+  method: "GET" | "POST",
+  url: string,
+  connection: XConnection,
+): Promise<string> {
+  const active = await activeXConnection(connection);
+  return active.authType === "oauth2"
+    ? `Bearer ${active.accessToken.value}`
+    : buildOAuth1Header(method, url, xCredentials(active));
 }
 
 /** RFC 3986 percent-encoding as required by OAuth 1.0a. */
@@ -394,6 +463,9 @@ async function readXError(response: Response): Promise<string> {
     };
     const message =
       json?.detail ?? json?.errors?.[0]?.message ?? json?.title ?? undefined;
+    if (message?.includes("Application-Only is forbidden")) {
+      return "This is X's app-only Bearer Token, which cannot identify an account or publish. Reconnect using the Client ID sign-in flow to grant OAuth 2.0 User Context.";
+    }
     if (message) {
       return message;
     }
@@ -401,29 +473,71 @@ async function readXError(response: Response): Promise<string> {
     // fall through to the generic message
   }
   if (response.status === 401) {
-    return "X rejected the credentials (HTTP 401). Double-check the four keys and that your app has Read and Write permissions.";
+    return "X rejected the user access token (HTTP 401). Check that it is an OAuth 2.0 user token, not the app-only Bearer Token, and regenerate it if it expired.";
   }
   if (response.status === 403) {
-    return "X refused the request (HTTP 403). Your app may not have write access — set the app permissions to Read and Write, then regenerate the access token.";
+    return "X refused the request (HTTP 403). Posting requires tweet.read, users.read, and tweet.write; image posting also requires media.write. Add the scopes and regenerate the user access token.";
   }
   return `X API error (HTTP ${response.status})`;
 }
 
-async function verifyXCredentials(
-  creds: XCredentials,
-): Promise<{ username?: string }> {
-  const url = `${X_API_BASE}/2/users/me`;
+interface XProfile {
+  username?: string;
+  displayName?: string;
+  profileImageUrl?: string;
+  bio?: string;
+  verified?: boolean;
+  verifiedType?: string;
+  followersCount?: number;
+  followingCount?: number;
+  postCount?: number;
+  listedCount?: number;
+  profileSyncedAt: number;
+}
+
+async function fetchXProfile(connection: XConnection): Promise<XProfile> {
+  const url = `${X_API_BASE}/2/users/me?user.fields=description,name,profile_image_url,public_metrics,verified,verified_type`;
   const response = await fetchWithTimeout(url, {
-    headers: { Authorization: buildOAuth1Header("GET", url, creds) },
+    headers: {
+      Authorization: await xAuthorizationHeader("GET", url, connection),
+    },
   });
   if (!response.ok) {
     throw new DyadError(await readXError(response), DyadErrorKind.Auth);
   }
-  const json = (await response.json()) as { data?: { username?: string } };
-  return { username: json?.data?.username };
+  const json = (await response.json()) as {
+    data?: {
+      username?: string;
+      name?: string;
+      profile_image_url?: string;
+      description?: string;
+      verified?: boolean;
+      verified_type?: string;
+      public_metrics?: {
+        followers_count?: number;
+        following_count?: number;
+        tweet_count?: number;
+        listed_count?: number;
+      };
+    };
+  };
+  const data = json.data;
+  return {
+    username: data?.username,
+    displayName: data?.name,
+    profileImageUrl: data?.profile_image_url?.replace("_normal.", "_400x400."),
+    bio: data?.description,
+    verified: data?.verified,
+    verifiedType: data?.verified_type,
+    followersCount: data?.public_metrics?.followers_count,
+    followingCount: data?.public_metrics?.following_count,
+    postCount: data?.public_metrics?.tweet_count,
+    listedCount: data?.public_metrics?.listed_count,
+    profileSyncedAt: Date.now(),
+  };
 }
 
-async function uploadXMedia(
+async function uploadXMediaOAuth1(
   creds: XCredentials,
   image: string,
 ): Promise<string> {
@@ -434,9 +548,11 @@ async function uploadXMedia(
     new Blob([new Uint8Array(buffer)], { type: mime }),
     "post-image.png",
   );
-  const response = await fetchWithTimeout(X_UPLOAD_URL, {
+  const response = await fetchWithTimeout(X_OAUTH1_UPLOAD_URL, {
     method: "POST",
-    headers: { Authorization: buildOAuth1Header("POST", X_UPLOAD_URL, creds) },
+    headers: {
+      Authorization: buildOAuth1Header("POST", X_OAUTH1_UPLOAD_URL, creds),
+    },
     body: form,
   });
   if (!response.ok) {
@@ -454,22 +570,58 @@ async function uploadXMedia(
   return json.media_id_string;
 }
 
+async function uploadXMediaOAuth2(
+  accessToken: string,
+  image: string,
+): Promise<string> {
+  const { buffer, mime } = decodeDataUrlImage(image);
+  const mediaType = mime === "image/jpg" ? "image/jpeg" : mime;
+  const form = new FormData();
+  form.append(
+    "media",
+    new Blob([new Uint8Array(buffer)], { type: mediaType }),
+    "post-image.png",
+  );
+  form.append("media_category", "tweet_image");
+  form.append("media_type", mediaType);
+  const response = await fetchWithTimeout(X_OAUTH2_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: form,
+  });
+  if (!response.ok) {
+    throw new DyadError(await readXError(response), DyadErrorKind.External);
+  }
+  const json = (await response.json()) as { data?: { id?: string } };
+  if (!json.data?.id) {
+    throw new DyadError(
+      "X did not return a media id for the uploaded image.",
+      DyadErrorKind.External,
+    );
+  }
+  return json.data.id;
+}
+
 async function publishToX(
   connection: XConnection,
   post: SocialPost,
 ): Promise<{ externalId: string; externalUrl: string }> {
-  const creds = xCredentials(connection);
-
+  connection = await activeXConnection(connection);
   let mediaId: string | undefined;
   if (post.image) {
-    mediaId = await uploadXMedia(creds, post.image);
+    mediaId =
+      connection.authType === "oauth2"
+        ? await uploadXMediaOAuth2(connection.accessToken.value, post.image)
+        : await uploadXMediaOAuth1(xCredentials(connection), post.image);
   }
 
   const url = `${X_API_BASE}/2/tweets`;
   const response = await fetchWithTimeout(url, {
     method: "POST",
     headers: {
-      Authorization: buildOAuth1Header("POST", url, creds),
+      Authorization: await xAuthorizationHeader("POST", url, connection),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -674,28 +826,65 @@ export function registerSocialMediaHandlers() {
   );
 
   createTypedHandler(socialMediaContracts.connectX, async (_, params) => {
-    const creds: XCredentials = {
-      apiKey: params.apiKey.trim(),
-      apiSecret: params.apiSecret.trim(),
-      accessToken: params.accessToken.trim(),
-      accessTokenSecret: params.accessTokenSecret.trim(),
+    const tokens = await authorizeXUser(
+      params.clientId.trim(),
+      params.clientSecret?.trim() || undefined,
+    );
+    const missingScopes = X_OAUTH_SCOPES.filter(
+      (scope) => !tokens.scopes.includes(scope),
+    );
+    if (tokens.scopes.length && missingScopes.length) {
+      throw new DyadError(
+        `X did not grant the required permissions: ${missingScopes.join(", ")}. Enable read and write permissions in the X app, then reconnect.`,
+        DyadErrorKind.Auth,
+      );
+    }
+    if (!tokens.refreshToken) {
+      throw new DyadError(
+        "X did not issue a refresh token. Confirm offline.access is enabled for the app, then reconnect.",
+        DyadErrorKind.Auth,
+      );
+    }
+    const connection: XConnection = {
+      authType: "oauth2",
+      clientId: params.clientId.trim(),
+      clientSecret: params.clientSecret?.trim()
+        ? { value: params.clientSecret.trim() }
+        : undefined,
+      accessToken: { value: tokens.accessToken },
+      refreshToken: tokens.refreshToken
+        ? { value: tokens.refreshToken }
+        : undefined,
+      tokenExpiresAt: tokens.expiresAt,
+      scopes: tokens.scopes,
     };
-    const { username } = await verifyXCredentials(creds);
+    const profile = await fetchXProfile(connection);
     const settings = readSettings();
     writeSettings({
       socialMedia: {
         ...settings.socialMedia,
         x: {
-          apiKey: { value: creds.apiKey },
-          apiSecret: { value: creds.apiSecret },
-          accessToken: { value: creds.accessToken },
-          accessTokenSecret: { value: creds.accessTokenSecret },
-          username,
+          ...connection,
+          ...profile,
           connectedAt: Date.now(),
         },
       },
     });
-    logger.log(`Connected X account @${username ?? "unknown"}`);
+    logger.log(`Connected X account @${profile.username ?? "unknown"}`);
+    return toConnectionsStatus(readSettings());
+  });
+
+  createTypedHandler(socialMediaContracts.refreshXProfile, async () => {
+    const connection = requireXConnection(readSettings());
+    const profile = await fetchXProfile(connection);
+    const settings = readSettings();
+    const latestConnection = requireXConnection(settings);
+    writeSettings({
+      socialMedia: {
+        ...settings.socialMedia,
+        x: { ...latestConnection, ...profile },
+      },
+    });
     return toConnectionsStatus(readSettings());
   });
 
@@ -807,4 +996,60 @@ export function registerSocialMediaHandlers() {
   createTypedHandler(socialMediaContracts.publishPost, async (_, params) => {
     return publishPostById(params.id);
   });
+
+  createTypedHandler(
+    socialMediaContracts.refreshPostMetrics,
+    async (_, params) => {
+      const post = loadPosts().find((candidate) => candidate.id === params.id);
+      if (!post) {
+        throw new DyadError("Post not found", DyadErrorKind.NotFound);
+      }
+      if (post.platform !== "x" || !post.externalId) {
+        throw new DyadError(
+          "Performance is available after an X post is published.",
+          DyadErrorKind.Validation,
+        );
+      }
+      const connection = requireXConnection(readSettings());
+      const url = `${X_API_BASE}/2/tweets/${encodeURIComponent(post.externalId)}?tweet.fields=public_metrics`;
+      const response = await fetchWithTimeout(url, {
+        headers: {
+          Authorization: await xAuthorizationHeader("GET", url, connection),
+        },
+      });
+      if (!response.ok) {
+        throw new DyadError(await readXError(response), DyadErrorKind.External);
+      }
+      const json = (await response.json()) as {
+        data?: {
+          public_metrics?: {
+            reply_count?: number;
+            retweet_count?: number;
+            like_count?: number;
+            quote_count?: number;
+            bookmark_count?: number;
+            impression_count?: number;
+          };
+        };
+      };
+      const metrics = json.data?.public_metrics;
+      if (!metrics) {
+        throw new DyadError(
+          "X did not return performance metrics for this post.",
+          DyadErrorKind.External,
+        );
+      }
+      return mutatePost(post.id, {
+        metrics: {
+          replies: metrics.reply_count ?? 0,
+          reposts: metrics.retweet_count ?? 0,
+          likes: metrics.like_count ?? 0,
+          quotes: metrics.quote_count ?? 0,
+          bookmarks: metrics.bookmark_count,
+          impressions: metrics.impression_count,
+        },
+        metricsUpdatedAt: Date.now(),
+      });
+    },
+  );
 }

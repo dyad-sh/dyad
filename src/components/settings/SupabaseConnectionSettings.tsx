@@ -16,7 +16,7 @@ const SUPABASE_OAUTH_LOGIN_URL =
   "https://supabase-oauth.dyad.sh/api/connect-supabase/login";
 
 /**
- * Supabase connection management for the Settings → Integrations tab.
+ * Supabase connection management for Settings → Plugins → Integrations.
  *
  * Unlike <SupabaseConnector>, this is app-independent: it connects the Supabase
  * account globally (organizations are stored in settings). When connected it

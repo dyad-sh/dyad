@@ -80,10 +80,10 @@ export function TaskComposerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-cyan-400/20 bg-[#061225] text-white sm:max-w-lg">
+      <DialogContent className="border-border bg-background text-foreground sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{task ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription className="text-cyan-100/45">
+          <DialogDescription className="text-muted-foreground">
             Add any reminder, deadline, appointment or custom task to your
             planner.
           </DialogDescription>

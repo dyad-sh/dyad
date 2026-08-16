@@ -33,7 +33,7 @@ export function VercelIntegration() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-cyan-50">Vercel connected</p>
-          <p className="mt-1 text-xs text-cyan-100/40">
+          <p className="mt-1 text-xs text-muted-foreground">
             {projects.length} project{projects.length === 1 ? "" : "s"} found.
             The token is encrypted on this device.
           </p>
@@ -52,7 +52,7 @@ export function VercelIntegration() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs leading-5 text-cyan-100/50">
+      <p className="text-xs leading-5 text-muted-foreground">
         Paste a Vercel access token to deploy apps and read hosting projects.
       </p>
       <div className="space-y-1.5">

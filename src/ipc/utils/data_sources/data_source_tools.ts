@@ -360,7 +360,8 @@ export function buildDataSourceToolSet(
             })
           : await executePlan({
               projectUrl: row.projectUrl,
-              key,
+              // The provider guard above rejects a missing Supabase key.
+              key: key ?? "",
               plan: validation.plan,
             });
 

@@ -1,11 +1,10 @@
 import {
   Activity,
   FlaskConical,
-  Blocks,
-  Boxes,
   Cpu,
   Database,
   HardDrive,
+  NotebookPen,
   Plug,
   Puzzle,
   Settings as SettingsIcon,
@@ -35,12 +34,11 @@ export type SystemDestinationId =
   | "infrastructure"
   | "data-sources"
   | "storage"
+  | "notes-vault"
   | "ai-providers"
   | "model-roles"
   | "mcp"
   | "plugins"
-  | "integrations"
-  | "skills"
   | "security"
   | "advanced"
   | "appearance";
@@ -67,7 +65,10 @@ export type SystemDestination = {
    * settings tab. Either way the component is the one that already worked.
    */
   renders:
-    | { kind: "page"; route: "/infrastructure" | "/data-sources" }
+    | {
+        kind: "page";
+        route: "/infrastructure" | "/data-sources" | "notes-vault";
+      }
     | { kind: "settings-tab"; tab: SettingsTabId };
   /** The route this used to live at, kept working for existing links. */
   legacyRoute?: string;
@@ -91,6 +92,14 @@ export const SYSTEM_DESTINATIONS: SystemDestination[] = [
     icon: HardDrive,
     renders: { kind: "settings-tab", tab: "storage" },
     legacyRoute: "/storage",
+  },
+  {
+    id: "notes-vault",
+    label: "Notes Vault",
+    summary: "A fast local notepad for ideas and snippets",
+    group: "Machine",
+    icon: NotebookPen,
+    renders: { kind: "page", route: "notes-vault" },
   },
   {
     id: "ai-providers",
@@ -126,28 +135,12 @@ export const SYSTEM_DESTINATIONS: SystemDestination[] = [
     renders: { kind: "settings-tab", tab: "mcp" },
   },
   {
-    id: "integrations",
-    label: "Integrations",
-    summary: "Connected third-party services",
-    group: "Connections",
-    icon: Blocks,
-    renders: { kind: "settings-tab", tab: "integrations" },
-  },
-  {
     id: "plugins",
     label: "Plugins",
-    summary: "Installed application extensions",
+    summary: "AI capabilities, skills and your connected services",
     group: "Extensions",
     icon: Puzzle,
     renders: { kind: "settings-tab", tab: "plugins" },
-  },
-  {
-    id: "skills",
-    label: "Skills",
-    summary: "Capabilities available to agents",
-    group: "Extensions",
-    icon: Boxes,
-    renders: { kind: "settings-tab", tab: "skills" },
   },
   {
     id: "security",

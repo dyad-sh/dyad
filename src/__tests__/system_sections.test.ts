@@ -23,12 +23,11 @@ const REQUIRED = [
   "infrastructure",
   "data-sources",
   "storage",
+  "notes-vault",
   "ai-providers",
   "model-roles",
   "mcp",
   "plugins",
-  "integrations",
-  "skills",
   "security",
   "appearance",
   "advanced",
@@ -122,6 +121,7 @@ describe("System destinations", () => {
 
   it("resolves a destination by id and rejects an unknown one", () => {
     expect(findDestination("mcp")?.label).toBe("MCP");
+    expect(findDestination("skills")).toBeUndefined();
     expect(findDestination("nonsense")).toBeUndefined();
     expect(findDestination(null)).toBeUndefined();
   });

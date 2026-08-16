@@ -60,6 +60,13 @@ function PostChip({
       data-testid={`calendar-post-${post.id}`}
     >
       <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} />
+      {post.image && (
+        <img
+          src={post.image}
+          alt=""
+          className="size-4 shrink-0 rounded object-cover ring-1 ring-white/15"
+        />
+      )}
       <SocialPlatformIcon
         platform={post.platform}
         className="size-3 shrink-0"
@@ -90,10 +97,10 @@ function TaskChip({
       className={cn(
         "flex w-full items-center gap-1.5 rounded-md border px-1.5 py-1 text-left text-[11px] leading-none transition hover:brightness-125",
         task.completed
-          ? "border-emerald-400/20 bg-emerald-500/8 text-emerald-200/55 line-through"
+          ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 line-through"
           : task.priority === "high"
-            ? "border-rose-400/25 bg-rose-500/10 text-rose-100"
-            : "border-violet-400/25 bg-violet-500/10 text-violet-100",
+            ? "border-rose-500/30 bg-rose-500/10 text-rose-600"
+            : "border-violet-500/30 bg-violet-500/10 text-violet-600",
       )}
       data-testid={`calendar-task-${task.id}`}
     >
@@ -175,12 +182,12 @@ export function ContentCalendar({
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col rounded-2xl border border-cyan-400/12 bg-[rgba(8,20,40,0.5)] shadow-[0_0_24px_rgba(0,229,255,0.05),inset_0_1px_0_0_rgba(0,229,255,0.08)] backdrop-blur-xl"
+      className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border/70 bg-card/85 text-card-foreground shadow-sm backdrop-blur-xl"
       data-testid="content-calendar"
     >
       {/* Calendar toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-cyan-400/10 px-4 py-3">
-        <h2 className="font-jarvis-display text-lg font-semibold tracking-wide text-white">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 py-3">
+        <h2 className="font-jarvis-display text-lg font-semibold tracking-wide text-foreground">
           {format(month, "MMMM yyyy")}
         </h2>
         <div className="flex items-center gap-1">
@@ -188,14 +195,14 @@ export function ContentCalendar({
             type="button"
             aria-label="Previous month"
             onClick={() => setMonth((m) => addMonths(m, -1))}
-            className="grid size-7 place-items-center rounded-lg border border-white/10 bg-white/5 text-white/70 transition hover:border-cyan-400/40 hover:text-white"
+            className="grid size-7 place-items-center rounded-lg border border-border bg-muted/45 text-muted-foreground transition hover:border-primary/45 hover:text-foreground"
           >
             <ChevronLeft className="size-4" />
           </button>
           <button
             type="button"
             onClick={() => setMonth(startOfMonth(new Date()))}
-            className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:border-cyan-400/40 hover:text-white"
+            className="rounded-lg border border-border bg-muted/45 px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary/45 hover:text-foreground"
           >
             Today
           </button>
@@ -203,7 +210,7 @@ export function ContentCalendar({
             type="button"
             aria-label="Next month"
             onClick={() => setMonth((m) => addMonths(m, 1))}
-            className="grid size-7 place-items-center rounded-lg border border-white/10 bg-white/5 text-white/70 transition hover:border-cyan-400/40 hover:text-white"
+            className="grid size-7 place-items-center rounded-lg border border-border bg-muted/45 text-muted-foreground transition hover:border-primary/45 hover:text-foreground"
           >
             <ChevronRight className="size-4" />
           </button>
@@ -218,8 +225,8 @@ export function ContentCalendar({
               className={cn(
                 "rounded-full border px-2.5 py-1 text-xs transition",
                 calendarFilter === option.id
-                  ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-200"
-                  : "border-white/10 bg-white/5 text-white/55 hover:text-white/80",
+                  ? "border-primary/50 bg-primary/15 text-primary"
+                  : "border-border bg-muted/45 text-muted-foreground hover:text-foreground",
               )}
             >
               {option.label}
@@ -229,11 +236,11 @@ export function ContentCalendar({
       </div>
 
       {/* Weekday header */}
-      <div className="grid grid-cols-7 border-b border-cyan-400/10">
+      <div className="grid grid-cols-7 border-b border-border/60">
         {WEEKDAYS.map((day) => (
           <div
             key={day}
-            className="px-2 py-1.5 text-center font-jarvis-ui text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300/45"
+            className="px-2 py-1.5 text-center font-jarvis-ui text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
           >
             {day}
           </div>
@@ -262,22 +269,22 @@ export function ContentCalendar({
                 }
               }}
               className={cn(
-                "group relative flex min-h-24 flex-col gap-1 border-b border-r border-cyan-400/8 p-1.5 text-left align-top transition last:border-r-0 hover:bg-cyan-500/5",
-                !inMonth && "bg-black/20",
-                today && "bg-cyan-500/8",
+                "group relative flex min-h-24 flex-col gap-1 border-b border-r border-border/50 p-1.5 text-left align-top transition last:border-r-0 hover:bg-accent/45",
+                !inMonth && "bg-muted/45",
+                today && "bg-primary/10",
               )}
               data-testid={`calendar-day-${key}`}
             >
               <div className="flex items-center justify-between">
-                <CalendarPlus className="size-3.5 text-cyan-300/0 transition group-hover:text-cyan-300/70" />
+                <CalendarPlus className="size-3.5 text-primary/0 transition group-hover:text-primary/70" />
                 <span
                   className={cn(
                     "grid size-6 place-items-center rounded-full text-xs tabular-nums",
                     today
-                      ? "bg-cyan-400 font-semibold text-[#04101f] shadow-[0_0_12px_rgba(0,229,255,0.6)]"
+                      ? "bg-primary font-semibold text-primary-foreground shadow-sm"
                       : inMonth
-                        ? "text-white/75"
-                        : "text-white/25",
+                        ? "text-foreground/80"
+                        : "text-muted-foreground/55",
                   )}
                 >
                   {format(day, "d")}
@@ -302,7 +309,7 @@ export function ContentCalendar({
                     ),
                   )}
                 {overflow > 0 && (
-                  <span className="px-1 text-[10px] text-cyan-300/60">
+                  <span className="px-1 text-[10px] text-primary/75">
                     +{overflow} more
                   </span>
                 )}
@@ -313,7 +320,7 @@ export function ContentCalendar({
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 border-t border-cyan-400/10 px-4 py-2">
+      <div className="flex flex-wrap items-center gap-4 border-t border-border/60 px-4 py-2">
         {(
           Object.entries(POST_STATUS_META) as Array<
             [
@@ -324,13 +331,13 @@ export function ContentCalendar({
         ).map(([status, meta]) => (
           <span
             key={status}
-            className="inline-flex items-center gap-1.5 text-[11px] text-white/45"
+            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
           >
             <span className={cn("size-1.5 rounded-full", meta.dot)} />
             {meta.label}
           </span>
         ))}
-        <span className="ml-auto hidden text-[11px] text-white/30 md:block">
+        <span className="ml-auto hidden text-[11px] text-muted-foreground/80 md:block">
           Click a day to add a task
         </span>
       </div>

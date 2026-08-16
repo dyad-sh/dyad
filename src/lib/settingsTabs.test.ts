@@ -13,18 +13,21 @@ describe("settingsTabs", () => {
     expect(getTabIdForSection(SECTION_IDS.providers)).toBe("ai");
   });
 
-  it("consolidates service connections under Integrations", () => {
-    expect(getTabIdForSection(SECTION_IDS.integrations)).toBe("integrations");
-    expect(getTabIdForSection(SECTION_IDS.connections)).toBe("integrations");
+  it("consolidates service connections into the extensions hub", () => {
+    expect(getTabIdForSection(SECTION_IDS.integrations)).toBe("plugins");
+    expect(getTabIdForSection(SECTION_IDS.connections)).toBe("plugins");
     expect(SETTINGS_TABS.map((tab) => tab.id)).not.toContain("connections");
+    expect(SETTINGS_TABS.map((tab) => tab.id)).not.toContain("integrations");
   });
 
   it("places developer service configuration under Plugins", () => {
     expect(getTabIdForSection(SECTION_IDS.plugins)).toBe("plugins");
+    expect(getTabIdForSection(SECTION_IDS.systemAccess)).toBe("plugins");
     expect(SETTINGS_TABS.find((tab) => tab.id === "plugins")).toMatchObject({
       label: "Plugins",
-      description: "Developer, search and market services",
+      description: "Plugins, skills and integrations",
     });
+    expect(SETTINGS_TABS.map((tab) => tab.id)).not.toContain("skills");
   });
 
   it("labels the AI tab as Providers", () => {

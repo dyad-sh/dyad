@@ -114,7 +114,7 @@ export function LovablePluginSettings() {
             <CircleAlert className="mt-0.5 size-4 shrink-0 text-cyan-300" />
           )}
           <div className="space-y-1">
-            <p className="text-sm font-medium text-cyan-50">
+            <p className="text-sm font-medium text-foreground">
               {statusQuery.isLoading
                 ? "Checking Lovable…"
                 : isConnected
@@ -123,7 +123,7 @@ export function LovablePluginSettings() {
                     ? "Lovable needs attention"
                     : "Lovable not connected"}
             </p>
-            <p className="text-xs leading-5 text-cyan-100/60">
+            <p className="text-xs leading-5 text-muted-foreground">
               {isConnected
                 ? `${status.toolCount ?? 0} Lovable tools are ready for Web Dev and approved assistant actions.`
                 : status?.error ||
@@ -136,7 +136,7 @@ export function LovablePluginSettings() {
       <div className="space-y-1.5">
         <label
           htmlFor="settings-lovable-mcp-url"
-          className="text-sm font-medium text-cyan-50"
+          className="text-sm font-medium text-foreground"
         >
           Official MCP server
         </label>

@@ -240,6 +240,7 @@ export default function GitHubManagerPage() {
         content: editorContent,
         message: commitMessage.trim() || "Update file",
         sha: selectedFile.sha,
+        encoding: "utf-8",
       });
     },
     onSuccess: async () => {
@@ -313,6 +314,7 @@ export default function GitHubManagerPage() {
         path: filePath,
         content: "",
         message: `Create ${newFileName.trim()}`,
+        encoding: "utf-8",
       });
       setNewFileOpen(false);
       setNewFileName("README.md");

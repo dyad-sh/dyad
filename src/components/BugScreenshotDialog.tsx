@@ -65,9 +65,10 @@ export function BugScreenshotDialog({
   report,
 }: BugScreenshotDialogProps) {
   const { declineLabel, icon } = VARIANTS[source];
-  const [successReport, setSuccessReport] = useState<PendingReport | null>(
-    null,
-  );
+  const [capture, setCapture] = useState<{
+    report: PendingReport;
+    source: ScreenshotPromptSource;
+  } | null>(null);
   const hasReportedShown = useRef(false);
   // A dialog stays clickable through its closing animation. These keep one
   // answer per opening, so a second click cannot file or report twice.
@@ -107,7 +108,7 @@ export function BugScreenshotDialog({
       try {
         await ipc.system.takeScreenshot();
         captureAnswered.current = false;
-        setSuccessReport(capturedFor);
+        setCapture({ report: capturedFor, source });
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Failed to take screenshot";
@@ -176,23 +177,27 @@ export function BugScreenshotDialog({
         </DialogContent>
       </Dialog>
       <ScreenshotSuccessDialog
-        isOpen={successReport !== null}
+        isOpen={capture !== null}
         onDismiss={() => {
-          if (captureAnswered.current) return;
+          if (captureAnswered.current || !capture) return;
           captureAnswered.current = true;
           // A screenshot was taken but no report follows it.
-          posthog.capture("screenshot-prompt:capture-abandoned", { source });
-          setSuccessReport(null);
+          posthog.capture("screenshot-prompt:capture-abandoned", {
+            source: capture.source,
+          });
+          setCapture(null);
           onDismiss();
         }}
         onSubmit={() => {
-          if (captureAnswered.current || !successReport) return;
+          if (captureAnswered.current || !capture) return;
           captureAnswered.current = true;
-          posthog.capture("screenshot-prompt:captured", { source });
-          setSuccessReport(null);
-          onContinue({ status: "captured" }, successReport);
+          posthog.capture("screenshot-prompt:captured", {
+            source: capture.source,
+          });
+          setCapture(null);
+          onContinue({ status: "captured" }, capture.report);
         }}
-        icon={icon}
+        icon={VARIANTS[capture?.source ?? source].icon}
       />
     </>
   );

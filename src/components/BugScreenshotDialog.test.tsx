@@ -210,6 +210,35 @@ describe("BugScreenshotDialog", () => {
     );
   });
 
+  it("reports a late capture under the source that started it", async () => {
+    const props = renderPrompt({
+      source: "upload-session",
+      report: { kind: "session", sessionId: "v2:first" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    // The other flow opens a prompt while this capture is still resolving.
+    props.view.rerender(
+      <BugScreenshotDialog
+        {...props.props}
+        source="report-bug"
+        report={{ kind: "bug" }}
+      />,
+    );
+    fireEvent.click(await screen.findByText("Create GitHub issue"));
+
+    // Both halves of one capture belong to the same flow.
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "screenshot-prompt:capture-attempt",
+      { source: "upload-session" },
+    );
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "screenshot-prompt:captured",
+      { source: "upload-session" },
+    );
+  });
+
   it("reports a captured screenshot that the reporter abandons", async () => {
     const props = renderPrompt({ source: "upload-session" });
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));

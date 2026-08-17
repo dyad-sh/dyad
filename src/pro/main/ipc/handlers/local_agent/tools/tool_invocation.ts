@@ -12,9 +12,11 @@ import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import type { AgentToolConsent } from "@/lib/schemas";
+import { gitIsIgnored } from "@/ipc/utils/git_utils";
 import {
   AgentContext,
   APP_MUTATING_TOOL_NAMES,
+  AppMutatingToolName,
   FILE_EDIT_TOOL_NAMES,
   FileEditToolName,
   ToolDefinition,
@@ -22,16 +24,68 @@ import {
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
 const APP_MUTATING_TOOLS: Set<string> = new Set(APP_MUTATING_TOOL_NAMES);
-const FILE_MUTATING_TOOLS = new Set<string>([
-  ...FILE_EDIT_TOOL_NAMES,
-  "copy_file",
-  "delete_file",
-  "rename_file",
-  "add_dependency",
-  "enable_nitro",
-  "generate_test_assertions",
-  "git_restore_file",
-]);
+
+type FileMutationPolicy = "always" | "never" | "path" | "tool";
+type MutationToolName = FileEditToolName | AppMutatingToolName;
+
+/**
+ * Exhaustive Git-visible file-impact policy for every mutation-counted tool.
+ * Adding a name to either mutation-tool tuple without classifying it here is a
+ * type error, so pre-commit eligibility cannot silently drift from the tool
+ * registry.
+ */
+export const FILE_MUTATION_POLICIES = {
+  write_file: "path",
+  search_replace: "path",
+  copy_file: "tool",
+  delete_file: "always",
+  rename_file: "always",
+  add_dependency: "always",
+  execute_sql: "tool",
+  add_integration: "tool",
+  enable_nitro: "always",
+  generate_image: "never",
+  generate_test_assertions: "always",
+  git_restore_file: "always",
+} as const satisfies Record<MutationToolName, FileMutationPolicy>;
+
+export async function isPathGitVisible(
+  ctx: Pick<AgentContext, "appPath">,
+  filePath: string,
+): Promise<boolean> {
+  try {
+    // Unlike a standalone .gitignore matcher, `git check-ignore` consults the
+    // index by default: a tracked path remains visible even if a later ignore
+    // rule matches it.
+    return !(await gitIsIgnored({ path: ctx.appPath, filepath: filePath }));
+  } catch {
+    // Failure to classify must not suppress verification of a real edit.
+    return true;
+  }
+}
+
+export async function shouldTrackToolFileMutation<T>(
+  tool: ToolDefinition<T>,
+  args: T,
+  result: string,
+  ctx: AgentContext,
+): Promise<boolean> {
+  const policy =
+    FILE_MUTATION_POLICIES[tool.name as MutationToolName] ?? "never";
+  switch (policy) {
+    case "always":
+      return true;
+    case "never":
+      return false;
+    case "path": {
+      const pathArgs = args as { file_path?: string; path?: string };
+      const filePath = pathArgs.file_path ?? pathArgs.path;
+      return filePath ? isPathGitVisible(ctx, filePath) : false;
+    }
+    case "tool":
+      return (await tool.shouldTrackFileMutation?.(args, result, ctx)) ?? false;
+  }
+}
 
 /**
  * Track file edit tool usage for retry/fallback telemetry. This intentionally
@@ -68,7 +122,7 @@ export function trackAppMutation(
   ctx: AgentContext,
   toolName: string,
   didMutate = true,
-  didMutateFile = FILE_MUTATING_TOOLS.has(toolName),
+  didMutateFile = false,
 ): void {
   if (!didMutate) {
     return;

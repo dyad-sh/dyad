@@ -89,7 +89,7 @@ describe("executeSqlTool", () => {
   });
 
   it("writes a Supabase migration file for schema-mutating SQL", async () => {
-    await executeSqlTool.execute(
+    const result = await executeSqlTool.execute(
       {
         query: "CREATE TABLE users (id bigint);",
         description: "create users",
@@ -111,6 +111,14 @@ describe("executeSqlTool", () => {
       "CREATE TABLE users (id bigint);",
       "create users",
     );
+    expect(result).toContain("wrote a migration file");
+    expect(
+      executeSqlTool.shouldTrackFileMutation?.(
+        { query: "CREATE TABLE users (id bigint);" },
+        result,
+        {} as any,
+      ),
+    ).toBe(true);
   });
 
   it("skips Supabase migration files for non-schema SQL", async () => {
@@ -133,6 +141,13 @@ describe("executeSqlTool", () => {
     });
     expect(mocks.writeMigrationFileMock).not.toHaveBeenCalled();
     expect(result).toBe("Successfully executed SQL query.\n\nSQL result:\n[]");
+    expect(
+      executeSqlTool.shouldTrackFileMutation?.(
+        { query: "SELECT * FROM users;" },
+        result,
+        {} as any,
+      ),
+    ).toBe(false);
     expect(
       executeSqlTool.shouldTrackMutation?.(
         { query: "SELECT * FROM users;" },

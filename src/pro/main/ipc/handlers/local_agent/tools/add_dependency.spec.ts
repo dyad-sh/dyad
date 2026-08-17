@@ -78,5 +78,6 @@ describe("addDependencyTool", () => {
     ).rejects.toThrow("later command failed");
 
     expect(ctx.mutationCount).toBe(1);
+    expect(ctx.fileMutationCount).toBe(1);
   });
 });

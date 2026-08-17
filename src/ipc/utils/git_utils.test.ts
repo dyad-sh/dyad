@@ -122,9 +122,28 @@ describe("gitCommit", () => {
     const commitHash = await gitCommit({
       path: repoDir,
       message: "internal checkpoint",
+      noVerify: true,
     });
 
     expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
+  });
+
+  it("runs pre-commit hooks by default for explicit user commits", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-verify-default-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hookPath = path.join(repoDir, ".git", "hooks", "pre-commit");
+    await fs.promises.writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(hookPath, 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+
+    await expect(
+      gitCommit({ path: repoDir, message: "explicit user commit" }),
+    ).rejects.toThrow();
   });
 });
 

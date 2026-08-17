@@ -268,6 +268,7 @@ export async function applyComponentTagger(
     await gitCommit({
       path: appPath,
       message: "add Dyad component tagger",
+      noVerify: true,
     });
     logger.info("Successfully committed component tagger modifications");
   } catch (err) {

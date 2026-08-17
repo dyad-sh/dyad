@@ -48,6 +48,7 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "Init Dyad app",
+      noVerify: true,
     });
     expect(hash).toBe("commit-hash");
   });
@@ -66,6 +67,7 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "custom",
+      noVerify: true,
     });
   });
 
@@ -76,6 +78,11 @@ describe("GitService", () => {
     });
 
     expect(callOrder).toEqual(["gitAddAll", "gitCommit"]);
+    expect(mocks.gitCommit).toHaveBeenCalledWith({
+      path: "/repo",
+      message: "msg",
+      noVerify: false,
+    });
     expect(hash).toBe("commit-hash");
   });
 
@@ -163,6 +170,7 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "msg",
+      noVerify: true,
       paths: ["e2e-tests/a.spec.ts"],
     });
     expect(result).toEqual({

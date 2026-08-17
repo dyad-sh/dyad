@@ -642,7 +642,7 @@ export async function gitCommit({
   path,
   message,
   amend,
-  noVerify = true,
+  noVerify = false,
   paths,
 }: GitCommitParams): Promise<string> {
   // Perform the commit using dugite with -c user.name/email config

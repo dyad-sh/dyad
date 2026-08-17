@@ -170,6 +170,7 @@ async function applyCapacitor({
     await gitCommit({
       path: appPath,
       message: "add Capacitor for mobile app support",
+      noVerify: true,
     });
     logger.info("Successfully committed Capacitor changes");
   } catch (err) {

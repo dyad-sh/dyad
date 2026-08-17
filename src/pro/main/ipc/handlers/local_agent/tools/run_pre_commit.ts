@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import fs, { promises as fsPromises } from "node:fs";
+import path from "node:path";
 import log from "electron-log";
 import { z } from "zod";
 import {
@@ -13,6 +14,8 @@ import {
 } from "@/ipc/utils/buffered_process";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
+import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
 import {
   extractFunctionNameFromPath,
   isServerFunction,
@@ -103,7 +106,7 @@ async function hashGitOutput(
 }
 
 /** Fingerprint staged, tracked-worktree, and untracked-path state. */
-async function getGitStateFingerprint(
+export async function getGitStateFingerprint(
   appPath: string,
   signal?: AbortSignal,
 ): Promise<string> {
@@ -240,6 +243,7 @@ async function scheduleHookGeneratedFileSideEffects(
     return;
   }
 
+  const changedFunctionNames = new Set<string>();
   for (const filePath of changedPaths) {
     if (isSharedServerModule(filePath)) {
       ctx.isSharedModulesChanged = true;
@@ -252,12 +256,48 @@ async function scheduleHookGeneratedFileSideEffects(
       continue;
     }
     try {
-      const functionName = extractFunctionNameFromPath(filePath);
+      changedFunctionNames.add(extractFunctionNameFromPath(filePath));
+    } catch {
+      // Ignore malformed/special function paths; valid paths are queued above.
+    }
+  }
+
+  for (const functionName of changedFunctionNames) {
+    const entryPoint = path.join(
+      ctx.appPath,
+      "supabase",
+      "functions",
+      functionName,
+      "index.ts",
+    );
+    try {
+      await fsPromises.access(entryPoint);
       if (!ctx.pendingFunctionDeploys.includes(functionName)) {
         ctx.pendingFunctionDeploys.push(functionName);
       }
-    } catch {
-      // Ignore malformed/special function paths; valid paths are queued above.
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        logger.warn(
+          `Failed to inspect hook-changed Supabase function ${functionName}:`,
+          error,
+        );
+        continue;
+      }
+      try {
+        await deleteSupabaseFunction({
+          supabaseProjectId: ctx.supabaseProjectId,
+          functionName,
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        });
+      } catch (deleteError) {
+        logger.warn(
+          `Failed to delete Supabase function ${functionName} removed by pre-commit:`,
+          deleteError,
+        );
+        ctx.onWarningMessage?.(
+          `Pre-commit removed Supabase function ${functionName}, but Dyad could not delete its remote deployment: ${deleteError}`,
+        );
+      }
     }
   }
 }
@@ -350,7 +390,8 @@ export const runPreCommitTool: ToolDefinition<
           );
         }
 
-        const { env, gitLocation } = getGitProcessEnvironment();
+        const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
+        const env = getPackageManagerCommandEnv(gitEnv);
         let stageResult: BufferedProcessResult;
         try {
           await ensureGitLineEndingPolicy({ path: ctx.appPath });

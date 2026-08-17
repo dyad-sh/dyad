@@ -2,6 +2,7 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { userInputRegistry } from "@/user_input/main";
+import { getGitStateFingerprint } from "./run_pre_commit";
 
 const logger = log.scope("add_integration");
 
@@ -29,9 +30,8 @@ export const addIntegrationTool: ToolDefinition<
 
   shouldTrackMutation: (_args, result) =>
     !result.startsWith("The user dismissed the integration setup"),
-  shouldTrackFileMutation: (_args, result, ctx) =>
-    ctx.frameworkType === "vite" &&
-    result.startsWith("User completed the neon integration."),
+  shouldTrackFileMutation: (_args, result) =>
+    result.includes("Git-visible workspace files changed during setup."),
 
   buildXml: (args, _isComplete) => {
     if (args.provider && args.provider !== "none") {
@@ -41,6 +41,18 @@ export const addIntegrationTool: ToolDefinition<
   },
 
   execute: async (args, ctx: AgentContext) => {
+    let beforeFingerprint: string | undefined;
+    try {
+      beforeFingerprint = await getGitStateFingerprint(
+        ctx.appPath,
+        ctx.abortSignal,
+      );
+    } catch (error) {
+      logger.warn(
+        "Could not fingerprint Git state before integration setup:",
+        error,
+      );
+    }
     const provider =
       args.provider && args.provider !== "none" ? args.provider : undefined;
     const requestId = userInputRegistry.request({
@@ -65,6 +77,25 @@ export const addIntegrationTool: ToolDefinition<
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
     }
 
-    return `User completed the ${result.provider} integration. You can now continue with the next step.`;
+    let gitVisibleFilesChanged = false;
+    if (beforeFingerprint !== undefined) {
+      try {
+        const afterFingerprint = await getGitStateFingerprint(
+          ctx.appPath,
+          ctx.abortSignal,
+        );
+        gitVisibleFilesChanged = beforeFingerprint !== afterFingerprint;
+      } catch (error) {
+        logger.warn(
+          "Could not fingerprint Git state after integration setup:",
+          error,
+        );
+      }
+    }
+
+    const mutationNote = gitVisibleFilesChanged
+      ? " Git-visible workspace files changed during setup."
+      : "";
+    return `User completed the ${result.provider} integration.${mutationNote} You can now continue with the next step.`;
   },
 };

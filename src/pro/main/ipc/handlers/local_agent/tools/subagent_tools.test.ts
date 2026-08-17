@@ -89,7 +89,7 @@ describe("spawn_agent schema", () => {
       abortSignal: new AbortController().signal,
     });
 
-    trackAppMutation(child, "write_file");
+    trackAppMutation(child, "write_file", true, true);
 
     expect(child.mutationCount).toBe(1);
     expect(root.mutationCount).toBe(1);

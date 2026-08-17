@@ -606,6 +606,7 @@ async function revertCodebaseToVersion({
       path: appPath,
       message:
         "[Interrupted] Saved partial changes before restoring to an earlier version",
+      noVerify: true,
     });
     preservedInterruptedChanges = true;
     if (!currentBranch) {
@@ -678,6 +679,7 @@ async function revertCodebaseToVersion({
         path: appPath,
         message:
           "[Interrupted] Saved partial changes before restoring to an earlier version",
+        noVerify: true,
       });
     }
   }
@@ -700,6 +702,7 @@ async function revertCodebaseToVersion({
     await gitCommit({
       path: appPath,
       message: `Reverted all changes back to version ${previousVersionId}`,
+      noVerify: true,
     });
   }
 

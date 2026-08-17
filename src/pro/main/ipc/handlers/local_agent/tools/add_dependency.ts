@@ -71,6 +71,7 @@ export const addDependencyTool: ToolDefinition<
           ctx,
           "add_dependency",
           error.completedPackages.length > 0,
+          error.completedPackages.length > 0,
         );
       }
       throw error;

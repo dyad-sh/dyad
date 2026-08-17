@@ -61,6 +61,7 @@ export const APP_MUTATING_TOOL_NAMES = [
   "generate_test_assertions",
   "git_restore_file",
 ] as const;
+export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 
 export interface AgentContext {
   event: IpcMainInvokeEvent;

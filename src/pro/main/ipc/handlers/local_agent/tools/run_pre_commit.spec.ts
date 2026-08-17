@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   cloudSync: vi.fn(),
   loggerWarn: vi.fn(),
   runBufferedProcess: vi.fn(),
+  deleteSupabaseFunction: vi.fn(),
 }));
 
 vi.mock("electron-log", () => ({
@@ -39,6 +40,10 @@ vi.mock("@/ipc/utils/buffered_process", async (importOriginal) => ({
 
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
   queueCloudSandboxSnapshotSync: mocks.cloudSync,
+}));
+
+vi.mock("@/supabase_admin/supabase_management_client", () => ({
+  deleteSupabaseFunction: mocks.deleteSupabaseFunction,
 }));
 
 import {
@@ -249,7 +254,7 @@ describe("runPreCommitTool", () => {
     );
   });
 
-  it("preserves the project's package-manager environment for hooks", async () => {
+  it("uses Dyad's package-manager environment for hooks", async () => {
     vi.stubEnv("COREPACK_ENABLE_PROJECT_SPEC", "1");
     try {
       await runPreCommitTool.execute({}, context(repo));
@@ -258,7 +263,10 @@ describe("runPreCommitTool", () => {
         expect.objectContaining({
           args: ["hook", "run", "pre-commit"],
           env: expect.objectContaining({
-            COREPACK_ENABLE_PROJECT_SPEC: "1",
+            COREPACK_ENABLE_PROJECT_SPEC: "0",
+            COREPACK_ENABLE_STRICT: "0",
+            npm_config_package_manager_strict: "false",
+            npm_config_pm_on_fail: "ignore",
           }),
         }),
       );
@@ -332,6 +340,13 @@ describe("runPreCommitTool", () => {
   });
 
   it("queues Supabase function paths changed in the hook for redeployment", async () => {
+    await mkdir(path.join(repo, "supabase", "functions", "hello"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(repo, "supabase", "functions", "hello", "index.ts"),
+      "export {};\n",
+    );
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
         if (options.args?.[0] === "add") {
@@ -364,6 +379,46 @@ describe("runPreCommitTool", () => {
     expect(ctx.sharedServerModulePaths).toEqual([
       "supabase/functions/_shared/util.ts",
     ]);
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
+  it("deletes a Supabase function removed by the hook instead of queueing a deploy", async () => {
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") {
+          return processResult();
+        }
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          return processResult();
+        }
+        if (
+          options.args?.includes("--name-only") ||
+          options.args?.includes("ls-files")
+        ) {
+          options.onStdout?.(
+            "supabase/functions/removed/index.ts\0",
+            {} as never,
+          );
+          return processResult();
+        }
+        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        return processResult();
+      },
+    );
+    const ctx = context(repo, {
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: "org-slug",
+    });
+
+    await runPreCommitTool.execute({}, ctx);
+
+    expect(mocks.deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "removed",
+      organizationSlug: "org-slug",
+    });
+    expect(ctx.pendingFunctionDeploys).toEqual([]);
   });
 
   it("counts timed-out runs and enforces the per-turn limit", async () => {

@@ -79,6 +79,7 @@ import {
 import {
   assertAppBlueprintApproved,
   requireToolConsentOrThrow,
+  shouldTrackToolFileMutation,
   shouldTrackToolMutation,
   trackAppMutation,
   trackFileEditTool,
@@ -662,20 +663,23 @@ export function buildAgentToolSet(
             // Only completed mutations unblock run_tests. Failed tool calls are
             // still present in fileEditTracker for retry/fallback telemetry, but
             // must not masquerade as a code change.
+            const didMutate = shouldTrackToolMutation(
+              tool,
+              processedArgs,
+              result,
+              invocationCtx,
+            );
             trackAppMutation(
               invocationCtx,
               tool.name,
-              shouldTrackToolMutation(
-                tool,
-                processedArgs,
-                result,
-                invocationCtx,
-              ),
-              await tool.shouldTrackFileMutation?.(
-                processedArgs,
-                result,
-                invocationCtx,
-              ),
+              didMutate,
+              didMutate &&
+                (await shouldTrackToolFileMutation(
+                  tool,
+                  processedArgs,
+                  result,
+                  invocationCtx,
+                )),
             );
 
             if (toolCallId && invocationCtx.onToolActivity) {

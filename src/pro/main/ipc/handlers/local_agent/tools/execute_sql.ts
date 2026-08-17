@@ -188,6 +188,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     }),
 
     shouldTrackMutation: (args) => doesSqlLikelyMutateState(args.query),
+    shouldTrackFileMutation: (_args, result) =>
+      result.startsWith(
+        "Successfully executed SQL query and wrote a migration file.",
+      ),
 
     buildXml: (args, isComplete) => {
       if (args.query == undefined) return undefined;
@@ -224,18 +228,22 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         });
 
         const settings = readSettings();
+        let migrationFileWritten = false;
         if (
           settings.enableSupabaseWriteSqlMigration &&
           doesSqlMutateSchema(args.query)
         ) {
           try {
             await writeMigrationFile(ctx.appPath, args.query, args.description);
+            migrationFileWritten = true;
           } catch (error) {
             return `SQL executed, but failed to write migration file: ${error}\n\nSQL result:\n${sqlResult}`;
           }
         }
 
-        return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
+        return migrationFileWritten
+          ? `Successfully executed SQL query and wrote a migration file.\n\nSQL result:\n${sqlResult}`
+          : `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
       }
 
       throw new DyadError(

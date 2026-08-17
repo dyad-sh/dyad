@@ -318,11 +318,25 @@ export const test = !endpoint
         { scope: "worker" },
       ],
       context: async ({ browser }, use) => {
-        const context = browser.contexts()[0];
-        if (!context) {
-          throw new Error("Dyad preview: no browser context available over CDP.");
-        }
         const baseUrl = requireBaseUrl();
+        const origin = new URL(baseUrl).origin;
+        // The native test preview has its own Electron session partition, which
+        // CDP exposes as a separate BrowserContext. Find the context that owns
+        // the app page instead of accidentally borrowing Dyad's default one.
+        const context = browser.contexts().find((candidateContext) =>
+          candidateContext.pages().some((candidatePage) => {
+            try {
+              return new URL(candidatePage.url()).origin === origin;
+            } catch {
+              return false;
+            }
+          }),
+        );
+        if (!context) {
+          throw new Error(
+            \`Dyad preview: no browser context is serving \${origin}.\`,
+          );
+        }
         // Playwright applies the config's \`baseURL\` when IT creates a context.
         // Dyad's preview created this one, so the option is missing and every
         // relative URL would have nothing to resolve against. The checks that
@@ -362,7 +376,7 @@ export const test = !endpoint
           // Pre-existing context: hand it over without closing it afterwards.
           await use(context);
         } finally {
-          // It outlives the run, so the patches have to come back off.
+          // It outlives this fixture, so the patches have to come back off.
           for (const [name, original] of originalApiMethods) {
             api[name] = original;
           }

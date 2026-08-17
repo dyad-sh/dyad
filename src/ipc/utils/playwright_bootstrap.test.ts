@@ -101,7 +101,9 @@ describe("buildPreviewShimSource", () => {
 
   it("attaches to the existing page instead of opening one", () => {
     expect(source).toContain("connectOverCDP");
-    expect(source).toContain("browser.contexts()[0]");
+    expect(source).toContain("browser.contexts().find");
+    expect(source).toContain("candidateContext.pages().some");
+    expect(source).not.toContain("browser.contexts()[0]");
     expect(source).toContain("context.pages().find");
     // Closing the context or page would take the user's preview down with it.
     expect(source).not.toContain("context.close()");

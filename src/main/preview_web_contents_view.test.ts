@@ -42,6 +42,9 @@ const h = vi.hoisted(() => {
     back = false;
     forward = false;
     windowOpenHandler: ((details: { url: string }) => unknown) | null = null;
+    session = {
+      clearStorageData: vi.fn(async () => {}),
+    };
 
     loadURL = vi.fn(async (url: string) => {
       this.url = url;
@@ -189,6 +192,9 @@ describe("showPreviewView", () => {
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
+        partition: expect.stringMatching(
+          /^dyad-preview-test-\d+-[0-9a-f-]{36}$/,
+        ),
       },
     });
     expect(window.contentView.addChildView).toHaveBeenCalledWith(view);
@@ -285,6 +291,19 @@ describe("showPreviewView", () => {
     expect(second.window.contentView.addChildView).toHaveBeenCalledWith(
       h.createdViews[1],
     );
+    const firstPartition = (
+      h.createdViews[0].options as {
+        webPreferences: { partition: string };
+      }
+    ).webPreferences.partition;
+    const secondPartition = (
+      h.createdViews[1].options as {
+        webPreferences: { partition: string };
+      }
+    ).webPreferences.partition;
+    expect(firstPartition).not.toBe(secondPartition);
+    expect(firstPartition).not.toMatch(/^persist:/);
+    expect(secondPartition).not.toMatch(/^persist:/);
   });
 });
 
@@ -298,9 +317,13 @@ describe("hidePreviewView", () => {
 
     expect(window.contentView.removeChildView).toHaveBeenCalledWith(view);
     expect(view.webContents.close).toHaveBeenCalledTimes(1);
+    expect(view.webContents.session.clearStorageData).toHaveBeenCalledTimes(1);
     expect(
       window.contentView.removeChildView.mock.invocationCallOrder[0],
     ).toBeLessThan(view.webContents.close.mock.invocationCallOrder[0]);
+    expect(view.webContents.close.mock.invocationCallOrder[0]).toBeLessThan(
+      view.webContents.session.clearStorageData.mock.invocationCallOrder[0],
+    );
 
     // Later bounds updates must not reach the dead view.
     setPreviewViewBounds(asBrowserWindow, { ...BOUNDS, width: 999 });

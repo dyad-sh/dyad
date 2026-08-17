@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import { WebContentsView, shell } from "electron";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, Session } from "electron";
 import log from "electron-log";
 
 import { safeSend } from "../ipc/utils/safe_sender";
@@ -17,6 +19,8 @@ const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
 
 interface PreviewViewEntry {
   view: WebContentsView;
+  /** The view's unique, in-memory session, retained for explicit cleanup. */
+  session: Session;
   /** The URL most recently handed to loadURL, used to keep `show` idempotent. */
   currentUrl: string | null;
   disposeHostHooks: () => void;
@@ -107,6 +111,10 @@ function emitNavigationState(
 }
 
 function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
+  // No `persist:` prefix: Electron keeps this partition in memory only. A UUID
+  // makes every mounted test preview a fresh browser profile, so credentials
+  // from a prior run can never be inherited even if cleanup is interrupted.
+  const partition = `dyad-preview-test-${key}-${randomUUID()}`;
   const view = new WebContentsView({
     webPreferences: {
       // The previewed app is untrusted, user-generated code. It gets no
@@ -115,11 +123,13 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      partition,
     },
   });
 
   const entry: PreviewViewEntry = {
     view,
+    session: view.webContents.session,
     currentUrl: null,
     disposeHostHooks: () => {},
     automationActive: false,
@@ -244,6 +254,18 @@ function destroyEntry(key: number, window: BrowserWindow): void {
     }
   } catch (error) {
     logger.warn("Failed to close preview view webContents:", error);
+  }
+
+  // Electron has no Session.destroy() API. Closing the partition's only
+  // WebContents and never reusing its UUID makes the in-memory profile
+  // unreachable; clearing it as well eagerly drops cookies, local storage,
+  // IndexedDB, service workers, and the rest of the test user's browser state.
+  try {
+    void entry.session.clearStorageData().catch((error) => {
+      logger.warn("Failed to clear isolated preview session:", error);
+    });
+  } catch (error) {
+    logger.warn("Failed to clear isolated preview session:", error);
   }
 }
 

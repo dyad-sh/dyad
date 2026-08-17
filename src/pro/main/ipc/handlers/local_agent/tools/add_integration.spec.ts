@@ -89,4 +89,30 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
       ),
     ).toBe(false);
   });
+
+  it("conservatively tracks a file mutation when fingerprinting is uncertain", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+    mocks.park.mockResolvedValue({
+      kind: "integration",
+      provider: "neon",
+      completed: true,
+    });
+
+    const result = await addIntegrationTool.execute({}, {
+      appPath,
+      abortSignal: abortController.signal,
+    } as AgentContext);
+
+    expect(result).toContain(
+      "Git-visible workspace file state could not be determined during setup",
+    );
+    expect(
+      addIntegrationTool.shouldTrackFileMutation?.(
+        {},
+        result,
+        {} as AgentContext,
+      ),
+    ).toBe(true);
+  });
 });

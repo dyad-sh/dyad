@@ -2,7 +2,7 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { userInputRegistry } from "@/user_input/main";
-import { getGitStateFingerprint } from "./run_pre_commit";
+import { getGitStateFingerprint } from "@/ipc/utils/git_utils";
 
 const logger = log.scope("add_integration");
 
@@ -31,7 +31,10 @@ export const addIntegrationTool: ToolDefinition<
   shouldTrackMutation: (_args, result) =>
     !result.startsWith("The user dismissed the integration setup"),
   shouldTrackFileMutation: (_args, result) =>
-    result.includes("Git-visible workspace files changed during setup."),
+    result.includes("Git-visible workspace files changed during setup.") ||
+    result.includes(
+      "Git-visible workspace file state could not be determined during setup.",
+    ),
 
   buildXml: (args, _isComplete) => {
     if (args.provider && args.provider !== "none") {
@@ -42,12 +45,14 @@ export const addIntegrationTool: ToolDefinition<
 
   execute: async (args, ctx: AgentContext) => {
     let beforeFingerprint: string | undefined;
+    let fingerprintUnknown = false;
     try {
       beforeFingerprint = await getGitStateFingerprint(
         ctx.appPath,
         ctx.abortSignal,
       );
     } catch (error) {
+      fingerprintUnknown = true;
       logger.warn(
         "Could not fingerprint Git state before integration setup:",
         error,
@@ -77,25 +82,29 @@ export const addIntegrationTool: ToolDefinition<
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
     }
 
-    let gitVisibleFilesChanged = false;
-    if (beforeFingerprint !== undefined) {
-      try {
-        const afterFingerprint = await getGitStateFingerprint(
-          ctx.appPath,
-          ctx.abortSignal,
-        );
-        gitVisibleFilesChanged = beforeFingerprint !== afterFingerprint;
-      } catch (error) {
-        logger.warn(
-          "Could not fingerprint Git state after integration setup:",
-          error,
-        );
-      }
+    let afterFingerprint: string | undefined;
+    try {
+      afterFingerprint = await getGitStateFingerprint(
+        ctx.appPath,
+        ctx.abortSignal,
+      );
+    } catch (error) {
+      fingerprintUnknown = true;
+      logger.warn(
+        "Could not fingerprint Git state after integration setup:",
+        error,
+      );
     }
+    const gitVisibleFilesChanged =
+      beforeFingerprint !== undefined &&
+      afterFingerprint !== undefined &&
+      beforeFingerprint !== afterFingerprint;
 
-    const mutationNote = gitVisibleFilesChanged
-      ? " Git-visible workspace files changed during setup."
-      : "";
+    const mutationNote = fingerprintUnknown
+      ? " Git-visible workspace file state could not be determined during setup."
+      : gitVisibleFilesChanged
+        ? " Git-visible workspace files changed during setup."
+        : "";
     return `User completed the ${result.provider} integration.${mutationNote} You can now continue with the next step.`;
   },
 };

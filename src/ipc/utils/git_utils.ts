@@ -1,4 +1,5 @@
 import { getGitAuthor } from "./git_author";
+import { createHash } from "node:crypto";
 import {
   exec,
   ExecError,
@@ -22,7 +23,10 @@ import {
   redactDotenvValues,
   selectTextLineRange,
 } from "@/utils/dotenv_redaction";
+import { runBufferedProcess } from "./buffered_process";
 const logger = log.scope("git_utils");
+
+const GIT_STATE_FINGERPRINT_TIMEOUT_MS = 30_000;
 
 function isUserVisibleGitPath(filePath: string) {
   return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
@@ -197,6 +201,77 @@ export async function execGit(
     ...options,
     env: getSanitizedGitEnv(options?.env),
   });
+}
+
+async function hashGitOutput(
+  appPath: string,
+  args: string[],
+  signal?: AbortSignal,
+): Promise<string> {
+  const hash = createHash("sha256");
+  const { env, gitLocation } = getGitProcessEnvironment();
+  const result = await runBufferedProcess({
+    command: gitLocation,
+    args,
+    cwd: appPath,
+    env,
+    signal,
+    timeoutMs: GIT_STATE_FINGERPRINT_TIMEOUT_MS,
+    maxOutputBytes: 1_024,
+    captureOutputOnSuccess: false,
+    onStdout: (chunk) => hash.update(chunk),
+  });
+  if (result.code !== 0 || result.aborted || result.timedOut) {
+    throw new Error(`Git fingerprint command failed: git ${args.join(" ")}`);
+  }
+  return hash.digest("hex");
+}
+
+/** Fingerprint staged, tracked-worktree, and untracked-path state. */
+export async function getGitStateFingerprint(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const results = await Promise.allSettled([
+    hashGitOutput(
+      appPath,
+      [
+        "-c",
+        "core.fsmonitor=false",
+        "diff",
+        "--cached",
+        "--binary",
+        "--no-ext-diff",
+        "--",
+      ],
+      signal,
+    ),
+    hashGitOutput(
+      appPath,
+      ["-c", "core.fsmonitor=false", "diff", "--binary", "--no-ext-diff", "--"],
+      signal,
+    ),
+    hashGitOutput(
+      appPath,
+      [
+        "-c",
+        "core.fsmonitor=false",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+      ],
+      signal,
+    ),
+  ]);
+  return results
+    .map((result) => {
+      if (result.status === "rejected") {
+        throw result.reason;
+      }
+      return result.value;
+    })
+    .join("\0");
 }
 import type {
   GitBaseParams,

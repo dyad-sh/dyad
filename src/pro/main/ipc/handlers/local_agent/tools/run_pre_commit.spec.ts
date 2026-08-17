@@ -159,6 +159,7 @@ describe("runPreCommitTool", () => {
   let repo: string;
   let hookRuns: number;
   let hookChangesFiles: boolean;
+  let stagedChanges: boolean;
   let hookResults: ReturnType<typeof processResult>[];
 
   beforeEach(async () => {
@@ -166,6 +167,7 @@ describe("runPreCommitTool", () => {
     repo = await makeRepo({ hook: true });
     hookRuns = 0;
     hookChangesFiles = false;
+    stagedChanges = true;
     hookResults = [];
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
@@ -175,6 +177,9 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "hook") {
           hookRuns++;
           return hookResults.shift() ?? processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: stagedChanges ? 1 : 0 });
         }
         options.onStdout?.(
           hookChangesFiles ? `fingerprint-${hookRuns}` : "fingerprint",
@@ -219,14 +224,27 @@ describe("runPreCommitTool", () => {
     );
   });
 
-  it("requires a successful file modification before staging or running", async () => {
+  it("does not run when the staged Git snapshot is clean", async () => {
+    stagedChanges = false;
     const ctx = context(repo, { fileMutationCount: 0 });
 
     const result = await runPreCommitTool.execute({}, ctx);
 
-    expect(result).toContain("No files have been successfully modified");
-    expect(mocks.runBufferedProcess).not.toHaveBeenCalled();
+    expect(result).toContain("staged Git snapshot has no changes");
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({ args: ["add", "--", "."], cwd: repo }),
+    );
     expect(hookRuns).toBe(0);
+  });
+
+  it("verifies a dirty staged snapshot without a turn-scoped mutation", async () => {
+    const result = await runPreCommitTool.execute(
+      {},
+      context(repo, { fileMutationCount: 0 }),
+    );
+
+    expect(result).toContain("Pre-commit passed");
+    expect(hookRuns).toBe(1);
   });
 
   it("stages files, returns hook errors, and refuses an unchanged retry", async () => {
@@ -240,7 +258,7 @@ describe("runPreCommitTool", () => {
       expect.objectContaining({ args: ["add", "--", "."], cwd: repo }),
     );
     expect(first).toContain("lint failed");
-    expect(second).toContain("no files have changed");
+    expect(second).toContain("staged Git snapshot has not changed");
     expect(hookRuns).toBe(1);
   });
 
@@ -281,6 +299,9 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "hook") {
           hookRuns++;
           return processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
         }
         if (options.args?.[0] === "-c") {
           return processResult({ code: 1 });
@@ -356,6 +377,9 @@ describe("runPreCommitTool", () => {
           hookRuns++;
           return processResult();
         }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
+        }
         if (
           options.args?.includes("--name-only") ||
           options.args?.includes("ls-files")
@@ -383,6 +407,15 @@ describe("runPreCommitTool", () => {
   });
 
   it("deletes a Supabase function removed by the hook instead of queueing a deploy", async () => {
+    const removedEntryPoint = path.join(
+      repo,
+      "supabase",
+      "functions",
+      "removed",
+      "index.ts",
+    );
+    await mkdir(path.dirname(removedEntryPoint), { recursive: true });
+    await writeFile(removedEntryPoint, "export {};\n");
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
         if (options.args?.[0] === "add") {
@@ -390,7 +423,11 @@ describe("runPreCommitTool", () => {
         }
         if (options.args?.[0] === "hook") {
           hookRuns++;
+          await rm(removedEntryPoint);
           return processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
         }
         if (
           options.args?.includes("--name-only") ||
@@ -421,6 +458,75 @@ describe("runPreCommitTool", () => {
     expect(ctx.pendingFunctionDeploys).toEqual([]);
   });
 
+  it("does not repeat a Supabase function deletion that preceded the hook", async () => {
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") {
+          return processResult();
+        }
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          return processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
+        }
+        if (
+          options.args?.includes("--name-only") ||
+          options.args?.includes("ls-files")
+        ) {
+          options.onStdout?.(
+            "supabase/functions/removed/index.ts\0",
+            {} as never,
+          );
+          return processResult();
+        }
+        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        return processResult();
+      },
+    );
+
+    await runPreCommitTool.execute(
+      {},
+      context(repo, { supabaseProjectId: "project-id" }),
+    );
+
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
+  it("surfaces changed-path scan uncertainty without redeploying every function", async () => {
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") {
+          return processResult();
+        }
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          return processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
+        }
+        if (
+          options.args?.includes("--name-only") ||
+          options.args?.includes("ls-files")
+        ) {
+          return processResult({ code: 1 });
+        }
+        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        return processResult();
+      },
+    );
+    const ctx = context(repo, { supabaseProjectId: "project-id" });
+
+    const result = await runPreCommitTool.execute({}, ctx);
+
+    expect(result).toContain("skipped automatic function reconciliation");
+    expect(ctx.isSharedModulesChanged).toBe(false);
+    expect(ctx.pendingFunctionDeploys).toEqual([]);
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
   it("counts timed-out runs and enforces the per-turn limit", async () => {
     hookResults.push(processResult({ code: 124, timedOut: true }));
     const ctx = context(repo, {
@@ -441,6 +547,9 @@ describe("runPreCommitTool", () => {
       async (options: BufferedProcessOptions) => {
         if (options.args?.[0] === "hook") {
           throw new Error("spawn failed");
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
         }
         options.onStdout?.("fingerprint", {} as never);
         return processResult();
@@ -506,6 +615,36 @@ describe("runPreCommitTool", () => {
     expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
       expect.objectContaining({ args: ["add", "--", "."], cwd: repo }),
     );
+    expect(hookRuns).toBe(1);
+  });
+
+  it("serializes Supabase hook side effects with provider operations", async () => {
+    let releaseProvider!: () => void;
+    const providerBlocker = appOperationCoordinator.run(
+      {
+        appId: 100,
+        operation: "test-provider-blocker",
+        resources: ["provider"],
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          releaseProvider = resolve;
+        }),
+    );
+    const pendingRun = runPreCommitTool.execute(
+      {},
+      context(repo, { appId: 100, supabaseProjectId: "project-id" }),
+    );
+
+    try {
+      await Promise.resolve();
+      expect(mocks.runBufferedProcess).not.toHaveBeenCalled();
+    } finally {
+      releaseProvider();
+    }
+    await providerBlocker;
+    await pendingRun;
+
     expect(hookRuns).toBe(1);
   });
 

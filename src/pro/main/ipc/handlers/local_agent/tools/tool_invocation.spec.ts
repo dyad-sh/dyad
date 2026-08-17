@@ -101,6 +101,13 @@ describe("add_integration file mutation tracking", () => {
     expect(
       didMutateFile(
         {},
+        "User completed the neon integration. Git-visible workspace file state could not be determined during setup.",
+        {} as AgentContext,
+      ),
+    ).toBe(true);
+    expect(
+      didMutateFile(
+        {},
         "User completed the neon integration. You can now continue.",
         {} as AgentContext,
       ),

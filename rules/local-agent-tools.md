@@ -48,6 +48,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - Local-agent Git commands must use `execGit` from `git_utils.ts`. When a command needs streaming or a bounded process runner, spawn the executable and environment from `getGitProcessEnvironment`; importing Dugite directly bypasses the Windows WSL-PATH filtering and Linux libcurl shim.
 - `fileMutationCount` is for Git-visible workspace mutations, not every file or provider change. Exclude ignored media such as `.dyad/media` and provider-only state changes, and use a result-aware `shouldTrackMutation` predicate for tools that write files only after user approval.
+- Pre-commit eligibility must follow the staged Git snapshot being committed, not only turn-scoped mutation counters. Persist a measurable post-run fingerprint to reject unchanged retries, but treat fingerprint uncertainty as a bounded follow-up opportunity rather than claiming the snapshot is unchanged.
+- A dirty-path superset is safe for idempotent redeploy queueing, not destructive provider reconciliation. Delete a remote function only when its concrete entry point existed before the hook and is absent afterward; if changed-path or entry-point inspection fails, skip reconciliation and surface the uncertainty instead of assuming everything changed.
 
 ## App lifecycle tools
 

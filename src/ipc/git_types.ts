@@ -14,7 +14,10 @@ export interface GitBaseParams {
 export interface GitCommitParams extends GitBaseParams {
   message: string;
   amend?: boolean;
-  /** Bypass hooks for internal Dyad commits (defaults to true). */
+  /**
+   * Bypass hooks for an internal Dyad commit. Hooks run by default so explicit
+   * user commits continue to honor the repository's verification policy.
+   */
   noVerify?: boolean;
   /**
    * Paths (relative to the repo root) to commit. When set, git makes a partial

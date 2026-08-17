@@ -117,6 +117,8 @@ export interface AgentContext {
   preCommitRunCount?: number;
   /** File mutation count observed when the last pre-commit run started. */
   preCommitFileMutationCountAtLastRun?: number;
+  /** Git snapshot after the last completed pre-commit run, when measurable. */
+  preCommitGitStateFingerprintAtLastRun?: string;
   /** Whether the last completed pre-commit run passed. */
   preCommitLastRunPassed?: boolean;
   /**

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs, { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
@@ -6,6 +5,7 @@ import { z } from "zod";
 import {
   ensureGitLineEndingPolicy,
   execGit,
+  getGitStateFingerprint,
   getGitProcessEnvironment,
 } from "@/ipc/utils/git_utils";
 import {
@@ -81,70 +81,6 @@ export async function isPreCommitHookAvailable(
   }
 }
 
-async function hashGitOutput(
-  appPath: string,
-  args: string[],
-  signal?: AbortSignal,
-): Promise<string> {
-  const hash = createHash("sha256");
-  const { env, gitLocation } = getGitProcessEnvironment();
-  const result = await runBufferedProcess({
-    command: gitLocation,
-    args,
-    cwd: appPath,
-    env,
-    signal,
-    timeoutMs: FINGERPRINT_TIMEOUT_MS,
-    maxOutputBytes: 1_024,
-    captureOutputOnSuccess: false,
-    onStdout: (chunk) => hash.update(chunk),
-  });
-  if (result.code !== 0 || result.aborted || result.timedOut) {
-    throw new Error(`Git fingerprint command failed: git ${args.join(" ")}`);
-  }
-  return hash.digest("hex");
-}
-
-/** Fingerprint staged, tracked-worktree, and untracked-path state. */
-export async function getGitStateFingerprint(
-  appPath: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const [staged, unstaged, status] = await waitForAll([
-    hashGitOutput(
-      appPath,
-      [
-        "-c",
-        "core.fsmonitor=false",
-        "diff",
-        "--cached",
-        "--binary",
-        "--no-ext-diff",
-        "--",
-      ],
-      signal,
-    ),
-    hashGitOutput(
-      appPath,
-      ["-c", "core.fsmonitor=false", "diff", "--binary", "--no-ext-diff", "--"],
-      signal,
-    ),
-    hashGitOutput(
-      appPath,
-      [
-        "-c",
-        "core.fsmonitor=false",
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-      ],
-      signal,
-    ),
-  ]);
-  return `${staged}\0${unstaged}\0${status}`;
-}
-
 async function tryGetGitStateFingerprint(
   appPath: string,
   phase: "before" | "after",
@@ -154,6 +90,55 @@ async function tryGetGitStateFingerprint(
     return await getGitStateFingerprint(appPath, signal);
   } catch (error) {
     logger.warn(`Failed to fingerprint Git state ${phase} pre-commit:`, error);
+    return undefined;
+  }
+}
+
+async function collectSupabaseFunctionEntryPoints(
+  appPath: string,
+): Promise<Set<string>> {
+  const functionsPath = path.join(appPath, "supabase", "functions");
+  let entries: fs.Dirent[];
+  try {
+    entries = await fsPromises.readdir(functionsPath, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return new Set();
+    }
+    throw error;
+  }
+
+  const functionNames = new Set<string>();
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && entry.name !== "_shared")
+      .map(async (entry) => {
+        try {
+          await fsPromises.access(
+            path.join(functionsPath, entry.name, "index.ts"),
+          );
+          functionNames.add(entry.name);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw error;
+          }
+        }
+      }),
+  );
+  return functionNames;
+}
+
+async function tryCollectSupabaseFunctionEntryPoints(
+  appPath: string,
+  phase: "before" | "after",
+): Promise<Set<string> | undefined> {
+  try {
+    return await collectSupabaseFunctionEntryPoints(appPath);
+  } catch (error) {
+    logger.warn(
+      `Failed to inspect Supabase function entry points ${phase} pre-commit:`,
+      error,
+    );
     return undefined;
   }
 }
@@ -220,7 +205,8 @@ async function collectCurrentChangedPaths(
 
 async function scheduleHookGeneratedFileSideEffects(
   ctx: AgentContext,
-): Promise<void> {
+  beforeFunctionEntries: Set<string> | undefined,
+): Promise<string | undefined> {
   queueCloudSandboxSnapshotSync({ appId: ctx.appId, fullSync: true });
   if (!ctx.supabaseProjectId) {
     return;
@@ -236,12 +222,16 @@ async function scheduleHookGeneratedFileSideEffects(
     );
   } catch (error) {
     logger.warn(
-      "Failed to identify Supabase paths changed by pre-commit; redeploying all functions:",
+      "Failed to identify Supabase paths changed by pre-commit; skipping Supabase reconciliation:",
       error,
     );
-    ctx.isSharedModulesChanged = true;
-    return;
+    return "Dyad could not determine which Supabase files the hook changed, so it skipped automatic function reconciliation.";
   }
+
+  const afterFunctionEntries = await tryCollectSupabaseFunctionEntryPoints(
+    ctx.appPath,
+    "after",
+  );
 
   const changedFunctionNames = new Set<string>();
   for (const filePath of changedPaths) {
@@ -262,25 +252,20 @@ async function scheduleHookGeneratedFileSideEffects(
     }
   }
 
-  for (const functionName of changedFunctionNames) {
-    const entryPoint = path.join(
-      ctx.appPath,
-      "supabase",
-      "functions",
-      functionName,
-      "index.ts",
-    );
-    try {
-      await fsPromises.access(entryPoint);
-      if (!ctx.pendingFunctionDeploys.includes(functionName)) {
+  if (afterFunctionEntries) {
+    for (const functionName of changedFunctionNames) {
+      if (
+        afterFunctionEntries.has(functionName) &&
+        !ctx.pendingFunctionDeploys.includes(functionName)
+      ) {
         ctx.pendingFunctionDeploys.push(functionName);
       }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        logger.warn(
-          `Failed to inspect hook-changed Supabase function ${functionName}:`,
-          error,
-        );
+    }
+  }
+
+  if (beforeFunctionEntries && afterFunctionEntries) {
+    for (const functionName of beforeFunctionEntries) {
+      if (afterFunctionEntries.has(functionName)) {
         continue;
       }
       try {
@@ -300,6 +285,14 @@ async function scheduleHookGeneratedFileSideEffects(
       }
     }
   }
+
+  if (!beforeFunctionEntries || !afterFunctionEntries) {
+    return "Dyad could not compare Supabase function entry points before and after the hook, so it skipped automatic deletion reconciliation.";
+  }
+}
+
+function appendNote(body: string, note?: string): string {
+  return note ? `${body}\n\n${note}` : body;
 }
 
 function tail(value: string): string {
@@ -342,40 +335,24 @@ export const runPreCommitTool: ToolDefinition<
   isEnabled: (ctx) => ctx.preCommitHookAvailable === true,
   getConsentPreview: () => "Stage all changes and run the pre-commit hook",
 
-  execute: async (_args, ctx) =>
-    appOperationCoordinator.run(
+  execute: async (_args, ctx) => {
+    return appOperationCoordinator.run(
       {
         appId: ctx.appId,
         operation: "run-local-agent-pre-commit",
-        resources: ["repository"],
+        resources: ctx.supabaseProjectId
+          ? ["provider", "repository"]
+          : ["repository"],
         refuseWhenRecording: "run pre-commit checks",
       },
       async () => {
         const fileMutationCount = ctx.fileMutationCount ?? 0;
-        if (fileMutationCount === 0) {
-          return complete(
-            ctx,
-            "Pre-commit not run",
-            "No files have been successfully modified this turn. Finish the file edits before running pre-commit.",
-            "warning",
-          );
-        }
 
         if ((ctx.preCommitRunCount ?? 0) >= MAX_PRE_COMMIT_RUNS_PER_TURN) {
           return complete(
             ctx,
             "Pre-commit run limit reached",
             `The pre-commit hook has already run ${MAX_PRE_COMMIT_RUNS_PER_TURN} times this turn. Do not run it again. Stop editing and summarize what still fails and what you tried.`,
-            "warning",
-          );
-        }
-
-        if (ctx.preCommitFileMutationCountAtLastRun === fileMutationCount) {
-          const previous = ctx.preCommitLastRunPassed ? "passed" : "failed";
-          return complete(
-            ctx,
-            "Files unchanged since pre-commit",
-            `The last pre-commit run ${previous}, and no files have changed since then. Do not rerun it until you make a targeted file change.`,
             "warning",
           );
         }
@@ -438,6 +415,57 @@ export const runPreCommitTool: ToolDefinition<
             "warning",
           );
         }
+
+        let stagedChangesResult: BufferedProcessResult;
+        try {
+          stagedChangesResult = await runBufferedProcess({
+            command: gitLocation,
+            args: [
+              "-c",
+              "core.fsmonitor=false",
+              "diff",
+              "--cached",
+              "--quiet",
+              "--no-ext-diff",
+              "--",
+            ],
+            cwd: ctx.appPath,
+            env,
+            signal: ctx.abortSignal,
+            timeoutMs: PRE_COMMIT_STAGING_TIMEOUT_MS,
+            maxOutputBytes: 64_000,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return complete(
+            ctx,
+            "Pre-commit snapshot check failed",
+            `Dyad could not determine whether the staged Git snapshot has changes, so the hook was not run.\n\n${message}`,
+            "warning",
+          );
+        }
+        if (
+          stagedChangesResult.aborted ||
+          stagedChangesResult.timedOut ||
+          (stagedChangesResult.code !== 0 && stagedChangesResult.code !== 1)
+        ) {
+          return complete(
+            ctx,
+            "Pre-commit snapshot check failed",
+            "Dyad could not determine whether the staged Git snapshot has changes, so the hook was not run.",
+            "warning",
+          );
+        }
+        if (stagedChangesResult.code === 0) {
+          return complete(
+            ctx,
+            "Pre-commit not run",
+            "The staged Git snapshot has no changes to verify.",
+            "warning",
+          );
+        }
+
         const beforeFingerprint = await tryGetGitStateFingerprint(
           ctx.appPath,
           "before",
@@ -451,6 +479,24 @@ export const runPreCommitTool: ToolDefinition<
             "warning",
           );
         }
+
+        if (
+          ctx.preCommitFileMutationCountAtLastRun === fileMutationCount &&
+          beforeFingerprint !== undefined &&
+          beforeFingerprint === ctx.preCommitGitStateFingerprintAtLastRun
+        ) {
+          const previous = ctx.preCommitLastRunPassed ? "passed" : "failed";
+          return complete(
+            ctx,
+            "Files unchanged since pre-commit",
+            `The last pre-commit run ${previous}, and the staged Git snapshot has not changed since then. Do not rerun it until you make a targeted file change.`,
+            "warning",
+          );
+        }
+
+        const beforeFunctionEntries = ctx.supabaseProjectId
+          ? await tryCollectSupabaseFunctionEntryPoints(ctx.appPath, "before")
+          : undefined;
 
         const previousRunCount = ctx.preCommitRunCount ?? 0;
         const previousMutationCountAtLastRun =
@@ -499,9 +545,16 @@ export const runPreCommitTool: ToolDefinition<
           beforeFingerprint === undefined || afterFingerprint === undefined;
         const hookChangedFiles =
           !fingerprintUnknown && beforeFingerprint !== afterFingerprint;
+        if (afterFingerprint !== undefined) {
+          ctx.preCommitGitStateFingerprintAtLastRun = afterFingerprint;
+        }
+        let reconciliationNote: string | undefined;
         if (!result.aborted && (hookChangedFiles || fingerprintUnknown)) {
           ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
-          await scheduleHookGeneratedFileSideEffects(ctx);
+          reconciliationNote = await scheduleHookGeneratedFileSideEffects(
+            ctx,
+            beforeFunctionEntries,
+          );
         }
 
         if (result.aborted) {
@@ -521,7 +574,10 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit timed out",
-            `The pre-commit hook exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped.\n\n${formatProcessOutput(result.stdout, result.stderr)}${fingerprintNote}`,
+            appendNote(
+              `The pre-commit hook exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped.\n\n${formatProcessOutput(result.stdout, result.stderr)}${fingerprintNote}`,
+              reconciliationNote,
+            ),
             "warning",
           );
         }
@@ -537,7 +593,10 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit failed",
-            `Pre-commit failed with exit code ${result.code ?? "unknown"}. Fix the reported errors before retrying. ${remaining} run(s) remain this turn.\n\n${output}${fingerprintNote}`,
+            appendNote(
+              `Pre-commit failed with exit code ${result.code ?? "unknown"}. Fix the reported errors before retrying. ${remaining} run(s) remain this turn.\n\n${output}${fingerprintNote}`,
+              reconciliationNote,
+            ),
             "warning",
           );
         }
@@ -547,7 +606,10 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit passed and changed files",
-            `Pre-commit passed, but the hook changed files. Run pre-commit again to verify the resulting files.\n\n${output}`,
+            appendNote(
+              `Pre-commit passed, but the hook changed files. Run pre-commit again to verify the resulting files.\n\n${output}`,
+              reconciliationNote,
+            ),
             "warning",
           );
         }
@@ -555,7 +617,10 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit passed; file changes unknown",
-            `Pre-commit passed, but Dyad could not determine whether the hook changed files. Run pre-commit once more to verify any hook-generated changes.\n\n${output}`,
+            appendNote(
+              `Pre-commit passed, but Dyad could not determine whether the hook changed files. Run pre-commit once more to verify any hook-generated changes.\n\n${output}`,
+              reconciliationNote,
+            ),
             "warning",
           );
         }
@@ -565,5 +630,6 @@ export const runPreCommitTool: ToolDefinition<
           `Pre-commit passed. Do not run it again unless files change.\n\n${output}`,
         );
       },
-    ),
+    );
+  },
 };

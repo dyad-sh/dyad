@@ -43,8 +43,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { showError, showSuccess } from "@/lib/toast";
 import { getAssignedModelForRole } from "@/lib/model_roles";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
-import { closeChatAgentTab, openChatAgentTab } from "@/lib/chat_agent_tabs";
+import {
+  closeChatAgentTab,
+  openChatAgentTab,
+  syncChatAgentTab,
+} from "@/lib/chat_agent_tabs";
 import { pruneEmptyAssistantMessages } from "@/lib/chat_agent_messages";
+import { chatAgentConversationTitle } from "@/lib/chat_agent_conversation_title";
+import { mergeSettledChatTabsIntoHistory } from "@/lib/chat_agent_history";
 
 /**
  * How often the live transcript is mirrored into the durable tab list. Long
@@ -55,13 +61,6 @@ const TAB_SYNC_INTERVAL_MS = 400;
 
 /** Shared empty value, so "nothing is busy" never re-renders the tab bar. */
 const EMPTY_BUSY_SESSIONS: readonly string[] = [];
-
-function titleFromMessages(messages: ChatAgentMessage[]) {
-  const firstUser = messages.find((m) => m.role === "user");
-  if (!firstUser) return "New conversation";
-  const snippet = firstUser.content.trim().slice(0, 48);
-  return snippet.length < firstUser.content.length ? `${snippet}…` : snippet;
-}
 
 function createBlankConversation(projectId?: string | null): ChatAgentOpenTab {
   return {
@@ -138,7 +137,7 @@ export default function ChatAgentPage() {
     [setOpenTabs],
   );
 
-  const title = useMemo(() => titleFromMessages(messages), [messages]);
+  const title = useMemo(() => chatAgentConversationTitle(messages), [messages]);
   const userMessageHistory = useMemo(
     () =>
       messages
@@ -198,6 +197,50 @@ export default function ChatAgentPage() {
     streamingSessions,
   } = useChatAgentStream(sessionId);
   const isBusy = isStreaming || isGeneratingImage || isGeneratingVideo;
+
+  // localStorage is a fast UI cache; the selected vault/cloud destination is
+  // the durable source. Rehydrate missing or newer records from it so the
+  // conversation dropdown survives cache clears and reinstalls.
+  useEffect(() => {
+    let cancelled = false;
+    void ipc.storage
+      .listConversations()
+      .then((stored) => {
+        if (cancelled || stored.length === 0) return;
+        setHistory((previous) => {
+          const byId = new Map(previous.map((item) => [item.id, item]));
+          for (const conversation of stored) {
+            const existing = byId.get(conversation.id);
+            if (existing && existing.updatedAt >= conversation.updatedAt) {
+              continue;
+            }
+            byId.set(conversation.id, {
+              id: conversation.id,
+              title: conversation.title,
+              updatedAt: conversation.updatedAt,
+              messages: conversation.messages.map((message, index) => ({
+                id: `${conversation.id}-stored-${index}`,
+                role: message.role,
+                content: message.content,
+              })),
+            });
+          }
+          return [...byId.values()]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, MAX_CHAT_AGENT_HISTORY);
+        });
+      })
+      .catch((error) => {
+        console.warn("Could not load stored Chat Agent conversations", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    settings?.storage?.destination,
+    settings?.storage?.localVaultPath,
+    setHistory,
+  ]);
 
   // Tell the tab bar which conversations are still working, so a background
   // answer is visibly in progress rather than silently finishing offscreen.
@@ -276,29 +319,15 @@ export default function ChatAgentPage() {
       messages: tabMessages,
       vectorCollectionIds: tabVectorCollectionIds,
     } = latestTabRef.current;
-    setOpenTabs((prev) => {
-      const index = prev.findIndex((tab) => tab.id === id);
-      const tab: ChatAgentOpenTab = {
+    setOpenTabs((prev) =>
+      syncChatAgentTab(prev, {
         id,
         title: tabTitle,
         messages: tabMessages,
         vectorCollectionIds: tabVectorCollectionIds,
         updatedAt: Date.now(),
-      };
-      if (index < 0) return [...prev, tab];
-      const existing = prev[index];
-      // Returning `prev` unchanged is what actually skips the storage write.
-      if (
-        existing.messages === tabMessages &&
-        existing.title === tabTitle &&
-        existing.vectorCollectionIds === tabVectorCollectionIds
-      ) {
-        return prev;
-      }
-      const next = [...prev];
-      next[index] = tab;
-      return next;
-    });
+      }),
+    );
   }, [setOpenTabs]);
 
   useEffect(() => {
@@ -329,31 +358,33 @@ export default function ChatAgentPage() {
     setPersistedActiveId(sessionId);
   }, [sessionId, setPersistedActiveId]);
 
-  // Persist the current conversation to history once a turn settles (not mid
-  // stream, and only once it has a real user message).
+  // Every settled open conversation belongs in the picker, including a reply
+  // that finished in a background tab.
+  useEffect(() => {
+    const busy = new Set([
+      ...streamingSessions,
+      ...generatingImageSessions,
+      ...generatingVideoSessions,
+    ]);
+    setHistory((previous) =>
+      mergeSettledChatTabsIntoHistory(previous, openTabs, busy),
+    );
+  }, [
+    generatingImageSessions,
+    generatingVideoSessions,
+    openTabs,
+    setHistory,
+    streamingSessions,
+  ]);
+
+  // A conversation in a project is also recorded there, so it survives the
+  // tab being closed and can be continued from the project itself.
   useEffect(() => {
     if (isStreaming || messages.length === 0) return;
     const hasUserMessage = messages.some(
-      (m) => m.role === "user" && m.content.trim(),
+      (message) => message.role === "user" && message.content.trim(),
     );
     if (!hasUserMessage) return;
-    setHistory((prev) => {
-      const conversation: ChatAgentConversation = {
-        id: sessionId,
-        title,
-        messages,
-        vectorCollectionIds,
-        updatedAt: Date.now(),
-      };
-      const idx = prev.findIndex((c) => c.id === sessionId);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = conversation;
-        return next;
-      }
-      return [conversation, ...prev].slice(0, MAX_CHAT_AGENT_HISTORY);
-    });
-
     // A conversation in a project is also recorded there, so it survives the
     // tab being closed and can be continued from the project itself.
     const projectId = openTabs.find((tab) => tab.id === sessionId)?.projectId;
@@ -371,15 +402,7 @@ export default function ChatAgentPage() {
           // the conversation the user is having.
         });
     }
-  }, [
-    isStreaming,
-    messages,
-    openTabs,
-    sessionId,
-    title,
-    vectorCollectionIds,
-    setHistory,
-  ]);
+  }, [isStreaming, messages, openTabs, sessionId, title, vectorCollectionIds]);
 
   const handleNewChat = () => {
     // A new tab never waits on an old one: work already running keeps running
@@ -419,23 +442,6 @@ export default function ChatAgentPage() {
     });
   }, [sessionId, title, setOpenTabs]);
 
-  // Closing the last tab from the bar clears the active id; start fresh.
-  useEffect(() => {
-    if (persistedActiveId !== null) return;
-    const conversation = createBlankConversation(activeProjectId);
-    setOpenTabs((prev) => (prev.length > 0 ? prev : [conversation]));
-    setPersistedActiveId(conversation.id);
-    setSessionId(conversation.id);
-    setMessages([]);
-    setVectorCollectionIds([]);
-    setMessageFeedback({});
-  }, [
-	persistedActiveId,
-	setOpenTabs,
-	setPersistedActiveId,
-	activeProjectId
-]);
-
   // The tab bar lives in the app chrome now, so a selection there arrives as
   // a change to the persisted active id. Load that conversation when it does.
   useEffect(() => {
@@ -467,11 +473,34 @@ export default function ChatAgentPage() {
     setHistoryOpen(false);
   };
 
-  const handleDeleteConversation = (id: string) => {
+  const handleDeleteConversation = async (id: string) => {
     // Deleting a conversation that is still answering stops it first, rather
     // than leaving an orphaned stream writing to a transcript that is gone.
     cancel(id);
     assistantMessageIdRef.current.delete(id);
+    const conversation =
+      history.find((item) => item.id === id) ??
+      openTabs.find((item) => item.id === id);
+    try {
+      await ipc.storage.deleteConversation({ conversationId: id });
+      if (conversation?.projectId) {
+        await ipc.project
+          .deleteConversation({
+            projectId: conversation.projectId,
+            conversationId: id,
+          })
+          .catch((error) => {
+            console.warn("Could not remove project conversation copy", error);
+          });
+      }
+    } catch (error) {
+      showError(
+        error instanceof Error
+          ? error.message
+          : "Could not delete the stored conversation.",
+      );
+      return;
+    }
     setHistory((prev) => prev.filter((c) => c.id !== id));
     const { tabs: remaining, fallback } = closeChatAgentTab(openTabs, id);
     // Deleting from history is permanent, so also remove any matching open tab.
@@ -487,6 +516,7 @@ export default function ChatAgentPage() {
     } else {
       setOpenTabs(remaining);
     }
+    showSuccess("Conversation deleted.");
   };
 
   const handleFeedback = (messageId: string, feedback: MessageFeedback) => {
@@ -745,6 +775,7 @@ export default function ChatAgentPage() {
     selectedMcpActions: ChatAgentMcpAction[],
     vectorCollectionIds: string[],
     dataSourceIds: string[],
+    displayTextOverride?: string,
   ) => {
     // Reading a document happens before the model is called and can take a
     // while, so this turn is pinned to the tab it was sent from.
@@ -861,7 +892,7 @@ export default function ChatAgentPage() {
     sendMessage(
       {
         message: messageForApi,
-        displayMessage: prepared.displayText,
+        displayMessage: displayTextOverride ?? prepared.displayText,
         selectedMcpToolKeys: selectedMcpKeys?.toolKeys,
         selectedMcpWorkflowKeys: selectedMcpKeys?.workflowKeys,
         vectorCollectionIds:
@@ -903,6 +934,32 @@ export default function ChatAgentPage() {
     );
   };
 
+  const handleSelectCanvaCandidate = (selection: {
+    jobId: string;
+    candidateId: string;
+    conceptNumber: number;
+  }) => {
+    if (isBusy) return;
+    void handleSubmit(
+      `Choose Canva candidate ${selection.candidateId} from generation job ${selection.jobId} and create the final editable design.`,
+      [],
+      vectorCollectionIds,
+      [],
+      `Use Canva Concept ${selection.conceptNumber}`,
+    );
+  };
+
+  const handleRetryCanvaGeneration = () => {
+    if (isBusy) return;
+    void handleSubmit(
+      "Retry the Canva design generation now using my original brief. Keep the same requested format and page count, but simplify the visual instructions if Canva needs a cleaner brief.",
+      [],
+      vectorCollectionIds,
+      [],
+      "Retry Canva design",
+    );
+  };
+
   return (
     <div
       className="chat-agent-page home-jarvis relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
@@ -915,6 +972,9 @@ export default function ChatAgentPage() {
           title={title}
           onNewChat={handleNewChat}
           onOpenHistory={() => setHistoryOpen(true)}
+          conversations={history}
+          activeId={sessionId}
+          onSelectConversation={handleLoadConversation}
         />
         <TooltipProvider delay={200}>
           {messages.length === 0 ? (
@@ -972,6 +1032,8 @@ export default function ChatAgentPage() {
                               ? () => handleRegenerate(message.id)
                               : undefined
                           }
+                          onSelectCanvaCandidate={handleSelectCanvaCandidate}
+                          onRetryCanvaGeneration={handleRetryCanvaGeneration}
                         />
                       );
                     })}

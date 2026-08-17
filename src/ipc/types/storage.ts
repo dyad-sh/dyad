@@ -123,6 +123,16 @@ export const storageContracts = {
       reason: z.string().nullable(),
     }),
   }),
+  deleteConversation: defineContract({
+    channel: "storage:delete-conversation",
+    input: z.object({ conversationId: z.string().min(1).max(200) }),
+    output: z.object({ deletedFiles: z.number().int().nonnegative() }),
+  }),
+  listConversations: defineContract({
+    channel: "storage:list-conversations",
+    input: z.void(),
+    output: z.array(ChatAgentConversationSchema),
+  }),
 } as const;
 
 export const storageClient = createClient(storageContracts);

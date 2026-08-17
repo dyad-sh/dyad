@@ -16,7 +16,13 @@ import { ChatAgentWeatherCard } from "./ChatAgentWeatherCard";
 
 type ResearchPresentation = Exclude<
   ChatAgentToolPresentation,
-  { kind: "lovable-projects" | "x-profile" | "x-post-composer" }
+  {
+    kind:
+      | "lovable-projects"
+      | "canva-designs"
+      | "x-profile"
+      | "x-post-composer";
+  }
 >;
 type FlightPresentation = Extract<
   ResearchPresentation,

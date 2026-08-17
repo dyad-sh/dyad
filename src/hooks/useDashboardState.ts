@@ -128,6 +128,7 @@ export function useDashboardState() {
     // The vector service is the only subsystem that already keeps an activity
     // log, so it is the only honest source for the activity panel.
     activity: vector.data?.activity ?? [],
+    notificationsEnabled: settings?.enableChatEventNotifications === true,
     isLoading:
       infrastructure.isLoading ||
       dataSources.isLoading ||

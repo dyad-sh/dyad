@@ -116,6 +116,9 @@ export type LovableConnectionStatus = z.infer<
   typeof LovableConnectionStatusSchema
 >;
 
+export const CanvaConnectionStatusSchema = LovableConnectionStatusSchema;
+export type CanvaConnectionStatus = z.infer<typeof CanvaConnectionStatusSchema>;
+
 export const McpToolConsentRecordSchema = z.object({
   id: z.number(),
   serverId: z.number(),
@@ -225,6 +228,24 @@ export const mcpContracts = {
     channel: "mcp:disconnect-lovable",
     input: z.void(),
     output: LovableConnectionStatusSchema,
+  }),
+
+  getCanvaStatus: defineContract({
+    channel: "mcp:canva-status",
+    input: z.void(),
+    output: CanvaConnectionStatusSchema,
+  }),
+
+  connectCanva: defineContract({
+    channel: "mcp:connect-canva",
+    input: z.void(),
+    output: CanvaConnectionStatusSchema,
+  }),
+
+  disconnectCanva: defineContract({
+    channel: "mcp:disconnect-canva",
+    input: z.void(),
+    output: CanvaConnectionStatusSchema,
   }),
 
   getToolConsents: defineContract({

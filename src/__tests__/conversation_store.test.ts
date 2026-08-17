@@ -12,8 +12,12 @@ vi.mock("@/main/settings", () => ({
   readSettings: () => ({ storage: { localVaultPath: vault } }),
 }));
 
-const { saveConversation, forgetConversationFile } =
-  await import("@/ipc/utils/conversation_store");
+const {
+  saveConversation,
+  forgetConversationFile,
+  deleteStoredConversation,
+  listStoredConversations,
+} = await import("@/ipc/utils/conversation_store");
 
 beforeEach(() => {
   vault = fs.mkdtempSync(path.join(os.tmpdir(), "conversation-store-"));
@@ -83,6 +87,26 @@ describe("saveConversation", () => {
       { role: "user", content: "A different conversation." },
     ]);
     expect(conversationFiles()).toHaveLength(2);
+  });
+
+  it("deletes the durable conversation file by session id", async () => {
+    await saveConversation("session-1", turns);
+    expect(conversationFiles()).toHaveLength(1);
+
+    await expect(deleteStoredConversation("session-1")).resolves.toBe(2);
+    expect(conversationFiles()).toHaveLength(0);
+  });
+
+  it("loads structured records back from the selected vault", async () => {
+    await saveConversation("session-1", turns);
+
+    await expect(listStoredConversations()).resolves.toMatchObject([
+      {
+        id: "session-1",
+        title: "How does memory work?",
+        messages: turns,
+      },
+    ]);
   });
 
   it("starts a new file once a session is forgotten", async () => {

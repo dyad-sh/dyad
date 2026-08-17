@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { MessagesSquare, Trash2 } from "lucide-react";
 
 import {
@@ -10,6 +10,16 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ChatAgentConversation } from "./types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function formatRelativeTime(timestamp: number): string {
   const diffMs = Date.now() - timestamp;
@@ -36,89 +46,132 @@ export function ChatAgentHistoryDialog({
   conversations: ChatAgentConversation[];
   activeId: string;
   onSelect: (conversation: ChatAgentConversation) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
 }) {
   const sorted = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
     [conversations],
   );
+  const [pendingDelete, setPendingDelete] =
+    useState<ChatAgentConversation | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="w-[92vw] max-w-lg gap-0 overflow-hidden border-cyan-500/20 bg-[#0a1628] p-0 text-cyan-50"
-        data-testid="chat-agent-history-dialog"
-      >
-        <DialogHeader className="border-b border-cyan-500/15 px-5 py-4">
-          <DialogTitle className="font-jarvis-ui text-base tracking-wide text-cyan-50">
-            Conversation history
-          </DialogTitle>
-          <DialogDescription className="text-xs text-cyan-100/50">
-            {conversations.length === 0
-              ? "Your past conversations will appear here."
-              : `${conversations.length} saved conversation${
-                  conversations.length === 1 ? "" : "s"
-                }`}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          className="w-[92vw] max-w-lg gap-0 overflow-hidden border-cyan-500/20 bg-[#0a1628] p-0 text-cyan-50"
+          data-testid="chat-agent-history-dialog"
+        >
+          <DialogHeader className="border-b border-cyan-500/15 px-5 py-4">
+            <DialogTitle className="font-jarvis-ui text-base tracking-wide text-cyan-50">
+              Conversation history
+            </DialogTitle>
+            <DialogDescription className="text-xs text-cyan-100/50">
+              {conversations.length === 0
+                ? "Your past conversations will appear here."
+                : `${conversations.length} saved conversation${
+                    conversations.length === 1 ? "" : "s"
+                  }`}
+            </DialogDescription>
+          </DialogHeader>
 
-        {sorted.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-            <MessagesSquare className="size-8 text-cyan-400/40" />
-            <p className="text-sm text-cyan-100/55">No conversations yet</p>
-          </div>
-        ) : (
-          <ul className="max-h-[60vh] overflow-y-auto p-2 scrollbar-on-hover">
-            {sorted.map((conversation) => {
-              const isActive = conversation.id === activeId;
-              const messageCount = conversation.messages.length;
-              return (
-                <li key={conversation.id}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    data-testid="chat-agent-history-item"
-                    onClick={() => onSelect(conversation)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelect(conversation);
-                      }
-                    }}
-                    className={cn(
-                      "group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
-                      "hover:bg-cyan-500/10",
-                      isActive && "bg-cyan-500/15",
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-cyan-50">
-                        {conversation.title}
-                      </p>
-                      <p className="mt-0.5 text-xs text-cyan-100/45">
-                        {formatRelativeTime(conversation.updatedAt)} ·{" "}
-                        {messageCount} message{messageCount === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="Delete conversation"
-                      data-testid="chat-agent-history-delete"
-                      className="shrink-0 rounded-md p-1.5 text-cyan-100/40 opacity-0 transition-colors hover:bg-red-500/15 hover:text-red-300 focus-visible:opacity-100 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(conversation.id);
+          {sorted.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+              <MessagesSquare className="size-8 text-cyan-400/40" />
+              <p className="text-sm text-cyan-100/55">No conversations yet</p>
+            </div>
+          ) : (
+            <ul className="max-h-[60vh] overflow-y-auto p-2 scrollbar-on-hover">
+              {sorted.map((conversation) => {
+                const isActive = conversation.id === activeId;
+                const messageCount = conversation.messages.length;
+                return (
+                  <li key={conversation.id}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      data-testid="chat-agent-history-item"
+                      onClick={() => onSelect(conversation)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelect(conversation);
+                        }
                       }}
+                      className={cn(
+                        "group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
+                        "hover:bg-cyan-500/10",
+                        isActive && "bg-cyan-500/15",
+                      )}
                     >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </DialogContent>
-    </Dialog>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-cyan-50">
+                          {conversation.title}
+                        </p>
+                        <p className="mt-0.5 text-xs text-cyan-100/45">
+                          {formatRelativeTime(conversation.updatedAt)} ·{" "}
+                          {messageCount} message{messageCount === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Delete conversation"
+                        data-testid="chat-agent-history-delete"
+                        className="shrink-0 rounded-md p-1.5 text-cyan-100/40 opacity-0 transition-colors hover:bg-red-500/15 hover:text-red-300 focus-visible:opacity-100 group-hover:opacity-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDelete(conversation);
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !deleting) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{pendingDelete?.title}” will be removed from conversation history
+              and from the selected vault or cloud storage location. This cannot
+              be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting || !pendingDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async (event) => {
+                event.preventDefault();
+                if (!pendingDelete) return;
+                setDeleting(true);
+                try {
+                  await onDelete(pendingDelete.id);
+                  setPendingDelete(null);
+                } finally {
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete everywhere"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

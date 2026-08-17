@@ -59,6 +59,12 @@ import {
 } from "../utils/deployment_tools";
 import { inferFlexibleFlightSearchIntent } from "@/lib/flight_search_intent";
 import { buildSocialAccountContext } from "@/lib/social_account_context";
+import {
+  inferCanvaDesignAction,
+  inferCanvaDesignIntent,
+  isCanvaCandidateSelection,
+} from "@/lib/canva_chat_intent";
+import { getEnabledCanvaMcpServerIds } from "@/lib/canvaMcp";
 
 const logger = log.scope("chat_agent_handlers");
 
@@ -66,6 +72,13 @@ type ChatAgentMessage = { role: "user" | "assistant"; content: string };
 
 const chatAgentSessions = new Map<string, ChatAgentMessage[]>();
 const activeChatAgentStreams = new StreamRegistry<AbortController>();
+const canvaCandidateContexts = new Map<
+  string,
+  {
+    jobId: string;
+    candidates: Array<{ id: string; title: string }>;
+  }
+>();
 
 const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   open_flight_search: "Opening flight search",
@@ -79,11 +92,18 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   run_terminal_command: "Using Terminal",
   read_web_page: "Reading web page",
   use_computer: "Using Computer Control",
+  generate_design: "Creating Canva concepts",
+  create_design_from_candidate: "Building your editable Canva design",
+  search_designs: "Looking through your Canva designs",
+  export_design: "Preparing your Canva export",
 };
 
 function toolActivityLabel(toolName: string) {
   if (TOOL_ACTIVITY_LABELS[toolName]) return TOOL_ACTIVITY_LABELS[toolName];
   const conciseName = toolName.split("__").at(-1) ?? toolName;
+  if (TOOL_ACTIVITY_LABELS[conciseName]) {
+    return TOOL_ACTIVITY_LABELS[conciseName];
+  }
   return conciseName
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -215,6 +235,21 @@ const LOVABLE_WEB_DEV_SYSTEM_PROMPT = [
   "Do not claim a change, build, or deployment succeeded unless the Lovable tool result confirms it.",
   "Destructive or live actions remain subject to the app's MCP permission prompt.",
   "If the request is unrelated to Lovable website development, explain briefly that this agent is limited to Lovable and ask for a Lovable-related task.",
+].join("\n");
+
+const CANVA_DESIGN_SYSTEM_PROMPT = [
+  "",
+  "Connected Canva design workflow:",
+  "- This turn is an explicit request to work in the user's connected Canva account. Use the supplied Canva MCP tools now.",
+  "- For a new presentation, slideshow, deck, or graphic, call Canva's design-generation tool. Do not answer with only a Markdown outline or pretend that prose is a finished design.",
+  "- Use the user's subject, requested page count, format, audience, and visual direction as the generation prompt. Preserve the latest agreed details, but do not copy the conversation transcript or superseded drafts into Canva.",
+  "- For presentations, set design_type to presentation. Keep the query compact: title/topic, audience, visual style, narrative arc, then one short title and goal per slide. Do not include timings, speaker notes, talk tracks, Markdown separators, or multiple versions of the outline.",
+  "- When generation returns candidates, expose those real candidates through the tool result and stop so the user can choose. Do not auto-select a candidate.",
+  "- If generate-design returns a job with status failed, retry generate-design exactly once in the same turn. The retry query must be under 2,000 characters and contain only the format, topic, audience, visual style, page count, and one short line per page. Do not ask the user a question before this one automatic retry.",
+  "- If the retry also fails, state that Canva could not generate the concepts and tell the user to use the Retry in Canva action on the native result card. Never describe a failed job as a completed design.",
+  "- When the user subsequently chooses a candidate, use the pending job ID and candidate ID supplied in trusted application state to call create-design-from-candidate.",
+  "- Never claim a Canva design was created, edited, or exported unless the Canva tool result confirms it.",
+  "- Keep accompanying prose to one short sentence because the native Canva card contains the previews and links.",
 ].join("\n");
 
 const ENHANCE_PROMPT_SYSTEM =
@@ -407,10 +442,50 @@ function runChatAgentStream(
     try {
       const settings = readSettings();
       const isLovableWebDev = agentProfile === "lovable-web-dev";
-      const selectedTurnHasMcp =
+      const explicitTurnHasMcp =
         isLovableWebDev ||
         (selectedTurnMcpKeys?.toolKeys?.length ?? 0) > 0 ||
         (selectedTurnMcpKeys?.workflowKeys?.length ?? 0) > 0;
+      const pendingCanvaCandidates = canvaCandidateContexts.get(sessionId);
+      const latestUserMessage = [...messagesForSession]
+        .reverse()
+        .find((message) => message.role === "user")?.content;
+      const selectingCanvaCandidate =
+        isCanvaCandidateSelection(messagesForSession) &&
+        (Boolean(pendingCanvaCandidates) ||
+          /\bgeneration job\b/i.test(latestUserMessage ?? ""));
+      const canvaDesignAction = inferCanvaDesignAction(messagesForSession);
+      const canvaDesignIntent =
+        !explicitTurnHasMcp &&
+        (inferCanvaDesignIntent(messagesForSession) || selectingCanvaCandidate);
+      const enabledMcpServers = await db.select().from(mcpServers);
+      const canvaServerIds = canvaDesignIntent
+        ? getEnabledCanvaMcpServerIds(enabledMcpServers)
+        : [];
+      if (
+        canvaDesignIntent &&
+        canvaServerIds.length === 0 &&
+        /\bcanva\b/i.test(latestUserMessage ?? "")
+      ) {
+        throw new DyadError(
+          "Canva is not connected in this app profile. Open Settings → Plugins → Canva and connect it before creating a design.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      const autoUseCanva = canvaDesignIntent && canvaServerIds.length > 0;
+      const preferredCanvaTool = selectingCanvaCandidate
+        ? "create-design-from-candidate"
+        : canvaDesignAction === "generate"
+          ? "generate-design"
+          : canvaDesignAction === "search"
+            ? "search-designs"
+            : canvaDesignAction === "export"
+              ? "export-design"
+              : undefined;
+      const autoCanvaToolKeys = preferredCanvaTool
+        ? canvaServerIds.map((serverId) => `${serverId}:${preferredCanvaTool}`)
+        : undefined;
+      const selectedTurnHasMcp = explicitTurnHasMcp || autoUseCanva;
 
       // Flexible travel details are already structured by the conversation:
       // once the route, month and stay are complete, producing the comparison
@@ -478,7 +553,7 @@ function runChatAgentStream(
       const useStream =
         shouldStreamAiCoderResponses(settings) && !selectedTurnHasMcp;
       const lovableServerIds = isLovableWebDev
-        ? getEnabledLovableMcpServerIds(await db.select().from(mcpServers))
+        ? getEnabledLovableMcpServerIds(enabledMcpServers)
         : [];
       if (isLovableWebDev && lovableServerIds.length === 0) {
         throw new DyadError(
@@ -491,16 +566,48 @@ function runChatAgentStream(
         ? await buildMcpToolSetForServerIds(event, {
             serverIds: isLovableWebDev
               ? lovableServerIds
-              : (settings.chatAgentMcpServerIds ?? []),
+              : autoUseCanva
+                ? canvaServerIds
+                : (settings.chatAgentMcpServerIds ?? []),
             toolKeys: isLovableWebDev
               ? undefined
-              : (selectedTurnMcpKeys?.toolKeys ?? []),
-            workflowKeys: isLovableWebDev
-              ? undefined
-              : (selectedTurnMcpKeys?.workflowKeys ?? []),
+              : autoUseCanva
+                ? autoCanvaToolKeys
+                : (selectedTurnMcpKeys?.toolKeys ?? []),
+            workflowKeys:
+              isLovableWebDev || autoUseCanva
+                ? undefined
+                : (selectedTurnMcpKeys?.workflowKeys ?? []),
             chatId: -1,
             onToolResult: (toolResult) => {
               emittedToolResult = true;
+              if (
+                toolResult.presentation?.kind === "canva-designs" &&
+                toolResult.presentation.status !== "failed" &&
+                toolResult.presentation.jobId &&
+                toolResult.presentation.designs.some(
+                  (design) => design.candidate,
+                )
+              ) {
+                canvaCandidateContexts.set(sessionId, {
+                  jobId: toolResult.presentation.jobId,
+                  candidates: toolResult.presentation.designs.map(
+                    ({ id, title }) => ({ id, title }),
+                  ),
+                });
+              } else if (
+                toolResult.presentation?.kind === "canva-designs" &&
+                toolResult.presentation.status === "failed"
+              ) {
+                canvaCandidateContexts.delete(sessionId);
+              } else if (
+                toolResult.presentation?.kind === "canva-designs" &&
+                /create[-_]design[-_]from[-_]candidate/.test(
+                  toolResult.presentation.toolName,
+                )
+              ) {
+                canvaCandidateContexts.delete(sessionId);
+              }
               safeSend(event.sender, "chat-agent:response:chunk", {
                 sessionId,
                 toolResult,
@@ -577,6 +684,13 @@ function runChatAgentStream(
               ? `\n${DATA_SOURCE_SYSTEM_PROMPT}`
               : ""
           }${projectPrompt}${buildSocialAccountContext(settings)}`;
+      const systemPromptWithPluginIntent = autoUseCanva
+        ? `${systemPrompt}\n${CANVA_DESIGN_SYSTEM_PROMPT}${
+            pendingCanvaCandidates
+              ? `\nPending Canva generation context (trusted application state): ${JSON.stringify(pendingCanvaCandidates)}`
+              : ""
+          }`
+        : systemPrompt;
       const toolNames = Object.keys(tools);
       // Check the MCP tools specifically: the GitHub/Vercel tools are always
       // present when their tokens exist, so counting every tool would hide a
@@ -587,11 +701,18 @@ function runChatAgentStream(
           DyadErrorKind.Precondition,
         );
       }
+      if (autoUseCanva && Object.keys(mcpTools).length === 0) {
+        throw new DyadError(
+          "Canva is connected but returned no design tools. Reconnect it from Settings → Plugins → Canva.",
+          DyadErrorKind.Precondition,
+        );
+      }
       const forceOnlySelectedTool =
-        selectedTurnHasMcp &&
-        (selectedTurnMcpKeys?.toolKeys?.length ?? 0) === 1 &&
-        (selectedTurnMcpKeys?.workflowKeys?.length ?? 0) === 0 &&
-        toolNames.length === 1;
+        toolNames.length === 1 &&
+        (autoUseCanva ||
+          (selectedTurnHasMcp &&
+            (selectedTurnMcpKeys?.toolKeys?.length ?? 0) === 1 &&
+            (selectedTurnMcpKeys?.workflowKeys?.length ?? 0) === 0));
       const toolOptions =
         toolNames.length > 0
           ? {
@@ -606,22 +727,24 @@ function runChatAgentStream(
               stopWhen: stepCountIs(
                 isLovableWebDev ? 8 : selectedTurnHasMcp ? 4 : 8,
               ),
-              prepareStep: () =>
-                hasSuccessfulWebSearch
-                  ? {
-                      activeTools: toolNames.filter(
-                        (toolName) => toolName !== "search_web",
-                      ),
-                      toolChoice: "auto" as const,
-                    }
-                  : undefined,
+              prepareStep: ({ stepNumber }: { stepNumber: number }) =>
+                autoUseCanva && stepNumber > 0
+                  ? { toolChoice: "auto" as const }
+                  : hasSuccessfulWebSearch
+                    ? {
+                        activeTools: toolNames.filter(
+                          (toolName) => toolName !== "search_web",
+                        ),
+                        toolChoice: "auto" as const,
+                      }
+                    : undefined,
             }
           : {};
 
       const runStreamingGeneration = async () => {
         const stream = streamText({
           model: modelClient.model,
-          system: systemPrompt,
+          system: systemPromptWithPluginIntent,
           messages: messagesForApi,
           maxOutputTokens,
           temperature,
@@ -658,7 +781,7 @@ function runChatAgentStream(
         try {
           const { text } = await generateText({
             model: modelClient.model,
-            system: systemPrompt,
+            system: systemPromptWithPluginIntent,
             messages: messagesForApi,
             maxOutputTokens,
             temperature,

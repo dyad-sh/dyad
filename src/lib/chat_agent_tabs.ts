@@ -24,3 +24,30 @@ export function closeChatAgentTab(tabs: ChatAgentOpenTab[], closedId: string) {
       remaining[Math.min(closedIndex, remaining.length - 1)] ?? undefined,
   };
 }
+
+/** Mirrors live state into an existing tab without reviving a closed one. */
+export function syncChatAgentTab(
+  tabs: ChatAgentOpenTab[],
+  snapshot: Omit<ChatAgentOpenTab, "projectId"> & {
+    projectId?: string | null;
+  },
+) {
+  const index = tabs.findIndex((tab) => tab.id === snapshot.id);
+  if (index < 0) return tabs;
+  const existing = tabs[index]!;
+  const nextTab: ChatAgentOpenTab = {
+    ...snapshot,
+    projectId: snapshot.projectId ?? existing.projectId ?? null,
+  };
+  if (
+    existing.messages === nextTab.messages &&
+    existing.title === nextTab.title &&
+    existing.vectorCollectionIds === nextTab.vectorCollectionIds &&
+    existing.projectId === nextTab.projectId
+  ) {
+    return tabs;
+  }
+  const next = [...tabs];
+  next[index] = nextTab;
+  return next;
+}

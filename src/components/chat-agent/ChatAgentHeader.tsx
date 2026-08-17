@@ -2,7 +2,9 @@ import {
   ArrowLeft,
   ChevronDown,
   History,
+  MessageSquare,
   PanelRight,
+  Plus,
   Share,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,19 +12,28 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { showInfo } from "@/lib/toast";
+import type { ChatAgentConversation } from "./types";
 
 export function ChatAgentHeader({
   title,
   onNewChat,
   onOpenHistory,
+  conversations = [],
+  activeId,
+  onSelectConversation,
   onBack,
 }: {
   title: string;
   onNewChat: () => void;
   onOpenHistory: () => void;
+  conversations?: ChatAgentConversation[];
+  activeId?: string;
+  onSelectConversation?: (conversation: ChatAgentConversation) => void;
   onBack?: () => void;
 }) {
   return (
@@ -47,10 +58,42 @@ export function ChatAgentHeader({
           <span className="truncate max-w-[min(100%,280px)]">{title}</span>
           <ChevronDown className="size-4 shrink-0 opacity-60" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-48">
+        <DropdownMenuContent align="start" className="w-72">
           <DropdownMenuItem onClick={onNewChat}>
+            <Plus className="size-4" />
             New conversation
           </DropdownMenuItem>
+          {conversations.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Recent conversations
+              </DropdownMenuLabel>
+              {[...conversations]
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .slice(0, 8)
+                .map((conversation) => (
+                  <DropdownMenuItem
+                    key={conversation.id}
+                    onClick={() => onSelectConversation?.(conversation)}
+                    className="min-w-0 py-2"
+                  >
+                    <MessageSquare className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {conversation.title}
+                    </span>
+                    {conversation.id === activeId && (
+                      <span className="text-[10px] text-primary">Open</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onOpenHistory}>
+                <History className="size-4" />
+                Manage all conversations…
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

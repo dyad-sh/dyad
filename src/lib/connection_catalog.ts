@@ -11,6 +11,7 @@ export type PluginCatalogId =
   | "github"
   | "vercel"
   | "lovable"
+  | "canva"
   | "duckduckgo"
   | "coingecko"
   | "weather"
@@ -29,7 +30,7 @@ export type ConnectionCatalogEntry<Id extends string> = {
 };
 
 export type PluginCategory = {
-  id: "developer" | "live-data" | "travel";
+  id: "developer" | "creative" | "live-data" | "travel";
   title: string;
   description: string;
   plugins: readonly ConnectionCatalogEntry<PluginCatalogId>[];
@@ -55,6 +56,18 @@ export const PLUGIN_CATEGORIES: readonly PluginCategory[] = [
         id: "lovable",
         title: "Lovable",
         description: "MCP access to projects, builds and published sites",
+      },
+    ],
+  },
+  {
+    id: "creative",
+    title: "Creative & Design",
+    description: "Create and refine visual content with the Chat Agent.",
+    plugins: [
+      {
+        id: "canva",
+        title: "Canva",
+        description: "Create, edit, search and export Canva designs",
       },
     ],
   },

@@ -322,6 +322,7 @@ export const queryKeys = {
     all: ["mcp"] as const,
     servers: ["mcp", "servers"] as const,
     lovableStatus: ["mcp", "lovable-status"] as const,
+    canvaStatus: ["mcp", "canva-status"] as const,
     toolsByServer: {
       all: ["mcp", "tools-by-server"] as const,
       list: ({ serverIds }: { serverIds: number[] }) =>

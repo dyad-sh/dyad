@@ -18,10 +18,7 @@ import { StatusDot } from "@/pages/agent-os/ui";
 import type { Agent } from "@/pages/agent-os/data";
 
 import { ParticleBackground } from "@/components/home/ParticleBackground";
-import {
-  JarvisOrb,
-  type JarvisOrbState,
-} from "@/components/dashboard/JarvisOrb";
+import { SystemHealthHologram } from "@/components/dashboard/SystemHealthHologram";
 import {
   WeatherIcon,
   weatherCondition,
@@ -31,7 +28,6 @@ import {
   useDashboardState,
 } from "@/hooks/useDashboardState";
 import type { HealthTone } from "@/lib/dashboard/system_health";
-import { formatRatio, formatReadout } from "@/lib/dashboard/readout";
 import { cn } from "@/lib/utils";
 
 const TONE_DOT: Record<HealthTone, string> = {
@@ -129,20 +125,6 @@ function TimePanel() {
   );
 }
 
-/** One number and its label, in the readout row under the orb. */
-function Readout({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col items-center gap-0.5">
-      <span className="font-mono text-sm text-cyan-100/85 tabular-nums">
-        {value}
-      </span>
-      <span className="text-[9px] tracking-[0.18em] text-cyan-100/35">
-        {label}
-      </span>
-    </div>
-  );
-}
-
 function ConditionsPanel() {
   const { data, isLoading } = useDashboardConditions();
 
@@ -212,7 +194,8 @@ function ConditionsPanel() {
 }
 
 export default function DashboardPage() {
-  const { health, overall, services, activity, metrics } = useDashboardState();
+  const { health, overall, services, activity, metrics, notificationsEnabled } =
+    useDashboardState();
   const navigate = useNavigate();
   const { agents } = useAgentOsAgents();
   const setWorkspaceTabs = useSetAtom(agentWorkspaceTabsAtom);
@@ -237,19 +220,6 @@ export default function DashboardPage() {
     setActiveWorkspaceTab(agent.id);
     void navigate({ to: "/agent-os" });
   };
-
-  /**
-   * The orb's state, from what is actually known.
-   *
-   * Ready means the app can answer: at least one AI provider is configured.
-   * Anything else is offline, which is the truth rather than a friendlier word
-   * for it.
-   */
-  const orbState: JarvisOrbState = useMemo(() => {
-    const providers = health.find((row) => row.id === "providers");
-    if (!providers || providers.tone === "unknown") return "processing";
-    return providers.tone === "healthy" ? "ready" : "offline";
-  }, [health]);
 
   return (
     <div className="home-jarvis hud-frame relative flex min-h-0 w-full flex-1 flex-col overflow-hidden">
@@ -290,70 +260,24 @@ export default function DashboardPage() {
           <ConditionsPanel />
         </div>
 
-        {/* The orb has the middle of the screen to itself, with the machine's
-            own counts read out beneath it. */}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
-          <JarvisOrb
-            state={orbState}
-            detail={
-              orbState === "offline"
-                ? "No AI provider configured yet"
-                : undefined
-            }
+        {/* Operational centrepiece: health, alerts and live capacity replace
+            the decorative orb, using only state the owning screens report. */}
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto scrollbar-on-hover">
+          <SystemHealthHologram
+            health={health}
+            overall={overall}
+            metrics={metrics}
+            agentsOnline={reachableAgentCount(hermesAgents)}
+            agentTotal={hermesAgents.length}
+            connectionCount={services.length}
+            activity={activity}
+            notificationsEnabled={notificationsEnabled}
           />
-
-          <div
-            className="flex items-center gap-6"
-            data-testid="dashboard-readouts"
-          >
-            <Readout
-              label="NODES"
-              value={formatRatio(metrics.devicesHealthy, metrics.devices)}
-            />
-            <Readout label="SOURCES" value={formatReadout(metrics.sources)} />
-            <Readout label="CHUNKS" value={formatReadout(metrics.chunks)} />
-            <Readout
-              label="COLLECTIONS"
-              value={formatReadout(metrics.collections)}
-            />
-          </div>
-
-          {metrics.embeddingModel && (
-            <p className="font-mono text-[10px] tracking-widest text-cyan-100/25">
-              EMBED · {metrics.embeddingModel.toUpperCase()}
-            </p>
-          )}
         </div>
 
-        {/* Health and connections along the bottom as status pills rather than
-            lists in boxes: the same information, reading as instrumentation
-            around the orb instead of competing with it. */}
+        {/* Agents, connections and activity remain as compact channels beneath
+            the central health matrix. */}
         <div className="shrink-0 space-y-2 border-t border-cyan-400/10 pt-3">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <ChannelLabel>SYSTEM</ChannelLabel>
-            <ul
-              className="flex flex-wrap items-center gap-2"
-              data-testid="dashboard-health"
-            >
-              {health.map((row) => (
-                <li key={row.id}>
-                  <Link to={row.to} className="hud-pill" title={row.status}>
-                    <span
-                      className={cn(
-                        "size-1.5 shrink-0 rounded-full",
-                        TONE_DOT[row.tone],
-                      )}
-                    />
-                    <span className="text-cyan-50/85">{row.label}</span>
-                    <span className={cn("text-[11px]", TONE_TEXT[row.tone])}>
-                      {row.status}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
           {/* The registered Hermes agents. A pill opens that agent's chat,
               through the same tabs the Agents page uses. */}
           {hermesAgents.length > 0 && (

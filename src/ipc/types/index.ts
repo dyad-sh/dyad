@@ -207,6 +207,7 @@ export type {
   McpWorkflow,
   McpConnectionStatus,
   LovableConnectionStatus,
+  CanvaConnectionStatus,
   McpToolConsent,
   McpConsentValue,
   McpConsentDecision,

@@ -23,6 +23,7 @@ import { JarvisSettings } from "@/components/settings/JarvisSettings";
 import { SettingsTabSaveBar } from "@/components/settings/SettingsTabSaveBar";
 import { StorageSettings } from "@/components/settings/StorageSettings";
 import { LovablePluginSettings } from "@/components/settings/LovablePluginSettings";
+import { CanvaPluginSettings } from "@/components/settings/CanvaPluginSettings";
 import { ResearchPluginSettings } from "@/components/settings/ResearchPluginSettings";
 import { ChatAgentSystemAccessSettings } from "@/components/settings/ChatAgentSystemAccessSettings";
 import { SocialConnectionCard } from "@/components/social/SocialConnectionCard";
@@ -49,6 +50,7 @@ import {
   CloudSun,
   Coins,
   MapPinned,
+  Palette,
   Plane,
   Search,
   SearchX,
@@ -71,6 +73,7 @@ const pluginIcons: Record<PluginCatalogId, typeof Github> = {
   github: Github,
   vercel: Triangle,
   lovable: HeartHandshake,
+  canva: Palette,
   duckduckgo: Search,
   coingecko: Coins,
   weather: CloudSun,
@@ -89,6 +92,7 @@ const integrationIcons: Record<IntegrationCatalogId, typeof Github> = {
 
 const categoryIcons: Record<PluginCategory["id"], typeof Github> = {
   developer: Braces,
+  creative: Palette,
   "live-data": Search,
   travel: Plane,
 };
@@ -182,6 +186,12 @@ function PluginSettingsBody({ id }: { id: PluginCatalogId }) {
       return (
         <div id={SETTING_IDS.lovable}>
           <LovablePluginSettings />
+        </div>
+      );
+    case "canva":
+      return (
+        <div id={SETTING_IDS.canva}>
+          <CanvaPluginSettings />
         </div>
       );
     case "travel-search":

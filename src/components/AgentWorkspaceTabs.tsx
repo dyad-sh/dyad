@@ -115,10 +115,18 @@ export function AgentWorkspaceTabs() {
     if (activeChatId !== tabId) return;
 
     setActiveChatId(fallback?.id ?? null);
-    // Closing the last conversation while looking at it leaves nothing to look
-    // at, so the app returns to its home surface rather than an empty chat.
+    // Closing the last conversation while looking at it should reveal another
+    // open workspace tab. Going straight home made the closed Chat Agent tab
+    // race its unmount sync and appear to reopen itself.
     if (!fallback && isChatAgent) {
-      void navigate({ to: HOME_PATH });
+      const screenFallback = screenTabs.at(-1);
+      if (screenFallback) {
+        void navigate({ to: screenFallback.path });
+      } else if (tabs.length > 0 || dashboardTabOpen) {
+        void navigate({ to: "/agent-os" });
+      } else {
+        void navigate({ to: HOME_PATH });
+      }
     }
   };
 

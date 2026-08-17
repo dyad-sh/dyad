@@ -15,6 +15,10 @@ describe("connection catalog taxonomy", () => {
         plugins: ["GitHub", "Vercel", "Lovable"],
       },
       {
+        title: "Creative & Design",
+        plugins: ["Canva"],
+      },
+      {
         title: "Search & Live Data",
         plugins: ["DuckDuckGo", "CoinGecko", "Open-Meteo", "Maps"],
       },

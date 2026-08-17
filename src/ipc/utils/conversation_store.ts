@@ -26,6 +26,14 @@ import {
 import { indexMemoryVault } from "./memory_index";
 import { enqueueJob } from "./memory_jobs";
 import { runWorker } from "./memory_worker";
+import {
+  deleteBlob,
+  getBlobBuffer,
+  isBlobConnected,
+  listBlobs,
+  uploadToBlob,
+} from "./vercel_blob";
+import { blobVaultKey } from "./blob_vault";
 
 /**
  * Runs the extraction worker without letting two runs overlap.
@@ -68,13 +76,85 @@ const logger = log.scope("conversation_store");
  * to a location that is no longer theirs.
  */
 const sessionFiles = new Map<string, { vaultPath: string; filePath: string }>();
+const CONVERSATION_RECORDS_PATH = ".meta-human/conversations";
+
+export type StoredConversationRecord = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ConversationTurn[];
+};
 
 function titleFor(turns: ConversationTurn[]): string {
   const firstUser = turns.find((turn) => turn.role === "user");
   if (!firstUser) return "Conversation";
+  const visibleRequest = firstUser.content.includes("MCP_TOOL_MENU_SELECTION")
+    ? (firstUser.content.match(/(?:^|\n)User request:\s*([\s\S]+)$/i)?.[1] ??
+      firstUser.content)
+    : firstUser.content;
   return (
-    firstUser.content.trim().split(/\r?\n/)[0]!.slice(0, 60) || "Conversation"
+    visibleRequest.trim().split(/\r?\n/)[0]!.slice(0, 60) || "Conversation"
   );
+}
+
+function safeFilePart(value: string) {
+  return (
+    value
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[. ]+$/g, "")
+      .slice(0, 100) || "Conversation"
+  );
+}
+
+function portableConversationMarkdown(
+  sessionId: string,
+  turns: ConversationTurn[],
+) {
+  const now = new Date().toISOString();
+  return (
+    conversationHeader({
+      id: sessionId,
+      title: titleFor(turns),
+      created: now,
+      updated: now,
+      project: null,
+    }) + turns.map(renderTurn).join("")
+  );
+}
+
+function storedRecord(
+  sessionId: string,
+  turns: ConversationTurn[],
+): StoredConversationRecord {
+  return {
+    id: sessionId,
+    title: titleFor(turns),
+    updatedAt: Date.now(),
+    messages: turns,
+  };
+}
+
+function recordRelativePath(sessionId: string) {
+  return `${CONVERSATION_RECORDS_PATH}/${safeFilePart(sessionId)}.json`;
+}
+
+async function writeLocalRecord(
+  vaultPath: string,
+  record: StoredConversationRecord,
+) {
+  const filePath = path.join(
+    vaultPath,
+    ...recordRelativePath(record.id).split("/"),
+  );
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const temporary = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await fs.promises.writeFile(temporary, JSON.stringify(record, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await fs.promises.rename(temporary, filePath);
 }
 
 /**
@@ -88,7 +168,40 @@ export async function saveConversation(
   turns: ConversationTurn[],
 ): Promise<string | null> {
   if (turns.length === 0) return null;
-  const vaultPath = readSettings().storage?.localVaultPath?.trim();
+  const storage = readSettings().storage;
+  if (storage?.syncConversations === false) return null;
+
+  if (storage?.destination === "cloud") {
+    if (!isBlobConnected()) return null;
+    try {
+      const relativePath = `Conversations/Chat Agent/${safeFilePart(titleFor(turns))} - ${safeFilePart(sessionId)}.md`;
+      const record = storedRecord(sessionId, turns);
+      await Promise.all([
+        uploadToBlob(
+          blobVaultKey(relativePath),
+          portableConversationMarkdown(sessionId, turns),
+          {
+            allowOverwrite: true,
+            contentType: "text/markdown; charset=utf-8",
+          },
+        ),
+        uploadToBlob(
+          blobVaultKey(recordRelativePath(sessionId)),
+          JSON.stringify(record),
+          {
+            allowOverwrite: true,
+            contentType: "application/json",
+          },
+        ),
+      ]);
+      return relativePath;
+    } catch (error) {
+      logger.warn(`Could not save cloud conversation ${sessionId}`, error);
+      return null;
+    }
+  }
+
+  const vaultPath = storage?.localVaultPath?.trim();
   if (!vaultPath) return null;
 
   try {
@@ -132,6 +245,7 @@ export async function saveConversation(
       pending.map(renderTurn).join(""),
       "utf8",
     );
+    await writeLocalRecord(vaultPath, storedRecord(sessionId, turns));
 
     // Re-index in the background. The saved Markdown is already durable, so a
     // failure here costs only searchability until the next save.
@@ -168,4 +282,168 @@ function relative(vaultPath: string, filePath: string): string {
 /** Forgets a session's file, so a new conversation starts a new file. */
 export function forgetConversationFile(sessionId: string): void {
   sessionFiles.delete(sessionId);
+}
+
+function frontmatterHasConversationId(content: string, sessionId: string) {
+  const escaped = sessionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `^(?:id|conversation_id):\\s*["']?${escaped}["']?\\s*$`,
+    "m",
+  ).test(content.slice(0, 4_096));
+}
+
+async function removeMatchingLocalFiles(root: string, sessionId: string) {
+  const directories = [
+    memoryPath(root, "Conversations"),
+    path.join(root, "Conversations", "Chat Agent"),
+  ];
+  let deleted = 0;
+  for (const directory of directories) {
+    if (!fs.existsSync(directory)) continue;
+    const entries = await fs.promises.readdir(directory, {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      const filePath = path.join(directory, entry.name);
+      const filenameMatches = entry.name.endsWith(
+        ` - ${safeFilePart(sessionId)}.md`,
+      );
+      const contentMatches = filenameMatches
+        ? true
+        : frontmatterHasConversationId(
+            await fs.promises.readFile(filePath, "utf8"),
+            sessionId,
+          );
+      if (!contentMatches) continue;
+      await fs.promises.rm(filePath, { force: true });
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
+/** Deletes the durable transcript from whichever storage destination owns it. */
+export async function deleteStoredConversation(sessionId: string) {
+  const storage = readSettings().storage;
+  sessionFiles.delete(sessionId);
+  if (storage?.destination === "cloud") {
+    if (!isBlobConnected()) return 0;
+    const items = [
+      ...(await listBlobs(blobVaultKey("Conversations/Chat Agent/"))),
+      ...(await listBlobs(blobVaultKey(`${CONVERSATION_RECORDS_PATH}/`))),
+    ];
+    const suffix = ` - ${safeFilePart(sessionId)}.md`;
+    const recordSuffix = `/${safeFilePart(sessionId)}.json`;
+    const matches = items.filter(
+      (item) =>
+        item.pathname.endsWith(suffix) || item.pathname.endsWith(recordSuffix),
+    );
+    await Promise.all(matches.map((item) => deleteBlob(item.url)));
+    return matches.length;
+  }
+  const vaultPath = storage?.localVaultPath?.trim();
+  if (!vaultPath) return 0;
+  let deleted = await removeMatchingLocalFiles(vaultPath, sessionId);
+  const recordPath = path.join(
+    vaultPath,
+    ...recordRelativePath(sessionId).split("/"),
+  );
+  if (fs.existsSync(recordPath)) {
+    await fs.promises.rm(recordPath, { force: true });
+    deleted += 1;
+  }
+  if (deleted > 0) {
+    void indexMemoryVault(vaultPath).catch((error) => {
+      logger.warn(
+        "Could not re-index memory after deleting conversation",
+        error,
+      );
+    });
+  }
+  return deleted;
+}
+
+function parseStoredRecord(value: unknown): StoredConversationRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.title !== "string" ||
+    typeof record.updatedAt !== "number" ||
+    !Array.isArray(record.messages)
+  ) {
+    return null;
+  }
+  const messages: ConversationTurn[] = [];
+  for (const message of record.messages) {
+    if (!message || typeof message !== "object" || Array.isArray(message)) {
+      continue;
+    }
+    const item = message as Record<string, unknown>;
+    if (
+      (item.role === "user" || item.role === "assistant") &&
+      typeof item.content === "string"
+    ) {
+      messages.push({ role: item.role, content: item.content });
+    }
+  }
+  return {
+    id: record.id,
+    title: record.title,
+    updatedAt: record.updatedAt,
+    messages,
+  };
+}
+
+/** Loads durable Chat Agent records from the currently selected destination. */
+export async function listStoredConversations() {
+  const storage = readSettings().storage;
+  const records: StoredConversationRecord[] = [];
+  if (storage?.destination === "cloud") {
+    if (!isBlobConnected()) return records;
+    const items = await listBlobs(
+      blobVaultKey(`${CONVERSATION_RECORDS_PATH}/`),
+    );
+    for (const item of items.slice(0, 500)) {
+      if (!item.pathname.endsWith(".json")) continue;
+      try {
+        const buffer = await getBlobBuffer(item.url);
+        const record = buffer
+          ? parseStoredRecord(JSON.parse(buffer.toString("utf8")))
+          : null;
+        if (record) records.push(record);
+      } catch (error) {
+        logger.warn(
+          `Could not read stored conversation ${item.pathname}`,
+          error,
+        );
+      }
+    }
+  } else {
+    const vaultPath = storage?.localVaultPath?.trim();
+    if (!vaultPath) return records;
+    const directory = path.join(
+      vaultPath,
+      ...CONVERSATION_RECORDS_PATH.split("/"),
+    );
+    if (!fs.existsSync(directory)) return records;
+    const entries = await fs.promises.readdir(directory, {
+      withFileTypes: true,
+    });
+    for (const entry of entries.slice(0, 500)) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      try {
+        const raw = await fs.promises.readFile(
+          path.join(directory, entry.name),
+          "utf8",
+        );
+        const record = parseStoredRecord(JSON.parse(raw));
+        if (record) records.push(record);
+      } catch (error) {
+        logger.warn(`Could not read stored conversation ${entry.name}`, error);
+      }
+    }
+  }
+  return records.sort((a, b) => b.updatedAt - a.updatedAt);
 }

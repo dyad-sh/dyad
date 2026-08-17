@@ -33,6 +33,10 @@ import {
   resolveInsideVault,
   vaultParentPath,
 } from "@/lib/vault_paths";
+import {
+  deleteStoredConversation,
+  listStoredConversations,
+} from "../utils/conversation_store";
 
 export function registerStorageHandlers() {
   createTypedHandler(storageContracts.chooseVault, async () => {
@@ -311,5 +315,16 @@ export function registerStorageHandlers() {
         );
       }
     }),
+  );
+
+  createTypedHandler(
+    storageContracts.deleteConversation,
+    async (_, { conversationId }) => ({
+      deletedFiles: await deleteStoredConversation(conversationId),
+    }),
+  );
+
+  createTypedHandler(storageContracts.listConversations, async () =>
+    listStoredConversations(),
   );
 }

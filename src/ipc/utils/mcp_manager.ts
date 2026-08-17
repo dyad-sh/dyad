@@ -7,8 +7,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { isLovableMcpServerUrl } from "@/lib/lovableMcp";
+import { isCanvaMcpServerUrl } from "@/lib/canvaMcp";
 import { LovableOAuthClientProvider } from "./lovable_mcp_oauth";
 import { createLovableMcpTransport } from "./lovable_mcp_transport";
+import { CanvaOAuthClientProvider } from "./canva_mcp_oauth";
+import { createCanvaMcpTransport } from "./canva_mcp_transport";
 
 class McpManager {
   private static _instance: McpManager;
@@ -43,9 +46,11 @@ class McpManager {
       const headers = s.headersJson ?? {};
       transport = isLovableMcpServerUrl(s.url)
         ? createLovableMcpTransport(new LovableOAuthClientProvider(), headers)
-        : new StreamableHTTPClientTransport(new URL(s.url as string), {
-            requestInit: { headers },
-          });
+        : isCanvaMcpServerUrl(s.url)
+          ? createCanvaMcpTransport(new CanvaOAuthClientProvider(), headers)
+          : new StreamableHTTPClientTransport(new URL(s.url as string), {
+              requestInit: { headers },
+            });
     } else {
       throw new DyadError(
         `Unsupported MCP transport: ${s.transport}`,

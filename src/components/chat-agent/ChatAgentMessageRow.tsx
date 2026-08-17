@@ -31,6 +31,10 @@ import {
 } from "@/components/ui/dialog";
 import { ChatAgentResearchResultCard } from "./ChatAgentResearchResultCard";
 import { ChatAgentLovableProjectCards } from "./ChatAgentLovableProjectCards";
+import {
+  ChatAgentCanvaDesignCards,
+  type CanvaCandidateSelection,
+} from "./ChatAgentCanvaDesignCards";
 import { ChatAgentToolResultCard } from "./ChatAgentToolResultCard";
 import type { ChatAgentToolPresentation } from "@/ipc/types/chat_agent";
 import { ChatAgentRagSources } from "./ChatAgentRagSources";
@@ -91,6 +95,8 @@ type ChatAgentMessageRowProps = {
   onRegenerate?: () => void;
   assistantAvatar?: string;
   assistantName?: string;
+  onSelectCanvaCandidate?: (selection: CanvaCandidateSelection) => void;
+  onRetryCanvaGeneration?: () => void;
 };
 
 export function ChatAgentAssistantAvatar({
@@ -134,6 +140,8 @@ export function ChatAgentMessageRow({
   onRegenerate,
   assistantAvatar,
   assistantName,
+  onSelectCanvaCandidate,
+  onRetryCanvaGeneration,
 }: ChatAgentMessageRowProps) {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   // Pull image paths out of the reply so they render as pictures, not text.
@@ -222,6 +230,12 @@ export function ChatAgentMessageRow({
     message.toolResults?.findIndex(
       (result) => result.presentation?.kind === "lovable-projects",
     ) ?? -1;
+  const lastCanvaResultIndex =
+    message.toolResults?.reduce(
+      (lastIndex, result, index) =>
+        result.presentation?.kind === "canva-designs" ? index : lastIndex,
+      -1,
+    ) ?? -1;
 
   return (
     <article
@@ -252,6 +266,16 @@ export function ChatAgentMessageRow({
                     key={`${result.serverName}-${result.toolName}-${index}`}
                     presentation={result.presentation}
                   />
+                ) : result.presentation.kind === "canva-designs" ? (
+                  index === lastCanvaResultIndex ? (
+                    <ChatAgentCanvaDesignCards
+                      key={`${result.serverName}-${result.toolName}-${index}`}
+                      presentation={result.presentation}
+                      onSelectCandidate={onSelectCanvaCandidate}
+                      onRetryGeneration={onRetryCanvaGeneration}
+                      selectionDisabled={isStreaming}
+                    />
+                  ) : null
                 ) : (
                   <ChatAgentResearchResultCard
                     key={`${result.serverName}-${result.toolName}-${index}`}

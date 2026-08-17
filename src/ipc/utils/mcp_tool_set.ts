@@ -11,6 +11,9 @@ import { buildMcpToolKey, sanitizeMcpName } from "./mcp_tool_utils";
 import { isLovableMcpServerUrl } from "@/lib/lovableMcp";
 import type { ChatAgentToolPresentation } from "../types/chat_agent";
 import { buildLovableToolPresentation } from "./lovable_mcp_presentations";
+import { isCanvaMcpServerUrl } from "@/lib/canvaMcp";
+import { buildCanvaToolPresentation } from "./canva_mcp_presentations";
+import { prepareCanvaGenerateDesignInput } from "./canva_mcp_generation";
 
 const logger = log.scope("mcp_tool_set");
 
@@ -155,6 +158,8 @@ export async function buildMcpToolSetForServerIds(
     for (const server of servers) {
       const client = await mcpManager.getClient(server.id);
       const remoteTools = await client.tools();
+      const isCanvaServer = isCanvaMcpServerUrl(server.url);
+      let canvaGenerationAttempt = 0;
       if (isLovableMcpServerUrl(server.url)) {
         logger.info("Lovable MCP tools available to assistant", {
           tools: Object.keys(remoteTools),
@@ -187,6 +192,13 @@ export async function buildMcpToolSetForServerIds(
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+            const executionArgs =
+              isCanvaServer && name === "generate-design"
+                ? prepareCanvaGenerateDesignInput(
+                    args,
+                    (canvaGenerationAttempt += 1),
+                  )
+                : args;
             const allowedWorkflowIds = workflowKeys
               ? (allowedWorkflowIdsByServer.get(server.id) ?? new Set())
               : undefined;
@@ -207,7 +219,7 @@ export async function buildMcpToolSetForServerIds(
               serverName: server.name,
               toolName: name,
               toolDescription: mcpTool.description,
-              inputPreview: previewToolInput(args),
+              inputPreview: previewToolInput(executionArgs),
               chatId,
             });
 
@@ -219,7 +231,21 @@ export async function buildMcpToolSetForServerIds(
             }
 
             try {
-              const result = await mcpTool.execute(args, execCtx);
+              if (isCanvaServer && name === "generate-design") {
+                const inputRecord =
+                  executionArgs && typeof executionArgs === "object"
+                    ? (executionArgs as Record<string, unknown>)
+                    : null;
+                logger.info("Running Canva design generation", {
+                  attempt: canvaGenerationAttempt,
+                  designType: inputRecord?.design_type,
+                  queryLength:
+                    typeof inputRecord?.query === "string"
+                      ? inputRecord.query.length
+                      : undefined,
+                });
+              }
+              const result = await mcpTool.execute(executionArgs, execCtx);
               const finalResult =
                 allowedWorkflowIds && name === "search_workflows"
                   ? filterWorkflowSearchResult(result, allowedWorkflowIds)
@@ -233,7 +259,9 @@ export async function buildMcpToolSetForServerIds(
                 status: "completed",
                 presentation: isLovableMcpServerUrl(server.url)
                   ? buildLovableToolPresentation(name, finalResult)
-                  : undefined,
+                  : isCanvaMcpServerUrl(server.url)
+                    ? buildCanvaToolPresentation(name, finalResult)
+                    : undefined,
               });
               return finalResult;
             } catch (error) {

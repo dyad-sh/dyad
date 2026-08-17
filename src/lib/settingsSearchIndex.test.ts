@@ -27,6 +27,27 @@ describe("SETTINGS_SEARCH_INDEX", () => {
     });
   });
 
+  it("includes the Canva MCP plugin", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find((item) => item.id === SETTING_IDS.canva),
+    ).toEqual({
+      id: SETTING_IDS.canva,
+      label: "Canva MCP",
+      description: "Create, edit, search and export Canva designs",
+      keywords: [
+        "canva",
+        "mcp",
+        "plugin",
+        "design",
+        "presentation",
+        "slides",
+        "export",
+      ],
+      sectionId: SECTION_IDS.plugins,
+      sectionLabel: "Plugins",
+    });
+  });
+
   it("includes Chat Agent research plugins", () => {
     const pluginIds = new Set(
       SETTINGS_SEARCH_INDEX.filter(

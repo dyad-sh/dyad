@@ -28,9 +28,25 @@ import {
   LovableOAuthClientProvider,
 } from "../utils/lovable_mcp_oauth";
 import { createLovableMcpTransport } from "../utils/lovable_mcp_transport";
+import { CANVA_MCP_SERVER_URL, isCanvaMcpServerUrl } from "@/lib/canvaMcp";
+import {
+  CanvaOAuthClientProvider,
+  clearCanvaOAuthCredentials,
+  hasCanvaOAuthTokens,
+  listenForCanvaOAuthCallback,
+} from "../utils/canva_mcp_oauth";
+import { createCanvaMcpTransport } from "../utils/canva_mcp_transport";
 
 const logger = log.scope("mcp_handlers");
 let lovableConnectPromise:
+  | Promise<{
+      state: "connected" | "error";
+      serverId?: number;
+      toolCount?: number;
+      error?: string;
+    }>
+  | undefined;
+let canvaConnectPromise:
   | Promise<{
       state: "connected" | "error";
       serverId?: number;
@@ -149,6 +165,27 @@ async function ensureLovableServer() {
   return created;
 }
 
+async function findCanvaServer() {
+  const servers = await db.select().from(mcpServers);
+  return servers.find((server) => isCanvaMcpServerUrl(server.url));
+}
+
+async function ensureCanvaServer() {
+  const existing = await findCanvaServer();
+  if (existing) return existing;
+
+  const [created] = await db
+    .insert(mcpServers)
+    .values({
+      name: "Canva",
+      transport: "http",
+      url: CANVA_MCP_SERVER_URL,
+      enabled: false,
+    })
+    .returning();
+  return created;
+}
+
 async function verifyLovableWorkspaceAccess(
   tools: Awaited<
     ReturnType<Awaited<ReturnType<typeof createMCPClient>>["tools"]>
@@ -247,6 +284,91 @@ async function connectLovable() {
     };
   } catch (error) {
     logger.error("Lovable OAuth connection failed", error);
+    return {
+      state: "error" as const,
+      serverId: server.id,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    await bootstrapClient?.close();
+    await callback.close();
+  }
+}
+
+async function getCanvaConnectionStatus() {
+  const server = await findCanvaServer();
+  if (!server || !server.enabled || !hasCanvaOAuthTokens()) {
+    return {
+      state: "disconnected" as const,
+      serverId: server?.id,
+    };
+  }
+
+  try {
+    const client = await mcpManager.getClient(server.id);
+    const tools = await client.tools();
+    return {
+      state: "connected" as const,
+      serverId: server.id,
+      toolCount: Object.keys(tools).length,
+    };
+  } catch (error) {
+    mcpManager.dispose(server.id);
+    return {
+      state: "error" as const,
+      serverId: server.id,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function connectCanva() {
+  const server = await ensureCanvaServer();
+  mcpManager.dispose(server.id);
+
+  const oauthProvider = new CanvaOAuthClientProvider(
+    undefined,
+    async (authorizationUrl) => {
+      await shell.openExternal(authorizationUrl.toString());
+    },
+  );
+  const callback = await listenForCanvaOAuthCallback(
+    oauthProvider.expectedState,
+  );
+  oauthProvider.setRedirectUrl(callback.redirectUrl);
+  // A DCR registration contains its redirect URL. Re-register for the new
+  // loopback port whenever the user explicitly reconnects.
+  oauthProvider.invalidateCredentials("all");
+  let bootstrapClient: Awaited<ReturnType<typeof createMCPClient>> | undefined;
+
+  try {
+    const transport = createCanvaMcpTransport(oauthProvider);
+    try {
+      bootstrapClient = await createMCPClient({ transport });
+    } catch (error) {
+      if (!(error instanceof UnauthorizedError)) throw error;
+      const authorizationCode = await callback.waitForCode;
+      await transport.finishAuth(authorizationCode);
+      await transport.close();
+      bootstrapClient = await createMCPClient({
+        transport: createCanvaMcpTransport(oauthProvider),
+      });
+    }
+
+    const tools = await bootstrapClient.tools();
+    logger.info("Canva MCP tools discovered", { tools: Object.keys(tools) });
+    await db
+      .update(mcpServers)
+      .set({ enabled: true, name: "Canva", url: CANVA_MCP_SERVER_URL })
+      .where(eq(mcpServers.id, server.id));
+
+    return {
+      state: "connected" as const,
+      serverId: server.id,
+      toolCount: Object.keys(tools).length,
+    };
+  } catch (error) {
+    logger.error("Canva OAuth connection failed", error);
     return {
       state: "error" as const,
       serverId: server.id,
@@ -486,6 +608,33 @@ export function registerMcpHandlers() {
         .where(eq(mcpServers.id, server.id));
     }
     clearLovableOAuthCredentials();
+    return {
+      state: "disconnected" as const,
+      serverId: server?.id,
+    };
+  });
+
+  createTypedHandler(mcpContracts.getCanvaStatus, async () => {
+    return getCanvaConnectionStatus();
+  });
+
+  createTypedHandler(mcpContracts.connectCanva, async () => {
+    canvaConnectPromise ??= connectCanva().finally(() => {
+      canvaConnectPromise = undefined;
+    });
+    return canvaConnectPromise;
+  });
+
+  createTypedHandler(mcpContracts.disconnectCanva, async () => {
+    const server = await findCanvaServer();
+    if (server) {
+      mcpManager.dispose(server.id);
+      await db
+        .update(mcpServers)
+        .set({ enabled: false })
+        .where(eq(mcpServers.id, server.id));
+    }
+    clearCanvaOAuthCredentials();
     return {
       state: "disconnected" as const,
       serverId: server?.id,

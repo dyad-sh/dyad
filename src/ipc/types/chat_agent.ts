@@ -203,6 +203,30 @@ const LovableProjectsPresentationSchema = z.object({
   ),
 });
 
+const CanvaDesignsPresentationSchema = z.object({
+  kind: z.literal("canva-designs"),
+  toolName: z.string(),
+  heading: z.string(),
+  jobId: z.string().optional(),
+  status: z.enum(["success", "failed"]).optional(),
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+  designs: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().optional(),
+      thumbnailUrl: z.string().url().optional(),
+      editUrl: z.string().url().optional(),
+      viewUrl: z.string().url().optional(),
+      designType: z.string().optional(),
+      pageCount: z.number().int().nonnegative().optional(),
+      updatedAt: z.string().optional(),
+      candidate: z.boolean().optional(),
+    }),
+  ),
+});
+
 const XProfilePresentationSchema = z.object({
   kind: z.literal("x-profile"),
   username: z.string(),
@@ -259,6 +283,7 @@ export const ChatAgentToolPresentationSchema = z.discriminatedUnion("kind", [
   MapPlacesPresentationSchema,
   FlightSearchPresentationSchema,
   LovableProjectsPresentationSchema,
+  CanvaDesignsPresentationSchema,
   XProfilePresentationSchema,
   XPostComposerPresentationSchema,
 ]);

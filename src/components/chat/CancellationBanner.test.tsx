@@ -32,7 +32,6 @@ function renderBanner(runState?: {
   source?: "panel" | "agent";
 }) {
   const store = createStore();
-  store.set(selectedAppIdAtom, 1);
   if (runState) {
     store.set(
       testRunStateByAppIdAtom,
@@ -54,7 +53,7 @@ function renderBanner(runState?: {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <Provider store={store}>{children}</Provider>
   );
-  return render(<CancellationBanner />, { wrapper });
+  return render(<CancellationBanner appId={1} />, { wrapper });
 }
 
 describe("CancellationBanner", () => {
@@ -121,5 +120,40 @@ describe("CancellationBanner", () => {
 
     expect(screen.queryByText(/database and preview/)).toBeNull();
     expect(screen.queryByText(/test run/)).toBeNull();
+  });
+
+  it("reads the cancelling chat's app instead of the selected preview", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    store.set(
+      testRunStateByAppIdAtom,
+      new Map([
+        [
+          1,
+          {
+            ...EMPTY_TEST_RUN_STATE,
+            phase: "cleaning-up",
+            source: "agent",
+            isolation: { mode: "neon-branch" },
+          },
+        ],
+        [
+          2,
+          {
+            ...EMPTY_TEST_RUN_STATE,
+            phase: "stopping",
+            source: "agent",
+          },
+        ],
+      ]),
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Provider store={store}>{children}</Provider>
+    );
+
+    render(<CancellationBanner appId={2} />, { wrapper });
+
+    expect(screen.getByText("Ending the test run.")).toBeTruthy();
+    expect(screen.queryByText(/database and preview/)).toBeNull();
   });
 });

@@ -40,15 +40,15 @@ vi.mock("@/ipc/types", () => ({
   },
 }));
 
-function emitOutput(payload: unknown) {
+function emitOutput(payload: Record<string, unknown>) {
   for (const listener of outputListeners) {
-    listener(payload);
+    listener({ runId: 1, ...payload });
   }
 }
 
-function emitRunState(payload: unknown) {
+function emitRunState(payload: Record<string, unknown>) {
   for (const listener of runStateListeners) {
-    listener(payload);
+    listener({ runId: 1, ...payload });
   }
 }
 
@@ -78,7 +78,7 @@ describe("useTestRunEvents", () => {
     listAppTestsMock.mockResolvedValue({ specs: [] });
   });
 
-  it("ignores panel-initiated lifecycle events", () => {
+  it("tracks panel-initiated lifecycle events for remounts and peer windows", () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
@@ -86,7 +86,8 @@ describe("useTestRunEvents", () => {
       emitRunState({ appId: 1, source: "panel", state: "started" });
     });
 
-    expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(false);
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("setup");
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.source).toBe("panel");
   });
 
   it("stores streamed output at root scope", async () => {
@@ -179,6 +180,76 @@ describe("useTestRunEvents", () => {
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.phase).toBe("cleaning-up");
     expect(state.wasStopped).toBe(true);
+  });
+
+  it("recovers authoritative stopped cleanup when the renderer missed earlier events", () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        runId: 3,
+        source: "agent",
+        state: "cleaning-up",
+        wasStopped: true,
+        testFile: "tests/home.spec.ts",
+        isolation: { mode: "neon-branch" },
+      });
+    });
+
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.runId).toBe(3);
+    expect(state.phase).toBe("cleaning-up");
+    expect(state.wasStopped).toBe(true);
+    expect(state.runningFiles).toEqual(["tests/home.spec.ts"]);
+  });
+
+  it("ignores output and terminal events from an older generation", () => {
+    vi.useFakeTimers();
+    try {
+      const { store, Wrapper } = makeWrapper();
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+      act(() => {
+        emitRunState({
+          appId: 1,
+          runId: 1,
+          source: "agent",
+          state: "started",
+          testFile: "tests/old.spec.ts",
+        });
+        emitRunState({
+          appId: 1,
+          runId: 2,
+          source: "agent",
+          state: "started",
+          testFile: "tests/new.spec.ts",
+        });
+        emitOutput({
+          appId: 1,
+          runId: 1,
+          chunk: "old teardown\n",
+          phase: "setup",
+        });
+        emitRunState({
+          appId: 1,
+          runId: 1,
+          source: "agent",
+          state: "finished",
+          results: [],
+        });
+        vi.advanceTimersByTime(100);
+      });
+
+      const state = store.get(testRunStateByAppIdAtom).get(1)!;
+      expect(state.runId).toBe(2);
+      expect(state.phase).toBe("setup");
+      expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
+      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refreshes the spec list before reconciling a finished run, so a spec written this turn shows its result", async () => {
@@ -285,6 +356,7 @@ describe("useTestRunEvents", () => {
     await act(async () => {
       emitRunState({
         appId: 1,
+        runId: 2,
         source: "agent",
         state: "started",
         testFile: "tests/new.spec.ts",
@@ -373,6 +445,7 @@ describe("useTestRunEvents", () => {
       });
       emitRunState({
         appId: 1,
+        runId: 2,
         source: "panel",
         state: "started",
         testFile: "tests/new.spec.ts",
@@ -381,6 +454,7 @@ describe("useTestRunEvents", () => {
         appId: 1,
         update: {
           phase: "running",
+          runId: 2,
           runningFiles: ["tests/new.spec.ts"],
           runningTests: [],
           results: {},

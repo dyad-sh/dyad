@@ -65,6 +65,7 @@ import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
 import { CancellationBanner } from "./CancellationBanner";
+import { useCancellationRequestLatch } from "./useCancellationRequestLatch";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
@@ -145,6 +146,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
   const { settings } = useSettings();
   const {
+    chat: activeChat,
     selectedMode: chatMode,
     effectiveMode,
     storedChatMode,
@@ -170,6 +172,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     clearPauseOnly,
     resumeQueue,
   } = useStreamChat();
+  const { isCancellationRequested, requestCancellation } =
+    useCancellationRequestLatch({
+      chatId,
+      isStreaming,
+      isCancellationSettling,
+    });
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
@@ -447,7 +455,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId &&
       isPaused &&
       queuedMessages.length === 0 &&
-      !isCancellationSettling
+      !isCancellationRequested
     ) {
       clearPauseOnly();
     }
@@ -455,7 +463,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     chatId,
     isPaused,
     queuedMessages.length,
-    isCancellationSettling,
+    isCancellationRequested,
     clearPauseOnly,
   ]);
 
@@ -658,6 +666,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
+    // A ref-backed optimistic latch closes the same-render double-click window
+    // before the stream actor's cancelling projection reaches React.
+    if (!requestCancellation()) return;
     // Stopping is non-destructive: queued prompts are parked, never deleted.
     // `isPaused` is a transient latch (resuming, an emptied queue, or a
     // step-limit continue all clear it), so it can be false while the user
@@ -806,13 +817,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         {/* Cancelling a turn can take a minute when the agent is mid-tool (a
             test run has to be killed and its isolation torn down). Pinned here
             rather than inline in the transcript, which scrolls away. */}
-        {isCancellationSettling && <CancellationBanner />}
+        {isCancellationRequested && (
+          <CancellationBanner appId={activeChat?.appId} />
+        )}
         <div
           className={cn(
             "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
             "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
             isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
-            (showBanner || showPromo || isCancellationSettling) &&
+            (showBanner || showPromo || isCancellationRequested) &&
               "rounded-t-none border-t-0",
           )}
           onDragOver={handleDragOver}
@@ -1047,29 +1060,29 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={handleCancel}
-                      disabled={isCancellationSettling}
+                      disabled={isCancellationRequested}
                       aria-label={
-                        isCancellationSettling
+                        isCancellationRequested
                           ? t("stoppingGeneration", "Stopping…")
                           : t("cancelGeneration")
                       }
                       className={cn(
                         "px-2 py-2 mb-0.5 mr-1 rounded-lg transition-colors duration-150",
-                        isCancellationSettling
+                        isCancellationRequested
                           ? "text-amber-600 dark:text-amber-500 cursor-default"
                           : "text-muted-foreground hover:text-destructive cursor-pointer",
                       )}
                     />
                   }
                 >
-                  {isCancellationSettling ? (
+                  {isCancellationRequested ? (
                     <Loader2 size={20} className="animate-spin" />
                   ) : (
                     <StopCircleIcon size={20} />
                   )}
                 </TooltipTrigger>
                 <TooltipContent>
-                  {isCancellationSettling
+                  {isCancellationRequested
                     ? t("stoppingGeneration", "Stopping…")
                     : t("cancelGeneration")}
                 </TooltipContent>

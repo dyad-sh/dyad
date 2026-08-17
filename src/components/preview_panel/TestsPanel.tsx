@@ -715,6 +715,8 @@ export function TestsPanel() {
     (runState.phase === "cleaning-up" && !runState.wasStopped);
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
+  const isRestoringApp =
+    isCleaningUp && runState.isolation?.mode === "neon-branch";
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
     queryFn: async () => {
@@ -909,26 +911,47 @@ export function TestsPanel() {
   // Optimistic latch. The authoritative `stopping` phase comes back over IPC,
   // and the main process is busy streaming runner output when the user clicks,
   // so the round trip can miss a frame. The click must never look ignored.
-  const [stopRequested, setStopRequested] = useState(false);
-  // Every run gets a fresh `startedAt`, so this drops the latch on the next run
-  // and on an app switch without needing to observe the run ending.
-  useEffect(() => {
-    setStopRequested(false);
-  }, [selectedAppId, runState.startedAt]);
+  const [stopRequest, setStopRequest] = useState<{
+    appId: number;
+    startedAt?: number;
+    runId?: number;
+  } | null>(null);
+  const stopRequestRef = useRef(stopRequest);
+  const stopRequestedForActiveRun =
+    stopRequest?.appId === selectedAppId &&
+    stopRequest.startedAt === runState.startedAt &&
+    stopRequest.runId === runState.runId;
 
   const stop = useCallback(() => {
     if (selectedAppId == null) return;
-    setStopRequested(true);
+    const request = {
+      appId: selectedAppId,
+      startedAt: runState.startedAt,
+      runId: runState.runId,
+    };
+    if (
+      stopRequestRef.current?.appId === request.appId &&
+      stopRequestRef.current.startedAt === request.startedAt &&
+      stopRequestRef.current.runId === request.runId
+    ) {
+      return;
+    }
+    stopRequestRef.current = request;
+    setStopRequest(request);
     ipc.tests.stopAppTests({ appId: selectedAppId }).catch((error) => {
-      setStopRequested(false);
+      if (stopRequestRef.current === request) {
+        stopRequestRef.current = null;
+        setStopRequest(null);
+      }
       showError(error);
     });
-  }, [selectedAppId]);
+  }, [selectedAppId, runState.runId, runState.startedAt]);
 
   // The kill is under way. Covers the optimistic latch and the authoritative
   // phase, so the label survives a remount mid-stop and covers agent runs the
   // user stopped from the chat.
-  const showStopping = isStopping || (stopRequested && !isCleaningUp);
+  const showStopping =
+    isStopping || (stopRequestedForActiveRun && !isCleaningUp);
 
   // User-initiated: hand the failure back into an Agent-mode chat turn so the
   // agent can read the failure, fix it, and re-run it with the run_tests tool.
@@ -1354,7 +1377,9 @@ export function TestsPanel() {
             disabled={showStopping || isCleaningUp}
             aria-label={
               isCleaningUp
-                ? "Restoring your app"
+                ? isRestoringApp
+                  ? "Restoring your app"
+                  : "Cleaning up test data"
                 : showStopping
                   ? "Stopping tests"
                   : "Stop running tests"
@@ -1371,7 +1396,13 @@ export function TestsPanel() {
             ) : (
               <Square size={14} />
             )}
-            {isCleaningUp ? "Restoring…" : showStopping ? "Stopping…" : "Stop"}
+            {isCleaningUp
+              ? isRestoringApp
+                ? "Restoring…"
+                : "Cleaning up…"
+              : showStopping
+                ? "Stopping…"
+                : "Stop"}
           </button>
         ) : (
           testingEnabled &&

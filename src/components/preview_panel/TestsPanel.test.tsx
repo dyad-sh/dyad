@@ -420,6 +420,32 @@ describe("TestsPanel", () => {
 
       expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
       expect(screen.queryByText(/Restoring your database/)).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Cleaning up test data" })
+          .textContent,
+      ).toContain("Cleaning up…");
+      expect(
+        screen.queryByRole("button", { name: "Restoring your app" }),
+      ).toBeNull();
+    });
+
+    it("does not carry a completed run's stop latch into the next run", () => {
+      const { store } = renderPanel();
+      setPhase(store, { phase: "running", startedAt: 1000 });
+      mocks.stopAppTests.mockReturnValue(new Promise(() => {}));
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Stop running tests" }),
+      );
+      expect(
+        screen.getByRole("button", { name: "Stopping tests" }),
+      ).toBeTruthy();
+
+      setPhase(store, { phase: "setup", startedAt: 2000 });
+
+      expect(
+        screen.getByRole("button", { name: "Stop running tests" }),
+      ).toBeTruthy();
     });
 
     it("keeps per-test spinners while successful results await cleanup", async () => {

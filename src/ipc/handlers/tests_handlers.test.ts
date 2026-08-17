@@ -262,6 +262,16 @@ describe("tests handlers", () => {
         .map(([, , payload]) => payload.state);
     }
 
+    function runStatePayloads(): Array<{
+      runId: number;
+      state: string;
+      wasStopped?: boolean;
+    }> {
+      return broadcastToRegisteredWindowsMock.mock.calls
+        .filter(([, channel]) => channel === "tests:run-state")
+        .map(([, , payload]) => payload);
+    }
+
     function seedTestableApp(name: string): number {
       const appId = seedApp(name);
       harness.db
@@ -332,6 +342,11 @@ describe("tests handlers", () => {
       });
 
       expect(runStates()).toContain("stopping");
+      const stopping = runStatePayloads().find(
+        (payload) => payload.state === "stopping",
+      );
+      expect(stopping?.runId).toEqual(expect.any(Number));
+      expect(stopping?.wasStopped).toBe(true);
     });
 
     it("does not emit stale progress when a newer run supersedes it", async () => {
@@ -377,6 +392,62 @@ describe("tests handlers", () => {
 
       expect(runStates()).not.toContain("stopping");
       expect(runStates()).not.toContain("cleaning-up");
+    });
+
+    it("attributes a queued run's stop to its own generation", async () => {
+      const appId = seedTestableApp("app");
+      let resolveFirstPrepare!: (value: {
+        isolation: { mode: "neon-branch" };
+        infraError: { message: string };
+        teardown: () => Promise<{ envRestored: boolean }>;
+      }) => void;
+      prepareIsolatedTestDatabaseMock
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirstPrepare = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({
+          isolation: { mode: "none" },
+          infraError: { message: "queued run stopped before execution" },
+          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        });
+
+      const firstRun = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      await vi.waitFor(() => {
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1);
+      });
+
+      const secondAbort = new AbortController();
+      const secondRun = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "agent",
+        externalSignal: secondAbort.signal,
+      });
+      secondAbort.abort();
+
+      const beforePriorFinishes = runStatePayloads();
+      const started = beforePriorFinishes.filter(
+        (payload) => payload.state === "started",
+      );
+      const stopping = beforePriorFinishes.find(
+        (payload) => payload.state === "stopping",
+      );
+      expect(started).toHaveLength(2);
+      expect(stopping?.runId).toBe(started[1].runId);
+      expect(stopping?.runId).not.toBe(started[0].runId);
+
+      resolveFirstPrepare({
+        isolation: { mode: "neon-branch" },
+        infraError: { message: "first run superseded" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+      await Promise.all([firstRun, secondRun]);
     });
   });
 

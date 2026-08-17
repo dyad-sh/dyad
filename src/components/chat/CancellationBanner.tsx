@@ -2,7 +2,10 @@ import { Loader2 } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { useTranslation } from "react-i18next";
 
-import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
+import {
+  EMPTY_TEST_RUN_STATE,
+  testRunStateByAppIdAtom,
+} from "@/atoms/testRuntimeAtoms";
 
 /**
  * Pinned above the composer while a stopped turn settles.
@@ -17,9 +20,15 @@ import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
  * The transcript's inline status card scrolls out of view; this stays fused to
  * the composer the user just clicked Stop in, so the wait is never unexplained.
  */
-export function CancellationBanner() {
+export function CancellationBanner({ appId }: { appId?: number | null }) {
   const { t } = useTranslation("chat");
-  const runState = useAtomValue(currentTestRunStateAtom);
+  const runStates = useAtomValue(testRunStateByAppIdAtom);
+  // The selected preview can differ from the chat whose turn is settling.
+  // Explain only work belonging to this chat's app.
+  const runState =
+    appId == null
+      ? EMPTY_TEST_RUN_STATE
+      : (runStates.get(appId) ?? EMPTY_TEST_RUN_STATE);
 
   // Only an agent-started test run can hold the cancelling turn open. A panel
   // run for the same app may be stopping or cleaning up concurrently, but it

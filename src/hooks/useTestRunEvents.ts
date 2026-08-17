@@ -1,13 +1,14 @@
 import { useEffect, useRef } from "react";
-import { useSetAtom } from "jotai";
+import { useSetAtom, useStore } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   appendTestRunOutputAtom,
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
-  clearTestRunOutputForAppAtom,
+  EMPTY_TEST_RUN_STATE,
   setTestRunStateForAppAtom,
   setTestSpecsForAppAtom,
+  testRunStateByAppIdAtom,
   type TestRunPhase,
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
@@ -29,23 +30,22 @@ const PHASE_ORDER: Record<TestRunPhase, number> = {
  * at the app root — NOT in TestsPanel — because the panel unmounts whenever the
  * user leaves the Tests tab, and an unmount-gated subscription would drop
  * output or terminal "finished" events (see rules/electron-ipc.md: never gate
- * global-state cleanup on a component's lifetime). Panel-initiated run state is
- * mostly ignored because TestsPanel writes it directly, but panel "started"
- * still invalidates older agent-run refreshes.
+ * global-state cleanup on a component's lifetime). TestsPanel writes its own
+ * optimistic start/result state, while this subscriber attaches the
+ * authoritative main-process generation and covers remounts/other windows.
  */
 export function useTestRunEvents() {
   const appendOutput = useSetAtom(appendTestRunOutputAtom);
   const applyStarted = useSetAtom(applyTestRunStartedAtom);
   const applyFinished = useSetAtom(applyTestRunFinishedAtom);
-  const clearOutput = useSetAtom(clearTestRunOutputForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
+  const store = useStore();
   const queryClient = useQueryClient();
-  const runGenerationByAppId = useRef(new Map<number, number>());
   const activeRunByAppId = useRef(
     new Map<
       number,
-      { generation: number; source: "panel" | "agent"; startedAt: number }
+      { runId: number; source: "panel" | "agent"; startedAt: number }
     >(),
   );
   const pendingOutputRef = useRef(new Map<number, string>());
@@ -81,6 +81,14 @@ export function useTestRunEvents() {
     };
 
     const unsubscribeOutput = ipc.events.tests.onOutput((payload) => {
+      // A replacement run is announced before it waits for the prior teardown.
+      // Output from that teardown can therefore arrive afterward; only the
+      // producer's generation proves which run owns the chunk.
+      if (
+        activeRunByAppId.current.get(payload.appId)?.runId !== payload.runId
+      ) {
+        return;
+      }
       const pending = pendingOutputRef.current;
       pending.set(
         payload.appId,
@@ -109,34 +117,36 @@ export function useTestRunEvents() {
     const unsubscribeRunState = ipc.events.tests.onRunState((payload) => {
       const { appId, testFile, testLine } = payload;
       if (payload.state === "started") {
-        const generation = (runGenerationByAppId.current.get(appId) ?? 0) + 1;
-        const startedAt = Date.now();
-        runGenerationByAppId.current.set(appId, generation);
+        const activeRun = activeRunByAppId.current.get(appId);
+        if (activeRun && payload.runId < activeRun.runId) {
+          return;
+        }
+        const currentState =
+          store.get(testRunStateByAppIdAtom).get(appId) ?? EMPTY_TEST_RUN_STATE;
+        // The initiating TestsPanel writes setup synchronously before invoking
+        // main. Preserve that timestamp so its awaited result can still use it
+        // as a local stale-write guard; other windows start from this event.
+        const startedAt =
+          payload.source === "panel" &&
+          currentState.phase !== "idle" &&
+          currentState.runId === undefined
+            ? (currentState.startedAt ?? Date.now())
+            : Date.now();
         activeRunByAppId.current.set(appId, {
-          generation,
+          runId: payload.runId,
           source: payload.source,
           startedAt,
         });
         discardPendingOutput(appId);
-        if (payload.source === "agent") {
-          applyStarted({
-            appId,
-            testFile,
-            testLine,
-            grep: payload.grep,
-            startedAt,
-            source: "agent",
-          });
-        } else {
-          // Panel runs clear output in TestsPanel the moment the user clicks,
-          // but the run then waits for the prior run's teardown to finish. That
-          // teardown can flush more chunks in the meantime, which would stay
-          // attributed to this new run (and leak into "Ask AI to Fix"). The
-          // authoritative `started` event is the barrier: any output before it
-          // belongs to the prior run, so clear the accumulated output again
-          // here. (Agent runs already clear via applyStarted above.)
-          clearOutput(appId);
-        }
+        applyStarted({
+          appId,
+          testFile,
+          testLine,
+          grep: payload.grep,
+          startedAt,
+          runId: payload.runId,
+          source: payload.source,
+        });
         return;
       }
       // Progress-only states, consumed for BOTH sources. The panel writes its
@@ -147,9 +157,36 @@ export function useTestRunEvents() {
       // run already finished, so a late event must not restore a spinner.
       if (payload.state === "stopping" || payload.state === "cleaning-up") {
         const nextPhase = payload.state;
+        let activeRun = activeRunByAppId.current.get(appId);
+        if (activeRun && payload.runId < activeRun.runId) {
+          return;
+        }
+        if (!activeRun || payload.runId > activeRun.runId) {
+          // A renderer can mount after `started`, or a queued replacement can
+          // publish Stop while this window still projects the prior teardown.
+          // Bootstrap the replacement from the correlated progress payload.
+          const startedAt = Date.now();
+          activeRun = {
+            runId: payload.runId,
+            source: payload.source,
+            startedAt,
+          };
+          activeRunByAppId.current.set(appId, activeRun);
+          discardPendingOutput(appId);
+          applyStarted({
+            appId,
+            testFile,
+            testLine,
+            grep: payload.grep,
+            startedAt,
+            runId: payload.runId,
+            source: payload.source,
+          });
+        }
         setRunState({
           appId,
           update: (prev) =>
+            prev.runId !== payload.runId ||
             prev.phase === "idle" ||
             PHASE_ORDER[nextPhase] <= PHASE_ORDER[prev.phase]
               ? prev
@@ -157,7 +194,9 @@ export function useTestRunEvents() {
                   ...prev,
                   phase: nextPhase,
                   source: payload.source,
-                  wasStopped: nextPhase === "stopping" ? true : prev.wasStopped,
+                  wasStopped:
+                    payload.wasStopped ??
+                    (nextPhase === "stopping" ? true : prev.wasStopped),
                   // Carried on `cleaning-up` only, so the panel can name the
                   // teardown accurately. The terminal `finished` event resends
                   // it, so this never becomes the badge's only source.
@@ -166,14 +205,34 @@ export function useTestRunEvents() {
         });
         return;
       }
-      if (payload.source === "panel") {
-        return;
-      }
       const activeRun = activeRunByAppId.current.get(appId);
-      if (!activeRun || activeRun.source !== "agent") {
+      if (!activeRun || activeRun.runId !== payload.runId) {
         return;
       }
-      const runGeneration = activeRun.generation;
+      if (payload.source === "panel") {
+        // The initiating panel merges the invoke result, but a remounted or
+        // peer window has no such continuation. End its progress state without
+        // fabricating results; the origin's result merge remains authoritative.
+        setRunState({
+          appId,
+          update: (prev) =>
+            prev.runId !== payload.runId
+              ? prev
+              : {
+                  ...prev,
+                  phase: "idle",
+                  wasStopped: false,
+                  runningFiles: [],
+                  runningTests: [],
+                  isolation: payload.isolation ?? prev.isolation,
+                },
+        });
+        return;
+      }
+      if (activeRun.source !== "agent") {
+        return;
+      }
+      const runId = activeRun.runId;
       const runStartedAt = activeRun.startedAt;
       const finish = () =>
         applyFinished({
@@ -187,6 +246,7 @@ export function useTestRunEvents() {
           isPartialRun:
             testFile != null && (testLine != null || !!payload.grep),
           expectedStartedAt: runStartedAt,
+          expectedRunId: runId,
         });
       // Do not leave the finished run's spinner/Stop state waiting on disk I/O.
       // The initial merge may use a stale spec list, but the forced refresh
@@ -202,9 +262,7 @@ export function useTestRunEvents() {
           // A newer run may have started while the refresh was in flight. Its
           // running state and results must never be overwritten by this older
           // run's delayed reconciliation.
-          if (
-            activeRunByAppId.current.get(appId)?.generation !== runGeneration
-          ) {
+          if (activeRunByAppId.current.get(appId)?.runId !== runId) {
             return;
           }
           queryClient.setQueryData(queryKeys.tests.list({ appId }), data);
@@ -228,9 +286,9 @@ export function useTestRunEvents() {
     appendOutput,
     applyStarted,
     applyFinished,
-    clearOutput,
     setRunState,
     setSpecs,
+    store,
     queryClient,
   ]);
 }

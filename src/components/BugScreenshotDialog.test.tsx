@@ -61,6 +61,7 @@ function renderPrompt(
     isOpen: true,
     onClose: vi.fn(),
     onDismiss: vi.fn(),
+    onCaptureAbandon: vi.fn(),
     onContinue: vi.fn(),
     source: "report-bug" as const,
     report: { kind: "bug" } as const,
@@ -69,6 +70,11 @@ function renderPrompt(
   const view = render(<BugScreenshotDialog {...props} />);
   return { ...props, view, props };
 }
+
+const SESSION = {
+  source: "upload-session",
+  report: { kind: "session", sessionId: "v2:abc" },
+} as const;
 
 function shownEvents() {
   return mocks.posthogCapture.mock.calls.filter(
@@ -84,7 +90,7 @@ describe("BugScreenshotDialog", () => {
   });
 
   it("reports that the prompt was shown, with its source", () => {
-    renderPrompt({ source: "upload-session" });
+    renderPrompt(SESSION);
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:shown",
       { source: "upload-session" },
@@ -110,7 +116,7 @@ describe("BugScreenshotDialog", () => {
   });
 
   it("reports a dismissal as backing out, not as a decline", () => {
-    const props = renderPrompt({ source: "upload-session" });
+    const props = renderPrompt(SESSION);
     fireEvent.click(screen.getByText("mock-dialog-dismiss"));
 
     expect(props.onDismiss).toHaveBeenCalled();
@@ -240,7 +246,7 @@ describe("BugScreenshotDialog", () => {
   });
 
   it("reports a captured screenshot that the reporter abandons", async () => {
-    const props = renderPrompt({ source: "upload-session" });
+    const props = renderPrompt(SESSION);
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
     await screen.findByText("Create GitHub issue");
@@ -260,13 +266,13 @@ describe("BugScreenshotDialog", () => {
     mocks.takeScreenshot.mockRejectedValue(
       new Error("No focused window to capture"),
     );
-    const props = renderPrompt({ source: "upload-session" });
+    const props = renderPrompt(SESSION);
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
 
     await waitFor(() =>
       expect(props.onContinue).toHaveBeenCalledWith(
         { status: "capture-failed", reason: "No focused window to capture" },
-        { kind: "bug" },
+        SESSION.report,
       ),
     );
     expect(mocks.posthogCapture).toHaveBeenCalledWith(

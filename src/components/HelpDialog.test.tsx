@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSetAtom } from "jotai";
 import { useEffect } from "react";
 import { HelpDialog } from "./HelpDialog";
@@ -163,6 +163,10 @@ function bodyOfOpenedIssue(): string {
 }
 
 describe("HelpDialog screenshot prompt", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
@@ -353,6 +357,71 @@ describe("HelpDialog screenshot prompt", () => {
 
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
     expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
+  it("abandoning a late capture leaves a newer prompt alone", async () => {
+    let releaseCapture = () => {};
+    mocks.takeScreenshot.mockReturnValue(
+      new Promise<void>((resolve) => {
+        releaseCapture = resolve;
+      }),
+    );
+
+    await reachUploadCompleteScreen();
+    fireEvent.click(screen.getByText("Create GitHub Issue"));
+    fireEvent.click(await screen.findByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    // A second report starts while the first capture is still resolving. The
+    // reopened dialog keeps the upload-complete screen, so it starts there.
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(await screen.findByText("Create GitHub Issue"));
+    await screen.findByText("Take a screenshot?");
+
+    // The first capture lands and stacks its success dialog on top.
+    releaseCapture();
+    const dismissals = await waitFor(() => {
+      const found = screen.getAllByText("mock-dialog-dismiss");
+      expect(found.length).toBeGreaterThan(1);
+      return found;
+    });
+
+    // Abandoning it must not take the newer prompt down with it.
+    fireEvent.click(dismissals[dismissals.length - 1]);
+    expect(screen.getByText("Take a screenshot?")).toBeTruthy();
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("returns to help when an abandoned capture is the last thing on screen", async () => {
+    const releases: (() => void)[] = [];
+    mocks.takeScreenshot.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+
+    await reachUploadCompleteScreen();
+    fireEvent.click(screen.getByText("Create GitHub Issue"));
+    fireEvent.click(await screen.findByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(releases).toHaveLength(1));
+
+    // A second report is started and answered while the first still hangs.
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(await screen.findByText("Create GitHub Issue"));
+    fireEvent.click(await screen.findByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(releases).toHaveLength(2));
+
+    // They land out of order, so the dialog on screen is not the newest report.
+    releases[1]();
+    await screen.findByText("Create GitHub issue");
+    releases[0]();
+
+    const dismissals = screen.getAllByText("mock-dialog-dismiss");
+    fireEvent.click(dismissals[dismissals.length - 1]);
+
+    // With no prompt left open, backing out has to land somewhere.
+    expect(await screen.findByText("Upload Complete")).toBeTruthy();
   });
 
   it("still offers the prompt on the bug report path", async () => {

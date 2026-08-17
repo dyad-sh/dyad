@@ -501,6 +501,14 @@ export function HelpDialog() {
     }
   };
 
+  // A prompt on screen belongs to a newer report, so an abandoned capture
+  // leaves it in place rather than closing it.
+  const handleCaptureAbandon = () => {
+    if (isScreenshotPromptOpen) return;
+    setPendingReport(null);
+    setHelpDialog({ open: true });
+  };
+
   // The prompt is a stop on the way to the issue, not a place to lose an
   // upload: backing out of it reopens the help dialog as the reporter left it.
   const handleScreenshotPromptDismiss = () => {
@@ -804,6 +812,7 @@ export function HelpDialog() {
         isOpen={isScreenshotPromptOpen}
         onClose={() => setIsScreenshotPromptOpen(false)}
         onDismiss={handleScreenshotPromptDismiss}
+        onCaptureAbandon={handleCaptureAbandon}
         onContinue={handleScreenshotPromptContinue}
         source={promptSource}
         report={pendingReport}

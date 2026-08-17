@@ -181,6 +181,26 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     ).toBe(true);
   });
 
+  it("always sends the screenshot prompt funnel for non-Pro sampling", () => {
+    for (const event of [
+      "screenshot-prompt:shown",
+      "screenshot-prompt:capture-attempt",
+      "screenshot-prompt:captured",
+      "screenshot-prompt:capture-abandoned",
+      "screenshot-prompt:capture-failed",
+      "screenshot-prompt:decline",
+      "screenshot-prompt:dismissed",
+      "session-report:copy-session-id",
+    ]) {
+      expect(
+        shouldBypassNonProTelemetrySampling({
+          event,
+          properties: { source: "upload-session" },
+        }),
+      ).toBe(true);
+    }
+  });
+
   it("always sends app:initial-load for non-Pro sampling", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

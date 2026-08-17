@@ -47,8 +47,10 @@ interface BugScreenshotDialogProps {
   isOpen: boolean;
   /** Hides the prompt without ending the flow, so it stays out of the capture. */
   onClose: () => void;
-  /** The reporter backed out without filing anything. */
+  /** The reporter backed out of the prompt without answering it. */
   onDismiss: () => void;
+  /** The reporter closed the captured screenshot without filing a report. */
+  onCaptureAbandon: () => void;
   /** Files the report, recording what happened with the screenshot. */
   onContinue: (outcome: ScreenshotOutcome, report: PendingReport) => void;
   source: ScreenshotPromptSource;
@@ -60,6 +62,7 @@ export function BugScreenshotDialog({
   isOpen,
   onClose,
   onDismiss,
+  onCaptureAbandon,
   onContinue,
   source,
   report,
@@ -133,7 +136,7 @@ export function BugScreenshotDialog({
   };
 
   const handlePromptDismiss = () => {
-    if (promptAnswered.current) return;
+    if (promptAnswered.current || !report) return;
     promptAnswered.current = true;
     posthog.capture("screenshot-prompt:dismissed", { source });
     onDismiss();
@@ -186,7 +189,7 @@ export function BugScreenshotDialog({
             source: capture.source,
           });
           setCapture(null);
-          onDismiss();
+          onCaptureAbandon();
         }}
         onSubmit={() => {
           if (captureAnswered.current || !capture) return;

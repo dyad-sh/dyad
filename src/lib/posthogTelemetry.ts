@@ -107,6 +107,15 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  // Reporting a bug is rare enough that these add little volume, and sampling
+  // them independently would break the outcome each prompt is paired with.
+  if (
+    eventName?.startsWith("screenshot-prompt:") ||
+    eventName === "session-report:copy-session-id"
+  ) {
+    return true;
+  }
+
   return (
     eventName === "$exception" ||
     eventName?.toLowerCase().includes("error") === true ||

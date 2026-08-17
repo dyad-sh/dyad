@@ -48,6 +48,7 @@ import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProvide
 import { createModelSelection, getModelPreferenceKey } from "@/lib/modelEffort";
 import {
   buildBugReportBody,
+  buildBugReportFallbackBody,
   buildSessionReportBody,
   buildSessionReportFallbackBody,
   type ScreenshotOutcome,
@@ -295,10 +296,8 @@ export function HelpDialog() {
     preloadedChatId.current = null;
   };
 
-  // Hold this dialog's state while a report is waiting on the screenshot
-  // prompt. The prompt closes this dialog only to keep it out of the capture,
-  // and backing out of the prompt has to land the reporter where they were,
-  // with an uploaded session ID still on screen.
+  // Holds this dialog's state while a report waits on the screenshot prompt,
+  // so backing out of the prompt lands the reporter where they were.
   useEffect(() => {
     if (!isOpen && !pendingReport) resetDialogState();
   }, [isOpen, pendingReport]);
@@ -369,7 +368,12 @@ export function HelpDialog() {
       });
     } catch (error) {
       console.error("Failed to prepare bug report:", error);
-      ipc.system.openExternalUrl(GITHUB_ISSUES_BASE);
+      openGitHubIssue({
+        title: "[bug] <WRITE TITLE HERE>",
+        labels: ["bug"],
+        body: buildBugReportFallbackBody({ screenshot }),
+        isDyadProUser,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -505,9 +509,8 @@ export function HelpDialog() {
   // The prompt is a stop on the way to the issue, not a place to lose an
   // upload: backing out of it reopens the help dialog as the reporter left it.
   const handleScreenshotPromptDismiss = () => {
-    // A report already being prepared cannot be called off: it will open the
-    // issue regardless. Ignoring the dismissal keeps the prompt honest about
-    // that rather than reopening a dialog the report is about to close.
+    // Prevents the case where a dismissal reopens this dialog and the report
+    // already on its way closes it again a moment later.
     if (isLoading) return;
     setIsScreenshotPromptOpen(false);
     setPendingReport(null);

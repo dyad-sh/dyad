@@ -2,17 +2,26 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
 
-const mocks = vi.hoisted(() => ({
-  takeScreenshot: vi.fn(),
-  posthogCapture: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const posthogCapture = vi.fn();
+  return {
+    takeScreenshot: vi.fn(),
+    showError: vi.fn(),
+    posthogCapture,
+    // Stable across renders, matching the real client, so effects keyed on it
+    // do not re-run.
+    posthogClient: { capture: posthogCapture },
+  };
+});
 
 vi.mock("@/ipc/types", () => ({
   ipc: { system: { takeScreenshot: mocks.takeScreenshot } },
 }));
 
+vi.mock("@/lib/toast", () => ({ showError: mocks.showError }));
+
 vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: mocks.posthogCapture }),
+  usePostHog: () => mocks.posthogClient,
 }));
 
 vi.mock("./ui/dialog", () => ({
@@ -65,6 +74,7 @@ describe("BugScreenshotDialog", () => {
   beforeEach(() => {
     mocks.takeScreenshot.mockReset().mockResolvedValue(undefined);
     mocks.posthogCapture.mockReset();
+    mocks.showError.mockReset();
   });
 
   it("reports that the prompt was shown, with its source", () => {
@@ -78,6 +88,18 @@ describe("BugScreenshotDialog", () => {
   it("does not report a prompt that was never opened", () => {
     renderPrompt({ isOpen: false });
     expect(mocks.posthogCapture).not.toHaveBeenCalled();
+  });
+
+  it("reports the prompt as shown once per opening", async () => {
+    renderPrompt();
+    // Re-render while open, which is what capturing a screenshot does.
+    fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    const shown = mocks.posthogCapture.mock.calls.filter(
+      (call) => call[0] === "screenshot-prompt:shown",
+    );
+    expect(shown).toHaveLength(1);
   });
 
   it("reports a dismissal as backing out, not as a decline", () => {
@@ -105,7 +127,7 @@ describe("BugScreenshotDialog", () => {
 
     expect(props.onClose).toHaveBeenCalled();
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
-      "screenshot-prompt:capture",
+      "screenshot-prompt:capture-attempt",
       { source: "report-bug" },
     );
 
@@ -130,6 +152,19 @@ describe("BugScreenshotDialog", () => {
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:capture-failed",
       { source: "upload-session", reason: "No focused window to capture" },
+    );
+  });
+
+  it("tells the reporter the capture failed", async () => {
+    mocks.takeScreenshot.mockRejectedValue(new Error("no window"));
+    renderPrompt();
+    fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
+
+    // Without this the reporter reaches GitHub expecting an image to paste.
+    await waitFor(() =>
+      expect(mocks.showError).toHaveBeenCalledWith(
+        "Failed to take screenshot: no window",
+      ),
     );
   });
 

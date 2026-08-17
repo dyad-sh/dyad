@@ -2,19 +2,16 @@ import { ipc } from "@/ipc/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { BugIcon, Camera, MessageSquareIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import { ScreenshotSuccessDialog } from "./ScreenshotSuccessDialog";
+import { showError } from "@/lib/toast";
 import { type ScreenshotOutcome } from "@/lib/issueBody";
 
 /** Which report flow opened the prompt. Reported with every prompt event. */
 export type ScreenshotPromptSource = "report-bug" | "upload-session";
 
-/**
- * Everything that differs between the two flows, keyed by the same value the
- * events are tagged with. Keeping it here rather than in props means the copy
- * cannot drift out of sync with the source it describes.
- */
+/** Copy that differs between the two flows, keyed by the reporting source. */
 const VARIANTS = {
   "report-bug": {
     declineLabel: "File bug report without screenshot",
@@ -50,15 +47,24 @@ export function BugScreenshotDialog({
 }: BugScreenshotDialogProps) {
   const { declineLabel, pendingLabel, declineIcon } = VARIANTS[source];
   const [isScreenshotSuccessOpen, setIsScreenshotSuccessOpen] = useState(false);
+  const hasReportedShown = useRef(false);
   const posthog = usePostHog();
 
+  // Latched on the open edge so the count is one per prompt, whatever else
+  // changes while it is on screen.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hasReportedShown.current = false;
+      return;
+    }
+    if (hasReportedShown.current) return;
+    hasReportedShown.current = true;
     posthog.capture("screenshot-prompt:shown", { source });
   }, [isOpen, source, posthog]);
 
   const handleCapture = () => {
-    posthog.capture("screenshot-prompt:capture", { source });
+    // An attempt, not a success: the capture can still fail below.
+    posthog.capture("screenshot-prompt:capture-attempt", { source });
     onClose();
     setTimeout(async () => {
       try {
@@ -68,8 +74,9 @@ export function BugScreenshotDialog({
         const reason =
           error instanceof Error ? error.message : "Failed to take screenshot";
         posthog.capture("screenshot-prompt:capture-failed", { source, reason });
-        // Carry on to the issue. The reporter came here to file one, and the
-        // status line records why no screenshot is attached.
+        // Prevents the case where the reporter reaches GitHub expecting an
+        // image on the clipboard and pastes whatever is there instead.
+        showError(`Failed to take screenshot: ${reason}`);
         onContinue({ status: "capture-failed", reason });
       }
     }, 200); // Small delay for dialog to close
@@ -77,8 +84,7 @@ export function BugScreenshotDialog({
 
   const handleDecline = async () => {
     posthog.capture("screenshot-prompt:decline", { source });
-    // Stay open, showing the pending label, until the issue is ready. Closing
-    // first leaves the reporter with no feedback while logs are gathered.
+    // Keeps the pending label on screen while the logs are gathered.
     await onContinue({ status: "declined" });
     onClose();
   };
@@ -89,6 +95,14 @@ export function BugScreenshotDialog({
         {/* While the report is being prepared the prompt has no working exit,
             so don't offer one: onDismiss ignores dismissals until it lands. */}
         <DialogContent showCloseButton={!isLoading}>
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {isLoading ? pendingLabel : ""}
+          </span>
           <DialogHeader>
             <DialogTitle>Take a screenshot?</DialogTitle>
           </DialogHeader>

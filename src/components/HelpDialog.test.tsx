@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
   uploadToSignedUrl: vi.fn(),
   openExternalUrl: vi.fn(),
   takeScreenshot: vi.fn(),
-  posthogCapture: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -27,8 +26,12 @@ vi.mock("@/ipc/types", () => ({
   },
 }));
 
+// Stable across renders, matching the real client, so effects keyed on it do
+// not re-run.
+const posthogClient = vi.hoisted(() => ({ capture: vi.fn() }));
+
 vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: mocks.posthogCapture }),
+  usePostHog: () => posthogClient,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -178,7 +181,7 @@ describe("HelpDialog screenshot prompt", () => {
     fireEvent.click(screen.getByText("Create GitHub Issue"));
 
     expect(await screen.findByText("Take a screenshot?")).toBeTruthy();
-    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+    expect(posthogClient.capture).toHaveBeenCalledWith(
       "screenshot-prompt:shown",
       { source: "upload-session" },
     );
@@ -246,7 +249,9 @@ describe("HelpDialog screenshot prompt", () => {
 
     // Gathering logs takes a moment; the reporter should see that it is
     // happening rather than a dialog that vanished and did nothing.
-    expect(await screen.findByText("Preparing Report...")).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: /Preparing Report/ }),
+    ).toBeTruthy();
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
 
     releaseDebugInfo(debugInfo);
@@ -267,13 +272,13 @@ describe("HelpDialog screenshot prompt", () => {
     await reachUploadCompleteScreen();
     fireEvent.click(screen.getByText("Create GitHub Issue"));
     fireEvent.click(await screen.findByText("Create issue without screenshot"));
-    await screen.findByText("Creating Issue...");
+    await screen.findByRole("button", { name: /Creating Issue/ });
 
     // The issue is already on its way, so neither exit may take the reporter
     // somewhere the arriving report would contradict.
     fireEvent.click(screen.getByText("mock-dialog-dismiss"));
     expect(screen.queryByText("Upload Complete")).toBeNull();
-    expect(screen.getByText("Creating Issue...")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Creating Issue/ })).toBeTruthy();
 
     expect(
       screen
@@ -318,12 +323,25 @@ describe("HelpDialog screenshot prompt", () => {
     expect(bodyOfOpenedIssue()).toContain("Screenshot status: capture-failed");
   });
 
+  it("keeps the screenshot status when debug info cannot be gathered", async () => {
+    mocks.getSystemDebugInfo.mockRejectedValue(new Error("no debug info"));
+
+    render(<OpenHelpDialog />);
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.click(
+      await screen.findByText("File bug report without screenshot"),
+    );
+
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
   it("still offers the prompt on the bug report path", async () => {
     render(<OpenHelpDialog />);
     fireEvent.click(await screen.findByText("Report a Bug"));
 
     expect(await screen.findByText("Take a screenshot?")).toBeTruthy();
-    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+    expect(posthogClient.capture).toHaveBeenCalledWith(
       "screenshot-prompt:shown",
       { source: "report-bug" },
     );

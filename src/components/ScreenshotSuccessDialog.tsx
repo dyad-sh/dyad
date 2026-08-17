@@ -21,6 +21,14 @@ export function ScreenshotSuccessDialog({
   return (
     <Dialog open={isOpen} onOpenChange={onDismiss}>
       <DialogContent showCloseButton={!isLoading}>
+        <span
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {isLoading ? pendingLabel : ""}
+        </span>
         <DialogHeader>
           <DialogTitle>
             Screenshot captured to clipboard! Please paste in GitHub issue.

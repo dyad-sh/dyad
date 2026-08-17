@@ -153,6 +153,24 @@ ${formatLogsSection(debugInfo)}
 `;
 }
 
+/** Used when getSystemDebugInfo fails, so the screenshot status still reaches GitHub. */
+export function buildBugReportFallbackBody({
+  screenshot,
+}: {
+  screenshot: ScreenshotOutcome;
+}): string {
+  return `\
+<!-- Please fill in all fields in English -->
+
+## Bug Description (required)
+<!-- Please describe the issue you're experiencing and how to reproduce it -->
+
+## Screenshot (recommended)
+<!-- Screenshot of the bug -->
+${formatScreenshotStatusLine(screenshot)}
+`;
+}
+
 /** Used when getSystemDebugInfo fails, so the session ID still reaches GitHub. */
 export function buildSessionReportFallbackBody({
   userBudget,

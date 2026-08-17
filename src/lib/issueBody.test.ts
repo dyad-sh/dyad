@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBugReportBody,
+  buildBugReportFallbackBody,
   buildSessionReportBody,
   buildSessionReportFallbackBody,
   formatScreenshotStatusLine,
@@ -118,6 +119,16 @@ describe("buildSessionReportBody", () => {
     expect(body).toContain("Session ID: v2:abc");
     expect(body).toContain("Session Schema: v2.0");
     expect(body).toContain("Pro User ID: user-abc");
+  });
+});
+
+describe("buildBugReportFallbackBody", () => {
+  it("still carries the screenshot status", () => {
+    const body = buildBugReportFallbackBody({
+      screenshot: { status: "captured" },
+    });
+    expect(body).toContain("Screenshot status: captured");
+    expect(body).toContain("## Bug Description (required)");
   });
 });
 

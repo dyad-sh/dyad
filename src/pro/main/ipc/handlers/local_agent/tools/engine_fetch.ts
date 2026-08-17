@@ -13,6 +13,17 @@ export interface EngineFetchOptions extends Omit<RequestInit, "headers"> {
   headers?: Record<string, string>;
 }
 
+export const DEFAULT_ENGINE_FETCH_TIMEOUT_MS = 300_000;
+
+export class EngineFetchTimeoutError extends Error {
+  constructor(endpoint: string) {
+    super(
+      `Dyad engine request to ${endpoint} timed out after ${DEFAULT_ENGINE_FETCH_TIMEOUT_MS}ms`,
+    );
+    this.name = "EngineFetchTimeoutError";
+  }
+}
+
 /**
  * Fetch wrapper for Dyad engine API calls.
  * Automatically adds Authorization and X-Dyad-Request-Id headers.
@@ -28,6 +39,9 @@ export async function engineFetch(
   endpoint: string,
   options: EngineFetchOptions = {},
 ): Promise<Response> {
+  const callerSignal = options.signal;
+  callerSignal?.throwIfAborted();
+
   const settings = readSettings();
   const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
@@ -35,15 +49,46 @@ export async function engineFetch(
     throw new DyadError("Dyad Pro API key is required", DyadErrorKind.Auth);
   }
 
-  const { headers: extraHeaders, ...restOptions } = options;
+  const { headers: extraHeaders, signal: _signal, ...restOptions } = options;
+  const requestController = new AbortController();
+  let abortSource: "caller" | "timeout" | undefined;
+  const onCallerAbort = () => {
+    if (abortSource) return;
+    abortSource = "caller";
+    requestController.abort(callerSignal?.reason);
+  };
+  callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+  if (callerSignal?.aborted) {
+    onCallerAbort();
+  }
+  const timeout = setTimeout(() => {
+    if (abortSource) return;
+    abortSource = "timeout";
+    requestController.abort(new EngineFetchTimeoutError(endpoint));
+  }, DEFAULT_ENGINE_FETCH_TIMEOUT_MS);
 
-  return fetch(`${getDyadEngineBaseUrl()}${endpoint}`, {
-    ...restOptions,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "X-Dyad-Request-Id": ctx.dyadRequestId,
-      ...extraHeaders,
-    },
-  });
+  try {
+    requestController.signal.throwIfAborted();
+    return await fetch(`${getDyadEngineBaseUrl()}${endpoint}`, {
+      ...restOptions,
+      signal: requestController.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "X-Dyad-Request-Id": ctx.dyadRequestId,
+        ...extraHeaders,
+      },
+    });
+  } catch (error) {
+    if (abortSource === "timeout") {
+      throw new EngineFetchTimeoutError(endpoint);
+    }
+    if (abortSource === "caller") {
+      callerSignal?.throwIfAborted();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
 }

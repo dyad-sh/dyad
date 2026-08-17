@@ -226,12 +226,22 @@ export function createFakeLlmApp(getPort: () => number) {
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   const cloudSandboxes = new Map<string, FakeCloudSandbox>();
+  let hangingWebCrawlState = { started: false, closed: false };
 
   const getFakeCloudPreviewUrl = (sandboxId: string) =>
     `http://localhost:${getPort()}/cloud-preview/${sandboxId}`;
 
   app.get("/health", (req, res) => {
     res.send("OK");
+  });
+
+  app.post("/test/engine-web-crawl-hang/reset", (_req, res) => {
+    hangingWebCrawlState = { started: false, closed: false };
+    res.status(204).end();
+  });
+
+  app.get("/test/engine-web-crawl-hang", (_req, res) => {
+    res.json(hangingWebCrawlState);
   });
 
   app.get("/api/default-approve-builds.txt", (req, res) => {
@@ -773,6 +783,14 @@ export function createFakeLlmApp(getPort: () => number) {
   app.post("/engine/v1/tools/web-crawl", (req, res) => {
     const { url, markdownOnly } = req.body;
     fakeLlmLog(`* web-crawl: url="${url}", markdownOnly=${markdownOnly}`);
+
+    if (url === "https://hang.example.com") {
+      hangingWebCrawlState.started = true;
+      res.once("close", () => {
+        hangingWebCrawlState.closed = true;
+      });
+      return;
+    }
 
     try {
       res.json({

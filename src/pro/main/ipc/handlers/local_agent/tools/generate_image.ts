@@ -49,7 +49,7 @@ The tool returns the file path in .dyad/media. Use the copy_file tool to copy it
 
 async function callGenerateImage(
   prompt: string,
-  ctx: Pick<AgentContext, "dyadRequestId">,
+  ctx: Pick<AgentContext, "dyadRequestId" | "abortSignal">,
 ): Promise<z.infer<typeof ImageGenerationApiResponseSchema>["data"][number]> {
   const response = await engineFetch(ctx, "/images/generations", {
     method: "POST",
@@ -57,6 +57,7 @@ async function callGenerateImage(
       prompt,
       model: "dyad/image-gen",
     }),
+    signal: ctx.abortSignal,
   });
 
   if (!response.ok) {

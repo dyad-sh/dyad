@@ -69,6 +69,7 @@ async function callCodeSearch(
       query: params.query,
       filesContext: params.filesContext,
     }),
+    signal: ctx.abortSignal,
   });
 
   if (!response.ok) {

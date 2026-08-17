@@ -111,6 +111,7 @@ async function callWebSearchSSE(
       Accept: "text/event-stream",
     },
     body: JSON.stringify({ query }),
+    signal: ctx.abortSignal,
   });
 
   if (!response.ok) {

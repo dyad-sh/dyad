@@ -28,6 +28,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Async I/O
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.
+- Every Local Agent caller of `engineFetch` must pass `ctx.abortSignal`. The
+  helper owns the default five-minute engine deadline; keep caller aborts,
+  deadline timeouts, and ordinary network failures separately classified, and
+  clean up combined-signal listeners and timers on every settlement path.
 
 ## App lifecycle tools
 

@@ -63,11 +63,12 @@ Examples:
 
 async function callWebFetch(
   url: string,
-  ctx: Pick<AgentContext, "dyadRequestId">,
+  ctx: Pick<AgentContext, "dyadRequestId" | "abortSignal">,
 ): Promise<z.infer<typeof webFetchResponseSchema>> {
   const response = await engineFetch(ctx, "/tools/web-crawl", {
     method: "POST",
     body: JSON.stringify({ url, markdownOnly: true }),
+    signal: ctx.abortSignal,
   });
 
   if (!response.ok) {

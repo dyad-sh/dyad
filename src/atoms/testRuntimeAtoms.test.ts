@@ -54,9 +54,10 @@ describe("test runtime atoms", () => {
     store.set(testRunOutputByAppIdAtom, new Map([[1, "stale output"]]));
 
     // Whole-suite run (no file): every spec is running.
-    store.set(applyTestRunStartedAtom, { appId: 1 });
+    store.set(applyTestRunStartedAtom, { appId: 1, source: "panel" });
     let state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.phase).toBe("setup");
+    expect(state.source).toBe("panel");
     expect(state.runningFiles).toEqual(["tests/a.spec.ts", "tests/b.spec.ts"]);
     expect(store.get(testRunOutputByAppIdAtom).get(1)).toBeUndefined();
 
@@ -75,6 +76,7 @@ describe("test runtime atoms", () => {
       appId: 1,
       testFile: "tests/a.spec.ts",
       testLine: 3,
+      source: "panel",
     });
     state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.runningFiles).toEqual(["tests/a.spec.ts"]);
@@ -88,7 +90,7 @@ describe("test runtime atoms", () => {
       appId: 1,
       specs: [{ file: "tests/a.spec.ts", tests: [] }],
     });
-    store.set(applyTestRunStartedAtom, { appId: 1 });
+    store.set(applyTestRunStartedAtom, { appId: 1, source: "panel" });
 
     // Playwright reports the file testDir-relative ("a.spec.ts"); the result
     // must land under the spec list's "tests/a.spec.ts" key.
@@ -110,7 +112,7 @@ describe("test runtime atoms", () => {
 
   it("applyTestRunFinishedAtom surfaces an infra error as runError", () => {
     const store = createStore();
-    store.set(applyTestRunStartedAtom, { appId: 1 });
+    store.set(applyTestRunStartedAtom, { appId: 1, source: "panel" });
     store.set(applyTestRunFinishedAtom, {
       appId: 1,
       res: {
@@ -164,6 +166,7 @@ describe("test runtime atoms", () => {
       appId: 1,
       testFile: "tests/a.spec.ts",
       grep: "fails",
+      source: "panel",
     });
     store.set(applyTestRunFinishedAtom, {
       appId: 1,

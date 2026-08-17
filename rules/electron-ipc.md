@@ -222,6 +222,11 @@ An `invoke` reply and a `safeSend`/`webContents.send` event travel different Ele
 
 Symptom: a flow works, then intermittently "does nothing", as if the successful path never ran. Fix by making the event handler ignore endings the renderer itself requested (e.g. `recording:ended` with `reason === "stopped"` in `useTestRecorder`), rather than relying on the ordering that happens to hold today.
 
+When app-scoped lifecycle state explains why another workflow is waiting,
+preserve and check the operation source or correlation identity. An app id plus
+phase is insufficient when a panel-started operation can overlap an unrelated
+chat cancellation and make otherwise accurate explanatory copy misleading.
+
 ## High-volume event batching
 
 When an IPC event can fire at very high frequency (e.g., stdout/stderr from child processes), **batch messages and flush on a timer** instead of sending each message individually. This prevents IPC channel saturation, excessive array allocations in the renderer, and unnecessary React re-renders.

@@ -29,6 +29,7 @@ vi.mock("react-i18next", () => ({
 function renderBanner(runState?: {
   phase: TestRunPhase;
   isolationMode?: TestIsolation["mode"];
+  source?: "panel" | "agent";
 }) {
   const store = createStore();
   store.set(selectedAppIdAtom, 1);
@@ -41,6 +42,7 @@ function renderBanner(runState?: {
           {
             ...EMPTY_TEST_RUN_STATE,
             phase: runState.phase,
+            source: runState.source,
             isolation: runState.isolationMode
               ? { mode: runState.isolationMode }
               : undefined,
@@ -79,7 +81,11 @@ describe("CancellationBanner", () => {
 
   it("warns about the length of the Neon teardown", () => {
     // The branch delete retries with backoff, so this wait can pass a minute.
-    renderBanner({ phase: "cleaning-up", isolationMode: "neon-branch" });
+    renderBanner({
+      phase: "cleaning-up",
+      isolationMode: "neon-branch",
+      source: "agent",
+    });
 
     expect(
       screen.getByText(/Restoring your app's database and preview/),
@@ -90,15 +96,30 @@ describe("CancellationBanner", () => {
   it("does not claim a restore on the Supabase path", () => {
     // That teardown only deletes the temporary test user — no env swap, no
     // dev-server restart, nothing the user sees.
-    renderBanner({ phase: "cleaning-up", isolationMode: "supabase-test-user" });
+    renderBanner({
+      phase: "cleaning-up",
+      isolationMode: "supabase-test-user",
+      source: "agent",
+    });
 
     expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
     expect(screen.queryByText(/Restoring/)).toBeNull();
   });
 
   it("reports the kill before the teardown starts", () => {
-    renderBanner({ phase: "stopping" });
+    renderBanner({ phase: "stopping", source: "agent" });
 
     expect(screen.getByText("Ending the test run.")).toBeTruthy();
+  });
+
+  it("does not attribute a panel run's teardown to the cancelling turn", () => {
+    renderBanner({
+      phase: "cleaning-up",
+      isolationMode: "neon-branch",
+      source: "panel",
+    });
+
+    expect(screen.queryByText(/database and preview/)).toBeNull();
+    expect(screen.queryByText(/test run/)).toBeNull();
   });
 });

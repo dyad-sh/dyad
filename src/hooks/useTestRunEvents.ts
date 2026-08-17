@@ -125,6 +125,7 @@ export function useTestRunEvents() {
             testLine,
             grep: payload.grep,
             startedAt,
+            source: "agent",
           });
         } else {
           // Panel runs clear output in TestsPanel the moment the user clicks,
@@ -155,6 +156,7 @@ export function useTestRunEvents() {
               : {
                   ...prev,
                   phase: nextPhase,
+                  source: payload.source,
                   wasStopped: nextPhase === "stopping" ? true : prev.wasStopped,
                   // Carried on `cleaning-up` only, so the panel can name the
                   // teardown accurately. The terminal `finished` event resends

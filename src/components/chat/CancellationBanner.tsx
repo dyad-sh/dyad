@@ -21,16 +21,19 @@ export function CancellationBanner() {
   const { t } = useTranslation("chat");
   const runState = useAtomValue(currentTestRunStateAtom);
 
-  // Only the test run knows why the stop is slow. Without an active run the
-  // banner stays a single line rather than inventing a reason.
+  // Only an agent-started test run can hold the cancelling turn open. A panel
+  // run for the same app may be stopping or cleaning up concurrently, but it
+  // does not explain why this chat turn is settling.
   const detail =
-    runState.phase === "cleaning-up"
-      ? runState.isolation?.mode === "neon-branch"
-        ? t("cancellationRestoringTestApp")
-        : t("cancellationCleaningTestData")
-      : runState.phase === "stopping"
-        ? t("cancellationEndingTestRun")
-        : null;
+    runState.source !== "agent"
+      ? null
+      : runState.phase === "cleaning-up"
+        ? runState.isolation?.mode === "neon-branch"
+          ? t("cancellationRestoringTestApp")
+          : t("cancellationCleaningTestData")
+        : runState.phase === "stopping"
+          ? t("cancellationEndingTestRun")
+          : null;
 
   return (
     <div

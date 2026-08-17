@@ -110,7 +110,7 @@ function StatusIcon({ status }: { status: TestStatus }) {
       return (
         <Loader2
           size={16}
-          role="status"
+          role="img"
           aria-label="Running"
           className="animate-spin text-blue-500 dark:text-blue-400 shrink-0"
         />
@@ -849,7 +849,13 @@ export function TestsPanel() {
       const isSingleTest = file != null && line != null;
       const startedAt = Date.now();
 
-      applyRunStarted({ appId, testFile: file, testLine: line, startedAt });
+      applyRunStarted({
+        appId,
+        testFile: file,
+        testLine: line,
+        startedAt,
+        source: "panel",
+      });
 
       try {
         const res = await ipc.tests.runAppTests({

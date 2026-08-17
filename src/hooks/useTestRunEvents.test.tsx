@@ -126,6 +126,7 @@ describe("useTestRunEvents", () => {
 
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.phase).toBe("setup");
+    expect(state.source).toBe("agent");
     expect(state.runningFiles).toEqual(["tests/home.spec.ts"]);
   });
 

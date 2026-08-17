@@ -48,6 +48,8 @@ export type TestRunPhase =
 
 export interface TestRunState {
   phase: TestRunPhase;
+  /** Surface that started the active run. */
+  source?: "panel" | "agent";
   /** Whether this run entered cleanup after being stopped by the user/agent. */
   wasStopped?: boolean;
   /** Results keyed by spec file path. */
@@ -222,12 +224,14 @@ export const applyTestRunStartedAtom = atom(
       testLine,
       grep,
       startedAt,
+      source,
     }: {
       appId: number;
       testFile?: string;
       testLine?: number;
       grep?: string;
       startedAt?: number;
+      source: "panel" | "agent";
     },
   ) => {
     const isPartialRun = testFile != null && (testLine != null || !!grep);
@@ -246,6 +250,7 @@ export const applyTestRunStartedAtom = atom(
         // both run before the first test does. Setup-phase output keeps it
         // here; the first running-phase output advances it.
         phase: "setup",
+        source,
         wasStopped: false,
         runningFiles: targetFiles,
         runningTests:

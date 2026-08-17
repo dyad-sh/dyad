@@ -428,7 +428,10 @@ describe("TestsPanel", () => {
         name: "Open in code editor: signup.spec.ts",
       });
       setPhase(store, { phase: "running" });
-      expect(screen.getAllByLabelText("Running").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole("img", { name: "Running" }).length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryAllByRole("status")).toEqual([]);
 
       setPhase(store, { phase: "cleaning-up", wasStopped: false });
 

@@ -522,7 +522,12 @@ export function registerDebugHandlers() {
 
   createTypedHandler(systemContracts.takeScreenshot, async () => {
     const win = BrowserWindow.getFocusedWindow();
-    if (!win) throw new Error(SCREENSHOT_ERRORS.noFocusedWindow);
+    if (!win) {
+      throw new DyadError(
+        SCREENSHOT_ERRORS.noFocusedWindow,
+        DyadErrorKind.Precondition,
+      );
+    }
 
     // Capture the window's current contents as a NativeImage
     const image = await win.capturePage();

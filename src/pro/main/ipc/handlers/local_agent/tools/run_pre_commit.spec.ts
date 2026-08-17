@@ -197,6 +197,10 @@ describe("runPreCommitTool", () => {
     ).toBe(false);
   });
 
+  it("is allowed by default", () => {
+    expect(runPreCommitTool.defaultConsent).toBe("always");
+  });
+
   afterEach(async () => {
     await Promise.all(
       tempDirs.splice(0).map((dir) =>

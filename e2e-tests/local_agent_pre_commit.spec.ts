@@ -93,8 +93,6 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/pre-commit-fixes", {
       skipWaitForCompletion: true,
     });
-    await po.agentConsent.waitForAgentConsentBanner();
-    await po.agentConsent.clickAgentConsentAlwaysAllow();
     await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
     await expect(
@@ -125,8 +123,6 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/pre-commit-no-verify", {
       skipWaitForCompletion: true,
     });
-    await po.agentConsent.waitForAgentConsentBanner();
-    await po.agentConsent.clickAgentConsentAllowOnce();
     await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
     await expect(

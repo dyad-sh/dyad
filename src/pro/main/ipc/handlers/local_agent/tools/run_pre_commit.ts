@@ -297,7 +297,7 @@ export const runPreCommitTool: ToolDefinition<
 - Stop after ${MAX_PRE_COMMIT_RUNS_PER_TURN} runs in one turn and summarize any remaining failure.
 - A passing run verifies the currently staged snapshot. If files change afterward, run it again.`,
   inputSchema: runPreCommitSchema,
-  defaultConsent: "ask",
+  defaultConsent: "always",
   modifiesState: true,
   isEnabled: (ctx) => ctx.preCommitHookAvailable === true,
   getConsentPreview: () => "Stage all changes and run the pre-commit hook",

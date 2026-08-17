@@ -6,9 +6,7 @@ interface ScreenshotSuccessDialogProps {
   isOpen: boolean;
   /** The reporter backed out without filing anything. */
   onDismiss: () => void;
-  onSubmit: () => void | Promise<void>;
-  isLoading: boolean;
-  pendingLabel: string;
+  onSubmit: () => void;
   icon: ReactNode;
 }
 
@@ -16,21 +14,11 @@ export function ScreenshotSuccessDialog({
   isOpen,
   onDismiss,
   onSubmit,
-  isLoading,
-  pendingLabel,
   icon,
 }: ScreenshotSuccessDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onDismiss}>
-      <DialogContent showCloseButton={!isLoading}>
-        <span
-          className="sr-only"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {isLoading ? pendingLabel : ""}
-        </span>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>
             Screenshot captured to clipboard! Please paste in GitHub issue.
@@ -38,11 +26,10 @@ export function ScreenshotSuccessDialog({
         </DialogHeader>
         <Button
           variant="default"
-          onClick={() => onSubmit()}
-          disabled={isLoading}
+          onClick={onSubmit}
           className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
         >
-          {icon} {isLoading ? pendingLabel : "Create GitHub issue"}
+          {icon} Create GitHub issue
         </Button>
       </DialogContent>
     </Dialog>

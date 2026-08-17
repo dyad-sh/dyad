@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   uploadToSignedUrl: vi.fn(),
   openExternalUrl: vi.fn(),
   takeScreenshot: vi.fn(),
+  showInfo: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -56,7 +57,10 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
   useLanguageModelsByProviders: () => ({ data: undefined }),
 }));
 
-vi.mock("@/lib/toast", () => ({ showError: vi.fn() }));
+vi.mock("@/lib/toast", () => ({
+  showError: vi.fn(),
+  showInfo: mocks.showInfo,
+}));
 
 vi.mock("./HelpBotDialog", () => ({ HelpBotDialog: () => null }));
 
@@ -233,7 +237,7 @@ describe("HelpDialog screenshot prompt", () => {
     expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
   });
 
-  it("keeps the prompt open showing progress while the report is prepared", async () => {
+  it("reports progress outside the prompt once it is answered", async () => {
     let releaseDebugInfo = (_: unknown) => {};
     mocks.getSystemDebugInfo.mockReturnValue(
       new Promise((resolve) => {
@@ -247,21 +251,19 @@ describe("HelpDialog screenshot prompt", () => {
       await screen.findByText("File bug report without screenshot"),
     );
 
-    // Gathering logs takes a moment; the reporter should see that it is
-    // happening rather than a dialog that vanished and did nothing.
-    expect(
-      await screen.findByRole("button", { name: /Preparing Report/ }),
-    ).toBeTruthy();
+    // The prompt is finished the moment it is answered, and gathering logs
+    // takes a moment, so progress is reported outside the dialog.
+    await waitFor(() =>
+      expect(screen.queryByText("Take a screenshot?")).toBeNull(),
+    );
+    expect(mocks.showInfo).toHaveBeenCalled();
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
 
     releaseDebugInfo(debugInfo);
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.queryByText("Take a screenshot?")).toBeNull(),
-    );
   });
 
-  it("does not let a report in flight be dismissed or interleaved with a capture", async () => {
+  it("leaves the reporter's dialogs alone while a report is prepared", async () => {
     let releaseDebugInfo = (_: unknown) => {};
     mocks.getSystemDebugInfo.mockReturnValue(
       new Promise((resolve) => {
@@ -272,55 +274,72 @@ describe("HelpDialog screenshot prompt", () => {
     await reachUploadCompleteScreen();
     fireEvent.click(screen.getByText("Create GitHub Issue"));
     fireEvent.click(await screen.findByText("Create issue without screenshot"));
-    await screen.findByRole("button", { name: /Creating Issue/ });
-
-    // The issue is already on its way, so neither exit may take the reporter
-    // somewhere the arriving report would contradict.
-    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
-    expect(screen.queryByText("Upload Complete")).toBeNull();
-    expect(screen.getByRole("button", { name: /Creating Issue/ })).toBeTruthy();
-
-    expect(
-      screen
-        .getByRole("button", { name: /recommended/ })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    expect(mocks.takeScreenshot).not.toHaveBeenCalled();
-
-    releaseDebugInfo(debugInfo);
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(1));
-    expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
-  });
-
-  it("cannot open a second prompt sealed shut by an earlier report in flight", async () => {
-    let releaseDebugInfo = (_: unknown) => {};
-    mocks.getSystemDebugInfo.mockReturnValue(
-      new Promise((resolve) => {
-        releaseDebugInfo = resolve;
-      }),
-    );
-    mocks.takeScreenshot.mockRejectedValue(new Error("no window"));
-
-    await reachUploadCompleteScreen();
-    fireEvent.click(screen.getByText("Create GitHub Issue"));
-    fireEvent.click(await screen.findByRole("button", { name: /recommended/ }));
-
-    // Capture failed, so the report is in flight with no dialog on screen.
-    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.queryByText("Take a screenshot?")).toBeNull(),
     );
 
-    // Reopening help restores the upload-complete screen, but its button must
-    // not mount a prompt whose every exit is held shut by the other report.
+    // The reporter goes back into help while the report is still being built.
     fireEvent.click(screen.getByText("reopen-help"));
-    expect(await screen.findByText("Upload Complete")).toBeTruthy();
-    fireEvent.click(screen.getByText("Create GitHub Issue"));
-    expect(screen.queryByText("Take a screenshot?")).toBeNull();
+    expect(await screen.findByText("Need help with Dyad?")).toBeTruthy();
 
     releaseDebugInfo(debugInfo);
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(1));
-    expect(bodyOfOpenedIssue()).toContain("Screenshot status: capture-failed");
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    // The arriving report files correctly and does not touch what is on screen.
+    expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
+    expect(screen.getByText("Need help with Dyad?")).toBeTruthy();
+  });
+
+  it("reports a dismissal so every opening has an outcome", async () => {
+    render(<OpenHelpDialog />);
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    await screen.findByText("Take a screenshot?");
+
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:dismissed",
+      { source: "report-bug" },
+    );
+  });
+
+  it("files a second report started while the first is still preparing", async () => {
+    const releases: ((value: unknown) => void)[] = [];
+    mocks.getSystemDebugInfo.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+
+    await reachUploadCompleteScreen();
+    fireEvent.click(screen.getByText("Create GitHub Issue"));
+    fireEvent.click(await screen.findByText("Create issue without screenshot"));
+    await waitFor(() =>
+      expect(screen.queryByText("Take a screenshot?")).toBeNull(),
+    );
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.click(
+      await screen.findByText("File bug report without screenshot"),
+    );
+
+    expect(releases).toHaveLength(2);
+    releases[0](debugInfo);
+    releases[1](debugInfo);
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    // Each report carries its own data rather than the other one's.
+    const bodies = mocks.openExternalUrl.mock.calls.map(
+      (call) => new URL(call[0] as string).searchParams.get("body") ?? "",
+    );
+    expect(bodies.some((body) => body.includes("Session ID: v2:abc"))).toBe(
+      true,
+    );
+    expect(
+      bodies.some((body) => body.includes("## Bug Description (required)")),
+    ).toBe(true);
   });
 
   it("keeps the screenshot status when debug info cannot be gathered", async () => {

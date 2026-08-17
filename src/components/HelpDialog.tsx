@@ -33,7 +33,7 @@ import { usePostHog } from "posthog-js/react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { type SessionDebugBundle } from "@/ipc/types";
-import { showError } from "@/lib/toast";
+import { showError, showInfo } from "@/lib/toast";
 import { useTranslation } from "react-i18next";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
@@ -227,7 +227,6 @@ export function HelpDialog() {
   const [helpDialog, setHelpDialog] = useAtom(helpDialogAtom);
   const isOpen = helpDialog.open;
   const onClose = () => setHelpDialog({ open: false });
-  const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [screen, setScreen] = useState<DialogScreen>("main");
   const [direction, setDirection] = useState(0);
@@ -237,6 +236,8 @@ export function HelpDialog() {
   const [sessionId, setSessionId] = useState("");
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
   const [isScreenshotPromptOpen, setIsScreenshotPromptOpen] = useState(false);
+  const [promptSource, setPromptSource] =
+    useState<ScreenshotPromptSource>("report-bug");
   // What the screenshot prompt should file once the reporter answers it.
   // Opening the prompt closes this dialog, which runs resetDialogState, so the
   // session ID is snapshotted here rather than read back from state later.
@@ -286,7 +287,6 @@ export function HelpDialog() {
   };
 
   const resetDialogState = () => {
-    setIsLoading(false);
     setIsUploading(false);
     setScreen("main");
     setDirection(0);
@@ -350,7 +350,7 @@ export function HelpDialog() {
   // ---------------------------------------------------------------------------
 
   const handleReportBug = async (screenshot: ScreenshotOutcome) => {
-    setIsLoading(true);
+    showInfo("Preparing your bug report...");
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
       const body = buildBugReportBody({
@@ -374,8 +374,6 @@ export function HelpDialog() {
         body: buildBugReportFallbackBody({ screenshot }),
         isDyadProUser,
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -445,7 +443,7 @@ export function HelpDialog() {
     screenshot: ScreenshotOutcome,
     reportedSessionId: string,
   ) => {
-    setIsLoading(true);
+    showInfo("Preparing your session report...");
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
       openGitHubIssue({
@@ -473,45 +471,39 @@ export function HelpDialog() {
         }),
         isDyadProUser,
       });
-    } finally {
-      setIsLoading(false);
     }
-    handleClose();
   };
 
   // Both report paths funnel through the screenshot prompt, so the issue body
   // always records whether a screenshot was taken.
   const openScreenshotPrompt = (report: PendingReport) => {
-    // A report already in flight owns isLoading, which gates every exit from
-    // the prompt. Opening a second one would mount a dialog that is sealed
-    // shut and labelled for the other report.
-    if (isLoading) return;
+    // Held separately from pendingReport, which is released as soon as the
+    // report is dispatched, while the prompt is still animating out.
+    setPromptSource(
+      report.kind === "session" ? "upload-session" : "report-bug",
+    );
     setPendingReport(report);
     handleClose();
     setIsScreenshotPromptOpen(true);
   };
 
-  const handleScreenshotPromptContinue = async (
-    screenshot: ScreenshotOutcome,
-  ) => {
+  const handleScreenshotPromptContinue = (screenshot: ScreenshotOutcome) => {
     const report = pendingReport;
     if (!report) return;
-    if (report.kind === "session") {
-      await handleOpenGitHubIssue(screenshot, report.sessionId);
-    } else {
-      await handleReportBug(screenshot);
-    }
-    // Release only the report this call filed, so a later one is never cleared
-    // out from under itself. Clearing lets the next open start fresh.
+    // The report carries its own screenshot outcome and session ID, so it
+    // needs nothing from this dialog once it starts. Release only this report,
+    // so a later one is never cleared out from under itself.
     setPendingReport((current) => (current === report ? null : current));
+    if (report.kind === "session") {
+      void handleOpenGitHubIssue(screenshot, report.sessionId);
+    } else {
+      void handleReportBug(screenshot);
+    }
   };
 
   // The prompt is a stop on the way to the issue, not a place to lose an
   // upload: backing out of it reopens the help dialog as the reporter left it.
   const handleScreenshotPromptDismiss = () => {
-    // Prevents the case where a dismissal reopens this dialog and the report
-    // already on its way closes it again a moment later.
-    if (isLoading) return;
     setIsScreenshotPromptOpen(false);
     setPendingReport(null);
     setHelpDialog({ open: true });
@@ -609,11 +601,9 @@ export function HelpDialog() {
             <Button
               variant="outline"
               onClick={() => openScreenshotPrompt({ kind: "bug" })}
-              disabled={isLoading}
               className="w-full bg-(--background-lightest)"
             >
-              <BugIcon className="mr-2 h-4 w-4" />{" "}
-              {isLoading ? "Preparing Report..." : "Report a Bug"}
+              <BugIcon className="mr-2 h-4 w-4" /> Report a Bug
             </Button>
           </div>
         </div>
@@ -742,7 +732,6 @@ export function HelpDialog() {
 
       <Button
         onClick={() => openScreenshotPrompt({ kind: "session", sessionId })}
-        disabled={isLoading}
         className="w-full py-5 text-base mt-4"
         size="lg"
       >
@@ -786,8 +775,6 @@ export function HelpDialog() {
   // ---------------------------------------------------------------------------
 
   const isCrashPreloading = helpDialog.uploadChatId != null;
-  const screenshotPromptSource: ScreenshotPromptSource =
-    pendingReport?.kind === "session" ? "upload-session" : "report-bug";
 
   return (
     <>
@@ -818,8 +805,7 @@ export function HelpDialog() {
         onClose={() => setIsScreenshotPromptOpen(false)}
         onDismiss={handleScreenshotPromptDismiss}
         onContinue={handleScreenshotPromptContinue}
-        isLoading={isLoading}
-        source={screenshotPromptSource}
+        source={promptSource}
       />
     </>
   );

@@ -62,7 +62,6 @@ function renderPrompt(
     onClose: vi.fn(),
     onDismiss: vi.fn(),
     onContinue: vi.fn(),
-    isLoading: false,
     source: "report-bug" as const,
     ...overrides,
   };
@@ -115,6 +114,33 @@ describe("BugScreenshotDialog", () => {
 
     expect(props.onDismiss).toHaveBeenCalled();
     expect(props.onContinue).not.toHaveBeenCalled();
+  });
+
+  it("answers once even if clicked again while closing", () => {
+    const props = renderPrompt();
+    const decline = screen.getByText(/without screenshot/);
+    // A dialog stays clickable through its closing animation.
+    fireEvent.click(decline);
+    fireEvent.click(decline);
+
+    expect(props.onContinue).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.posthogCapture.mock.calls.filter(
+        (call) => call[0] === "screenshot-prompt:decline",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not report a dismissal after the prompt was already answered", () => {
+    const props = renderPrompt();
+    fireEvent.click(screen.getByText(/without screenshot/));
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    expect(props.onDismiss).not.toHaveBeenCalled();
+    expect(mocks.posthogCapture).not.toHaveBeenCalledWith(
+      "screenshot-prompt:dismissed",
+      expect.anything(),
+    );
   });
 
   it("files the report as declined when the reporter skips the screenshot", () => {
@@ -187,7 +213,7 @@ describe("BugScreenshotDialog", () => {
     );
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:capture-failed",
-      { source: "upload-session", reason: "No focused window to capture" },
+      { source: "upload-session", failure: "no-focused-window" },
     );
   });
 

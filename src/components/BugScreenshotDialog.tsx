@@ -11,16 +11,26 @@ import { type ScreenshotOutcome } from "@/lib/issueBody";
 /** Which report flow opened the prompt. Reported with every prompt event. */
 export type ScreenshotPromptSource = "report-bug" | "upload-session";
 
+/**
+ * Known capture failures, reported instead of the raw message so the event
+ * carries a fixed set of values. The raw message still reaches the issue body,
+ * which the reporter sees before submitting.
+ */
+function classifyCaptureFailure(reason: string): string {
+  if (reason.includes("No focused window")) return "no-focused-window";
+  if (reason.includes("Failed to capture screenshot")) return "empty-image";
+  if (reason.includes("IPC renderer not available")) return "ipc-unavailable";
+  return "other";
+}
+
 /** Copy that differs between the two flows, keyed by the reporting source. */
 const VARIANTS = {
   "report-bug": {
     declineLabel: "File bug report without screenshot",
-    pendingLabel: "Preparing Report...",
     icon: <BugIcon className="mr-2 h-5 w-5" />,
   },
   "upload-session": {
     declineLabel: "Create issue without screenshot",
-    pendingLabel: "Creating Issue...",
     icon: <MessageSquareIcon className="mr-2 h-5 w-5" />,
   },
 } as const;
@@ -29,11 +39,10 @@ interface BugScreenshotDialogProps {
   isOpen: boolean;
   /** Hides the prompt without ending the flow, so it stays out of the capture. */
   onClose: () => void;
-  /** The reporter backed out of the prompt without filing anything. */
+  /** The reporter backed out without filing anything. */
   onDismiss: () => void;
   /** Files the report, recording what happened with the screenshot. */
-  onContinue: (outcome: ScreenshotOutcome) => void | Promise<void>;
-  isLoading: boolean;
+  onContinue: (outcome: ScreenshotOutcome) => void;
   source: ScreenshotPromptSource;
 }
 
@@ -42,12 +51,15 @@ export function BugScreenshotDialog({
   onClose,
   onDismiss,
   onContinue,
-  isLoading,
   source,
 }: BugScreenshotDialogProps) {
-  const { declineLabel, pendingLabel, icon } = VARIANTS[source];
+  const { declineLabel, icon } = VARIANTS[source];
   const [isScreenshotSuccessOpen, setIsScreenshotSuccessOpen] = useState(false);
   const hasReportedShown = useRef(false);
+  // A dialog stays clickable through its closing animation. These keep one
+  // answer per opening, so a second click cannot file or report twice.
+  const promptAnswered = useRef(false);
+  const captureAnswered = useRef(false);
   const posthog = usePostHog();
 
   // Latched on the open edge so the count is one per prompt, whatever else
@@ -59,21 +71,30 @@ export function BugScreenshotDialog({
     }
     if (hasReportedShown.current) return;
     hasReportedShown.current = true;
+    // Reset on open rather than on close, because the prompt is still
+    // clickable while it animates out.
+    promptAnswered.current = false;
     posthog.capture("screenshot-prompt:shown", { source });
   }, [isOpen, source, posthog]);
 
   const handleCapture = () => {
+    if (promptAnswered.current) return;
+    promptAnswered.current = true;
     // An attempt, not a success: the capture can still fail below.
     posthog.capture("screenshot-prompt:capture-attempt", { source });
     onClose();
     setTimeout(async () => {
       try {
         await ipc.system.takeScreenshot();
+        captureAnswered.current = false;
         setIsScreenshotSuccessOpen(true);
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Failed to take screenshot";
-        posthog.capture("screenshot-prompt:capture-failed", { source, reason });
+        posthog.capture("screenshot-prompt:capture-failed", {
+          source,
+          failure: classifyCaptureFailure(reason),
+        });
         // Prevents the case where the reporter reaches GitHub expecting an
         // image on the clipboard and pastes whatever is there instead.
         showError(`Failed to take screenshot: ${reason}`);
@@ -82,27 +103,25 @@ export function BugScreenshotDialog({
     }, 200); // Small delay for dialog to close
   };
 
-  const handleDecline = async () => {
+  const handleDecline = () => {
+    if (promptAnswered.current) return;
+    promptAnswered.current = true;
     posthog.capture("screenshot-prompt:decline", { source });
-    // Keeps the pending label on screen while the logs are gathered.
-    await onContinue({ status: "declined" });
     onClose();
+    onContinue({ status: "declined" });
+  };
+
+  const handlePromptDismiss = () => {
+    if (promptAnswered.current) return;
+    promptAnswered.current = true;
+    posthog.capture("screenshot-prompt:dismissed", { source });
+    onDismiss();
   };
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onDismiss}>
-        {/* While the report is being prepared the prompt has no working exit,
-            so don't offer one: onDismiss ignores dismissals until it lands. */}
-        <DialogContent showCloseButton={!isLoading}>
-          <span
-            className="sr-only"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            {isLoading ? pendingLabel : ""}
-          </span>
+      <Dialog open={isOpen} onOpenChange={handlePromptDismiss}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Take a screenshot?</DialogTitle>
           </DialogHeader>
@@ -111,7 +130,6 @@ export function BugScreenshotDialog({
               <Button
                 variant="default"
                 onClick={handleCapture}
-                disabled={isLoading}
                 className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
               >
                 <Camera className="mr-2 h-5 w-5" /> Take a screenshot
@@ -125,10 +143,9 @@ export function BugScreenshotDialog({
               <Button
                 variant="outline"
                 onClick={handleDecline}
-                disabled={isLoading}
                 className="w-full py-6 bg-(--background-lightest)"
               >
-                {icon} {isLoading ? pendingLabel : declineLabel}
+                {icon} {declineLabel}
               </Button>
               <p className="text-sm text-muted-foreground px-2">
                 We'll still try to respond but might not be able to help as
@@ -141,21 +158,20 @@ export function BugScreenshotDialog({
       <ScreenshotSuccessDialog
         isOpen={isScreenshotSuccessOpen}
         onDismiss={() => {
-          // Prevents the case where this closes and leaves nothing on screen
-          // while the report it belongs to is still being prepared.
-          if (isLoading) return;
+          if (captureAnswered.current) return;
+          captureAnswered.current = true;
           // A screenshot was taken but no report follows it.
           posthog.capture("screenshot-prompt:capture-abandoned", { source });
           setIsScreenshotSuccessOpen(false);
           onDismiss();
         }}
-        onSubmit={async () => {
+        onSubmit={() => {
+          if (captureAnswered.current) return;
+          captureAnswered.current = true;
           posthog.capture("screenshot-prompt:captured", { source });
-          await onContinue({ status: "captured" });
           setIsScreenshotSuccessOpen(false);
+          onContinue({ status: "captured" });
         }}
-        isLoading={isLoading}
-        pendingLabel={pendingLabel}
         icon={icon}
       />
     </>

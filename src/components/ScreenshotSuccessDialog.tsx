@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { BugIcon } from "lucide-react";
+import { type ReactNode } from "react";
 
 interface ScreenshotSuccessDialogProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface ScreenshotSuccessDialogProps {
   onSubmit: () => void | Promise<void>;
   isLoading: boolean;
   pendingLabel: string;
+  icon: ReactNode;
 }
 
 export function ScreenshotSuccessDialog({
@@ -17,6 +18,7 @@ export function ScreenshotSuccessDialog({
   onSubmit,
   isLoading,
   pendingLabel,
+  icon,
 }: ScreenshotSuccessDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onDismiss}>
@@ -40,8 +42,7 @@ export function ScreenshotSuccessDialog({
           disabled={isLoading}
           className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
         >
-          <BugIcon className="mr-2 h-5 w-5" />{" "}
-          {isLoading ? pendingLabel : "Create GitHub issue"}
+          {icon} {isLoading ? pendingLabel : "Create GitHub issue"}
         </Button>
       </DialogContent>
     </Dialog>

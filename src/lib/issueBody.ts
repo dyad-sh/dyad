@@ -22,7 +22,7 @@ const SCREENSHOT_STATUS_PREFIX = "Screenshot status:";
 export function formatScreenshotStatusLine(outcome: ScreenshotOutcome): string {
   switch (outcome.status) {
     case "captured":
-      return `${SCREENSHOT_STATUS_PREFIX} captured (reporter captured a screenshot in Dyad; if none appears above, ask them to paste it)`;
+      return `${SCREENSHOT_STATUS_PREFIX} captured (reporter captured a screenshot in Dyad; if no image is attached, ask them to paste it)`;
     case "declined":
       return `${SCREENSHOT_STATUS_PREFIX} declined`;
     case "capture-failed":
@@ -32,7 +32,7 @@ export function formatScreenshotStatusLine(outcome: ScreenshotOutcome): string {
   }
 }
 
-export function formatSettingsLines(
+function formatSettingsLines(
   settings: UserSettings | null,
   selectedModel: ModelSelection | null,
 ): string {
@@ -49,7 +49,7 @@ export function formatSettingsLines(
   ].join("\n");
 }
 
-export function formatSystemInfoSection(
+function formatSystemInfoSection(
   debugInfo: SystemDebugInfo,
   userBudget: UserBudgetInfo | undefined,
 ): string {
@@ -65,7 +65,7 @@ export function formatSystemInfoSection(
 - Model: ${debugInfo.selectedLanguageModel || "n/a"}`;
 }
 
-export function formatLogsSection(debugInfo: SystemDebugInfo): string {
+function formatLogsSection(debugInfo: SystemDebugInfo): string {
   // Keep the updater section small: the issue body travels in the GitHub URL.
   const updaterSection = debugInfo.updaterLogs
     ? `

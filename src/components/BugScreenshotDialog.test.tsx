@@ -66,8 +66,14 @@ function renderPrompt(
     source: "report-bug" as const,
     ...overrides,
   };
-  render(<BugScreenshotDialog {...props} />);
-  return props;
+  const view = render(<BugScreenshotDialog {...props} />);
+  return { ...props, view, props };
+}
+
+function shownEvents() {
+  return mocks.posthogCapture.mock.calls.filter(
+    (call) => call[0] === "screenshot-prompt:shown",
+  );
 }
 
 describe("BugScreenshotDialog", () => {
@@ -91,15 +97,16 @@ describe("BugScreenshotDialog", () => {
   });
 
   it("reports the prompt as shown once per opening", async () => {
-    renderPrompt();
+    const { view, props } = renderPrompt();
     // Re-render while open, which is what capturing a screenshot does.
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+    expect(shownEvents()).toHaveLength(1);
 
-    const shown = mocks.posthogCapture.mock.calls.filter(
-      (call) => call[0] === "screenshot-prompt:shown",
-    );
-    expect(shown).toHaveLength(1);
+    // Closing and reopening is a second offer, so it counts again.
+    view.rerender(<BugScreenshotDialog {...props} isOpen={false} />);
+    view.rerender(<BugScreenshotDialog {...props} isOpen={true} />);
+    expect(shownEvents()).toHaveLength(2);
   });
 
   it("reports a dismissal as backing out, not as a decline", () => {
@@ -134,6 +141,35 @@ describe("BugScreenshotDialog", () => {
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
     fireEvent.click(await screen.findByText("Create GitHub issue"));
     expect(props.onContinue).toHaveBeenCalledWith({ status: "captured" });
+  });
+
+  it("reports a captured screenshot that the reporter files", async () => {
+    renderPrompt();
+    fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+    fireEvent.click(await screen.findByText("Create GitHub issue"));
+
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "screenshot-prompt:captured",
+      { source: "report-bug" },
+    );
+  });
+
+  it("reports a captured screenshot that the reporter abandons", async () => {
+    const props = renderPrompt({ source: "upload-session" });
+    fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+    await screen.findByText("Create GitHub issue");
+
+    // The success dialog renders after the prompt, so its dismiss is last.
+    const dismissals = screen.getAllByText("mock-dialog-dismiss");
+    fireEvent.click(dismissals[dismissals.length - 1]);
+
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "screenshot-prompt:capture-abandoned",
+      { source: "upload-session" },
+    );
+    expect(props.onContinue).not.toHaveBeenCalled();
   });
 
   it("still files the report when the capture fails, recording why", async () => {

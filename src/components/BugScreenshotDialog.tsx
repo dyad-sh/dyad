@@ -16,12 +16,12 @@ const VARIANTS = {
   "report-bug": {
     declineLabel: "File bug report without screenshot",
     pendingLabel: "Preparing Report...",
-    declineIcon: <BugIcon className="mr-2 h-5 w-5" />,
+    icon: <BugIcon className="mr-2 h-5 w-5" />,
   },
   "upload-session": {
     declineLabel: "Create issue without screenshot",
     pendingLabel: "Creating Issue...",
-    declineIcon: <MessageSquareIcon className="mr-2 h-5 w-5" />,
+    icon: <MessageSquareIcon className="mr-2 h-5 w-5" />,
   },
 } as const;
 
@@ -45,7 +45,7 @@ export function BugScreenshotDialog({
   isLoading,
   source,
 }: BugScreenshotDialogProps) {
-  const { declineLabel, pendingLabel, declineIcon } = VARIANTS[source];
+  const { declineLabel, pendingLabel, icon } = VARIANTS[source];
   const [isScreenshotSuccessOpen, setIsScreenshotSuccessOpen] = useState(false);
   const hasReportedShown = useRef(false);
   const posthog = usePostHog();
@@ -128,7 +128,7 @@ export function BugScreenshotDialog({
                 disabled={isLoading}
                 className="w-full py-6 bg-(--background-lightest)"
               >
-                {declineIcon} {isLoading ? pendingLabel : declineLabel}
+                {icon} {isLoading ? pendingLabel : declineLabel}
               </Button>
               <p className="text-sm text-muted-foreground px-2">
                 We'll still try to respond but might not be able to help as
@@ -141,18 +141,22 @@ export function BugScreenshotDialog({
       <ScreenshotSuccessDialog
         isOpen={isScreenshotSuccessOpen}
         onDismiss={() => {
-          // Matches the prompt: a report already on its way cannot be called
-          // off, so don't let this close either and leave nothing on screen.
+          // Prevents the case where this closes and leaves nothing on screen
+          // while the report it belongs to is still being prepared.
           if (isLoading) return;
+          // A screenshot was taken but no report follows it.
+          posthog.capture("screenshot-prompt:capture-abandoned", { source });
           setIsScreenshotSuccessOpen(false);
           onDismiss();
         }}
         onSubmit={async () => {
+          posthog.capture("screenshot-prompt:captured", { source });
           await onContinue({ status: "captured" });
           setIsScreenshotSuccessOpen(false);
         }}
         isLoading={isLoading}
         pendingLabel={pendingLabel}
+        icon={icon}
       />
     </>
   );

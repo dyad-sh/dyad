@@ -182,6 +182,16 @@ export const ForceCloseDetectedPayloadSchema = z.object({
   activeChatId: z.number().optional(),
 });
 
+/**
+ * Failures takeScreenshot can raise. The renderer matches on these to bucket
+ * capture failures for telemetry, so both sides move together instead of
+ * drifting apart.
+ */
+export const SCREENSHOT_ERRORS = {
+  noFocusedWindow: "No focused window to capture",
+  emptyImage: "Failed to capture screenshot",
+} as const;
+
 // =============================================================================
 // System Contracts
 // =============================================================================

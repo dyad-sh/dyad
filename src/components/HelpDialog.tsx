@@ -39,6 +39,7 @@ import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
 import {
   BugScreenshotDialog,
+  type PendingReport,
   type ScreenshotPromptSource,
 } from "./BugScreenshotDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -59,8 +60,6 @@ import {
 // =============================================================================
 
 type DialogScreen = "main" | "review" | "upload-complete";
-
-type PendingReport = { kind: "bug" } | { kind: "session"; sessionId: string };
 
 const SCREEN_ORDER: DialogScreen[] = ["main", "review", "upload-complete"];
 
@@ -487,9 +486,10 @@ export function HelpDialog() {
     setIsScreenshotPromptOpen(true);
   };
 
-  const handleScreenshotPromptContinue = (screenshot: ScreenshotOutcome) => {
-    const report = pendingReport;
-    if (!report) return;
+  const handleScreenshotPromptContinue = (
+    screenshot: ScreenshotOutcome,
+    report: PendingReport,
+  ) => {
     // The report carries its own screenshot outcome and session ID, so it
     // needs nothing from this dialog once it starts. Release only this report,
     // so a later one is never cleared out from under itself.
@@ -806,6 +806,7 @@ export function HelpDialog() {
         onDismiss={handleScreenshotPromptDismiss}
         onContinue={handleScreenshotPromptContinue}
         source={promptSource}
+        report={pendingReport}
       />
     </>
   );

@@ -6,20 +6,28 @@ import { useEffect, useRef, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import { ScreenshotSuccessDialog } from "./ScreenshotSuccessDialog";
 import { showError } from "@/lib/toast";
+import { SCREENSHOT_ERRORS } from "@/ipc/types/system";
 import { type ScreenshotOutcome } from "@/lib/issueBody";
 
 /** Which report flow opened the prompt. Reported with every prompt event. */
 export type ScreenshotPromptSource = "report-bug" | "upload-session";
 
+/** The report a prompt was opened for, carried through to the outcome. */
+export type PendingReport =
+  | { kind: "bug" }
+  | { kind: "session"; sessionId: string };
+
 /**
  * Known capture failures, reported instead of the raw message so the event
  * carries a fixed set of values. The raw message still reaches the issue body,
- * which the reporter sees before submitting.
+ * which the reporter sees before submitting. Matching on the shared constants
+ * keeps this in step with what the handler throws.
  */
 function classifyCaptureFailure(reason: string): string {
-  if (reason.includes("No focused window")) return "no-focused-window";
-  if (reason.includes("Failed to capture screenshot")) return "empty-image";
-  if (reason.includes("IPC renderer not available")) return "ipc-unavailable";
+  if (reason.includes(SCREENSHOT_ERRORS.noFocusedWindow)) {
+    return "no-focused-window";
+  }
+  if (reason.includes(SCREENSHOT_ERRORS.emptyImage)) return "empty-image";
   return "other";
 }
 
@@ -42,8 +50,10 @@ interface BugScreenshotDialogProps {
   /** The reporter backed out without filing anything. */
   onDismiss: () => void;
   /** Files the report, recording what happened with the screenshot. */
-  onContinue: (outcome: ScreenshotOutcome) => void;
+  onContinue: (outcome: ScreenshotOutcome, report: PendingReport) => void;
   source: ScreenshotPromptSource;
+  /** The report this prompt was opened for. */
+  report: PendingReport | null;
 }
 
 export function BugScreenshotDialog({
@@ -52,9 +62,12 @@ export function BugScreenshotDialog({
   onDismiss,
   onContinue,
   source,
+  report,
 }: BugScreenshotDialogProps) {
   const { declineLabel, icon } = VARIANTS[source];
-  const [isScreenshotSuccessOpen, setIsScreenshotSuccessOpen] = useState(false);
+  const [successReport, setSuccessReport] = useState<PendingReport | null>(
+    null,
+  );
   const hasReportedShown = useRef(false);
   // A dialog stays clickable through its closing animation. These keep one
   // answer per opening, so a second click cannot file or report twice.
@@ -71,15 +84,22 @@ export function BugScreenshotDialog({
     }
     if (hasReportedShown.current) return;
     hasReportedShown.current = true;
-    // Reset on open rather than on close, because the prompt is still
-    // clickable while it animates out.
-    promptAnswered.current = false;
     posthog.capture("screenshot-prompt:shown", { source });
   }, [isOpen, source, posthog]);
 
+  // Kept separate from the event above so a change there cannot disable the
+  // guard. Reset on open rather than on close, because the prompt is still
+  // clickable while it animates out.
+  useEffect(() => {
+    if (isOpen) promptAnswered.current = false;
+  }, [isOpen]);
+
   const handleCapture = () => {
-    if (promptAnswered.current) return;
+    if (promptAnswered.current || !report) return;
     promptAnswered.current = true;
+    // Captured per invocation, so a capture that resolves after another has
+    // started still files against the report that began it.
+    const capturedFor = report;
     // An attempt, not a success: the capture can still fail below.
     posthog.capture("screenshot-prompt:capture-attempt", { source });
     onClose();
@@ -87,7 +107,7 @@ export function BugScreenshotDialog({
       try {
         await ipc.system.takeScreenshot();
         captureAnswered.current = false;
-        setIsScreenshotSuccessOpen(true);
+        setSuccessReport(capturedFor);
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Failed to take screenshot";
@@ -98,17 +118,17 @@ export function BugScreenshotDialog({
         // Prevents the case where the reporter reaches GitHub expecting an
         // image on the clipboard and pastes whatever is there instead.
         showError(`Failed to take screenshot: ${reason}`);
-        onContinue({ status: "capture-failed", reason });
+        onContinue({ status: "capture-failed", reason }, capturedFor);
       }
     }, 200); // Small delay for dialog to close
   };
 
   const handleDecline = () => {
-    if (promptAnswered.current) return;
+    if (promptAnswered.current || !report) return;
     promptAnswered.current = true;
     posthog.capture("screenshot-prompt:decline", { source });
     onClose();
-    onContinue({ status: "declined" });
+    onContinue({ status: "declined" }, report);
   };
 
   const handlePromptDismiss = () => {
@@ -156,21 +176,21 @@ export function BugScreenshotDialog({
         </DialogContent>
       </Dialog>
       <ScreenshotSuccessDialog
-        isOpen={isScreenshotSuccessOpen}
+        isOpen={successReport !== null}
         onDismiss={() => {
           if (captureAnswered.current) return;
           captureAnswered.current = true;
           // A screenshot was taken but no report follows it.
           posthog.capture("screenshot-prompt:capture-abandoned", { source });
-          setIsScreenshotSuccessOpen(false);
+          setSuccessReport(null);
           onDismiss();
         }}
         onSubmit={() => {
-          if (captureAnswered.current) return;
+          if (captureAnswered.current || !successReport) return;
           captureAnswered.current = true;
           posthog.capture("screenshot-prompt:captured", { source });
-          setIsScreenshotSuccessOpen(false);
-          onContinue({ status: "captured" });
+          setSuccessReport(null);
+          onContinue({ status: "captured" }, successReport);
         }}
         icon={icon}
       />

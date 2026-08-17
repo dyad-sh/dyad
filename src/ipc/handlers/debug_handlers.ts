@@ -2,7 +2,7 @@ import { BrowserWindow, clipboard } from "electron";
 import { platform, arch } from "os";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
-import { systemContracts } from "../types/system";
+import { SCREENSHOT_ERRORS, systemContracts } from "../types/system";
 import { miscContracts, SESSION_DEBUG_SCHEMA_VERSION } from "../types/misc";
 import type { SystemDebugInfo } from "../types/system";
 import type { SessionDebugBundle } from "../types/misc";
@@ -522,16 +522,13 @@ export function registerDebugHandlers() {
 
   createTypedHandler(systemContracts.takeScreenshot, async () => {
     const win = BrowserWindow.getFocusedWindow();
-    if (!win) throw new Error("No focused window to capture");
+    if (!win) throw new Error(SCREENSHOT_ERRORS.noFocusedWindow);
 
     // Capture the window's current contents as a NativeImage
     const image = await win.capturePage();
     // Validate image
     if (!image || image.isEmpty()) {
-      throw new DyadError(
-        "Failed to capture screenshot",
-        DyadErrorKind.External,
-      );
+      throw new DyadError(SCREENSHOT_ERRORS.emptyImage, DyadErrorKind.External);
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);

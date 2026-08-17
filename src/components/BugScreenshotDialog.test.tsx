@@ -63,6 +63,7 @@ function renderPrompt(
     onDismiss: vi.fn(),
     onContinue: vi.fn(),
     source: "report-bug" as const,
+    report: { kind: "bug" } as const,
     ...overrides,
   };
   const view = render(<BugScreenshotDialog {...props} />);
@@ -147,7 +148,10 @@ describe("BugScreenshotDialog", () => {
     const props = renderPrompt();
     fireEvent.click(screen.getByText(/without screenshot/));
 
-    expect(props.onContinue).toHaveBeenCalledWith({ status: "declined" });
+    expect(props.onContinue).toHaveBeenCalledWith(
+      { status: "declined" },
+      { kind: "bug" },
+    );
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:decline",
       { source: "report-bug" },
@@ -166,7 +170,10 @@ describe("BugScreenshotDialog", () => {
 
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
     fireEvent.click(await screen.findByText("Create GitHub issue"));
-    expect(props.onContinue).toHaveBeenCalledWith({ status: "captured" });
+    expect(props.onContinue).toHaveBeenCalledWith(
+      { status: "captured" },
+      { kind: "bug" },
+    );
   });
 
   it("reports a captured screenshot that the reporter files", async () => {
@@ -178,6 +185,28 @@ describe("BugScreenshotDialog", () => {
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:captured",
       { source: "report-bug" },
+    );
+  });
+
+  it("files a late capture against the report that started it", async () => {
+    const props = renderPrompt({
+      report: { kind: "session", sessionId: "v2:first" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    // Another report starts while this capture is still resolving.
+    props.view.rerender(
+      <BugScreenshotDialog {...props.props} report={{ kind: "bug" }} />,
+    );
+    fireEvent.click(await screen.findByText("Create GitHub issue"));
+
+    expect(props.onContinue).toHaveBeenCalledWith(
+      { status: "captured" },
+      {
+        kind: "session",
+        sessionId: "v2:first",
+      },
     );
   });
 
@@ -206,10 +235,10 @@ describe("BugScreenshotDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
 
     await waitFor(() =>
-      expect(props.onContinue).toHaveBeenCalledWith({
-        status: "capture-failed",
-        reason: "No focused window to capture",
-      }),
+      expect(props.onContinue).toHaveBeenCalledWith(
+        { status: "capture-failed", reason: "No focused window to capture" },
+        { kind: "bug" },
+      ),
     );
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:capture-failed",

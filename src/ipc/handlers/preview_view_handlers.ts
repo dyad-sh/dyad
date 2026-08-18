@@ -13,6 +13,7 @@ import {
   previewViewGoBack,
   previewViewGoForward,
   previewViewReload,
+  setPreviewViewOverlayActive,
   setPreviewViewBounds,
   showPreviewView,
 } from "@/main/preview_web_contents_view";
@@ -80,6 +81,22 @@ export function registerPreviewViewHandlers(): void {
         setPreviewViewBounds(window, bounds);
       } catch (error) {
         logger.error("Ignoring invalid preview view bounds", error);
+      }
+    },
+  );
+
+  ipcMain?.on(
+    previewViewSendContracts.setOverlayActive.channel,
+    (event, input: unknown) => {
+      try {
+        assertTrustedRenderer(event);
+        const { active } =
+          previewViewSendContracts.setOverlayActive.input.parse(input);
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (!window) return;
+        setPreviewViewOverlayActive(window, active);
+      } catch (error) {
+        logger.error("Ignoring invalid preview view overlay state", error);
       }
     },
   );

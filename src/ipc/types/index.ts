@@ -627,6 +627,7 @@ export const ipc = {
   previewView: {
     ...previewViewClient,
     setBounds: previewViewSendClient.setBounds,
+    setOverlayActive: previewViewSendClient.setOverlayActive,
   },
 
   // Event clients for main->renderer pub/sub

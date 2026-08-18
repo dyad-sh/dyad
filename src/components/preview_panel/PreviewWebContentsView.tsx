@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import {
+  previewNativeOverlayActiveAtom,
+  previewNativeViewAtom,
+} from "@/atoms/previewAtoms";
 import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 import {
   Tooltip,
@@ -67,6 +70,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const { settings } = useSettings();
   const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const isNativeOverlayActive = useAtomValue(previewNativeOverlayActiveAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   // A preview-driven test run keeps this view alive even while the user browses
   // to another tab, so advertise it and offer the way back.
@@ -82,6 +86,9 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
     null,
   );
   const [loadFailure, setLoadFailure] = useState<LoadFailure | null>(null);
+  const [screenshotDataUrl, setScreenshotDataUrl] = useState<string | null>(
+    null,
+  );
 
   const isCloudMode = mode === "cloud";
   const zoomLevel = settings?.zoomLevel;
@@ -128,10 +135,17 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
     const unsubscribeLoadFailed = ipc.events.previewView.onLoadFailed(
       (failure) => setLoadFailure(failure),
     );
+    const unsubscribeScreenshot = ipc.events.previewView.onScreenshotUpdated(
+      ({ dataUrl }) => {
+        // Replacing the state value releases the older in-memory screenshot.
+        setScreenshotDataUrl(dataUrl);
+      },
+    );
 
     return () => {
       unsubscribeNavigation();
       unsubscribeLoadFailed();
+      unsubscribeScreenshot();
     };
   }, []);
 
@@ -159,6 +173,14 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
       });
     };
   }, [appUrl, isViewActive, measureBounds]);
+
+  // The toolbar sends this synchronously before opening its menu. Mirroring
+  // the current atom here also covers a native view that mounts while another
+  // overlapping workbench surface is already open.
+  useEffect(() => {
+    if (!isViewActive) return;
+    ipc.previewView.setOverlayActive({ active: isNativeOverlayActive });
+  }, [isNativeOverlayActive, isViewActive]);
 
   useEffect(() => {
     if (!isViewActive) return;
@@ -394,8 +416,19 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
         <div
           ref={hostRef}
           data-testid="preview-native-view-host"
-          className="min-h-0 flex-1"
-        />
+          className="relative min-h-0 flex-1 overflow-hidden bg-background"
+        >
+          {isNativeOverlayActive && screenshotDataUrl && (
+            <img
+              src={screenshotDataUrl}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              data-testid="preview-native-screenshot"
+              className="pointer-events-none absolute inset-0 size-full select-none object-fill"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

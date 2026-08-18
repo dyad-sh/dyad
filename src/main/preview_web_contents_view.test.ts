@@ -41,6 +41,7 @@ const h = vi.hoisted(() => {
     url = "";
     back = false;
     forward = false;
+    screenshotSequence = 0;
     windowOpenHandler: ((details: { url: string }) => unknown) | null = null;
     session = {
       clearStorageData: vi.fn(async () => {}),
@@ -53,6 +54,13 @@ const h = vi.hoisted(() => {
       this.destroyed = true;
     });
     reload = vi.fn();
+    capturePage = vi.fn(async () => {
+      const dataUrl = `data:image/png;base64,screenshot-${++this.screenshotSequence}`;
+      return {
+        isEmpty: () => false,
+        toDataURL: () => dataUrl,
+      };
+    });
     setWindowOpenHandler = vi.fn(
       (fn: (details: { url: string }) => unknown) => {
         this.windowOpenHandler = fn;
@@ -117,6 +125,7 @@ import {
   previewViewReload,
   resetPreviewViewsForTesting,
   setPreviewViewBounds,
+  setPreviewViewOverlayActive,
   showPreviewView,
 } from "./preview_web_contents_view";
 import { previewViewEvents } from "@/ipc/types/preview_view";
@@ -359,6 +368,78 @@ describe("hidePreviewView", () => {
 
     expect(h.createdViews).toHaveLength(2);
     expect(latestView().webContents.loadURL).toHaveBeenCalledWith(APP_URL);
+  });
+});
+
+describe("preview screenshots and renderer overlays", () => {
+  it("captures once per second and replaces the native surface while an overlay is open", async () => {
+    vi.useFakeTimers();
+    const { window, asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(1);
+    expect(sentOn(window, previewViewEvents.screenshotUpdated.channel)).toEqual(
+      [
+        {
+          channel: previewViewEvents.screenshotUpdated.channel,
+          payload: {
+            dataUrl: "data:image/png;base64,screenshot-1",
+          },
+        },
+      ],
+    );
+
+    setPreviewViewOverlayActive(asBrowserWindow, true);
+
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+    expect(
+      sentOn(window, previewViewEvents.screenshotUpdated.channel),
+    ).toHaveLength(2);
+
+    // The cached renderer image keeps refreshing while the native surface is
+    // hidden, without allowing the WebContentsView to flash back on top.
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(3);
+    expect(view.webContents.capturePage).toHaveBeenLastCalledWith(undefined, {
+      stayHidden: true,
+    });
+
+    setPreviewViewOverlayActive(asBrowserWindow, false);
+    expect(view.setVisible).toHaveBeenLastCalledWith(true);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(4);
+    expect(
+      sentOn(window, previewViewEvents.screenshotUpdated.channel).at(-1),
+    ).toEqual({
+      channel: previewViewEvents.screenshotUpdated.channel,
+      payload: { dataUrl: "data:image/png;base64,screenshot-4" },
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("stops capturing and drops the cached screenshot when the view is destroyed", async () => {
+    vi.useFakeTimers();
+    const { window, asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    hidePreviewView(asBrowserWindow);
+    window.webContents.sent.length = 0;
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(1);
+    setPreviewViewOverlayActive(asBrowserWindow, true);
+    expect(sentOn(window, previewViewEvents.screenshotUpdated.channel)).toEqual(
+      [],
+    );
+
+    vi.useRealTimers();
   });
 });
 

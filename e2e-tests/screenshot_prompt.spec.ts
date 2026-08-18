@@ -26,11 +26,19 @@ test("bug report: backing out recovers, and a capture reaches the clipboard", as
 
   await po.page.getByRole("button", { name: "Report a Bug" }).click();
 
-  // The capture targets the focused window, which the windowing environment
-  // running the suite may not have granted on its own.
-  await po.electronApp.evaluate(({ BrowserWindow }: any) => {
-    BrowserWindow.getAllWindows()[0]?.focus();
-  });
+  // The capture targets the focused window. focus() returns before the window
+  // manager grants it, so wait for the result. Re-asked each tick since a
+  // manager may ignore the first.
+  await expect
+    .poll(
+      () =>
+        po.electronApp.evaluate(({ BrowserWindow }: any) => {
+          BrowserWindow.getAllWindows()[0]?.focus();
+          return BrowserWindow.getFocusedWindow() !== null;
+        }),
+      { timeout: Timeout.MEDIUM },
+    )
+    .toBe(true);
   await po.page.getByRole("button", { name: /recommended/ }).click();
 
   await expect(

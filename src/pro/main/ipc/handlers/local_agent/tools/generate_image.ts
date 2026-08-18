@@ -57,7 +57,6 @@ async function callGenerateImage(
       prompt,
       model: "dyad/image-gen",
     }),
-    signal: ctx.abortSignal,
   });
 
   if (!response.ok) {

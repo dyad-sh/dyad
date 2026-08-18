@@ -88,17 +88,20 @@ describe("engineFetch", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("clears the timeout and caller listener after success", async () => {
+  it("keeps cancellation active until the response body settles", async () => {
     const controller = new AbortController();
     const addListener = vi.spyOn(controller.signal, "addEventListener");
     const removeListener = vi.spyOn(controller.signal, "removeEventListener");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
 
-    await expect(
-      engineFetch({ dyadRequestId: "request-4" }, "/tools/test", {
-        signal: controller.signal,
-      }),
-    ).resolves.toBeInstanceOf(Response);
+    const response = await engineFetch(
+      { dyadRequestId: "request-4", abortSignal: controller.signal },
+      "/tools/test",
+    );
+
+    expect(vi.getTimerCount()).toBe(1);
+    expect(removeListener).not.toHaveBeenCalled();
+    await expect(response.text()).resolves.toBe("ok");
 
     expect(vi.getTimerCount()).toBe(0);
     expect(addListener).toHaveBeenCalledOnce();
@@ -106,6 +109,65 @@ describe("engineFetch", () => {
       "abort",
       addListener.mock.calls[0]?.[1],
     );
+  });
+
+  it("uses the context abort signal by default after headers arrive", async () => {
+    const controller = new AbortController();
+    const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(streamController) {
+              init?.signal?.addEventListener("abort", () => {
+                streamController.error(init.signal?.reason);
+              });
+            },
+          }),
+        ),
+      );
+    });
+
+    const response = await engineFetch(
+      { dyadRequestId: "request-headers", abortSignal: controller.signal },
+      "/tools/test",
+    );
+    const bodyRejection = expect(response.text()).rejects.toThrow(
+      "cancel body read",
+    );
+    controller.abort(new Error("cancel body read"));
+
+    await bodyRejection;
+    expect(vi.getTimerCount()).toBe(0);
+    expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("applies the timeout until the response body settles", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(streamController) {
+              init?.signal?.addEventListener("abort", () => {
+                streamController.error(init.signal?.reason);
+              });
+            },
+          }),
+        ),
+      );
+    });
+
+    const response = await engineFetch(
+      { dyadRequestId: "request-body-timeout" },
+      "/tools/test",
+    );
+    const bodyRejection = expect(response.json()).rejects.toBeInstanceOf(
+      EngineFetchTimeoutError,
+    );
+    await vi.advanceTimersByTimeAsync(DEFAULT_ENGINE_FETCH_TIMEOUT_MS);
+
+    await bodyRejection;
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("cleans up the timeout and listener after cancellation", async () => {

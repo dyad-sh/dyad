@@ -68,7 +68,6 @@ async function callWebFetch(
   const response = await engineFetch(ctx, "/tools/web-crawl", {
     method: "POST",
     body: JSON.stringify({ url, markdownOnly: true }),
-    signal: ctx.abortSignal,
   });
 
   if (!response.ok) {

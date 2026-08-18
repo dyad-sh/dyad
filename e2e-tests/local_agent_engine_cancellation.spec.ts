@@ -30,7 +30,10 @@ testSkipIfWindows(
     const cancelButton = po.page.getByRole("button", {
       name: "Cancel generation",
     });
+    const messages = po.page.getByTestId("messages-list");
     await expect(cancelButton).toBeVisible();
+    await expect(messages).toContainText("Web Fetch");
+    await expect(messages).toContainText("Fetching...");
     await cancelButton.click();
 
     await expect(cancelButton).not.toBeVisible({ timeout: 10_000 });
@@ -46,15 +49,24 @@ testSkipIfWindows(
       )
       .toBe(true);
 
-    const messages = po.page.getByTestId("messages-list");
+    await fetch(`${fakeEngineStateUrl}/release`, { method: "POST" });
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (await fetch(fakeEngineStateUrl)).json()) as {
+              lateResponseAttempted: boolean;
+            }
+          ).lateResponseAttempted,
+      )
+      .toBe(true);
     await expect(messages).not.toContainText("LATE_CANCELLED_TOOL_SUCCESS");
 
     await po.chatActions.clickNewChat();
-    await po.sendPrompt("tc=local-agent/simple-response", { timeout: 10_000 });
+    await po.sendPrompt("tc=local-agent/simple-response");
     await expect(messages).toContainText(
       "This is a simple response from the Basic Agent mode.",
     );
     await expect(cancelButton).not.toBeVisible();
-    await expect(messages).not.toContainText("LATE_CANCELLED_TOOL_SUCCESS");
   },
 );

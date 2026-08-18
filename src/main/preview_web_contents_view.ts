@@ -16,6 +16,7 @@ const logger = log.scope("preview_web_contents_view");
 const ERR_ABORTED = -3;
 
 const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
+const SCREENSHOT_INTERVAL_MS = 1_000;
 
 interface PreviewViewEntry {
   view: WebContentsView;
@@ -34,6 +35,12 @@ interface PreviewViewEntry {
   hiddenDuringAutomation: boolean;
   /** Lets the runner report a view that was destroyed out from under it. */
   onAutomationViewDestroyed: (() => void) | null;
+  /** True while renderer UI overlaps the native surface. */
+  overlayActive: boolean;
+  /** The sole retained screenshot; replacement releases the previous string. */
+  latestScreenshotDataUrl: string | null;
+  screenshotTimer: ReturnType<typeof setInterval> | null;
+  screenshotCapturePending: boolean;
 }
 
 /**
@@ -110,6 +117,70 @@ function emitNavigationState(
   });
 }
 
+function emitScreenshot(window: BrowserWindow, dataUrl: string | null): void {
+  if (!dataUrl) return;
+  safeSend(window.webContents, previewViewEvents.screenshotUpdated.channel, {
+    dataUrl,
+  });
+}
+
+async function capturePreviewScreenshot(
+  window: BrowserWindow,
+  key: number,
+  entry: PreviewViewEntry,
+): Promise<void> {
+  if (entry.screenshotCapturePending || entry.hiddenDuringAutomation) {
+    return;
+  }
+
+  const contents = entry.view.webContents;
+  if (contents.isDestroyed()) return;
+
+  entry.screenshotCapturePending = true;
+  try {
+    // Electron temporarily marks a hidden page as visible while capturing it.
+    // Keep it hidden so the native surface cannot flash over renderer UI.
+    const image = await contents.capturePage(undefined, { stayHidden: true });
+    if (
+      entries.get(key) !== entry ||
+      contents.isDestroyed() ||
+      image.isEmpty()
+    ) {
+      return;
+    }
+
+    // Keep only one in-memory string. Assigning the new value makes both the
+    // NativeImage and the previous data URL unreachable after this turn.
+    const dataUrl = image.toDataURL();
+    entry.latestScreenshotDataUrl = dataUrl;
+    emitScreenshot(window, dataUrl);
+  } catch (error) {
+    logger.debug("Failed to capture preview view screenshot:", error);
+  } finally {
+    entry.screenshotCapturePending = false;
+  }
+}
+
+function startScreenshotCapture(
+  window: BrowserWindow,
+  key: number,
+  entry: PreviewViewEntry,
+): void {
+  const timer = setInterval(() => {
+    void capturePreviewScreenshot(window, key, entry);
+  }, SCREENSHOT_INTERVAL_MS);
+  timer.unref?.();
+  entry.screenshotTimer = timer;
+}
+
+function stopScreenshotCapture(entry: PreviewViewEntry): void {
+  if (entry.screenshotTimer !== null) {
+    clearInterval(entry.screenshotTimer);
+    entry.screenshotTimer = null;
+  }
+  entry.latestScreenshotDataUrl = null;
+}
+
 function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
   // No `persist:` prefix: Electron keeps this partition in memory only. A UUID
   // makes every mounted test preview a fresh browser profile, so credentials
@@ -135,6 +206,10 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
     automationActive: false,
     hiddenDuringAutomation: false,
     onAutomationViewDestroyed: null,
+    overlayActive: false,
+    latestScreenshotDataUrl: null,
+    screenshotTimer: null,
+    screenshotCapturePending: false,
   };
 
   const contents = view.webContents;
@@ -169,10 +244,14 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
   contents.on("will-redirect", restrictNavigation);
 
   const publishNavigationState = () => emitNavigationState(window, entry);
+  const publishStoppedLoadingState = () => {
+    publishNavigationState();
+    void capturePreviewScreenshot(window, key, entry);
+  };
   contents.on("did-navigate", publishNavigationState);
   contents.on("did-navigate-in-page", publishNavigationState);
   contents.on("did-start-loading", publishNavigationState);
-  contents.on("did-stop-loading", publishNavigationState);
+  contents.on("did-stop-loading", publishStoppedLoadingState);
 
   contents.on(
     "did-fail-load",
@@ -212,6 +291,7 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
   };
 
   entries.set(key, entry);
+  startScreenshotCapture(window, key, entry);
   return entry;
 }
 
@@ -219,6 +299,7 @@ function destroyEntry(key: number, window: BrowserWindow): void {
   const entry = entries.get(key);
   if (!entry) return;
   entries.delete(key);
+  stopScreenshotCapture(entry);
 
   if (entry.automationActive) {
     // The window closed or the host navigated mid-run: the driving test is
@@ -306,7 +387,7 @@ export function showPreviewView(
   if (entry.hiddenDuringAutomation) {
     entry.hiddenDuringAutomation = false;
     try {
-      entry.view.setVisible(true);
+      entry.view.setVisible(!entry.overlayActive);
     } catch (error) {
       logger.warn("Failed to re-show preview view after automation:", error);
     }
@@ -341,6 +422,26 @@ export function setPreviewViewBounds(
     entry.view.setBounds(roundBounds(bounds));
   } catch (error) {
     logger.warn("Failed to set preview view bounds:", error);
+  }
+}
+
+export function setPreviewViewOverlayActive(
+  window: BrowserWindow,
+  active: boolean,
+): void {
+  const entry = getEntry(window);
+  if (!entry) return;
+
+  entry.overlayActive = active;
+  if (active) {
+    // Replay the cache in case the renderer subscribed after the last interval.
+    emitScreenshot(window, entry.latestScreenshotDataUrl);
+  }
+
+  try {
+    entry.view.setVisible(!active && !entry.hiddenDuringAutomation);
+  } catch (error) {
+    logger.warn("Failed to update preview view overlay visibility:", error);
   }
 }
 
@@ -520,5 +621,8 @@ export function beginPreviewAutomation(
 
 /** Test-only: drops all tracked views without touching Electron objects. */
 export function resetPreviewViewsForTesting(): void {
+  for (const entry of entries.values()) {
+    stopScreenshotCapture(entry);
+  }
   entries.clear();
 }

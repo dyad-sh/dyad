@@ -26,6 +26,7 @@ const manager = vi.hoisted(() => ({
   showPreviewView: vi.fn(),
   hidePreviewView: vi.fn(),
   setPreviewViewBounds: vi.fn(),
+  setPreviewViewOverlayActive: vi.fn(),
   previewViewGoBack: vi.fn(),
   previewViewGoForward: vi.fn(),
   previewViewReload: vi.fn(),
@@ -56,6 +57,13 @@ function createEvent(url = TRUSTED_URL) {
 function setBoundsListener() {
   const listeners =
     h.ipcListeners.get(previewViewSendContracts.setBounds.channel) ?? [];
+  expect(listeners).toHaveLength(1);
+  return listeners[0];
+}
+
+function setOverlayActiveListener() {
+  const listeners =
+    h.ipcListeners.get(previewViewSendContracts.setOverlayActive.channel) ?? [];
   expect(listeners).toHaveLength(1);
   return listeners[0];
 }
@@ -131,5 +139,25 @@ describe("preview view bounds channel", () => {
     setBoundsListener()(createEvent("https://evil.example.com/"), BOUNDS);
 
     expect(manager.setPreviewViewBounds).not.toHaveBeenCalled();
+  });
+});
+
+describe("preview view overlay channel", () => {
+  it("forwards valid overlay state from a trusted renderer", () => {
+    setOverlayActiveListener()(createEvent(), { active: true });
+
+    expect(manager.setPreviewViewOverlayActive).toHaveBeenCalledWith(
+      fakeWindow,
+      true,
+    );
+  });
+
+  it("drops malformed or untrusted overlay state", () => {
+    const listener = setOverlayActiveListener();
+
+    listener(createEvent(), { active: "yes" });
+    listener(createEvent("https://evil.example.com/"), { active: true });
+
+    expect(manager.setPreviewViewOverlayActive).not.toHaveBeenCalled();
   });
 });

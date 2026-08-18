@@ -26,6 +26,13 @@ export const previewIframeRefAtom = atom<HTMLIFrameElement | null>(null);
  */
 export const previewNativeViewAtom = atom<boolean>(false);
 
+/**
+ * Whether workbench UI is currently painting over the native preview's bounds.
+ * The main process hides the WebContentsView while this is true and the
+ * renderer fills the same area with its latest in-memory screenshot.
+ */
+export const previewNativeOverlayActiveAtom = atom<boolean>(false);
+
 export const annotatorModeAtom = atom<boolean>(false);
 
 export const screenshotDataUrlAtom = atom<string | null>(null);

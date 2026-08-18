@@ -90,6 +90,10 @@ export const previewViewSendContracts = {
     channel: "preview-view:set-bounds",
     input: PreviewViewBoundsSchema,
   }),
+  setOverlayActive: defineSendContract({
+    channel: "preview-view:set-overlay-active",
+    input: z.object({ active: z.boolean() }),
+  }),
 } as const;
 
 export const previewViewEvents = {
@@ -104,6 +108,10 @@ export const previewViewEvents = {
       errorDescription: z.string(),
       url: z.string(),
     }),
+  }),
+  screenshotUpdated: defineEvent({
+    channel: "preview-view:screenshot-updated",
+    payload: z.object({ dataUrl: z.string() }),
   }),
 } as const;
 

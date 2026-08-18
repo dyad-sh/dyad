@@ -284,6 +284,12 @@ Automated `pnpm add` commands that run in an app root with a generated `pnpm-wor
 
 ## React + IPC integration pattern
 
+Electron `WebContentsView` surfaces are composited above the renderer DOM, so
+portals and higher CSS `z-index` values cannot cover them. For overlapping
+workbench UI, hide the native view with `setVisible(false)` and paint a
+renderer-side in-memory `capturePage()` fallback; pass `{ stayHidden: true }`
+when capturing a hidden view so Electron cannot flash it back above the DOM.
+
 When creating hooks/components that call IPC handlers:
 
 - When diagnosing a preview stuck at `Waiting for server logs…`, distinguish the

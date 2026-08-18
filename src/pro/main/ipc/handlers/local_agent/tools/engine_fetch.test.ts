@@ -15,6 +15,7 @@ import {
   EngineFetchTimeoutError,
   engineFetch,
 } from "./engine_fetch";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 describe("engineFetch", () => {
   beforeEach(() => {
@@ -47,6 +48,9 @@ describe("engineFetch", () => {
 
     await rejection;
     expect(DEFAULT_ENGINE_FETCH_TIMEOUT_MS).toBe(300_000);
+    await expect(request).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -64,9 +68,13 @@ describe("engineFetch", () => {
       signal: controller.signal,
     });
     const rejection = request.catch((error) => {
-      expect(error).toBeInstanceOf(Error);
+      expect(error).toBeInstanceOf(DyadError);
       expect(error).not.toBeInstanceOf(EngineFetchTimeoutError);
-      expect((error as Error).message).toBe("user cancelled");
+      expect(error).toMatchObject({
+        message: "This agent run was cancelled.",
+        kind: DyadErrorKind.UserCancelled,
+        cause: expect.objectContaining({ message: "user cancelled" }),
+      });
     });
     controller.abort(new Error("user cancelled"));
 
@@ -82,7 +90,10 @@ describe("engineFetch", () => {
       engineFetch({ dyadRequestId: "request-3" }, "/tools/test", {
         signal: controller.signal,
       }),
-    ).rejects.toThrow("already cancelled");
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+      cause: expect.objectContaining({ message: "already cancelled" }),
+    });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mocks.readSettings).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -109,6 +120,59 @@ describe("engineFetch", () => {
       "abort",
       addListener.mock.calls[0]?.[1],
     );
+    expect("arrayBuffer" in response).toBe(false);
+    expect("clone" in response).toBe(false);
+  });
+
+  it("combines an explicit signal with the turn abort signal", async () => {
+    const explicitController = new AbortController();
+    const turnController = new AbortController();
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(init.signal?.reason);
+        });
+      });
+    });
+
+    const request = engineFetch(
+      {
+        dyadRequestId: "request-combined-signals",
+        abortSignal: turnController.signal,
+      },
+      "/tools/test",
+      { signal: explicitController.signal },
+    );
+    turnController.abort(new Error("turn cancelled"));
+
+    await expect(request).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+      cause: expect.objectContaining({ message: "turn cancelled" }),
+    });
+    expect(explicitController.signal.aborted).toBe(false);
+  });
+
+  it("supports a per-endpoint timeout override", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(init.signal?.reason);
+        });
+      });
+    });
+
+    const request = engineFetch(
+      { dyadRequestId: "request-short-timeout" },
+      "/tools/test",
+      { timeoutMs: 25 },
+    );
+    const rejection = expect(request).rejects.toMatchObject({
+      message: "Dyad engine request to /tools/test timed out after 25ms",
+      kind: DyadErrorKind.External,
+    });
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
   });
 
   it("uses the context abort signal by default after headers arrive", async () => {
@@ -132,9 +196,10 @@ describe("engineFetch", () => {
       { dyadRequestId: "request-headers", abortSignal: controller.signal },
       "/tools/test",
     );
-    const bodyRejection = expect(response.text()).rejects.toThrow(
-      "cancel body read",
-    );
+    const bodyRejection = expect(response.text()).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+      cause: expect.objectContaining({ message: "cancel body read" }),
+    });
     controller.abort(new Error("cancel body read"));
 
     await bodyRejection;
@@ -185,11 +250,34 @@ describe("engineFetch", () => {
       signal: controller.signal,
     });
     const rejection = expect(request).rejects.toMatchObject({
-      name: "AbortError",
+      kind: DyadErrorKind.UserCancelled,
     });
     controller.abort();
     await rejection;
 
+    expect(vi.getTimerCount()).toBe(0);
+    expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("cleans up when a caller abandons and cancels the response body", async () => {
+    const controller = new AbortController();
+    const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+    const upstreamCancel = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          cancel: upstreamCancel,
+        }),
+      ),
+    );
+
+    const response = await engineFetch(
+      { dyadRequestId: "request-abandoned", abortSignal: controller.signal },
+      "/tools/test",
+    );
+    await response.body?.cancel("consumer stopped");
+
+    expect(upstreamCancel).toHaveBeenCalledWith("consumer stopped");
     expect(vi.getTimerCount()).toBe(0);
     expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
   });

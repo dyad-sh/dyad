@@ -11,17 +11,38 @@ import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 export interface EngineFetchOptions extends Omit<RequestInit, "headers"> {
   /** Additional headers to include */
   headers?: Record<string, string>;
+  /** Override the default request deadline for this endpoint. */
+  timeoutMs?: number;
+}
+
+export interface EngineFetchResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Headers;
+  readonly body: ReadableStream<Uint8Array> | null;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
 }
 
 export const DEFAULT_ENGINE_FETCH_TIMEOUT_MS = 300_000;
 
-export class EngineFetchTimeoutError extends Error {
-  constructor(endpoint: string) {
+export class EngineFetchTimeoutError extends DyadError {
+  constructor(endpoint: string, timeoutMs = DEFAULT_ENGINE_FETCH_TIMEOUT_MS) {
     super(
-      `Dyad engine request to ${endpoint} timed out after ${DEFAULT_ENGINE_FETCH_TIMEOUT_MS}ms`,
+      `Dyad engine request to ${endpoint} timed out after ${timeoutMs}ms`,
+      DyadErrorKind.External,
     );
     this.name = "EngineFetchTimeoutError";
   }
+}
+
+function createCallerCancellationError(cause: unknown): DyadError {
+  return new DyadError(
+    "This agent run was cancelled.",
+    DyadErrorKind.UserCancelled,
+    { cause },
+  );
 }
 
 /**
@@ -38,9 +59,14 @@ export async function engineFetch(
   ctx: Pick<AgentContext, "dyadRequestId" | "abortSignal">,
   endpoint: string,
   options: EngineFetchOptions = {},
-): Promise<Response> {
-  const callerSignal = options.signal ?? ctx.abortSignal;
-  callerSignal?.throwIfAborted();
+): Promise<EngineFetchResponse> {
+  const callerSignals = [options.signal, ctx.abortSignal].filter(
+    (signal): signal is AbortSignal => signal != null,
+  );
+  const alreadyAbortedSignal = callerSignals.find((signal) => signal.aborted);
+  if (alreadyAbortedSignal) {
+    throw createCallerCancellationError(alreadyAbortedSignal.reason);
+  }
 
   const settings = readSettings();
   const apiKey = settings.providerSettings?.auto?.apiKey?.value;
@@ -49,38 +75,45 @@ export async function engineFetch(
     throw new DyadError("Dyad Pro API key is required", DyadErrorKind.Auth);
   }
 
-  const { headers: extraHeaders, signal: _signal, ...restOptions } = options;
+  const {
+    headers: extraHeaders,
+    signal: _signal,
+    timeoutMs = DEFAULT_ENGINE_FETCH_TIMEOUT_MS,
+    ...restOptions
+  } = options;
   const requestController = new AbortController();
   let abortSource: "caller" | "timeout" | undefined;
-  const onCallerAbort = () => {
-    if (abortSource) return;
-    abortSource = "caller";
-    requestController.abort(callerSignal?.reason);
-  };
-  callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
-  if (callerSignal?.aborted) {
-    onCallerAbort();
+  let callerAbortReason: unknown;
+  const callerAbortListeners = new Map<AbortSignal, () => void>();
+  for (const signal of new Set(callerSignals)) {
+    const onAbort = () => {
+      if (abortSource) return;
+      abortSource = "caller";
+      callerAbortReason = signal.reason;
+      requestController.abort(signal.reason);
+    };
+    callerAbortListeners.set(signal, onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
   }
   const timeout = setTimeout(() => {
     if (abortSource) return;
     abortSource = "timeout";
-    requestController.abort(new EngineFetchTimeoutError(endpoint));
-  }, DEFAULT_ENGINE_FETCH_TIMEOUT_MS);
+    requestController.abort(new EngineFetchTimeoutError(endpoint, timeoutMs));
+  }, timeoutMs);
 
   const cleanup = () => {
     clearTimeout(timeout);
-    callerSignal?.removeEventListener("abort", onCallerAbort);
+    for (const [signal, listener] of callerAbortListeners) {
+      signal.removeEventListener("abort", listener);
+    }
   };
   const normalizeAbortError = (error: unknown) => {
     if (abortSource === "timeout") {
-      return new EngineFetchTimeoutError(endpoint);
+      return new EngineFetchTimeoutError(endpoint, timeoutMs);
     }
     if (abortSource === "caller") {
-      try {
-        callerSignal?.throwIfAborted();
-      } catch (callerError) {
-        return callerError;
-      }
+      return createCallerCancellationError(callerAbortReason);
     }
     return error;
   };
@@ -125,17 +158,8 @@ export async function engineFetch(
       },
     });
 
-    const monitoredResponse = new Response(monitoredBody, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-    // Node's native body consumers can replace a custom stream error with an
-    // EncodingError. Consume this byte stream directly so timeout and caller-
-    // abort reasons remain distinguishable for text and JSON engine responses.
     const consumeText = async () => {
-      const bodyReader = monitoredResponse.body?.getReader();
-      if (!bodyReader) return "";
+      const bodyReader = monitoredBody.getReader();
       const decoder = new TextDecoder();
       let text = "";
       while (true) {
@@ -144,9 +168,15 @@ export async function engineFetch(
         text += decoder.decode(value, { stream: true });
       }
     };
-    monitoredResponse.text = consumeText;
-    monitoredResponse.json = async () => JSON.parse(await consumeText());
-    return monitoredResponse;
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      body: monitoredBody,
+      text: consumeText,
+      json: async () => JSON.parse(await consumeText()),
+    };
   } catch (error) {
     cleanup();
     throw normalizeAbortError(error);

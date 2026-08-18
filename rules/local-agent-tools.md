@@ -28,16 +28,21 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Async I/O
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.
-- `engineFetch` defaults to `ctx.abortSignal`, so Local Agent engine requests
-  structurally inherit turn cancellation. The helper owns the default
-  five-minute engine deadline; keep caller aborts,
+- `engineFetch` always includes `ctx.abortSignal`, combining it with any
+  caller-supplied signal, so Local Agent engine requests structurally inherit
+  turn cancellation. The helper owns the default five-minute engine deadline
+  (with a per-endpoint override); keep caller aborts,
   deadline timeouts, and ordinary network failures separately classified, and
   keep both cancellation and the deadline active until the response body
   settles. Clean up combined-signal listeners and timers on every settlement
   path.
-- When a wrapper needs to preserve custom abort reasons while proxying a
-  `Response` body, consume the monitored byte stream directly. Node's native
-  `Response.json()` can replace a custom stream failure with `EncodingError`.
+- Keep the `engineFetch` response surface limited to the body consumers whose
+  abort classification is preserved. Node's native `Response` consumers can
+  replace a custom stream failure with `EncodingError`, and `clone()` drops
+  instance overrides.
+- A streaming caller that exits before EOF must cancel its response reader in
+  `finally`; releasing the lock alone leaves the socket, deadline timer, and
+  turn-signal listeners alive.
 
 ## App lifecycle tools
 

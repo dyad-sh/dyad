@@ -131,11 +131,15 @@ async function callWebSearchSSE(
   const decoder = new TextDecoder();
   let accumulated = "";
   let buffer = "";
+  let streamCompleted = false;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        streamCompleted = true;
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -156,6 +160,11 @@ async function callWebSearchSSE(
       });
     }
   } finally {
+    if (!streamCompleted) {
+      await reader.cancel().catch((error) => {
+        logger.warn("Failed to cancel abandoned web search response:", error);
+      });
+    }
     reader.releaseLock();
   }
 

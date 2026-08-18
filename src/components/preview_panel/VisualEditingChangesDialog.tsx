@@ -6,6 +6,7 @@ import { Check, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { usePostHog } from "posthog-js/react";
 
 interface VisualEditingChangesDialogProps {
   onReset?: () => void;
@@ -18,12 +19,26 @@ export function VisualEditingChangesDialog({
 }: VisualEditingChangesDialogProps) {
   const [pendingChanges, setPendingChanges] = useAtom(pendingVisualChangesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const posthog = usePostHog();
   const [isSaving, setIsSaving] = useState(false);
   const textContentCache = useRef<Map<string, string>>(new Map());
   const [allResponsesReceived, setAllResponsesReceived] = useState(false);
   const expectedResponsesRef = useRef<Set<string>>(new Set());
   const isWaitingForResponses = useRef(false);
   const isApplyingChanges = useRef(false);
+  const previouslyHadPendingChanges = useRef(false);
+
+  // Count an editing attempt once per unsaved batch. Activating or using the
+  // component selector alone never creates a pending change.
+  useEffect(() => {
+    const hasPendingChanges = pendingChanges.size > 0;
+
+    if (hasPendingChanges && !previouslyHadPendingChanges.current) {
+      posthog.capture("visual-editor:edit");
+    }
+
+    previouslyHadPendingChanges.current = hasPendingChanges;
+  }, [pendingChanges.size, posthog]);
 
   // Listen for text content responses
   useEffect(() => {
@@ -73,6 +88,7 @@ export function VisualEditingChangesDialog({
             changes: updatedChanges,
           });
 
+          posthog.capture("visual-editor:save");
           setPendingChanges(new Map());
           textContentCache.current.clear();
           showSuccess("Visual changes saved to source files");
@@ -96,6 +112,7 @@ export function VisualEditingChangesDialog({
     pendingChanges,
     selectedAppId,
     onReset,
+    posthog,
     setPendingChanges,
   ]);
 
@@ -138,6 +155,7 @@ export function VisualEditingChangesDialog({
           changes: changesToSave,
         });
 
+        posthog.capture("visual-editor:save");
         setPendingChanges(new Map());
         textContentCache.current.clear();
         showSuccess("Visual changes saved to source files");

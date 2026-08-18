@@ -14,6 +14,7 @@ import { VisualEditingChangesDialog } from "./VisualEditingChangesDialog";
 
 const mocks = vi.hoisted(() => ({
   applyChanges: vi.fn(),
+  posthogCapture: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }));
@@ -31,11 +32,52 @@ vi.mock("@/lib/toast", () => ({
   showSuccess: mocks.showSuccess,
 }));
 
+vi.mock("posthog-js/react", () => ({
+  usePostHog: () => ({ capture: mocks.posthogCapture }),
+}));
+
+const firstChange = {
+  componentId: "src/pages/Index.tsx:7",
+  componentName: "h1",
+  relativePath: "src/pages/Index.tsx",
+  lineNumber: 7,
+  styles: {
+    margin: { left: "20px", right: "20px" },
+  },
+};
+
 describe("VisualEditingChangesDialog", () => {
   beforeEach(() => {
     mocks.applyChanges.mockReset();
+    mocks.posthogCapture.mockReset();
     mocks.showError.mockReset();
     mocks.showSuccess.mockReset();
+  });
+
+  it("tracks an edit only after a component is modified", async () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    const Wrapper = ({ children }: PropsWithChildren) => (
+      <Provider store={store}>{children}</Provider>
+    );
+
+    render(<VisualEditingChangesDialog />, {
+      wrapper: Wrapper,
+      reactStrictMode: true,
+    });
+
+    expect(mocks.posthogCapture).not.toHaveBeenCalled();
+
+    act(() => {
+      store.set(
+        pendingVisualChangesAtom,
+        new Map([[firstChange.componentId, firstChange]]),
+      );
+    });
+
+    await waitFor(() => {
+      expect(mocks.posthogCapture).toHaveBeenCalledWith("visual-editor:edit");
+    });
   });
 
   it("applies pending changes once when the component rerenders during save", async () => {
@@ -51,20 +93,7 @@ describe("VisualEditingChangesDialog", () => {
     store.set(selectedAppIdAtom, 1);
     store.set(
       pendingVisualChangesAtom,
-      new Map([
-        [
-          "src/pages/Index.tsx:7",
-          {
-            componentId: "src/pages/Index.tsx:7",
-            componentName: "h1",
-            relativePath: "src/pages/Index.tsx",
-            lineNumber: 7,
-            styles: {
-              margin: { left: "20px", right: "20px" },
-            },
-          },
-        ],
-      ]),
+      new Map([[firstChange.componentId, firstChange]]),
     );
 
     const iframe = document.createElement("iframe");
@@ -117,6 +146,7 @@ describe("VisualEditingChangesDialog", () => {
       expect(screen.queryByRole("button", { name: "Save Changes" })).toBeNull();
     });
     expect(mocks.showSuccess).toHaveBeenCalledTimes(1);
+    expect(mocks.posthogCapture).toHaveBeenCalledWith("visual-editor:save");
     iframe.remove();
   });
 });

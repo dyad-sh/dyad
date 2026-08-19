@@ -143,8 +143,11 @@ describe("sub-agent manager status policy", () => {
     });
   });
 
-  it("requires an Implementer to complete before root finalization", () => {
+  it("blocks root finalization on Implementer failure but not on a step budget", () => {
     expect(isAcceptableImplementerJoinStatus("completed")).toBe(true);
+    // "partial" = ran out of model steps, with its report already persisted.
+    // A budget outcome must not destroy the root agent's whole turn.
+    expect(isAcceptableImplementerJoinStatus("partial")).toBe(true);
     expect(isAcceptableImplementerJoinStatus("cancelled")).toBe(false);
     expect(isAcceptableImplementerJoinStatus("failed")).toBe(false);
     expect(isAcceptableImplementerJoinStatus("entitlement_revoked")).toBe(

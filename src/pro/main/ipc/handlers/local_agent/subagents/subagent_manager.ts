@@ -71,6 +71,20 @@ const AUTO_REVIEW_BARRIER_MAX_WAIT_MS = 10 * 60 * 1000;
 const ROOT_FINALIZATION_MAX_WAIT_MS = 10 * 60 * 1000;
 const REVIEW_WRITER_MAX_WAIT_MS = 10 * 60 * 1000;
 const SUBAGENT_MAX_STEPS = 50;
+/**
+ * The Implementer is the only persona that both writes code and verifies it —
+ * it can run type checks, restart the app and read its logs, and fix what it
+ * finds. Each of those is a model step, so a verify/fix/re-verify loop costs
+ * several steps a read-only Explorer or Reviewer never spends. 50 was sized for a
+ * sub-agent that could only edit files; keeping it there caps the Implementer
+ * mid-verification, which is the one place a partial result is most misleading.
+ */
+const IMPLEMENTER_MAX_STEPS = 100;
+
+function maxStepsFor(persona: SubagentPersona): number {
+  return persona === "implementer" ? IMPLEMENTER_MAX_STEPS : SUBAGENT_MAX_STEPS;
+}
+
 const logger = log.scope("subagent_manager");
 
 const abortControllers = new Map<string, AbortController>();
@@ -1264,8 +1278,21 @@ export async function endRootFinalization(appId: number): Promise<void> {
   endAppFinalization(appId);
 }
 
+/**
+ * "partial" means the sub-agent ran out of model steps (or an Explorer fell back
+ * to a deterministic report) — it is a budget outcome, not a failure. The work it
+ * did is kept: `appendAssistantMessage` writes the report before `finishThread`
+ * records the status, so the root agent has something to act on either way.
+ *
+ * The root agent already handles its OWN step limit this way: it appends a
+ * `<dyad-step-limit>` notice and finishes the turn (see local_agent_handler).
+ * Treating the same condition in a sub-agent as fatal threw away the parent's
+ * entire turn — including work unrelated to the sub-agent — over a budget the
+ * caller never set. Genuine failures still surface as "failed"/"cancelled" and
+ * are still rejected here.
+ */
 export function isAcceptableImplementerJoinStatus(status: string): boolean {
-  return status === "completed";
+  return status === "completed" || status === "partial";
 }
 
 async function runThread(
@@ -1369,7 +1396,7 @@ async function runThread(
       result.hitStepLimit || usedExplorerFallback ? "partial" : "completed",
       { report: durableResult },
       result.hitStepLimit
-        ? `Sub-agent stopped after ${SUBAGENT_MAX_STEPS} model steps.`
+        ? `Sub-agent stopped after ${maxStepsFor(thread.persona)} model steps.`
         : usedExplorerFallback
           ? "Explorer returned a deterministic report from observed evidence."
           : null,
@@ -1546,7 +1573,7 @@ async function runModel(params: {
     onError: ({ error }) => {
       streamError ??= error;
     },
-    stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
+    stopWhen: stepCountIs(maxStepsFor(params.persona)),
     abortSignal: params.abortSignal,
   });
   const [text, usage, steps] = await Promise.all([
@@ -1571,7 +1598,7 @@ async function runModel(params: {
   });
   return {
     text,
-    hitStepLimit: steps.length >= SUBAGENT_MAX_STEPS,
+    hitStepLimit: steps.length >= maxStepsFor(params.persona),
   };
 }
 

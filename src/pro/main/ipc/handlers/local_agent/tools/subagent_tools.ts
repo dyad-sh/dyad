@@ -116,19 +116,37 @@ export function buildSubagentContext(
   };
 }
 
-function buildSubagentToolSet(params: SubagentToolContextParams): ToolSet {
+/**
+ * Session state the ORCHESTRATOR owns. A sub-agent writing here would corrupt
+ * the parent's view of its own run rather than do the work it was asked to do.
+ *
+ * Deliberately short. Recursion needs no entry: `spawn_agent` and the advanced
+ * sub-agent tools already gate on `!ctx.subagentThreadId`, and the child
+ * context sets it, so a sub-agent cannot spawn regardless of this list.
+ * Explorer needs no entries either: it is built with `readOnly: true`, which
+ * `shouldIncludeTool` uses to strip every state-modifying tool.
+ */
+const SUBAGENT_DENYLIST = new Set(["update_todos", "set_chat_summary"]);
+
+export function buildSubagentToolSet(
+  params: SubagentToolContextParams,
+): ToolSet {
   const { ctx, persona } = params;
-  const allowlist =
-    persona === "explorer"
-      ? ["read_file", "list_files", "grep", "code_search", "explore_code"]
-      : ["read_file", "list_files", "grep", "write_file", "search_replace"];
   const childCtx = buildSubagentContext(params);
+  // Previously an allowlist of five tools (read_file, list_files, grep,
+  // write_file, search_replace), which left the Implementer able to change code
+  // but unable to check it: no run_type_checks, no restart_app, no read_logs.
+  // The only verification in the loop was therefore the root agent re-reading
+  // files the sub-agent had written — reviewing a diff it did not watch being
+  // made, with no way to compile it. A denylist gives the Implementer the same
+  // verification tools the root agent has, so a mistake is caught where it was
+  // made rather than one level up.
   const allTools = buildAgentToolSet(childCtx, {
     readOnly: persona === "explorer",
     enableAppBlueprint: ctx.enableAppBlueprint,
   });
   return Object.fromEntries(
-    Object.entries(allTools).filter(([name]) => allowlist.includes(name)),
+    Object.entries(allTools).filter(([name]) => !SUBAGENT_DENYLIST.has(name)),
   );
 }
 

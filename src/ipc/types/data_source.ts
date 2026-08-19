@@ -33,6 +33,8 @@ export const DataSourceCredentialTypeSchema = z.enum([
   "service_role",
 ]);
 
+export const DataSourceAccessModeSchema = z.enum(["read_only", "read_write"]);
+
 /** Everything the renderer is allowed to know about a data source. */
 export const DataSourceSchema = z.object({
   id: z.string(),
@@ -44,7 +46,7 @@ export const DataSourceSchema = z.object({
   credentialType: DataSourceCredentialTypeSchema,
   /** Short quotable identifier for the saved key, e.g. SUP-8F3A21. */
   keyId: z.string(),
-  accessMode: z.literal("read_only"),
+  accessMode: DataSourceAccessModeSchema,
   enabled: z.boolean(),
   status: DataSourceStatusSchema,
   statusMessage: z.string(),
@@ -139,6 +141,7 @@ export const dataSourceContracts = {
       connectionKey: SecretInput,
       /** Which kind of database this is. Defaults to the original one. */
       provider: z.enum(["supabase", "cloudflare-d1"]).default("supabase"),
+      accessMode: DataSourceAccessModeSchema.default("read_only"),
     }),
     output: DataSourceSchema,
   }),
@@ -152,6 +155,7 @@ export const dataSourceContracts = {
       environment: DataSourceEnvironmentSchema.optional(),
       credentialType: DataSourceCredentialTypeSchema.optional(),
       enabled: z.boolean().optional(),
+      accessMode: DataSourceAccessModeSchema.optional(),
       connectionKey: SecretInput,
     }),
     output: DataSourceSchema,

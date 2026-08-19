@@ -32,6 +32,7 @@ import {
   inferModelCapabilities,
   isModelSuitableForRole,
   modelOptionKey,
+  providerSettingsForRoleSelection,
   selectBestModelForRole,
   selectableModelsForRole,
   type ModelCapability,
@@ -75,6 +76,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { isProviderVisibleInSettings } from "@/lib/settings_provider_visibility";
+import { BUILT_IN_IMAGE_MODELS } from "@/lib/image_generation_models";
 
 const ROLE_ICONS: Record<ModelRole, typeof MessageSquare> = {
   chat: MessageSquare,
@@ -494,17 +496,11 @@ function RoleCard({
   const selected = auto ? best : manuallySelected;
   const unavailable = !auto && configuredModel && !manuallySelected;
 
-  /**
-   * Where the assignment does not reach, stated plainly.
-   *
-   * Image generation posts to OpenRouter whichever model is assigned, and the
-   * embedding model that vector search actually uses is configured with the
-   * workspace, not here. Neither is a new limit; both were previously hidden
-   * by a picker that offered nothing else.
-   */
   const runtimeNote =
-    role === "image" && selected && selected.provider !== "openrouter"
-      ? `Image generation currently sends every request to OpenRouter, so a ${selected.providerName} model will not be reached.`
+    role === "image" &&
+    selected &&
+    !selected.capabilities.includes("Image Generation")
+      ? `${selected.displayName} is not an image model. Meta Human OS will use this provider's image model when available, then fall back to another connected image backend.`
       : role === "embeddings" && selected
         ? "Vector search uses the embedding model configured in the Vector workspace; this assignment does not change it."
         : null;
@@ -1009,6 +1005,15 @@ export function ModelRolesSettings() {
       }
     }
 
+    for (const model of BUILT_IN_IMAGE_MODELS) {
+      if (!isProviderSetup(model.provider)) continue;
+      output.push({
+        ...model,
+        local: false,
+        capabilities: ["Image Generation", "Cloud"],
+      });
+    }
+
     if (videoStatus.data?.connected) {
       for (const model of videoModels.data ?? []) {
         output.push({
@@ -1093,6 +1098,10 @@ export function ModelRolesSettings() {
         ...settings.modelRoles,
         [role]: assignment,
       },
+      providerSettings: providerSettingsForRoleSelection(
+        settings.providerSettings,
+        selected,
+      ),
       ...legacyPatchForRole(role, model),
     });
   };

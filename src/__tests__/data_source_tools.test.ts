@@ -24,9 +24,10 @@ describe("buildDataSourceToolSet", () => {
     expect(names).toContain("search_schema");
     expect(names).toContain("get_relationships");
     expect(names).toContain("query_data_source");
+    expect(names).toContain("mutate_data_source");
   });
 
-  it("offers no tool capable of writing", () => {
+  it("offers no raw or schema-changing database tool", () => {
     const names = Object.keys(buildDataSourceToolSet(["a"]));
     for (const forbidden of [
       "insert",
@@ -53,6 +54,20 @@ describe("buildDataSourceToolSet", () => {
     // There is deliberately no field a raw statement could arrive in.
     expect(shape).not.toContain("sql");
     expect(shape).not.toContain("query");
+    expect(shape).not.toContain("statement");
+  });
+
+  it("takes a structured mutation rather than SQL", () => {
+    const tools = buildDataSourceToolSet(["a"]);
+    const shape = Object.keys(
+      // @ts-expect-error zod shape access on the tool's input schema
+      tools.mutate_data_source.inputSchema.shape,
+    );
+    expect(shape).toContain("action");
+    expect(shape).toContain("table");
+    expect(shape).toContain("values");
+    expect(shape).toContain("filters");
+    expect(shape).not.toContain("sql");
     expect(shape).not.toContain("statement");
   });
 

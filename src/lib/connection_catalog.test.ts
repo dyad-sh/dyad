@@ -19,6 +19,10 @@ describe("connection catalog taxonomy", () => {
         plugins: ["Canva"],
       },
       {
+        title: "3D & Game Development",
+        plugins: ["Godot", "Blender"],
+      },
+      {
         title: "Search & Live Data",
         plugins: ["DuckDuckGo", "CoinGecko", "Open-Meteo", "Maps"],
       },

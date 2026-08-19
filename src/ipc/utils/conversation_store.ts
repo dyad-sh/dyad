@@ -41,29 +41,32 @@ import { blobVaultKey } from "./blob_vault";
  * One job at a time by default: extraction writes to shared files, and a
  * second concurrent pass would race them.
  */
-let workerRunning = false;
 let shuttingDown = false;
+let workerChain: Promise<void> = Promise.resolve();
 
 export function stopMemoryWorker(): void {
   shuttingDown = true;
 }
 
-async function scheduleWorker(vaultPath: string): Promise<void> {
-  if (workerRunning || shuttingDown) return;
-  workerRunning = true;
-  try {
-    await runWorker(vaultPath, {
-      signal: {
-        get aborted() {
-          return shuttingDown;
+function scheduleWorker(vaultPath: string): Promise<void> {
+  if (shuttingDown) return Promise.resolve();
+  const pass = workerChain.then(async () => {
+    if (shuttingDown) return;
+    try {
+      await runWorker(vaultPath, {
+        signal: {
+          get aborted() {
+            return shuttingDown;
+          },
         },
-      },
-    });
-  } catch (error) {
-    logger.warn("Memory worker pass failed", error);
-  } finally {
-    workerRunning = false;
-  }
+      });
+    } catch (error) {
+      logger.warn("Memory worker pass failed", error);
+    }
+  });
+  // Keep future passes serialized even when an individual pass fails.
+  workerChain = pass.catch(() => undefined);
+  return pass;
 }
 
 const logger = log.scope("conversation_store");
@@ -83,6 +86,17 @@ export type StoredConversationRecord = {
   title: string;
   updatedAt: number;
   messages: ConversationTurn[];
+  vectorCollectionIds?: string[];
+  dataSourceIds?: string[];
+  projectId?: string | null;
+};
+
+export type StoredConversationContext = Pick<
+  StoredConversationRecord,
+  "vectorCollectionIds" | "dataSourceIds" | "projectId"
+> & {
+  /** Wait until an explicit remember command is searchable before replying. */
+  waitForMemoryExtraction?: boolean;
 };
 
 function titleFor(turns: ConversationTurn[]): string {
@@ -127,12 +141,22 @@ function portableConversationMarkdown(
 function storedRecord(
   sessionId: string,
   turns: ConversationTurn[],
+  context: StoredConversationContext = {},
 ): StoredConversationRecord {
   return {
     id: sessionId,
     title: titleFor(turns),
     updatedAt: Date.now(),
     messages: turns,
+    ...(context.vectorCollectionIds?.length
+      ? { vectorCollectionIds: context.vectorCollectionIds }
+      : {}),
+    ...(context.dataSourceIds?.length
+      ? { dataSourceIds: context.dataSourceIds }
+      : {}),
+    ...(context.projectId !== undefined
+      ? { projectId: context.projectId }
+      : {}),
   };
 }
 
@@ -166,6 +190,7 @@ async function writeLocalRecord(
 export async function saveConversation(
   sessionId: string,
   turns: ConversationTurn[],
+  context: StoredConversationContext = {},
 ): Promise<string | null> {
   if (turns.length === 0) return null;
   const storage = readSettings().storage;
@@ -175,7 +200,7 @@ export async function saveConversation(
     if (!isBlobConnected()) return null;
     try {
       const relativePath = `Conversations/Chat Agent/${safeFilePart(titleFor(turns))} - ${safeFilePart(sessionId)}.md`;
-      const record = storedRecord(sessionId, turns);
+      const record = storedRecord(sessionId, turns, context);
       await Promise.all([
         uploadToBlob(
           blobVaultKey(relativePath),
@@ -245,7 +270,7 @@ export async function saveConversation(
       pending.map(renderTurn).join(""),
       "utf8",
     );
-    await writeLocalRecord(vaultPath, storedRecord(sessionId, turns));
+    await writeLocalRecord(vaultPath, storedRecord(sessionId, turns, context));
 
     // Re-index in the background. The saved Markdown is already durable, so a
     // failure here costs only searchability until the next save.
@@ -253,20 +278,23 @@ export async function saveConversation(
       logger.warn("Could not re-index memory after saving", error);
     });
 
-    // Queue extraction durably. The job outlives this process, so a crash
-    // between saving and extracting costs nothing but a delay.
-    void enqueueJob(vaultPath, {
+    // Queue extraction durably. Ordinary conversation stays off the reply's
+    // critical path. An explicit "remember" command waits for the worker so a
+    // newly opened chat cannot race the memory write.
+    const extraction = enqueueJob(vaultPath, {
       conversationId: sessionId,
       conversationPath: relative(vaultPath, filePath),
       content: existing + pending.map(renderTurn).join(""),
-    }).then(
-      (queued) => {
-        // Drain shortly after, off the reply's critical path. Failure here is
-        // logged, never surfaced into the conversation.
-        if (queued) void scheduleWorker(vaultPath);
-      },
-      (error) => logger.warn("Could not queue memory extraction", error),
-    );
+    }).then(async (queued) => {
+      if (queued) await scheduleWorker(vaultPath);
+    });
+    if (context.waitForMemoryExtraction) {
+      await extraction;
+    } else {
+      void extraction.catch((error) =>
+        logger.warn("Could not queue memory extraction", error),
+      );
+    }
 
     return relative(vaultPath, filePath);
   } catch (error) {
@@ -304,7 +332,13 @@ async function removeMatchingLocalFiles(root: string, sessionId: string) {
       withFileTypes: true,
     });
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      if (
+        !entry.isFile() ||
+        entry.name.startsWith("._") ||
+        !entry.name.endsWith(".md")
+      ) {
+        continue;
+      }
       const filePath = path.join(directory, entry.name);
       const filenameMatches = entry.name.endsWith(
         ` - ${safeFilePart(sessionId)}.md`,
@@ -393,6 +427,23 @@ function parseStoredRecord(value: unknown): StoredConversationRecord | null {
     title: record.title,
     updatedAt: record.updatedAt,
     messages,
+    ...(Array.isArray(record.vectorCollectionIds)
+      ? {
+          vectorCollectionIds: record.vectorCollectionIds.filter(
+            (id): id is string => typeof id === "string",
+          ),
+        }
+      : {}),
+    ...(Array.isArray(record.dataSourceIds)
+      ? {
+          dataSourceIds: record.dataSourceIds.filter(
+            (id): id is string => typeof id === "string",
+          ),
+        }
+      : {}),
+    ...(record.projectId === null || typeof record.projectId === "string"
+      ? { projectId: record.projectId }
+      : {}),
   };
 }
 
@@ -432,7 +483,13 @@ export async function listStoredConversations() {
       withFileTypes: true,
     });
     for (const entry of entries.slice(0, 500)) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      if (
+        !entry.isFile() ||
+        entry.name.startsWith("._") ||
+        !entry.name.endsWith(".json")
+      ) {
+        continue;
+      }
       try {
         const raw = await fs.promises.readFile(
           path.join(directory, entry.name),

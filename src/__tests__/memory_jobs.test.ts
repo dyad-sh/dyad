@@ -243,6 +243,16 @@ describe("durability", () => {
     expect(listJobs(vault, "Pending")).toHaveLength(1);
   });
 
+  it("ignores macOS AppleDouble sidecars on external vaults", async () => {
+    await enqueueJob(vault, sample);
+    fs.writeFileSync(
+      path.join(stateDirectory(vault, "Pending"), "._metadata.json"),
+      JSON.stringify({ appleDouble: true }),
+    );
+    expect(listJobs(vault, "Pending")).toHaveLength(1);
+    expect(jobCounts(vault).Pending).toBe(1);
+  });
+
   it("leaves a job in exactly one state at a time", async () => {
     await enqueueJob(vault, sample);
     const claimed = await claimNextJob(vault);

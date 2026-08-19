@@ -123,10 +123,14 @@ describe("data source DTO", () => {
     expect(parsed).not.toHaveProperty("encryptedCredential");
   });
 
-  it("pins access mode to read only", () => {
-    expect(() =>
-      DataSourceSchema.shape.accessMode.parse("read_write"),
-    ).toThrow();
+  it("limits access mode to the two explicit permission levels", () => {
+    expect(DataSourceSchema.shape.accessMode.parse("read_only")).toBe(
+      "read_only",
+    );
+    expect(DataSourceSchema.shape.accessMode.parse("read_write")).toBe(
+      "read_write",
+    );
+    expect(() => DataSourceSchema.shape.accessMode.parse("admin")).toThrow();
   });
 });
 

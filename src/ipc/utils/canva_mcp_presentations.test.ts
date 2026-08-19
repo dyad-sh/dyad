@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCanvaToolPresentation } from "./canva_mcp_presentations";
+import {
+  buildCanvaFailureAssistantMessage,
+  buildCanvaToolPresentation,
+} from "./canva_mcp_presentations";
 
 describe("Canva MCP design presentations", () => {
+  it("surfaces direct Canva quota errors instead of hiding them", () => {
+    expect(
+      buildCanvaToolPresentation("generate-design", {
+        content: [
+          {
+            type: "text",
+            text: "Error: User has reached their quota limit (Request ID: request-1)\n\nNeed help? Contact Canva support.",
+          },
+        ],
+        isError: true,
+        _errorMeta: { code: "quota_exceeded" },
+      }),
+    ).toMatchObject({
+      kind: "canva-designs",
+      status: "failed",
+      errorCode: "quota_exceeded",
+      errorMessage:
+        "Error: User has reached their quota limit (Request ID: request-1)",
+      designs: [],
+    });
+  });
+
   it("normalizes generated design candidates from wrapped MCP content", () => {
     const result = {
       content: [
@@ -151,5 +176,47 @@ describe("Canva MCP design presentations", () => {
     expect(
       buildCanvaToolPresentation("upload-asset", { id: "asset-1" }),
     ).toBeUndefined();
+  });
+
+  it("writes a trusted quota explanation for a terminal Canva failure", () => {
+    expect(
+      buildCanvaFailureAssistantMessage({
+        kind: "canva-designs",
+        toolName: "generate-design",
+        heading: "Canva generation needs attention",
+        status: "failed",
+        errorCode: "quota_exceeded",
+        retryable: false,
+        designs: [],
+      }),
+    ).toContain("reached its AI generation quota");
+  });
+
+  it("does not replace model text while the native result is retryable", () => {
+    expect(
+      buildCanvaFailureAssistantMessage({
+        kind: "canva-designs",
+        toolName: "generate-design",
+        heading: "Canva generation needs another try",
+        status: "failed",
+        retryable: true,
+        designs: [],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("stops repeated upstream failures without suggesting another retry", () => {
+    const message = buildCanvaFailureAssistantMessage({
+      kind: "canva-designs",
+      toolName: "generate-design",
+      heading: "Canva couldn't finish this design",
+      status: "failed",
+      errorCode: "design_generation_error",
+      retryable: false,
+      designs: [],
+    });
+
+    expect(message).toContain("stopped after two attempts");
+    expect(message).not.toContain("Retry in Canva");
   });
 });

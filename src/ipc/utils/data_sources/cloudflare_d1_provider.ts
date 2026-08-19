@@ -2,7 +2,8 @@ import {
   assertReadOnly,
   sanitiseDatabaseError,
 } from "@/lib/data_sources/read_only";
-import type { QueryPlan } from "@/lib/data_sources/query_plan";
+import type { Filter, QueryPlan } from "@/lib/data_sources/query_plan";
+import type { ValidatedDataMutationPlan } from "@/lib/data_sources/mutation_plan";
 import { inlineParameters } from "@/lib/data_sources/sqlite_literal";
 import {
   d1Endpoint,
@@ -49,8 +50,9 @@ async function d1Query(input: {
   token: string | null;
   sql: string;
   params?: unknown[];
+  allowWrite?: boolean;
 }): Promise<{ rows: Array<Record<string, unknown>>; durationMs: number }> {
-  assertReadOnly(input.sql);
+  if (!input.allowWrite) assertReadOnly(input.sql);
 
   // No token means the user signed in through the browser, so Wrangler holds
   // the credential and is the only thing that can use it. Values are inlined
@@ -339,6 +341,30 @@ export async function executeD1Plan(input: {
   };
 }
 
+export async function executeD1Mutation(input: {
+  endpoint: string;
+  token: string | null;
+  plan: ValidatedDataMutationPlan;
+}): Promise<{
+  rows: Array<Record<string, unknown>>;
+  affectedRows: number;
+  executionMs: number;
+}> {
+  const { sql, params } = d1MutationSqlFromPlan(input.plan);
+  const { rows, durationMs } = await d1Query({
+    endpoint: input.endpoint,
+    token: input.token,
+    sql,
+    params,
+    allowWrite: true,
+  });
+  return {
+    rows,
+    affectedRows: rows.length,
+    executionMs: durationMs,
+  };
+}
+
 /** Identifiers must be plain names; anything else is refused, not quoted. */
 function identifier(value: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
@@ -347,28 +373,12 @@ function identifier(value: string): string {
   return value;
 }
 
-/**
- * SQL and bind parameters for a validated plan.
- *
- * Identifiers come from the discovered schema and are checked against a strict
- * pattern before they are interpolated. Values are never interpolated at all:
- * they become bind parameters, so a value cannot become syntax.
- *
- * PostgREST's compiler is deliberately not reused here. It builds a URL query
- * string, which is a different language from SQL, and borrowing it is how a
- * filter ends up meaning something other than it says.
- */
-export function d1SqlFromPlan(plan: QueryPlan): {
+function d1WhereClause(filters: Filter[]): {
   sql: string;
   params: unknown[];
 } {
   const params: unknown[] = [];
-
-  const selected = (plan.select ?? []).filter((column) => column !== "*");
-  const columns =
-    selected.length > 0 ? selected.map(identifier).join(", ") : "*";
-
-  const conditions = (plan.filters ?? []).map((filter) => {
+  const conditions = filters.map((filter) => {
     const column = identifier(filter.column);
     switch (filter.operator) {
       case "=":
@@ -380,11 +390,7 @@ export function d1SqlFromPlan(plan: QueryPlan): {
         params.push(filter.value ?? null);
         return `${column} ${filter.operator} ?`;
       case "like":
-        params.push(filter.value ?? null);
-        return `${column} LIKE ?`;
       case "ilike":
-        // SQLite's LIKE is already case-insensitive for ASCII, which is the
-        // closest honest equivalent rather than pretending ILIKE exists.
         params.push(filter.value ?? null);
         return `${column} LIKE ?`;
       case "in": {
@@ -403,6 +409,58 @@ export function d1SqlFromPlan(plan: QueryPlan): {
         throw new Error(`Unsupported operator: ${filter.operator}`);
     }
   });
+  return {
+    sql: conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "",
+    params,
+  };
+}
+
+/** Compiles a validated mutation without ever accepting raw SQL. */
+export function d1MutationSqlFromPlan(plan: ValidatedDataMutationPlan): {
+  sql: string;
+  params: unknown[];
+} {
+  const table = identifier(plan.table);
+  const fields = Object.keys(plan.values).map(identifier);
+  const where = d1WhereClause(plan.filters);
+
+  if (plan.action === "insert") {
+    return {
+      sql: `INSERT INTO ${table} (${fields.join(", ")}) VALUES (${fields.map(() => "?").join(", ")}) RETURNING *`,
+      params: fields.map((field) => plan.values[field]),
+    };
+  }
+  if (plan.action === "update") {
+    return {
+      sql: `UPDATE ${table} SET ${fields.map((field) => `${field} = ?`).join(", ")}${where.sql} RETURNING *`,
+      params: [...fields.map((field) => plan.values[field]), ...where.params],
+    };
+  }
+  return {
+    sql: `DELETE FROM ${table}${where.sql} RETURNING *`,
+    params: where.params,
+  };
+}
+
+/**
+ * SQL and bind parameters for a validated plan.
+ *
+ * Identifiers come from the discovered schema and are checked against a strict
+ * pattern before they are interpolated. Values are never interpolated at all:
+ * they become bind parameters, so a value cannot become syntax.
+ *
+ * PostgREST's compiler is deliberately not reused here. It builds a URL query
+ * string, which is a different language from SQL, and borrowing it is how a
+ * filter ends up meaning something other than it says.
+ */
+export function d1SqlFromPlan(plan: QueryPlan): {
+  sql: string;
+  params: unknown[];
+} {
+  const selected = (plan.select ?? []).filter((column) => column !== "*");
+  const columns =
+    selected.length > 0 ? selected.map(identifier).join(", ") : "*";
+  const where = d1WhereClause(plan.filters ?? []);
 
   const order = plan.orderBy
     ? ` ORDER BY ${identifier(plan.orderBy.column)} ${
@@ -418,11 +476,11 @@ export function d1SqlFromPlan(plan: QueryPlan): {
 
   const sql = [
     `SELECT ${columns} FROM ${identifier(plan.table)}`,
-    conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "",
+    where.sql,
     order,
     ` LIMIT ${limit}`,
     offset,
   ].join("");
 
-  return { sql, params };
+  return { sql, params: where.params };
 }

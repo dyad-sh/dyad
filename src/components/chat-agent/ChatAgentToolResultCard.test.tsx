@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ChatAgentActivityIndicator } from "./ChatAgentActivityIndicator";
+import { ChatAgentDatabaseResultCard } from "./ChatAgentDatabaseResultCard";
 import { ChatAgentToolResultCard } from "./ChatAgentToolResultCard";
 
 describe("Chat Agent tool feedback", () => {
@@ -70,5 +71,28 @@ describe("Chat Agent tool feedback", () => {
         .closest("section")
         ?.classList.contains("chat-card-fly-in"),
     ).toBe(true);
+  });
+
+  it("renders database query rows as a dedicated result card", () => {
+    render(
+      <ChatAgentDatabaseResultCard
+        presentation={{
+          kind: "database-result",
+          sourceName: "WPI Website",
+          table: "orders",
+          columns: ["order_number", "status", "total"],
+          rows: [["WPI-1042", "paid", "149.00"]],
+          totalRows: 1,
+          executionMs: 18,
+          truncatedColumns: 0,
+        }}
+      />,
+    );
+
+    const card = screen.getByTestId("chat-agent-db-result");
+    expect(card.textContent).toContain("WPI Website");
+    expect(card.textContent).toContain("orders");
+    expect(card.textContent).toContain("WPI-1042");
+    expect(card.textContent).toContain("paid");
   });
 });

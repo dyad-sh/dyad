@@ -18,6 +18,7 @@ import { useAtom, useSetAtom } from "jotai";
 import {
   activeChatAgentTabAtom,
   chatAgentAttachmentsAtom,
+  chatAgentDataSourceIdsAtom,
   chatAgentHistoryAtom,
   chatAgentOpenTabsAtom,
   busyChatSessionsAtom,
@@ -62,12 +63,16 @@ const TAB_SYNC_INTERVAL_MS = 400;
 /** Shared empty value, so "nothing is busy" never re-renders the tab bar. */
 const EMPTY_BUSY_SESSIONS: readonly string[] = [];
 
-function createBlankConversation(projectId?: string | null): ChatAgentOpenTab {
+function createBlankConversation(
+  projectId?: string | null,
+  dataSourceIds: string[] = [],
+): ChatAgentOpenTab {
   return {
     id: crypto.randomUUID(),
     title: "New conversation",
     messages: [],
     vectorCollectionIds: [],
+    dataSourceIds,
     // Stamped from whatever project is active when the conversation starts.
     projectId: projectId ?? null,
     updatedAt: Date.now(),
@@ -79,6 +84,9 @@ export default function ChatAgentPage() {
   // render and stamps the conversation with the project it started in.
   const { settings: settingsForProject } = useSettings();
   const activeProjectId = settingsForProject?.activeProjectId ?? null;
+  const [defaultDataSourceIds, setDefaultDataSourceIds] = useAtom(
+    chatAgentDataSourceIdsAtom,
+  );
   const [openTabs, setOpenTabs] = useAtom(chatAgentOpenTabsAtom);
   const [persistedActiveId, setPersistedActiveId] = useAtom(
     activeChatAgentTabAtom,
@@ -88,7 +96,7 @@ export default function ChatAgentPage() {
     initialTabRef.current =
       openTabs.find((tab) => tab.id === persistedActiveId) ??
       openTabs[0] ??
-      createBlankConversation(activeProjectId);
+      createBlankConversation(activeProjectId, defaultDataSourceIds);
   }
   const [sessionId, setSessionId] = useState<string>(initialTabRef.current.id);
   const [messages, setMessages] = useState<ChatAgentMessage[]>(
@@ -96,6 +104,18 @@ export default function ChatAgentPage() {
   );
   const [vectorCollectionIds, setVectorCollectionIds] = useState<string[]>(
     initialTabRef.current.vectorCollectionIds ?? [],
+  );
+  const [dataSourceIds, setConversationDataSourceIds] = useState<string[]>(
+    initialTabRef.current.dataSourceIds ?? defaultDataSourceIds,
+  );
+  const setDataSourceIds = useCallback(
+    (ids: string[]) => {
+      setConversationDataSourceIds(ids);
+      // Keeps the user's latest choice as the default for a brand-new chat,
+      // while existing tabs retain their own saved selection.
+      setDefaultDataSourceIds(ids);
+    },
+    [setDefaultDataSourceIds],
   );
   const [messageFeedback, setMessageFeedback] = useState<
     Record<string, MessageFeedback>
@@ -223,6 +243,13 @@ export default function ChatAgentPage() {
                 role: message.role,
                 content: message.content,
               })),
+              vectorCollectionIds:
+                conversation.vectorCollectionIds ??
+                existing?.vectorCollectionIds ??
+                [],
+              dataSourceIds:
+                conversation.dataSourceIds ?? existing?.dataSourceIds ?? [],
+              projectId: conversation.projectId ?? existing?.projectId ?? null,
             });
           }
           return [...byId.values()]
@@ -299,12 +326,14 @@ export default function ChatAgentPage() {
     title,
     messages,
     vectorCollectionIds,
+    dataSourceIds,
   });
   latestTabRef.current = {
     sessionId,
     title,
     messages,
     vectorCollectionIds,
+    dataSourceIds,
   };
   const tabSyncTimerRef = useRef<number | null>(null);
 
@@ -318,6 +347,7 @@ export default function ChatAgentPage() {
       title: tabTitle,
       messages: tabMessages,
       vectorCollectionIds: tabVectorCollectionIds,
+      dataSourceIds: tabDataSourceIds,
     } = latestTabRef.current;
     setOpenTabs((prev) =>
       syncChatAgentTab(prev, {
@@ -325,6 +355,7 @@ export default function ChatAgentPage() {
         title: tabTitle,
         messages: tabMessages,
         vectorCollectionIds: tabVectorCollectionIds,
+        dataSourceIds: tabDataSourceIds,
         updatedAt: Date.now(),
       }),
     );
@@ -336,7 +367,7 @@ export default function ChatAgentPage() {
       tabSyncTimerRef.current = null;
       flushTabSync();
     }, TAB_SYNC_INTERVAL_MS);
-  }, [messages, title, vectorCollectionIds, flushTabSync]);
+  }, [messages, title, vectorCollectionIds, dataSourceIds, flushTabSync]);
 
   // Whatever is pending must reach storage before the page goes away.
   useEffect(() => () => flushTabSync(), [flushTabSync]);
@@ -408,12 +439,16 @@ export default function ChatAgentPage() {
     // A new tab never waits on an old one: work already running keeps running
     // in the tab that started it.
     flushTabSync();
-    const conversation = createBlankConversation(activeProjectId);
+    const conversation = createBlankConversation(
+      activeProjectId,
+      defaultDataSourceIds,
+    );
     setOpenTabs((prev) => [...prev, conversation]);
     setPersistedActiveId(conversation.id);
     setSessionId(conversation.id);
     setMessages([]);
     setVectorCollectionIds([]);
+    setConversationDataSourceIds(defaultDataSourceIds);
     setMessageFeedback({});
     setAttachments([]);
   };
@@ -456,8 +491,15 @@ export default function ChatAgentPage() {
     setSessionId(target.id);
     setMessages(pruneEmptyAssistantMessages(target.messages));
     setVectorCollectionIds(target.vectorCollectionIds ?? []);
+    setConversationDataSourceIds(target.dataSourceIds ?? defaultDataSourceIds);
     setMessageFeedback({});
-  }, [persistedActiveId, sessionId, openTabs, flushTabSync]);
+  }, [
+    persistedActiveId,
+    sessionId,
+    openTabs,
+    flushTabSync,
+    defaultDataSourceIds,
+  ]);
 
   const handleLoadConversation = (conversation: ChatAgentConversation) => {
     flushTabSync();
@@ -468,6 +510,9 @@ export default function ChatAgentPage() {
     setSessionId(openConversation.id);
     setMessages(pruneEmptyAssistantMessages(openConversation.messages));
     setVectorCollectionIds(openConversation.vectorCollectionIds ?? []);
+    setConversationDataSourceIds(
+      openConversation.dataSourceIds ?? defaultDataSourceIds,
+    );
     setMessageFeedback({});
     setAttachments([]);
     setHistoryOpen(false);
@@ -505,12 +550,15 @@ export default function ChatAgentPage() {
     const { tabs: remaining, fallback } = closeChatAgentTab(openTabs, id);
     // Deleting from history is permanent, so also remove any matching open tab.
     if (id === sessionId) {
-      const next = fallback ?? createBlankConversation(activeProjectId);
+      const next =
+        fallback ??
+        createBlankConversation(activeProjectId, defaultDataSourceIds);
       setOpenTabs(fallback ? remaining : [next]);
       setPersistedActiveId(next.id);
       setSessionId(next.id);
       setMessages(pruneEmptyAssistantMessages(next.messages));
       setVectorCollectionIds(next.vectorCollectionIds ?? []);
+      setConversationDataSourceIds(next.dataSourceIds ?? defaultDataSourceIds);
       setMessageFeedback({});
       setAttachments([]);
     } else {
@@ -623,13 +671,14 @@ export default function ChatAgentPage() {
     const requestId = crypto.randomUUID();
     imageRequestIdRef.current.set(target, requestId);
     try {
+      const assignedImageModel = settings
+        ? getAssignedModelForRole(settings, "image")
+        : undefined;
       const result = await ipc.imageGeneration.generateAgentImage({
         prompt,
         requestId,
-        model:
-          (settings
-            ? getAssignedModelForRole(settings, "image")?.name
-            : undefined) ?? settings?.imageAgentModel,
+        provider: assignedImageModel?.provider,
+        model: assignedImageModel?.name ?? settings?.imageAgentModel,
       });
       updateSessionMessages(target, (prev) =>
         prev.map((m) =>
@@ -639,6 +688,9 @@ export default function ChatAgentPage() {
                 generatingImage: false,
                 images: result.images,
                 imageModel: result.model,
+                imageProvider: result.provider,
+                imagePromptProvider: result.promptProvider,
+                imagePromptModel: result.promptModel,
                 mediaPrompt: prompt,
                 content: result.text?.trim() || "",
               }
@@ -996,6 +1048,8 @@ export default function ChatAgentPage() {
                 variant="empty"
                 selectedVectorCollectionIds={vectorCollectionIds}
                 onVectorCollectionIdsChange={setVectorCollectionIds}
+                selectedDataSourceIds={dataSourceIds}
+                onDataSourceIdsChange={setDataSourceIds}
               />
             </div>
           ) : (
@@ -1069,6 +1123,8 @@ export default function ChatAgentPage() {
                   messageHistory={userMessageHistory}
                   selectedVectorCollectionIds={vectorCollectionIds}
                   onVectorCollectionIdsChange={setVectorCollectionIds}
+                  selectedDataSourceIds={dataSourceIds}
+                  onDataSourceIdsChange={setDataSourceIds}
                 />
               </div>
             </>

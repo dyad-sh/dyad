@@ -4,6 +4,7 @@ import {
   filterModelsForRole,
   inferModelCapabilities,
   isRoleCapabilityGated,
+  providerSettingsForRoleSelection,
   selectBestModelForRole,
   selectableModelsForRole,
   type RoleModelOption,
@@ -25,6 +26,33 @@ function option(
 }
 
 describe("model roles", () => {
+  it("persists the exact local server that supplied a selected model", () => {
+    const current = {
+      ollama: { apiBaseUrl: "http://192.168.68.108:11434" },
+      openrouter: { apiKey: { value: "saved" } },
+    };
+    const updated = providerSettingsForRoleSelection(current, {
+      provider: "ollama",
+      local: true,
+      serverUrl: "http://localhost:11434",
+    });
+
+    expect(updated.ollama).toMatchObject({
+      apiBaseUrl: "http://localhost:11434",
+    });
+    expect(updated.openrouter).toBe(current.openrouter);
+  });
+
+  it("does not alter provider settings for cloud selections", () => {
+    const current = { openrouter: { apiKey: { value: "saved" } } };
+    expect(
+      providerSettingsForRoleSelection(current, {
+        provider: "openrouter",
+        local: false,
+      }),
+    ).toBe(current);
+  });
+
   it("classifies generation, embedding, coding, and vision models", () => {
     expect(
       inferModelCapabilities({
@@ -34,6 +62,14 @@ describe("model roles", () => {
         local: false,
       }),
     ).toContain("Image Generation");
+    expect(
+      inferModelCapabilities({
+        provider: "ollama",
+        name: "x/flux2-klein:9b",
+        displayName: "Flux 2 Klein 9B",
+        local: true,
+      }),
+    ).toEqual(expect.arrayContaining(["Image Generation", "Local"]));
     expect(
       inferModelCapabilities({
         provider: "ollama",
@@ -92,7 +128,7 @@ describe("what a role may be assigned", () => {
     option("flux-pro", ["Image Generation", "Cloud"]),
   ];
 
-  it("offers every model for every role but video", () => {
+  it("offers every model for roles that do not require a video model", () => {
     for (const role of MODEL_ROLES) {
       if (role === "video") continue;
       expect(
@@ -107,20 +143,31 @@ describe("what a role may be assigned", () => {
     expect(selectableModelsForRole(catalogue, "video")).toEqual([]);
   });
 
+  it("keeps every configured provider available for image routing", () => {
+    expect(isRoleCapabilityGated("image")).toBe(false);
+    expect(
+      selectableModelsForRole(catalogue, "image").map((model) => model.name),
+    ).toEqual(["flux-pro", "mystery-one", "mystery-two", "nomic-embed-text"]);
+  });
+
   it("lists the recommended models first without removing the others", () => {
     const forEmbeddings = selectableModelsForRole(catalogue, "embeddings");
     expect(forEmbeddings[0].name).toBe("nomic-embed-text");
     expect(forEmbeddings.map((model) => model.name)).toContain("mystery-one");
   });
 
-  it("leaves every provider reachable, which is the point", () => {
-    // The picker builds its provider list from these models, so a role that
-    // drops a provider's models drops the provider itself.
-    const providers = new Set(
-      selectableModelsForRole(catalogue, "image").map(
-        (model) => model.provider,
+  it("offers local text models as image-routing selections", () => {
+    expect(
+      selectableModelsForRole(catalogue, "image").some(
+        (model) => model.name === "mystery-one",
       ),
+    ).toBe(true);
+  });
+
+  it("can automatically route image requests when only a text model is online", () => {
+    const localTextOnly = [option("local-chat", ["Local"], true)];
+    expect(selectBestModelForRole(localTextOnly, "image")?.name).toBe(
+      "local-chat",
     );
-    expect(providers).toEqual(new Set(["openrouter", "ollama"]));
   });
 });

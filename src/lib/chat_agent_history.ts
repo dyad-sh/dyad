@@ -26,6 +26,8 @@ export function mergeSettledChatTabsIntoHistory(
     if (
       existing?.messages === tab.messages &&
       existing.title === tab.title &&
+      existing.vectorCollectionIds === tab.vectorCollectionIds &&
+      existing.dataSourceIds === tab.dataSourceIds &&
       existing.projectId === tab.projectId
     ) {
       continue;

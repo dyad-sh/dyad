@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from "jotai";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { activeSettingsTabAtom } from "@/atoms/viewAtoms";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,6 +24,11 @@ import { SettingsTabSaveBar } from "@/components/settings/SettingsTabSaveBar";
 import { StorageSettings } from "@/components/settings/StorageSettings";
 import { LovablePluginSettings } from "@/components/settings/LovablePluginSettings";
 import { CanvaPluginSettings } from "@/components/settings/CanvaPluginSettings";
+import { DesktopMcpPluginSettings } from "@/components/settings/DesktopMcpPluginSettings";
+import {
+  BlenderBrandIcon,
+  GodotBrandIcon,
+} from "@/components/settings/DesktopMcpBrandIcons";
 import { ResearchPluginSettings } from "@/components/settings/ResearchPluginSettings";
 import { ChatAgentSystemAccessSettings } from "@/components/settings/ChatAgentSystemAccessSettings";
 import { SocialConnectionCard } from "@/components/social/SocialConnectionCard";
@@ -45,6 +50,7 @@ import {
   Braces,
   Compass,
   Database,
+  Boxes,
   Github,
   HeartHandshake,
   CloudSun,
@@ -69,11 +75,16 @@ const sectionHeadingClass =
 const integrationAccordionItemClass =
   "group/connection overflow-hidden rounded-xl border border-border/70 bg-background/45 shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-primary/30 hover:shadow-md";
 
-const pluginIcons: Record<PluginCatalogId, typeof Github> = {
+const pluginIcons: Record<
+  PluginCatalogId,
+  ComponentType<{ className?: string }>
+> = {
   github: Github,
   vercel: Triangle,
   lovable: HeartHandshake,
   canva: Palette,
+  godot: GodotBrandIcon,
+  blender: BlenderBrandIcon,
   duckduckgo: Search,
   coingecko: Coins,
   weather: CloudSun,
@@ -93,6 +104,7 @@ const integrationIcons: Record<IntegrationCatalogId, typeof Github> = {
 const categoryIcons: Record<PluginCategory["id"], typeof Github> = {
   developer: Braces,
   creative: Palette,
+  "3d": Boxes,
   "live-data": Search,
   travel: Plane,
 };
@@ -107,7 +119,7 @@ function IntegrationRow({
   value: string;
   title: string;
   description: string;
-  icon: typeof Github;
+  icon: ComponentType<{ className?: string }>;
   children: ReactNode;
 }) {
   return (
@@ -192,6 +204,18 @@ function PluginSettingsBody({ id }: { id: PluginCatalogId }) {
       return (
         <div id={SETTING_IDS.canva}>
           <CanvaPluginSettings />
+        </div>
+      );
+    case "godot":
+      return (
+        <div id={SETTING_IDS.godot}>
+          <DesktopMcpPluginSettings plugin="godot" />
+        </div>
+      );
+    case "blender":
+      return (
+        <div id={SETTING_IDS.blender}>
+          <DesktopMcpPluginSettings plugin="blender" />
         </div>
       );
     case "travel-search":

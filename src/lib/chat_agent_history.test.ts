@@ -36,4 +36,26 @@ describe("Chat Agent history merging", () => {
       ),
     ).toEqual([]);
   });
+
+  it("updates history when only retrieval selections change", () => {
+    const existing = {
+      ...tab("one"),
+      vectorCollectionIds: ["old-knowledge"],
+      dataSourceIds: ["old-database"],
+    };
+    const updated = {
+      ...existing,
+      vectorCollectionIds: ["new-knowledge"],
+      dataSourceIds: ["new-database"],
+    };
+    const result = mergeSettledChatTabsIntoHistory(
+      [existing],
+      [updated],
+      new Set(),
+    );
+    expect(result[0]).toMatchObject({
+      vectorCollectionIds: ["new-knowledge"],
+      dataSourceIds: ["new-database"],
+    });
+  });
 });

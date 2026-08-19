@@ -3,10 +3,24 @@ import { describe, expect, it } from "vitest";
 import {
   closeScreenTab,
   isChatOwnedPath,
+  navigationTitleForPath,
   openScreenTab,
   screenForPath,
   type ScreenTab,
 } from "@/lib/workspace_screens";
+
+describe("navigationTitleForPath", () => {
+  it("names global and chat-owned locations", () => {
+    expect(navigationTitleForPath("/")).toBe("Dashboard");
+    expect(navigationTitleForPath("/chat-agent")).toBe("Chat Agent");
+    expect(navigationTitleForPath("/agent-os")).toBe("Agents");
+  });
+
+  it("names nested detail locations without losing their identity", () => {
+    expect(navigationTitleForPath("/settings/providers/openai")).toBe("OpenAI");
+    expect(navigationTitleForPath("/devops/github")).toBe("GitHub");
+  });
+});
 
 describe("screenForPath", () => {
   it("finds the screen for a path", () => {

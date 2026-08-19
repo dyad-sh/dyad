@@ -16,7 +16,12 @@ vi.stubGlobal("localStorage", {
 });
 
 const navigate = vi.fn();
+const historyBack = vi.fn();
+const historyForward = vi.fn();
 let pathname = "/settings";
+let historyIndex = 0;
+let historyLength = 1;
+let canGoBack = false;
 
 // Partial mock: the tab bar's Desktop Mode toggle pulls in the app registry,
 // whose route modules need the real Route class from this package.
@@ -30,8 +35,16 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useNavigate: () => navigate,
   // The bar's back control reads history; the suite renders it without a
   // RouterProvider.
-  useRouter: () => ({ history: { canGoBack: () => false, back: () => {} } }),
-  useRouterState: ({ select }: any) => select({ location: { pathname } }),
+  useRouter: () => ({
+    history: {
+      canGoBack: () => canGoBack,
+      back: historyBack,
+      forward: historyForward,
+      length: historyLength,
+    },
+  }),
+  useRouterState: ({ select }: any) =>
+    select({ location: { pathname, state: { __TSR_index: historyIndex } } }),
 }));
 
 const { QueryClient, QueryClientProvider } =
@@ -54,15 +67,63 @@ function AgentWorkspaceTabs() {
 
 beforeEach(() => {
   navigate.mockClear();
+  historyBack.mockClear();
+  historyForward.mockClear();
   localStorage.clear();
   pathname = "/settings";
+  historyIndex = 0;
+  historyLength = 1;
+  canGoBack = false;
+});
+
+describe("navigation history", () => {
+  it("always shows the user's current location", async () => {
+    pathname = "/dashboard";
+    render(<AgentWorkspaceTabs />);
+
+    expect(
+      (await screen.findByTestId("workspace-current-location")).textContent,
+    ).toContain("Dashboard");
+  });
+
+  it("shows where the user came from and navigates back to it", async () => {
+    const { rerender } = render(<AgentWorkspaceTabs />);
+    await screen.findByTestId("workspace-current-location");
+
+    pathname = "/coder/helix";
+    historyIndex = 1;
+    historyLength = 2;
+    canGoBack = true;
+    rerender(<AgentWorkspaceTabs />);
+
+    expect(
+      (await screen.findByTestId("workspace-previous-location")).textContent,
+    ).toContain("Settings");
+    expect(
+      screen.getByTestId("workspace-current-location").textContent,
+    ).toContain("Helix");
+
+    await userEvent.click(screen.getByTestId("workspace-previous-location"));
+    expect(historyBack).toHaveBeenCalledOnce();
+  });
+
+  it("supports forward navigation when a later history entry exists", async () => {
+    historyLength = 2;
+    render(<AgentWorkspaceTabs />);
+
+    const forward = await screen.findByTestId("workspace-go-forward");
+    expect((forward as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(forward);
+    expect(historyForward).toHaveBeenCalledOnce();
+  });
 });
 
 describe("screen tabs", () => {
   it("opens a tab for the screen being viewed", async () => {
     render(<AgentWorkspaceTabs />);
-    expect(await screen.findByTestId("screen-tab-/settings")).toBeTruthy();
-    expect(screen.getByText("Settings")).toBeTruthy();
+    const settingsTab = await screen.findByTestId("screen-tab-/settings");
+    expect(settingsTab).toBeTruthy();
+    expect(settingsTab.textContent).toContain("Settings");
   });
 
   it("keeps earlier screens open when navigating on", async () => {
@@ -81,7 +142,8 @@ describe("screen tabs", () => {
   it("gives Helix its own tab rather than folding it into Coding Agents", async () => {
     pathname = "/coder/helix";
     render(<AgentWorkspaceTabs />);
-    expect(await screen.findByText("Helix")).toBeTruthy();
+    const helixTab = await screen.findByTestId("screen-tab-/coder/helix");
+    expect(helixTab.textContent).toContain("Helix");
   });
 
   it("does not open a screen tab for a chat route", () => {

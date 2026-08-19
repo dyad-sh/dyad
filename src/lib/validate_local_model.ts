@@ -161,7 +161,7 @@ export async function assertLocalModelReady(
     if (!modelNameMatchesLoaded(modelName, modelNames)) {
       const preview = [...modelNames].slice(0, 5).join(", ");
       throw new DyadError(
-        `Model "${modelName}" is not available in Ollama. Installed: ${preview}. Run \`ollama pull ${modelName.split(":")[0]}\` or pick another model.`,
+        `Model "${modelName}" is not available in Ollama. Installed: ${preview}. Run \`ollama pull ${modelName}\` or pick another model.`,
         DyadErrorKind.Validation,
       );
     }

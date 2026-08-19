@@ -98,15 +98,30 @@ describe("saveConversation", () => {
   });
 
   it("loads structured records back from the selected vault", async () => {
-    await saveConversation("session-1", turns);
+    await saveConversation("session-1", turns, {
+      vectorCollectionIds: ["knowledge-base"],
+      dataSourceIds: ["orders-db"],
+      projectId: "project-1",
+    });
 
     await expect(listStoredConversations()).resolves.toMatchObject([
       {
         id: "session-1",
         title: "How does memory work?",
         messages: turns,
+        vectorCollectionIds: ["knowledge-base"],
+        dataSourceIds: ["orders-db"],
+        projectId: "project-1",
       },
     ]);
+  });
+
+  it("ignores macOS AppleDouble conversation sidecars", async () => {
+    await saveConversation("session-1", turns);
+    const records = path.join(vault, ".meta-human/conversations");
+    fs.writeFileSync(path.join(records, "._session-1.json"), "metadata");
+
+    await expect(listStoredConversations()).resolves.toHaveLength(1);
   });
 
   it("starts a new file once a session is forgotten", async () => {
@@ -128,6 +143,23 @@ describe("saveConversation", () => {
     expect(fs.existsSync(path.join(vault, "Memory"))).toBe(false);
     await saveConversation("session-1", turns);
     expect(conversationFiles()).toHaveLength(1);
+  });
+
+  it("finishes an explicit memory write before returning when requested", async () => {
+    await saveConversation(
+      "remember-name",
+      [
+        { role: "user", content: "Remember my name is Tiago" },
+        { role: "assistant", content: "I'll remember that." },
+      ],
+      { waitForMemoryExtraction: true },
+    );
+
+    const facts = fs.readFileSync(
+      path.join(vault, "Memory/Long Term Memory/Important Facts.md"),
+      "utf8",
+    );
+    expect(facts).toContain("Remember my name is Tiago");
   });
 
   it("reports failure instead of throwing", async () => {

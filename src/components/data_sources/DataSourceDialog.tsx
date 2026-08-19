@@ -59,6 +59,8 @@ export function DataSourceDialog({
     useState<DataSourceDto["environment"]>("development");
   const [credentialType, setCredentialType] =
     useState<DataSourceDto["credentialType"]>("publishable");
+  const [accessMode, setAccessMode] =
+    useState<DataSourceDto["accessMode"]>("read_only");
   const [connectionKey, setConnectionKey] = useState("");
   const [checks, setChecks] = useState<HealthCheck[] | null>(null);
 
@@ -71,6 +73,7 @@ export function DataSourceDialog({
     setProjectUrl(source?.projectUrl ?? "");
     setEnvironment(source?.environment ?? "development");
     setCredentialType(source?.credentialType ?? "publishable");
+    setAccessMode(source?.accessMode ?? "read_only");
     // Always blank: the stored key is never sent to the renderer, so there is
     // nothing to prefill with even if we wanted to.
     setConnectionKey("");
@@ -118,6 +121,7 @@ export function DataSourceDialog({
             projectUrl,
             environment,
             credentialType,
+            accessMode,
             connectionKey: connectionKey.trim() || undefined,
           })
         : await ipc.dataSource.create({
@@ -127,6 +131,7 @@ export function DataSourceDialog({
             projectUrl,
             environment,
             credentialType,
+            accessMode,
             connectionKey: connectionKey.trim() || undefined,
           });
 
@@ -169,8 +174,8 @@ export function DataSourceDialog({
             {editing ? "Edit data source" : "Connect Supabase"}
           </DialogTitle>
           <DialogDescription>
-            MyMeta connects read-only. Schema discovery uses the PostgreSQL
-            connection; nothing is installed into your Supabase project.
+            Choose what the Chat Agent may do with this source. The database key
+            and its own row-level security remain the final authority.
           </DialogDescription>
         </DialogHeader>
 
@@ -181,6 +186,28 @@ export function DataSourceDialog({
             save.mutate();
           }}
         >
+          <div className="space-y-1.5">
+            <label className={label} htmlFor="ds-access-mode">
+              Chat Agent permission
+            </label>
+            <select
+              id="ds-access-mode"
+              value={accessMode}
+              onChange={(event) =>
+                setAccessMode(event.target.value as DataSourceDto["accessMode"])
+              }
+              className={field}
+              data-testid="data-source-access-mode"
+            >
+              <option value="read_only">Read only</option>
+              <option value="read_write">Read &amp; write</option>
+            </select>
+            <p className="text-xs leading-5 text-white/40">
+              Read &amp; write allows requested inserts, updates, and deletes.
+              Your database permissions and policies still apply.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <label className={label} htmlFor="ds-name">
               Data source name

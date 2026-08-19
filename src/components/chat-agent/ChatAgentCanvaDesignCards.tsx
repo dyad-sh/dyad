@@ -68,6 +68,14 @@ export function ChatAgentCanvaDesignCards({
   selectionDisabled?: boolean;
 }) {
   if (presentation.status === "failed") {
+    const isQuotaFailure = presentation.errorCode === "quota_exceeded";
+    const isTerminalFailure = [
+      "quota_exceeded",
+      "authentication_required",
+      "forbidden",
+    ].includes(presentation.errorCode ?? "");
+    const retriesPaused = presentation.retryable === false;
+    const canRetry = !isTerminalFailure && !retriesPaused;
     return (
       <section className="chat-card-fly-in mt-3 overflow-hidden rounded-2xl border border-amber-400/25 bg-card/92 shadow-[0_18px_60px_-32px_rgba(251,191,36,0.35)]">
         <div className="flex items-start gap-3 p-4">
@@ -77,15 +85,20 @@ export function ChatAgentCanvaDesignCards({
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-foreground">
-                Canva couldn’t finish this design
+                {isQuotaFailure
+                  ? "Canva generation quota reached"
+                  : "Canva couldn’t finish this design"}
               </h3>
               <span className="shrink-0 rounded-full border border-amber-400/20 bg-amber-400/8 px-2.5 py-1 text-[10px] font-medium text-amber-500">
                 Canva
               </span>
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Canva’s generator stopped before producing concepts. Your brief is
-              still here, so you can retry without starting over.
+              {isQuotaFailure
+                ? "Your Canva account has no generation quota remaining. Check your Canva plan or wait for the quota to reset."
+                : retriesPaused
+                  ? "Canva rejected both generation attempts. Further retries are paused to avoid consuming more generation credits."
+                  : "Canva’s generator stopped before producing concepts. Retry with a smaller brief that keeps your topic, audience and page count."}
             </p>
             {presentation.errorMessage && (
               <p className="mt-2 rounded-lg bg-amber-400/7 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
@@ -100,15 +113,26 @@ export function ChatAgentCanvaDesignCards({
                 {presentation.jobId && <span>Job: {presentation.jobId}</span>}
               </div>
             )}
-            <Button
-              type="button"
-              size="sm"
-              className="mt-3 h-8"
-              disabled={selectionDisabled || !onRetryGeneration}
-              onClick={onRetryGeneration}
-            >
-              <RefreshCw className="size-3.5" /> Retry in Canva
-            </Button>
+            {!canRetry ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-3 h-8"
+                onClick={() => openUrl("https://www.canva.com/")}
+              >
+                Open Canva <ArrowUpRight className="size-3.5" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-3 h-8"
+                disabled={selectionDisabled || !onRetryGeneration}
+                onClick={onRetryGeneration}
+              >
+                <RefreshCw className="size-3.5" /> Retry simpler brief
+              </Button>
+            )}
           </div>
         </div>
       </section>

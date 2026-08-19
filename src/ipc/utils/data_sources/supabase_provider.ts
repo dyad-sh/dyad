@@ -10,11 +10,13 @@ import {
 } from "@/lib/data_sources/postgrest_schema";
 import { sanitiseDatabaseError } from "@/lib/data_sources/read_only";
 import {
+  buildMutationUrl,
   buildQueryUrl,
   compileQueryPlan,
   parseContentRange,
 } from "@/lib/data_sources/postgrest_query";
 import type { QueryPlan } from "@/lib/data_sources/query_plan";
+import type { ValidatedDataMutationPlan } from "@/lib/data_sources/mutation_plan";
 
 /**
  * The Supabase data-source provider.
@@ -323,6 +325,71 @@ export type QueryOutcome = {
   totalRows: number | null;
   executionMs: number;
 };
+
+export type MutationOutcome = {
+  rows: unknown[];
+  affectedRows: number;
+  executionMs: number;
+};
+
+/** Executes one schema-validated PostgREST insert, update, or delete. */
+export async function executeMutation(input: {
+  projectUrl: string;
+  key: string;
+  plan: ValidatedDataMutationPlan;
+}): Promise<MutationOutcome> {
+  const method =
+    input.plan.action === "insert"
+      ? "POST"
+      : input.plan.action === "update"
+        ? "PATCH"
+        : "DELETE";
+  const url = buildMutationUrl(
+    input.projectUrl,
+    input.plan.table,
+    input.plan.filters,
+  );
+  const startedAt = Date.now();
+  const response = await fetch(url, {
+    method,
+    headers: {
+      apikey: input.key,
+      Authorization: `Bearer ${input.key}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=representation,count=exact",
+    },
+    ...(method === "DELETE" ? {} : { body: JSON.stringify(input.plan.values) }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("This connection key is not permitted to write that data.");
+  }
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = (await response.json()) as { message?: string };
+      detail = typeof body?.message === "string" ? body.message : "";
+    } catch {
+      // The status remains useful when the provider did not return JSON.
+    }
+    throw new Error(
+      sanitiseDatabaseError(
+        detail || `The project responded ${response.status}.`,
+      ),
+    );
+  }
+
+  const payload = (await response.json().catch(() => [])) as unknown;
+  const rows = Array.isArray(payload) ? payload : [];
+  return {
+    rows,
+    affectedRows:
+      parseContentRange(response.headers.get("content-range")) ?? rows.length,
+    executionMs: Date.now() - startedAt,
+  };
+}
 
 /**
  * Runs a validated plan against the project.

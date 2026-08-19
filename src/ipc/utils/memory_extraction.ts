@@ -91,7 +91,18 @@ const TIMELINE =
 
 /** Explicit instructions to remember. */
 const REMEMBER_COMMAND =
-  /\b(remember (?:this|that)|make a note|keep in mind|don't forget|note that)\b/i;
+  /(?:\b(?:rem(?:em|e)?ber (?:this|that)|make a note|keep in mind|don't forget|note that)\b|^\s*(?:(?:please|i need you to)\s+)?rem(?:em|e)?ber(?:\s+(?!(?:when|how|why|where|what|who|whether)\b)|\s*:))/i;
+
+/**
+ * Whether the user is deliberately asking for durable memory.
+ *
+ * Natural commands such as "remember my name is Tiago" count, while recall
+ * questions such as "do you remember my name?" do not. The latter must read
+ * existing memory rather than accidentally writing the question as a fact.
+ */
+export function hasExplicitMemoryInstruction(text: string): boolean {
+  return REMEMBER_COMMAND.test(text);
+}
 
 /** Explicit corrections and retractions. */
 export const CORRECTION_COMMAND =
@@ -115,7 +126,7 @@ export function isExtractable(message: SourceMessage): boolean {
   if (ONE_OFF.test(text)) return false;
   // A question with an explicit instruction to remember is still a request to
   // remember; a bare question is not.
-  if (QUESTION.test(text) && !REMEMBER_COMMAND.test(text)) return false;
+  if (QUESTION.test(text) && !hasExplicitMemoryInstruction(text)) return false;
   return true;
 }
 
@@ -125,7 +136,7 @@ export function categorise(text: string): MemoryCategory | null {
   if (PREFERENCE.test(text)) return "preference";
   if (GOAL.test(text)) return "goal";
   if (TIMELINE.test(text)) return "timeline";
-  if (REMEMBER_COMMAND.test(text)) return "fact";
+  if (hasExplicitMemoryInstruction(text)) return "fact";
   return null;
 }
 
@@ -140,7 +151,7 @@ export function confidenceFor(text: string): number {
   const hedged = SPECULATION.test(text);
   // Being asked to remember something is not the same as being sure of it:
   // "remember I might move to Postgres" is worth keeping, but not as a fact.
-  if (REMEMBER_COMMAND.test(text)) return hedged ? 0.6 : 0.95;
+  if (hasExplicitMemoryInstruction(text)) return hedged ? 0.6 : 0.95;
   return hedged ? 0.4 : 0.75;
 }
 
@@ -168,7 +179,10 @@ export function extractMemories(
       if (!category) continue;
 
       // Speculation only survives when the user asked for it to be kept.
-      if (SPECULATION.test(sentence) && !REMEMBER_COMMAND.test(sentence)) {
+      if (
+        SPECULATION.test(sentence) &&
+        !hasExplicitMemoryInstruction(sentence)
+      ) {
         continue;
       }
 

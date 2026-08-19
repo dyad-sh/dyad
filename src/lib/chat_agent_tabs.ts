@@ -43,6 +43,7 @@ export function syncChatAgentTab(
     existing.messages === nextTab.messages &&
     existing.title === nextTab.title &&
     existing.vectorCollectionIds === nextTab.vectorCollectionIds &&
+    existing.dataSourceIds === nextTab.dataSourceIds &&
     existing.projectId === nextTab.projectId
   ) {
     return tabs;

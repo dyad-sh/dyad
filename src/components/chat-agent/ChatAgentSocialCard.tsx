@@ -35,6 +35,7 @@ import { NANO_BANANA_2_MODEL } from "@/ipc/types/image_generation";
 import type { SocialPost } from "@/ipc/types/social_media";
 import { showError, showSuccess } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { getAssignedModelForRole } from "@/lib/model_roles";
 
 type SocialPresentation = Extract<
   ChatAgentToolPresentation,
@@ -180,7 +181,13 @@ function XComposerCard({
   const [publishedPost, setPublishedPost] = useState<SocialPost | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const overLimit = content.length > 280;
-  const imageModel = settings?.imageAgentModel ?? NANO_BANANA_2_MODEL;
+  const assignedImageModel = settings
+    ? getAssignedModelForRole(settings, "image")
+    : undefined;
+  const imageModel =
+    assignedImageModel?.name ??
+    settings?.imageAgentModel ??
+    NANO_BANANA_2_MODEL;
   const scheduleMs = useMemo(() => {
     const parsed = new Date(scheduledFor).getTime();
     return Number.isNaN(parsed) ? null : parsed;
@@ -214,6 +221,7 @@ function XComposerCard({
         prompt:
           presentation.imagePrompt?.trim() ||
           `Create a premium editorial social image for this X post. No text or logos. ${content}`,
+        provider: assignedImageModel?.provider,
         model: imageModel,
       });
       setImage(result.images[0] ?? null);

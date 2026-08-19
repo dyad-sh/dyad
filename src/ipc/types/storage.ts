@@ -15,6 +15,9 @@ const ChatAgentConversationSchema = z.object({
   title: z.string(),
   source: z.string().optional(),
   updatedAt: z.number(),
+  vectorCollectionIds: z.array(z.string()).max(20).optional(),
+  dataSourceIds: z.array(z.string()).max(20).optional(),
+  projectId: z.string().nullable().optional(),
   messages: z.array(
     z.object({
       role: z.enum(["user", "assistant"]),

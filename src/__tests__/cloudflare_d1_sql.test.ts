@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { d1SqlFromPlan } from "@/ipc/utils/data_sources/cloudflare_d1_provider";
+import {
+  d1MutationSqlFromPlan,
+  d1SqlFromPlan,
+} from "@/ipc/utils/data_sources/cloudflare_d1_provider";
 import { d1Endpoint, isD1Endpoint } from "@/lib/data_sources/d1_endpoint";
 
 /**
@@ -112,5 +115,49 @@ describe("D1 endpoints", () => {
     ]) {
       expect(isD1Endpoint(value), value).toBe(false);
     }
+  });
+});
+
+describe("D1 mutation SQL generation", () => {
+  it("parameterises every inserted value", () => {
+    const result = d1MutationSqlFromPlan({
+      action: "insert",
+      table: "investigations",
+      values: { code_name: "GayBlade", status: "open" },
+      filters: [],
+    });
+    expect(result.sql).toBe(
+      "INSERT INTO investigations (code_name, status) VALUES (?, ?) RETURNING *",
+    );
+    expect(result.params).toEqual(["GayBlade", "open"]);
+  });
+
+  it("parameterises update fields and its target key", () => {
+    const result = d1MutationSqlFromPlan({
+      action: "update",
+      table: "investigations",
+      values: { status: "closed" },
+      filters: [{ column: "id", operator: "=", value: "case-1" }],
+    });
+    expect(result.sql).toBe(
+      "UPDATE investigations SET status = ? WHERE id = ? RETURNING *",
+    );
+    expect(result.params).toEqual(["closed", "case-1"]);
+  });
+
+  it("never interpolates a delete filter value", () => {
+    const result = d1MutationSqlFromPlan({
+      action: "delete",
+      table: "investigations",
+      values: {},
+      filters: [
+        { column: "id", operator: "=", value: "x'; DROP TABLE users;--" },
+      ],
+    });
+    expect(result.sql).toBe(
+      "DELETE FROM investigations WHERE id = ? RETURNING *",
+    );
+    expect(result.sql).not.toContain("DROP");
+    expect(result.params).toEqual(["x'; DROP TABLE users;--"]);
   });
 });

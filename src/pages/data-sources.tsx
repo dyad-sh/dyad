@@ -11,6 +11,8 @@ import {
   Power,
   PowerOff,
   RefreshCw,
+  ShieldCheck,
+  ShieldEllipsis,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -156,11 +158,29 @@ function DataSourceCard({
       showError(error instanceof Error ? error.message : "Could not update"),
   });
 
+  const setAccessMode = useMutation({
+    mutationFn: (accessMode: DataSourceDto["accessMode"]) =>
+      ipc.dataSource.update({ id: source.id, accessMode }),
+    onSuccess: async (updated) => {
+      await invalidate();
+      showSuccess(
+        updated.accessMode === "read_write"
+          ? "Chat Agent can now read and write this source"
+          : "Chat Agent access changed to read only",
+      );
+    },
+    onError: (error) =>
+      showError(
+        error instanceof Error ? error.message : "Could not update access",
+      ),
+  });
+
   const busy =
     test.isPending ||
     sync.isPending ||
     remove.isPending ||
-    setEnabled.isPending;
+    setEnabled.isPending ||
+    setAccessMode.isPending;
 
   return (
     <div
@@ -186,8 +206,7 @@ function DataSourceCard({
           {source.name}
         </h2>
         <p className="mt-0.5 text-xs text-white/40">
-          {source.provider} · {ENVIRONMENT_LABELS[source.environment]} · read
-          only
+          {source.provider} · {ENVIRONMENT_LABELS[source.environment]}
         </p>
         {source.description && (
           <p className="mt-2 line-clamp-2 text-sm text-[#7aadb8]">
@@ -234,6 +253,66 @@ function DataSourceCard({
             Add a connection key to use this source.
           </p>
         )}
+
+        <div className="mt-4 rounded-xl border border-cyan-400/15 bg-black/20 p-2.5">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100/80">
+                Chat Agent permission
+              </p>
+              <p className="mt-0.5 text-[10px] leading-4 text-white/40">
+                Controls which database tools the agent may use.
+              </p>
+            </div>
+            {setAccessMode.isPending && (
+              <Loader2 className="size-3.5 animate-spin text-cyan-300" />
+            )}
+          </div>
+          <div
+            className="grid grid-cols-2 rounded-lg border border-white/10 bg-black/25 p-1"
+            role="group"
+            aria-label={`Chat Agent permission for ${source.name}`}
+          >
+            {(
+              [
+                {
+                  value: "read_only",
+                  label: "Read only",
+                  Icon: ShieldCheck,
+                },
+                {
+                  value: "read_write",
+                  label: "Read & write",
+                  Icon: ShieldEllipsis,
+                },
+              ] as const
+            ).map(({ value, label, Icon }) => {
+              const selected = source.accessMode === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    !selected && !busy && setAccessMode.mutate(value)
+                  }
+                  disabled={busy}
+                  aria-pressed={selected}
+                  className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition ${
+                    selected
+                      ? value === "read_write"
+                        ? "bg-amber-400/15 text-amber-100 shadow-sm ring-1 ring-amber-300/25"
+                        : "bg-cyan-400/15 text-cyan-100 shadow-sm ring-1 ring-cyan-300/25"
+                      : "text-white/40 hover:bg-white/5 hover:text-white/70"
+                  } disabled:opacity-40`}
+                  data-testid={`data-source-access-${source.id}-${value}`}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="relative z-10 mt-5 flex flex-wrap gap-1.5">
@@ -346,9 +425,8 @@ export default function DataSourcesPage() {
               Connect your data to MyMeta
             </h1>
             <p className="manager-subtitle">
-              Connect a Supabase database and MyMeta AI can securely search,
-              analyse and answer questions about the information stored inside
-              it. Connections are read-only.
+              Connect your databases, choose read-only or read-and-write access
+              for each one, and control exactly what the Chat Agent can do.
             </p>
           </div>
           <button

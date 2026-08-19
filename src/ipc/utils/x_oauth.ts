@@ -27,10 +27,37 @@ function callbackPage(message: string, success: boolean): string {
   return `<!doctype html><meta charset="utf-8"><title>X authorization</title><body style="margin:0;background:#080b12;color:#f8fafc;font:16px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:520px;padding:32px;border:1px solid #273244;border-radius:20px;background:#111827;text-align:center"><div style="font-size:36px;color:${color}">${success ? "\u2713" : "!"}</div><h1>${success ? "X connected" : "Could not connect X"}</h1><p style="color:#94a3b8;line-height:1.6">${message}</p></main></body>`;
 }
 
-function tokenAuthorization(clientId: string, clientSecret?: string) {
+function formUrlEncode(value: string): string {
+  const encoded = new URLSearchParams({ value }).toString();
+  return encoded.slice("value=".length);
+}
+
+/**
+ * OAuth 2.0 client-password authentication requires both credentials to be
+ * application/x-www-form-urlencoded before they are joined and Base64
+ * encoded (RFC 6749 section 2.3.1). This matters for X client secrets because
+ * they commonly contain `+` and `=` characters.
+ */
+export function xTokenAuthorization(
+  clientId: string,
+  clientSecret?: string,
+): string | undefined {
   return clientSecret
-    ? `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`
+    ? `Basic ${Buffer.from(
+        `${formUrlEncode(clientId)}:${formUrlEncode(clientSecret)}`,
+      ).toString("base64")}`
     : undefined;
+}
+
+export function shouldRetryXTokenAsPublicClient(
+  status: number,
+  errorMessage: string,
+  hasClientSecret: boolean,
+): boolean {
+  if (!hasClientSecret || (status !== 400 && status !== 401)) return false;
+  return /missing valid authorization header|invalid[_ ]client|client authentication|unauthori[sz]ed[_ ]client/i.test(
+    errorMessage,
+  );
 }
 
 async function readTokenError(response: Response): Promise<string> {
@@ -50,19 +77,48 @@ async function exchangeToken(
   clientSecret: string | undefined,
   body: URLSearchParams,
 ): Promise<XOAuthTokens> {
-  const authorization = tokenAuthorization(clientId, clientSecret);
-  if (!authorization) body.set("client_id", clientId);
-  const response = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      ...(authorization ? { Authorization: authorization } : {}),
-    },
-    body,
-  });
-  if (!response.ok) {
+  let authorization = xTokenAuthorization(clientId, clientSecret);
+  let response: Response | undefined;
+  let tokenError = "";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const requestBody = new URLSearchParams(body);
+    if (!authorization) requestBody.set("client_id", clientId);
+    response = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...(authorization ? { Authorization: authorization } : {}),
+      },
+      body: requestBody,
+    });
+    if (response.ok) break;
+
+    tokenError = await readTokenError(response);
+    if (
+      attempt === 0 &&
+      shouldRetryXTokenAsPublicClient(
+        response.status,
+        tokenError,
+        Boolean(authorization),
+      )
+    ) {
+      // Native and SPA clients authenticate with client_id in the body. A
+      // saved secret can be stale or belong to an app configured as public;
+      // retry once without it when X explicitly rejects client auth.
+      authorization = undefined;
+      continue;
+    }
     throw new DyadError(
-      `X could not issue a user access token: ${await readTokenError(response)}`,
+      `X could not issue a user access token: ${tokenError}`,
+      DyadErrorKind.Auth,
+    );
+  }
+
+  // The loop either produced an OK response or threw above.
+  if (!response?.ok) {
+    throw new DyadError(
+      `X could not issue a user access token: ${tokenError}`,
       DyadErrorKind.Auth,
     );
   }

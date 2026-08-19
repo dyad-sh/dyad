@@ -48,6 +48,21 @@ describe("SETTINGS_SEARCH_INDEX", () => {
     });
   });
 
+  it("includes the Godot and Blender MCP plugins", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find((item) => item.id === SETTING_IDS.godot),
+    ).toMatchObject({
+      label: "Godot MCP",
+      sectionId: SECTION_IDS.plugins,
+    });
+    expect(
+      SETTINGS_SEARCH_INDEX.find((item) => item.id === SETTING_IDS.blender),
+    ).toMatchObject({
+      label: "Blender MCP",
+      sectionId: SECTION_IDS.plugins,
+    });
+  });
+
   it("includes Chat Agent research plugins", () => {
     const pluginIds = new Set(
       SETTINGS_SEARCH_INDEX.filter(

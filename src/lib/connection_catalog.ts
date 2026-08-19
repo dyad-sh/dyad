@@ -12,6 +12,8 @@ export type PluginCatalogId =
   | "vercel"
   | "lovable"
   | "canva"
+  | "godot"
+  | "blender"
   | "duckduckgo"
   | "coingecko"
   | "weather"
@@ -30,7 +32,7 @@ export type ConnectionCatalogEntry<Id extends string> = {
 };
 
 export type PluginCategory = {
-  id: "developer" | "creative" | "live-data" | "travel";
+  id: "developer" | "creative" | "3d" | "live-data" | "travel";
   title: string;
   description: string;
   plugins: readonly ConnectionCatalogEntry<PluginCatalogId>[];
@@ -68,6 +70,23 @@ export const PLUGIN_CATEGORIES: readonly PluginCategory[] = [
         id: "canva",
         title: "Canva",
         description: "Create, edit, search and export Canva designs",
+      },
+    ],
+  },
+  {
+    id: "3d",
+    title: "3D & Game Development",
+    description: "Build, inspect and render interactive 3D projects.",
+    plugins: [
+      {
+        id: "godot",
+        title: "Godot",
+        description: "Control Godot projects, scenes, runs and debug output",
+      },
+      {
+        id: "blender",
+        title: "Blender",
+        description: "Model, inspect, render and automate Blender scenes",
       },
     ],
   },

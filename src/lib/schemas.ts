@@ -704,7 +704,7 @@ const BaseUserSettingsFields = {
   previewIdleTimeoutPolicy: z.enum(["default", "never"]).optional(),
   /** Chat Agent inference model (OpenRouter, OpenAI, or LM Studio). */
   chatAgentModel: LargeLanguageModelSchema.optional(),
-  /** Image Agent model — an OpenRouter image-generation model id. */
+  /** Legacy Image Agent model id; Model Roles carries the provider-aware assignment. */
   imageAgentModel: z.string().optional(),
   /** Video Agent model — a fal.ai video model id. */
   videoAgentModel: z.string().optional(),

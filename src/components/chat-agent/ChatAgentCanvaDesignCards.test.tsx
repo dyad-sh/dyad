@@ -91,7 +91,56 @@ describe("Canva design cards", () => {
     expect(screen.getByText("Error: generation_failed")).toBeTruthy();
     expect(screen.getByText("Job: job-failed-1")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "Retry in Canva" }));
+    await user.click(
+      screen.getByRole("button", { name: "Retry simpler brief" }),
+    );
     expect(onRetryGeneration).toHaveBeenCalledOnce();
+  });
+
+  it("explains quota failures and does not offer another retry", () => {
+    render(
+      <ChatAgentCanvaDesignCards
+        presentation={{
+          kind: "canva-designs",
+          toolName: "generate-design",
+          heading: "Canva generation needs attention",
+          status: "failed",
+          errorCode: "quota_exceeded",
+          errorMessage: "User has reached their quota limit",
+          designs: [],
+        }}
+        onRetryGeneration={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Canva generation quota reached")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Retry simpler brief" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Canva" })).toBeTruthy();
+  });
+
+  it("pauses retries after two generic generation failures", () => {
+    render(
+      <ChatAgentCanvaDesignCards
+        presentation={{
+          kind: "canva-designs",
+          toolName: "generate-design",
+          heading: "Canva generation needs attention",
+          status: "failed",
+          errorCode: "design_generation_error",
+          errorMessage: "Design generation failed",
+          retryable: false,
+          designs: [],
+        }}
+        onRetryGeneration={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(/Further retries are paused/)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Retry simpler brief" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Canva" })).toBeTruthy();
   });
 });

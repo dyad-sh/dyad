@@ -1,6 +1,10 @@
 import type { ChatAgentToolPresentation } from "../types/chat_agent";
 
 type UnknownRecord = Record<string, unknown>;
+type CanvaDesignsPresentation = Extract<
+  ChatAgentToolPresentation,
+  { kind: "canva-designs" }
+>;
 
 const DESIGN_TOOL_NAMES = new Set([
   "search-designs",
@@ -51,6 +55,19 @@ function unwrapMcpResult(value: unknown): unknown {
     if (text) return unwrapMcpResult(text);
   }
   return record;
+}
+
+function mcpTextContent(record: UnknownRecord | null) {
+  if (!Array.isArray(record?.content)) return undefined;
+  const text = record.content
+    .map((part) => {
+      const item = asRecord(part);
+      return typeof item?.text === "string" ? item.text : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  return text || undefined;
 }
 
 function firstString(record: UnknownRecord, keys: string[]) {
@@ -194,6 +211,29 @@ export function buildCanvaToolPresentation(
   result: unknown,
 ): ChatAgentToolPresentation | undefined {
   if (!DESIGN_TOOL_NAMES.has(toolName)) return undefined;
+  const rawPayload = parseJson(result);
+  const rawRecord = asRecord(rawPayload);
+  if (rawRecord?.isError === true) {
+    const errorMeta =
+      asRecord(rawRecord._errorMeta) ?? asRecord(rawRecord.error);
+    return {
+      kind: "canva-designs",
+      toolName,
+      heading: "Canva generation needs attention",
+      status: "failed",
+      errorCode: firstString(errorMeta ?? {}, [
+        "code",
+        "error_code",
+        "errorCode",
+      ]),
+      errorMessage:
+        mcpTextContent(rawRecord)
+          ?.replace(/\n\s*\n[\s\S]*$/, "")
+          .trim() ??
+        firstString(errorMeta ?? {}, ["message", "reason", "detail"]),
+      designs: [],
+    };
+  }
   const payload = unwrapMcpResult(result);
   const payloadRecord = asRecord(payload);
   const job = asRecord(payloadRecord?.job);
@@ -249,4 +289,26 @@ export function buildCanvaToolPresentation(
     status: "success",
     designs,
   };
+}
+
+export function buildCanvaFailureAssistantMessage(
+  presentation: CanvaDesignsPresentation,
+): string | undefined {
+  if (presentation.status !== "failed" || presentation.retryable !== false) {
+    return undefined;
+  }
+
+  if (presentation.errorCode === "quota_exceeded") {
+    return "Canva rejected this request because the connected account has reached its AI generation quota. Open Canva to review your usage, or wait for the quota to reset before trying again.";
+  }
+
+  if (
+    ["authentication_required", "forbidden"].includes(
+      presentation.errorCode ?? "",
+    )
+  ) {
+    return "Canva rejected this request because the connected account needs attention. Open Canva or reconnect it in Settings → Plugins → Canva before trying again.";
+  }
+
+  return "Canva accepted the request, but its design generator failed before returning any concepts. I stopped after two attempts to avoid consuming more generation credits; open Canva to continue or try again later.";
 }

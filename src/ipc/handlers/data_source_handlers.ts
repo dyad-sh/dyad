@@ -71,7 +71,7 @@ async function toDto(row: DataSourceRow): Promise<DataSourceDto> {
     projectUrl: row.projectUrl,
     environment: row.environment as DataSourceDto["environment"],
     credentialType: row.credentialType as DataSourceDto["credentialType"],
-    accessMode: "read_only",
+    accessMode: row.accessMode === "read_write" ? "read_write" : "read_only",
     enabled: row.enabled,
     status: row.status as DataSourceDto["status"],
     statusMessage: row.statusMessage,
@@ -222,7 +222,7 @@ export function registerDataSourceHandlers() {
       encryptedCredential: input.connectionKey?.trim()
         ? encryptCredential(input.connectionKey.trim())
         : null,
-      accessMode: "read_only",
+      accessMode: input.accessMode,
       enabled: true,
       status: "unknown",
       statusMessage: "",
@@ -253,6 +253,9 @@ export function registerDataSourceHandlers() {
           : {}),
         ...(input.credentialType !== undefined
           ? { credentialType: input.credentialType }
+          : {}),
+        ...(input.accessMode !== undefined
+          ? { accessMode: input.accessMode }
           : {}),
         ...(input.enabled !== undefined
           ? {

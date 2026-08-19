@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildMutationUrl,
   buildQueryUrl,
   compileQueryPlan,
   parseContentRange,
@@ -131,6 +132,20 @@ describe("buildQueryUrl", () => {
       ),
     );
     expect(url).toContain("a+b=eq.1");
+  });
+});
+
+describe("buildMutationUrl", () => {
+  it("keeps mutation filter values as encoded data", () => {
+    const url = buildMutationUrl("https://abc.supabase.co", "investigations", [
+      {
+        column: "id",
+        operator: "=",
+        value: "case-1&status=eq.closed",
+      },
+    ]);
+    expect(url).toContain("id=eq.case-1%26status%3Deq.closed");
+    expect(url).not.toContain("&status=eq.closed");
   });
 });
 

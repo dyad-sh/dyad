@@ -30,7 +30,7 @@ export function useChatVoiceInput({
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [levels, setLevels] = useState<number[]>(() =>
-    new Array(WAVEFORM_BARS).fill(0),
+    Array.from({ length: WAVEFORM_BARS }, () => 0),
   );
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -56,7 +56,7 @@ export function useChatVoiceInput({
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     recorderRef.current = null;
-    setLevels(new Array(WAVEFORM_BARS).fill(0));
+    setLevels(Array.from({ length: WAVEFORM_BARS }, () => 0));
   }, []);
 
   useEffect(() => {
@@ -140,6 +140,13 @@ export function useChatVoiceInput({
     cancelledRef.current = false;
 
     try {
+      const { microphoneAccess } = await jarvisClient.requestMicrophoneAccess();
+      if (microphoneAccess === "denied") {
+        onError?.(
+          "Microphone access is denied. Enable it for Meta Human OS in System Settings → Privacy & Security → Microphone.",
+        );
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
       });

@@ -20,10 +20,7 @@ import {
   getConfiguredChatAgentModel,
 } from "@/lib/chat_agent_model";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
-import {
-  chatAgentAttachmentsAtom,
-  chatAgentDataSourceIdsAtom,
-} from "@/atoms/chatAgentAtoms";
+import { chatAgentAttachmentsAtom } from "@/atoms/chatAgentAtoms";
 import { ChatAgentAttachMenu } from "./ChatAgentAttachMenu";
 import { ChatAgentToolMenu } from "./ChatAgentToolMenu";
 import { ChatAgentAttachmentsList } from "./ChatAgentAttachmentsList";
@@ -52,6 +49,8 @@ export function ChatAgentComposer({
   exclusiveToolLabel,
   selectedVectorCollectionIds,
   onVectorCollectionIdsChange,
+  selectedDataSourceIds,
+  onDataSourceIdsChange,
   autoFocus = true,
 }: {
   /**
@@ -85,6 +84,9 @@ export function ChatAgentComposer({
   /** Controlled knowledge selection, scoped to the active conversation. */
   selectedVectorCollectionIds?: string[];
   onVectorCollectionIdsChange?: (ids: string[]) => void;
+  /** Controlled database selection, scoped to the active conversation. */
+  selectedDataSourceIds?: string[];
+  onDataSourceIdsChange?: (ids: string[]) => void;
 }) {
   const { t } = useTranslation(["chat", "settings"]);
   const [inputValue, setInputValue] = useAtom(chatAgentInputAtom);
@@ -95,11 +97,13 @@ export function ChatAgentComposer({
   const [localVectorCollectionIds, setLocalVectorCollectionIds] = useState<
     string[]
   >([]);
-  const [dataSourceIds, setDataSourceIds] = useAtom(chatAgentDataSourceIdsAtom);
+  const [localDataSourceIds, setLocalDataSourceIds] = useState<string[]>([]);
   const vectorCollectionIds =
     selectedVectorCollectionIds ?? localVectorCollectionIds;
   const setVectorCollectionIds =
     onVectorCollectionIdsChange ?? setLocalVectorCollectionIds;
+  const dataSourceIds = selectedDataSourceIds ?? localDataSourceIds;
+  const setDataSourceIds = onDataSourceIdsChange ?? setLocalDataSourceIds;
   const { settings } = useSettings();
   const { enhancePrompt, isEnhancing } = useEnhanceChatAgentPrompt();
   const chatAgentModel = settings ? getChatAgentModel(settings) : null;

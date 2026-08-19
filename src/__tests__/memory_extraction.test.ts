@@ -4,6 +4,7 @@ import {
   categorise,
   confidenceFor,
   extractMemories,
+  hasExplicitMemoryInstruction,
   isExtractable,
   resolveConflict,
   splitSentences,
@@ -61,6 +62,32 @@ describe("isExtractable — what may become a memory", () => {
     );
   });
 
+  it("accepts a natural remember-my-name command", () => {
+    expect(isExtractable(user("Remember my name is Tiago"))).toBe(true);
+    expect(hasExplicitMemoryInstruction("Remember my name is Tiago")).toBe(
+      true,
+    );
+  });
+
+  it("accepts the user's common remember spelling variants", () => {
+    for (const text of [
+      "I need you to remeber My name is Tiago",
+      "Please rember my name is Tiago",
+    ]) {
+      expect(hasExplicitMemoryInstruction(text)).toBe(true);
+      expect(
+        extractMemories([user(text)], { conversationId: "conv-1" }),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("does not mistake a recall question for a new memory", () => {
+    expect(hasExplicitMemoryInstruction("Do you remember my name?")).toBe(
+      false,
+    );
+    expect(isExtractable(user("Do you remember my name?"))).toBe(false);
+  });
+
   it("ignores an empty message", () => {
     expect(isExtractable(user("   "))).toBe(false);
   });
@@ -98,6 +125,18 @@ describe("extractMemories", () => {
     );
     expect(memory!.statement).toBe("I prefer running LLMs on my own Mac");
     expect(memory!.category).toBe("preference");
+  });
+
+  it("stores a natural remember-my-name command as a fact", () => {
+    const memories = extractMemories(
+      [user("Remember my name is Tiago")],
+      context,
+    );
+    expect(memories).toHaveLength(1);
+    expect(memories[0]).toMatchObject({
+      category: "fact",
+      statement: "Remember my name is Tiago",
+    });
   });
 
   it("stamps provenance on everything durable", () => {

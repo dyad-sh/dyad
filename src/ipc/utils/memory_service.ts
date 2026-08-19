@@ -99,7 +99,7 @@ export async function recallForMessage(input: {
 
     // What actually survived the budget is what the interface should report.
     const used = context
-      ? trimmed.filter((memory) => context.includes(memory.sourcePath))
+      ? trimmed.filter((memory) => context.includes(memory.content.trim()))
       : [];
 
     return { context, used };

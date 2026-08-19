@@ -114,7 +114,7 @@ describe("buildMemoryContext", () => {
     expect(buildMemoryContext([])).toBe("");
   });
 
-  it("labels each memory with its source so it can be checked", () => {
+  it("keeps memory provenance private while giving the model its content", () => {
     const block = buildMemoryContext([
       memory({
         kind: "project-memory",
@@ -124,11 +124,17 @@ describe("buildMemoryContext", () => {
       }),
     ]);
     expect(block).toContain("<retrieved_memory>");
-    expect(block).toContain("[Project Memory]");
-    expect(block).toContain("Source: Memory/Projects/MetaHuman OS.md");
-    expect(block).toContain("Updated: 2026-08-04");
+    expect(block).toContain("[Remembered context]");
+    expect(block).not.toContain("Memory/Projects/MetaHuman OS.md");
+    expect(block).not.toContain("Source:");
     expect(block).toContain("Electron app with a local vector store.");
     expect(block).toContain("</retrieved_memory>");
+  });
+
+  it("instructs the model not to cite personal memory", () => {
+    const block = buildMemoryContext([memory()]);
+    expect(block).toMatch(/never cite/i);
+    expect(block).toMatch(/never add a Sources consulted/i);
   });
 
   it("tells the model the current message outranks memory", () => {

@@ -2,12 +2,33 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildVectorRetrievalQuery,
+  excludePrivateMemoryVectorPassages,
+  filterRelevantVectorPassages,
   formatVectorKnowledgeContext,
   isDocumentSurveyQuery,
   scoreDocumentSurveyPassage,
 } from "./vector_rag_context";
 
 describe("vector RAG context", () => {
+  it("keeps private memory files out of document evidence and source cards", () => {
+    const passages = [
+      {
+        sourcePath: "/Volumes/Vault/Memory/Long Term Memory/Important Facts.md",
+        content: "The user's name is Tiago.",
+      },
+      {
+        sourcePath: "/Volumes/Vault/Memory/Conversations/old-chat.md",
+        content: "A previous private conversation.",
+      },
+      {
+        sourcePath: "/Volumes/Vault/Documents/Flight Manual.pdf",
+        content: "Documentary evidence.",
+      },
+    ];
+
+    expect(excludePrivateMemoryVectorPassages(passages)).toEqual([passages[2]]);
+  });
+
   it("keeps earlier subject matter for an ambiguous follow-up", () => {
     const query = buildVectorRetrievalQuery([
       {
@@ -40,6 +61,42 @@ describe("vector RAG context", () => {
     expect(query).not.toContain("Only one provider");
     expect(query).toContain("How many providers quoted");
     expect(query).toContain("three quotes in the document");
+  });
+
+  it("does not carry an old tender topic into a new aviation question", () => {
+    const query = buildVectorRetrievalQuery([
+      { role: "user", content: "Summarise the Buildcheck tender." },
+      { role: "assistant", content: "Here is the tender summary." },
+      { role: "user", content: "What is CAT 3 visibility?" },
+    ]);
+
+    expect(query).not.toContain("Buildcheck tender");
+    expect(query).toContain("CAT 3 visibility");
+  });
+
+  it("rejects unrelated retrieval candidates before citation", () => {
+    const passages = [
+      {
+        sourceId: "tender",
+        sourceName: "Buildcheck Tender Summary.pdf",
+        content: "Category 3 waterproofing works and contractor pricing.",
+      },
+      {
+        sourceId: "aviation",
+        sourceName: "ILS Operations.pdf",
+        content:
+          "ILS CAT III operations use runway visual range (RVR) minima in low visibility.",
+      },
+      {
+        sourceId: "aviation",
+        sourceName: "ILS Operations.pdf",
+        content: "Fail-operational autoland requirements continue on page 2.",
+      },
+    ];
+
+    expect(
+      filterRelevantVectorPassages("What is CAT 3 visibility?", passages),
+    ).toEqual(passages.slice(1));
   });
 
   it("recognises broad count questions and favours document-wide evidence", () => {
@@ -91,7 +148,7 @@ describe("vector RAG context", () => {
     expect(query).toContain("What did the tender cost?");
   });
 
-  it("requires document and page citations in knowledge answers", () => {
+  it("requires citations only for passages actually used", () => {
     const context = formatVectorKnowledgeContext([
       {
         sourceName: "Buildcheck Tender Summary.pdf",
@@ -103,8 +160,9 @@ describe("vector RAG context", () => {
     expect(context).toContain(
       "[Source 1: Buildcheck Tender Summary.pdf, page 3]",
     );
-    expect(context).toContain("CITATIONS ARE REQUIRED");
+    expect(context).toContain("CITATIONS ARE REQUIRED FOR EVERY PASSAGE");
     expect(context).toContain("**Sources consulted**");
-    expect(context).toContain("Never infer");
+    expect(context).toContain("only when at least one retrieved");
+    expect(context).toContain("do not cite them");
   });
 });

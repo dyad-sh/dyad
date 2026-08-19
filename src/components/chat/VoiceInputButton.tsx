@@ -66,17 +66,27 @@ export function VoiceInputButton({
   if (isRecording) {
     return (
       <div
+        role="status"
+        aria-live="polite"
+        data-testid="voice-input-recording"
         className={cn(
-          "flex items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-2.5 py-1 text-cyan-500 dark:text-cyan-300",
+          "flex items-center gap-2 rounded-full border border-rose-400/40 bg-rose-400/10 px-2.5 py-1 text-rose-500 dark:text-rose-300",
           className,
         )}
       >
+        <span className="relative flex size-2" aria-hidden="true">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-70" />
+          <span className="relative inline-flex size-2 rounded-full bg-rose-500" />
+        </span>
+        <span className="text-[10px] font-semibold tracking-[0.12em] uppercase">
+          Recording
+        </span>
         <Waveform levels={levels} />
         <button
           type="button"
           onClick={toggleRecording}
           aria-label="Stop recording and send"
-          className="grid size-6 place-items-center rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 focus-visible:ring-2 focus-visible:ring-cyan-400/60 focus-visible:outline-none"
+          className="grid size-6 place-items-center rounded-full bg-rose-500/20 hover:bg-rose-500/30 focus-visible:ring-2 focus-visible:ring-rose-400/60 focus-visible:outline-none"
         >
           <Square size={12} className="fill-current" />
         </button>
@@ -84,7 +94,7 @@ export function VoiceInputButton({
           type="button"
           onClick={cancelRecording}
           aria-label="Discard recording"
-          className="text-xs text-cyan-600/70 hover:text-cyan-500 focus-visible:ring-2 focus-visible:ring-cyan-400/60 focus-visible:outline-none dark:text-cyan-200/60 dark:hover:text-cyan-100"
+          className="text-xs text-rose-600/70 hover:text-rose-500 focus-visible:ring-2 focus-visible:ring-rose-400/60 focus-visible:outline-none dark:text-rose-200/60 dark:hover:text-rose-100"
         >
           Cancel
         </button>

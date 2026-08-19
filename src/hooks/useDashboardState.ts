@@ -20,6 +20,7 @@ import { buildConnectedServices } from "@/lib/dashboard/connected_services";
 export function useDashboardState() {
   const { settings } = useSettings();
   const { data: providers, isProviderSetup } = useLanguageModelProviders();
+  const localVaultPath = settings?.storage?.localVaultPath?.trim() || undefined;
 
   // Infrastructure reads its saved snapshot; it does not start a scan, which is
   // the expensive part and belongs to its own screen.
@@ -30,23 +31,32 @@ export function useDashboardState() {
   });
 
   const dataSources = useQuery({
-    queryKey: ["dashboard", "data-sources"],
+    // Share the owning screen's cache so connect, disconnect and schema-sync
+    // mutations update the dashboard too.
+    queryKey: ["data-sources"],
     queryFn: () => ipc.dataSource.list(),
     staleTime: 60_000,
   });
 
   const storage = useQuery({
-    queryKey: ["dashboard", "storage"],
-    queryFn: () =>
-      ipc.storage.status({
-        localVaultPath: settings?.storage?.localVaultPath,
-      }),
+    // The path is part of the key. Previously this query ran before Settings
+    // loaded, cached an empty path under a dashboard-only key and continued to
+    // report "No vault connected" after a vault had been selected.
+    queryKey: queryKeys.storage.status(localVaultPath),
+    queryFn: () => ipc.storage.status({ localVaultPath }),
+    enabled: settings !== null,
     staleTime: 60_000,
   });
 
   const vector = useQuery({
-    queryKey: ["dashboard", "vector"],
-    queryFn: () => ipc.vector.getOverview(),
+    // Starting and reading the engine through the shared overview query keeps
+    // the dashboard and Vector workspace on the same live state. A passive
+    // dashboard-only read could cache the brief "stopped" startup state.
+    queryKey: queryKeys.vector.overview,
+    queryFn: async () => {
+      await ipc.vector.start();
+      return ipc.vector.getOverview();
+    },
     staleTime: 60_000,
   });
 

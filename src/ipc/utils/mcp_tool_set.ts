@@ -109,12 +109,14 @@ export async function buildMcpToolSetForServerIds(
     toolKeys,
     workflowKeys,
     chatId,
+    canvaGenerationMode = "standard",
     onToolResult,
   }: {
     serverIds: number[];
     toolKeys?: string[];
     workflowKeys?: string[];
     chatId: number;
+    canvaGenerationMode?: "standard" | "simplified";
     onToolResult?: (result: {
       serverName: string;
       toolName: string;
@@ -192,12 +194,14 @@ export async function buildMcpToolSetForServerIds(
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+            const canvaPreparationAttempt =
+              isCanvaServer && name === "generate-design"
+                ? (canvaGenerationAttempt += 1) +
+                  (canvaGenerationMode === "simplified" ? 1 : 0)
+                : 0;
             const executionArgs =
               isCanvaServer && name === "generate-design"
-                ? prepareCanvaGenerateDesignInput(
-                    args,
-                    (canvaGenerationAttempt += 1),
-                  )
+                ? prepareCanvaGenerateDesignInput(args, canvaPreparationAttempt)
                 : args;
             const allowedWorkflowIds = workflowKeys
               ? (allowedWorkflowIdsByServer.get(server.id) ?? new Set())
@@ -237,7 +241,7 @@ export async function buildMcpToolSetForServerIds(
                     ? (executionArgs as Record<string, unknown>)
                     : null;
                 logger.info("Running Canva design generation", {
-                  attempt: canvaGenerationAttempt,
+                  attempt: canvaPreparationAttempt,
                   designType: inputRecord?.design_type,
                   queryLength:
                     typeof inputRecord?.query === "string"
@@ -246,6 +250,20 @@ export async function buildMcpToolSetForServerIds(
                 });
               }
               const result = await mcpTool.execute(executionArgs, execCtx);
+              const canvaPresentation = isCanvaMcpServerUrl(server.url)
+                ? buildCanvaToolPresentation(name, result)
+                : undefined;
+              if (
+                canvaPresentation?.kind === "canva-designs" &&
+                canvaPresentation.status === "failed"
+              ) {
+                logger.warn("Canva design generation job failed", {
+                  attempt: canvaPreparationAttempt,
+                  jobId: canvaPresentation.jobId,
+                  errorCode: canvaPresentation.errorCode,
+                  errorMessage: canvaPresentation.errorMessage,
+                });
+              }
               const finalResult =
                 allowedWorkflowIds && name === "search_workflows"
                   ? filterWorkflowSearchResult(result, allowedWorkflowIds)
@@ -260,7 +278,8 @@ export async function buildMcpToolSetForServerIds(
                 presentation: isLovableMcpServerUrl(server.url)
                   ? buildLovableToolPresentation(name, finalResult)
                   : isCanvaMcpServerUrl(server.url)
-                    ? buildCanvaToolPresentation(name, finalResult)
+                    ? (canvaPresentation ??
+                      buildCanvaToolPresentation(name, finalResult))
                     : undefined,
               });
               return finalResult;

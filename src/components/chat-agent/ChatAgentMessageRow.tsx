@@ -76,14 +76,43 @@ function mergeLovableProjectPresentations(
   };
 }
 
-function imageModelLabel(model?: string): string {
+function imageProviderLabel(provider: string): string {
+  return provider === "auto"
+    ? "Meta Human OS Pro"
+    : provider === "openrouter"
+      ? "OpenRouter"
+      : provider === "openai"
+        ? "OpenAI"
+        : provider === "google"
+          ? "Google AI"
+          : provider === "vercel"
+            ? "Vercel"
+            : provider;
+}
+
+function imageModelLabel(model?: string, provider?: string): string {
   if (!model) return "AI image";
-  if (model === NANO_BANANA_2_MODEL) return NANO_BANANA_2_LABEL;
-  const slug = model.split("/").pop() ?? model;
-  return slug
-    .replace(/-preview$/, "")
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const modelLabel =
+    model === NANO_BANANA_2_MODEL
+      ? NANO_BANANA_2_LABEL
+      : (model.split("/").pop() ?? model)
+          .replace(/-preview$/, "")
+          .replace(/[-_]/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+  if (!provider) return modelLabel;
+  return `${imageProviderLabel(provider)} · ${modelLabel}`;
+}
+
+function imageGenerationLabel(
+  message: Pick<
+    ChatAgentMessage,
+    "imageModel" | "imageProvider" | "imagePromptModel" | "imagePromptProvider"
+  >,
+): string {
+  const renderer = imageModelLabel(message.imageModel, message.imageProvider);
+  if (!message.imagePromptProvider || !message.imagePromptModel)
+    return renderer;
+  return `${imageProviderLabel(message.imagePromptProvider)} · ${message.imagePromptModel} prompt → ${renderer} render`;
 }
 
 type ChatAgentMessageRowProps = {
@@ -167,13 +196,11 @@ export function ChatAgentMessageRow({
     const retrieved = message.ragSources ?? [];
     const answer = reasoning.reasoning ? reasoning.answer : visibleContent;
     const cited = selectCitedRagSources(answer, retrieved);
-    if (cited.length > 0) return cited;
-    // Citations usually arrive at the end of a streamed answer. Avoid briefly
-    // showing every retrieval candidate before that final list is written.
-    return isStreaming && isLastAssistant ? [] : retrieved;
+    // Retrieval candidates are not sources until the answer cites them. Never
+    // fall back to showing every candidate: that falsely attributes unrelated
+    // documents when retrieval found weak matches or the model ignored them.
+    return cited;
   }, [
-    isLastAssistant,
-    isStreaming,
     message.ragSources,
     reasoning.answer,
     reasoning.reasoning,
@@ -395,7 +422,7 @@ export function ChatAgentMessageRow({
                   <figcaption className="chat-agent-image-card-footer">
                     <span className="chat-agent-image-model">
                       <Sparkles className="size-3.5" />
-                      {imageModelLabel(message.imageModel)}
+                      {imageGenerationLabel(message)}
                     </span>
                     <button
                       type="button"
@@ -460,7 +487,7 @@ export function ChatAgentMessageRow({
                   />
                   <div className="flex items-center justify-between gap-3 px-1">
                     <span className="truncate text-xs text-cyan-100/55">
-                      {imageModelLabel(message.imageModel)}
+                      {imageGenerationLabel(message)}
                     </span>
                     <button
                       type="button"

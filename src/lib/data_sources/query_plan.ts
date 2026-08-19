@@ -17,6 +17,8 @@
 export type KnownColumn = {
   columnName: string;
   dataType: string;
+  primaryKey?: boolean;
+  isUnique?: boolean;
 };
 
 export type KnownTable = {

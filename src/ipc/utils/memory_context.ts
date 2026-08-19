@@ -24,7 +24,7 @@ export type MemoryKind =
 
 export type RetrievedMemory = {
   kind: MemoryKind;
-  /** Vault-relative path, shown so the user can open the source. */
+  /** Vault-relative provenance used internally; never exposed to the model. */
   sourcePath: string;
   content: string;
   /** ISO date of the source's last update, for recency ranking. */
@@ -33,15 +33,6 @@ export type RetrievedMemory = {
   score: number;
   /** False when the source is flagged as never leaving this machine. */
   cloudSafe?: boolean;
-};
-
-/** Labels the model sees. Plain words, not internal type names. */
-const KIND_LABELS: Record<MemoryKind, string> = {
-  "project-memory": "Project Memory",
-  "long-term": "Long-Term Memory",
-  person: "Person",
-  conversation: "Relevant Conversation",
-  "conversation-summary": "Conversation Summary",
 };
 
 /**
@@ -161,6 +152,9 @@ export function buildMemoryContext(
     "The following was retrieved from the user's own local memory vault.",
     "Use it only where it is relevant to the current request.",
     "Do not mention the memory system unless the user asks about it.",
+    "Answer naturally from remembered context. Never cite, name, quote, link,",
+    "or expose a memory source file or path, and never add a Sources consulted",
+    "section for remembered context.",
     "The user's current message outranks anything here, and a newer memory",
     "outranks an older one that disagrees with it.",
     "",
@@ -171,10 +165,7 @@ export function buildMemoryContext(
   ];
 
   for (const memory of selected) {
-    lines.push(`[${KIND_LABELS[memory.kind]}]`);
-    lines.push(`Source: ${memory.sourcePath}`);
-    if (memory.updatedAt) lines.push(`Updated: ${memory.updatedAt}`);
-    lines.push("Content:");
+    lines.push("[Remembered context]");
     lines.push(fence);
     lines.push(memory.content.trim());
     lines.push(fence);

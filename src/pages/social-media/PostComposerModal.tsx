@@ -53,6 +53,8 @@ import type { SocialPlatform } from "@/ipc/types/social_media";
 import { showError, showSuccess } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { XPostPreview } from "@/components/social/XPostPreview";
+import { getAssignedModelForRole } from "@/lib/model_roles";
+import { isImageGenerationModel } from "@/lib/image_generation_models";
 
 const X_CHAR_LIMIT = 280;
 
@@ -211,7 +213,18 @@ export function PostComposerModal({
     );
   }, [open, initialDate]);
 
-  const imageModel = settings?.imageAgentModel ?? NANO_BANANA_2_MODEL;
+  const assignedImageModel = settings
+    ? getAssignedModelForRole(settings, "image")
+    : undefined;
+  const imageModel =
+    assignedImageModel?.name ??
+    settings?.imageAgentModel ??
+    NANO_BANANA_2_MODEL;
+  const selectedImageProvider = assignedImageModel?.provider ?? "openrouter";
+  const selectedModelDirectlyRenders = isImageGenerationModel(imageModel);
+  const imageWorkflowLabel = `${selectedImageProvider} · ${
+    imageModel === NANO_BANANA_2_MODEL ? NANO_BANANA_2_LABEL : imageModel
+  }`;
   const platformMeta = SOCIAL_PLATFORM_META[platform];
   const isConnected = connections?.[platform]?.connected ?? false;
   const accountName =
@@ -233,6 +246,7 @@ export function PostComposerModal({
   const generateImageFrom = async (fromPrompt: string) => {
     const result = await ipc.imageGeneration.generateAgentImage({
       prompt: fromPrompt,
+      provider: assignedImageModel?.provider,
       model: imageModel,
     });
     setImage(result.images[0] ?? null);
@@ -417,11 +431,11 @@ export function PostComposerModal({
           </DialogTitle>
           <DialogDescription>
             {step === "compose"
-              ? `Composing for ${format(initialDate, "EEEE, MMMM d")} — AI writes the copy and renders the image (${
-                  imageModel === NANO_BANANA_2_MODEL
-                    ? NANO_BANANA_2_LABEL
-                    : imageModel
-                }).`
+              ? `Composing for ${format(initialDate, "EEEE, MMMM d")} — AI writes the copy and ${
+                  selectedModelDirectlyRenders
+                    ? `renders with ${imageWorkflowLabel}`
+                    : `uses ${imageWorkflowLabel} to direct a connected image renderer`
+                }.`
               : "Fine-tune the copy, regenerate the image, then schedule it or post right away."}
           </DialogDescription>
         </DialogHeader>
@@ -527,10 +541,9 @@ export function PostComposerModal({
                   Generate image
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {imageModel === NANO_BANANA_2_MODEL
-                    ? NANO_BANANA_2_LABEL
-                    : imageModel}{" "}
-                  renders a visual to match the post
+                  {selectedModelDirectlyRenders
+                    ? `${imageWorkflowLabel} renders a visual to match the post`
+                    : `${imageWorkflowLabel} prepares the prompt; an image backend renders it`}
                 </p>
               </div>
               <Switch

@@ -222,6 +222,7 @@ function CloudflareSetup({
       projectUrl: d1Endpoint(database.accountId, database.uuid),
       environment: "production",
       credentialType: "secret",
+      accessMode: "read_only",
       // Empty when signed in through the browser: Wrangler holds that
       // credential, and storing nothing is better than storing a copy.
       connectionKey: useToken ? apiToken.trim() : "",

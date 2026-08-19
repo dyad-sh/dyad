@@ -113,6 +113,58 @@ export function screenForPath(pathname: string): WorkspaceScreen | undefined {
   );
 }
 
+const SPECIAL_NAVIGATION_TITLES: Record<string, string> = {
+  "/": "Dashboard",
+  "/chat": "Build Studio",
+  "/chat-agent": "Chat Agent",
+  "/agent-os": "Agents",
+  "/social-media-agent": "Social Studio",
+};
+
+const NAVIGATION_SEGMENT_TITLES: Record<string, string> = {
+  github: "GitHub",
+  openai: "OpenAI",
+  vercel: "Vercel",
+};
+
+/** Human-readable location for the global navigation history control. */
+export function navigationTitleForPath(pathname: string): string {
+  const exact = SPECIAL_NAVIGATION_TITLES[pathname];
+  if (exact) return exact;
+
+  const screen = screenForPath(pathname);
+  if (screen) {
+    const nestedPart = pathname.slice(screen.path.length).replace(/^\/+/, "");
+    if (!nestedPart) return screen.title;
+
+    // Provider detail pages are more useful as "OpenAI" than simply
+    // repeating "Settings" in the location indicator.
+    const segment = nestedPart.split("/").filter(Boolean).at(-1);
+    if (segment && segment !== "providers") {
+      if (NAVIGATION_SEGMENT_TITLES[segment]) {
+        return NAVIGATION_SEGMENT_TITLES[segment];
+      }
+      return segment
+        .split(/[-_]/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+    return screen.title;
+  }
+
+  const segment = pathname.split("/").filter(Boolean).at(-1);
+  if (!segment) return "Dashboard";
+  if (NAVIGATION_SEGMENT_TITLES[segment]) {
+    return NAVIGATION_SEGMENT_TITLES[segment];
+  }
+  return segment
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 /** Chats own their tabs already; those routes must not also open a screen tab. */
 const CHAT_OWNED_PREFIXES = ["/chat-agent", "/agent-os", "/chat"];
 

@@ -211,6 +211,7 @@ const CanvaDesignsPresentationSchema = z.object({
   status: z.enum(["success", "failed"]).optional(),
   errorCode: z.string().optional(),
   errorMessage: z.string().optional(),
+  retryable: z.boolean().optional(),
   designs: z.array(
     z.object({
       id: z.string(),

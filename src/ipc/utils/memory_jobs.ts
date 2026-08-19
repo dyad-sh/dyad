@@ -145,12 +145,16 @@ function readJob(filePath: string): MemoryJob | null {
 export function listJobs(vaultPath: string, state: JobState): MemoryJob[] {
   const directory = stateDirectory(vaultPath, state);
   if (!fs.existsSync(directory)) return [];
-  return fs
-    .readdirSync(directory)
-    .filter((name) => name.endsWith(".json"))
-    .map((name) => readJob(path.join(directory, name)))
-    .filter((job): job is MemoryJob => job !== null)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return (
+    fs
+      .readdirSync(directory)
+      // macOS creates AppleDouble `._*` sidecars on some external volumes.
+      // They are metadata, not queue jobs, and may partially parse as objects.
+      .filter((name) => !name.startsWith("._") && name.endsWith(".json"))
+      .map((name) => readJob(path.join(directory, name)))
+      .filter((job): job is MemoryJob => job !== null)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+  );
 }
 
 /**

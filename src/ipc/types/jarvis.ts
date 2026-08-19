@@ -138,6 +138,14 @@ export const jarvisContracts = {
     input: JarvisSpeechActivityParamsSchema,
     output: OkResultSchema,
   }),
+  /** Ask the operating system for microphone access before renderer capture. */
+  requestMicrophoneAccess: defineContract({
+    channel: "jarvis:microphone:request-access",
+    input: z.void(),
+    output: z.object({
+      microphoneAccess: z.enum(["granted", "denied", "unsupported"]),
+    }),
+  }),
   /**
    * One-shot transcription for chat composers (push-to-talk), separate from
    * the live session. Audio is sent to the main process so the ElevenLabs key

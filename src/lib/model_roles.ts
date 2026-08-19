@@ -1,4 +1,5 @@
 import type { LanguageModel } from "@/ipc/types";
+import { isImageGenerationModel } from "@/lib/image_generation_models";
 import type { ModelRole, UserSettings } from "@/lib/schemas";
 
 export const MODEL_ROLES: readonly ModelRole[] = [
@@ -80,8 +81,6 @@ export const MODEL_ROLE_META: Record<
 };
 
 const EMBEDDING_PATTERN = /\b(embed|embedding|bge-|e5-|gte-|nomic-embed)\b/i;
-const IMAGE_PATTERN =
-  /\b(flux|stable[- ]?diffusion|imagen|image[- ]generation|dall-?e|nano banana)\b/i;
 const VIDEO_PATTERN = /\b(video|kling|luma|runway|wan[- ]?\d|minimax video)\b/i;
 const VISION_PATTERN =
   /\b(vision|vlm|llava|pixtral|qwen[^ ]*[- ]vl|gemma[- ]?3|gpt-4o|gpt-5|claude|gemini)\b/i;
@@ -110,7 +109,7 @@ export function inferModelCapabilities(
     capabilities.add("Video");
     return [...capabilities];
   }
-  if (IMAGE_PATTERN.test(text)) {
+  if (isImageGenerationModel(text)) {
     capabilities.add("Image Generation");
     return [...capabilities];
   }
@@ -164,8 +163,9 @@ export function isModelSuitableForRole(
 /**
  * Roles whose picker is limited to models we judge capable.
  *
- * Only video. Its providers are a separate set from the language-model ones,
- * and a video role pointed at a chat model produces nothing at all.
+ * Video only. Image generation has provider-aware routing: a text-only model
+ * can still contribute through its provider while rendering falls back to an
+ * image-capable model or backend.
  *
  * Everywhere else the capability is inferred from a regex over the model name,
  * which is a reasonable hint and a bad gate: it was hiding entire providers
@@ -206,6 +206,7 @@ export function filterModelsForRole(
 
 function modelScore(model: RoleModelOption, role: ModelRole): number {
   let score = 0;
+  if (isModelSuitableForRole(model, role)) score += 50;
   if (model.local) score += 18;
   if (model.capabilities.includes("Reasoning")) score += 8;
   if (model.capabilities.includes("Tool Calling") && role === "chat")
@@ -228,7 +229,11 @@ export function selectBestModelForRole(
   models: RoleModelOption[],
   role: ModelRole,
 ): RoleModelOption | undefined {
-  return filterModelsForRole(models, role)
+  const candidates =
+    role === "image"
+      ? selectableModelsForRole(models, role)
+      : filterModelsForRole(models, role);
+  return candidates
     .map((model, index) => ({ model, index, score: modelScore(model, role) }))
     .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.model;
 }
@@ -237,6 +242,26 @@ export function modelOptionKey(
   model: Pick<RoleModelOption, "provider" | "name">,
 ) {
   return `${model.provider}:${model.name}`;
+}
+
+/**
+ * Selecting a model discovered on a particular local server must also select
+ * that server. Keeping only `provider: ollama` loses whether the model came
+ * from localhost or another machine and can silently route generation to the
+ * wrong Ollama instance.
+ */
+export function providerSettingsForRoleSelection(
+  current: UserSettings["providerSettings"],
+  model: Pick<RoleModelOption, "provider" | "local" | "serverUrl">,
+): UserSettings["providerSettings"] {
+  if (!model.local || !model.serverUrl?.trim()) return current;
+  return {
+    ...current,
+    [model.provider]: {
+      ...current[model.provider],
+      apiBaseUrl: model.serverUrl.trim(),
+    },
+  };
 }
 
 export function getAssignedModelForRole(

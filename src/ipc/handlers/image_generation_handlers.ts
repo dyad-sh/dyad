@@ -4,7 +4,6 @@ import {
   ImageGenerationApiResponseSchema,
   OpenRouterImageApiResponseSchema,
   OpenRouterModelsListSchema,
-  NANO_BANANA_2_MODEL,
   type ImageThemeMode,
 } from "../types/image_generation";
 import { getEnvVar } from "../utils/read_env";
@@ -27,6 +26,28 @@ import path from "node:path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { saveGeneratedImageToLocalVault } from "../utils/storage_vault";
+import { generateImage, generateText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGateway } from "@ai-sdk/gateway";
+import { getAssignedModelForRole } from "@/lib/model_roles";
+import {
+  getImageGenerationTimeoutMs,
+  isGeminiImageModel,
+  isExplicitImageRendererSelection,
+  isImageGenerationModel,
+  isNativeImageProvider,
+  resolveNativeImageModel,
+  type NativeImageProvider,
+} from "@/lib/image_generation_models";
+import { getModelClient } from "../utils/get_model_client";
+import { getLanguageModelProviders } from "../shared/language_model_helpers";
+import {
+  getLMStudioApiBaseUrl,
+  getOllamaBaseUrlFromSettings,
+} from "@/lib/local_provider_utils";
+import { getMxServeApiBaseUrl } from "@/lib/mx_serve";
+import { assertLocalModelReady } from "@/lib/validate_local_model";
 
 const logger = log.scope("image_generation_handlers");
 
@@ -159,6 +180,249 @@ async function maybeUploadImageToBlob(
     logger.error("Vercel Blob upload failed (kept local copy):", e);
     return undefined;
   }
+}
+
+function configuredImageApiKey(
+  provider: NativeImageProvider,
+  settings: ReturnType<typeof readSettings>,
+): string | undefined {
+  const saved = settings.providerSettings?.[provider]?.apiKey?.value?.trim();
+  if (saved) return saved;
+  if (provider === "vercel") {
+    return (
+      settings.vercelAiGatewayApiKey?.value?.trim() ||
+      getEnvVar("AI_GATEWAY_API_KEY")
+    );
+  }
+  if (provider === "auto") {
+    return saved || getEnvVar("DYAD_API_KEY");
+  }
+  return getEnvVar(
+    provider === "openai"
+      ? "OPENAI_API_KEY"
+      : provider === "google"
+        ? "GEMINI_API_KEY"
+        : "OPENROUTER_API_KEY",
+  );
+}
+
+function generatedFilesAsDataUrls(
+  files: readonly { base64: string; mediaType: string }[],
+): string[] {
+  return files
+    .filter((file) => file.mediaType.startsWith("image/"))
+    .map((file) => `data:${file.mediaType};base64,${file.base64}`);
+}
+
+function imageApiDataAsUrls(
+  data: Array<{ url?: string | null; b64_json?: string | null }>,
+): string[] {
+  return data.flatMap((image) =>
+    image.b64_json
+      ? [`data:image/png;base64,${image.b64_json}`]
+      : image.url
+        ? [image.url]
+        : [],
+  );
+}
+
+async function generateWithOpenAICompatibleEndpoint(input: {
+  baseURL: string;
+  apiKey?: string;
+  model: string;
+  prompt: string;
+  signal: AbortSignal;
+}): Promise<{ images: string[]; model: string }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (input.apiKey?.trim()) {
+    headers.Authorization = `Bearer ${input.apiKey.trim()}`;
+  }
+  const response = await fetch(
+    `${input.baseURL.replace(/\/+$/, "")}/images/generations`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: input.model,
+        prompt: input.prompt,
+        n: 1,
+        response_format: "b64_json",
+      }),
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const parsed = ImageGenerationApiResponseSchema.safeParse(
+    await response.json(),
+  );
+  if (!parsed.success) {
+    throw new Error("the image endpoint returned an invalid response");
+  }
+  return { images: imageApiDataAsUrls(parsed.data.data), model: input.model };
+}
+
+async function configuredCompatibleEndpoint(
+  provider: string,
+  settings: ReturnType<typeof readSettings>,
+): Promise<{ baseURL: string; apiKey?: string } | undefined> {
+  const stored = settings.providerSettings?.[provider] as
+    | { apiBaseUrl?: string; apiKey?: { value?: string } }
+    | undefined;
+  const providers = await getLanguageModelProviders();
+  const providerInfo = providers.find((item) => item.id === provider);
+  const apiKey =
+    stored?.apiKey?.value?.trim() ||
+    (providerInfo?.envVarName ? getEnvVar(providerInfo.envVarName) : undefined);
+
+  if (provider === "lmstudio") {
+    return { baseURL: getLMStudioApiBaseUrl(settings), apiKey };
+  }
+  if (provider === "ollama") {
+    return {
+      baseURL: `${getOllamaBaseUrlFromSettings(settings)}/v1`,
+      apiKey,
+    };
+  }
+  if (provider === "mx_serve") {
+    return { baseURL: getMxServeApiBaseUrl(settings), apiKey };
+  }
+  const baseURL =
+    stored?.apiBaseUrl?.trim() || providerInfo?.apiBaseUrl?.trim();
+  return baseURL ? { baseURL: baseURL.replace(/\/+$/, ""), apiKey } : undefined;
+}
+
+function firstConfiguredImageProvider(
+  settings: ReturnType<typeof readSettings>,
+  exclude?: string,
+): NativeImageProvider | undefined {
+  return (["auto", "openrouter", "openai", "google", "vercel"] as const).find(
+    (provider) =>
+      provider !== exclude &&
+      Boolean(configuredImageApiKey(provider, settings)),
+  );
+}
+
+async function prepareImagePromptWithModel(input: {
+  provider: string;
+  model: string;
+  prompt: string;
+  settings: ReturnType<typeof readSettings>;
+  signal: AbortSignal;
+}): Promise<string> {
+  const { modelClient } = await getModelClient(
+    { provider: input.provider, name: input.model },
+    input.settings,
+  );
+  const result = await generateText({
+    model: modelClient.model,
+    system:
+      "You are an image prompt director. Rewrite the user's request into one production-ready image-generation prompt. Preserve every requested subject and constraint. Add useful composition, lighting, material, camera, colour and style details, but do not invent logos, captions or text. Return only the final prompt, with no preamble or Markdown.",
+    prompt: input.prompt,
+    temperature: 0.4,
+    maxOutputTokens: 900,
+    maxRetries: 1,
+    abortSignal: input.signal,
+  });
+  const prepared = result.text.trim();
+  if (!prepared) {
+    throw new Error("the selected text model returned an empty image prompt");
+  }
+  return prepared.slice(0, 4000);
+}
+
+async function generateWithNativeImageProvider(input: {
+  provider: Exclude<NativeImageProvider, "openrouter">;
+  apiKey: string;
+  model: string;
+  prompt: string;
+  inputImage?: string;
+  signal: AbortSignal;
+}): Promise<{
+  images: string[];
+  text?: string;
+  model: string;
+  provider: string;
+}> {
+  if (input.provider === "auto") {
+    const response = await fetch(`${DYAD_ENGINE_URL}/images/generations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.apiKey}`,
+      },
+      body: JSON.stringify({ prompt: input.prompt, model: input.model }),
+      signal: input.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const parsed = ImageGenerationApiResponseSchema.safeParse(
+      await response.json(),
+    );
+    if (!parsed.success) {
+      throw new Error("the image service returned an invalid response");
+    }
+    return {
+      images: imageApiDataAsUrls(parsed.data.data),
+      model: input.model,
+      provider: input.provider,
+    };
+  }
+
+  if (input.provider === "google" && isGeminiImageModel(input.model)) {
+    const google = createGoogleGenerativeAI({ apiKey: input.apiKey });
+    const result = await generateText({
+      model: google(input.model),
+      ...(input.inputImage
+        ? {
+            messages: [
+              {
+                role: "user" as const,
+                content: [
+                  { type: "text" as const, text: input.prompt },
+                  {
+                    type: "image" as const,
+                    image: input.inputImage,
+                  },
+                ],
+              },
+            ],
+          }
+        : { prompt: input.prompt }),
+      providerOptions: {
+        google: { responseModalities: ["TEXT", "IMAGE"] },
+      },
+      abortSignal: input.signal,
+    });
+    return {
+      images: generatedFilesAsDataUrls(result.files),
+      text: result.text?.trim() || undefined,
+      model: input.model,
+      provider: input.provider,
+    };
+  }
+
+  const imageModel =
+    input.provider === "openai"
+      ? createOpenAI({ apiKey: input.apiKey }).image(input.model)
+      : input.provider === "google"
+        ? createGoogleGenerativeAI({ apiKey: input.apiKey }).image(input.model)
+        : createGateway({ apiKey: input.apiKey }).imageModel(input.model);
+  const result = await generateImage({
+    model: imageModel,
+    prompt: input.inputImage
+      ? { text: input.prompt, images: [input.inputImage] }
+      : input.prompt,
+    n: 1,
+    abortSignal: input.signal,
+  });
+  return {
+    images: generatedFilesAsDataUrls(result.images),
+    model: input.model,
+    provider: input.provider,
+  };
 }
 
 export function registerImageGenerationHandlers() {
@@ -356,33 +620,248 @@ export function registerImageGenerationHandlers() {
     },
   );
 
-  // Image Agent: generate images directly via OpenRouter (Nano Banana 2).
+  // Image Agent: route through the provider assigned to the Image model role.
   // Unlike `generateImage`, this is app-independent and returns base64 data
   // URLs straight to the renderer instead of saving into an app's media folder.
   createTypedHandler(
     imageGenerationContracts.generateAgentImage,
     async (_, params) => {
       const settings = readSettings();
-      const apiKey =
-        settings.providerSettings?.openrouter?.apiKey?.value ||
-        getEnvVar("OPENROUTER_API_KEY");
+      const assigned = getAssignedModelForRole(settings, "image");
+      const requestedProvider =
+        params.provider?.trim() || assigned?.provider || "openrouter";
+      const requestedModel =
+        params.model?.trim() ||
+        (assigned?.provider === requestedProvider ? assigned.name : undefined);
+      const requiresSelectedRenderer = isExplicitImageRendererSelection(
+        requestedProvider,
+        requestedModel,
+      );
+      let effectivePrompt = params.prompt;
+      let promptProvider: string | undefined;
+      let promptModel: string | undefined;
 
+      // A text-only selection still participates: it directs and expands the
+      // user's prompt before a dedicated image model renders the pixels.
+      if (requestedModel && !isImageGenerationModel(requestedModel)) {
+        const controller = new AbortController();
+        if (params.requestId)
+          activeControllers.set(params.requestId, controller);
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          IMAGE_GENERATION_TIMEOUT_MS,
+        );
+        try {
+          effectivePrompt = await prepareImagePromptWithModel({
+            provider: requestedProvider,
+            model: requestedModel,
+            prompt: params.prompt,
+            settings,
+            signal: controller.signal,
+          });
+          promptProvider = requestedProvider;
+          promptModel = requestedModel;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            throw new DyadError(
+              `${requestedProvider} timed out while preparing the image prompt.`,
+              DyadErrorKind.External,
+            );
+          }
+          throw new DyadError(
+            `${requestedProvider} could not prepare the image prompt: ${error instanceof Error ? error.message : String(error)}`,
+            DyadErrorKind.External,
+          );
+        } finally {
+          clearTimeout(timeoutId);
+          if (params.requestId) activeControllers.delete(params.requestId);
+        }
+      }
+
+      // Local and custom providers can participate without a bespoke adapter
+      // when they expose the OpenAI-compatible image endpoint. If they do not,
+      // continue to a configured image backend instead of breaking the request.
+      let compatibleEndpointError: string | undefined;
+      if (
+        !isNativeImageProvider(requestedProvider) &&
+        requestedModel &&
+        isImageGenerationModel(requestedModel)
+      ) {
+        let compatibleEndpointReady = true;
+        if (requestedProvider === "ollama") {
+          try {
+            await assertLocalModelReady(
+              { provider: requestedProvider, name: requestedModel },
+              settings,
+            );
+          } catch (error) {
+            compatibleEndpointReady = false;
+            compatibleEndpointError =
+              error instanceof Error ? error.message : String(error);
+            logger.warn(
+              `Ollama image model is unavailable; trying a configured image backend (${compatibleEndpointError})`,
+            );
+          }
+        }
+        const endpoint = await configuredCompatibleEndpoint(
+          requestedProvider,
+          settings,
+        );
+        if (!endpoint) {
+          compatibleEndpointError =
+            "no OpenAI-compatible image endpoint is configured";
+        } else if (params.inputImage) {
+          compatibleEndpointError =
+            "image editing is not supported by this local image endpoint";
+        }
+        if (compatibleEndpointReady && endpoint && !params.inputImage) {
+          const controller = new AbortController();
+          if (params.requestId)
+            activeControllers.set(params.requestId, controller);
+          const timeoutMs = getImageGenerationTimeoutMs(requestedProvider);
+          let timedOut = false;
+          const timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+          }, timeoutMs);
+          try {
+            const result = await generateWithOpenAICompatibleEndpoint({
+              ...endpoint,
+              model: requestedModel,
+              prompt: effectivePrompt,
+              signal: controller.signal,
+            });
+            if (result.images.length > 0) {
+              return {
+                ...result,
+                provider: requestedProvider,
+                promptProvider,
+                promptModel,
+              };
+            }
+            compatibleEndpointError = "no image was returned";
+          } catch (error) {
+            const stoppedByUser =
+              params.requestId != null &&
+              !activeControllers.has(params.requestId);
+            if (stoppedByUser) {
+              throw new DyadError(
+                "Image generation stopped.",
+                DyadErrorKind.UserCancelled,
+              );
+            }
+            compatibleEndpointError = timedOut
+              ? `timed out after ${Math.round(timeoutMs / 60_000)} minutes while the local model was loading or rendering`
+              : error instanceof Error
+                ? error.message
+                : String(error);
+            logger.warn(
+              `${requestedProvider} image endpoint failed (${compatibleEndpointError})`,
+            );
+          } finally {
+            clearTimeout(timeoutId);
+            if (params.requestId) activeControllers.delete(params.requestId);
+          }
+        }
+
+        // When the user deliberately assigned a real image renderer, respect
+        // that choice. Silently replacing an unavailable local Flux model with
+        // OpenRouter made Settings say one thing while Chat used another.
+        if (requiresSelectedRenderer && compatibleEndpointError) {
+          throw new DyadError(
+            `${requestedProvider} could not generate with ${requestedModel}: ${compatibleEndpointError}. The selected image renderer was not replaced with another provider.`,
+            DyadErrorKind.Precondition,
+          );
+        }
+      }
+
+      let provider = isNativeImageProvider(requestedProvider)
+        ? requestedProvider
+        : firstConfiguredImageProvider(settings, requestedProvider);
+      let apiKey = provider
+        ? configuredImageApiKey(provider, settings)
+        : undefined;
+
+      // A provider may be present in a saved role after its credential was
+      // removed. Keep generation working with another connected backend.
       if (!apiKey) {
+        provider = firstConfiguredImageProvider(settings, requestedProvider);
+        apiKey = provider
+          ? configuredImageApiKey(provider, settings)
+          : undefined;
+      }
+
+      if (!provider || !apiKey) {
         throw new DyadError(
-          "An OpenRouter API key is required. Add it in Settings → AI → Model Providers → OpenRouter.",
-          DyadErrorKind.Auth,
+          compatibleEndpointError
+            ? `${requestedProvider} could not generate an image (${compatibleEndpointError}), and no fallback image backend is connected. Connect OpenRouter, OpenAI, Google AI, Vercel AI Gateway, Meta Human OS Pro, or a local image server with an OpenAI-compatible /images/generations endpoint.`
+            : `${requestedProvider} does not expose an image-generation endpoint, and no fallback image backend is connected. Connect OpenRouter, OpenAI, Google AI, Vercel AI Gateway, Meta Human OS Pro, or a local image server with an OpenAI-compatible /images/generations endpoint.`,
+          DyadErrorKind.Precondition,
         );
       }
 
-      const model = params.model?.trim() || NANO_BANANA_2_MODEL;
+      const routedFromProvider =
+        provider === requestedProvider ? undefined : requestedProvider;
+      const model = resolveNativeImageModel(
+        provider,
+        provider === requestedProvider ? requestedModel : undefined,
+      );
+
+      if (provider !== "openrouter") {
+        const controller = new AbortController();
+        if (params.requestId) {
+          activeControllers.set(params.requestId, controller);
+        }
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          IMAGE_GENERATION_TIMEOUT_MS,
+        );
+        try {
+          const result = await generateWithNativeImageProvider({
+            provider,
+            apiKey,
+            model,
+            prompt: effectivePrompt,
+            inputImage: params.inputImage,
+            signal: controller.signal,
+          });
+          if (result.images.length === 0) {
+            throw new DyadError(
+              `${model} did not return an image. Select a model labelled Image Generation.`,
+              DyadErrorKind.External,
+            );
+          }
+          return {
+            ...result,
+            routedFromProvider,
+            promptProvider,
+            promptModel,
+          };
+        } catch (error) {
+          if (error instanceof DyadError) throw error;
+          if (error instanceof Error && error.name === "AbortError") {
+            throw new DyadError(
+              "Image generation stopped or timed out.",
+              DyadErrorKind.External,
+            );
+          }
+          throw new DyadError(
+            `Image generation with ${provider} failed: ${error instanceof Error ? error.message : String(error)}`,
+            DyadErrorKind.External,
+          );
+        } finally {
+          clearTimeout(timeoutId);
+          if (params.requestId) activeControllers.delete(params.requestId);
+        }
+      }
 
       // Multi-part content when editing an existing image, plain text otherwise.
       const userContent = params.inputImage
         ? [
-            { type: "text", text: params.prompt },
+            { type: "text", text: effectivePrompt },
             { type: "image_url", image_url: { url: params.inputImage } },
           ]
-        : params.prompt;
+        : effectivePrompt;
 
       const controller = new AbortController();
       // Registered so the composer's stop button can abort this request.
@@ -483,7 +962,15 @@ export function registerImageGenerationHandlers() {
       const text =
         typeof message?.content === "string" ? message.content : undefined;
 
-      return { images, text, model };
+      return {
+        images,
+        text,
+        model,
+        provider,
+        routedFromProvider,
+        promptProvider,
+        promptModel,
+      };
     },
   );
 

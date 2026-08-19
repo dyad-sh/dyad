@@ -57,4 +57,17 @@ describe("Chat Agent conversation tabs", () => {
       messages,
     });
   });
+
+  it("keeps vector and database selections with the conversation", () => {
+    const result = syncChatAgentTab([tab("one")], {
+      ...tab("one"),
+      vectorCollectionIds: ["knowledge"],
+      dataSourceIds: ["orders"],
+      updatedAt: 2,
+    });
+    expect(result[0]).toMatchObject({
+      vectorCollectionIds: ["knowledge"],
+      dataSourceIds: ["orders"],
+    });
+  });
 });

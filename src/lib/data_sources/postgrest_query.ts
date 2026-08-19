@@ -142,6 +142,19 @@ export function buildQueryUrl(
   return url.toString();
 }
 
+/** Builds a write URL using the same value-safe filter encoding as reads. */
+export function buildMutationUrl(
+  projectUrl: string,
+  table: string,
+  filters: Filter[],
+): string {
+  const url = new URL(`/rest/v1/${table}`, projectUrl);
+  for (const filter of filters) {
+    url.searchParams.append(filter.column, renderFilterValue(filter));
+  }
+  return url.toString();
+}
+
 /**
  * Reads the total from a PostgREST Content-Range header.
  *

@@ -10,15 +10,26 @@ import {
   dataSources,
 } from "../../../db/schema";
 import {
+  COMPARISON_OPERATORS,
   validateQueryPlan,
+  type Filter,
   type QueryPlan,
   type SchemaCatalogue,
 } from "@/lib/data_sources/query_plan";
+import {
+  validateDataMutationPlan,
+  type DataMutationAction,
+} from "@/lib/data_sources/mutation_plan";
 import { wrapUntrustedRows } from "@/lib/data_sources/postgrest_query";
 import { buildResultTable } from "@/lib/data_sources/result_table";
 import type { ChatAgentToolResult } from "@/components/chat-agent/types";
-import { decryptCredential, executePlan } from "./supabase_provider";
-import { executeD1Plan } from "./cloudflare_d1_provider";
+import {
+  decryptCredential,
+  executeMutation,
+  executePlan,
+} from "./supabase_provider";
+import { executeD1Mutation, executeD1Plan } from "./cloudflare_d1_provider";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 /**
  * The agent's view of connected databases.
@@ -64,6 +75,8 @@ async function loadCatalogue(dataSourceId: string): Promise<SchemaCatalogue> {
         columns: columns.map((column) => ({
           columnName: column.columnName,
           dataType: column.dataType,
+          primaryKey: column.primaryKey,
+          isUnique: column.isUnique,
         })),
       };
     }),
@@ -125,6 +138,11 @@ export function buildDataSourceToolSet(
   if (selectedIds.length === 0) return {};
 
   const tools: ToolSet = {};
+  const filterSchema = z.object({
+    column: z.string(),
+    operator: z.enum(COMPARISON_OPERATORS),
+    value: z.unknown().optional(),
+  });
 
   tools.list_data_sources = {
     description:
@@ -146,7 +164,7 @@ export function buildDataSourceToolSet(
             .select({ id: dataSourceTables.id })
             .from(dataSourceTables)
             .where(eq(dataSourceTables.dataSourceId, row.id));
-          return `- id: ${row.id}\n  name: ${row.name}\n  provider: ${row.provider}\n  environment: ${row.environment}\n  status: ${row.status}\n  readable tables: ${tables.length}`;
+          return `- id: ${row.id}\n  name: ${row.name}\n  provider: ${row.provider}\n  environment: ${row.environment}\n  status: ${row.status}\n  chat agent permission: ${row.accessMode === "read_write" ? "read & write" : "read only"}\n  readable tables: ${tables.length}`;
         }),
       );
       return `Selected data sources:\n${described.join("\n")}`;
@@ -273,27 +291,7 @@ export function buildDataSourceToolSet(
       data_source_id: z.string(),
       table: z.string(),
       select: z.array(z.string()).optional(),
-      filters: z
-        .array(
-          z.object({
-            column: z.string(),
-            operator: z.enum([
-              "=",
-              "!=",
-              ">",
-              ">=",
-              "<",
-              "<=",
-              "like",
-              "ilike",
-              "in",
-              "is_null",
-              "is_not_null",
-            ]),
-            value: z.unknown().optional(),
-          }),
-        )
-        .optional(),
+      filters: z.array(filterSchema).optional(),
       joins: z
         .array(
           z.object({
@@ -396,6 +394,104 @@ export function buildDataSourceToolSet(
         rows: outcome.rows,
         totalRows: outcome.totalRows,
       });
+    },
+  };
+
+  tools.mutate_data_source = {
+    description: [
+      "Insert, update, or delete one targeted record in a selected data source that the user has explicitly configured as Read & write.",
+      "Provide a structured request, never SQL. Call search_schema first and use only discovered tables and columns.",
+      "Update and delete require an equality filter on a discovered primary or unique key; broad writes are refused.",
+      "Use this only when the user explicitly asks to create, change, or remove stored data.",
+    ].join(" "),
+    inputSchema: z.object({
+      data_source_id: z.string(),
+      action: z.enum(["insert", "update", "delete"]),
+      table: z.string(),
+      values: z.record(z.string(), z.unknown()).optional(),
+      filters: z.array(filterSchema).optional(),
+    }),
+    execute: async (input: Record<string, unknown>): Promise<ToolResult> => {
+      const dataSourceId = String(input.data_source_id);
+      const row = await requireSelectedSource(dataSourceId, selectedIds);
+      if (row.accessMode !== "read_write") {
+        throw new DyadError(
+          `"${row.name}" is Read only. Change its Chat Agent permission to Read & write in Data Sources before modifying records.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+
+      const catalogue = await loadCatalogue(dataSourceId);
+      const validation = validateDataMutationPlan(
+        {
+          action: input.action as DataMutationAction,
+          table: String(input.table),
+          values: input.values as Record<string, unknown> | undefined,
+          filters: input.filters as Filter[] | undefined,
+        },
+        catalogue,
+      );
+      if (!validation.ok) {
+        return [
+          "That write request was rejected:",
+          ...validation.errors.map((error) => `- ${error}`),
+          "Use search_schema and target one record by a primary or unique key.",
+        ].join("\n");
+      }
+
+      const key = decryptCredential(row.encryptedCredential);
+      if (!key && row.provider !== "cloudflare-d1") {
+        return `"${row.name}" has no usable connection key. Ask the user to re-enter it in Data Sources.`;
+      }
+
+      const outcome =
+        row.provider === "cloudflare-d1"
+          ? await executeD1Mutation({
+              endpoint: row.projectUrl,
+              token: key,
+              plan: validation.plan,
+            })
+          : await executeMutation({
+              projectUrl: row.projectUrl,
+              key: key ?? "",
+              plan: validation.plan,
+            });
+
+      const table = buildResultTable(outcome.rows);
+      const actionLabel =
+        validation.plan.action === "insert"
+          ? "Inserted"
+          : validation.plan.action === "update"
+            ? "Updated"
+            : "Deleted";
+      onToolResult?.({
+        serverName: row.name,
+        toolName: "mutate_data_source",
+        status: "completed",
+        result: `${actionLabel} ${outcome.affectedRows} ${outcome.affectedRows === 1 ? "record" : "records"} in ${validation.plan.table}`,
+        presentation: {
+          kind: "database-result",
+          sourceName: row.name,
+          table: validation.plan.table,
+          columns: table.columns,
+          rows: table.rows,
+          totalRows: outcome.affectedRows,
+          executionMs: outcome.executionMs,
+          truncatedColumns: table.truncatedColumns,
+        },
+      });
+
+      return [
+        `${actionLabel} ${outcome.affectedRows} ${outcome.affectedRows === 1 ? "record" : "records"} in "${row.name}".${validation.plan.table}.`,
+        outcome.rows.length > 0
+          ? wrapUntrustedRows({
+              sourceName: row.name,
+              table: validation.plan.table,
+              rows: outcome.rows,
+              totalRows: outcome.affectedRows,
+            })
+          : "The provider returned no row representation.",
+      ].join("\n\n");
     },
   };
 

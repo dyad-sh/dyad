@@ -194,6 +194,28 @@ describe("ChatAgentComposer knowledge selection", () => {
       "knowledge-base",
     );
   });
+
+  it("restores the conversation's database selection too", async () => {
+    function ControlledComposer() {
+      const [dataSourceIds, setDataSourceIds] = useState(["source-existing"]);
+      return (
+        <ChatAgentComposer
+          onSubmit={vi.fn()}
+          selectedDataSourceIds={dataSourceIds}
+          onDataSourceIdsChange={setDataSourceIds}
+        />
+      );
+    }
+
+    render(<ControlledComposer />);
+    expect(screen.getByTestId("data-source-selection").textContent).toBe(
+      "source-existing",
+    );
+    await userEvent.click(screen.getByTestId("data-source-selection"));
+    expect(screen.getByTestId("data-source-selection").textContent).toBe(
+      "source-existing,source-1",
+    );
+  });
 });
 
 describe("ChatAgentComposer prompt improvement", () => {

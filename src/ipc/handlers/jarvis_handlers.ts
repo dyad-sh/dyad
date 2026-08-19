@@ -12,6 +12,7 @@ import {
   listElevenLabsVoices,
   synthesizeElevenLabsSpeech,
 } from "../utils/jarvis/elevenlabs_http_tts";
+import { resolveBatchSpeechToTextModel } from "@/lib/jarvis/speech_to_text";
 
 const logger = log.scope("jarvis_handlers");
 
@@ -109,6 +110,10 @@ async function ensureMicrophoneAccess(): Promise<
 }
 
 export function registerJarvisHandlers() {
+  createTypedHandler(jarvisContracts.requestMicrophoneAccess, async () => ({
+    microphoneAccess: await ensureMicrophoneAccess(),
+  }));
+
   createTypedHandler(jarvisContracts.startSession, async (event, params) => {
     const windowId = event.sender.id;
     const microphoneAccess = await ensureMicrophoneAccess();
@@ -217,7 +222,10 @@ export function registerJarvisHandlers() {
         : "webm";
 
     const form = new FormData();
-    form.append("model_id", "scribe_v1");
+    form.append(
+      "model_id",
+      resolveBatchSpeechToTextModel(settings.jarvis?.sttModelId),
+    );
     form.append(
       "file",
       new Blob([Buffer.from(params.audio, "base64")], {
@@ -237,11 +245,21 @@ export function registerJarvisHandlers() {
 
     if (!response.ok) {
       // Never surface the key or the raw provider body.
-      throw new DyadError(
+      const message =
         response.status === 401
           ? "ElevenLabs rejected the API key. Update it in Settings → Voice Assistant."
-          : `Transcription failed (HTTP ${response.status}).`,
-        DyadErrorKind.External,
+          : response.status === 403
+            ? "The ElevenLabs API key lacks Speech to Text permission. Enable Speech to Text for the key in ElevenLabs Developers → API Keys."
+            : response.status === 422
+              ? "ElevenLabs rejected the recording or speech-to-text model. Try recording again, then check the Voice Assistant model setting."
+              : `Transcription failed (HTTP ${response.status}).`;
+      throw new DyadError(
+        message,
+        response.status === 401 || response.status === 403
+          ? DyadErrorKind.Auth
+          : response.status === 422
+            ? DyadErrorKind.Validation
+            : DyadErrorKind.External,
       );
     }
 

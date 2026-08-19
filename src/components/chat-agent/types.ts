@@ -36,6 +36,11 @@ export type ChatAgentMessage = {
   mediaPrompt?: string;
   /** Model id that produced the images. */
   imageModel?: string;
+  /** Provider that actually rendered the images after any compatibility routing. */
+  imageProvider?: string;
+  /** Text provider/model that prepared the prompt before rendering. */
+  imagePromptProvider?: string;
+  imagePromptModel?: string;
   /** True while an attached document is being read by the OCR model. */
   readingDocument?: boolean;
   /** True while an image is being generated for this assistant message. */
@@ -64,6 +69,8 @@ export type ChatAgentConversation = {
   messages: ChatAgentMessage[];
   /** Knowledge spaces searched for every turn in this conversation. */
   vectorCollectionIds?: string[];
+  /** Connected databases available to this conversation. */
+  dataSourceIds?: string[];
   /**
    * The project this conversation was started in, if any.
    *

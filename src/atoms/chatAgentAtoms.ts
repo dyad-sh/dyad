@@ -9,13 +9,9 @@ import type {
 
 export const chatAgentAttachmentsAtom = atom<FileAttachment[]>([]);
 
-/**
- * Data sources the agent may query.
- *
- * Stored rather than held in component state: a selection that vanishes when
- * you switch tabs is a selection you have to keep remaking, and these are ids
- * rather than secrets so persisting them costs nothing.
- */
+/** Legacy/default selection used when opening conversations saved before
+ * database scope became part of each Chat Agent tab. New conversations copy
+ * this value, but every open conversation then owns its own selection. */
 export const chatAgentDataSourceIdsAtom = atomWithStorage<string[]>(
   "chat-agent-data-source-ids",
   [],

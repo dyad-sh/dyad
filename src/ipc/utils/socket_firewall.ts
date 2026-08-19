@@ -814,7 +814,6 @@ export async function commitPnpmAllowBuildsConfigIfChanged(
     await gitCommit({
       path: appPath,
       message: "approve pnpm dependency builds",
-      noVerify: true,
     });
   } catch (error) {
     logger.warn("Failed to commit pnpm allowBuilds config:", error);
@@ -1092,7 +1091,6 @@ export async function recordDeniedPnpmBuilds({
       await gitCommit({
         path: appPath,
         message: "record denied pnpm dependency builds",
-        noVerify: true,
       });
     } catch (error) {
       logger.warn("Failed to commit denied pnpm builds config:", error);

@@ -82,7 +82,7 @@ test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previ
     po,
     fixture: "run-build-vite",
     expectedScript: "vite build",
-    expectedMode: "isolated",
+    expectedMode: "in-place",
     previewText: "Welcome to Your Blank App",
   });
 

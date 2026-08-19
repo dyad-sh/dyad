@@ -87,11 +87,13 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   After copying, inspect preserved symlinks and junctions: remap targets inside
   the source app into the snapshot, and reject targets outside the app rather
   than leaving a path back to live files.
-- Do not treat a regex miss in an executable framework config as proof that
-  build outputs are default. Dynamic, imported, spread, shorthand, and computed
-  config values must isolate unless the effective configuration is proven safe.
+- Select build mode around preview continuity, not whether a build may generate
+  files. With no running preview, build in place. Beside a preview, run the exact
+  standard Vite build in place, run Next.js 16+ in place only when `.next/dev`
+  confirms separate development output, and isolate Next.js 15 and unknown or
+  custom build commands. Keep this decision independent of the host OS.
 - Acquire app-operation claims before reading and validating build scripts,
-  configs, ignore state, and preview facts. Consent must disclose and revalidate
+  lifecycle hooks, and preview facts. Consent must disclose and revalidate
   implicit `prebuild`/`postbuild` hooks as well as `build` under that claim.
 - A workspace snapshot is an operational boundary for ordinary build outputs,
   not a security sandbox for project code. Build approval must say that project

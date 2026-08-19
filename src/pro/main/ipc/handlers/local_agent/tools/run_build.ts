@@ -10,7 +10,6 @@ import {
   readAppResource,
 } from "@/ipc/services/app_operation_coordinator";
 import { detectNextJsMajorVersion } from "@/ipc/utils/framework_utils";
-import { gitIsIgnored } from "@/ipc/utils/git_utils";
 import { choosePackageManagerForApp } from "@/ipc/utils/package_manager_selection";
 import { runningApps } from "@/ipc/utils/process_manager";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
@@ -67,11 +66,6 @@ export type BuildExecutionMode = "in-place" | "isolated";
 export interface BuildProjectFacts {
   frameworkType: AppFrameworkType | null;
   buildScript: string;
-  hasPrebuildScript: boolean;
-  hasPostbuildScript: boolean;
-  defaultOutputIgnored: boolean;
-  defaultOutputPathSafe: boolean;
-  hasFrameworkConfig: boolean;
   nextMajorVersion: number | null;
   previewRunning: boolean;
   nextDevOutputIsolated: boolean;
@@ -81,14 +75,8 @@ export interface BuildProjectFacts {
 export function selectBuildExecutionMode(
   facts: BuildProjectFacts,
 ): BuildExecutionMode {
-  if (
-    facts.hasPrebuildScript ||
-    facts.hasPostbuildScript ||
-    facts.hasFrameworkConfig ||
-    !facts.defaultOutputIgnored ||
-    !facts.defaultOutputPathSafe
-  ) {
-    return "isolated";
+  if (!facts.previewRunning) {
+    return "in-place";
   }
 
   if (facts.frameworkType === "vite" && facts.buildScript === "vite build") {
@@ -99,7 +87,7 @@ export function selectBuildExecutionMode(
     facts.frameworkType === "nextjs" &&
     facts.buildScript === "next build" &&
     (facts.nextMajorVersion ?? 0) >= 16 &&
-    (!facts.previewRunning || facts.nextDevOutputIsolated)
+    facts.nextDevOutputIsolated
   ) {
     return "in-place";
   }
@@ -153,69 +141,14 @@ function getScript(packageJson: PackageJson, name: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-async function hasFrameworkConfig(appPath: string): Promise<boolean> {
-  const configNames = [
-    "vite.config.js",
-    "vite.config.ts",
-    "vite.config.mjs",
-    "vite.config.cjs",
-    "vite.config.mts",
-    "vite.config.cts",
-    "next.config.js",
-    "next.config.mjs",
-    "next.config.cjs",
-    "next.config.ts",
-  ];
-  const results = await Promise.all(
-    configNames.map(async (name) => {
-      try {
-        await fs.access(path.join(appPath, name));
-        return true;
-      } catch (error) {
-        return (error as NodeJS.ErrnoException).code !== "ENOENT";
-      }
-    }),
-  );
-  return results.some(Boolean);
-}
-
-async function isIgnored(appPath: string, outputDir: string): Promise<boolean> {
-  try {
-    return await gitIsIgnored({ path: appPath, filepath: outputDir });
-  } catch {
-    return false;
-  }
-}
-
-async function isDefaultOutputPathSafe(
-  appPath: string,
-  outputDir: string,
-): Promise<boolean> {
-  try {
-    return (await fs.lstat(path.join(appPath, outputDir))).isDirectory();
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT";
-  }
-}
-
 async function gatherBuildProjectFacts(
   ctx: AgentContext,
-  packageJson: PackageJson,
   buildScript: string,
 ): Promise<BuildProjectFacts> {
-  const defaultOutput = ctx.frameworkType === "nextjs" ? ".next" : "dist";
   const previewRunning = runningApps.has(ctx.appId);
   return {
     frameworkType: ctx.frameworkType,
     buildScript,
-    hasPrebuildScript: getScript(packageJson, "prebuild") !== null,
-    hasPostbuildScript: getScript(packageJson, "postbuild") !== null,
-    defaultOutputIgnored: await isIgnored(ctx.appPath, defaultOutput),
-    defaultOutputPathSafe: await isDefaultOutputPathSafe(
-      ctx.appPath,
-      defaultOutput,
-    ),
-    hasFrameworkConfig: await hasFrameworkConfig(ctx.appPath),
     nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
     previewRunning,
     nextDevOutputIsolated:
@@ -488,7 +421,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
-- The preview is never stopped. Dyad builds in place only when concurrent safety is proven; otherwise it uses an isolated workspace snapshot.`,
+- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot while a preview is running.`,
   inputSchema: runBuildSchema,
   defaultConsent: "ask",
   modifiesState: true,
@@ -569,11 +502,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               DyadErrorKind.Conflict,
             );
           }
-          const facts = await gatherBuildProjectFacts(
-            ctx,
-            packageJson,
-            buildScript,
-          );
+          const facts = await gatherBuildProjectFacts(ctx, buildScript);
           const mode = selectBuildExecutionMode(facts);
 
           state.count += 1;

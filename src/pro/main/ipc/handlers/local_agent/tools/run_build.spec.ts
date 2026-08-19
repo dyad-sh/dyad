@@ -24,11 +24,6 @@ import {
 const safeViteFacts: BuildProjectFacts = {
   frameworkType: "vite",
   buildScript: "vite build",
-  hasPrebuildScript: false,
-  hasPostbuildScript: false,
-  defaultOutputIgnored: true,
-  defaultOutputPathSafe: true,
-  hasFrameworkConfig: false,
   nextMajorVersion: null,
   previewRunning: true,
   nextDevOutputIsolated: false,
@@ -73,21 +68,14 @@ describe("run_build", () => {
     );
   });
 
-  it("builds only the narrow standard Vite case in place", () => {
+  it("builds standard Vite in place beside a preview", () => {
     expect(selectBuildExecutionMode(safeViteFacts)).toBe("in-place");
-
-    for (const unsafe of [
-      { hasPrebuildScript: true },
-      { hasPostbuildScript: true },
-      { defaultOutputIgnored: false },
-      { defaultOutputPathSafe: false },
-      { hasFrameworkConfig: true },
-      { buildScript: "tsc -b && vite build" },
-    ]) {
-      expect(selectBuildExecutionMode({ ...safeViteFacts, ...unsafe })).toBe(
-        "isolated",
-      );
-    }
+    expect(
+      selectBuildExecutionMode({
+        ...safeViteFacts,
+        buildScript: "tsc -b && vite build",
+      }),
+    ).toBe("isolated");
   });
 
   it("requires Next 16 isolated dev output before building beside a preview", () => {
@@ -118,13 +106,20 @@ describe("run_build", () => {
     ).toBe("in-place");
   });
 
-  it("isolates unknown frameworks", () => {
+  it("isolates unknown builds only while a preview is running", () => {
     expect(
       selectBuildExecutionMode({
         ...safeViteFacts,
         frameworkType: null,
       }),
     ).toBe("isolated");
+    expect(
+      selectBuildExecutionMode({
+        ...safeViteFacts,
+        frameworkType: null,
+        previewRunning: false,
+      }),
+    ).toBe("in-place");
   });
 
   it("rewrites links to source dependencies into the private snapshot", async () => {

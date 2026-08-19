@@ -229,6 +229,7 @@ export async function applyPnpmVersionMigration({
     await gitCommit({
       path: appPath,
       message: `migrate to pnpm ${migrationMajor}`,
+      noVerify: true,
     });
   } catch (error) {
     logger.warn("Failed to commit pnpm migration changes:", error);

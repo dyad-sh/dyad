@@ -256,6 +256,7 @@ export function registerTemplateHandlers() {
             const commitHash = await gitService.stageAllAndCommitIfChanged({
               path: newAbsPath,
               message: `Apply ${templateId} template`,
+              noVerify: true,
             });
 
             if (commitHash === null) {
@@ -357,6 +358,7 @@ export function registerTemplateHandlers() {
         const commitHash = await gitService.stageAllAndCommitIfChanged({
           path: workingPath,
           message: `Apply ${templateId} template`,
+          noVerify: true,
         });
         if (commitHash === null) {
           logger.info(

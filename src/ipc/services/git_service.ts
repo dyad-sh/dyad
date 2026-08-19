@@ -53,7 +53,7 @@ export class GitService {
     await gitInit({ path, ref });
     await ensureGitLineEndingPolicy({ path, writeGitattributes: true });
     await gitAddAll({ path });
-    return gitCommit({ path, message });
+    return gitCommit({ path, message, noVerify: true });
   }
 
   /**
@@ -63,12 +63,14 @@ export class GitService {
   async stageAllAndCommit({
     path,
     message,
+    noVerify = false,
   }: {
     path: string;
     message: string;
+    noVerify?: boolean;
   }): Promise<string> {
     await gitAddAll({ path });
-    return gitCommit({ path, message });
+    return gitCommit({ path, message, noVerify });
   }
 
   /**
@@ -78,15 +80,17 @@ export class GitService {
   async stageAllAndCommitIfChanged({
     path,
     message,
+    noVerify = false,
   }: {
     path: string;
     message: string;
+    noVerify?: boolean;
   }): Promise<string | null> {
     await gitAddAll({ path });
     if (!(await hasStagedChanges({ path }))) {
       return null;
     }
-    return gitCommit({ path, message });
+    return gitCommit({ path, message, noVerify });
   }
 
   /**
@@ -174,6 +178,7 @@ export class GitService {
       const commitHash = await gitCommit({
         path,
         message,
+        noVerify: true,
         paths: [filepath],
       });
       return { commitHash, uncommittedReason: null };

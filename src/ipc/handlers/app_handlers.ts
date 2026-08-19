@@ -2604,6 +2604,16 @@ export function registerAppHandlers() {
   // exercise the blueprint flow (imports default to 0; only createApp sets it).
   if (IS_TEST_BUILD) {
     registerTrustedIpcHandler(
+      "test:get-app-process-id",
+      async (_event, { appName }: { appName: string }) => {
+        const appRecord = await db.query.apps.findFirst({
+          where: eq(apps.name, appName),
+        });
+        if (!appRecord) throw new Error(`No app found for name=${appName}`);
+        return runningApps.get(appRecord.id)?.processId ?? null;
+      },
+    );
+    registerTrustedIpcHandler(
       "test:set-needs-app-blueprint",
       async (
         _event,

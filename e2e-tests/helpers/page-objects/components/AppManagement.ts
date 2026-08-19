@@ -197,15 +197,31 @@ export class AppManagement {
   // Imported apps default to needs_app_blueprint=0; flip it so tests can
   // exercise the blueprint approval flow against an imported fixture.
   async enableAppBlueprintForCurrentApp() {
+    await this.setNeedsAppBlueprintForCurrentApp(true);
+  }
+
+  async setNeedsAppBlueprintForCurrentApp(value: boolean) {
     const appName = await this.getCurrentAppName();
-    if (!appName) {
-      throw new Error("No current app to enable blueprint for");
-    }
-    await this.page.evaluate(async (appName) => {
-      await (window as any).electron.ipcRenderer.invoke(
-        "test:set-needs-app-blueprint",
-        { appName, value: true },
-      );
+    if (!appName) throw new Error("No current app to update blueprint state");
+    await this.page.evaluate(
+      async ({ appName, value }) => {
+        await (window as any).electron.ipcRenderer.invoke(
+          "test:set-needs-app-blueprint",
+          { appName, value },
+        );
+      },
+      { appName, value },
+    );
+  }
+
+  async getCurrentAppProcessId(): Promise<number | null> {
+    const appName = await this.getCurrentAppName();
+    if (!appName) throw new Error("No current app to inspect");
+    return this.page.evaluate(async (appName) => {
+      return (await (window as any).electron.ipcRenderer.invoke(
+        "test:get-app-process-id",
+        { appName },
+      )) as number | null;
     }, appName);
   }
 

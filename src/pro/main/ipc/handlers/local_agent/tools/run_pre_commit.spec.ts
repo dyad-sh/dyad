@@ -538,7 +538,9 @@ describe("runPreCommitTool", () => {
     const limited = await runPreCommitTool.execute({}, ctx);
 
     expect(timedOut).toContain("exceeded 10 minutes");
-    expect(limited).toContain("already run 4 times");
+    expect(limited).toContain(
+      `already run ${MAX_PRE_COMMIT_RUNS_PER_TURN} times`,
+    );
     expect(hookRuns).toBe(1);
   });
 

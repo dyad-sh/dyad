@@ -28,7 +28,7 @@ import {
   escapeXmlContent,
 } from "./types";
 
-export const MAX_PRE_COMMIT_RUNS_PER_TURN = 4;
+export const MAX_PRE_COMMIT_RUNS_PER_TURN = 3;
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
 export const PRE_COMMIT_STAGING_TIMEOUT_MS = 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 12_000;

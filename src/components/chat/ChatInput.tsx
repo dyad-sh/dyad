@@ -25,14 +25,13 @@ import { useTranslation } from "react-i18next";
 import { getNpmPackagePageUrl } from "./npmPackageUrl";
 
 import { useSettings } from "@/hooks/useSettings";
-import { useChatMessageCount, useChatMessages } from "@/hooks/useChatMessages";
+import { useChatMessages } from "@/hooks/useChatMessages";
 import { ipc } from "@/ipc/types";
 import {
   chatInputValuesByIdAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   agentTodosByChatIdAtom,
-  needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -59,7 +58,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
+import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -176,7 +175,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     string | null
   >(null);
   const messages = useChatMessages(chatId);
-  const messageCount = useChatMessageCount(chatId);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
@@ -303,43 +301,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     onTranscription: handleTranscription,
     onError: (message) => showErrorToast(message),
   });
-
-  const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
-    needsFreshPlanChatAtom,
-  );
-
-  // Detect transition to plan mode from another mode in a chat with messages
-  const prevModeRef = useRef(chatMode);
-  const prevModeChatIdRef = useRef(chatId);
-  const hasInitializedModeRef = useRef(false);
-  useEffect(() => {
-    if (isChatModeLoading) return;
-    if (
-      !hasInitializedModeRef.current ||
-      prevModeChatIdRef.current !== chatId
-    ) {
-      hasInitializedModeRef.current = true;
-      prevModeChatIdRef.current = chatId;
-      prevModeRef.current = chatMode;
-      return;
-    }
-
-    const prevMode = prevModeRef.current;
-    const currentMode = chatMode;
-    prevModeRef.current = currentMode;
-
-    if (prevMode && prevMode !== "plan" && currentMode === "plan") {
-      if (messageCount > 0) {
-        setNeedsFreshPlanChat(true);
-      }
-    }
-  }, [
-    chatMode,
-    chatId,
-    isChatModeLoading,
-    messageCount,
-    setNeedsFreshPlanChat,
-  ]);
 
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
@@ -571,34 +532,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         }
         return next;
       });
-    }
-
-    // If switching to plan mode from another mode in a chat with messages,
-    // create a new chat for a clean context.
-    if (needsFreshPlanChat && chatMode === "plan" && appId) {
-      clearComposerAfterSubmit();
-      setNeedsFreshPlanChat(false);
-
-      const newChatId = await ipc.chat.createChat({
-        appId,
-        initialChatMode: "plan",
-      });
-      setSelectedChatId(newChatId);
-      navigate({ to: "/chat", search: { id: newChatId } });
-      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      showInfo("We've switched you to a new chat for a clean context");
-
-      void openPreviewIfSetupRequired(appId);
-      await streamMessage({
-        prompt: promptWithImages,
-        chatId: newChatId,
-        attachments,
-        redo: false,
-        requestedChatMode: "plan",
-      });
-      clearAttachments();
-      posthog.capture("chat:submit", { chatMode });
-      return;
     }
 
     const currentInput = promptWithImages;

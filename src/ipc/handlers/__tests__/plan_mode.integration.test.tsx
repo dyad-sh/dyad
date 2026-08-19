@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
-import { apps, chats } from "@/db/schema";
+import { apps, chats, messages } from "@/db/schema";
 import type { PlanUpdatePayload } from "@/ipc/types/plan";
 import {
   setupHybridChatHarness,
@@ -146,6 +146,37 @@ describe("plan mode (integration)", () => {
     expect(
       screen.getByTestId("chat-mode-selector").getAttribute("aria-label"),
     ).toBe("Chat mode: Plan");
+    expect(errorEvents()).toHaveLength(0);
+  }, 60_000);
+
+  it("stays in the current chat when planning after earlier messages", async () => {
+    const app = await createMinimalApp("Plan Existing Chat", null);
+    await harness.db.insert(messages).values({
+      chatId: app.chatId,
+      role: "user",
+      content: "Earlier conversation context",
+    });
+    harness.mount({ chatId: app.chatId, appId: app.appId });
+    await waitForChatSurface();
+    await screen.findByText("Earlier conversation context");
+
+    await harness.selectChatMode("plan");
+    const planUpdate = await streamRealPlan(app.chatId);
+
+    expect(planUpdate.chatId).toBe(app.chatId);
+    expect(Number(harness.currentLocation().search.id)).toBe(app.chatId);
+    const appChats = await harness.db.query.chats.findMany({
+      where: eq(chats.appId, app.appId),
+    });
+    expect(appChats).toHaveLength(1);
+    const chatMessages = await harness.db.query.messages.findMany({
+      where: eq(messages.chatId, app.chatId),
+    });
+    expect(
+      chatMessages.some(
+        (message) => message.content === "tc=local-agent/accept-plan",
+      ),
+    ).toBe(true);
     expect(errorEvents()).toHaveLength(0);
   }, 60_000);
 

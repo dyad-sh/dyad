@@ -81,6 +81,15 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Apply snapshot exclusions at the same path depth on every backend. A root-only
   exclusion in the clone path plus recursive basename filtering in the copy
   path produces different build inputs across operating systems.
+- An isolated build must not symlink or junction writable dependencies back to
+  the live app. App-controlled scripts can traverse that link and mutate the
+  preview's `node_modules`; clone/reflink/copy every reachable writable tree.
+- Do not treat a regex miss in an executable framework config as proof that
+  build outputs are default. Dynamic, imported, spread, shorthand, and computed
+  config values must isolate unless the effective configuration is proven safe.
+- Acquire app-operation claims before reading and validating build scripts,
+  configs, ignore state, and preview facts. Consent must disclose and revalidate
+  implicit `prebuild`/`postbuild` hooks as well as `build` under that claim.
 
 ## User-visible tool output
 

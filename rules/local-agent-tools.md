@@ -93,6 +93,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Acquire app-operation claims before reading and validating build scripts,
   configs, ignore state, and preview facts. Consent must disclose and revalidate
   implicit `prebuild`/`postbuild` hooks as well as `build` under that claim.
+- A workspace snapshot is an operational boundary for ordinary build outputs,
+  not a security sandbox for project code. Build approval must say that project
+  and dependency code runs with the user's account; do not claim that changing
+  `cwd` prevents an intentionally hostile script from accessing host paths.
 
 ## User-visible tool output
 

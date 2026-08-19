@@ -27,6 +27,7 @@ const safeViteFacts: BuildProjectFacts = {
   hasPrebuildScript: false,
   hasPostbuildScript: false,
   defaultOutputIgnored: true,
+  defaultOutputPathSafe: true,
   hasFrameworkConfig: false,
   nextMajorVersion: null,
   previewRunning: true,
@@ -68,7 +69,7 @@ describe("run_build", () => {
         expected_postbuild_script: "node scripts/publish.mjs",
       }),
     ).toBe(
-      "prebuild: (none)\nbuild: vite build\npostbuild: node scripts/publish.mjs",
+      "prebuild: (none)\nbuild: vite build\npostbuild: node scripts/publish.mjs\nThis executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
     );
   });
 
@@ -79,6 +80,7 @@ describe("run_build", () => {
       { hasPrebuildScript: true },
       { hasPostbuildScript: true },
       { defaultOutputIgnored: false },
+      { defaultOutputPathSafe: false },
       { hasFrameworkConfig: true },
       { buildScript: "tsc -b && vite build" },
     ]) {

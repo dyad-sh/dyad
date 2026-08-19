@@ -70,6 +70,7 @@ export interface BuildProjectFacts {
   hasPrebuildScript: boolean;
   hasPostbuildScript: boolean;
   defaultOutputIgnored: boolean;
+  defaultOutputPathSafe: boolean;
   hasFrameworkConfig: boolean;
   nextMajorVersion: number | null;
   previewRunning: boolean;
@@ -84,7 +85,8 @@ export function selectBuildExecutionMode(
     facts.hasPrebuildScript ||
     facts.hasPostbuildScript ||
     facts.hasFrameworkConfig ||
-    !facts.defaultOutputIgnored
+    !facts.defaultOutputIgnored ||
+    !facts.defaultOutputPathSafe
   ) {
     return "isolated";
   }
@@ -185,6 +187,17 @@ async function isIgnored(appPath: string, outputDir: string): Promise<boolean> {
   }
 }
 
+async function isDefaultOutputPathSafe(
+  appPath: string,
+  outputDir: string,
+): Promise<boolean> {
+  try {
+    return (await fs.lstat(path.join(appPath, outputDir))).isDirectory();
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT";
+  }
+}
+
 async function gatherBuildProjectFacts(
   ctx: AgentContext,
   packageJson: PackageJson,
@@ -198,6 +211,10 @@ async function gatherBuildProjectFacts(
     hasPrebuildScript: getScript(packageJson, "prebuild") !== null,
     hasPostbuildScript: getScript(packageJson, "postbuild") !== null,
     defaultOutputIgnored: await isIgnored(ctx.appPath, defaultOutput),
+    defaultOutputPathSafe: await isDefaultOutputPathSafe(
+      ctx.appPath,
+      defaultOutput,
+    ),
     hasFrameworkConfig: await hasFrameworkConfig(ctx.appPath),
     nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
     previewRunning,
@@ -481,6 +498,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
       `prebuild: ${args.expected_prebuild_script ?? "(none)"}`,
       `build: ${args.expected_build_script}`,
       `postbuild: ${args.expected_postbuild_script ?? "(none)"}`,
+      "This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
     ].join("\n"),
 
   buildXml: (_args, isComplete) =>

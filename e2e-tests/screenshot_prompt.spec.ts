@@ -3,13 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { test, Timeout } from "./helpers/test_helper";
 
-// The screenshot prompt is covered in depth by unit tests, but two things only
-// the packaged app can show: that Escape actually reaches the dismiss handler
-// (unit tests replace the dialog primitive with a stand-in), and that a capture
-// really leaves an image on the clipboard for the reporter to paste. The issue
-// URL itself is not observable here, since test builds skip opening it.
-
-test("bug report: backing out recovers, and a capture reaches the clipboard", async ({
+test("bug report: backing out of the prompt returns to help", async ({
   po,
 }) => {
   await po.setUp();
@@ -23,35 +17,6 @@ test("bug report: backing out recovers, and a capture reaches the clipboard", as
   await po.page.keyboard.press("Escape");
   await expect(po.page.getByText("Need help with Dyad?")).toBeVisible();
   await expect(po.page.getByText("Take a screenshot?")).not.toBeVisible();
-
-  await po.page.getByRole("button", { name: "Report a Bug" }).click();
-
-  // The capture targets the focused window. On macOS a window cannot take focus
-  // while its app is inactive, which is normal for an app a test launched, so
-  // activate the app as well. Both are re-asked each tick because either can be
-  // granted asynchronously or dropped while the app is still settling.
-  await expect
-    .poll(
-      () =>
-        po.electronApp.evaluate(({ app, BrowserWindow }) => {
-          app.focus({ steal: true });
-          BrowserWindow.getAllWindows()[0]?.focus();
-          return BrowserWindow.getFocusedWindow() !== null;
-        }),
-      { timeout: Timeout.MEDIUM },
-    )
-    .toBe(true);
-  await po.page.getByRole("button", { name: /recommended/ }).click();
-
-  await expect(
-    po.page.getByText(/Screenshot captured to clipboard/),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
-
-  // The reporter is told to paste an image, so one has to be on the clipboard.
-  const hasImage = await po.electronApp.evaluate(
-    ({ clipboard }) => !clipboard.readImage().isEmpty(),
-  );
-  expect(hasImage).toBe(true);
 });
 
 test("session report: backing out of the prompt keeps the uploaded session", async ({

@@ -121,7 +121,9 @@ export function BugScreenshotDialog({
         });
         // Prevents the case where the reporter reaches GitHub expecting an
         // image on the clipboard and pastes whatever is there instead.
-        showError(`Failed to take screenshot: ${reason}`);
+        // Both known reasons already read as a screenshot failure, so a prefix
+        // here only doubles the message.
+        showError(reason);
         onContinue({ status: "capture-failed", reason }, capturedFor);
       }
     }, 200); // Small delay for dialog to close

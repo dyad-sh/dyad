@@ -26,13 +26,15 @@ test("bug report: backing out recovers, and a capture reaches the clipboard", as
 
   await po.page.getByRole("button", { name: "Report a Bug" }).click();
 
-  // The capture targets the focused window. focus() returns before the window
-  // manager grants it, so wait for the result. Re-asked each tick since a
-  // manager may ignore the first.
+  // The capture targets the focused window. On macOS a window cannot take focus
+  // while its app is inactive, which is normal for an app a test launched, so
+  // activate the app as well. Both are re-asked each tick because either can be
+  // granted asynchronously or dropped while the app is still settling.
   await expect
     .poll(
       () =>
-        po.electronApp.evaluate(({ BrowserWindow }: any) => {
+        po.electronApp.evaluate(({ app, BrowserWindow }) => {
+          app.focus({ steal: true });
           BrowserWindow.getAllWindows()[0]?.focus();
           return BrowserWindow.getFocusedWindow() !== null;
         }),
@@ -47,7 +49,7 @@ test("bug report: backing out recovers, and a capture reaches the clipboard", as
 
   // The reporter is told to paste an image, so one has to be on the clipboard.
   const hasImage = await po.electronApp.evaluate(
-    ({ clipboard }: any) => !clipboard.readImage().isEmpty(),
+    ({ clipboard }) => !clipboard.readImage().isEmpty(),
   );
   expect(hasImage).toBe(true);
 });

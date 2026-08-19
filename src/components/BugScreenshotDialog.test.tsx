@@ -288,9 +288,7 @@ describe("BugScreenshotDialog", () => {
 
     // Without this the reporter reaches GitHub expecting an image to paste.
     await waitFor(() =>
-      expect(mocks.showError).toHaveBeenCalledWith(
-        "Failed to take screenshot: no window",
-      ),
+      expect(mocks.showError).toHaveBeenCalledWith("no window"),
     );
   });
 

@@ -111,7 +111,7 @@ export async function getTypeCheckPreconditionGuidance({
     }
 
     if (agentInstructionMode === "local-agent-tool") {
-      return "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Call `rebuild_app` to reinstall dependencies, then retry `run_type_checks`.";
+      return "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Call `reinstall_and_restart_app` to reinstall dependencies, then retry `run_type_checks`.";
     }
 
     return 'Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Tell the user to use Rebuild to reinstall dependencies, include `<dyad-command type="rebuild"></dyad-command>` so they can accept with one click, then retry `run_type_checks`.';

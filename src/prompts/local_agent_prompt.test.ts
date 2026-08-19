@@ -197,18 +197,26 @@ describe("local_agent_prompt", () => {
     expectGitContextGuidance(prompt);
     expect(prompt).not.toContain("<app_lifecycle>");
     expect(prompt).not.toContain("restart_app");
-    expect(prompt).not.toContain("rebuild_app");
+    expect(prompt).not.toContain("reinstall_and_restart_app");
   });
 
   it("omits lifecycle tools that are unavailable", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       restartAppToolAvailable: false,
-      rebuildAppToolAvailable: false,
+      reinstallAndRestartAppToolAvailable: false,
     });
 
     expect(prompt).not.toContain("<app_lifecycle>");
     expect(prompt).not.toContain("restart_app");
-    expect(prompt).not.toContain("rebuild_app");
+    expect(prompt).not.toContain("reinstall_and_restart_app");
+  });
+
+  it("omits production-build guidance when run_build is unavailable", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      runBuildToolAvailable: false,
+    });
+
+    expect(prompt).not.toContain("`run_build`");
   });
 
   it("agent mode system prompt with app blueprint disabled", () => {

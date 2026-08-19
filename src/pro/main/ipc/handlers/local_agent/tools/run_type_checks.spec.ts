@@ -60,7 +60,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       event: { sender: undefined },
       onXmlStream: vi.fn(),
       onXmlComplete: vi.fn(),
-      rebuildAppToolAvailable: true,
+      reinstallAndRestartAppToolAvailable: true,
     } as unknown as AgentContext;
   }
 
@@ -102,7 +102,7 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     expect(result).toMatch(/^Type checking could not run/);
     expect(result).toContain("TypeScript is listed in package.json");
-    expect(result).toContain("Call `rebuild_app`");
+    expect(result).toContain("Call `reinstall_and_restart_app`");
     expect(result).not.toContain('<dyad-command type="rebuild">');
     expect(result).not.toContain("add_dependency");
     expect(result).toContain("retry `run_type_checks`");
@@ -117,15 +117,17 @@ describe("runTypeChecksTool precondition guidance", () => {
     expect(expectWarningOutput(ctx)).toContain(
       "TypeScript is listed in package.json",
     );
-    expect(expectWarningOutput(ctx)).toContain("Call `rebuild_app`");
+    expect(expectWarningOutput(ctx)).toContain(
+      "Call `reinstall_and_restart_app`",
+    );
   });
 
-  it("falls back to a user command when rebuild_app is unavailable", async () => {
+  it("falls back to a user command when reinstall_and_restart_app is unavailable", async () => {
     const appPath = await makeApp({
       devDependencies: { typescript: "^5.0.0" },
     });
     const ctx = makeCtx(appPath);
-    ctx.rebuildAppToolAvailable = false;
+    ctx.reinstallAndRestartAppToolAvailable = false;
     vi.mocked(runTypeScriptCheck).mockRejectedValue(
       new TypeCheckPreconditionError(
         "typescript-not-found",
@@ -137,7 +139,7 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     expect(result).toContain("use Rebuild");
     expect(result).toContain('<dyad-command type="rebuild">');
-    expect(result).not.toContain("Call `rebuild_app`");
+    expect(result).not.toContain("Call `reinstall_and_restart_app`");
   });
 
   it("tells the agent not to retry and to suggest adding TypeScript for plain JavaScript projects", async () => {

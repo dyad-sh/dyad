@@ -25,12 +25,12 @@ If you output this command, tell the user to look for the action button above th
 
 function appLifecycleBlock({
   restartAppToolAvailable,
-  rebuildAppToolAvailable,
+  reinstallAndRestartAppToolAvailable,
 }: {
   restartAppToolAvailable: boolean;
-  rebuildAppToolAvailable: boolean;
+  reinstallAndRestartAppToolAvailable: boolean;
 }): string {
-  if (!restartAppToolAvailable && !rebuildAppToolAvailable) {
+  if (!restartAppToolAvailable && !reinstallAndRestartAppToolAvailable) {
     return "";
   }
 
@@ -43,9 +43,9 @@ Use \`restart_app\` only when:
 - Logs or tool output explicitly say a restart is required.
 `
     : "";
-  const rebuildGuidance = rebuildAppToolAvailable
+  const rebuildGuidance = reinstallAndRestartAppToolAvailable
     ? `
-Use \`rebuild_app\` only when:
+Use \`reinstall_and_restart_app\` only when:
 - The user explicitly asks for a rebuild.
 - \`node_modules\` is missing or incomplete.
 - Dependency installation, package resolution, the lockfile, or native package state is demonstrably broken or stale.
@@ -159,12 +159,14 @@ function developmentWorkflowBlock({
   testingEnabled,
   implementerAvailable = false,
   preCommitHookAvailable,
+  runBuildToolAvailable = false,
 }: {
   enableAppBlueprint: boolean;
   understandStep: string;
   testingEnabled: boolean;
   implementerAvailable?: boolean;
   preCommitHookAvailable: boolean;
+  runBuildToolAvailable?: boolean;
 }): string {
   const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
   const verifyTestsClause = testingEnabled
@@ -172,6 +174,9 @@ function developmentWorkflowBlock({
     : "";
   const verifyPreCommitClause = preCommitHookAvailable
     ? " After finishing file edits and the other relevant verification, call `run_pre_commit`. If it fails or changes files, address the output and run it again only after a targeted file change."
+    : "";
+  const verifyBuildClause = runBuildToolAvailable
+    ? " Use `run_build` once, after related edits are complete, only when the user explicitly requests a production build or when changes affect dependencies, build configuration, framework routing, server/static generation, environment loading, or a substantial production path. Skip it for routine small UI, styling, copy, and asset edits. If it fails, make a relevant fix before retrying."
     : "";
   const steps: string[] = [];
   if (enableAppBlueprint) {
@@ -185,7 +190,7 @@ function developmentWorkflowBlock({
    The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
     `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
     `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, use the most relevant available evidence—such as code inspection, existing logs, type checks, or tests—to identify the root cause. Add targeted runtime logs only when runtime evidence is needed. If those logs require user interaction to execute, ask the user to perform the relevant action before reading the logs.${implementerAvailable ? IMPLEMENTER_DELEGATION_GUIDANCE : ""}`,
-    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.${verifyTestsClause}${verifyPreCommitClause}`,
+    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.${verifyBuildClause}${verifyTestsClause}${verifyPreCommitClause}`,
     `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
   );
   const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
@@ -199,6 +204,7 @@ function proDevelopmentWorkflowBlock({
   testingEnabled,
   implementerAvailable,
   preCommitHookAvailable,
+  runBuildToolAvailable,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
@@ -206,6 +212,7 @@ function proDevelopmentWorkflowBlock({
   testingEnabled: boolean;
   implementerAvailable: boolean;
   preCommitHookAvailable: boolean;
+  runBuildToolAvailable: boolean;
 }): string {
   const codeExplorationGuidance = codeExplorerAvailable
     ? CODE_EXPLORATION_GUIDANCE
@@ -223,6 +230,7 @@ function proDevelopmentWorkflowBlock({
     testingEnabled,
     implementerAvailable,
     preCommitHookAvailable,
+    runBuildToolAvailable,
   });
 }
 
@@ -257,6 +265,7 @@ function basicDevelopmentWorkflowBlock(
   enableAppBlueprint: boolean,
   testingEnabled: boolean,
   preCommitHookAvailable: boolean,
+  runBuildToolAvailable: boolean,
 ): string {
   const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`. ${CHAT_HISTORY_RECALL_GUIDANCE}`;
   return developmentWorkflowBlock({
@@ -264,6 +273,7 @@ function basicDevelopmentWorkflowBlock(
     understandStep,
     testingEnabled,
     preCommitHookAvailable,
+    runBuildToolAvailable,
   });
 }
 
@@ -418,7 +428,8 @@ function buildLocalAgentSystemPrompt({
   implementerAvailable,
   preCommitHookAvailable,
   restartAppToolAvailable,
-  rebuildAppToolAvailable,
+  reinstallAndRestartAppToolAvailable,
+  runBuildToolAvailable,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
@@ -427,14 +438,15 @@ function buildLocalAgentSystemPrompt({
   implementerAvailable: boolean;
   preCommitHookAvailable: boolean;
   restartAppToolAvailable: boolean;
-  rebuildAppToolAvailable: boolean;
+  reinstallAndRestartAppToolAvailable: boolean;
+  runBuildToolAvailable: boolean;
 }): string {
   return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
 
-${appLifecycleBlock({ restartAppToolAvailable, rebuildAppToolAvailable })}
+${appLifecycleBlock({ restartAppToolAvailable, reinstallAndRestartAppToolAvailable })}
 
 ${GENERAL_GUIDELINES_BLOCK}
 
@@ -446,7 +458,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable, historyExplorerAvailable, testingEnabled, implementerAvailable, preCommitHookAvailable })}
+${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable, historyExplorerAvailable, testingEnabled, implementerAvailable, preCommitHookAvailable, runBuildToolAvailable })}
 [[SERVER_LAYER]]
 ${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
 ${IMAGE_GENERATION_BLOCK}
@@ -464,14 +476,15 @@ function buildLocalAgentBasicSystemPrompt(
   testingEnabled: boolean,
   preCommitHookAvailable: boolean,
   restartAppToolAvailable: boolean,
-  rebuildAppToolAvailable: boolean,
+  reinstallAndRestartAppToolAvailable: boolean,
+  runBuildToolAvailable: boolean,
 ): string {
   return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
 
-${appLifecycleBlock({ restartAppToolAvailable, rebuildAppToolAvailable })}
+${appLifecycleBlock({ restartAppToolAvailable, reinstallAndRestartAppToolAvailable })}
 
 ${GENERAL_GUIDELINES_BLOCK}
 
@@ -483,7 +496,7 @@ ${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${basicDevelopmentWorkflowBlock(enableAppBlueprint, testingEnabled, preCommitHookAvailable)}
+${basicDevelopmentWorkflowBlock(enableAppBlueprint, testingEnabled, preCommitHookAvailable, runBuildToolAvailable)}
 [[SERVER_LAYER]]
 ${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
 ${AI_RULES_BLOCK}
@@ -540,7 +553,8 @@ export function constructLocalAgentPrompt(
     /** Whether the writable turn exposes the repository pre-commit tool. */
     preCommitHookAvailable?: boolean;
     restartAppToolAvailable?: boolean;
-    rebuildAppToolAvailable?: boolean;
+    reinstallAndRestartAppToolAvailable?: boolean;
+    runBuildToolAvailable?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
@@ -550,7 +564,9 @@ export function constructLocalAgentPrompt(
   const testingEnabled = !!options?.testingEnabled;
   const preCommitHookAvailable = !!options?.preCommitHookAvailable;
   const restartAppToolAvailable = options?.restartAppToolAvailable !== false;
-  const rebuildAppToolAvailable = options?.rebuildAppToolAvailable !== false;
+  const reinstallAndRestartAppToolAvailable =
+    options?.reinstallAndRestartAppToolAvailable !== false;
+  const runBuildToolAvailable = options?.runBuildToolAvailable !== false;
 
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -562,7 +578,8 @@ export function constructLocalAgentPrompt(
       testingEnabled,
       preCommitHookAvailable,
       restartAppToolAvailable,
-      rebuildAppToolAvailable,
+      reinstallAndRestartAppToolAvailable,
+      runBuildToolAvailable,
     );
   } else {
     basePrompt = buildLocalAgentSystemPrompt({
@@ -573,7 +590,8 @@ export function constructLocalAgentPrompt(
       implementerAvailable,
       preCommitHookAvailable,
       restartAppToolAvailable,
-      rebuildAppToolAvailable,
+      reinstallAndRestartAppToolAvailable,
+      runBuildToolAvailable,
     });
   }
 

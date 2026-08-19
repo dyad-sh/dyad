@@ -85,4 +85,33 @@ describe("migrateStoredSettings", () => {
 
     expect(migrateStoredSettings(stored)).not.toHaveProperty("thinkingBudget");
   });
+
+  it("migrates rebuild consent to the renamed reinstall tool", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      agentToolConsents: {
+        rebuild_app: "never",
+        restart_app: "always",
+      },
+    });
+
+    expect(migrateStoredSettings(stored).agentToolConsents).toEqual({
+      reinstall_and_restart_app: "never",
+      restart_app: "always",
+    });
+  });
+
+  it("keeps an explicit consent for the renamed reinstall tool", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      agentToolConsents: {
+        rebuild_app: "never",
+        reinstall_and_restart_app: "always",
+      },
+    });
+
+    expect(migrateStoredSettings(stored).agentToolConsents).toEqual({
+      reinstall_and_restart_app: "always",
+    });
+  });
 });

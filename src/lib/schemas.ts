@@ -543,6 +543,18 @@ export function migrateStoredSettings(
   delete activeSettings.enableNativeGit;
   delete activeSettings.enableAutoFixProblems;
   delete activeSettings.thinkingBudget;
+  if (stored.agentToolConsents) {
+    const agentToolConsents = { ...stored.agentToolConsents };
+    if (
+      agentToolConsents.reinstall_and_restart_app === undefined &&
+      agentToolConsents.rebuild_app !== undefined
+    ) {
+      agentToolConsents.reinstall_and_restart_app =
+        agentToolConsents.rebuild_app;
+    }
+    delete agentToolConsents.rebuild_app;
+    activeSettings.agentToolConsents = agentToolConsents;
+  }
 
   return {
     ...activeSettings,

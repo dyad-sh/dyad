@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { appRunActorService } from "@/ipc/services/app_run_actor_service";
-import { rebuildAppTool, restartAppTool } from "./app_lifecycle";
+import { reinstallAndRestartAppTool, restartAppTool } from "./app_lifecycle";
 import type { AgentContext } from "./types";
 
 vi.mock("@/ipc/services/app_run_actor_service", () => ({
@@ -54,16 +54,16 @@ describe("app lifecycle tools", () => {
   });
 
   it("declares rebuild as an approval-required runtime mutation", () => {
-    expect(rebuildAppTool.inputSchema.parse({})).toEqual({});
-    expect(rebuildAppTool.defaultConsent).toBe("ask");
-    expect(rebuildAppTool.modifiesState).toBe(true);
-    expect(rebuildAppTool.description).toContain(
+    expect(reinstallAndRestartAppTool.inputSchema.parse({})).toEqual({});
+    expect(reinstallAndRestartAppTool.defaultConsent).toBe("ask");
+    expect(reinstallAndRestartAppTool.modifiesState).toBe(true);
+    expect(reinstallAndRestartAppTool.description).toContain(
       "Never use for ordinary code errors",
     );
   });
 
   it("rebuilds the current app after clearing stale logs", async () => {
-    await expect(rebuildAppTool.execute({}, ctx)).resolves.toBe(
+    await expect(reinstallAndRestartAppTool.execute({}, ctx)).resolves.toBe(
       "The app rebuilt and restarted successfully.",
     );
 
@@ -84,8 +84,10 @@ describe("app lifecycle tools", () => {
   it("does not render a duplicate completed preview", () => {
     expect(restartAppTool.buildXml?.({}, false)).toContain("Restarting app");
     expect(restartAppTool.buildXml?.({}, true)).toBeUndefined();
-    expect(rebuildAppTool.buildXml?.({}, false)).toContain("Rebuilding app");
-    expect(rebuildAppTool.buildXml?.({}, true)).toBeUndefined();
+    expect(reinstallAndRestartAppTool.buildXml?.({}, false)).toContain(
+      "Rebuilding app",
+    );
+    expect(reinstallAndRestartAppTool.buildXml?.({}, true)).toBeUndefined();
   });
 
   it("does not start a lifecycle mutation after the turn is cancelled", async () => {

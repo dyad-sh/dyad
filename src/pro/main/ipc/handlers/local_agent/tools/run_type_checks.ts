@@ -176,7 +176,7 @@ export const runTypeChecksTool: ToolDefinition<
       const result = await getTypeCheckPreconditionGuidance({
         kind: preconditionKind,
         appPath: ctx.appPath,
-        agentInstructionMode: ctx.rebuildAppToolAvailable
+        agentInstructionMode: ctx.reinstallAndRestartAppToolAvailable
           ? "local-agent-tool"
           : "dyad-command",
       });

@@ -1788,12 +1788,14 @@ ${componentSnippet}
           isImplementerSubagentEnabled(settings);
         const restartAppToolAvailable =
           settings.agentToolConsents?.["restart_app"] !== "never";
-        const rebuildAppToolAvailable =
-          settings.agentToolConsents?.["rebuild_app"] !== "never";
         const preCommitHookAvailable =
           selectedChatMode === "local-agent" &&
           settings.agentToolConsents?.["run_pre_commit"] !== "never" &&
           (await isPreCommitHookAvailable(appPath));
+        const reinstallAndRestartAppToolAvailable =
+          settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
+        const runBuildToolAvailable =
+          settings.agentToolConsents?.["run_build"] !== "never";
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -1813,7 +1815,8 @@ ${componentSnippet}
           testingEnabled: !!updatedChat.app?.testingEnabled,
           preCommitHookAvailable,
           restartAppToolAvailable,
-          rebuildAppToolAvailable,
+          reinstallAndRestartAppToolAvailable,
+          runBuildToolAvailable,
         });
 
         // Add information about mentioned apps for build mode only.

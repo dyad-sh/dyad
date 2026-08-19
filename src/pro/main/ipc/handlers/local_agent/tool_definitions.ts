@@ -36,8 +36,12 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { runTestsTool } from "./tools/run_tests";
 import { runPreCommitTool } from "./tools/run_pre_commit";
+import { runBuildTool } from "./tools/run_build";
 import { generateTestAssertionsTool } from "./tools/generate_test_assertions";
-import { rebuildAppTool, restartAppTool } from "./tools/app_lifecycle";
+import {
+  reinstallAndRestartAppTool,
+  restartAppTool,
+} from "./tools/app_lifecycle";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import { exploreChatHistoryTool } from "./tools/explore_chat_history";
@@ -164,10 +168,11 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   updateTodosTool,
   runTypeChecksTool,
   runPreCommitTool,
+  runBuildTool,
   runTestsTool,
   generateTestAssertionsTool,
   restartAppTool,
-  rebuildAppTool,
+  reinstallAndRestartAppTool,
   readGuideTool,
   executeSandboxScriptTool,
   searchMcpToolsTool,

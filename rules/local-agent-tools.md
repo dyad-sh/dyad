@@ -72,6 +72,16 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   in the background. Allow rebuild readiness substantially more time than an
   ordinary restart because it includes a fresh dependency install.
 
+## Production build snapshots
+
+- Keep the in-place-versus-isolated build decision independent of the host OS;
+  only the snapshot copy backend may vary. macOS uses `/bin/cp -cR`, Linux uses
+  `COPYFILE_FICLONE` with copy fallback, and Windows uses an ordinary
+  copy—Node's clone flag is not a portable copy-on-write guarantee.
+- Apply snapshot exclusions at the same path depth on every backend. A root-only
+  exclusion in the clone path plus recursive basename filtering in the copy
+  path produces different build inputs across operating systems.
+
 ## User-visible tool output
 
 - Treat model-generated code as untrusted executable input whenever its prompt

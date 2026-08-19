@@ -683,7 +683,8 @@ export const constructSystemPrompt = ({
   testingEnabled,
   preCommitHookAvailable,
   restartAppToolAvailable,
-  rebuildAppToolAvailable,
+  reinstallAndRestartAppToolAvailable,
+  runBuildToolAvailable,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -730,7 +731,8 @@ export const constructSystemPrompt = ({
   /** Whether the writable local-agent turn exposes `run_pre_commit`. */
   preCommitHookAvailable?: boolean;
   restartAppToolAvailable?: boolean;
-  rebuildAppToolAvailable?: boolean;
+  reinstallAndRestartAppToolAvailable?: boolean;
+  runBuildToolAvailable?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -750,7 +752,8 @@ export const constructSystemPrompt = ({
       testingEnabled,
       preCommitHookAvailable,
       restartAppToolAvailable,
-      rebuildAppToolAvailable,
+      reinstallAndRestartAppToolAvailable,
+      runBuildToolAvailable,
     });
   }
 

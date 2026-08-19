@@ -1,0 +1,480 @@
+import { constants as fsConstants } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "@/ipc/services/app_operation_coordinator";
+import { detectNextJsMajorVersion } from "@/ipc/utils/framework_utils";
+import { gitIsIgnored } from "@/ipc/utils/git_utils";
+import { choosePackageManagerForApp } from "@/ipc/utils/package_manager_selection";
+import { runningApps } from "@/ipc/utils/process_manager";
+import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
+import {
+  getPackageManagerCommandEnv,
+  getPnpmMinimumReleaseAgeSupport,
+} from "@/ipc/utils/socket_firewall";
+import type { AppFrameworkType } from "@/lib/framework_constants";
+import type { AgentContext, ToolDefinition } from "./types";
+import { escapeXmlAttr, escapeXmlContent } from "./types";
+
+const runBuildSchema = z.object({
+  expected_build_script: z
+    .string()
+    .min(1)
+    .describe(
+      "The exact current value of package.json scripts.build. Read package.json first and copy the value verbatim. The build is rejected if it changed before execution.",
+    ),
+});
+
+const MAX_BUILD_RUNS_PER_TURN = 3;
+const BUILD_TIMEOUT_MS = 10 * 60_000;
+const MAX_RESULT_OUTPUT_CHARS = 16_000;
+const SNAPSHOT_EXCLUDED_NAMES = new Set([
+  ".git",
+  ".next",
+  ".output",
+  ".turbo",
+  ".vite",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+]);
+
+export type BuildExecutionMode = "in-place" | "isolated";
+
+export interface BuildProjectFacts {
+  frameworkType: AppFrameworkType | null;
+  buildScript: string;
+  hasPrebuildScript: boolean;
+  defaultOutputIgnored: boolean;
+  hasBuildOutputOverride: boolean;
+  nextMajorVersion: number | null;
+  previewRunning: boolean;
+  nextDevOutputIsolated: boolean;
+}
+
+/** OS-independent decision: platform only affects how an isolated copy is made. */
+export function selectBuildExecutionMode(
+  facts: BuildProjectFacts,
+): BuildExecutionMode {
+  if (
+    facts.hasPrebuildScript ||
+    facts.hasBuildOutputOverride ||
+    !facts.defaultOutputIgnored
+  ) {
+    return "isolated";
+  }
+
+  if (facts.frameworkType === "vite" && facts.buildScript === "vite build") {
+    return "in-place";
+  }
+
+  if (
+    facts.frameworkType === "nextjs" &&
+    facts.buildScript === "next build" &&
+    (facts.nextMajorVersion ?? 0) >= 16 &&
+    (!facts.previewRunning || facts.nextDevOutputIsolated)
+  ) {
+    return "in-place";
+  }
+
+  return "isolated";
+}
+
+interface PackageJson {
+  scripts?: Record<string, unknown>;
+}
+
+interface BuildAttemptState {
+  count: number;
+  mutationCountAtLastRun?: number;
+}
+
+interface Snapshot {
+  path: string;
+  logicalBytes: number;
+  fileCount: number;
+  setupMs: number;
+  strategy: "macos-clone" | "linux-reflink" | "windows-copy" | "copy";
+}
+
+const activeBuilds = new Set<number>();
+
+function completeStatus(
+  ctx: AgentContext,
+  title: string,
+  body: string,
+  state: "finished" | "warning" = "finished",
+): void {
+  ctx.onXmlComplete(
+    `<dyad-status title="${escapeXmlAttr(title)}" state="${state}">\n${escapeXmlContent(body)}\n</dyad-status>`,
+  );
+}
+
+async function readPackageJson(appPath: string): Promise<PackageJson> {
+  try {
+    return JSON.parse(
+      await fs.readFile(path.join(appPath, "package.json"), "utf8"),
+    ) as PackageJson;
+  } catch (error) {
+    throw new DyadError(
+      `Could not read package.json: ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
+function getScript(packageJson: PackageJson, name: string): string | null {
+  const value = packageJson.scripts?.[name];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function readConfigText(appPath: string): Promise<string> {
+  const configNames = [
+    "vite.config.js",
+    "vite.config.ts",
+    "vite.config.mjs",
+    "vite.config.cjs",
+    "vite.config.mts",
+    "vite.config.cts",
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.cjs",
+    "next.config.ts",
+  ];
+  const parts = await Promise.all(
+    configNames.map(async (name) => {
+      try {
+        return await fs.readFile(path.join(appPath, name), "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+        throw error;
+      }
+    }),
+  );
+  return parts.join("\n");
+}
+
+async function isIgnored(appPath: string, outputDir: string): Promise<boolean> {
+  try {
+    return await gitIsIgnored({ path: appPath, filepath: outputDir });
+  } catch {
+    return false;
+  }
+}
+
+async function gatherBuildProjectFacts(
+  ctx: AgentContext,
+  packageJson: PackageJson,
+  buildScript: string,
+): Promise<BuildProjectFacts> {
+  const configText = await readConfigText(ctx.appPath);
+  const defaultOutput = ctx.frameworkType === "nextjs" ? ".next" : "dist";
+  const previewRunning = runningApps.has(ctx.appId);
+  return {
+    frameworkType: ctx.frameworkType,
+    buildScript,
+    hasPrebuildScript: getScript(packageJson, "prebuild") !== null,
+    defaultOutputIgnored: await isIgnored(ctx.appPath, defaultOutput),
+    hasBuildOutputOverride:
+      /\boutDir\s*:/.test(configText) ||
+      /\bdistDir\s*:/.test(configText) ||
+      /\bisolatedDevBuild\s*:\s*false\b/.test(configText),
+    nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
+    previewRunning,
+    nextDevOutputIsolated:
+      !previewRunning ||
+      (await fs
+        .stat(path.join(ctx.appPath, ".next", "dev"))
+        .then((stat) => stat.isDirectory())
+        .catch(() => false)),
+  };
+}
+
+async function snapshotStats(root: string): Promise<{
+  logicalBytes: number;
+  fileCount: number;
+}> {
+  let logicalBytes = 0;
+  let fileCount = 0;
+  const visit = async (directory: string, isRoot = false): Promise<void> => {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (isRoot && SNAPSHOT_EXCLUDED_NAMES.has(entry.name)) return;
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          await visit(entryPath);
+        } else if (entry.isFile()) {
+          const stat = await fs.stat(entryPath);
+          logicalBytes += stat.size;
+          fileCount += 1;
+        }
+      }),
+    );
+  };
+  await visit(root, true);
+  return { logicalBytes, fileCount };
+}
+
+function snapshotStrategy(): Snapshot["strategy"] {
+  if (process.platform === "darwin") return "macos-clone";
+  if (process.platform === "linux") return "linux-reflink";
+  if (process.platform === "win32") return "windows-copy";
+  return "copy";
+}
+
+async function copySnapshotEntries(
+  source: string,
+  destination: string,
+  entries: string[],
+  signal?: AbortSignal,
+): Promise<void> {
+  if (process.platform === "darwin" && entries.length > 0) {
+    const result = await spawnStreaming({
+      command: "/bin/cp",
+      args: [
+        "-cR",
+        ...entries.map((entry) => path.join(source, entry)),
+        destination,
+      ],
+      cwd: source,
+      signal,
+    });
+    if (result.code === 0 && !result.aborted && !result.timedOut) return;
+    if (result.aborted) {
+      throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+    }
+    // clonefile can fail for a destination on another filesystem. Retry with
+    // Node's portable copy before treating snapshot setup as unavailable.
+  }
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (signal?.aborted) {
+        throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+      }
+      await fs.cp(path.join(source, entry), path.join(destination, entry), {
+        recursive: true,
+        verbatimSymlinks: true,
+        mode: process.platform === "linux" ? fsConstants.COPYFILE_FICLONE : 0,
+        filter: () => !signal?.aborted,
+      });
+    }),
+  );
+
+  if (signal?.aborted) {
+    throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+  }
+}
+
+async function createSnapshot(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<Snapshot> {
+  const startedAt = Date.now();
+  const tempRoot = await fs.mkdtemp(
+    path.join(path.dirname(appPath), ".dyad-build-"),
+  );
+  try {
+    const entries = (await fs.readdir(appPath)).filter(
+      (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
+    );
+    const [stats] = await Promise.all([
+      snapshotStats(appPath),
+      copySnapshotEntries(appPath, tempRoot, entries, signal),
+    ]);
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    const nodeModulesStat = await fs.stat(nodeModulesPath).catch(() => null);
+    if (!nodeModulesStat?.isDirectory()) {
+      throw new DyadError(
+        "Dependencies are missing or incomplete. Reinstall dependencies and restart the app, then retry the build.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    await fs.symlink(
+      nodeModulesPath,
+      path.join(tempRoot, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    return {
+      path: tempRoot,
+      ...stats,
+      setupMs: Date.now() - startedAt,
+      strategy: snapshotStrategy(),
+    };
+  } catch (error) {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function tail(value: string): string {
+  return value.length <= MAX_RESULT_OUTPUT_CHARS
+    ? value
+    : `[Earlier output omitted]\n${value.slice(-MAX_RESULT_OUTPUT_CHARS)}`;
+}
+
+async function resolvePackageManager(appPath: string) {
+  const support = await getPnpmMinimumReleaseAgeSupport();
+  return choosePackageManagerForApp(appPath, support.available);
+}
+
+async function runBuildProcess({
+  cwd,
+  packageManager,
+  signal,
+}: {
+  cwd: string;
+  packageManager: "npm" | "pnpm";
+  signal?: AbortSignal;
+}) {
+  return spawnStreaming({
+    command: packageManager,
+    args: ["run", "build"],
+    cwd,
+    env: getPackageManagerCommandEnv(),
+    signal,
+    timeoutMs: BUILD_TIMEOUT_MS,
+  });
+}
+
+export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
+  name: "run_build",
+  description: `Run the app's production build as a selective, expensive verification step.
+
+- Read package.json first and pass scripts.build exactly as expected_build_script.
+- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
+- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
+- Finish related edits first and run once. A failed build may be retried only after making a relevant change.
+- The preview is never stopped. Dyad builds in place only when concurrent safety is proven; otherwise it uses an isolated workspace snapshot.`,
+  inputSchema: runBuildSchema,
+  defaultConsent: "ask",
+  modifiesState: true,
+
+  getConsentPreview: (args) =>
+    `Run package.json build script: ${args.expected_build_script}`,
+
+  buildXml: (_args, isComplete) =>
+    isComplete
+      ? undefined
+      : '<dyad-status title="Running production build"></dyad-status>',
+
+  execute: async (args, ctx) => {
+    if (activeBuilds.has(ctx.appId)) {
+      return "A production build is already running for this app. Wait for it to finish instead of starting another one.";
+    }
+
+    const state = (ctx.buildAttemptState ??= {
+      count: 0,
+    } satisfies BuildAttemptState);
+    const currentMutationCount = ctx.mutationCount ?? 0;
+    if (state.count >= MAX_BUILD_RUNS_PER_TURN) {
+      return `The ${MAX_BUILD_RUNS_PER_TURN}-build limit for this turn has been reached. Stop retrying and summarize the remaining build issue for the user.`;
+    }
+    if (
+      state.count > 0 &&
+      state.mutationCountAtLastRun === currentMutationCount
+    ) {
+      return "The workspace has not changed since the previous production build. Do not run it again until you make a relevant fix.";
+    }
+
+    activeBuilds.add(ctx.appId);
+    try {
+      const packageJson = await readPackageJson(ctx.appPath);
+      const buildScript = getScript(packageJson, "build");
+      if (!buildScript) {
+        throw new DyadError(
+          "This app does not define a package.json scripts.build command, so production build verification is unavailable.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      if (buildScript !== args.expected_build_script.trim()) {
+        throw new DyadError(
+          "package.json scripts.build changed or did not match the approved command. Read package.json again and retry with the exact current value.",
+          DyadErrorKind.Conflict,
+        );
+      }
+      const facts = await gatherBuildProjectFacts(
+        ctx,
+        packageJson,
+        buildScript,
+      );
+      const mode = selectBuildExecutionMode(facts);
+      const resources = [
+        readAppResource("app-path"),
+        mode === "in-place"
+          ? ({ resource: "repository-worktree", mode: "write" } as const)
+          : readAppResource("repository-worktree"),
+      ];
+
+      return await appOperationCoordinator.run(
+        {
+          appId: ctx.appId,
+          operation: "run production build",
+          resources,
+          refuseWhenRecording: "run a production build",
+        },
+        async () => {
+          ctx.onXmlStream(
+            `<dyad-status title="${escapeXmlAttr(mode === "in-place" ? "Building beside preview" : "Preparing isolated build")}"></dyad-status>`,
+          );
+          let snapshot: Snapshot | undefined;
+          try {
+            if (mode === "isolated") {
+              snapshot = await createSnapshot(ctx.appPath, ctx.abortSignal);
+            }
+            const packageManager = await resolvePackageManager(ctx.appPath);
+            state.count += 1;
+            state.mutationCountAtLastRun = currentMutationCount;
+            const buildStartedAt = Date.now();
+            const result = await runBuildProcess({
+              cwd: snapshot?.path ?? ctx.appPath,
+              packageManager,
+              signal: ctx.abortSignal,
+            });
+            const buildMs = Date.now() - buildStartedAt;
+            const timing = snapshot
+              ? `Mode: isolated (${snapshot.strategy}); snapshot: ${snapshot.fileCount} files, ${snapshot.logicalBytes} logical bytes in ${snapshot.setupMs} ms; build: ${buildMs} ms.`
+              : `Mode: in-place; build: ${buildMs} ms.`;
+            const output = tail(
+              [result.stdout, result.stderr].filter(Boolean).join("\n"),
+            );
+
+            if (result.aborted) {
+              throw new DyadError(
+                "Build cancelled.",
+                DyadErrorKind.UserCancelled,
+              );
+            }
+            if (result.timedOut) {
+              const body = `Production build timed out after 10 minutes. ${timing}\n\n${output}`;
+              completeStatus(ctx, "Build timed out", body, "warning");
+              return body;
+            }
+            if (result.code !== 0) {
+              const body = `Production build failed with exit code ${result.code}. ${timing}\n\n${output}`;
+              completeStatus(ctx, "Build failed", body, "warning");
+              return body;
+            }
+
+            const body = `Production build passed. ${timing}${output ? `\n\n${output}` : ""}`;
+            completeStatus(ctx, "Build passed", body);
+            return body;
+          } finally {
+            if (snapshot) {
+              await fs.rm(snapshot.path, { recursive: true, force: true });
+            }
+          }
+        },
+      );
+    } finally {
+      activeBuilds.delete(ctx.appId);
+    }
+  },
+};

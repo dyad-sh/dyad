@@ -60,10 +60,10 @@ export const restartAppTool: ToolDefinition<
   },
 };
 
-export const rebuildAppTool: ToolDefinition<
+export const reinstallAndRestartAppTool: ToolDefinition<
   z.infer<typeof appLifecycleSchema>
 > = {
-  name: "rebuild_app",
+  name: "reinstall_and_restart_app",
   description:
     "Rebuild the current app by deleting node_modules, reinstalling dependencies, and restarting the development server. Use only when the user explicitly asks, node_modules is missing/incomplete, dependency installation or package/lockfile/native-module state is demonstrably broken or stale, or diagnostics explicitly recommend reinstalling dependencies. Never use for ordinary code errors, UI changes, or configuration changes that only require a restart. A rebuild includes a restart: never call both for the same reason, and do not repeat it for the same unchanged cause.",
   inputSchema: appLifecycleSchema,

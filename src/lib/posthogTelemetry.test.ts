@@ -195,6 +195,17 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     ).toBe(true);
   });
 
+  it("always sends PostHog person-property updates for non-Pro sampling", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "$set",
+        properties: {
+          $set: { enableTestingForNewApps: true },
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("always sends promo_click for non-Pro sampling", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

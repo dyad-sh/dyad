@@ -15,8 +15,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     isPro: hasDyadProKey(settings),
     enableAppBlueprint: settings.enableAppBlueprint ?? true,
     enableTestingForNewApps:
-      settings.enableTestingForNewApps ??
-      DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+      settings.enableTestingForNewApps ?? DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
   };
 }
 
@@ -102,6 +101,12 @@ export function shouldBypassNonProTelemetrySampling(
   }
 
   if (eventName === "app:initial-load") {
+    return true;
+  }
+
+  // PostHog people.set emits a $set event. Sampling it would leave person
+  // properties stale even though the corresponding settings update succeeded.
+  if (eventName === "$set") {
     return true;
   }
 

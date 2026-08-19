@@ -65,7 +65,7 @@ export const reinstallAndRestartAppTool: ToolDefinition<
 > = {
   name: "reinstall_and_restart_app",
   description:
-    "Rebuild the current app by deleting node_modules, reinstalling dependencies, and restarting the development server. Use only when the user explicitly asks, node_modules is missing/incomplete, dependency installation or package/lockfile/native-module state is demonstrably broken or stale, or diagnostics explicitly recommend reinstalling dependencies. Never use for ordinary code errors, UI changes, or configuration changes that only require a restart. A rebuild includes a restart: never call both for the same reason, and do not repeat it for the same unchanged cause.",
+    "Delete node_modules, reinstall dependencies, and restart the current app's development server. Use only when the user explicitly asks to reinstall dependencies, node_modules is missing/incomplete, dependency installation or package/lockfile/native-module state is demonstrably broken or stale, or diagnostics explicitly recommend it. Never use for ordinary code errors, UI changes, production build verification, or configuration changes that only require a restart. This operation includes a restart: never call both lifecycle tools for the same reason, and do not repeat it for the same unchanged cause.",
   inputSchema: appLifecycleSchema,
   defaultConsent: "ask",
   modifiesState: true,
@@ -74,13 +74,15 @@ export const reinstallAndRestartAppTool: ToolDefinition<
     "Delete node_modules, reinstall dependencies, and restart the current app",
 
   buildXml: (_args, isComplete) =>
-    isComplete ? undefined : buildLifecycleXml("Rebuilding app"),
+    isComplete ? undefined : buildLifecycleXml("Reinstalling dependencies"),
 
   execute: async (_args, ctx: AgentContext) => {
     assertLifecycleCanStart(ctx);
-    ctx.onXmlStream(buildLifecycleXml("Rebuilding app"));
+    ctx.onXmlStream(buildLifecycleXml("Reinstalling dependencies"));
     await executeLifecycle({ ctx, operation: "rebuild" });
-    ctx.onXmlComplete(buildLifecycleXml("App rebuilt", "finished"));
-    return "The app rebuilt and restarted successfully.";
+    ctx.onXmlComplete(
+      buildLifecycleXml("Dependencies reinstalled; app restarted", "finished"),
+    );
+    return "Dependencies were reinstalled and the app restarted successfully.";
   },
 };

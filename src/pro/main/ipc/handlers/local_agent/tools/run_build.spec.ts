@@ -1,4 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import type { AgentContext } from "./types";
+
+vi.mock("@/ipc/services/app_operation_coordinator", () => ({
+  appOperationCoordinator: {
+    run: vi.fn(async (_options: unknown, operation: () => Promise<unknown>) =>
+      operation(),
+    ),
+  },
+  readAppResource: vi.fn((resource: string) => ({ resource, mode: "read" })),
+}));
 
 import {
   runBuildTool,
@@ -95,5 +106,58 @@ describe("run_build", () => {
         frameworkType: null,
       }),
     ).toBe("isolated");
+  });
+
+  it("completes the status when the per-turn limit refuses a build", async () => {
+    const onXmlComplete = vi.fn();
+    const ctx = {
+      appId: 42,
+      appPath: "/unused",
+      buildAttemptState: { count: 3 },
+      onXmlComplete,
+      onXmlStream: vi.fn(),
+    } as unknown as AgentContext;
+
+    await expect(
+      runBuildTool.execute(
+        {
+          expected_prebuild_script: null,
+          expected_build_script: "vite build",
+          expected_postbuild_script: null,
+        },
+        ctx,
+      ),
+    ).resolves.toContain("3-build limit");
+
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining('title="Build limit reached" state="warning"'),
+    );
+  });
+
+  it("completes the status when an unchanged workspace refuses a retry", async () => {
+    const onXmlComplete = vi.fn();
+    const ctx = {
+      appId: 43,
+      appPath: "/unused",
+      mutationCount: 7,
+      buildAttemptState: { count: 1, mutationCountAtLastRun: 7 },
+      onXmlComplete,
+      onXmlStream: vi.fn(),
+    } as unknown as AgentContext;
+
+    await expect(
+      runBuildTool.execute(
+        {
+          expected_prebuild_script: null,
+          expected_build_script: "vite build",
+          expected_postbuild_script: null,
+        },
+        ctx,
+      ),
+    ).resolves.toContain("workspace has not changed");
+
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining('title="Build not repeated" state="warning"'),
+    );
   });
 });

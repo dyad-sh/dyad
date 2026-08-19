@@ -53,18 +53,19 @@ describe("app lifecycle tools", () => {
     );
   });
 
-  it("declares rebuild as an approval-required runtime mutation", () => {
+  it("declares dependency reinstall as an approval-required runtime mutation", () => {
     expect(reinstallAndRestartAppTool.inputSchema.parse({})).toEqual({});
     expect(reinstallAndRestartAppTool.defaultConsent).toBe("ask");
     expect(reinstallAndRestartAppTool.modifiesState).toBe(true);
     expect(reinstallAndRestartAppTool.description).toContain(
       "Never use for ordinary code errors",
     );
+    expect(reinstallAndRestartAppTool.description).not.toContain("Rebuild");
   });
 
-  it("rebuilds the current app after clearing stale logs", async () => {
+  it("reinstalls dependencies and restarts the current app", async () => {
     await expect(reinstallAndRestartAppTool.execute({}, ctx)).resolves.toBe(
-      "The app rebuilt and restarted successfully.",
+      "Dependencies were reinstalled and the app restarted successfully.",
     );
 
     expect(appRunActorService.executeExternalLifecycle).toHaveBeenCalledWith({
@@ -74,10 +75,10 @@ describe("app lifecycle tools", () => {
       timeoutMs: 10 * 60 * 1_000,
     });
     expect(ctx.onXmlStream).toHaveBeenCalledWith(
-      '<dyad-status title="Rebuilding app"></dyad-status>',
+      '<dyad-status title="Reinstalling dependencies"></dyad-status>',
     );
     expect(ctx.onXmlComplete).toHaveBeenCalledWith(
-      '<dyad-status title="App rebuilt" state="finished"></dyad-status>',
+      '<dyad-status title="Dependencies reinstalled; app restarted" state="finished"></dyad-status>',
     );
   });
 
@@ -85,7 +86,7 @@ describe("app lifecycle tools", () => {
     expect(restartAppTool.buildXml?.({}, false)).toContain("Restarting app");
     expect(restartAppTool.buildXml?.({}, true)).toBeUndefined();
     expect(reinstallAndRestartAppTool.buildXml?.({}, false)).toContain(
-      "Rebuilding app",
+      "Reinstalling dependencies",
     );
     expect(reinstallAndRestartAppTool.buildXml?.({}, true)).toBeUndefined();
   });

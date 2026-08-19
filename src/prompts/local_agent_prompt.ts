@@ -43,22 +43,22 @@ Use \`restart_app\` only when:
 - Logs or tool output explicitly say a restart is required.
 `
     : "";
-  const rebuildGuidance = reinstallAndRestartAppToolAvailable
+  const reinstallGuidance = reinstallAndRestartAppToolAvailable
     ? `
 Use \`reinstall_and_restart_app\` only when:
-- The user explicitly asks for a rebuild.
+- The user explicitly asks to reinstall dependencies.
 - \`node_modules\` is missing or incomplete.
 - Dependency installation, package resolution, the lockfile, or native package state is demonstrably broken or stale.
 - A diagnostic explicitly recommends reinstalling dependencies.
 
-Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
+Never reinstall dependencies for ordinary code errors, UI changes, production build verification, configuration changes that only require restart, or as the first response to an unexplained failure.
 `
     : "";
 
   return `<app_lifecycle>
-Rely on hot reload for ordinary source, styling, and asset edits. Do not restart or rebuild merely because files changed or as a routine verification step.
-${restartGuidance}${rebuildGuidance}
-Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Rely on hot reload for ordinary source, styling, and asset edits. Do not restart or reinstall dependencies merely because files changed or as a routine verification step.
+${restartGuidance}${reinstallGuidance}
+Prefer the least expensive available action. Reinstalling dependencies already includes a restart, so never call both lifecycle tools for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>`;
 }
 

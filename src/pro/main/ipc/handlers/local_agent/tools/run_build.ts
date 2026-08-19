@@ -46,6 +46,9 @@ const runBuildSchema = z.object({
 const MAX_BUILD_RUNS_PER_TURN = 3;
 const BUILD_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 16_000;
+const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
+const SNAPSHOT_PREFIX = ".dyad-build-";
+const SNAPSHOT_NAME_PATTERN = /^\.dyad-build-[A-Za-z0-9]{6}$/;
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
   ".git",
   ".next",
@@ -262,21 +265,26 @@ async function createSnapshot(
   appPath: string,
   signal?: AbortSignal,
 ): Promise<Snapshot> {
-  const nodeModulesStat = await fs
-    .stat(path.join(appPath, "node_modules"))
-    .catch(() => null);
-  if (!nodeModulesStat?.isDirectory()) {
-    throw new DyadError(
-      "Dependencies are missing or incomplete. Reinstall dependencies and restart the app, then retry the build.",
-      DyadErrorKind.Precondition,
-    );
-  }
-
   const startedAt = Date.now();
-  const tempRoot = await fs.mkdtemp(
-    path.join(path.dirname(appPath), ".dyad-build-"),
-  );
+  let tempRoot: string | undefined;
   try {
+    const parentPath = path.dirname(appPath);
+    await removeStaleSnapshots(parentPath);
+
+    const nodeModulesStat = await fs
+      .stat(path.join(appPath, "node_modules"))
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+    if (!nodeModulesStat?.isDirectory()) {
+      throw new DyadError(
+        "Dependencies are missing or incomplete. Reinstall dependencies and restart the app, then retry the build.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    tempRoot = await fs.mkdtemp(path.join(parentPath, SNAPSHOT_PREFIX));
     const entries = (await fs.readdir(appPath)).filter(
       (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
     );
@@ -287,9 +295,46 @@ async function createSnapshot(
       strategy: snapshotStrategy(),
     };
   } catch (error) {
-    await removeSnapshot(tempRoot);
-    throw error;
+    if (tempRoot) await removeSnapshot(tempRoot);
+    if (error instanceof DyadError) throw error;
+    throw new DyadError(
+      `Could not prepare the isolated build workspace: ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.Precondition,
+    );
   }
+}
+
+async function removeStaleSnapshots(parentPath: string): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(parentPath);
+  } catch (error) {
+    logger.warn(
+      `Failed to inspect stale build snapshots in ${parentPath}:`,
+      error,
+    );
+    return;
+  }
+
+  const cutoff = Date.now() - STALE_SNAPSHOT_AGE_MS;
+  await Promise.all(
+    entries
+      .filter((entry) => SNAPSHOT_NAME_PATTERN.test(entry))
+      .map(async (entry) => {
+        const snapshotPath = path.join(parentPath, entry);
+        try {
+          const stat = await fs.lstat(snapshotPath);
+          if (stat.isDirectory() && stat.mtimeMs < cutoff) {
+            await removeSnapshot(snapshotPath);
+          }
+        } catch (error) {
+          logger.warn(
+            `Failed to inspect build snapshot ${snapshotPath}:`,
+            error,
+          );
+        }
+      }),
+  );
 }
 
 async function removeSnapshot(snapshotPath: string): Promise<void> {
@@ -366,7 +411,10 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 
   execute: async (args, ctx) => {
     if (activeBuilds.has(ctx.appId)) {
-      return "A production build is already running for this app. Wait for it to finish instead of starting another one.";
+      const body =
+        "A production build is already running for this app. Wait for it to finish instead of starting another one.";
+      completeStatus(ctx, "Build already running", body, "warning");
+      return body;
     }
 
     activeBuilds.add(ctx.appId);
@@ -388,13 +436,18 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           } satisfies BuildAttemptState);
           const currentMutationCount = ctx.mutationCount ?? 0;
           if (state.count >= MAX_BUILD_RUNS_PER_TURN) {
-            return `The ${MAX_BUILD_RUNS_PER_TURN}-build limit for this turn has been reached. Stop retrying and summarize the remaining build issue for the user.`;
+            const body = `The ${MAX_BUILD_RUNS_PER_TURN}-build limit for this turn has been reached. Stop retrying and summarize the remaining build issue for the user.`;
+            completeStatus(ctx, "Build limit reached", body, "warning");
+            return body;
           }
           if (
             state.count > 0 &&
             state.mutationCountAtLastRun === currentMutationCount
           ) {
-            return "The workspace has not changed since the previous production build. Do not run it again until you make a relevant fix.";
+            const body =
+              "The workspace has not changed since the previous production build. Do not run it again until you make a relevant fix.";
+            completeStatus(ctx, "Build not repeated", body, "warning");
+            return body;
           }
 
           const packageJson = await readPackageJson(ctx.appPath);

@@ -24,7 +24,7 @@ describe("local_agent_prompt", () => {
       "Rely on hot reload for ordinary source, styling, and asset edits",
     );
     expect(prompt).toContain(
-      "A rebuild already includes a restart, so never call both for the same reason",
+      "Reinstalling dependencies already includes a restart, so never call both lifecycle tools for the same reason",
     );
     expect(prompt).not.toContain(
       '<dyad-command type="restart"></dyad-command>',

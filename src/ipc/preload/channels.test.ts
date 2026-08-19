@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { supabaseEvents } from "../types/supabase";
-import { VALID_INVOKE_CHANNELS, VALID_RECEIVE_CHANNELS } from "./channels";
+import {
+  previewViewEvents,
+  previewViewSendContracts,
+} from "../types/preview_view";
+import {
+  VALID_INVOKE_CHANNELS,
+  VALID_RECEIVE_CHANNELS,
+  VALID_SEND_CHANNELS,
+} from "./channels";
 
 describe("user-input preload channels", () => {
   it("allows every user-input invoke and receive contract", () => {
@@ -17,6 +25,17 @@ describe("user-input preload channels", () => {
 describe("supabase preload channels", () => {
   it("allows every Supabase receive contract", () => {
     for (const event of Object.values(supabaseEvents)) {
+      expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
+    }
+  });
+});
+
+describe("preview view preload channels", () => {
+  it("allows every preview send and receive contract", () => {
+    for (const contract of Object.values(previewViewSendContracts)) {
+      expect(VALID_SEND_CHANNELS).toContain(contract.channel);
+    }
+    for (const event of Object.values(previewViewEvents)) {
       expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
     }
   });

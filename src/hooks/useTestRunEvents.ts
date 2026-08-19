@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   appendTestRunOutputAtom,
@@ -12,6 +12,8 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
 
@@ -38,6 +40,14 @@ export function useTestRunEvents() {
   const clearOutput = useSetAtom(clearTestRunOutputForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
+  const setPreviewMode = useSetAtom(previewModeAtom);
+  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  // Held in a ref so switching apps doesn't re-run the effect and resubscribe,
+  // which is what this hook exists to avoid (a terminal event could land in
+  // the gap).
+  const selectedAppIdRef = useRef(selectedAppId);
+  selectedAppIdRef.current = selectedAppId;
   const queryClient = useQueryClient();
   const runGenerationByAppId = useRef(new Map<number, number>());
   const activeRunByAppId = useRef(
@@ -117,6 +127,14 @@ export function useTestRunEvents() {
         });
         discardPendingOutput(appId);
         if (payload.source === "agent") {
+          // Run state is broadcast to every window, and each shows whichever
+          // app IT has selected. Only the window already looking at this run's
+          // app should be pulled into the native test view — anywhere else it
+          // would replace another app's preview with a view nothing drives.
+          if (payload.preview && payload.appId === selectedAppIdRef.current) {
+            setPreviewNativeView(true);
+            setPreviewMode("preview");
+          }
           applyStarted({
             appId,
             testFile,

@@ -37,6 +37,7 @@ import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
+import { TestRunInPreviewSwitch } from "@/components/TestRunInPreviewSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
 import { useSetAtom } from "jotai";
@@ -240,6 +241,10 @@ export default function SettingsPage() {
 
             <div id={SETTING_IDS.enableMultiWindow}>
               <MultiWindowExperimentSwitch />
+            </div>
+
+            <div id={SETTING_IDS.enableTestRunInPreview}>
+              <TestRunInPreviewSwitch />
             </div>
 
             <div id={SETTING_IDS.autoApproveSafeMcpTools}>

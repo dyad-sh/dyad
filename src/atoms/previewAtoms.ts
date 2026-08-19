@@ -15,6 +15,24 @@ export const currentComponentCoordinatesAtom = atom<{
 
 export const previewIframeRefAtom = atom<HTMLIFrameElement | null>(null);
 
+/**
+ * Renders the preview in an Electron WebContentsView instead of the iframe.
+ *
+ * Set only when a test run needs a page it can drive over CDP — the native view
+ * cannot host component selection, the visual editor, the annotator, or console
+ * capture, so it is never offered as a way to browse the app. Deliberately
+ * session-local rather than persisted: restarting Dyad always lands back on the
+ * iframe.
+ */
+export const previewNativeViewAtom = atom<boolean>(false);
+
+/**
+ * Whether workbench UI is currently painting over the native preview's bounds.
+ * The main process hides the WebContentsView while this is true and the
+ * renderer fills the same area with its latest in-memory screenshot.
+ */
+export const previewNativeOverlayActiveAtom = atom<boolean>(false);
+
 export const annotatorModeAtom = atom<boolean>(false);
 
 export const screenshotDataUrlAtom = atom<string | null>(null);

@@ -431,10 +431,11 @@ const BaseUserSettingsFields = {
   // default (their `testing_enabled` column is seeded to true at creation).
   enableTestingForNewApps: z.boolean().optional(),
   // Test run modes chosen in the Tests panel. Persisted so both the panel's
-  // Run button and the agent's run_tests tool share the same headed/serial
-  // preference. Default (unset) is headless + serial.
+  // Run button and the agent's run_tests tool share the same headed/serial/
+  // slow-motion preference. Default (unset) is headless + serial + full speed.
   testHeaded: z.boolean().optional(),
   testParallel: z.boolean().optional(),
+  testSlowMo: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
@@ -455,6 +456,7 @@ const BaseUserSettingsFields = {
   // still changing, and with it off the Publish panel keeps the Vercel card
   // it has always had.
   enableOwnServerDeployment: z.boolean().optional(),
+  enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

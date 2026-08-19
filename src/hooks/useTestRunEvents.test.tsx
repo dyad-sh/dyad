@@ -11,6 +11,8 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 
 const { outputListeners, runStateListeners, listAppTestsMock } = vi.hoisted(
   () => ({
@@ -87,6 +89,46 @@ describe("useTestRunEvents", () => {
     });
 
     expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(false);
+  });
+
+  it("opens the native preview for an agent preview run", () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        preview: true,
+      });
+    });
+
+    expect(store.get(previewNativeViewAtom)).toBe(true);
+    expect(store.get(previewModeAtom)).toBe("preview");
+  });
+
+  it("leaves a window showing a different app alone", () => {
+    // Run state is broadcast to every window, and each shows whichever app IT
+    // has selected. Taking over a window looking elsewhere would replace that
+    // app's preview with a native view nothing drives.
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 2);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        preview: true,
+      });
+    });
+
+    expect(store.get(previewNativeViewAtom)).toBe(false);
+    // The run itself is still tracked — only the view switch is scoped.
+    expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(true);
   });
 
   it("stores streamed output at root scope", async () => {

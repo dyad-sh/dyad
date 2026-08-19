@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
 
@@ -25,6 +26,9 @@ const mocks = vi.hoisted(() => ({
   appUrl: "http://localhost:32100" as string | null,
   previewUrl: "http://localhost:32100/" as string | null,
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
+  getAutomationStatus: vi.fn(),
+  updateSettings: vi.fn(),
+  settings: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -35,6 +39,9 @@ vi.mock("@/ipc/types", () => ({
       runAppTests: mocks.runAppTests,
       stopAppTests: mocks.stopAppTests,
       getTestScreenshot: mocks.getTestScreenshot,
+    },
+    previewView: {
+      getAutomationStatus: mocks.getAutomationStatus,
     },
   },
 }));
@@ -50,7 +57,10 @@ vi.mock("@/hooks/useLoadApp", () => ({
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: {}, updateSettings: vi.fn() }),
+  useSettings: () => ({
+    settings: mocks.settings,
+    updateSettings: mocks.updateSettings,
+  }),
 }));
 
 vi.mock("@/hooks/useRunApp", () => ({
@@ -140,6 +150,120 @@ describe("TestsPanel", () => {
       file: SPEC_FILE,
       committed: true,
       uncommittedReason: null,
+    });
+    mocks.settings = {};
+    mocks.getAutomationStatus.mockResolvedValue({ cdpReady: true });
+  });
+
+  describe("headed runs in preview", () => {
+    const experimentOn = {
+      enableTestRunInPreview: true,
+    };
+
+    it("runs headed mode in the preview and brings the native view forward", async () => {
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      const { store } = renderPanel();
+
+      const button = await screen.findByText("Run all");
+      await act(async () => {
+        fireEvent.click(button);
+      });
+
+      expect(store.get(previewNativeViewAtom)).toBe(true);
+      expect(store.get(previewModeAtom)).toBe("preview");
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ appId: 1, preview: true, parallel: false }),
+        );
+      });
+    });
+
+    it("disables a headed run until Dyad has been restarted", async () => {
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
+      renderPanel();
+
+      const button = await screen.findByText("Run all");
+      await waitFor(() => {
+        expect(button.getAttribute("disabled")).not.toBeNull();
+      });
+      expect(button.getAttribute("title")).toContain("Restart Dyad");
+
+      fireEvent.click(button);
+      expect(mocks.runAppTests).not.toHaveBeenCalled();
+    });
+
+    it("disables the per-file and per-test runs too", async () => {
+      // Not just the Run-all button: a per-file run reaches the same code
+      // path, so it would tear down the iframe preview for a native view and
+      // then dead-end on the same "restart Dyad" error.
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
+      renderPanel();
+
+      const fileRun = await screen.findByRole("button", {
+        name: `Run all tests in: signup.spec.ts`,
+      });
+      await waitFor(() => {
+        expect(fileRun.getAttribute("disabled")).not.toBeNull();
+      });
+      expect(fileRun.getAttribute("title")).toContain("Restart Dyad");
+
+      fireEvent.click(fileRun);
+      expect(mocks.runAppTests).not.toHaveBeenCalled();
+    });
+
+    it("leaves headless runs out of the preview", async () => {
+      mocks.settings = experimentOn;
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      renderPanel();
+
+      const runAll = await screen.findByText("Run all");
+      await act(async () => {
+        fireEvent.click(runAll);
+      });
+
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ preview: false }),
+        );
+      });
+    });
+  });
+
+  describe("slow motion", () => {
+    it("defaults to full speed and persists the choice", async () => {
+      renderPanel();
+
+      // Persisted rather than local state, so the agent's run_tests tool runs
+      // at the pace the user picked here too.
+      const toggle = await screen.findByRole("button", {
+        name: "Switch to slow motion",
+      });
+      fireEvent.click(toggle);
+
+      expect(mocks.updateSettings).toHaveBeenCalledWith({ testSlowMo: true });
+    });
+
+    it("sends the chosen pace with the run", async () => {
+      mocks.settings = { testSlowMo: true };
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      renderPanel();
+
+      const runAll = await screen.findByText("Run all");
+      await act(async () => {
+        fireEvent.click(runAll);
+      });
+
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ slowMo: true }),
+        );
+      });
+      expect(
+        screen.getByRole("button", { name: "Switch to normal speed" }),
+      ).toBeTruthy();
     });
   });
 

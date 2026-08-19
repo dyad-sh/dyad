@@ -15,6 +15,7 @@ import {
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
+import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
 import {
@@ -22,6 +23,7 @@ import {
   MAX_RUNS_PER_TURN,
   MAX_ERROR_CHARS,
   RUN_TIMEOUT_MS,
+  SLOW_MO_RUN_TIMEOUT_MS,
   Classification,
   classify,
   completeStatus,
@@ -284,11 +286,21 @@ async function runSpec(
   ctx.onXmlStream(
     `<dyad-status title="${escapeXmlAttr(`Running ${label}`)}"></dyad-status>`,
   );
-  // Honor the headed/parallel modes the user picked in the Tests panel (both
-  // persisted in user settings, default headless + serial). A narrowed (grep)
-  // run usually targets one/few tests, so only opt into parallel for whole-file
-  // runs — mirrors the panel's `parallel && !isSingleTest` guard.
+  // Honor the modes the user picked in the Tests panel — including slow motion,
+  // so a user watching the agent's runs gets the same pace as their own. With
+  // the preview experiment enabled, headed mode drives Dyad's native preview
+  // view. A preview or narrowed run must stay serial.
   const settings = readSettings();
+  // A preview run needs the CDP endpoint Dyad opens at boot, which exists only
+  // if the experiment was already on when the app launched. Asking for one
+  // without it fails the run with "restart Dyad" — advice an agent cannot act
+  // on, and it would meet every run_tests call for the rest of the session.
+  // Checking here falls back to an ordinary headed browser instead.
+  const preview =
+    (settings.enableTestRunInPreview ?? false) &&
+    (settings.testHeaded ?? false) &&
+    (await resolveRemoteDebuggingEndpoint()) !== null;
+  const slowMo = settings.testSlowMo ?? false;
   return runAppTestsWithIsolation({
     event: ctx.event,
     appId: ctx.appId,
@@ -296,9 +308,14 @@ async function runSpec(
     grep,
     source: "agent",
     headed: settings.testHeaded ?? false,
-    parallel: (settings.testParallel ?? false) && !grep,
+    parallel: (settings.testParallel ?? false) && !grep && !preview,
+    slowMo,
+    preview,
     externalSignal: ctx.abortSignal,
-    timeoutMs: RUN_TIMEOUT_MS,
+    // A slowed run spends real time between actions, so it gets a budget to
+    // match — otherwise the toggle alone would turn a comfortable spec into an
+    // infra timeout the agent can't do anything about.
+    timeoutMs: slowMo ? SLOW_MO_RUN_TIMEOUT_MS : RUN_TIMEOUT_MS,
   });
 }
 

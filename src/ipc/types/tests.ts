@@ -143,6 +143,17 @@ export const RunAppTestsParamsSchema = z.object({
    * with many independent tests, at the cost of them sharing one dev server.
    */
   parallel: z.boolean().optional(),
+  /**
+   * When true, Playwright pauses between actions so a run can be followed by
+   * eye. Applies to browser runs and preview runs alike.
+   */
+  slowMo: z.boolean().optional(),
+  /**
+   * Experimental: drive the app inside the preview panel's native
+   * WebContentsView over CDP instead of launching a browser, so the user
+   * watches the run in place. Forces serial execution and ignores `headed`.
+   */
+  preview: z.boolean().optional(),
 });
 
 /**
@@ -428,6 +439,8 @@ export const TestsRunStatePayloadSchema = z.object({
   testLine: z.number().optional(),
   /** With testFile: regex passed to Playwright's --grep for a partial run. */
   grep: z.string().optional(),
+  /** Whether this run drives the native preview view. Present on "started". */
+  preview: z.boolean().optional(),
   /** Present only on "finished". */
   results: z.array(TestResultSchema).optional(),
   infraError: z.object({ message: z.string() }).optional(),

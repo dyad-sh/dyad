@@ -21,12 +21,15 @@ describe("copyFileTool file mutation tracking", () => {
     expect((await exec(["init"], appPath)).exitCode).toBe(0);
     await fs.writeFile(path.join(appPath, ".gitignore"), "ignored/\n");
     await fs.mkdir(path.join(appPath, "ignored"), { recursive: true });
+    await fs.mkdir(path.join(appPath, "src"), { recursive: true });
+    await fs.writeFile(path.join(appPath, "ignored", "copy.txt"), "copy\n");
     await fs.writeFile(path.join(appPath, "ignored", "tracked.txt"), "old\n");
+    await fs.writeFile(path.join(appPath, "src", "copy.txt"), "copy\n");
     expect(
       (await exec(["add", "-f", "ignored/tracked.txt"], appPath)).exitCode,
     ).toBe(0);
     const shouldTrackFileMutation = copyFileTool.shouldTrackFileMutation!;
-    const ctx = { appPath } as AgentContext;
+    const ctx = { appPath, preCommitHookAvailable: true } as AgentContext;
 
     await expect(
       shouldTrackFileMutation(

@@ -20,6 +20,7 @@ export interface BufferedProcessOptions {
   maxOutputBytes?: number;
   captureOutputOnSuccess?: boolean;
   waitForCloseAfterForceKill?: boolean;
+  onStdoutBytes?: (chunk: Buffer, child: ChildProcess) => void;
   onStdout?: (chunk: string, child: ChildProcess) => void;
   onStderr?: (chunk: string, child: ChildProcess) => void;
 }
@@ -216,9 +217,30 @@ export async function runBufferedProcess(
       }
     };
 
+    const invokeByteOutputCallback = (
+      callback: BufferedProcessOptions["onStdoutBytes"],
+      bytes: Buffer,
+    ): boolean => {
+      if (!callback) {
+        return true;
+      }
+
+      try {
+        callback(bytes, child);
+        return true;
+      } catch (error) {
+        terminate("SIGKILL");
+        fail(error instanceof Error ? error : new Error(String(error)));
+        return false;
+      }
+    };
+
     function handleStdout(chunk: unknown) {
       const bytes = toBuffer(chunk);
       stdoutBuffer.append(bytes);
+      if (!invokeByteOutputCallback(options.onStdoutBytes, bytes)) {
+        return;
+      }
       if (stdoutDecoder) {
         invokeOutputCallback(options.onStdout, stdoutDecoder.write(bytes));
       }

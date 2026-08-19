@@ -802,6 +802,7 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
+      skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
       spawnedSubagentThreadIds,
       spawnedImplementerThreadIds,
       deliveredExplorerThreadIds,

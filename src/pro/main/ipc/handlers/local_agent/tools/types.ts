@@ -88,6 +88,8 @@ export interface AgentContext {
   sharedServerModulePaths: string[];
   /** Function deploys skipped because a shared module had already changed. */
   pendingFunctionDeploys: string[];
+  /** Preserve remote Supabase functions that are absent from local files. */
+  skipPruneEdgeFunctions?: boolean;
   chatSummary?: string;
   /** Turn-scoped todo list for agent task tracking */
   todos: Todo[];

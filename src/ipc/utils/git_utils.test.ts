@@ -34,6 +34,7 @@ import {
   restoreGitIndexEntries,
   gitAddAll,
   gitCommit,
+  getGitStateFingerprint,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
@@ -145,6 +146,56 @@ describe("gitCommit", () => {
       gitCommit({ path: repoDir, message: "explicit user commit" }),
     ).rejects.toThrow();
   });
+});
+
+describe("getGitStateFingerprint", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  it("changes when an existing untracked file's contents change", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-fingerprint-untracked-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const filePath = path.join(repoDir, "untracked.txt");
+    await fs.promises.writeFile(filePath, "before\n");
+    const before = await getGitStateFingerprint(repoDir);
+
+    await fs.promises.writeFile(filePath, "after!\n");
+
+    await expect(getGitStateFingerprint(repoDir)).resolves.not.toBe(before);
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "hashes non-UTF-8 Git path bytes without replacement",
+    async () => {
+      repoDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "git-fingerprint-bytes-"),
+      );
+      await runGit(repoDir, ["init"]);
+      const repoPrefix = Buffer.from(`${repoDir}${path.sep}`);
+      const firstPath = Buffer.concat([
+        repoPrefix,
+        Buffer.from([0x66, 0x80, 0x2e, 0x74, 0x78, 0x74]),
+      ]);
+      const secondPath = Buffer.concat([
+        repoPrefix,
+        Buffer.from([0x66, 0x81, 0x2e, 0x74, 0x78, 0x74]),
+      ]);
+      await fs.promises.writeFile(firstPath, "same\n");
+      const before = await getGitStateFingerprint(repoDir);
+
+      await fs.promises.rename(firstPath, secondPath);
+
+      await expect(getGitStateFingerprint(repoDir)).resolves.not.toBe(before);
+    },
+  );
 });
 
 describe("gitLog", () => {

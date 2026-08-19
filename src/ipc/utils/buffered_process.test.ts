@@ -152,6 +152,25 @@ describe("runBufferedProcess", () => {
     );
   });
 
+  it("passes raw stdout bytes to byte callbacks without UTF-8 replacement", async () => {
+    const controller = createMockChildController();
+    spawnMock.mockReturnValue(controller.child);
+    const chunks: Buffer[] = [];
+    const invalidUtf8 = Buffer.from([0x66, 0x80, 0x81, 0x00]);
+
+    const promise = runBufferedProcess({
+      command: "git status",
+      cwd: "/tmp/app",
+      onStdoutBytes: (chunk) => chunks.push(Buffer.from(chunk)),
+    });
+
+    controller.stdout.emit("data", invalidUtf8);
+    controller.close(0);
+    await promise;
+
+    expect(Buffer.concat(chunks)).toEqual(invalidUtf8);
+  });
+
   it("does not decode retained logs when successful output is unused", async () => {
     const controller = createMockChildController();
     spawnMock.mockReturnValue(controller.child);

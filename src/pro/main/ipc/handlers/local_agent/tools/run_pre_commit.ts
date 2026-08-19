@@ -27,6 +27,7 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
+import { trackWorkspaceMutation } from "./tool_invocation";
 
 export const MAX_PRE_COMMIT_RUNS_PER_TURN = 3;
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
@@ -111,7 +112,7 @@ async function collectSupabaseFunctionEntryPoints(
   const functionNames = new Set<string>();
   await Promise.all(
     entries
-      .filter((entry) => entry.isDirectory() && entry.name !== "_shared")
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
       .map(async (entry) => {
         try {
           await fsPromises.access(
@@ -183,6 +184,7 @@ async function collectCurrentChangedPaths(
         timeoutMs: FINGERPRINT_TIMEOUT_MS,
         maxOutputBytes: 1_024,
         captureOutputOnSuccess: false,
+        waitForCloseAfterForceKill: true,
         onStdout: (chunk) => consume(chunk),
       });
       consume("", true);
@@ -263,32 +265,52 @@ async function scheduleHookGeneratedFileSideEffects(
     }
   }
 
+  const notes: string[] = [];
   if (beforeFunctionEntries && afterFunctionEntries) {
-    for (const functionName of beforeFunctionEntries) {
-      if (afterFunctionEntries.has(functionName)) {
-        continue;
+    const removedFunctionNames = [...beforeFunctionEntries].filter(
+      (functionName) => !afterFunctionEntries.has(functionName),
+    );
+    if (ctx.skipPruneEdgeFunctions && removedFunctionNames.length > 0) {
+      notes.push(
+        `Pre-commit removed local Supabase function(s) ${removedFunctionNames.join(", ")}, but Dyad kept their remote deployments because "Keep extra Supabase edge functions" is enabled.`,
+      );
+    } else {
+      const deletedFunctionNames: string[] = [];
+      for (const functionName of removedFunctionNames) {
+        try {
+          await deleteSupabaseFunction({
+            supabaseProjectId: ctx.supabaseProjectId,
+            functionName,
+            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          });
+          ctx.pendingFunctionDeploys = ctx.pendingFunctionDeploys.filter(
+            (pendingName) => pendingName !== functionName,
+          );
+          deletedFunctionNames.push(functionName);
+        } catch (deleteError) {
+          logger.warn(
+            `Failed to delete Supabase function ${functionName} removed by pre-commit:`,
+            deleteError,
+          );
+          ctx.onWarningMessage?.(
+            `Pre-commit removed Supabase function ${functionName}, but Dyad could not delete its remote deployment: ${deleteError}`,
+          );
+        }
       }
-      try {
-        await deleteSupabaseFunction({
-          supabaseProjectId: ctx.supabaseProjectId,
-          functionName,
-          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-        });
-      } catch (deleteError) {
-        logger.warn(
-          `Failed to delete Supabase function ${functionName} removed by pre-commit:`,
-          deleteError,
-        );
-        ctx.onWarningMessage?.(
-          `Pre-commit removed Supabase function ${functionName}, but Dyad could not delete its remote deployment: ${deleteError}`,
+      if (deletedFunctionNames.length > 0) {
+        notes.push(
+          `Dyad removed the corresponding remote Supabase function deployment(s): ${deletedFunctionNames.join(", ")}.`,
         );
       }
     }
   }
 
   if (!beforeFunctionEntries || !afterFunctionEntries) {
-    return "Dyad could not compare Supabase function entry points before and after the hook, so it skipped automatic deletion reconciliation.";
+    notes.push(
+      "Dyad could not compare Supabase function entry points before and after the hook, so it skipped automatic deletion reconciliation.",
+    );
   }
+  return notes.join("\n\n") || undefined;
 }
 
 function appendNote(body: string, note?: string): string {
@@ -380,6 +402,7 @@ export const runPreCommitTool: ToolDefinition<
             signal: ctx.abortSignal,
             timeoutMs: PRE_COMMIT_STAGING_TIMEOUT_MS,
             maxOutputBytes: 256_000,
+            waitForCloseAfterForceKill: true,
           });
         } catch (error) {
           const message =
@@ -427,6 +450,7 @@ export const runPreCommitTool: ToolDefinition<
               "--cached",
               "--quiet",
               "--no-ext-diff",
+              "--no-textconv",
               "--",
             ],
             cwd: ctx.appPath,
@@ -434,6 +458,7 @@ export const runPreCommitTool: ToolDefinition<
             signal: ctx.abortSignal,
             timeoutMs: PRE_COMMIT_STAGING_TIMEOUT_MS,
             maxOutputBytes: 64_000,
+            waitForCloseAfterForceKill: true,
           });
         } catch (error) {
           const message =
@@ -517,6 +542,7 @@ export const runPreCommitTool: ToolDefinition<
             signal: ctx.abortSignal,
             timeoutMs: PRE_COMMIT_TIMEOUT_MS,
             maxOutputBytes: 256_000,
+            waitForCloseAfterForceKill: true,
           });
         } catch (error) {
           // A process that never spawned is not an actual hook run and should not
@@ -549,12 +575,25 @@ export const runPreCommitTool: ToolDefinition<
           ctx.preCommitGitStateFingerprintAtLastRun = afterFingerprint;
         }
         let reconciliationNote: string | undefined;
-        if (!result.aborted && (hookChangedFiles || fingerprintUnknown)) {
+        if (hookChangedFiles) {
+          trackWorkspaceMutation(ctx);
+        } else if (fingerprintUnknown && !result.aborted) {
+          // Preserve the bounded retry opportunity without claiming that an
+          // unmeasurable hook definitely changed the workspace.
           ctx.fileMutationCount = (ctx.fileMutationCount ?? 0) + 1;
+        }
+        if (
+          !result.aborted &&
+          !result.timedOut &&
+          (hookChangedFiles || fingerprintUnknown)
+        ) {
           reconciliationNote = await scheduleHookGeneratedFileSideEffects(
             ctx,
             beforeFunctionEntries,
           );
+        } else if (result.timedOut && ctx.supabaseProjectId) {
+          reconciliationNote =
+            "The hook did not complete, so Dyad skipped automatic Supabase function reconciliation.";
         }
 
         if (result.aborted) {

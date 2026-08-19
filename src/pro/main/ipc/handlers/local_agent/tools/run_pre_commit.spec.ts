@@ -117,6 +117,11 @@ function processResult(overrides = {}) {
   };
 }
 
+function emitStdout(options: BufferedProcessOptions, value: string): void {
+  options.onStdout?.(value, {} as never);
+  options.onStdoutBytes?.(Buffer.from(value), {} as never);
+}
+
 describe("isPreCommitHookAvailable", () => {
   afterEach(async () => {
     await Promise.all(
@@ -181,9 +186,9 @@ describe("runPreCommitTool", () => {
         if (options.args?.includes("--quiet")) {
           return processResult({ code: stagedChanges ? 1 : 0 });
         }
-        options.onStdout?.(
+        emitStdout(
+          options,
           hookChangesFiles ? `fingerprint-${hookRuns}` : "fingerprint",
-          {} as never,
         );
         return processResult();
       },
@@ -272,6 +277,35 @@ describe("runPreCommitTool", () => {
     );
   });
 
+  it("disables textconv while fingerprinting repository bytes", async () => {
+    await runPreCommitTool.execute({}, context(repo));
+
+    const fingerprintDiffCalls = mocks.runBufferedProcess.mock.calls.filter(
+      (call) => (call[0] as BufferedProcessOptions).args?.includes("--binary"),
+    );
+    expect(fingerprintDiffCalls.length).toBeGreaterThan(0);
+    for (const call of fingerprintDiffCalls) {
+      const options = call[0] as BufferedProcessOptions;
+      expect(options.args).toContain("--no-textconv");
+    }
+  });
+
+  it("waits for staging and hook processes to close after force-kill", async () => {
+    await runPreCommitTool.execute({}, context(repo));
+
+    for (const args of [
+      ["add", "--", "."],
+      ["hook", "run", "pre-commit"],
+    ]) {
+      expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          args,
+          waitForCloseAfterForceKill: true,
+        }),
+      );
+    }
+  });
+
   it("uses Dyad's package-manager environment for hooks", async () => {
     vi.stubEnv("COREPACK_ENABLE_PROJECT_SPEC", "1");
     try {
@@ -306,7 +340,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "-c") {
           return processResult({ code: 1 });
         }
-        options.onStdout?.("fingerprint", {} as never);
+        emitStdout(options, "fingerprint");
         return processResult();
       },
     );
@@ -346,12 +380,16 @@ describe("runPreCommitTool", () => {
       processResult({ code: 1, stderr: "formatted files" }),
       processResult(),
     );
-    const ctx = context(repo);
+    const onWorkspaceMutation = vi.fn();
+    const ctx = context(repo, { onWorkspaceMutation });
 
     await runPreCommitTool.execute({}, ctx);
     const second = await runPreCommitTool.execute({}, ctx);
 
     expect(ctx.fileMutationCount).toBe(3);
+    expect(ctx.mutationCount).toBe(2);
+    expect(ctx.workspaceMutated).toBe(true);
+    expect(onWorkspaceMutation).toHaveBeenCalledWith(true);
     expect(second).toContain("passed, but the hook changed files");
     expect(hookRuns).toBe(2);
     expect(mocks.cloudSync).toHaveBeenCalledWith({
@@ -384,13 +422,13 @@ describe("runPreCommitTool", () => {
           options.args?.includes("--name-only") ||
           options.args?.includes("ls-files")
         ) {
-          options.onStdout?.(
+          emitStdout(
+            options,
             "supabase/functions/hello/index.ts\0supabase/functions/_shared/util.ts\0",
-            {} as never,
           );
           return processResult();
         }
-        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        emitStdout(options, `fingerprint-${hookRuns}`);
         return processResult();
       },
     );
@@ -433,19 +471,17 @@ describe("runPreCommitTool", () => {
           options.args?.includes("--name-only") ||
           options.args?.includes("ls-files")
         ) {
-          options.onStdout?.(
-            "supabase/functions/removed/index.ts\0",
-            {} as never,
-          );
+          emitStdout(options, "supabase/functions/removed/index.ts\0");
           return processResult();
         }
-        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        emitStdout(options, `fingerprint-${hookRuns}`);
         return processResult();
       },
     );
     const ctx = context(repo, {
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: "org-slug",
+      pendingFunctionDeploys: ["removed"],
     });
 
     await runPreCommitTool.execute({}, ctx);
@@ -456,6 +492,127 @@ describe("runPreCommitTool", () => {
       organizationSlug: "org-slug",
     });
     expect(ctx.pendingFunctionDeploys).toEqual([]);
+  });
+
+  it("keeps removed remote functions when pruning is disabled", async () => {
+    const removedEntryPoint = path.join(
+      repo,
+      "supabase",
+      "functions",
+      "removed",
+      "index.ts",
+    );
+    await mkdir(path.dirname(removedEntryPoint), { recursive: true });
+    await writeFile(removedEntryPoint, "export {};\n");
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") return processResult();
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          await rm(removedEntryPoint);
+          return processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
+        }
+        if (
+          options.args?.includes("--name-only") ||
+          options.args?.includes("ls-files")
+        ) {
+          emitStdout(options, "supabase/functions/removed/index.ts\0");
+          return processResult();
+        }
+        emitStdout(options, `fingerprint-${hookRuns}`);
+        return processResult();
+      },
+    );
+    const ctx = context(repo, {
+      supabaseProjectId: "project-id",
+      skipPruneEdgeFunctions: true,
+      pendingFunctionDeploys: ["removed"],
+    });
+
+    const result = await runPreCommitTool.execute({}, ctx);
+
+    expect(result).toContain("Keep extra Supabase edge functions");
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+    expect(ctx.pendingFunctionDeploys).toEqual(["removed"]);
+  });
+
+  it("ignores reserved underscore-prefixed Supabase directories", async () => {
+    const reservedEntryPoint = path.join(
+      repo,
+      "supabase",
+      "functions",
+      "_utils",
+      "index.ts",
+    );
+    await mkdir(path.dirname(reservedEntryPoint), { recursive: true });
+    await writeFile(reservedEntryPoint, "export {};\n");
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") return processResult();
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          await rm(reservedEntryPoint);
+          return processResult();
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
+        }
+        if (
+          options.args?.includes("--name-only") ||
+          options.args?.includes("ls-files")
+        ) {
+          emitStdout(options, "supabase/functions/_utils/index.ts\0");
+          return processResult();
+        }
+        emitStdout(options, `fingerprint-${hookRuns}`);
+        return processResult();
+      },
+    );
+
+    await runPreCommitTool.execute(
+      {},
+      context(repo, { supabaseProjectId: "project-id" }),
+    );
+
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
+  it("does not reconcile remote functions after a timed-out hook", async () => {
+    const removedEntryPoint = path.join(
+      repo,
+      "supabase",
+      "functions",
+      "removed",
+      "index.ts",
+    );
+    await mkdir(path.dirname(removedEntryPoint), { recursive: true });
+    await writeFile(removedEntryPoint, "export {};\n");
+    mocks.runBufferedProcess.mockImplementation(
+      async (options: BufferedProcessOptions) => {
+        if (options.args?.[0] === "add") return processResult();
+        if (options.args?.[0] === "hook") {
+          hookRuns++;
+          await rm(removedEntryPoint);
+          return processResult({ code: 124, timedOut: true });
+        }
+        if (options.args?.includes("--quiet")) {
+          return processResult({ code: 1 });
+        }
+        emitStdout(options, `fingerprint-${hookRuns}`);
+        return processResult();
+      },
+    );
+
+    const result = await runPreCommitTool.execute(
+      {},
+      context(repo, { supabaseProjectId: "project-id" }),
+    );
+
+    expect(result).toContain("hook did not complete");
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
   });
 
   it("does not repeat a Supabase function deletion that preceded the hook", async () => {
@@ -475,13 +632,10 @@ describe("runPreCommitTool", () => {
           options.args?.includes("--name-only") ||
           options.args?.includes("ls-files")
         ) {
-          options.onStdout?.(
-            "supabase/functions/removed/index.ts\0",
-            {} as never,
-          );
+          emitStdout(options, "supabase/functions/removed/index.ts\0");
           return processResult();
         }
-        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        emitStdout(options, `fingerprint-${hookRuns}`);
         return processResult();
       },
     );
@@ -513,7 +667,7 @@ describe("runPreCommitTool", () => {
         ) {
           return processResult({ code: 1 });
         }
-        options.onStdout?.(`fingerprint-${hookRuns}`, {} as never);
+        emitStdout(options, `fingerprint-${hookRuns}`);
         return processResult();
       },
     );
@@ -553,7 +707,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.includes("--quiet")) {
           return processResult({ code: 1 });
         }
-        options.onStdout?.("fingerprint", {} as never);
+        emitStdout(options, "fingerprint");
         return processResult();
       },
     );

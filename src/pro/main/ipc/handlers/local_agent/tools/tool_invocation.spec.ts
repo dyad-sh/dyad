@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as gitUtils from "@/ipc/utils/git_utils";
 import type { AgentContext, ToolDefinition } from "./types";
 import { APP_MUTATING_TOOL_NAMES, FILE_EDIT_TOOL_NAMES } from "./types";
 import { addIntegrationTool } from "./add_integration";
 import {
   FILE_MUTATION_POLICIES,
+  shouldTrackToolFileMutation,
   shouldTrackToolMutation,
   trackAppMutation,
 } from "./tool_invocation";
@@ -140,5 +142,58 @@ describe("file mutation policy", () => {
     expect(Object.keys(FILE_MUTATION_POLICIES).sort()).toEqual(
       [...FILE_EDIT_TOOL_NAMES, ...APP_MUTATING_TOOL_NAMES].sort(),
     );
+  });
+
+  it("does not inspect Git when pre-commit is unavailable", async () => {
+    const execGit = vi.spyOn(gitUtils, "execGit");
+    const ctx = {
+      appPath: "/tmp/app",
+      preCommitHookAvailable: false,
+    } as AgentContext;
+
+    expect(
+      await shouldTrackToolFileMutation(
+        tool("write_file"),
+        { path: "src/file.ts" },
+        "success",
+        ctx,
+      ),
+    ).toBe(false);
+    expect(execGit).not.toHaveBeenCalled();
+    execGit.mockRestore();
+  });
+
+  it("caches Git visibility for repeated edits to the same path", async () => {
+    const execGit = vi.spyOn(gitUtils, "execGit").mockResolvedValue({
+      exitCode: 0,
+      stdout: " M src/file.ts\0",
+      stderr: "",
+    } as never);
+    const ctx = {
+      appPath: "/tmp/app",
+      preCommitHookAvailable: true,
+    } as AgentContext;
+    const definition = tool("write_file");
+
+    await shouldTrackToolFileMutation(
+      definition,
+      { path: "src/file.ts" },
+      "success",
+      ctx,
+    );
+    await shouldTrackToolFileMutation(
+      definition,
+      { path: "src/file.ts" },
+      "success",
+      ctx,
+    );
+
+    expect(execGit).toHaveBeenCalledTimes(1);
+    execGit.mockRestore();
+  });
+
+  it("classifies deletes and both sides of renames from actual Git state", () => {
+    expect(FILE_MUTATION_POLICIES.delete_file).toBe("path");
+    expect(FILE_MUTATION_POLICIES.rename_file).toBe("paths");
   });
 });

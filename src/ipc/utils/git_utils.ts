@@ -27,6 +27,8 @@ import { runBufferedProcess } from "./buffered_process";
 const logger = log.scope("git_utils");
 
 const GIT_STATE_FINGERPRINT_TIMEOUT_MS = 30_000;
+const GIT_STATE_FINGERPRINT_MAX_PATH_BYTES = 16 * 1024 * 1024;
+const GIT_STATE_FINGERPRINT_MAX_UNTRACKED_PATHS = 10_000;
 
 function isUserVisibleGitPath(filePath: string) {
   return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
@@ -219,7 +221,8 @@ async function hashGitOutput(
     timeoutMs: GIT_STATE_FINGERPRINT_TIMEOUT_MS,
     maxOutputBytes: 1_024,
     captureOutputOnSuccess: false,
-    onStdout: (chunk) => hash.update(chunk),
+    waitForCloseAfterForceKill: true,
+    onStdoutBytes: (chunk) => hash.update(chunk),
   });
   if (result.code !== 0 || result.aborted || result.timedOut) {
     throw new Error(`Git fingerprint command failed: git ${args.join(" ")}`);
@@ -227,11 +230,138 @@ async function hashGitOutput(
   return hash.digest("hex");
 }
 
-/** Fingerprint staged, tracked-worktree, and untracked-path state. */
+async function collectRawGitOutput(
+  appPath: string,
+  args: string[],
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  const { env, gitLocation } = getGitProcessEnvironment();
+  const result = await runBufferedProcess({
+    command: gitLocation,
+    args,
+    cwd: appPath,
+    env,
+    signal,
+    timeoutMs: GIT_STATE_FINGERPRINT_TIMEOUT_MS,
+    maxOutputBytes: 1_024,
+    captureOutputOnSuccess: false,
+    waitForCloseAfterForceKill: true,
+    onStdoutBytes: (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > GIT_STATE_FINGERPRINT_MAX_PATH_BYTES) {
+        throw new Error("Git fingerprint path output exceeded its byte limit");
+      }
+      chunks.push(Buffer.from(chunk));
+    },
+  });
+  if (result.code !== 0 || result.aborted || result.timedOut) {
+    throw new Error(`Git fingerprint command failed: git ${args.join(" ")}`);
+  }
+  return Buffer.concat(chunks, totalBytes);
+}
+
+function parseUntrackedPorcelainPaths(output: Buffer): Buffer[] {
+  const paths: Buffer[] = [];
+  let offset = 0;
+  while (offset < output.length) {
+    const terminator = output.indexOf(0, offset);
+    const end = terminator === -1 ? output.length : terminator;
+    const record = output.subarray(offset, end);
+    offset = end + 1;
+    if (record.length < 3) {
+      continue;
+    }
+
+    const x = record[0];
+    const y = record[1];
+    if (x === 0x3f && y === 0x3f) {
+      paths.push(Buffer.from(record.subarray(3)));
+      if (paths.length > GIT_STATE_FINGERPRINT_MAX_UNTRACKED_PATHS) {
+        throw new Error("Git fingerprint exceeded its untracked-path limit");
+      }
+    }
+
+    // In porcelain v1 -z output, rename/copy records are followed by a second
+    // NUL-delimited pathname without another status prefix.
+    if (x === 0x52 || x === 0x43 || y === 0x52 || y === 0x43) {
+      const sourceTerminator = output.indexOf(0, offset);
+      offset = sourceTerminator === -1 ? output.length : sourceTerminator + 1;
+    }
+  }
+  return paths;
+}
+
+function resolveRawGitPath(appPath: string, relativePath: Buffer): fs.PathLike {
+  if (
+    relativePath.length === 0 ||
+    relativePath[0] === 0x2f ||
+    relativePath.includes(0)
+  ) {
+    throw new Error("Git returned an invalid relative pathname");
+  }
+
+  const components = relativePath.toString("latin1").split("/");
+  if (components.some((component) => component === "..")) {
+    throw new Error("Git returned a pathname outside the repository");
+  }
+
+  if (process.platform === "win32") {
+    return safeJoin(appPath, relativePath.toString("utf8"));
+  }
+  return Buffer.concat([
+    Buffer.from(appPath),
+    Buffer.from(pathModule.sep),
+    relativePath,
+  ]);
+}
+
+async function hashUntrackedPath(
+  appPath: string,
+  relativePath: Buffer,
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  signal?.throwIfAborted();
+  const filePath = resolveRawGitPath(appPath, relativePath);
+  const stat = await fsPromises.lstat(filePath);
+  const hash = createHash("sha256");
+  hash.update(`${stat.mode}\0`);
+  if (stat.isSymbolicLink()) {
+    hash.update(await fsPromises.readlink(filePath, { encoding: "buffer" }));
+  } else if (stat.isFile()) {
+    for await (const chunk of fs.createReadStream(filePath, { signal })) {
+      hash.update(chunk as Buffer);
+    }
+  }
+  return hash.digest();
+}
+
+async function hashUntrackedContents(
+  appPath: string,
+  statusOutput: Buffer,
+  signal?: AbortSignal,
+): Promise<string> {
+  const hash = createHash("sha256");
+  for (const relativePath of parseUntrackedPorcelainPaths(statusOutput)) {
+    const pathLength = Buffer.allocUnsafe(4);
+    pathLength.writeUInt32BE(relativePath.length);
+    hash.update(pathLength);
+    hash.update(relativePath);
+    hash.update(await hashUntrackedPath(appPath, relativePath, signal));
+  }
+  return hash.digest("hex");
+}
+
+/** Fingerprint staged, tracked-worktree, and untracked path/content state. */
 export async function getGitStateFingerprint(
   appPath: string,
   signal?: AbortSignal,
 ): Promise<string> {
+  const timeoutSignal = AbortSignal.timeout(GIT_STATE_FINGERPRINT_TIMEOUT_MS);
+  const fingerprintSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
   const results = await Promise.allSettled([
     hashGitOutput(
       appPath,
@@ -242,27 +372,43 @@ export async function getGitStateFingerprint(
         "--cached",
         "--binary",
         "--no-ext-diff",
+        "--no-textconv",
         "--",
       ],
-      signal,
-    ),
-    hashGitOutput(
-      appPath,
-      ["-c", "core.fsmonitor=false", "diff", "--binary", "--no-ext-diff", "--"],
-      signal,
+      fingerprintSignal,
     ),
     hashGitOutput(
       appPath,
       [
         "-c",
         "core.fsmonitor=false",
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--",
+      ],
+      fingerprintSignal,
+    ),
+    (async () => {
+      const args = [
+        "-c",
+        "core.fsmonitor=false",
         "status",
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
-      ],
-      signal,
-    ),
+      ];
+      const statusOutput = await collectRawGitOutput(
+        appPath,
+        args,
+        fingerprintSignal,
+      );
+      return [
+        createHash("sha256").update(statusOutput).digest("hex"),
+        await hashUntrackedContents(appPath, statusOutput, fingerprintSignal),
+      ].join(":");
+    })(),
   ]);
   return results
     .map((result) => {

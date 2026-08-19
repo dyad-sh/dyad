@@ -172,7 +172,8 @@ describe("getGitStateFingerprint", () => {
     await expect(getGitStateFingerprint(repoDir)).resolves.not.toBe(before);
   });
 
-  it.runIf(process.platform !== "win32")(
+  // macOS filesystems reject filenames containing invalid UTF-8 bytes.
+  it.runIf(process.platform === "linux")(
     "hashes non-UTF-8 Git path bytes without replacement",
     async () => {
       repoDir = await fs.promises.mkdtemp(

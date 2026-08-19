@@ -20,7 +20,11 @@ vi.mock("@/user_input/main", () => ({
 
 vi.mock("electron-log", () => ({
   default: {
-    scope: () => ({ log: vi.fn(), warn: mocks.loggerWarn }),
+    scope: () => ({
+      debug: vi.fn(),
+      log: vi.fn(),
+      warn: mocks.loggerWarn,
+    }),
   },
 }));
 

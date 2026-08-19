@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentContext } from "./types";
 
@@ -13,6 +16,7 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
 
 import {
   runBuildTool,
+  secureSnapshotSymlinks,
   selectBuildExecutionMode,
   type BuildProjectFacts,
 } from "./run_build";
@@ -30,6 +34,19 @@ const safeViteFacts: BuildProjectFacts = {
 };
 
 describe("run_build", () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      temporaryDirectories.splice(0).map((directory) =>
+        fs.rm(directory, {
+          recursive: true,
+          force: true,
+        }),
+      ),
+    );
+  });
+
   it("requires consent for the exact package.json build lifecycle", () => {
     expect(runBuildTool.defaultConsent).toBe("ask");
     expect(runBuildTool.modifiesState).toBe(true);
@@ -106,6 +123,67 @@ describe("run_build", () => {
         frameworkType: null,
       }),
     ).toBe("isolated");
+  });
+
+  it("rewrites links to source dependencies into the private snapshot", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const sourceRoot = path.join(root, "app");
+    const snapshotRoot = path.join(root, "snapshot");
+    await fs.mkdir(path.join(sourceRoot, "node_modules", "package"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(sourceRoot, "node_modules", "package", "index.js"),
+      "export {};",
+    );
+    await fs.mkdir(path.join(snapshotRoot, "node_modules"), {
+      recursive: true,
+    });
+    await fs.cp(
+      path.join(sourceRoot, "node_modules", "package"),
+      path.join(snapshotRoot, "node_modules", "package"),
+      { recursive: true },
+    );
+    await fs.symlink(
+      path.join(sourceRoot, "node_modules", "package"),
+      path.join(snapshotRoot, "node_modules", "linked-package"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
+
+    const rewrittenTarget = await fs.realpath(
+      path.join(snapshotRoot, "node_modules", "linked-package"),
+    );
+    expect(rewrittenTarget).toBe(
+      await fs.realpath(path.join(snapshotRoot, "node_modules", "package")),
+    );
+  });
+
+  it("rejects links from an isolated snapshot to external paths", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const sourceRoot = path.join(root, "app");
+    const snapshotRoot = path.join(root, "snapshot");
+    const externalRoot = path.join(root, "shared");
+    await Promise.all([
+      fs.mkdir(sourceRoot),
+      fs.mkdir(snapshotRoot),
+      fs.mkdir(externalRoot),
+    ]);
+    await fs.symlink(
+      externalRoot,
+      path.join(snapshotRoot, "linked-package"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await expect(
+      secureSnapshotSymlinks(sourceRoot, snapshotRoot),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("points outside the app"),
+    });
   });
 
   it("completes the status when the per-turn limit refuses a build", async () => {

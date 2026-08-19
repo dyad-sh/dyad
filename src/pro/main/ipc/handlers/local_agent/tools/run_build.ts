@@ -261,6 +261,84 @@ async function copySnapshotEntries(
   }
 }
 
+function pathIsInside(rootPath: string, candidatePath: string): boolean {
+  const relative = path.relative(rootPath, candidatePath);
+  return (
+    relative === "" ||
+    (!path.isAbsolute(relative) &&
+      relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`))
+  );
+}
+
+export async function secureSnapshotSymlinks(
+  sourceRoot: string,
+  snapshotRoot: string,
+): Promise<void> {
+  const [realSourceRoot, realSnapshotRoot] = await Promise.all([
+    fs.realpath(sourceRoot),
+    fs.realpath(snapshotRoot),
+  ]);
+  const pendingDirectories = [snapshotRoot];
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop();
+    if (!directory) break;
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirectories.push(entryPath);
+        continue;
+      }
+      if (!entry.isSymbolicLink()) continue;
+
+      let realTarget: string;
+      try {
+        realTarget = await fs.realpath(entryPath);
+      } catch {
+        throw new DyadError(
+          `Cannot isolate the linked path ${path.relative(snapshotRoot, entryPath)} because its target is unavailable.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      if (pathIsInside(realSnapshotRoot, realTarget)) continue;
+      if (!pathIsInside(realSourceRoot, realTarget)) {
+        throw new DyadError(
+          `Cannot isolate the linked path ${path.relative(snapshotRoot, entryPath)} because it points outside the app. Replace the external link with a local dependency before running a production build.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+
+      const mappedTarget = path.join(
+        realSnapshotRoot,
+        path.relative(realSourceRoot, realTarget),
+      );
+      const realEntryPath = path.join(
+        realSnapshotRoot,
+        path.relative(snapshotRoot, entryPath),
+      );
+      const targetStat = await fs.stat(realTarget);
+      await fs.rm(entryPath, {
+        force: true,
+        recursive: targetStat.isDirectory(),
+      });
+      const linkTarget =
+        process.platform === "win32" && targetStat.isDirectory()
+          ? mappedTarget
+          : path.relative(path.dirname(realEntryPath), mappedTarget) || ".";
+      await fs.symlink(
+        linkTarget,
+        entryPath,
+        targetStat.isDirectory()
+          ? process.platform === "win32"
+            ? "junction"
+            : "dir"
+          : "file",
+      );
+    }
+  }
+}
+
 async function createSnapshot(
   appPath: string,
   signal?: AbortSignal,
@@ -289,6 +367,7 @@ async function createSnapshot(
       (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
     );
     await copySnapshotEntries(appPath, tempRoot, entries, signal);
+    await secureSnapshotSymlinks(appPath, tempRoot);
     return {
       path: tempRoot,
       setupMs: Date.now() - startedAt,

@@ -84,6 +84,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - An isolated build must not symlink or junction writable dependencies back to
   the live app. App-controlled scripts can traverse that link and mutate the
   preview's `node_modules`; clone/reflink/copy every reachable writable tree.
+  After copying, inspect preserved symlinks and junctions: remap targets inside
+  the source app into the snapshot, and reject targets outside the app rather
+  than leaving a path back to live files.
 - Do not treat a regex miss in an executable framework config as proof that
   build outputs are default. Dynamic, imported, spread, shorthand, and computed
   config values must isolate unless the effective configuration is proven safe.

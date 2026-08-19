@@ -417,13 +417,13 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
   name: "run_build",
   description: `Run the app's production build as a selective, expensive verification step.
 
-- Read package.json first and pass scripts.prebuild, scripts.build, and scripts.postbuild exactly (using null for absent lifecycle hooks). The complete command lifecycle is shown for approval.
+- Read package.json first and pass scripts.prebuild, scripts.build, and scripts.postbuild exactly (using null for absent lifecycle hooks) so the complete command lifecycle can be revalidated before execution.
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
 - The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot while a preview is running.`,
   inputSchema: runBuildSchema,
-  defaultConsent: "ask",
+  defaultConsent: "always",
   modifiesState: true,
 
   getConsentPreview: (args) =>

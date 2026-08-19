@@ -43,8 +43,8 @@ describe("run_build", () => {
     );
   });
 
-  it("requires consent for the exact package.json build lifecycle", () => {
-    expect(runBuildTool.defaultConsent).toBe("ask");
+  it("defaults to allowed while preserving the exact build lifecycle preview", () => {
+    expect(runBuildTool.defaultConsent).toBe("always");
     expect(runBuildTool.modifiesState).toBe(true);
     expect(
       runBuildTool.inputSchema.parse({

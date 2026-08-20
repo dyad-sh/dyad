@@ -87,6 +87,16 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   After copying, inspect preserved symlinks and junctions: remap targets inside
   the source app into the snapshot, and reject targets outside the app rather
   than leaving a path back to live files.
+- On Windows, do not classify junctions from `Dirent`: libuv may report a
+  reparse-point directory as an ordinary directory. Use `lstat`, recreate
+  directory links as junctions, and copy linked files so snapshot setup does
+  not require symbolic-link privileges.
+- Keep build snapshots in a Dyad-owned scratch root and mark every owned
+  directory before copying. Startup and stale cleanup must require that marker
+  before recursive deletion; a name pattern alone is never proof of ownership.
+- Start one deadline before snapshot validation/copying and give the build only
+  the remaining budget. Stream build output while it runs, and do not consume a
+  retry when snapshot setup fails before the build process starts.
 - Select build mode around preview continuity, not whether a build may generate
   files. With no running preview, build in place. Beside a preview, run the exact
   standard Vite build in place, run Next.js 16+ in place only when `.next/dev`

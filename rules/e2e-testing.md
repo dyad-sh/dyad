@@ -109,6 +109,11 @@ await po.openChatHistoryMenu();
 
 **NEVER update snapshot files (e.g. `.txt`, `.yml`) by hand.** Always use `--update-snapshots` to regenerate them.
 
+Local Agent request snapshots embed the packaged prompt plus every exposed tool
+description and JSON schema. After changing any of those inputs, rebuild the
+app and regenerate every affected request-dump snapshot; editing only the
+visibly related schema block can leave unrelated stale prompt text behind.
+
 Snapshots must be **deterministic** and **platform-agnostic**. They must not contain:
 
 - Timestamps

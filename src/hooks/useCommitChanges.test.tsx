@@ -37,11 +37,11 @@ vi.mock("@/lib/toast", () => ({
   showSuccess: mocks.showSuccess,
 }));
 
+let queryClient: QueryClient;
+
 function Wrapper({ children }: PropsWithChildren) {
   return (
-    <QueryClientProvider client={new QueryClient()}>
-      {children}
-    </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
 
@@ -49,6 +49,7 @@ describe("useCommitChanges", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.commitProgressListeners.clear();
+    queryClient = new QueryClient();
   });
 
   it("exposes a coded pre-commit failure for the inline AI action", async () => {
@@ -68,6 +69,57 @@ describe("useCommitChanges", () => {
 
     await waitFor(() => expect(result.current.preCommitError).toBe(error));
     expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("exposes a coded commit-msg failure inline instead of in a toast", async () => {
+    const error = Object.assign(
+      new Error("subject may not be empty [subject-empty]"),
+      { code: GIT_ERROR_CODES.COMMIT_MSG_FAILED },
+    );
+    mocks.commitChanges.mockRejectedValueOnce(error);
+    const { result } = renderHook(() => useCommitChanges(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.commitChanges({ appId: 7, message: "Save work" }),
+      ).rejects.toBe(error);
+    });
+
+    await waitFor(() => expect(result.current.commitMsgError).toBe(error));
+    expect(result.current.preCommitError).toBeNull();
+    expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("refetches the file list when a hook fails after rewriting the tree", async () => {
+    // lint-staged and friends reformat and re-stage files before exiting
+    // non-zero, so the still-open dialog would otherwise keep rendering the
+    // pre-hook file list and diffs.
+    const invalidateQueries = vi.spyOn(
+      QueryClient.prototype,
+      "invalidateQueries",
+    );
+    const error = Object.assign(new Error("lint failed"), {
+      code: GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+    });
+    mocks.commitChanges.mockRejectedValueOnce(error);
+    const { result } = renderHook(() => useCommitChanges(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.commitChanges({ appId: 7, message: "Save work" }),
+      ).rejects.toBe(error);
+    });
+
+    await waitFor(() =>
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["uncommittedFiles", 7],
+      }),
+    );
+    invalidateQueries.mockRestore();
   });
 
   it("keeps unrelated commit failures on the existing toast path", async () => {

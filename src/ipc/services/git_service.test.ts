@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   GIT_ERROR_CODES: {
     COMMIT_CANCELLED: "COMMIT_CANCELLED",
     PRE_COMMIT_FAILED: "PRE_COMMIT_FAILED",
+    COMMIT_MSG_FAILED: "COMMIT_MSG_FAILED",
   },
   GitStateError: vi.fn((message: string, code: string) =>
     Object.assign(new Error(message), { code }),
@@ -16,8 +17,10 @@ const mocks = vi.hoisted(() => ({
   gitRemove: vi.fn(),
   hasStagedChanges: vi.fn(async () => true),
   isCommitMsgHookAvailable: vi.fn(async () => false),
+  isPrepareCommitMsgHookAvailable: vi.fn(async () => false),
   isPreCommitHookAvailable: vi.fn(async () => true),
   runCommitMsgHook: vi.fn(),
+  runPrepareCommitMsgHook: vi.fn(),
   runPreCommitHook: vi.fn(async () => ({
     code: 0,
     stdout: "checks passed",
@@ -34,8 +37,10 @@ vi.mock("./pre_commit_service", () => ({
     [stdout, stderr].filter(Boolean).join("\n") ||
     "The hook produced no output.",
   isCommitMsgHookAvailable: mocks.isCommitMsgHookAvailable,
+  isPrepareCommitMsgHookAvailable: mocks.isPrepareCommitMsgHookAvailable,
   isPreCommitHookAvailable: mocks.isPreCommitHookAvailable,
   runCommitMsgHook: mocks.runCommitMsgHook,
+  runPrepareCommitMsgHook: mocks.runPrepareCommitMsgHook,
   runPreCommitHook: mocks.runPreCommitHook,
 }));
 
@@ -61,6 +66,7 @@ describe("GitService", () => {
         if (name === "gitCommit") return "commit-hash";
         if (name === "hasStagedChanges") return true;
         if (name === "isCommitMsgHookAvailable") return false;
+        if (name === "isPrepareCommitMsgHookAvailable") return false;
         if (name === "isPreCommitHookAvailable") return true;
         if (name === "runPreCommitHook") {
           return {
@@ -140,6 +146,7 @@ describe("GitService", () => {
       "gitAddAll",
       "isPreCommitHookAvailable",
       "runPreCommitHook",
+      "isPrepareCommitMsgHookAvailable",
       "isCommitMsgHookAvailable",
       "gitCommit",
     ]);
@@ -167,6 +174,7 @@ describe("GitService", () => {
     expect(callOrder).toEqual([
       "gitAddAll",
       "isPreCommitHookAvailable",
+      "isPrepareCommitMsgHookAvailable",
       "isCommitMsgHookAvailable",
       "gitCommit",
     ]);
@@ -307,7 +315,155 @@ describe("GitService", () => {
         path: "/repo",
         message: "msg",
       }),
-    ).rejects.toThrow("message must include an issue key");
+    ).rejects.toMatchObject({
+      code: "COMMIT_MSG_FAILED",
+      message: expect.stringContaining("message must include an issue key"),
+    });
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
+  });
+
+  it("runs prepare-commit-msg before commit-msg and commits the prepared message", async () => {
+    const phases: string[] = [];
+    mocks.isPrepareCommitMsgHookAvailable.mockResolvedValueOnce(true);
+    mocks.isCommitMsgHookAvailable.mockResolvedValueOnce(true);
+    mocks.runPrepareCommitMsgHook.mockImplementationOnce(async () => {
+      callOrder.push("runPrepareCommitMsgHook");
+      return {
+        code: 0,
+        stdout: "",
+        stderr: "",
+        aborted: false,
+        timedOut: false,
+        message: "msg\n\nChange-Id: I1234",
+      };
+    });
+    mocks.runCommitMsgHook.mockImplementationOnce(async () => {
+      callOrder.push("runCommitMsgHook");
+      return {
+        code: 0,
+        stdout: "",
+        stderr: "",
+        aborted: false,
+        timedOut: false,
+        message: "msg\n\nChange-Id: I1234",
+      };
+    });
+
+    await service.stageAllAndCommitWithPreCommit({
+      path: "/repo",
+      message: "msg",
+      onProgress: (phase) => phases.push(phase),
+    });
+
+    // Git's order is pre-commit -> prepare-commit-msg -> commit-msg, so the
+    // text commit-msg validates is the text that actually gets committed.
+    expect(callOrder).toEqual([
+      "gitAddAll",
+      "isPreCommitHookAvailable",
+      "runPreCommitHook",
+      "runPrepareCommitMsgHook",
+      "runCommitMsgHook",
+      "gitCommit",
+    ]);
+    expect(mocks.runCommitMsgHook).toHaveBeenCalledWith({
+      path: "/repo",
+      message: "msg\n\nChange-Id: I1234",
+      signal: undefined,
+    });
+    expect(mocks.gitCommit).toHaveBeenCalledWith({
+      path: "/repo",
+      message: "msg\n\nChange-Id: I1234",
+    });
+    expect(phases).toEqual([
+      "staging",
+      "pre-commit",
+      "commit-msg",
+      "committing",
+    ]);
+  });
+
+  it("commits the prepared message when only prepare-commit-msg is installed", async () => {
+    mocks.isPrepareCommitMsgHookAvailable.mockResolvedValueOnce(true);
+    mocks.runPrepareCommitMsgHook.mockResolvedValueOnce({
+      code: 0,
+      stdout: "",
+      stderr: "",
+      aborted: false,
+      timedOut: false,
+      message: "PROJ-9: msg",
+    });
+
+    await service.stageAllAndCommitWithPreCommit({
+      path: "/repo",
+      message: "msg",
+    });
+
+    expect(mocks.runCommitMsgHook).not.toHaveBeenCalled();
+    expect(mocks.gitCommit).toHaveBeenCalledWith({
+      path: "/repo",
+      message: "PROJ-9: msg",
+    });
+  });
+
+  it("does not commit when prepare-commit-msg fails", async () => {
+    mocks.isPrepareCommitMsgHookAvailable.mockResolvedValueOnce(true);
+    mocks.runPrepareCommitMsgHook.mockResolvedValueOnce({
+      code: 1,
+      stdout: "",
+      stderr: "could not resolve the ticket id",
+      aborted: false,
+      timedOut: false,
+      message: "msg",
+    });
+
+    await expect(
+      service.stageAllAndCommitWithPreCommit({
+        path: "/repo",
+        message: "msg",
+      }),
+    ).rejects.toMatchObject({
+      code: "COMMIT_MSG_FAILED",
+      message: expect.stringContaining("could not resolve the ticket id"),
+    });
+    expect(mocks.runCommitMsgHook).not.toHaveBeenCalled();
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
+  });
+
+  it("does not create the commit when cancel lands after the last hook", async () => {
+    // The window the renderer's Cancel button races: the hook process has
+    // already exited, so nothing is left to abort mid-flight.
+    const controller = new AbortController();
+    mocks.runPreCommitHook.mockImplementationOnce(async () => {
+      callOrder.push("runPreCommitHook");
+      controller.abort();
+      return {
+        code: 0,
+        stdout: "checks passed",
+        stderr: "",
+        aborted: false,
+        timedOut: false,
+      };
+    });
+
+    await expect(
+      service.stageAllAndCommitWithPreCommit({
+        path: "/repo",
+        message: "msg",
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: "COMMIT_CANCELLED" });
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
+  });
+
+  it("reports an already-aborted signal as a cancellation rather than an AbortError", async () => {
+    await expect(
+      service.stageAllAndCommitWithPreCommit({
+        path: "/repo",
+        message: "msg",
+        signal: AbortSignal.abort(),
+      }),
+    ).rejects.toMatchObject({ code: "COMMIT_CANCELLED" });
+    expect(mocks.gitAddAll).not.toHaveBeenCalled();
     expect(mocks.gitCommit).not.toHaveBeenCalled();
   });
 

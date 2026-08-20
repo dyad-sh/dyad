@@ -863,6 +863,19 @@ export async function hasStagedChanges({
   return result.exitCode === 1;
 }
 
+/**
+ * A hooks directory that is never created, pointed at so Git finds no hooks.
+ *
+ * `--no-verify` only suppresses `pre-commit` and `commit-msg`; Git still runs
+ * `prepare-commit-msg` (and `post-commit`) regardless. A `prepare-commit-msg`
+ * hook that appends to the message would therefore rewrite it *after* an
+ * explicit `commit-msg` run already validated it, committing text the hook
+ * would have rejected. Overriding `core.hooksPath` is the only way to make the
+ * low-level commit genuinely hook-free. Relative paths resolve against the
+ * working tree root, so this stays repo-local and works on every platform.
+ */
+const NO_HOOKS_PATH = ".dyad-no-git-hooks";
+
 export async function gitCommit({
   path,
   message,
@@ -872,7 +885,14 @@ export async function gitCommit({
   // Perform the commit using dugite with -c user.name/email config
   // Hook execution is owned by workflows that require explicit verification;
   // the low-level commit operation must never invoke hooks implicitly.
-  const commitArgs = ["commit", "-m", message, "--no-verify"];
+  const commitArgs = [
+    "-c",
+    `core.hooksPath=${NO_HOOKS_PATH}`,
+    "commit",
+    "-m",
+    message,
+    "--no-verify",
+  ];
   if (amend) {
     commitArgs.push("--amend");
   }

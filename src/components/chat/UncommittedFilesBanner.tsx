@@ -23,7 +23,7 @@ import { useCommitMessage } from "@/hooks/useCommitMessage";
 import { useDiscardChanges } from "@/hooks/useDiscardChanges";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { CommitFileList } from "@/components/chat/CommitFileList";
-import { PreCommitFailureAlert } from "@/components/chat/PreCommitFailureAlert";
+import { CommitCheckFailureAlert } from "@/components/chat/CommitCheckFailureAlert";
 import { useFixPreCommitWithAI } from "@/hooks/useFixPreCommitWithAI";
 import { CommitButtonLabel } from "@/components/chat/CommitButtonLabel";
 
@@ -41,6 +41,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     isCancellingCommit,
     commitProgress,
     preCommitError,
+    commitMsgError,
     resetCommitError,
   } = useCommitChanges();
   const { fixPreCommitWithAI, isStarting: isStartingAiFix } =
@@ -236,10 +237,18 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </div>
 
             {preCommitError && (
-              <PreCommitFailureAlert
+              <CommitCheckFailureAlert
+                kind="pre-commit"
                 error={preCommitError}
                 isStartingFix={isStartingAiFix}
                 onFix={handleFixPreCommitWithAI}
+              />
+            )}
+
+            {commitMsgError && (
+              <CommitCheckFailureAlert
+                kind="commit-msg"
+                error={commitMsgError}
               />
             )}
           </div>

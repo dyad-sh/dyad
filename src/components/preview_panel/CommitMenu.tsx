@@ -38,7 +38,7 @@ import {
 import { CommitFileList } from "@/components/chat/CommitFileList";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { useFixPreCommitWithAI } from "@/hooks/useFixPreCommitWithAI";
-import { PreCommitFailureAlert } from "@/components/chat/PreCommitFailureAlert";
+import { CommitCheckFailureAlert } from "@/components/chat/CommitCheckFailureAlert";
 import { CommitButtonLabel } from "@/components/chat/CommitButtonLabel";
 
 interface CommitMenuProps {
@@ -60,6 +60,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     isCancellingCommit,
     commitProgress,
     preCommitError,
+    commitMsgError,
     resetCommitError,
   } = useCommitChanges();
   const { fixPreCommitWithAI, isStarting: isStartingAiFix } =
@@ -263,10 +264,18 @@ export function CommitMenu({ appId }: CommitMenuProps) {
             </div>
 
             {preCommitError && (
-              <PreCommitFailureAlert
+              <CommitCheckFailureAlert
+                kind="pre-commit"
                 error={preCommitError}
                 isStartingFix={isStartingAiFix}
                 onFix={handleFixPreCommitWithAI}
+              />
+            )}
+
+            {commitMsgError && (
+              <CommitCheckFailureAlert
+                kind="commit-msg"
+                error={commitMsgError}
               />
             )}
           </div>

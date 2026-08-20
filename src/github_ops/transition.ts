@@ -231,17 +231,14 @@ function operationFailed(
     return {
       kind: "applied",
       state: { type: "idle", banner },
-      commands: [
-        { type: "notify", kind: "error", message: failure.message },
-        { type: "probe-git-state" },
-      ],
+      commands: [{ type: "probe-git-state" }],
     };
   }
 
   return {
     kind: "applied",
     state: { type: "idle", banner },
-    commands: [{ type: "notify", kind: "error", message: failure.message }],
+    commands: [],
   };
 }
 

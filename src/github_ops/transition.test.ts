@@ -317,10 +317,7 @@ describe("github_ops transition", () => {
         type: "idle",
         banner: { kind: "error", message: "git failed" },
       });
-      expect(commandsOf(failed)).toEqual([
-        { type: "notify", kind: "error", message: "git failed" },
-        { type: "probe-git-state" },
-      ]);
+      expect(commandsOf(failed)).toEqual([{ type: "probe-git-state" }]);
 
       const reconciled = transition(failed.state, {
         type: "GIT_STATE",
@@ -874,5 +871,24 @@ describe("github_ops transition", () => {
       { type: "invalidate-branches" },
       { type: "refresh-app" },
     ]);
+  });
+
+  it("renders operation failures through the banner without a duplicate toast", () => {
+    const push = { type: "push", mode: "normal" } as const;
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: push,
+    }).state;
+    const failed = transition(running, {
+      type: "OP_FAILED",
+      op: push,
+      failure: { kind: "unknown", message: "push failed" },
+    });
+
+    expect(failed.state.banner).toMatchObject({
+      kind: "error",
+      message: "push failed",
+    });
+    expect(commandsOf(failed)).toEqual([]);
   });
 });

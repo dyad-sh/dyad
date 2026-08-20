@@ -559,6 +559,7 @@ export const miscEvents = {
     payload: z.object({
       message: z.string(),
       persist: z.boolean().optional(),
+      toastId: z.string().optional(),
       action: z
         .object({
           label: z.string(),

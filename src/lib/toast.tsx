@@ -24,6 +24,7 @@ export const showError = (
   message: any,
   options?: {
     persist?: boolean;
+    toastId?: string | number;
     action?: {
       label: string;
       onClick: () => void;
@@ -79,6 +80,7 @@ export const showError = (
     ),
     {
       duration: options?.action || options?.persist ? Infinity : 8_000,
+      ...(options?.toastId === undefined ? {} : { id: options.toastId }),
     },
   );
 

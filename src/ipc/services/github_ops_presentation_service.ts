@@ -45,9 +45,11 @@ export class GithubOpsPresentationService {
         entity: { kind: "app", id: appId },
       });
     if (!target) return;
+    const persist = message.includes("\n") || message.length > 240;
     this.windows.endpointForSession(target)?.send("toast:error", {
       message,
-      persist: true,
+      toastId: `github-ops-${operationId ?? `probe-${appId}`}`,
+      ...(persist ? { persist: true } : {}),
     });
   }
 

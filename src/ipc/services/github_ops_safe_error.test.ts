@@ -97,6 +97,7 @@ describe("safeGithubOpsErrorMessage", () => {
       "Permission to [redacted remote] denied while contacting [redacted host]",
     ],
     ["trace: deploy@code.example.com:team/private", "trace: [redacted remote]"],
+    ["trace: deploy@[fd00::1234]:team/private", "trace: [redacted remote]"],
     ["trace: buildbox:team/private", "trace: [redacted remote]"],
     ["hook: src/App.tsx:42:7 failed", "hook: src/App.tsx:42:7 failed"],
     [
@@ -239,12 +240,33 @@ describe("safeGithubOpsErrorMessage", () => {
 
   it.each([
     "hook#x/srv/clients/acme/build.log",
-    String.raw`error:D:\Projects\acme-client\.git\index.lock`,
     "hook: ~/Clients/acme/config",
     "hook: -----BEGIN PRIVATE KEY-----\nincomplete",
   ])("falls back for a residual sensitive form: %s", (message) => {
     expect(
       safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
+    ).toBe("GitHub operation failed");
+  });
+
+  it.each([
+    "error:/data/clients/acme/build.log",
+    "hook>/media/alice/work/x",
+    "error:/Library/Caches/alice/x",
+  ])("redacts an absolute path after a diagnostic delimiter: %s", (message) => {
+    expect(
+      safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
+    ).not.toContain("acme");
+    expect(
+      safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
+    ).not.toContain("alice");
+  });
+
+  it("falls back when only redaction and truncation markers remain", () => {
+    expect(
+      safeGithubOpsErrorMessage(
+        new Error(`/Users/${"a".repeat(5000)}`),
+        "GitHub operation failed",
+      ),
     ).toBe("GitHub operation failed");
   });
 

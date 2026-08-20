@@ -7,7 +7,7 @@ const PUBLIC_GIT_DOCUMENTATION_URL =
   /\b(?:https:\/\/gh\.io\/lfs|https:\/\/git-lfs\.github\.com\/?)(?=$|[\s"'.,;:!?)}\]])/gi;
 const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
 const UNSAFE_GITHUB_ERROR_RESIDUAL =
-  /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bglpat-[A-Za-z0-9_-]{10,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
+  /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|(?:^|[:#>|])\/[^/\s]+\/[^/\s]+|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bglpat-[A-Za-z0-9_-]{10,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
 
 function redactQuotedAbsolutePaths(message: string): string {
   return message
@@ -59,7 +59,7 @@ function redactUnquotedAbsolutePaths(message: string): string {
     .map((line) => {
       let result = "";
       let cursor = 0;
-      const pathStart = /(^|[\s("'`=[,])(?:\/(?!\/)|[A-Za-z]:[\\/]|\\\\)/g;
+      const pathStart = /(^|[\s("'`=[,:#>|])(?:\/(?!\/)|[A-Za-z]:[\\/]|\\\\)/g;
       const pathEnd =
         /(?=:\d+(?::\d+)*\b)|:(?=\s)|(?=\])|\s+(?=\(|… \[line truncated\]|(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|because\b|but\b|exited\b|returned\b))/g;
 
@@ -138,6 +138,10 @@ function redactSensitiveGitOutput(message: string): string {
     .replaceAll(
       /\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b/gi,
       "Bearer [redacted secret]",
+    )
+    .replaceAll(
+      /\b(?:[\w.-]{1,64}@)?\[[A-F0-9:]+\]:(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,
+      "[redacted remote]",
     )
     .replaceAll(
       /\b(?:[\w.-]{1,64}@[\w.-]{1,255}|[\w-]{1,63}(?:\.[\w-]{1,63})+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,
@@ -224,6 +228,7 @@ export function safeGithubOpsErrorMessage(
   if (UNSAFE_GITHUB_ERROR_RESIDUAL.test(safeMessage)) return fallback;
   const actionableText = safeMessage
     .replaceAll(/\[redacted [^\]]+\]/g, "")
+    .replaceAll(/\[(?:path remainder redacted|line truncated)\]/g, "")
     .replaceAll(/[\p{P}\p{S}\s]/gu, "");
   if (!actionableText) return fallback;
   return truncateGithubOpsErrorMessage(safeMessage);

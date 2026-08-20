@@ -25,8 +25,35 @@ describe("GithubOpsPresentationService", () => {
 
     expect(first.send).toHaveBeenCalledWith("toast:error", {
       message: "Push failed",
-      persist: true,
+      toastId: "github-ops-operation-1",
     });
     expect(second.send).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates persistent detailed probe errors by app", () => {
+    const windows = new WindowRegistry();
+    const target = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const session = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    windows.register(target, session);
+    windows.setVisibleEntities(session, [{ kind: "app", id: 7 }]);
+    const service = new GithubOpsPresentationService(windows);
+    const message = `Git probe failed:\n${"detail ".repeat(40)}`;
+
+    service.showError(7, undefined, message);
+    service.showError(7, undefined, message);
+
+    expect(target.send).toHaveBeenCalledTimes(2);
+    expect(target.send).toHaveBeenNthCalledWith(1, "toast:error", {
+      message,
+      persist: true,
+      toastId: "github-ops-probe-7",
+    });
+    expect(target.send).toHaveBeenNthCalledWith(2, "toast:error", {
+      message,
+      persist: true,
+      toastId: "github-ops-probe-7",
+    });
   });
 });

@@ -292,19 +292,22 @@ export function registerRendererIpcListeners({
   );
 
   unsubscribes.push(
-    ipcClient.events.misc.onErrorToast(({ message, action, persist }) => {
-      showError(message, {
-        persist,
-        action: action
-          ? {
-              label: action.label,
-              onClick: () => {
-                ipcClient.system.openExternalUrl(action.url);
-              },
-            }
-          : undefined,
-      });
-    }),
+    ipcClient.events.misc.onErrorToast(
+      ({ message, action, persist, toastId }) => {
+        showError(message, {
+          persist,
+          toastId,
+          action: action
+            ? {
+                label: action.label,
+                onClick: () => {
+                  ipcClient.system.openExternalUrl(action.url);
+                },
+              }
+            : undefined,
+        });
+      },
+    ),
   );
   void ipcClient.misc.rendererErrorToastReady(undefined);
 

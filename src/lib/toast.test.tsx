@@ -38,10 +38,14 @@ describe("showError", () => {
   });
 
   it("keeps producer-scoped persistent error toasts open", () => {
-    showError("Git push failed", { persist: true });
+    showError("Git push failed", {
+      persist: true,
+      toastId: "github-ops-probe-7",
+    });
 
     expect(toast.custom).toHaveBeenCalledWith(expect.any(Function), {
       duration: Infinity,
+      id: "github-ops-probe-7",
     });
   });
 

@@ -578,18 +578,16 @@ export function shouldShowPnpmMinimumReleaseAgeWarning(
 }
 
 /**
- * Gets the effective default chat mode based on settings, pro status, and free quota availability.
+ * Gets the effective default chat mode based on settings and Pro status.
  * - Explicit non-Agent defaults are always honored
  * - Pro users default to Agent
- * - Non-Pro users default optimistically to Agent while quota is unresolved
- * - Confirmed quota exhaustion falls back to Build
+ * - Non-Pro users default to Basic Agent; quota is enforced when sending
  * - Google-only users fall back to Build because free Gemini keys commonly
  *   have limits that are too restrictive for Agent mode
  */
 export function getEffectiveDefaultChatMode(
   settings: UserSettings,
   envVars: Record<string, string | undefined>,
-  freeAgentQuotaAvailable?: boolean,
 ): ChatMode {
   const isPro = isDyadProEnabled(settings);
   const hasGoogleProviderSetup = isGoogleProviderSetup(settings, envVars);
@@ -600,7 +598,6 @@ export function getEffectiveDefaultChatMode(
   }
 
   if (isPro) return "local-agent";
-  if (freeAgentQuotaAvailable === false) return "build";
   if (settings.defaultChatMode === "local-agent") return "local-agent";
   if (hasGoogleProviderSetup && !hasNonGoogleProviderSetup) return "build";
   return "local-agent";

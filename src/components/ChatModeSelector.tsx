@@ -15,11 +15,7 @@ import { useChatMode } from "@/hooks/useChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
-import {
-  getChatModeFallbackToastId,
-  getChatModeDisplayName,
-  showChatModeFallbackToast,
-} from "@/lib/chatModeToast";
+import { getChatModeDisplayName } from "@/lib/chatModeToast";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
@@ -29,7 +25,7 @@ import { useSetAtom } from "jotai";
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
 import { useChatMessageCount } from "@/hooks/useChatMessages";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import {
   FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   isFreeProBuildModeCombination,
@@ -42,48 +38,16 @@ export function ChatModeSelector() {
   const isChatRoute = routerState.location.pathname === "/chat";
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessageCount = useChatMessageCount(chatId);
-  const {
-    selectedMode,
-    effectiveMode,
-    storedChatMode,
-    selectedModel,
-    fallbackReason,
-    setChatMode,
-    settings,
-  } = useChatMode(isChatRoute ? chatId : null);
+  const { selectedMode, storedChatMode, selectedModel, setChatMode, settings } =
+    useChatMode(isChatRoute ? chatId : null);
   const setHasManuallySelectedChatMode = useSetAtom(
     hasManuallySelectedChatModeAtom,
   );
-  const fallbackToastKeyRef = useRef<string | null>(null);
-
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, messagesLimit, isQuotaExceeded } =
     useFreeAgentQuota();
   const isDyadFreeSelected = isFreeProModel(selectedModel);
   const buildUnavailableForDyadFree = isDyadFreeSelected;
-
-  useEffect(() => {
-    if (!chatId || !fallbackReason || !storedChatMode) {
-      fallbackToastKeyRef.current = null;
-      return;
-    }
-
-    const toastKey = getChatModeFallbackToastId({
-      chatId,
-      reason: fallbackReason,
-      effectiveMode,
-    });
-    if (fallbackToastKeyRef.current === toastKey) {
-      return;
-    }
-
-    fallbackToastKeyRef.current = toastKey;
-    showChatModeFallbackToast({
-      effectiveMode,
-      isPro: isProEnabled,
-      toastId: toastKey,
-    });
-  }, [chatId, effectiveMode, fallbackReason, isProEnabled, storedChatMode]);
 
   useEffect(() => {
     if (

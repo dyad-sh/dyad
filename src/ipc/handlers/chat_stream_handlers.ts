@@ -1371,15 +1371,12 @@ ${componentSnippet}
       let selectedModel = chat.modelSelection
         ? await normalizeModelSelection(chat.modelSelection)
         : await resolveDefaultModelSelection(baseSettings);
-      let {
-        settings: storedSettings,
-        mode: selectedChatMode,
-        fallbackReason: chatModeFallbackReason,
-      } = await resolveChatModeForTurn({
-        storedChatMode: chat.chatMode,
-        requestedChatMode: req.requestedChatMode,
-        settings: { ...baseSettings, selectedModel },
-      });
+      let { settings: storedSettings, mode: selectedChatMode } =
+        await resolveChatModeForTurn({
+          storedChatMode: chat.chatMode,
+          requestedChatMode: req.requestedChatMode,
+          settings: { ...baseSettings, selectedModel },
+        });
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
 
       // Accept the user message and latch an implicit chat's first mode in one
@@ -1442,11 +1439,8 @@ ${componentSnippet}
           normalizeStoredChatMode(acceptedTurn.authoritativeChatMode),
         settings: storedSettings,
       });
-      ({
-        settings: storedSettings,
-        mode: selectedChatMode,
-        fallbackReason: chatModeFallbackReason,
-      } = authoritativeResolution);
+      ({ settings: storedSettings, mode: selectedChatMode } =
+        authoritativeResolution);
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
 
       const userMessageId = acceptedTurn.userMessageId;
@@ -1486,7 +1480,6 @@ ${componentSnippet}
         invocationRef: req.invocationRef,
         streamId: req.streamId,
         effectiveChatMode: selectedChatMode,
-        chatModeFallbackReason,
       } satisfies ChatStreamChunkPayload);
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {

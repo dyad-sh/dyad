@@ -8,6 +8,7 @@ import {
   ExternalLink as ExternalLinkIcon,
   CircleArrowUp,
   MessageSquarePlus,
+  ArrowRight,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,17 +17,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 export function ChatErrorBox({
   onDismiss,
   error,
   isDyadProEnabled,
   onStartNewChat,
+  onSwitchToBuildMode,
 }: {
   onDismiss: () => void;
   error: string;
   isDyadProEnabled: boolean;
   onStartNewChat?: () => void;
+  onSwitchToBuildMode?: () => void;
 }) {
   const fallbackPrefix = "Fallbacks=[{";
   const normalizedError = error.includes(fallbackPrefix)
@@ -37,7 +41,7 @@ export function ChatErrorBox({
     normalizedError.includes("FREE_MODEL_QUOTA_EXCEEDED") ||
     normalizedError.includes("Dyad Free has reached its daily limit.") ||
     normalizedError.includes("Dyad Free limit");
-  const { messagesLimit } = useFreeAgentQuota();
+  const { messagesLimit, resetTime } = useFreeAgentQuota();
   const {
     messagesLimit: freeModelMessagesLimit,
     resetTime: freeModelResetTime,
@@ -142,17 +146,38 @@ export function ChatErrorBox({
   }
   // Handle FREE_AGENT_QUOTA_EXCEEDED error (Basic Agent mode quota exceeded)
   if (error.includes("FREE_AGENT_QUOTA_EXCEEDED")) {
+    const resetText = resetTime
+      ? ` Your quota resets at ${new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date(resetTime))}.`
+      : "";
+
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
-        You have used all {messagesLimit} free Agent messages for today. Please
-        upgrade to Dyad Pro for unlimited access or switch to Build mode.
-        <div className="mt-2 space-y-2 space-x-2">
+        You have used all {messagesLimit} free Basic Agent messages for today.
+        {resetText} Upgrade to Dyad Pro for unlimited Agent access, or switch
+        this chat to Build mode.
+        <div className="mt-2 flex flex-wrap gap-2">
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-agent-quota-exceeded"
             variant="primary"
           >
             Upgrade to Dyad Pro
           </ExternalLink>
+          {onSwitchToBuildMode && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onSwitchToBuildMode}
+              className="gap-1.5"
+            >
+              Switch to Build
+              <ArrowRight size={16} />
+            </Button>
+          )}
         </div>
       </ChatErrorContainer>
     );

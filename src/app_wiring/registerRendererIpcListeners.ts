@@ -152,7 +152,6 @@ export function registerRendererIpcListeners({
         streamingMessageId,
         streamingPatch,
         streamingPreview,
-        chatModeFallbackReason,
       }: ChatResponseChunk) => {
         if (streamingPreview !== undefined) {
           chatStreamManager.setPreview(chatId, streamingPreview.content);
@@ -178,11 +177,6 @@ export function registerRendererIpcListeners({
               queryKey: queryKeys.chats.detail({ chatId }),
             });
           }
-        }
-        if (chatModeFallbackReason) {
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.chats.detail({ chatId }),
-          });
         }
       },
     ),

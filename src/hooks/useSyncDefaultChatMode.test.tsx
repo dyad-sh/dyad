@@ -10,9 +10,6 @@ import { useSyncDefaultChatMode } from "./useSyncDefaultChatMode";
 const mocks = vi.hoisted(() => ({
   isAnyProviderSetup: true,
   providersLoading: false,
-  quotaStatus: {
-    isQuotaExceeded: false,
-  } as { isQuotaExceeded: boolean } | undefined,
   settings: {} as UserSettings,
   updateSettings: vi.fn(),
 }));
@@ -23,10 +20,6 @@ vi.mock("./useSettings", () => ({
     envVars: {},
     updateSettings: mocks.updateSettings,
   }),
-}));
-
-vi.mock("./useFreeAgentQuota", () => ({
-  useFreeAgentQuota: () => ({ quotaStatus: mocks.quotaStatus }),
 }));
 
 vi.mock("./useLanguageModelProviders", () => ({
@@ -66,7 +59,6 @@ describe("useSyncDefaultChatMode", () => {
   beforeEach(() => {
     mocks.isAnyProviderSetup = true;
     mocks.providersLoading = false;
-    mocks.quotaStatus = { isQuotaExceeded: false };
     mocks.settings = makeSettings();
     mocks.updateSettings.mockReset();
     mocks.updateSettings.mockResolvedValue(undefined);
@@ -116,14 +108,6 @@ describe("useSyncDefaultChatMode", () => {
       ),
     );
     warnSpy.mockRestore();
-  });
-
-  it("does not persist Agent while quota is unresolved", () => {
-    mocks.quotaStatus = undefined;
-
-    renderHook(() => useSyncDefaultChatMode(), { wrapper: makeWrapper() });
-
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it("does not persist Agent before provider setup", () => {

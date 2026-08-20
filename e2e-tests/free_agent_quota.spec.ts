@@ -5,11 +5,11 @@ import { expect } from "@playwright/test";
  * E2E test for Basic Agent mode quota (free users).
  *
  * Basic Agent mode is available to non-Pro users with a 10-message-per-window limit.
- * This test verifies mode availability, quota tracking, exceeded banner, and mode switching.
+ * This test verifies mode availability, quota tracking, quota errors, and mode switching.
  */
 
 testSkipIfWindows(
-  "free agent quota - full flow: mode availability, quota tracking, exceeded banner, switch to build",
+  "free agent quota - full flow: exhausted Agent stays selected until the user switches",
   async ({ po }) => {
     // Set up WITHOUT Dyad Pro - use test provider instead
     await po.setUp({ autoApprove: true });
@@ -53,37 +53,46 @@ testSkipIfWindows(
       po.page.getByRole("button", { name: "Upgrade to Dyad Pro" }),
     ).toBeVisible();
     await expect(
-      po.page.getByRole("button", { name: "Switch back to Build mode" }),
+      po.page.getByRole("button", { name: "Switch to Build mode" }),
     ).toBeVisible();
 
-    // 6. Try to send an 11th message - the app should fall back to Build mode
-    // instead of attempting another Basic Agent request.
+    // 6. An 11th message stays in Basic Agent and surfaces the quota error
+    // instead of silently running through Build mode.
+    const basicAgentResponse = po.page.getByText(
+      "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
+    );
+    const responseCountBeforeQuotaError = await basicAgentResponse.count();
     await po.sendPrompt("tc=local-agent/simple-response message 11");
-    await expect(po.page.getByTestId("chat-error-box")).not.toBeVisible({
-      timeout: 1000,
-    });
-    await expect(
-      po.page
-        .getByText(
-          "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
-        )
-        .last(),
-    ).toBeVisible({
+    const quotaError = po.page.getByTestId("chat-error-box");
+    await expect(quotaError).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
+    await expect(quotaError).toContainText(
+      "You have used all 10 free Basic Agent messages for today",
+    );
+    await expect(quotaError).toContainText("Your quota resets at");
+    await expect(quotaError.getByText("Upgrade to Dyad Pro")).toBeVisible();
+    await expect(
+      quotaError.getByRole("button", { name: "Switch to Build" }),
+    ).toBeVisible();
+    await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
+      "Basic Agent",
+    );
+    await expect(basicAgentResponse).toHaveCount(responseCountBeforeQuotaError);
 
-    // 8. Click "Switch back to Build mode" and verify mode changes
-    await po.page
-      .getByRole("button", { name: "Switch back to Build mode" })
-      .click();
+    // 7. Switch through the error box. This changes mode and dismisses the
+    // error without automatically retrying the rejected prompt.
+    await quotaError.getByRole("button", { name: "Switch to Build" }).click();
     await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
       "Build",
     );
+    await expect(quotaError).not.toBeVisible();
     await expect(
       po.page.getByTestId("free-agent-quota-banner"),
     ).not.toBeVisible();
+    await expect(basicAgentResponse).toHaveCount(responseCountBeforeQuotaError);
 
-    // 9. Verify user can still send messages in Build mode
+    // 8. Verify the user can explicitly send a later message in Build mode.
     await po.sendPrompt("[dyad-qa=write] create a simple file");
     await po.chatActions.waitForChatCompletion();
   },

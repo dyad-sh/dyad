@@ -44,13 +44,7 @@ export function DefaultChatModeSelector() {
   const freeAgentQuotaAvailable = quotaStatus
     ? !quotaStatus.isQuotaExceeded
     : undefined;
-  const effectiveDefault = getEffectiveDefaultChatMode(
-    settings,
-    envVars,
-    freeAgentQuotaAvailable,
-  );
-  const showBasicAgentOption =
-    isProEnabled || freeAgentQuotaAvailable !== false;
+  const effectiveDefault = getEffectiveDefaultChatMode(settings, envVars);
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
     if (isFreeProBuildModeCombination(settings.selectedModel, value)) {
@@ -92,20 +86,21 @@ export function DefaultChatModeSelector() {
           <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {showBasicAgentOption && (
-            <SelectItem value="local-agent">
-              <div className="flex flex-col items-start">
-                <span className="font-medium">
-                  {isProEnabled ? "Agent" : "Basic Agent"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {isProEnabled
-                    ? "Better at bigger tasks"
-                    : "Free tier (10 messages/day)"}
-                </span>
-              </div>
-            </SelectItem>
-          )}
+          <SelectItem
+            value="local-agent"
+            disabled={!isProEnabled && freeAgentQuotaAvailable === false}
+          >
+            <div className="flex flex-col items-start">
+              <span className="font-medium">
+                {isProEnabled ? "Agent" : "Basic Agent"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isProEnabled
+                  ? "Better at bigger tasks"
+                  : "Free tier (10 messages/day)"}
+              </span>
+            </div>
+          </SelectItem>
           <SelectItem value="build" disabled={isDyadFreeSelected}>
             <div className="flex flex-col items-start">
               <span className="font-medium">Build</span>

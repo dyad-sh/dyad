@@ -8,12 +8,7 @@ import { getFreeProCompatibleChatMode } from "./freeProModel";
 export function getHomeDefaultChatMode(
   settings: UserSettings,
   envVars: Record<string, string | undefined>,
-  freeAgentQuotaAvailable?: boolean,
 ): ChatMode {
-  const effectiveDefault = getEffectiveDefaultChatMode(
-    settings,
-    envVars,
-    freeAgentQuotaAvailable,
-  );
+  const effectiveDefault = getEffectiveDefaultChatMode(settings, envVars);
   return getFreeProCompatibleChatMode(settings.selectedModel, effectiveDefault);
 }

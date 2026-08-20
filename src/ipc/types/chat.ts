@@ -264,7 +264,6 @@ export const ChatResponseChunkSchema = z.object({
   // only acks when chunkSeq is present.
   chunkSeq: z.number().int().nonnegative().finite().optional(),
   effectiveChatMode: ChatModeSchema.optional(),
-  chatModeFallbackReason: z.literal("quota-exhausted").optional(),
   acceptedUserInputRequestId: z.string().optional(),
 });
 

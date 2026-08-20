@@ -16,7 +16,7 @@ describe("getHomeDefaultChatMode", () => {
     expect(getHomeDefaultChatMode(settings, {})).toBe("local-agent");
   });
 
-  it("downgrades an unavailable local-agent default to build", () => {
+  it("preserves a Basic Agent default for free users", () => {
     const settings = {
       defaultChatMode: "local-agent",
       enableDyadPro: false,
@@ -27,6 +27,6 @@ describe("getHomeDefaultChatMode", () => {
       selectedTemplateId: "react",
     } as UserSettings;
 
-    expect(getHomeDefaultChatMode(settings, {}, false)).toBe("build");
+    expect(getHomeDefaultChatMode(settings, {})).toBe("local-agent");
   });
 });

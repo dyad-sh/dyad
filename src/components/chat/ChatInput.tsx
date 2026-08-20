@@ -150,6 +150,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     effectiveMode,
     storedChatMode,
     isLoading: isChatModeLoading,
+    setChatMode,
   } = useChatMode(chatId);
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
@@ -724,6 +725,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           error={error}
           isDyadProEnabled={isProEnabled}
           onStartNewChat={handleNewChat}
+          onSwitchToBuildMode={() => {
+            void setChatMode("build")
+              .then(dismissError)
+              .catch(() => {});
+          }}
         />
       )}
       {/* Display loading or error state for proposal */}

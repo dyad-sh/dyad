@@ -24,7 +24,6 @@ import {
   FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   isFreeProBuildModeCombination,
 } from "@/lib/freeProModel";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { RefreshCw, Zap } from "lucide-react";
 import {
@@ -54,18 +53,13 @@ export default function HomePage() {
   const hasDyadProApiKey = settings ? hasDyadProKey(settings) : false;
   const hasConfiguredAiProvider =
     !isLoadingLanguageModelProviders && isAnyProviderSetup();
-  const { quotaStatus } = useFreeAgentQuota();
   const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
     if (!settings) {
       return undefined;
     }
 
-    return getHomeDefaultChatMode(
-      settings,
-      envVars,
-      quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
-    );
-  }, [envVars, quotaStatus, settings]);
+    return getHomeDefaultChatMode(settings, envVars);
+  }, [envVars, settings]);
 
   const posthog = usePostHog();
 

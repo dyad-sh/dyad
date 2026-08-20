@@ -106,7 +106,9 @@ export function raceWithAbort<T>(
   }
   return new Promise<T>((resolve, reject) => {
     const onAbort = () =>
-      reject(new DyadError("Sub-agent run aborted.", DyadErrorKind.UserCancelled));
+      reject(
+        new DyadError("Sub-agent run aborted.", DyadErrorKind.UserCancelled),
+      );
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
       (value) => {

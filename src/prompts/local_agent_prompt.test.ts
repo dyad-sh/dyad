@@ -77,15 +77,14 @@ describe("local_agent_prompt", () => {
 
     expect(disabled).not.toContain("**Implementer delegation:**");
     expect(enabled).toContain("**Implementer delegation:**");
+    // Delegation is the default and every assignment carries the form —
+    // MUST HOLD is the field that makes an omitted project rule visible.
     expect(enabled).toContain(
-      'delegate straightforward, low-risk, well-scoped editing tasks to `spawn_agent` with `persona="implementer"`',
+      "Implementation is the Implementer's job by default",
     );
-    expect(enabled).toContain(
-      "The root Agent remains responsible for the result",
-    );
-    expect(enabled).toContain(
-      "An Implementer's completion status alone is not sufficient verification",
-    );
+    expect(enabled).toContain("MUST HOLD:");
+    expect(enabled).toContain("Its report must address each MUST HOLD item");
+    expect(enabled).toContain("You remain responsible for the result");
   });
 
   it("agent mode system prompt (vite framework includes Nitro nudge)", () => {

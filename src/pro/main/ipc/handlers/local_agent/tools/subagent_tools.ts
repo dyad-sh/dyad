@@ -37,11 +37,11 @@ const baseSpawnShape = {
     .min(1)
     .max(100)
     .describe("A stable short name for this task"),
-  assignment: z
-    .string()
-    .min(1)
-    .max(20_000)
-    .describe("A bounded assignment and intended outcome"),
+  assignment: z.string().min(1).max(20_000).describe(
+    // Restating the form here puts the reminder at the moment the call is
+    // composed, which is where assignments lose their MUST HOLD content.
+    "The assignment. For implementer tasks use the form GOAL / MUST HOLD / OUT OF SCOPE / DONE WHEN, where MUST HOLD lists every project rule the change could touch (access, scoping, invariants) or explains why none apply.",
+  ),
   scope: z
     .array(z.string().min(1).max(500))
     .max(100)

@@ -197,7 +197,11 @@ describe("sub-agent mutation lease", () => {
     // only "another app operation may still be active", and attributing it to
     // a hung Implementer's orphaned lease took a full forensic pass.
     expect(describeMutationBlock(11)).toBeNull();
-    acquireMutationLease({ appId: 11, threadId: "impl-11", scope: ["src/app"] });
+    acquireMutationLease({
+      appId: 11,
+      threadId: "impl-11",
+      scope: ["src/app"],
+    });
     expect(describeMutationBlock(11)).toContain("impl-11");
     expect(describeMutationBlock(11)).toContain("src/app");
     releaseMutationLease(11, "impl-11");

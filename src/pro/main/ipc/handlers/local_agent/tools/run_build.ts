@@ -1301,7 +1301,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
-- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use a detached Git worktree containing the current workspace changes and freshly installed dependencies while a preview is running.`,
+- The active preview stays running. Builds that could interfere with it are verified in an isolated workspace with clean dependencies.`,
   inputSchema: runBuildSchema,
   defaultConsent: "always",
   modifiesState: true,

@@ -746,4 +746,27 @@ describe("run_build", () => {
       expect.stringContaining('title="Build not repeated" state="warning"'),
     );
   });
+
+  it("refuses unchanged dependency setup failures without consuming a build", async () => {
+    const onXmlComplete = vi.fn();
+    const ctx = {
+      appId: 45,
+      appPath: "/unused",
+      mutationCount: 9,
+      buildAttemptState: {
+        count: 0,
+        mutationCountAtLastSetupFailure: 9,
+      },
+      onXmlComplete,
+      onXmlStream: vi.fn(),
+    } as unknown as AgentContext;
+
+    await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+      "Dependency setup already failed",
+    );
+
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining('title="Build setup not repeated"'),
+    );
+  });
 });

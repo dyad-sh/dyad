@@ -107,6 +107,7 @@ interface PackageJson {
 interface BuildAttemptState {
   count: number;
   mutationCountAtLastRun?: number;
+  mutationCountAtLastSetupFailure?: number;
 }
 
 export interface Snapshot {
@@ -1298,6 +1299,12 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             completeStatus(ctx, "Build not repeated", body, "warning");
             return body;
           }
+          if (state.mutationCountAtLastSetupFailure === currentMutationCount) {
+            const body =
+              "Dependency setup already failed for this unchanged workspace. Do not run the production build again until you make a relevant fix.";
+            completeStatus(ctx, "Build setup not repeated", body, "warning");
+            return body;
+          }
 
           const packageJson = await readPackageJson(ctx.appPath);
           const buildScript = getScript(packageJson, "build");
@@ -1368,6 +1375,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
                   .join("\n"),
               );
               if (abortScope.timedOut() || installResult.timedOut) {
+                state.mutationCountAtLastSetupFailure = currentMutationCount;
                 const body = `Production build timed out after 10 minutes during dependency installation.\n\n${installOutput}`;
                 completeStatus(ctx, "Build timed out", body, "warning");
                 return body;
@@ -1379,6 +1387,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
                 );
               }
               if (installResult.code !== 0) {
+                state.mutationCountAtLastSetupFailure = currentMutationCount;
                 const body = `Could not install dependencies for the isolated production build (exit code ${installResult.code}). The build was not attempted.\n\n${installOutput}`;
                 completeStatus(
                   ctx,
@@ -1388,6 +1397,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
                 );
                 return body;
               }
+              state.mutationCountAtLastSetupFailure = undefined;
             } else {
               packageManager = (await resolvePackageManager(ctx.appPath))
                 .packageManager;

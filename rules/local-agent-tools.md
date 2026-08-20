@@ -102,6 +102,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   junctions: remap targets inside the source repository into the worktree, and
   reject targets outside the repository rather than leaving a path back to live
   files.
+- A dependency-install failure does not consume one of the build-attempt slots,
+  but record it separately and refuse another setup attempt until the workspace
+  changes. This preserves useful retries after a fix without allowing repeated
+  clean installs against identical inputs.
 - For a nested workspace app, use ancestor package-manager and lockfile signals
   only after confirming that the app belongs to that npm/pnpm workspace, then
   install from the applicable workspace root. An unrelated ancestor lockfile

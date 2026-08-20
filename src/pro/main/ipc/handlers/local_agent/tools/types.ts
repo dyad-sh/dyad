@@ -293,6 +293,7 @@ export interface AgentContext {
   buildAttemptState?: {
     count: number;
     mutationCountAtLastRun?: number;
+    mutationCountAtLastSetupFailure?: number;
   };
 }
 

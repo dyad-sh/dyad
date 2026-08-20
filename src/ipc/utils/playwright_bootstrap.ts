@@ -407,7 +407,8 @@ export const test = !endpoint
         page.goto = (url, options) =>
           originalGoto.call(page, new URL(url, baseUrl).href, options);
         try {
-          // Pre-existing page: leave it open for the next test and the user.
+          // Pre-existing page: leave it open for Dyad to replace after this
+          // single-test process finishes.
           await use(page);
         } finally {
           page.goto = originalGoto;

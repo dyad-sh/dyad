@@ -37,6 +37,8 @@ interface PreviewViewEntry {
   onAutomationViewDestroyed: (() => void) | null;
   /** True while renderer UI overlaps the native surface. */
   overlayActive: boolean;
+  /** Last renderer-provided layout, retained when automation rotates the view. */
+  bounds: PreviewViewBounds | null;
   /** The sole retained screenshot; replacement releases the previous string. */
   latestScreenshotDataUrl: string | null;
   screenshotTimer: ReturnType<typeof setInterval> | null;
@@ -207,6 +209,7 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
     hiddenDuringAutomation: false,
     onAutomationViewDestroyed: null,
     overlayActive: false,
+    bounds: null,
     latestScreenshotDataUrl: null,
     screenshotTimer: null,
     screenshotCapturePending: false,
@@ -393,7 +396,9 @@ export function showPreviewView(
     }
   }
 
-  entry.view.setBounds(roundBounds(bounds));
+  const roundedBounds = roundBounds(bounds);
+  entry.bounds = roundedBounds;
+  entry.view.setBounds(roundedBounds);
 
   if (entry.currentUrl !== url) {
     entry.currentUrl = url;
@@ -419,7 +424,9 @@ export function setPreviewViewBounds(
   if (!entry) return;
 
   try {
-    entry.view.setBounds(roundBounds(bounds));
+    const roundedBounds = roundBounds(bounds);
+    entry.bounds = roundedBounds;
+    entry.view.setBounds(roundedBounds);
   } catch (error) {
     logger.warn("Failed to set preview view bounds:", error);
   }
@@ -584,10 +591,18 @@ export async function waitForPreviewView(
  * Marks this window's preview view as driven by a test run. Returns null when
  * there is no live view, so the caller can fail the run before spawning.
  */
+export interface PreviewAutomationSession {
+  /** Replace the driven page with a fresh in-memory Electron session. */
+  rotate: (options: {
+    url: string;
+  }) => { ok: true } | { ok: false; reason: string };
+  end: () => void;
+}
+
 export function beginPreviewAutomation(
   window: BrowserWindow,
   { onViewDestroyed }: { onViewDestroyed?: () => void } = {},
-): { end: () => void } | null {
+): PreviewAutomationSession | null {
   const key = resolveKey(window);
   if (key === null) return null;
 
@@ -598,21 +613,76 @@ export function beginPreviewAutomation(
   entry.hiddenDuringAutomation = false;
   entry.onAutomationViewDestroyed = onViewDestroyed ?? null;
 
+  let activeEntry = entry;
   let ended = false;
   return {
+    rotate: ({ url }) => {
+      if (ended) {
+        return { ok: false, reason: "preview automation already ended" };
+      }
+      if (!isSupportedPreviewUrl(url)) {
+        return { ok: false, reason: `unsupported preview URL: ${url}` };
+      }
+
+      const current = entries.get(key);
+      if (current !== activeEntry) {
+        return {
+          ok: false,
+          reason: "the native preview was destroyed during the test run",
+        };
+      }
+      if (!current.bounds) {
+        return {
+          ok: false,
+          reason: "the native preview has no layout bounds",
+        };
+      }
+
+      const bounds = current.bounds;
+      const hiddenDuringAutomation = current.hiddenDuringAutomation;
+      const overlayActive = current.overlayActive;
+
+      // This destruction is deliberate. Disarm the callback so it remains a
+      // signal for user/window lifecycle interruptions only.
+      current.automationActive = false;
+      current.onAutomationViewDestroyed = null;
+      destroyEntry(key, window);
+
+      if (resolveKey(window) !== key) {
+        return { ok: false, reason: "the Dyad window was closed" };
+      }
+
+      const replacement = createEntry(window, key);
+      replacement.automationActive = true;
+      replacement.hiddenDuringAutomation = hiddenDuringAutomation;
+      replacement.onAutomationViewDestroyed = onViewDestroyed ?? null;
+      replacement.overlayActive = overlayActive;
+      replacement.bounds = bounds;
+      replacement.view.setBounds(bounds);
+      replacement.view.setVisible(!overlayActive && !hiddenDuringAutomation);
+      replacement.currentUrl = url;
+      void replacement.view.webContents.loadURL(url).catch((error) => {
+        logger.debug(
+          `Rotated preview view load settled with an error for ${url}:`,
+          error,
+        );
+      });
+      activeEntry = replacement;
+      return { ok: true };
+    },
     end: () => {
       if (ended) return;
       ended = true;
 
       const current = entries.get(key);
-      if (current !== entry) return;
+      if (current !== activeEntry) return;
 
-      entry.automationActive = false;
-      entry.onAutomationViewDestroyed = null;
+      current.automationActive = false;
+      current.onAutomationViewDestroyed = null;
 
-      if (entry.hiddenDuringAutomation) {
+      if (current.hiddenDuringAutomation) {
         // The renderer asked to hide while we held the view open; honor it now.
-        entry.hiddenDuringAutomation = false;
+        current.hiddenDuringAutomation = false;
         destroyEntry(key, window);
       }
     },

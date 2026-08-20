@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -24,7 +27,7 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({
-  BrowserWindow: { fromWebContents: vi.fn() },
+  BrowserWindow: { fromWebContents: vi.fn(), getAllWindows: vi.fn(() => []) },
   app: {
     getPath: vi.fn(() => "/tmp/dyad-tests-preview"),
     getAppPath: vi.fn(() => process.cwd()),
@@ -54,7 +57,8 @@ vi.mock("../utils/process_manager", async (importOriginal) => ({
 
 vi.mock("@/paths/paths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/paths/paths")>()),
-  getDyadAppPath: (appPath: string) => `/apps/${appPath}`,
+  getDyadAppPath: (appPath: string) =>
+    path.join(os.tmpdir(), "dyad-tests-preview", "apps", appPath),
 }));
 
 import { runAppTestsCore } from "./tests_handlers";
@@ -62,6 +66,7 @@ import { PREVIEW_CDP_ENDPOINT_ENV } from "../utils/playwright_bootstrap";
 
 const PROXY_URL = "http://localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
+const APP_PATH = path.join(os.tmpdir(), "dyad-tests-preview", "apps", "my-app");
 
 function lastSpawn() {
   return h.spawnStreaming.mock.calls.at(-1)![0] as {
@@ -81,6 +86,7 @@ beforeEach(() => {
   h.ensurePlaywrightBootstrap.mockClear();
   h.runningApps.clear();
   h.runningApps.set(1, { proxyUrl: PROXY_URL });
+  fs.mkdirSync(APP_PATH, { recursive: true });
 });
 
 describe("preview runs", () => {
@@ -119,7 +125,7 @@ describe("preview runs", () => {
     expect(env.PLAYWRIGHT_NO_COPY_PROMPT).toBe("1");
   });
 
-  it("stays serial, since every test shares the one preview page", async () => {
+  it("stays serial, since tests take turns driving the preview panel", async () => {
     await runAppTestsCore({
       appId: 1,
       parallel: true,
@@ -129,6 +135,133 @@ describe("preview runs", () => {
     const { args } = lastSpawn();
     expect(args).not.toContain("--fully-parallel");
     expect(args.some((arg) => arg.startsWith("--workers="))).toBe(false);
+  });
+
+  it("discovers and runs each test in its own fresh preview", async () => {
+    const rotatePreviewView = vi.fn(async () => {});
+    h.spawnStreaming.mockImplementation(async (options) => {
+      const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
+      fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+      if (options.args.includes("--list")) {
+        fs.writeFileSync(
+          reportPath,
+          JSON.stringify({
+            suites: [
+              {
+                title: "e2e-tests/auth.spec.ts",
+                file: path.join(APP_PATH, "e2e-tests/auth.spec.ts"),
+                specs: [
+                  {
+                    title: "first",
+                    line: 3,
+                    tests: [{ expectedStatus: "passed" }],
+                  },
+                  {
+                    title: "second",
+                    line: 7,
+                    tests: [{ expectedStatus: "passed" }],
+                  },
+                  {
+                    title: "disabled",
+                    line: 11,
+                    tests: [{ expectedStatus: "skipped" }],
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        return {
+          code: 0,
+          stdout: "",
+          stderr: "",
+          aborted: false,
+          timedOut: false,
+        };
+      }
+
+      const line = options.args.some((arg: string) => arg.endsWith(":3"))
+        ? 3
+        : 7;
+      const title = line === 3 ? "first" : "second";
+      const failed = line === 3;
+      fs.writeFileSync(
+        reportPath,
+        JSON.stringify({
+          suites: [
+            {
+              file: path.join(APP_PATH, "e2e-tests/auth.spec.ts"),
+              specs: [
+                {
+                  title,
+                  line,
+                  tests: [
+                    {
+                      status: failed ? "unexpected" : "expected",
+                      results: [
+                        {
+                          status: failed ? "failed" : "passed",
+                          duration: 10,
+                          ...(failed
+                            ? {
+                                error: { message: "expected true to be false" },
+                              }
+                            : {}),
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      return {
+        code: failed ? 1 : 0,
+        stdout: "",
+        stderr: "",
+        aborted: false,
+        timedOut: false,
+      };
+    });
+
+    const result = await runAppTestsCore({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+    });
+
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(3);
+    expect(rotatePreviewView).toHaveBeenCalledTimes(3);
+    expect(result.infraError).toBeUndefined();
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        file: "e2e-tests/auth.spec.ts",
+        status: "failed",
+        tests: [
+          expect.objectContaining({ title: "first", status: "failed" }),
+          expect.objectContaining({ title: "second", status: "passed" }),
+          expect.objectContaining({
+            title: "disabled",
+            status: "inconclusive",
+          }),
+        ],
+      }),
+    ]);
+
+    const testSpawns = h.spawnStreaming.mock.calls
+      .slice(1)
+      .map(([options]) => options);
+    expect(testSpawns[0].env.PLAYWRIGHT_JSON_OUTPUT_NAME).not.toBe(
+      testSpawns[1].env.PLAYWRIGHT_JSON_OUTPUT_NAME,
+    );
+    expect(testSpawns[0].args).toContain("--workers=1");
+    expect(
+      testSpawns[0].args.some((arg: string) =>
+        /^--output=.*0001\/artifacts$/.test(arg),
+      ),
+    ).toBe(true);
   });
 });
 

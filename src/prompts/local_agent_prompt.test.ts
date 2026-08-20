@@ -219,6 +219,33 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("`run_build`");
   });
 
+  it("only orders run_build after verification tools available in the turn", () => {
+    const withoutOptionalVerification = constructLocalAgentPrompt(
+      undefined,
+      undefined,
+      {
+        testingEnabled: false,
+        preCommitHookAvailable: false,
+      },
+    );
+    const withOptionalVerification = constructLocalAgentPrompt(
+      undefined,
+      undefined,
+      {
+        testingEnabled: true,
+        preCommitHookAvailable: true,
+      },
+    );
+
+    expect(withoutOptionalVerification).toContain(
+      "Run it only after edits and type checks are complete.",
+    );
+    expect(withoutOptionalVerification).not.toContain("`run_pre_commit`");
+    expect(withOptionalVerification).toContain(
+      "Run it only after edits, type checks, targeted tests, and `run_pre_commit` are complete.",
+    );
+  });
+
   it("agent mode system prompt with app blueprint disabled", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       enableAppBlueprint: false,

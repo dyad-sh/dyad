@@ -175,8 +175,18 @@ function developmentWorkflowBlock({
   const verifyPreCommitClause = preCommitHookAvailable
     ? " After finishing file edits and the other relevant verification, call `run_pre_commit`. If it fails or changes files, address the output and run it again only after a targeted file change."
     : "";
+  const buildPrerequisites = [
+    "edits",
+    "type checks",
+    ...(testingEnabled ? ["targeted tests"] : []),
+    ...(preCommitHookAvailable ? ["`run_pre_commit`"] : []),
+  ];
+  const formattedBuildPrerequisites =
+    buildPrerequisites.length === 2
+      ? buildPrerequisites.join(" and ")
+      : `${buildPrerequisites.slice(0, -1).join(", ")}, and ${buildPrerequisites.at(-1)}`;
   const verifyBuildClause = runBuildToolAvailable
-    ? " Use `run_build` once, after related edits are complete, only when the user explicitly requests a production build or when changes affect dependencies, build configuration, framework routing, server/static generation, environment loading, or a substantial production path. Skip it for routine small UI, styling, copy, and asset edits. If it fails, make a relevant fix before retrying."
+    ? ` Treat \`run_build\` as an expensive final verification step that can take several minutes. Always use it when the user explicitly requests a production build. Otherwise, use it when the completed changes either create build-specific risk—such as package or lockfile changes, build configuration, production environment loading, framework routing or rendering behavior, or server/static generation—or materially change the app across multiple modules or layers, such as creating a new app, implementing a major feature, changing application architecture, or migrating a framework/runtime. Do not use it for routine isolated components, client-side logic, styling, copy, assets, preview troubleshooting, or merely because many files changed. Run it only after ${formattedBuildPrerequisites} are complete. Call it once; retry only after fixing a cause indicated by the failed build.`
     : "";
   const steps: string[] = [];
   if (enableAppBlueprint) {
@@ -190,7 +200,7 @@ function developmentWorkflowBlock({
    The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
     `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
     `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, use the most relevant available evidence—such as code inspection, existing logs, type checks, or tests—to identify the root cause. Add targeted runtime logs only when runtime evidence is needed. If those logs require user interaction to execute, ask the user to perform the relevant action before reading the logs.${implementerAvailable ? IMPLEMENTER_DELEGATION_GUIDANCE : ""}`,
-    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.${verifyBuildClause}${verifyTestsClause}${verifyPreCommitClause}`,
+    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.${verifyTestsClause}${verifyPreCommitClause}${verifyBuildClause}`,
     `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
   );
   const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");

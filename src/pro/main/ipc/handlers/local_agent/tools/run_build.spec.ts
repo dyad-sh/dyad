@@ -18,6 +18,8 @@ import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
   gatherBuildProjectFacts,
+  getCleanInstallArgs,
+  listSnapshotEntries,
   runBuildTool,
   removeStaleSnapshots,
   secureSnapshotSymlinks,
@@ -52,7 +54,45 @@ describe("run_build", () => {
     expect(runBuildTool.modifiesState).toBe(true);
     expect(runBuildTool.inputSchema.parse({})).toEqual({});
     expect(runBuildTool.getConsentPreview?.({})).toBe(
-      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
+      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may install dependencies in a temporary workspace first. This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
+    );
+  });
+
+  it("uses reproducible clean-install commands for the selected package manager", () => {
+    expect(
+      getCleanInstallArgs({ packageManager: "pnpm", hasLockfile: true }),
+    ).toEqual([
+      "--config.pm-on-fail=ignore",
+      "--config.confirmModulesPurge=false",
+      "--config.strictDepBuilds=false",
+      "install",
+      "--frozen-lockfile",
+      "--prefer-offline",
+    ]);
+    expect(
+      getCleanInstallArgs({ packageManager: "npm", hasLockfile: true }),
+    ).toEqual(["ci", "--legacy-peer-deps", "--prefer-offline"]);
+    expect(
+      getCleanInstallArgs({ packageManager: "npm", hasLockfile: false }),
+    ).toEqual(["install", "--legacy-peer-deps", "--prefer-offline"]);
+  });
+
+  it("excludes live dependencies and generated output from clean snapshots", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-build-test-"),
+    );
+    temporaryDirectories.push(appPath);
+    await Promise.all([
+      fs.mkdir(path.join(appPath, "node_modules")),
+      fs.mkdir(path.join(appPath, "dist")),
+      fs.writeFile(path.join(appPath, "package.json"), "{}"),
+      fs.writeFile(path.join(appPath, "pnpm-lock.yaml"), "lockfileVersion: 9"),
+    ]);
+
+    const entries = await listSnapshotEntries(appPath);
+    expect(entries).toHaveLength(2);
+    expect(entries).toEqual(
+      expect.arrayContaining(["package.json", "pnpm-lock.yaml"]),
     );
   });
 

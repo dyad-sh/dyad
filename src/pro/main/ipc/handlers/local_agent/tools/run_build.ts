@@ -19,6 +19,7 @@ import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
+  PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import { getUserDataPath } from "@/paths/paths";
@@ -40,6 +41,7 @@ const SNAPSHOT_ROOT_NAME = "build-snapshots";
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
   ".git",
   SNAPSHOT_MARKER,
+  "node_modules",
   ".next",
   ".output",
   ".turbo",
@@ -382,22 +384,7 @@ async function createSnapshot(
     await fs.mkdir(snapshotRoot, { recursive: true });
     await removeStaleSnapshots(snapshotRoot);
 
-    const nodeModulesStat = await fs
-      .stat(path.join(appPath, "node_modules"))
-      .catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-      });
-    if (!nodeModulesStat?.isDirectory()) {
-      throw new DyadError(
-        "Dependencies are missing or incomplete. Reinstall dependencies and restart the app, then retry the build.",
-        DyadErrorKind.Precondition,
-      );
-    }
-
-    const entries = (await fs.readdir(appPath)).filter(
-      (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
-    );
+    const entries = await listSnapshotEntries(appPath);
     tempRoot = await fs.mkdtemp(path.join(snapshotRoot, SNAPSHOT_PREFIX));
     await fs.writeFile(
       path.join(tempRoot, SNAPSHOT_MARKER),
@@ -419,6 +406,12 @@ async function createSnapshot(
       DyadErrorKind.Precondition,
     );
   }
+}
+
+export async function listSnapshotEntries(appPath: string): Promise<string[]> {
+  return (await fs.readdir(appPath)).filter(
+    (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
+  );
 }
 
 export async function removeStaleSnapshots(
@@ -500,6 +493,58 @@ async function resolvePackageManager(appPath: string) {
   return choosePackageManagerForApp(appPath, support.available);
 }
 
+export function getCleanInstallArgs({
+  packageManager,
+  hasLockfile,
+}: {
+  packageManager: "npm" | "pnpm";
+  hasLockfile: boolean;
+}): string[] {
+  if (packageManager === "pnpm") {
+    return [
+      ...PNPM_INSTALL_POLICY_ARGS,
+      "install",
+      ...(hasLockfile ? ["--frozen-lockfile"] : []),
+      "--prefer-offline",
+    ];
+  }
+  return [
+    hasLockfile ? "ci" : "install",
+    "--legacy-peer-deps",
+    "--prefer-offline",
+  ];
+}
+
+async function runSnapshotInstallProcess({
+  cwd,
+  packageManager,
+  signal,
+  timeoutMs,
+  onOutput,
+}: {
+  cwd: string;
+  packageManager: "npm" | "pnpm";
+  signal?: AbortSignal;
+  timeoutMs: number;
+  onOutput: (chunk: string) => void;
+}) {
+  const lockfileName =
+    packageManager === "pnpm" ? "pnpm-lock.yaml" : "package-lock.json";
+  const hasLockfile = await fs
+    .stat(path.join(cwd, lockfileName))
+    .then((stat) => stat.isFile())
+    .catch(() => false);
+  return spawnStreaming({
+    command: packageManager,
+    args: getCleanInstallArgs({ packageManager, hasLockfile }),
+    cwd,
+    env: getPackageManagerCommandEnv(),
+    signal,
+    timeoutMs,
+    onOutput,
+  });
+}
+
 async function runBuildProcess({
   cwd,
   packageManager,
@@ -568,13 +613,13 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
-- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot while a preview is running.`,
+- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot with freshly installed dependencies while a preview is running.`,
   inputSchema: runBuildSchema,
   defaultConsent: "always",
   modifiesState: true,
 
   getConsentPreview: () =>
-    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
+    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may install dependencies in a temporary workspace first. This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
 
   buildXml: (_args, isComplete) =>
     isComplete
@@ -639,11 +684,61 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           const abortScope = createBuildAbortScope(ctx.abortSignal);
           const operationStartedAt = Date.now();
           let snapshot: Snapshot | undefined;
+          let dependencyInstallMs = 0;
+          let phase: "snapshot setup" | "dependency installation" | "build" =
+            "snapshot setup";
           try {
+            const packageManager = await resolvePackageManager(ctx.appPath);
             if (mode === "isolated") {
               snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
+              phase = "dependency installation";
+              ctx.onXmlStream(
+                '<dyad-status title="Installing isolated build dependencies"></dyad-status>',
+              );
+              let streamedInstallOutput = "";
+              const installStartedAt = Date.now();
+              const installResult = await runSnapshotInstallProcess({
+                cwd: snapshot.path,
+                packageManager,
+                signal: abortScope.signal,
+                timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
+                onOutput: (chunk) => {
+                  streamedInstallOutput = accumulateBuildOutput(
+                    streamedInstallOutput,
+                    chunk,
+                  );
+                  streamBuildOutput(ctx, streamedInstallOutput);
+                },
+              });
+              dependencyInstallMs = Date.now() - installStartedAt;
+              const installOutput = tail(
+                [installResult.stdout, installResult.stderr]
+                  .filter(Boolean)
+                  .join("\n"),
+              );
+              if (abortScope.timedOut() || installResult.timedOut) {
+                const body = `Production build timed out after 10 minutes during dependency installation.\n\n${installOutput}`;
+                completeStatus(ctx, "Build timed out", body, "warning");
+                return body;
+              }
+              if (installResult.aborted) {
+                throw new DyadError(
+                  "Build cancelled.",
+                  DyadErrorKind.UserCancelled,
+                );
+              }
+              if (installResult.code !== 0) {
+                const body = `Could not install dependencies for the isolated production build (exit code ${installResult.code}). The build was not attempted.\n\n${installOutput}`;
+                completeStatus(
+                  ctx,
+                  "Dependency installation failed",
+                  body,
+                  "warning",
+                );
+                return body;
+              }
             }
-            const packageManager = await resolvePackageManager(ctx.appPath);
+            phase = "build";
             state.count += 1;
             state.mutationCountAtLastRun = currentMutationCount;
             ctx.onXmlStream(
@@ -663,7 +758,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             });
             const buildMs = Date.now() - buildStartedAt;
             const timing = snapshot
-              ? `Mode: isolated (${snapshot.strategy}); snapshot setup: ${snapshot.setupMs} ms; build: ${buildMs} ms.`
+              ? `Mode: isolated (${snapshot.strategy}); snapshot setup: ${snapshot.setupMs} ms; dependency install: ${dependencyInstallMs} ms; build: ${buildMs} ms.`
               : `Mode: in-place; build: ${buildMs} ms.`;
             const output = tail(
               [result.stdout, result.stderr].filter(Boolean).join("\n"),
@@ -692,7 +787,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           } catch (error) {
             if (abortScope.timedOut()) {
               const elapsedMs = Date.now() - operationStartedAt;
-              const body = `Production build timed out after 10 minutes during ${snapshot ? "the build" : "snapshot setup"}. Elapsed: ${elapsedMs} ms.`;
+              const body = `Production build timed out after 10 minutes during ${phase}. Elapsed: ${elapsedMs} ms.`;
               completeStatus(ctx, "Build timed out", body, "warning");
               return body;
             }

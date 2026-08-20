@@ -82,17 +82,22 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Apply snapshot exclusions at the same path depth on every backend. A root-only
   exclusion in the clone path plus recursive basename filtering in the copy
   path produces different build inputs across operating systems.
-- An isolated build must not symlink or junction writable dependencies back to
-  the live app. App-controlled scripts can traverse that link and mutate the
-  preview's `node_modules`; clone/reflink/copy every reachable writable tree.
-  After copying, inspect preserved symlinks and junctions: remap targets inside
-  the source app into the snapshot, and reject targets outside the app rather
-  than leaving a path back to live files.
+- An isolated build must exclude the live app's `node_modules` and install a
+  clean dependency tree inside the snapshot with the package manager selected
+  from the live app's existing signals. Use the lockfile's frozen/CI mode when
+  available, prefer the local package cache, stream install output, and surface
+  install failures separately without consuming a build attempt. After copying
+  app inputs, inspect preserved symlinks and junctions: remap targets inside the
+  source app into the snapshot, and reject targets outside the app rather than
+  leaving a path back to live files.
 - On Windows, do not classify junctions from `Dirent`: libuv may report a
   reparse-point directory as an ordinary directory. Use `lstat`, recreate
   directory links as junctions, and copy linked files so snapshot setup does
   not require symbolic-link privileges.
-- Bound recursive snapshot traversal with a fixed-size batch or worker pool, especially on Windows where every entry uses explicit filesystem calls. An unbounded recursive `Promise.all` can queue the entire `node_modules` tree before cancellation is observed.
+- Bound recursive snapshot traversal with a fixed-size batch or worker pool,
+  especially on Windows where every entry uses explicit filesystem calls. An
+  unbounded recursive `Promise.all` can queue a large source tree before
+  cancellation is observed.
 - Keep build snapshots in a Dyad-owned scratch root and mark every owned
   directory before copying. Reserve the marker name from copied app inputs.
   Startup and stale cleanup must require that marker before recursive deletion;

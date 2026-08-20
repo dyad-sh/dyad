@@ -676,20 +676,25 @@
       "continue": "Continuar",
       "continuing": "Continuando...",
       "skip": "Omitir",
+      "skipForNow": "Omitir por ahora",
+      "skipReassurance": "Puedes añadir una base de datos más tarde.",
       "skipping": "Omitiendo...",
       "integrationSkipped": "Integración omitida",
       "skippedDescription": "No se añadió ninguna integración de base de datos.",
       "chooseProvider": "Elige un proveedor de base de datos",
+      "continueWithProvider": "Continuar con {{provider}}",
+      "recommended": "Recomendado",
+      "visitProviderWebsite": "Visitar el sitio web de {{provider}}",
       "setUpProvider": "Configurar {{provider}}",
       "setUpDatabase": "Configurar base de datos",
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "description": "Backend completo como servicio: base de datos Postgres, almacenamiento y funciones edge."
+          "description": "Base de datos, almacenamiento de archivos y funciones de backend."
         },
         "neon": {
           "name": "Neon",
-          "description": "Base de datos Postgres sin servidor con viaje en el tiempo y generosos límites de proyectos gratuitos."
+          "description": "Una base de datos Postgres ligera."
         }
       }
     },

@@ -682,23 +682,28 @@
       "continue": "계속",
       "continuing": "계속 진행 중...",
       "skip": "건너뛰기",
+      "skipForNow": "지금은 건너뛰기",
+      "skipReassurance": "나중에 데이터베이스를 추가할 수 있습니다.",
       "skipping": "건너뛰는 중...",
       "integrationSkipped": "연동 건너뜀",
       "skippedDescription": "데이터베이스 연동이 추가되지 않았습니다.",
       "completePrompt": "계속하려면 위의 {{provider}} 연결을 완료하세요.",
       "next": "다음",
+      "continueWithProvider": "{{provider}}로 계속",
       "back": "뒤로",
       "chooseProvider": "데이터베이스 공급자 선택",
+      "recommended": "추천",
+      "visitProviderWebsite": "{{provider}} 웹사이트 방문",
       "configureInPanelTitle": "설정 패널에서 마무리하기",
       "configureInPanelDescription": "오른쪽 패널에서 {{provider}} 설정을 완료한 후 여기로 돌아오세요.",
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "description": "완전한 백엔드 서비스: Postgres 데이터베이스, 스토리지 및 엣지 함수."
+          "description": "데이터베이스, 파일 스토리지 및 백엔드 기능."
         },
         "neon": {
           "name": "Neon",
-          "description": "시간 여행 기능과 넉넉한 무료 프로젝트 한도를 제공하는 서버리스 Postgres 데이터베이스."
+          "description": "가벼운 Postgres 데이터베이스."
         }
       }
     },

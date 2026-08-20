@@ -37,7 +37,15 @@ testSkipIfWindows(
     const supabaseRadio = messages.getByRole("radio", { name: /Supabase/ });
     await supabaseRadio.click();
     await expect(supabaseRadio).toHaveAttribute("aria-checked", "true");
-    await messages.getByRole("button", { name: "Next" }).click();
+    await expect(
+      messages.getByText("Recommended", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      messages.getByText("You can add a database later."),
+    ).toBeVisible();
+    await messages
+      .getByRole("button", { name: "Continue with Supabase" })
+      .click();
     await expect(messages.getByTestId("integration-skip-button")).toBeHidden();
 
     // Both Continue buttons — the Configure panel's and the chat card's mirror —
@@ -99,7 +107,9 @@ testSkipIfWindows(
     // Entering Configure does not begin a provider mutation by itself. Back
     // returns to the choice card with the opt-out still available.
     await messages.getByRole("radio", { name: /Supabase/ }).click();
-    await messages.getByRole("button", { name: "Next" }).click();
+    await messages
+      .getByRole("button", { name: "Continue with Supabase" })
+      .click();
     await messages.getByRole("button", { name: "Back" }).click();
     await expect(messages.getByTestId("integration-skip-button")).toBeEnabled({
       timeout: Timeout.MEDIUM,

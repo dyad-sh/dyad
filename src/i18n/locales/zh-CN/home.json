@@ -673,23 +673,28 @@
       "continue": "继续",
       "continuing": "继续中...",
       "skip": "跳过",
+      "skipForNow": "暂时跳过",
+      "skipReassurance": "你可以稍后添加数据库。",
       "skipping": "正在跳过...",
       "integrationSkipped": "已跳过集成",
       "skippedDescription": "未添加数据库集成。",
       "completePrompt": "请先完成上方的 {{provider}} 连接，然后继续。",
       "next": "下一步",
+      "continueWithProvider": "使用 {{provider}} 继续",
       "back": "返回",
       "chooseProvider": "选择数据库提供商",
+      "recommended": "推荐",
+      "visitProviderWebsite": "访问 {{provider}} 网站",
       "configureInPanelTitle": "在配置面板中完成设置",
       "configureInPanelDescription": "在右侧面板中完成 {{provider}} 设置，然后返回此处。",
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "description": "完整的后端即服务：Postgres 数据库、存储与边缘函数。"
+          "description": "数据库、文件存储和后端功能。"
         },
         "neon": {
           "name": "Neon",
-          "description": "无服务器 Postgres 数据库，支持时间旅行和慷慨的免费项目限额。"
+          "description": "轻量级 Postgres 数据库。"
         }
       }
     },

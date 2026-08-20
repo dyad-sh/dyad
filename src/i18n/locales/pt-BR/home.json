@@ -673,23 +673,28 @@
       "continue": "Continuar",
       "continuing": "Continuando...",
       "skip": "Pular",
+      "skipForNow": "Pular por enquanto",
+      "skipReassurance": "Você pode adicionar um banco de dados depois.",
       "skipping": "Pulando...",
       "integrationSkipped": "Integração ignorada",
       "skippedDescription": "Nenhuma integração de banco de dados foi adicionada.",
       "completePrompt": "Conclua a conexão com o {{provider}} acima para continuar.",
       "next": "Próximo",
+      "continueWithProvider": "Continuar com {{provider}}",
       "back": "Voltar",
       "chooseProvider": "Escolha um provedor de banco de dados",
+      "recommended": "Recomendado",
+      "visitProviderWebsite": "Visitar o site do {{provider}}",
       "configureInPanelTitle": "Conclua a configuração no painel Configurar",
       "configureInPanelDescription": "Conclua a configuração do {{provider}} no painel à direita e depois volte aqui.",
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "description": "Backend completo como serviço: banco de dados Postgres, storage e edge functions."
+          "description": "Banco de dados, armazenamento de arquivos e recursos de backend."
         },
         "neon": {
           "name": "Neon",
-          "description": "Banco de dados Postgres serverless com time-travel e generoso limite de projetos gratuitos."
+          "description": "Um banco de dados Postgres leve."
         }
       }
     },

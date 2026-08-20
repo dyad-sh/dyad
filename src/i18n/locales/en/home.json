@@ -702,23 +702,28 @@
       "continue": "Continue",
       "continuing": "Continuing...",
       "skip": "Skip",
+      "skipForNow": "Skip for now",
+      "skipReassurance": "You can add a database later.",
       "skipping": "Skipping...",
       "integrationSkipped": "Integration skipped",
       "skippedDescription": "No database integration was added.",
       "completePrompt": "Complete the {{provider}} connection above to continue.",
       "next": "Next",
+      "continueWithProvider": "Continue with {{provider}}",
       "back": "Back",
       "chooseProvider": "Choose a database provider",
+      "recommended": "Recommended",
+      "visitProviderWebsite": "Visit the {{provider}} website",
       "configureInPanelTitle": "Finish setup in the Configure panel",
       "configureInPanelDescription": "Complete the {{provider}} setup in the panel on the right, then come back here.",
       "providers": {
         "supabase": {
           "name": "Supabase",
-          "description": "Complete backend as a service: Postgres database, storage and edge functions."
+          "description": "Database, file storage, and backend features."
         },
         "neon": {
           "name": "Neon",
-          "description": "Serverless Postgres database with time-travel and generous free project limits."
+          "description": "A lightweight Postgres database."
         }
       }
     },

@@ -45,7 +45,7 @@ Most IPC/main paths and shared utilities (`git_utils`, Supabase admin, local age
 
 **Legacy:** `FILTERED_EXCEPTION_MESSAGES`, `RateLimitError` (429) handling in `telemetry.ts`, and bare `TypeError: fetch failed` (via `isGenericFetchFailedError` in `posthogTelemetry.ts`) remain for plain `Error` paths not yet migrated. Renderer PostHog `before_send` uses `shouldFilterPostHogExceptionEvent` for the same fetch noise from autocapture.
 
-When projecting raw main-process errors into renderer-visible text, treat redaction as a fail-closed security boundary. Test syntax variants that can hide sensitive substrings, including whole authorization-header values, quoted paths with spaces, `--flag=/path`, bracketed paths, UNC paths, scheme-less Git remotes, and internal hostnames. Apply the final length bound after composing prefixes or guidance so the serialized state can never exceed its codec limit.
+When projecting raw main-process errors into renderer-visible text, treat redaction as a fail-closed security boundary. Test syntax variants that can hide sensitive substrings, including whole authorization-header values, quoted paths with spaces or embedded delimiter characters, `--flag=/path`, bracketed paths, UNC paths, scheme-less Git remotes, and internal hostnames. Apply the final length bound after composing prefixes or guidance so the serialized state can never exceed its codec limit.
 
 ## Automation pitfalls
 

@@ -60,6 +60,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "fatal: Unable to create '[redacted path]'",
     ],
     [
+      "fatal: Unable to create '/Users/alice/Alice's App/secret/.git/index.lock'",
+      "fatal: Unable to create '[redacted path]'",
+    ],
+    [
       String.raw`fatal: "C:\Users\alice\My Projects\secret\.git\index.lock" exists`,
       'fatal: "[redacted path]" exists',
     ],

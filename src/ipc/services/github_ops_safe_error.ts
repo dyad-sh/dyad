@@ -20,9 +20,9 @@ function redactSensitiveGitOutput(message: string): string {
       /\b(?:[a-z0-9-]+\.)+(?:internal|local|lan|home|corp)\b/gi,
       "[redacted host]",
     )
-    .replaceAll(/(['"`])\/[^\r\n]*?\1/g, "$1[redacted path]$1")
-    .replaceAll(/(['"])[A-Za-z]:[\\/][^\r\n]*?\1/g, "$1[redacted path]$1")
-    .replaceAll(/(['"])\\\\[^\r\n]*?\1/g, "$1[redacted path]$1")
+    .replaceAll(/(['"`])\/[^\r\n]*\1/g, "$1[redacted path]$1")
+    .replaceAll(/(['"])[A-Za-z]:[\\/][^\r\n]*\1/g, "$1[redacted path]$1")
+    .replaceAll(/(['"])\\\\[^\r\n]*\1/g, "$1[redacted path]$1")
     .replaceAll(/\[\/[^\r\n\]]+\]/g, "[[redacted path]]")
     .replaceAll(
       /(^|[\s("'`=[,])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,

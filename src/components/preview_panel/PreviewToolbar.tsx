@@ -1,14 +1,12 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import {
   type PreviewMode,
   previewModeAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { isChatPanelHiddenAtom, isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import {
-  previewNativeOverlayActiveAtom,
-  previewNativeViewAtom,
-} from "@/atoms/previewAtoms";
+import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
+import { usePreviewNativeOverlay } from "./usePreviewNativeOverlay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import {
   AlertTriangle,
@@ -25,13 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Tooltip,
@@ -54,7 +46,6 @@ import {
   type PreviewState,
 } from "@/version_preview/state";
 import type { Version } from "@/ipc/types";
-import { ipc } from "@/ipc/types";
 
 type ToolbarMode = Exclude<PreviewMode, "plan">;
 
@@ -212,10 +203,9 @@ export const PreviewToolbar = () => {
     isChatPanelHiddenAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const useNativePreview = useAtomValue(previewNativeViewAtom);
-  const setNativeOverlayActive = useSetAtom(previewNativeOverlayActiveAtom);
+  const useNativePreview = useAtomValue(previewNativeViewAppIdAtom) !== null;
+  const syncNativeOverlay = usePreviewNativeOverlay("preview-toolbar-overflow");
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
-  const lastNativeOverlayActiveRef = useRef(false);
   const { state: previewState, send: sendPreviewEvent } =
     useVersionPreview(selectedAppId);
   const { versions } = useVersions(selectedAppId);
@@ -225,16 +215,6 @@ export const PreviewToolbar = () => {
     ? getVersionDisplayId(selectedVersionId, versions)
     : null;
   const { problemReport } = useCheckProblems(selectedAppId);
-
-  const syncNativeOverlay = useCallback(
-    (active: boolean) => {
-      if (lastNativeOverlayActiveRef.current === active) return;
-      lastNativeOverlayActiveRef.current = active;
-      setNativeOverlayActive(active);
-      ipc.previewView.setOverlayActive({ active });
-    },
-    [setNativeOverlayActive],
-  );
 
   const handleOverflowOpenChange = (open: boolean) => {
     setIsOverflowOpen(open);
@@ -246,13 +226,6 @@ export const PreviewToolbar = () => {
   useEffect(() => {
     syncNativeOverlay(isOverflowOpen && useNativePreview);
   }, [isOverflowOpen, syncNativeOverlay, useNativePreview]);
-
-  useEffect(
-    () => () => {
-      syncNativeOverlay(false);
-    },
-    [syncNativeOverlay],
-  );
 
   // When a version is selected, only the preview/diff panels are available.
   // Coerce a stale previewMode (e.g. "configure", "problems") to the preview

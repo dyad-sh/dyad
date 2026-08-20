@@ -42,13 +42,18 @@ function collectTests(
   inheritedFile: string | undefined,
   inheritedTitles: string[],
   out: DiscoveredPreviewTest[],
+  isFileSuite: boolean,
 ): void {
   const file = suite.file ?? inheritedFile;
   // Playwright's outer suite is named after the spec file. It participates in
   // grep internally, but it is not part of the user-visible test title. Keep
   // only describe titles here; the exact runner grep matches this as a suffix.
+  //
+  // The JSON reporter merges per file at the top level, so depth is the only
+  // reliable discriminator: `file` is set on *every* serialized suite, describe
+  // blocks included, so testing it here would swallow every describe title.
   const titles =
-    suite.file || !suite.title
+    isFileSuite || !suite.title
       ? inheritedTitles
       : [...inheritedTitles, suite.title];
 
@@ -68,7 +73,7 @@ function collectTests(
   }
 
   for (const child of suite.suites ?? []) {
-    collectTests(child, appPath, file, titles, out);
+    collectTests(child, appPath, file, titles, out, false);
   }
 }
 
@@ -78,7 +83,7 @@ export function parsePreviewTestDiscovery(
 ): { tests: DiscoveredPreviewTest[]; errors: string[] } {
   const tests: DiscoveredPreviewTest[] = [];
   for (const suite of report.suites ?? []) {
-    collectTests(suite, appPath, undefined, [], tests);
+    collectTests(suite, appPath, undefined, [], tests, true);
   }
 
   return {

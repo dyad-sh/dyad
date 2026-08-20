@@ -11,6 +11,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import { PreviewNativeOverlayGuard } from "@/components/preview_panel/PreviewNativeOverlayGuard";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
@@ -210,6 +211,9 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                   expand
                   duration={settings?.isTestMode ? 500 : undefined}
                 />
+                {/* Next to the Toaster on purpose: it is what keeps these
+                    toasts from being painted underneath the native preview. */}
+                <PreviewNativeOverlayGuard />
                 <ReleaseNotesDialog />
                 <ForceCloseDialog />
               </SidebarProvider>

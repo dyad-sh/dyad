@@ -174,11 +174,75 @@ describe("resolveRemoteDebuggingEndpoint", () => {
     await expect(second).resolves.toBeNull();
   });
 
+  it("re-polls once the failure window expires", async () => {
+    // The giving-up state has to expire rather than latch: it disables the
+    // Tests panel's run buttons, which is far too much to hang on one unlucky
+    // poll during a slow startup.
+    enable();
+    vi.useFakeTimers();
+    const first = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(6_000);
+    await expect(first).resolves.toBeNull();
+
+    fs.writeFileSync(
+      path.join(h.paths.sessionData, "DevToolsActivePort"),
+      "51234\n",
+    );
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    await expect(resolveRemoteDebuggingEndpoint()).resolves.toEqual({
+      port: 51234,
+      httpEndpoint: "http://127.0.0.1:51234",
+    });
+  });
+
+  it("prefers a cached endpoint over an earlier poll's backoff", async () => {
+    // Two overlapping polls: the slower one gives up after the faster one has
+    // already cached a late port. The backoff must not hide that endpoint.
+    enable();
+    vi.useFakeTimers();
+    const slow = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    fs.writeFileSync(
+      path.join(h.paths.sessionData, "DevToolsActivePort"),
+      "51234\n",
+    );
+    const fast = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    await expect(fast).resolves.toEqual({
+      port: 51234,
+      httpEndpoint: "http://127.0.0.1:51234",
+    });
+    await expect(slow).resolves.not.toBeNull();
+    await expect(resolveRemoteDebuggingEndpoint()).resolves.toEqual({
+      port: 51234,
+      httpEndpoint: "http://127.0.0.1:51234",
+    });
+  });
+
   it("ignores a port file with junk in it", async () => {
     enable();
     fs.writeFileSync(
       path.join(h.paths.sessionData, "DevToolsActivePort"),
       "not-a-port\n",
+    );
+    vi.useFakeTimers();
+
+    const pending = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it("ignores a port outside the valid range", async () => {
+    // A truncated or stale file can parse as a number that no socket can bind,
+    // which would report CDP ready behind an unusable endpoint.
+    enable();
+    fs.writeFileSync(
+      path.join(h.paths.sessionData, "DevToolsActivePort"),
+      "65536\n",
     );
     vi.useFakeTimers();
 

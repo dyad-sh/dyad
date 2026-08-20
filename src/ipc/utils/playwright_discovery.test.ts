@@ -6,6 +6,9 @@ import {
 } from "./playwright_discovery";
 
 describe("parsePreviewTestDiscovery", () => {
+  // Shape copied from real `playwright test --list --reporter=json` output:
+  // every serialized suite carries `file`, describe blocks included, so nesting
+  // depth is what separates the file suite from a describe.
   it("inherits files, keeps describe titles, and detects declared skips", () => {
     const result = parsePreviewTestDiscovery(
       {
@@ -23,11 +26,25 @@ describe("parsePreviewTestDiscovery", () => {
             suites: [
               {
                 title: "account",
+                file: "/apps/demo/e2e-tests/auth.spec.ts",
                 specs: [
                   {
                     title: "signs out",
                     line: 12,
                     tests: [{ expectedStatus: "skipped" }],
+                  },
+                ],
+                suites: [
+                  {
+                    title: "settings",
+                    file: "/apps/demo/e2e-tests/auth.spec.ts",
+                    specs: [
+                      {
+                        title: "renames",
+                        line: 20,
+                        tests: [{ expectedStatus: "passed" }],
+                      },
+                    ],
                   },
                 ],
               },
@@ -54,6 +71,13 @@ describe("parsePreviewTestDiscovery", () => {
           title: "signs out",
           fullTitle: "account signs out",
           skipped: true,
+        },
+        {
+          file: "e2e-tests/auth.spec.ts",
+          line: 20,
+          title: "renames",
+          fullTitle: "account settings renames",
+          skipped: false,
         },
       ],
     });

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   overlayActiveAtom: Symbol("overlayActiveAtom"),
   previewModeAtom: Symbol("previewModeAtom"),
-  previewNativeViewAtom: Symbol("previewNativeViewAtom"),
+  previewNativeViewAppIdAtom: Symbol("previewNativeViewAppIdAtom"),
   selectedAppIdAtom: Symbol("selectedAppIdAtom"),
   testRunStateAtom: Symbol("testRunStateAtom"),
   onScreenshotUpdated: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock("@/atoms/appAtoms", () => ({
 
 vi.mock("@/atoms/previewAtoms", () => ({
   previewNativeOverlayActiveAtom: h.overlayActiveAtom,
-  previewNativeViewAtom: h.previewNativeViewAtom,
+  previewNativeViewAppIdAtom: h.previewNativeViewAppIdAtom,
 }));
 
 vi.mock("@/atoms/testRuntimeAtoms", () => ({

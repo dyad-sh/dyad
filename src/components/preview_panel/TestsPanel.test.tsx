@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
-import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import {
   EMPTY_TEST_RUN_STATE,
   testRunStateByAppIdAtom,
@@ -176,13 +176,57 @@ describe("TestsPanel", () => {
         fireEvent.click(button);
       });
 
-      expect(store.get(previewNativeViewAtom)).toBe(true);
+      expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
       expect(store.get(previewModeAtom)).toBe("preview");
       await waitFor(() => {
         expect(mocks.runAppTests).toHaveBeenCalledWith(
           expect.objectContaining({ appId: 1, preview: true, parallel: false }),
         );
       });
+    });
+
+    it("leaves the parallel decision to the runner", async () => {
+      // The runner drops --fully-parallel while a preview endpoint is live AND
+      // knows when a run has fallen back to its own browser. Deciding it here
+      // would leave that fallback running serially for no reason.
+      mocks.settings = {
+        ...experimentOn,
+        testHeaded: true,
+        testParallel: true,
+      };
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      renderPanel();
+
+      const button = await screen.findByText("Run all");
+      await act(async () => {
+        fireEvent.click(button);
+      });
+
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ preview: true, parallel: true }),
+        );
+      });
+    });
+
+    it("says the debugging port is open for the whole session", async () => {
+      // Enabled once and forgotten is the realistic case, and the exposure
+      // lasts the session rather than the run — so it belongs where the
+      // feature is used, not only in the Settings switch.
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      renderPanel();
+
+      expect(
+        await screen.findByTestId("tests-panel-debug-port-notice"),
+      ).toBeTruthy();
+    });
+
+    it("keeps the port notice off when the experiment is off", async () => {
+      mocks.settings = { testHeaded: true };
+      renderPanel();
+
+      await screen.findByText("Run all");
+      expect(screen.queryByTestId("tests-panel-debug-port-notice")).toBeNull();
     });
 
     it("disables a headed run until Dyad has been restarted", async () => {

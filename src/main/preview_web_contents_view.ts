@@ -5,6 +5,7 @@ import type { BrowserWindow, Session } from "electron";
 import log from "electron-log";
 
 import { safeSend } from "../ipc/utils/safe_sender";
+import { DyadError, DyadErrorKind } from "../errors/dyad_error";
 import {
   previewViewEvents,
   type PreviewViewBounds,
@@ -52,6 +53,55 @@ interface PreviewViewEntry {
  * a backgrounded preview cannot keep timers, sockets, or audio running.
  */
 const entries = new Map<number, PreviewViewEntry>();
+
+/**
+ * Host renderer keys whose preview view a starting test run has claimed.
+ *
+ * Held outside the entry map on purpose. A panel run claims the view before the
+ * isolation step — which can spend many seconds branching a database and
+ * restarting the dev server — and at that moment the renderer may not have
+ * mounted the view yet, so there is no entry to mark. Anything the user does in
+ * the meantime (the "Tests running…" chip, the exit button) unmounts the React
+ * component and hides the view; without this, that would destroy the page the
+ * run is about to attach to and dead-end it.
+ */
+const automationReservations = new Set<number>();
+
+function isClaimedForAutomation(
+  key: number,
+  entry: PreviewViewEntry | undefined,
+): boolean {
+  return !!entry?.automationActive || automationReservations.has(key);
+}
+
+/**
+ * Claims this window's preview view for a run that is still setting up, so
+ * hiding it is downgraded rather than destroying it. Returns a release
+ * function; callers must invoke it on every exit path.
+ */
+export function reservePreviewViewForAutomation(
+  window: BrowserWindow,
+): () => void {
+  const key = resolveKey(window);
+  if (key === null) return () => {};
+
+  automationReservations.add(key);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    automationReservations.delete(key);
+
+    // The renderer asked to hide while the claim was standing and no automation
+    // session took over to honor it later; do that now rather than stranding an
+    // invisible view.
+    const entry = entries.get(key);
+    if (entry && !entry.automationActive && entry.hiddenDuringAutomation) {
+      entry.hiddenDuringAutomation = false;
+      destroyEntry(key, window);
+    }
+  };
+}
 
 function resolveKey(window: BrowserWindow): number | null {
   try {
@@ -163,11 +213,20 @@ async function capturePreviewScreenshot(
   }
 }
 
+/**
+ * Refreshes the screenshot fallback on a timer.
+ *
+ * Only runs while an overlay is up. A capture is a full raster plus a
+ * multi-hundred-KB base64 string over IPC, and the renderer never paints it
+ * unless something is covering the native surface — polling for the life of the
+ * view would spend that every second, throughout a test run, for nothing.
+ */
 function startScreenshotCapture(
   window: BrowserWindow,
   key: number,
   entry: PreviewViewEntry,
 ): void {
+  if (entry.screenshotTimer !== null) return;
   const timer = setInterval(() => {
     void capturePreviewScreenshot(window, key, entry);
   }, SCREENSHOT_INTERVAL_MS);
@@ -175,11 +234,15 @@ function startScreenshotCapture(
   entry.screenshotTimer = timer;
 }
 
-function stopScreenshotCapture(entry: PreviewViewEntry): void {
+function pauseScreenshotCapture(entry: PreviewViewEntry): void {
   if (entry.screenshotTimer !== null) {
     clearInterval(entry.screenshotTimer);
     entry.screenshotTimer = null;
   }
+}
+
+function stopScreenshotCapture(entry: PreviewViewEntry): void {
+  pauseScreenshotCapture(entry);
   entry.latestScreenshotDataUrl = null;
 }
 
@@ -294,7 +357,9 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
   };
 
   entries.set(key, entry);
-  startScreenshotCapture(window, key, entry);
+  // The interval starts only once an overlay needs the fallback; the
+  // did-stop-loading capture above seeds the cache so the first frame the
+  // renderer paints isn't blank.
   return entry;
 }
 
@@ -364,7 +429,13 @@ export function showPreviewView(
   { url, bounds }: { url: string; bounds: PreviewViewBounds },
 ): void {
   if (!isSupportedPreviewUrl(url)) {
-    throw new Error(`Unsupported preview URL: ${url}`);
+    // The contract only validates z.string().url(), so schemes like file: reach
+    // here. This is an expected input rejection, not a product fault: a bare
+    // Error would be forwarded to sendTelemetryException by createTypedHandler.
+    throw new DyadError(
+      `Unsupported preview URL: ${url}`,
+      DyadErrorKind.Validation,
+    );
   }
 
   const key = resolveKey(window);
@@ -439,10 +510,18 @@ export function setPreviewViewOverlayActive(
   const entry = getEntry(window);
   if (!entry) return;
 
+  const key = resolveKey(window);
   entry.overlayActive = active;
   if (active) {
-    // Replay the cache in case the renderer subscribed after the last interval.
+    // Replay the cache so the fallback paints immediately, then keep it fresh
+    // for as long as the overlay covers the native surface.
     emitScreenshot(window, entry.latestScreenshotDataUrl);
+    if (key !== null) {
+      void capturePreviewScreenshot(window, key, entry);
+      startScreenshotCapture(window, key, entry);
+    }
+  } else {
+    pauseScreenshotCapture(entry);
   }
 
   try {
@@ -457,11 +536,12 @@ export function hidePreviewView(window: BrowserWindow): void {
   if (key === null) return;
 
   const entry = entries.get(key);
-  if (entry?.automationActive) {
-    // Destroying now would kill the page a running test is driving — for
-    // instance when the user opens the Tests tab to watch progress, which
-    // unmounts the preview component. Keep it alive but invisible; automation
-    // teardown destroys it if the renderer never asked for it back.
+  if (entry && isClaimedForAutomation(key, entry)) {
+    // Destroying now would kill the page a running test is driving — or is
+    // about to, while the run is still setting up — for instance when the user
+    // opens the Tests tab to watch progress, which unmounts the preview
+    // component. Keep it alive but invisible; automation teardown destroys it
+    // if the renderer never asked for it back.
     entry.hiddenDuringAutomation = true;
     try {
       entry.view.setVisible(false);
@@ -524,6 +604,7 @@ export interface PreviewViewStatus {
   exists: boolean;
   currentUrl: string | null;
   automationActive: boolean;
+  isLoading: boolean;
 }
 
 /**
@@ -541,23 +622,36 @@ function committedUrl(entry: PreviewViewEntry): string | null {
   }
 }
 
+function isLoading(entry: PreviewViewEntry): boolean {
+  try {
+    return entry.view.webContents.isLoading();
+  } catch {
+    return false;
+  }
+}
+
 export function getPreviewViewStatus(window: BrowserWindow): PreviewViewStatus {
   const entry = getEntry(window);
   return {
     exists: !!entry,
     currentUrl: entry ? committedUrl(entry) : null,
     automationActive: !!entry?.automationActive,
+    isLoading: entry ? isLoading(entry) : false,
   };
 }
 
 /**
- * Waits until this window's preview view has loaded `url`.
+ * Waits until this window's preview view has finished loading `url`.
  *
  * Matches on origin rather than the exact string: the isolated-test-database
  * path restarts the dev server before a run, which can churn the renderer's
  * URL (and trailing slashes differ between the two sides). Reads the committed
- * URL, so a slow cold start can't report ready before there is a page for the
- * run to attach to.
+ * URL and waits for loading to settle, so a cold start after an isolation
+ * restart can't report ready while the page is still coming up — the run would
+ * attach CDP to a half-built or error page and blame the user's app.
+ *
+ * Honors `signal` so a Stop during the wait ends the run promptly instead of
+ * sitting out the full timeout and then reporting a preview problem.
  */
 export async function waitForPreviewView(
   window: BrowserWindow,
@@ -565,17 +659,37 @@ export async function waitForPreviewView(
     url,
     timeoutMs = 15_000,
     pollMs = 250,
-  }: { url: string; timeoutMs?: number; pollMs?: number },
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+    signal,
+  }: {
+    url: string;
+    timeoutMs?: number;
+    pollMs?: number;
+    signal?: AbortSignal;
+  },
+): Promise<{ ok: true } | { ok: false; reason: string; aborted?: boolean }> {
   const deadline = Date.now() + timeoutMs;
 
   for (;;) {
+    if (signal?.aborted) {
+      return { ok: false, reason: "the run was stopped", aborted: true };
+    }
+
     const status = getPreviewViewStatus(window);
-    if (status.currentUrl && sameOrigin(status.currentUrl, url)) {
+    if (
+      status.currentUrl &&
+      sameOrigin(status.currentUrl, url) &&
+      !status.isLoading
+    ) {
       return { ok: true };
     }
 
     if (Date.now() >= deadline) {
+      if (status.currentUrl && sameOrigin(status.currentUrl, url)) {
+        return {
+          ok: false,
+          reason: `it is still loading ${status.currentUrl}`,
+        };
+      }
       return {
         ok: false,
         reason: status.exists
@@ -610,7 +724,9 @@ export function beginPreviewAutomation(
   if (!entry) return null;
 
   entry.automationActive = true;
-  entry.hiddenDuringAutomation = false;
+  // `hiddenDuringAutomation` is deliberately left as it is: the reservation
+  // taken before setup may already have absorbed a hide, and clearing it here
+  // would strand an invisible view that teardown then declines to destroy.
   entry.onAutomationViewDestroyed = onViewDestroyed ?? null;
 
   let activeEntry = entry;
@@ -695,4 +811,5 @@ export function resetPreviewViewsForTesting(): void {
     stopScreenshotCapture(entry);
   }
   entries.clear();
+  automationReservations.clear();
 }

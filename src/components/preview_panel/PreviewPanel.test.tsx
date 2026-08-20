@@ -24,12 +24,12 @@ const mocks = vi.hoisted(() => ({
   previewReloadToken: 0,
   recorderMountCount: 0,
   reloadRecorderPreview: null as (() => void) | null,
-  previewNativeViewAtom: Symbol("previewNativeViewAtom"),
-  previewNativeView: false,
+  previewNativeViewAppIdAtom: Symbol("previewNativeViewAppIdAtom"),
+  previewNativeViewAppId: null as number | null,
   currentTestRunStateAtom: Symbol("currentTestRunStateAtom"),
   testRunPhase: "idle" as "idle" | "setup" | "running",
   setPreviewMode: vi.fn(),
-  setPreviewNativeView: vi.fn(),
+  setPreviewNativeViewAppId: vi.fn(),
   refetchNodeStatus: vi.fn(),
   reloadEnvPath: vi.fn(),
   runApp: vi.fn(),
@@ -53,8 +53,8 @@ vi.mock("jotai", async (importOriginal) => ({
     if (atom === mocks.selectedAppIdAtom) {
       return mocks.selectedAppId;
     }
-    if (atom === mocks.previewNativeViewAtom) {
-      return mocks.previewNativeView;
+    if (atom === mocks.previewNativeViewAppIdAtom) {
+      return mocks.previewNativeViewAppId;
     }
     if (atom === mocks.currentTestRunStateAtom) {
       return { phase: mocks.testRunPhase };
@@ -65,8 +65,8 @@ vi.mock("jotai", async (importOriginal) => ({
     if (atom === mocks.previewModeAtom) {
       return mocks.setPreviewMode;
     }
-    if (atom === mocks.previewNativeViewAtom) {
-      return mocks.setPreviewNativeView;
+    if (atom === mocks.previewNativeViewAppIdAtom) {
+      return mocks.setPreviewNativeViewAppId;
     }
     return vi.fn();
   },
@@ -78,7 +78,7 @@ vi.mock("../../atoms/appAtoms", () => ({
 }));
 
 vi.mock("@/atoms/previewAtoms", () => ({
-  previewNativeViewAtom: mocks.previewNativeViewAtom,
+  previewNativeViewAppIdAtom: mocks.previewNativeViewAppIdAtom,
 }));
 
 vi.mock("@/atoms/testRuntimeAtoms", () => ({
@@ -284,10 +284,10 @@ describe("PreviewPanel", () => {
     mocks.previewIframeMounted.mockReset();
     mocks.previewIframeUnmounted.mockReset();
     mocks.previewMode = "preview";
-    mocks.previewNativeView = false;
+    mocks.previewNativeViewAppId = null;
     mocks.testRunPhase = "idle";
     mocks.setPreviewMode.mockReset();
-    mocks.setPreviewNativeView.mockReset();
+    mocks.setPreviewNativeViewAppId.mockReset();
     mocks.selectedAppId = 1;
     mocks.selectAppForPreview.mockReset();
     mocks.settings = {
@@ -348,14 +348,14 @@ describe("PreviewPanel", () => {
   });
 
   it("renders the native view while a test run drives it", () => {
-    mocks.previewNativeView = true;
+    mocks.previewNativeViewAppId = 1;
     mocks.testRunPhase = "running";
 
     render(<PreviewPanel />);
 
     expect(screen.getByText("Preview native view")).toBeTruthy();
     expect(screen.queryByText("Preview iframe")).toBeNull();
-    expect(mocks.setPreviewNativeView).not.toHaveBeenCalled();
+    expect(mocks.setPreviewNativeViewAppId).not.toHaveBeenCalled();
   });
 
   it("keeps the iframe when no test run has requested the native view", () => {
@@ -366,26 +366,26 @@ describe("PreviewPanel", () => {
   });
 
   it("closes the native view and shows the Tests panel once the run finishes", () => {
-    mocks.previewNativeView = true;
+    mocks.previewNativeViewAppId = 1;
     mocks.testRunPhase = "running";
 
     const { rerender } = render(<PreviewPanel />);
-    expect(mocks.setPreviewNativeView).not.toHaveBeenCalled();
+    expect(mocks.setPreviewNativeViewAppId).not.toHaveBeenCalled();
 
     mocks.testRunPhase = "idle";
     rerender(<PreviewPanel />);
 
-    expect(mocks.setPreviewNativeView).toHaveBeenCalledWith(false);
+    expect(mocks.setPreviewNativeViewAppId).toHaveBeenCalledWith(null);
     expect(mocks.setPreviewMode).toHaveBeenCalledWith("tests");
   });
 
   it("closes the native view without stealing the user's place when they left the preview", () => {
-    mocks.previewNativeView = true;
+    mocks.previewNativeViewAppId = 1;
     mocks.previewMode = "code";
 
     render(<PreviewPanel />);
 
-    expect(mocks.setPreviewNativeView).toHaveBeenCalledWith(false);
+    expect(mocks.setPreviewNativeViewAppId).toHaveBeenCalledWith(null);
     expect(mocks.setPreviewMode).not.toHaveBeenCalled();
   });
 
@@ -396,7 +396,7 @@ describe("PreviewPanel", () => {
     mocks.testRunPhase = "idle";
     rerender(<PreviewPanel />);
 
-    expect(mocks.setPreviewNativeView).not.toHaveBeenCalled();
+    expect(mocks.setPreviewNativeViewAppId).not.toHaveBeenCalled();
     expect(mocks.setPreviewMode).not.toHaveBeenCalled();
   });
 
@@ -404,7 +404,7 @@ describe("PreviewPanel", () => {
     mocks.settings = {
       disablePreviewNodeAutoInstall: true,
     };
-    mocks.previewNativeView = true;
+    mocks.previewNativeViewAppId = 1;
     mocks.testRunPhase = "running";
     mocks.nodeVersion = "";
 

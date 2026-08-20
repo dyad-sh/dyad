@@ -94,7 +94,10 @@ function readPortFile(filePath: string): number | null {
   try {
     const firstLine = fs.readFileSync(filePath, "utf-8").split("\n")[0]?.trim();
     const port = Number(firstLine);
-    return Number.isInteger(port) && port > 0 ? port : null;
+    // A truncated or stale file can hold something that parses as a number but
+    // isn't a bindable port. An out-of-range value would make `httpEndpoint`
+    // unusable while still reporting CDP as ready.
+    return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
   } catch {
     return null;
   }
@@ -109,11 +112,13 @@ export async function resolveRemoteDebuggingEndpoint(): Promise<RemoteDebuggingE
   if (!switchApplied) {
     return null;
   }
-  if (failedAt !== null && Date.now() - failedAt < FAILURE_RETRY_AFTER_MS) {
-    return null;
-  }
+  // Checked before the backoff: an overlapping poll may have cached a late port
+  // after this one gave up, and a resolved endpoint always beats the backoff.
   if (cachedEndpoint) {
     return cachedEndpoint;
+  }
+  if (failedAt !== null && Date.now() - failedAt < FAILURE_RETRY_AFTER_MS) {
+    return null;
   }
 
   const deadline = Date.now() + PORT_POLL_TIMEOUT_MS;

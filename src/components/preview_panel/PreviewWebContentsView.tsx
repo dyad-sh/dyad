@@ -14,7 +14,7 @@ import {
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   previewNativeOverlayActiveAtom,
-  previewNativeViewAtom,
+  previewNativeViewAppIdAtom,
 } from "@/atoms/previewAtoms";
 import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 import {
@@ -27,7 +27,6 @@ import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import type { PreviewViewNavigationState } from "@/ipc/types";
-import { showError } from "@/lib/toast";
 import { formatPreviewAddressPath } from "./previewAddressPath";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
@@ -69,7 +68,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const { settings } = useSettings();
-  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const isNativeOverlayActive = useAtomValue(previewNativeOverlayActiveAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   // A preview-driven test run keeps this view alive even while the user browses
@@ -77,6 +76,10 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const isTestRunActive =
     useAtomValue(currentTestRunStateAtom).phase !== "idle";
   const { restartApp } = useRunApp();
+  // Errors raised while this view is up would otherwise be toasted underneath
+  // the native surface. The overlay guard steps the view aside for toasts, but
+  // a failure that concerns *this* panel belongs in the panel.
+  const [panelError, setPanelError] = useState<string | null>(null);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const lastSentBoundsRef = useRef<PreviewViewBounds | null>(null);
@@ -130,8 +133,20 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   // Subscribe before the show effect runs so the replayed navigation state that
   // `show` emits for an already-loaded view is not missed.
   useEffect(() => {
-    const unsubscribeNavigation =
-      ipc.events.previewView.onNavigationState(setNavState);
+    const unsubscribeNavigation = ipc.events.previewView.onNavigationState(
+      (state) => {
+        setNavState(state);
+        // A committed load of a different URL means the failure the banner is
+        // reporting is no longer what's on screen — Back and Forward would
+        // otherwise leave it up over a page that loaded fine. The failed load's
+        // own stopped-loading event carries the same URL, so it keeps it.
+        setLoadFailure((failure) =>
+          failure && !state.isLoading && state.url !== failure.url
+            ? null
+            : failure,
+        );
+      },
+    );
     const unsubscribeLoadFailed = ipc.events.previewView.onLoadFailed(
       (failure) => setLoadFailure(failure),
     );
@@ -153,12 +168,13 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
     if (!isViewActive || !appUrl) return;
 
     setLoadFailure(null);
+    setPanelError(null);
     const bounds = measureBounds();
     if (!bounds) return;
 
     lastSentBoundsRef.current = bounds;
     void ipc.previewView.show({ url: appUrl, bounds }).catch((error) => {
-      showError(
+      setPanelError(
         error instanceof Error
           ? error.message
           : "Failed to open the native preview.",
@@ -212,6 +228,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
 
   const openPreviewInBrowser = async () => {
     try {
+      setPanelError(null);
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
@@ -220,7 +237,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
       });
       await ipc.system.openExternalUrl(url);
     } catch (error) {
-      showError(
+      setPanelError(
         error instanceof Error
           ? error.message
           : "Failed to open the preview in a browser.",
@@ -231,6 +248,13 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
     : !originalUrl;
+
+  // The main process refuses navigation and reloads while a run drives the
+  // page, so leaving these enabled makes them read as broken. Restart isn't
+  // guarded there at all: it would pull the dev server out from under
+  // Playwright and fail the run with errors that look like the user's app.
+  const lockedByTestRun = isTestRunActive;
+  const lockedTooltip = "Locked while tests are driving this page";
 
   const currentPath = navState?.url
     ? formatPreviewAddressPath(navState.url)
@@ -247,7 +271,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
             render={
               <button
                 onClick={() => void ipc.previewView.goBack()}
-                disabled={!navState?.canGoBack}
+                disabled={lockedByTestRun || !navState?.canGoBack}
                 aria-label="Go back"
                 data-testid="preview-native-back-button"
                 className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
@@ -256,7 +280,9 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <ArrowLeft size={16} />
           </TooltipTrigger>
-          <TooltipContent>Go back</TooltipContent>
+          <TooltipContent>
+            {lockedByTestRun ? lockedTooltip : "Go back"}
+          </TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -264,7 +290,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
             render={
               <button
                 onClick={() => void ipc.previewView.goForward()}
-                disabled={!navState?.canGoForward}
+                disabled={lockedByTestRun || !navState?.canGoForward}
                 aria-label="Go forward"
                 data-testid="preview-native-forward-button"
                 className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
@@ -273,7 +299,9 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <ArrowRight size={16} />
           </TooltipTrigger>
-          <TooltipContent>Go forward</TooltipContent>
+          <TooltipContent>
+            {lockedByTestRun ? lockedTooltip : "Go forward"}
+          </TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -284,6 +312,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
                   setLoadFailure(null);
                   void ipc.previewView.reload();
                 }}
+                disabled={lockedByTestRun}
                 aria-label="Reload preview"
                 data-testid="preview-native-reload-button"
                 className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
@@ -292,7 +321,9 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <RefreshCw size={16} />
           </TooltipTrigger>
-          <TooltipContent>Reload</TooltipContent>
+          <TooltipContent>
+            {lockedByTestRun ? lockedTooltip : "Reload"}
+          </TooltipContent>
         </Tooltip>
 
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md border border-border px-2 py-1">
@@ -346,6 +377,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
                   onClick={() =>
                     runAppLifecycleInBackground("restart", restartApp())
                   }
+                  disabled={lockedByTestRun}
                   aria-label={isCloudMode ? "Restart Cloud Sandbox" : "Restart"}
                   data-testid="preview-native-restart-button"
                   className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
@@ -355,7 +387,11 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
               <Power size={16} />
             </TooltipTrigger>
             <TooltipContent>
-              {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              {lockedByTestRun
+                ? "Locked while tests are running — restarting the app would fail the run"
+                : isCloudMode
+                  ? "Restart Cloud Sandbox"
+                  : "Restart App"}
             </TooltipContent>
           </Tooltip>
 
@@ -363,7 +399,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
             <TooltipTrigger
               render={
                 <button
-                  onClick={() => setPreviewNativeView(false)}
+                  onClick={() => setPreviewNativeViewAppId(null)}
                   aria-label="Exit the test view"
                   data-testid="preview-native-exit-button"
                   className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
@@ -392,6 +428,22 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           isAppUrlReady={!!appUrl}
           hasStartupError={false}
         />
+        {panelError && (
+          <div
+            className="flex shrink-0 items-center gap-2 border-b bg-red-50 px-3 py-2 text-xs text-red-900 dark:bg-red-950/60 dark:text-red-200"
+            data-testid="preview-native-panel-error"
+          >
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="min-w-0 flex-1">{panelError}</span>
+            <button
+              className="shrink-0 rounded border border-red-300 px-2 py-0.5 font-medium hover:bg-red-100 dark:border-red-700 dark:hover:bg-red-900"
+              onClick={() => setPanelError(null)}
+              aria-label="Dismiss the preview error"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {loadFailure && (
           <div
             className="flex shrink-0 items-center gap-2 border-b bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
@@ -402,7 +454,11 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
               Failed to load {loadFailure.url}: {loadFailure.errorDescription}
             </span>
             <button
-              className="shrink-0 rounded border border-amber-300 px-2 py-0.5 font-medium hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900"
+              className="shrink-0 rounded border border-amber-300 px-2 py-0.5 font-medium hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:hover:bg-amber-900"
+              // Reloading is refused while a run drives the page, so offering
+              // Retry would clear the banner and change nothing.
+              disabled={lockedByTestRun}
+              title={lockedByTestRun ? lockedTooltip : undefined}
               onClick={() => {
                 setLoadFailure(null);
                 void ipc.previewView.reload();

@@ -1,47 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  chatPanelHiddenAtom: Symbol("chatPanelHiddenAtom"),
-  previewModeAtom: Symbol("previewModeAtom"),
-  previewNativeOverlayAtom: Symbol("previewNativeOverlayAtom"),
-  previewNativeViewAtom: Symbol("previewNativeViewAtom"),
-  previewOpenAtom: Symbol("previewOpenAtom"),
-  selectedAppIdAtom: Symbol("selectedAppIdAtom"),
-  setNativeOverlayActive: vi.fn(),
   setOverlayActive: vi.fn(),
-}));
-
-vi.mock("jotai", () => ({
-  useAtom: (atom: symbol) => {
-    if (atom === h.previewModeAtom) return ["preview", vi.fn()];
-    if (atom === h.previewOpenAtom) return [true, vi.fn()];
-    if (atom === h.chatPanelHiddenAtom) return [false, vi.fn()];
-    return [undefined, vi.fn()];
-  },
-  useAtomValue: (atom: symbol) => {
-    if (atom === h.selectedAppIdAtom) return 1;
-    if (atom === h.previewNativeViewAtom) return true;
-    return undefined;
-  },
-  useSetAtom: (atom: symbol) =>
-    atom === h.previewNativeOverlayAtom ? h.setNativeOverlayActive : vi.fn(),
-}));
-
-vi.mock("@/atoms/appAtoms", () => ({
-  previewModeAtom: h.previewModeAtom,
-  selectedAppIdAtom: h.selectedAppIdAtom,
-}));
-
-vi.mock("@/atoms/viewAtoms", () => ({
-  isChatPanelHiddenAtom: h.chatPanelHiddenAtom,
-  isPreviewOpenAtom: h.previewOpenAtom,
-}));
-
-vi.mock("@/atoms/previewAtoms", () => ({
-  previewNativeOverlayActiveAtom: h.previewNativeOverlayAtom,
-  previewNativeViewAtom: h.previewNativeViewAtom,
 }));
 
 vi.mock("@/hooks/useCheckProblems", () => ({
@@ -135,10 +98,38 @@ vi.mock("@/components/ui/dropdown-menu", async () => {
   };
 });
 
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  previewNativeOverlayActiveAtom,
+  previewNativeViewAppIdAtom,
+} from "@/atoms/previewAtoms";
+import { isChatPanelHiddenAtom, isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { PreviewToolbar } from "./PreviewToolbar";
 
+// Real atoms rather than symbol stand-ins: the overlay request now goes through
+// a shared reason set, and mocking jotai away would leave that aggregation —
+// the part that decides whether the native view hides — untested.
+function renderToolbar({
+  nativeViewAppId,
+}: {
+  nativeViewAppId: number | null;
+}) {
+  const store = createStore();
+  store.set(selectedAppIdAtom, 1);
+  store.set(previewModeAtom, "preview");
+  store.set(isPreviewOpenAtom, true);
+  store.set(isChatPanelHiddenAtom, false);
+  store.set(previewNativeViewAppIdAtom, nativeViewAppId);
+
+  render(
+    <Provider store={store}>
+      <PreviewToolbar />
+    </Provider>,
+  );
+  return store;
+}
+
 beforeEach(() => {
-  h.setNativeOverlayActive.mockReset();
   h.setOverlayActive.mockReset();
   vi.stubGlobal(
     "ResizeObserver",
@@ -151,15 +142,26 @@ beforeEach(() => {
 
 describe("PreviewToolbar native preview overlay", () => {
   it("hides the native surface before opening overflow UI and restores it on close", () => {
-    render(<PreviewToolbar />);
+    const store = renderToolbar({ nativeViewAppId: 1 });
+    // jsdom measures every tab at 0 width against 0 available width, which the
+    // inter-tab gaps push over budget — so the overflow button really renders.
     const overflow = screen.getByTestId("preview-mode-overflow-button");
 
     fireEvent.click(overflow);
-    expect(h.setNativeOverlayActive).toHaveBeenLastCalledWith(true);
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(true);
     expect(h.setOverlayActive).toHaveBeenLastCalledWith({ active: true });
 
     fireEvent.click(overflow);
-    expect(h.setNativeOverlayActive).toHaveBeenLastCalledWith(false);
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
     expect(h.setOverlayActive).toHaveBeenLastCalledWith({ active: false });
+  });
+
+  it("leaves the iframe preview alone", () => {
+    const store = renderToolbar({ nativeViewAppId: null });
+
+    fireEvent.click(screen.getByTestId("preview-mode-overflow-button"));
+
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
+    expect(h.setOverlayActive).not.toHaveBeenCalled();
   });
 });

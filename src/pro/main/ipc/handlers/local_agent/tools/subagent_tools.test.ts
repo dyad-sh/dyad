@@ -172,6 +172,42 @@ describe("spawn_agent schema", () => {
     );
   });
 
+  it("unregisters an Implementer it cancelled, so the join barrier ignores it", async () => {
+    subagentManagerMocks.spawnModelSubagent.mockResolvedValueOnce(
+      "implementer-1",
+    );
+    const waitError = new Error("Timed out waiting for sub-agents to finish.");
+    subagentManagerMocks.waitForSubagents.mockRejectedValueOnce(waitError);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      onXmlComplete: vi.fn(),
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: [],
+    } as unknown as AgentContext;
+
+    await expect(
+      spawnAgentTool.execute(
+        {
+          persona: "implementer",
+          task_name: "Fix the activity feed",
+          assignment: "Repair the activity feed query",
+          scope: ["src/app"],
+        },
+        ctx,
+      ),
+    ).rejects.toBe(waitError);
+
+    expect(subagentManagerMocks.cancelSubagent).toHaveBeenCalledWith(
+      7,
+      "implementer-1",
+    );
+    // The thread is now permanently "cancelled". Leaving it registered would
+    // make waitForSubagentsAndBeginFinalization fail the entire turn at the end,
+    // even though the model was told about the failure and could recover.
+    expect(ctx.spawnedImplementerThreadIds).toEqual([]);
+  });
+
   it("hides advanced tools by default and when explicitly disabled", () => {
     for (const canUseAdvancedSubagentTools of [undefined, false]) {
       const ctx = {

@@ -222,6 +222,18 @@ export const spawnAgentTool: ToolDefinition<
       );
     } catch (error) {
       await cancelSubagent(ctx.chatId, threadId).catch(() => {});
+      // This tool has now taken responsibility for the thread: it cancelled it
+      // and is about to report the failure to the model, which can retry or work
+      // around it. Leaving the id in spawnedImplementerThreadIds would hand the
+      // end-of-turn join barrier a thread that is permanently "cancelled", and
+      // that barrier treats any non-completed Implementer as fatal — so a
+      // transient wait failure here would kill the whole turn at the very end,
+      // discarding milestones the agent had already finished by other means.
+      const implementers = ctx.spawnedImplementerThreadIds;
+      if (implementers) {
+        const at = implementers.indexOf(threadId);
+        if (at >= 0) implementers.splice(at, 1);
+      }
       throw error;
     }
     if (args.persona === "explorer") {

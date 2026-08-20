@@ -8,8 +8,12 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 import fetch from "node-fetch";
+import { withLock } from "../utils/lock_utils";
 
 const logger = log.scope("free_agent_quota_handlers");
+const FREE_AGENT_QUOTA_ADMISSION_LOCK = "free-agent-quota-admission";
+const pendingQuotaReservations = new Set<number>();
+let nextQuotaReservationId = 1;
 
 /** Timeout for server time fetch in milliseconds */
 const SERVER_TIME_TIMEOUT_MS = 5000;
@@ -63,6 +67,61 @@ async function getServerTime(): Promise<number> {
 }
 
 export { FREE_AGENT_QUOTA_LIMIT };
+
+export type FreeAgentQuotaReservationResult =
+  | { kind: "reserved"; reservationId: number }
+  | {
+      kind: "quota-exceeded";
+      quotaStatus: Awaited<ReturnType<typeof getFreeAgentQuotaStatus>>;
+    };
+
+/**
+ * Reserves one app-wide Basic Agent quota slot before a turn mutates durable
+ * chat or attachment state. Pending reservations count alongside persisted
+ * quota messages so different chats and windows cannot claim the same slot.
+ */
+export function reserveFreeAgentQuotaSlot(): Promise<FreeAgentQuotaReservationResult> {
+  return withLock(FREE_AGENT_QUOTA_ADMISSION_LOCK, async () => {
+    const quotaStatus = await getFreeAgentQuotaStatus();
+    const messagesUsed =
+      quotaStatus.messagesUsed + pendingQuotaReservations.size;
+    if (messagesUsed >= quotaStatus.messagesLimit) {
+      return {
+        kind: "quota-exceeded",
+        quotaStatus: {
+          ...quotaStatus,
+          messagesUsed,
+          isQuotaExceeded: true,
+        },
+      };
+    }
+
+    const reservationId = nextQuotaReservationId++;
+    pendingQuotaReservations.add(reservationId);
+    return { kind: "reserved", reservationId };
+  });
+}
+
+/** Converts a pending slot into the accepted user message's durable mark. */
+export function commitFreeAgentQuotaSlot(
+  reservationId: number,
+  messageId: number,
+): Promise<void> {
+  return withLock(FREE_AGENT_QUOTA_ADMISSION_LOCK, async () => {
+    if (!pendingQuotaReservations.has(reservationId)) return;
+    await markMessageAsUsingFreeAgentQuota(messageId);
+    pendingQuotaReservations.delete(reservationId);
+  });
+}
+
+/** Releases a pending slot when admission or preparation does not complete. */
+export function releaseFreeAgentQuotaSlot(
+  reservationId: number,
+): Promise<void> {
+  return withLock(FREE_AGENT_QUOTA_ADMISSION_LOCK, async () => {
+    pendingQuotaReservations.delete(reservationId);
+  });
+}
 
 /**
  * Duration of the quota window in milliseconds (23 hours).

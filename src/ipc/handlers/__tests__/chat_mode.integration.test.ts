@@ -14,6 +14,8 @@
 //     the payload then omits the codebase-priming user turn and nothing is
 //     committed.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import { screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
@@ -244,10 +246,22 @@ describe("chat mode (integration)", () => {
     });
 
     try {
+      const mediaDir = path.join(harness.appDir, ".dyad", "media");
+      const mediaFilesBefore = await fs
+        .readdir(mediaDir)
+        .catch((): string[] => []);
       const result = await harness.streamChat("must not be accepted", {
         chatId: quotaChatId,
         requestedChatMode: "local-agent",
         userInputRequestId: "exhausted-basic-agent",
+        attachments: [
+          {
+            name: "rejected-quota-attachment.txt",
+            type: "text/plain",
+            data: "data:text/plain;base64,bXVzdCBub3QgYmUgcGVyc2lzdGVk",
+            attachmentType: "chat-context",
+          },
+        ],
       });
 
       const errorEvents = result.eventsFor("chat:response:error");
@@ -277,6 +291,9 @@ describe("chat mode (integration)", () => {
           ({ role, content }) => role === "assistant" && content === "",
         ),
       ).toBe(false);
+      expect(await fs.readdir(mediaDir).catch((): string[] => [])).toEqual(
+        mediaFilesBefore,
+      );
 
       const replay = await harness.streamChat("quota message 1", {
         chatId: quotaChatId,

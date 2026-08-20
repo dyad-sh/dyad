@@ -13,7 +13,7 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("@/hooks/useFreeAgentQuota", () => ({
   useFreeAgentQuota: () => ({
     messagesLimit: 10,
-    resetTime: new Date("2026-08-21T07:00:00.000Z"),
+    resetTime: null,
   }),
 }));
 
@@ -39,7 +39,7 @@ describe("ChatErrorBox Basic Agent quota error", () => {
 
     render(
       <ChatErrorBox
-        error='{"type":"FREE_AGENT_QUOTA_EXCEEDED"}'
+        error='{"type":"FREE_AGENT_QUOTA_EXCEEDED","resetTime":1787295600000}'
         isDyadProEnabled={false}
         onDismiss={onDismiss}
         onSwitchToBuildMode={onSwitchToBuildMode}
@@ -64,7 +64,7 @@ describe("ChatErrorBox Basic Agent quota error", () => {
   it("explains that Dyad Free must be changed before using Build", () => {
     render(
       <ChatErrorBox
-        error='{"type":"FREE_AGENT_QUOTA_EXCEEDED"}'
+        error='{"type":"FREE_AGENT_QUOTA_EXCEEDED","resetTime":1787295600000}'
         isDyadProEnabled={false}
         onDismiss={vi.fn()}
       />,

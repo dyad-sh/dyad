@@ -251,8 +251,8 @@ export function _Problems() {
     `${p.file}:${p.line}:${p.column}:${p.code}`;
   const { streamMessage } = useStreamChat();
   const [selectedChatId] = useAtom(selectedChatIdAtom);
-  const { effectiveMode } = useChatMode(selectedChatId);
-  const isLocalAgentMode = effectiveMode === "local-agent";
+  const { selectedMode } = useChatMode(selectedChatId);
+  const isLocalAgentMode = selectedMode === "local-agent";
 
   // Whenever the problems pane is shown or the report updates, select all problems
   useEffect(() => {

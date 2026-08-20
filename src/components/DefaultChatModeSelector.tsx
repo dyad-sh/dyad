@@ -41,9 +41,6 @@ export function DefaultChatModeSelector() {
 
   const isProEnabled = isDyadProEnabled(settings);
   const isDyadFreeSelected = isFreeProModel(settings.selectedModel);
-  const freeAgentQuotaAvailable = quotaStatus
-    ? !quotaStatus.isQuotaExceeded
-    : undefined;
   const effectiveDefault = getEffectiveDefaultChatMode(settings, envVars);
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
@@ -86,10 +83,7 @@ export function DefaultChatModeSelector() {
           <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem
-            value="local-agent"
-            disabled={!isProEnabled && freeAgentQuotaAvailable === false}
-          >
+          <SelectItem value="local-agent">
             <div className="flex flex-col items-start">
               <span className="font-medium">
                 {isProEnabled ? "Agent" : "Basic Agent"}
@@ -97,7 +91,9 @@ export function DefaultChatModeSelector() {
               <span className="text-xs text-muted-foreground">
                 {isProEnabled
                   ? "Better at bigger tasks"
-                  : "Free tier (10 messages/day)"}
+                  : quotaStatus?.isQuotaExceeded
+                    ? "Daily limit reached; preference applies after reset"
+                    : "Free tier (10 messages/day)"}
               </span>
             </div>
           </SelectItem>

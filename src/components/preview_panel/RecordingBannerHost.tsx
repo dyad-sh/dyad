@@ -51,8 +51,8 @@ function ActiveRecordingBanner({
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
-  const { effectiveMode } = useChatMode(selectedChatId);
-  const isAgentMode = effectiveMode === "local-agent";
+  const { selectedMode } = useChatMode(selectedChatId);
+  const isAgentMode = selectedMode === "local-agent";
   // True while the Agent-mode confirmation for the assertion pass is open.
   const [assertionsNeedAgentMode, setAssertionsNeedAgentMode] = useState(false);
 

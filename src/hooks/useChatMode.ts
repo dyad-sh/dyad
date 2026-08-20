@@ -55,8 +55,6 @@ export function useChatMode(chatId: number | null | undefined) {
       ? (settings?.selectedChatMode ?? effectiveDefaultMode)
       : effectiveDefaultMode;
 
-  const effectiveMode = selectedMode;
-
   const updateChatSelectionMutation = useMutation<
     void,
     Error,
@@ -160,7 +158,6 @@ export function useChatMode(chatId: number | null | undefined) {
     storedChatMode,
     selectedMode,
     selectedModel,
-    effectiveMode,
     effectiveDefaultMode,
     setChatMode,
     setChatModelSelection,

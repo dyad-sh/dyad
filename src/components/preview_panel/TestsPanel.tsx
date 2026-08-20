@@ -647,8 +647,8 @@ export function TestsPanel() {
     useSetTestingEnabled();
   const { deleteTestAsync, isDeleting } = useDeleteAppTest();
   const { streamMessage, isStreaming } = useStreamChat();
-  const { effectiveMode } = useChatMode(chatId);
-  const isAgentMode = effectiveMode === "local-agent";
+  const { selectedMode } = useChatMode(chatId);
+  const isAgentMode = selectedMode === "local-agent";
   const queryClient = useQueryClient();
 
   // "Generate test" / "Fix with AI" run in Agent mode. When the current chat is

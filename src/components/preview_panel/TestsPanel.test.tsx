@@ -101,7 +101,7 @@ vi.mock("@/chat_stream/ChatStreamProvider", () => ({
 }));
 
 vi.mock("@/hooks/useChatMode", () => ({
-  useChatMode: () => ({ effectiveMode: "local-agent" }),
+  useChatMode: () => ({ selectedMode: "local-agent" }),
 }));
 
 vi.mock("./MigrateTestsBanner", () => ({

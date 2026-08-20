@@ -148,7 +148,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     chat: activeChat,
     selectedMode: chatMode,
-    effectiveMode,
+    selectedMode,
     storedChatMode,
     selectedModel,
     isLoading: isChatModeLoading,
@@ -283,7 +283,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = messages.at(-1);
   const disableSendButton =
-    effectiveMode !== "local-agent" &&
+    selectedMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -830,8 +830,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingToolConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            effectiveMode !== "ask" &&
-            effectiveMode !== "local-agent" && (
+            selectedMode !== "ask" &&
+            selectedMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}
@@ -896,7 +896,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {/* Apps referenced with @app: that stay readable for this chat */}
           <ReferencedAppsBar
             chatId={chatId}
-            isEnabled={isLocalAgentBackedMode(effectiveMode)}
+            isEnabled={isLocalAgentBackedMode(selectedMode)}
             isStreaming={isStreaming}
           />
 

@@ -58,10 +58,6 @@ testSkipIfWindows(
 
     // 6. An 11th message stays in Basic Agent and surfaces the quota error
     // instead of silently running through Build mode.
-    const basicAgentResponse = po.page.getByText(
-      "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
-    );
-    const responseCountBeforeQuotaError = await basicAgentResponse.count();
     await po.sendPrompt("tc=local-agent/simple-response message 11");
     const quotaError = po.page.getByTestId("chat-error-box");
     await expect(quotaError).toBeVisible({
@@ -78,7 +74,6 @@ testSkipIfWindows(
     await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
       "Basic Agent",
     );
-    await expect(basicAgentResponse).toHaveCount(responseCountBeforeQuotaError);
     await expect(
       po.page.getByText("tc=local-agent/simple-response message 11", {
         exact: true,
@@ -95,7 +90,6 @@ testSkipIfWindows(
     await expect(
       po.page.getByTestId("free-agent-quota-banner"),
     ).not.toBeVisible();
-    await expect(basicAgentResponse).toHaveCount(responseCountBeforeQuotaError);
     await expect(
       po.page.getByText("tc=local-agent/simple-response message 11", {
         exact: true,

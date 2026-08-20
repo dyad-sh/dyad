@@ -263,8 +263,8 @@ function isExcludedSnapshotRelativePath(
         ? normalized.slice(normalizedAppPath.length + 1)
         : null
     : normalized;
-  const appSegments = pathWithinApp?.split("/") ?? [];
-  return appSegments.some((segment) => SNAPSHOT_EXCLUDED_NAMES.has(segment));
+  const appRootSegment = pathWithinApp?.split("/", 1)[0];
+  return Boolean(appRootSegment && SNAPSHOT_EXCLUDED_NAMES.has(appRootSegment));
 }
 
 export function parseWorkspaceOverlayPaths(

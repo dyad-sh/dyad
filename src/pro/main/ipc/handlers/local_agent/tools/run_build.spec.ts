@@ -264,8 +264,11 @@ describe("run_build", () => {
         fs.lstat(path.join(snapshot.path, "new", "node_modules")),
       ).rejects.toMatchObject({ code: "ENOENT" });
       await expect(
-        fs.lstat(path.join(snapshot.path, "new", "dist")),
-      ).rejects.toMatchObject({ code: "ENOENT" });
+        fs.readFile(
+          path.join(snapshot.path, "new", "dist", "live.txt"),
+          "utf8",
+        ),
+      ).resolves.toBe("live\n");
       await expect(
         fs.lstat(path.join(snapshot.worktreePath, ".dyad-build-snapshot")),
       ).rejects.toMatchObject({ code: "ENOENT" });

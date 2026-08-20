@@ -89,10 +89,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   overlay repository-wide changes so monorepo configuration and sibling
   packages match the live workspace.
 - Apply overlay exclusions at the same path depth on every backend. Exclude
-  `node_modules` anywhere in the repository and generated output roots under
-  the target app; never overlay live dependency trees or build output. Enforce
+  `node_modules` anywhere in the repository and known generated output roots
+  directly under the target app; never overlay live dependency trees or root
+  build output. Do not exclude every nested directory with a common output name
+  because paths such as `app/out/page.tsx` can be application source. Enforce
   these exclusions during recursive traversal too: Git can report an untracked
-  parent while ignored dependency/output directories sit beneath it.
+  parent while ignored dependency or root-output directories sit beneath it.
 - An isolated build must exclude the live app's `node_modules` and install a
   clean dependency tree inside the snapshot with the package manager selected
   from the live app's existing signals. Use the lockfile's frozen/CI mode when

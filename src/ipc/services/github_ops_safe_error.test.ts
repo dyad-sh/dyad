@@ -64,6 +64,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "fatal: Unable to create '[redacted path]'",
     ],
     [
+      "fatal: Unable to create '/tmp/Clients' Work/.git/index.lock'",
+      "fatal: Unable to create '[redacted path]'",
+    ],
+    [
       "remote: error: File '/tmp/build/a.bin' is 124 MB; see 'https://gh.io/lfs'",
       "remote: error: File '[redacted path]' is 124 MB; see 'https://gh.io/lfs'",
     ],
@@ -107,23 +111,23 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       "fatal: unable to create /Users/John Smith/dyad-apps/demo/.git/index.lock",
-      "fatal: unable to create [redacted path]",
+      "fatal: unable to create [redacted path] … [path remainder redacted]",
     ],
     [
       String.raw`fatal: unable to create C:\Users\John Smith\dyad-apps\demo\.git\index.lock`,
-      "fatal: unable to create [redacted path]",
+      "fatal: unable to create [redacted path] … [path remainder redacted]",
     ],
     [
       "fatal: cannot access /Users/alice/Secret Project/customer.txt",
-      "fatal: cannot access [redacted path]",
+      "fatal: cannot access [redacted path] … [path remainder redacted]",
     ],
     [
       String.raw`fatal: unable to read C:\Users\John Smith\dyad-apps\demo\src\App.tsx`,
-      "fatal: unable to read [redacted path]",
+      "fatal: unable to read [redacted path] … [path remainder redacted]",
     ],
     [
       "fatal: cannot access /Volumes/Client Work/customer.txt",
-      "fatal: cannot access [redacted path]",
+      "fatal: cannot access [redacted path] … [path remainder redacted]",
     ],
     [
       "fatal: cannot open /Users/alice/app/.git/index.lock: Permission denied",
@@ -132,6 +136,14 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "hook: /Users/alice/app/src/App.tsx:42:7: type error",
       "hook: [redacted path]:42:7: type error",
+    ],
+    [
+      "hook: /Users/alice/app/scripts/build.sh exited with code 1",
+      "hook: [redacted path] exited with code 1",
+    ],
+    [
+      "error: symlink /Users/alice/app/link (No such file or directory)",
+      "error: symlink [redacted path] (No such file or directory)",
     ],
     [
       "fatal: unable to auto-detect email address (got 'root@hostname.(none)')",
@@ -161,6 +173,10 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "fatal: Could not resolve host: gitlab.local",
       "fatal: Could not resolve host: [redacted host]",
+    ],
+    [
+      "hook: https://docs.github.com/ghp_abcdefghijklmnopqrstuvwxyz",
+      "hook: [redacted URL]",
     ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(

@@ -4,7 +4,7 @@ import {
 } from "@/github_ops/error_message";
 
 const PUBLIC_GIT_DOCUMENTATION_URL =
-  /\bhttps?:\/\/(?:gh\.io|docs\.github\.com|git-lfs\.github\.com|git-scm\.com)(?:\/[^\s<>"'.,;:!?)}\]]*)?/gi;
+  /\b(?:https:\/\/gh\.io\/lfs|https:\/\/git-lfs\.github\.com\/?)(?=$|[\s"'.,;:!?)}\]])/gi;
 const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
 
 function redactQuotedAbsolutePaths(message: string): string {
@@ -26,12 +26,16 @@ function redactQuotedAbsolutePaths(message: string): string {
         const start = match.index;
         const quote = match[1];
         let closing = line.indexOf(quote, start + match[0].length);
-        while (
-          closing !== -1 &&
-          quote === "'" &&
-          /[A-Za-z0-9]/.test(line[closing + 1] ?? "")
-        ) {
-          closing = line.indexOf(quote, closing + 1);
+        while (closing !== -1 && quote === "'") {
+          const nextQuote = line.indexOf(quote, closing + 1);
+          const nextCharacter = line[closing + 1] ?? "";
+          const isEmbeddedApostrophe =
+            /[A-Za-z0-9]/.test(nextCharacter) ||
+            (/\s/.test(nextCharacter) &&
+              nextQuote !== -1 &&
+              /[\\/]/.test(line.slice(closing + 1, nextQuote)));
+          if (!isEmbeddedApostrophe) break;
+          closing = nextQuote;
         }
         if (closing === -1) {
           result += line.slice(cursor);
@@ -55,7 +59,7 @@ function redactUnquotedAbsolutePaths(message: string): string {
       let cursor = 0;
       const pathStart = /(^|[\s("'`=[,])(?:\/(?!\/)|[A-Za-z]:[\\/]|\\\\)/g;
       const pathEnd =
-        /(?=:\d+(?::\d+)*\b)|:(?=\s)|(?=\])|\s+(?=… \[line truncated\]|(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|because\b|but\b))/g;
+        /(?=:\d+(?::\d+)*\b)|:(?=\s)|(?=\])|\s+(?=\(|… \[line truncated\]|(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|because\b|but\b|exited\b|returned\b))/g;
 
       while (cursor < line.length) {
         pathStart.lastIndex = cursor;
@@ -70,7 +74,12 @@ function redactUnquotedAbsolutePaths(message: string): string {
         pathEnd.lastIndex = pathStart.lastIndex;
         const endMatch = pathEnd.exec(line);
         const end = endMatch?.index ?? line.length;
-        result += `${line.slice(cursor, start)}[redacted path]`;
+        const hiddenText = line.slice(start, end);
+        const remainderNotice =
+          !endMatch && /\s/.test(hiddenText)
+            ? " … [path remainder redacted]"
+            : "";
+        result += `${line.slice(cursor, start)}[redacted path]${remainderNotice}`;
         cursor = end;
       }
 
@@ -97,12 +106,12 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted credential]",
     )
     .replaceAll(
-      /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/gi,
-      "[redacted token]",
-    )
-    .replaceAll(
       /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>"']*[^\s<>"'.,;:!?)}\]]/gi,
       "[redacted URL]",
+    )
+    .replaceAll(
+      /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/gi,
+      "[redacted token]",
     )
     .replaceAll(
       /\b(?:[\w.-]{1,64}@[\w.-]{1,255}|[\w-]{1,63}(?:\.[\w-]{1,63})+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,

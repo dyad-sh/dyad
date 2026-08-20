@@ -437,12 +437,23 @@ function ConnectedGitHubConnector({
                     : conflictRecoveryStage === "checking"
                       ? "Checking the repository for remaining conflicts."
                       : conflictRecoveryStage === "verification-failed"
-                        ? `${conflictVerificationError ?? "Dyad couldn't check the repository."} Your resolved changes are still safe.`
+                        ? "Your resolved changes are still safe."
                         : conflictRecoveryStage === "ready-to-sync"
                           ? "Your changes are ready to sync to GitHub."
                           : `Resolve ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} to ${isSyncConflict ? "continue syncing" : "finish merging"}.`}
                 </p>
               </div>
+
+              {conflictRecoveryStage === "verification-failed" && (
+                <div className="mt-2">
+                  <GitHubOperationError
+                    message={
+                      conflictVerificationError ??
+                      "Dyad couldn't check the repository."
+                    }
+                  />
+                </div>
+              )}
 
               {conflictRecoveryStage === "conflicted" && (
                 <ul className="mt-2 space-y-1" aria-label="Conflicted files">

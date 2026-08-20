@@ -175,8 +175,28 @@ describe("safeGithubOpsErrorMessage", () => {
       "fatal: Could not resolve host: [redacted host]",
     ],
     [
+      "ssh: connect to host 10.0.0.5 port 22: Connection refused",
+      "ssh: connect to host [redacted host] port 22: Connection refused",
+    ],
+    [
+      "ssh: connect to host [fd00::1234] port 22: Connection refused",
+      "ssh: connect to host [redacted host] port 22: Connection refused",
+    ],
+    [
+      "ssh: Could not resolve hostname buildbox: Name or service not known",
+      "ssh: Could not resolve hostname [redacted host]: Name or service not known",
+    ],
+    [
+      "hook: GIT_ASKPASS=/Users/alice/bin/askpass",
+      "hook: GIT_ASKPASS=[redacted path]",
+    ],
+    [
       "hook: https://docs.github.com/ghp_abcdefghijklmnopqrstuvwxyz",
       "hook: [redacted URL]",
+    ],
+    [
+      "hook: DYAD_PUBLIC_GIT_DOCUMENTATION_URL_7",
+      "hook: DYAD_PUBLIC_GIT_DOCUMENTATION_URL_7",
     ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(
@@ -187,6 +207,15 @@ describe("safeGithubOpsErrorMessage", () => {
   it("falls back for values without an Error message", () => {
     expect(
       safeGithubOpsErrorMessage("push failed", "GitHub operation failed"),
+    ).toBe("GitHub operation failed");
+  });
+
+  it("falls back when a high-confidence sensitive path survives redaction", () => {
+    expect(
+      safeGithubOpsErrorMessage(
+        new Error("hook:x/Users/alice/private-project"),
+        "GitHub operation failed",
+      ),
     ).toBe("GitHub operation failed");
   });
 

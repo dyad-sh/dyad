@@ -23,6 +23,7 @@ export const showSuccess = (message: string) => {
 export const showError = (
   message: any,
   options?: {
+    persist?: boolean;
     action?: {
       label: string;
       onClick: () => void;
@@ -77,8 +78,7 @@ export const showError = (
       />
     ),
     {
-      duration:
-        options?.action || errorMessage.includes("\n") ? Infinity : 8_000,
+      duration: options?.action || options?.persist ? Infinity : 8_000,
     },
   );
 

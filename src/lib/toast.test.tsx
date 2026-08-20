@@ -46,10 +46,18 @@ describe("showError", () => {
   });
 
   it("keeps multiline error details open until the user dismisses them", () => {
-    showError("Git push failed\nremote: Permission denied");
+    showError("Git push failed\nremote: Permission denied", { persist: true });
 
     expect(toast.custom).toHaveBeenCalledWith(expect.any(Function), {
       duration: Infinity,
+    });
+  });
+
+  it("does not make unrelated multiline errors persistent implicitly", () => {
+    showError("Build failed\nSee the console");
+
+    expect(toast.custom).toHaveBeenCalledWith(expect.any(Function), {
+      duration: 8_000,
     });
   });
 });

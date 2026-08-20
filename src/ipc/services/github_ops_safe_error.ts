@@ -6,6 +6,8 @@ import {
 const PUBLIC_GIT_DOCUMENTATION_URL =
   /\b(?:https:\/\/gh\.io\/lfs|https:\/\/git-lfs\.github\.com\/?)(?=$|[\s"'.,;:!?)}\]])/gi;
 const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
+const UNSAFE_GITHUB_ERROR_RESIDUAL =
+  /(?:\/Users\/|\/home\/|[A-Za-z]:[\\/]Users[\\/]|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bsk-[A-Za-z0-9_-]{16,}\b)/i;
 
 function redactQuotedAbsolutePaths(message: string): string {
   return message
@@ -136,11 +138,16 @@ function redactSensitiveGitOutput(message: string): string {
       "$1[redacted host]",
     )
     .replaceAll(
+      /(\bconnect to host\s+)(?:\[[A-F0-9:]+\]|[^\s]+)/gi,
+      "$1[redacted host]",
+    )
+    .replaceAll(/(\bresolve hostname\s+)[^:\s]+/gi, "$1[redacted host]")
+    .replaceAll(
       /(\b[\w.-]*(?:key|token|secret|password|credential)[\w.-]*\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
       "$1[redacted secret]",
     )
     .replaceAll(
-      /(\b[A-Z][A-Z0-9_]{2,}\s*=\s*)(?!\[redacted secret\])[^\s]+/g,
+      /(\b[A-Z][A-Z0-9_]{2,}\s*=\s*)(?!\[redacted )[^\s]+/g,
       "$1[redacted secret]",
     )
     .replaceAll(
@@ -150,7 +157,7 @@ function redactSensitiveGitOutput(message: string): string {
 
   return redacted.replaceAll(
     /DYAD_PUBLIC_GIT_DOCUMENTATION_URL_(\d+)/g,
-    (_, index: string) => publicDocumentationUrls[Number(index)],
+    (match, index: string) => publicDocumentationUrls[Number(index)] ?? match,
   );
 }
 
@@ -181,5 +188,7 @@ export function safeGithubOpsErrorMessage(
         : line,
     )
     .join("\n");
-  return truncateGithubOpsErrorMessage(redactSensitiveGitOutput(boundedRaw));
+  const safeMessage = redactSensitiveGitOutput(boundedRaw);
+  if (UNSAFE_GITHUB_ERROR_RESIDUAL.test(safeMessage)) return fallback;
+  return truncateGithubOpsErrorMessage(safeMessage);
 }

@@ -32,9 +32,14 @@ import { addIntegrationTool } from "./add_integration";
 
 describe("addIntegrationTool Git-visible mutation tracking", () => {
   let appPath: string | undefined;
+  let onXmlComplete: ReturnType<typeof vi.fn>;
+
+  const context = (overrides: Partial<AgentContext> = {}) =>
+    ({ appPath, onXmlComplete, ...overrides }) as unknown as AgentContext;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    onXmlComplete = vi.fn();
     appPath = await fs.mkdtemp(
       path.join(os.tmpdir(), "add-integration-track-"),
     );
@@ -57,9 +62,7 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
       return { kind: "integration", provider: "neon", completed: true };
     });
 
-    const result = await addIntegrationTool.execute({}, {
-      appPath,
-    } as AgentContext);
+    const result = await addIntegrationTool.execute({}, context());
 
     expect(result).toContain(
       "Git-visible workspace files changed during setup",
@@ -80,9 +83,7 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
       completed: true,
     });
 
-    const result = await addIntegrationTool.execute({}, {
-      appPath,
-    } as AgentContext);
+    const result = await addIntegrationTool.execute({}, context());
 
     expect(result).not.toContain("Git-visible workspace files changed");
     expect(
@@ -101,9 +102,7 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
       completed: false,
     });
 
-    const result = await addIntegrationTool.execute({}, {
-      appPath,
-    } as AgentContext);
+    const result = await addIntegrationTool.execute({}, context());
 
     expect(result).toContain(
       "Continue the original task without Supabase or Neon",
@@ -111,6 +110,9 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
     expect(
       addIntegrationTool.shouldTrackMutation?.({}, result, {} as AgentContext),
     ).toBe(false);
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      '<dyad-add-integration outcome="skipped"></dyad-add-integration>',
+    );
     expect(
       addIntegrationTool.shouldTrackFileMutation?.(
         {},
@@ -130,9 +132,7 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
       };
     });
 
-    const result = await addIntegrationTool.execute({}, {
-      appPath,
-    } as AgentContext);
+    const result = await addIntegrationTool.execute({}, context());
 
     expect(result).toContain("The user skipped the integration setup");
     expect(result).toContain(
@@ -159,10 +159,10 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
       completed: true,
     });
 
-    const result = await addIntegrationTool.execute({}, {
-      appPath,
-      abortSignal: abortController.signal,
-    } as AgentContext);
+    const result = await addIntegrationTool.execute(
+      {},
+      context({ abortSignal: abortController.signal }),
+    );
 
     expect(result).toContain(
       "Git-visible workspace file state could not be determined during setup",
@@ -174,5 +174,12 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
         {} as AgentContext,
       ),
     ).toBe(true);
+  });
+
+  it("keeps the card ephemeral until execute persists its terminal outcome", () => {
+    expect(addIntegrationTool.buildXml?.({}, false)).toBe(
+      "<dyad-add-integration></dyad-add-integration>",
+    );
+    expect(addIntegrationTool.buildXml?.({}, true)).toBeUndefined();
   });
 });

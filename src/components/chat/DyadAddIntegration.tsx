@@ -30,11 +30,13 @@ import { ipc } from "@/ipc/types";
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
   provider?: "neon" | "supabase";
+  skipped?: boolean;
 }
 
 export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   children,
   provider: requestedProvider,
+  skipped = false,
 }) => {
   const { t } = useTranslation("home");
   const appId = useAtomValue(selectedAppIdAtom);
@@ -260,7 +262,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     );
   }
 
-  if (didSkip) {
+  if (skipped || didSkip) {
     return (
       <DyadCard accentColor="slate" state="finished">
         <DyadCardHeader icon={<Database size={15} />} accentColor="slate">

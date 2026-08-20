@@ -868,6 +868,7 @@ function renderCustomTag(
               ? attributes.provider
               : undefined
           }
+          skipped={attributes.outcome === "skipped"}
         >
           {content}
         </DyadAddIntegration>

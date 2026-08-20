@@ -128,5 +128,19 @@ testSkipIfWindows(
         timeout: Timeout.LONG,
       })
       .toBeGreaterThan(assistantCountBeforeSkip);
+
+    // The tool persists its terminal card outcome, so replaying the chat does
+    // not turn the skipped card back into a stale provider chooser.
+    const skippedChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(skippedChatId).not.toBeNull();
+    await po.chatActions.clickNewChat();
+    await po.page
+      .getByTestId(`chat-tab-${skippedChatId}`)
+      .locator("button")
+      .first()
+      .click();
+    await expect(
+      po.page.getByTestId("messages-list").getByText("Integration skipped"),
+    ).toBeVisible({ timeout: Timeout.LONG });
   },
 );

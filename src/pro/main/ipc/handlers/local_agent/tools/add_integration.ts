@@ -38,7 +38,11 @@ export const addIntegrationTool: ToolDefinition<
       "Git-visible workspace file state could not be determined during setup.",
     ),
 
-  buildXml: (args, _isComplete) => {
+  buildXml: (args, isComplete) => {
+    // Keep the interactive card in the streaming preview until the parked
+    // request settles. execute() then persists one durable terminal card with
+    // the outcome, avoiding a second stale chooser on chat replay.
+    if (isComplete) return undefined;
     if (args.provider && args.provider !== "none") {
       return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
     }
@@ -80,6 +84,9 @@ export const addIntegrationTool: ToolDefinition<
       result?.kind !== "integration" ||
       (result.completed && !result.provider)
     ) {
+      ctx.onXmlComplete(
+        `<dyad-add-integration outcome="dismissed"></dyad-add-integration>`,
+      );
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
     }
 
@@ -107,11 +114,20 @@ export const addIntegrationTool: ToolDefinition<
         ? " Git-visible workspace files changed during setup."
         : "";
     if (!result.completed && result.provider === null) {
+      ctx.onXmlComplete(
+        `<dyad-add-integration outcome="skipped"></dyad-add-integration>`,
+      );
       return `The user skipped the integration setup.${mutationNote} Continue the original task without Supabase or Neon, and do not prompt for a database integration again in this continuation.`;
     }
     if (!result.completed || !result.provider) {
+      ctx.onXmlComplete(
+        `<dyad-add-integration outcome="dismissed"></dyad-add-integration>`,
+      );
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
     }
+    ctx.onXmlComplete(
+      `<dyad-add-integration provider="${escapeXmlAttr(result.provider)}" outcome="completed"></dyad-add-integration>`,
+    );
     return `User completed the ${result.provider} integration.${mutationNote} You can now continue with the next step.`;
   },
 };

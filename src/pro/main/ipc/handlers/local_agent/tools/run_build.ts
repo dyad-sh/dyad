@@ -264,6 +264,9 @@ async function copySnapshotEntryOnWindows(
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
+    if (!pathIsInside(realSourceRoot, realTarget)) {
+      throw externalSnapshotLinkError(path.relative(sourceRoot, sourcePath));
+    }
     const targetStat = await fs.stat(realTarget);
     const mappedTarget = path.join(
       snapshotRoot,
@@ -295,6 +298,58 @@ function pathIsInside(rootPath: string, candidatePath: string): boolean {
   );
 }
 
+function externalSnapshotLinkError(relativePath: string): DyadError {
+  return new DyadError(
+    `Cannot isolate the linked path ${relativePath} because it points outside the app. Replace the external link with a local dependency before running a production build.`,
+    DyadErrorKind.Precondition,
+  );
+}
+
+interface SnapshotEntryInfo {
+  entryPath: string;
+  isDirectory: boolean;
+  isSymbolicLink: boolean;
+}
+
+async function inspectSnapshotEntries(
+  directory: string,
+): Promise<SnapshotEntryInfo[]> {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  if (process.platform !== "win32") {
+    return entries.map((entry) => ({
+      entryPath: path.join(directory, entry.name),
+      isDirectory: entry.isDirectory(),
+      isSymbolicLink: entry.isSymbolicLink(),
+    }));
+  }
+
+  const inspected: SnapshotEntryInfo[] = [];
+  for (
+    let index = 0;
+    index < entries.length;
+    index += WINDOWS_SNAPSHOT_COPY_CONCURRENCY
+  ) {
+    const batch = entries.slice(
+      index,
+      index + WINDOWS_SNAPSHOT_COPY_CONCURRENCY,
+    );
+    inspected.push(
+      ...(await Promise.all(
+        batch.map(async (entry) => {
+          const entryPath = path.join(directory, entry.name);
+          const stat = await fs.lstat(entryPath);
+          return {
+            entryPath,
+            isDirectory: stat.isDirectory(),
+            isSymbolicLink: stat.isSymbolicLink(),
+          };
+        }),
+      )),
+    );
+  }
+  return inspected;
+}
+
 export async function secureSnapshotSymlinks(
   sourceRoot: string,
   snapshotRoot: string,
@@ -309,33 +364,30 @@ export async function secureSnapshotSymlinks(
     throwIfBuildCancelled(signal);
     const directory = pendingDirectories.pop();
     if (!directory) break;
-    const entries = await fs.readdir(directory, { withFileTypes: true });
+    const entries = await inspectSnapshotEntries(directory);
     for (const entry of entries) {
-      const entryPath = path.join(directory, entry.name);
-      const entryStat = await fs.lstat(entryPath);
-      if (!entryStat.isSymbolicLink()) {
-        if (entryStat.isDirectory()) pendingDirectories.push(entryPath);
+      if (!entry.isSymbolicLink) {
+        if (entry.isDirectory) pendingDirectories.push(entry.entryPath);
         continue;
       }
 
       let realTarget: string;
       try {
-        realTarget = await fs.realpath(entryPath);
+        realTarget = await fs.realpath(entry.entryPath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          await fs.unlink(entryPath);
+          await fs.unlink(entry.entryPath);
           continue;
         }
         throw new DyadError(
-          `Cannot isolate the linked path ${path.relative(snapshotRoot, entryPath)} because its target is unavailable.`,
+          `Cannot isolate the linked path ${path.relative(snapshotRoot, entry.entryPath)} because its target is unavailable.`,
           DyadErrorKind.Precondition,
         );
       }
       if (pathIsInside(realSnapshotRoot, realTarget)) continue;
       if (!pathIsInside(realSourceRoot, realTarget)) {
-        throw new DyadError(
-          `Cannot isolate the linked path ${path.relative(snapshotRoot, entryPath)} because it points outside the app. Replace the external link with a local dependency before running a production build.`,
-          DyadErrorKind.Precondition,
+        throw externalSnapshotLinkError(
+          path.relative(snapshotRoot, entry.entryPath),
         );
       }
 
@@ -345,10 +397,10 @@ export async function secureSnapshotSymlinks(
       );
       const realEntryPath = path.join(
         realSnapshotRoot,
-        path.relative(snapshotRoot, entryPath),
+        path.relative(snapshotRoot, entry.entryPath),
       );
       const targetStat = await fs.stat(realTarget);
-      await fs.rm(entryPath, {
+      await fs.rm(entry.entryPath, {
         force: true,
         recursive: targetStat.isDirectory(),
       });
@@ -358,7 +410,7 @@ export async function secureSnapshotSymlinks(
           : path.relative(path.dirname(realEntryPath), mappedTarget) || ".";
       await fs.symlink(
         linkTarget,
-        entryPath,
+        entry.entryPath,
         targetStat.isDirectory()
           ? process.platform === "win32"
             ? "junction"
@@ -652,6 +704,12 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             count: 0,
           } satisfies BuildAttemptState);
           const currentMutationCount = ctx.mutationCount ?? 0;
+          if (runningApps.get(ctx.appId)?.mode === "cloud") {
+            throw new DyadError(
+              "Production build verification is unavailable while this app is running in a cloud sandbox because the build would run on the host instead of inside that sandbox. Switch the app runtime to Host and try again.",
+              DyadErrorKind.Precondition,
+            );
+          }
           if (state.count >= MAX_BUILD_RUNS_PER_TURN) {
             const body = `The ${MAX_BUILD_RUNS_PER_TURN}-build limit for this turn has been reached. Stop retrying and summarize the remaining build issue for the user.`;
             completeStatus(ctx, "Build limit reached", body, "warning");
@@ -795,7 +853,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           } finally {
             abortScope.dispose();
             if (snapshot) {
-              await removeSnapshot(snapshot.path);
+              void removeSnapshot(snapshot.path);
             }
           }
         },

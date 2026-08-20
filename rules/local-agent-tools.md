@@ -105,6 +105,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Start one deadline before snapshot validation/copying and give the build only
   the remaining budget. Stream build output while it runs, and do not consume a
   retry when snapshot setup fails before the build process starts.
+- Do not run a host-side production build while the active preview uses a cloud
+  sandbox. Refuse with guidance to switch to the Host runtime until build
+  execution is supported inside the active cloud sandbox.
+- Snapshot teardown is best-effort and must not delay a cancelled or timed-out
+  turn. Start cleanup without awaiting it; the marked-directory startup sweep
+  remains the fallback for interrupted cleanup.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
 - Select build mode around preview continuity, not whether a build may generate
   files. With no running preview, build in place. Beside a preview, run the exact

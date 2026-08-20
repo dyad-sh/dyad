@@ -3,7 +3,7 @@ import type { PageObject } from "./helpers/page-objects";
 import { test, Timeout } from "./helpers/test_helper";
 
 const BUILD_TIMEOUT = 10 * 60_000;
-const TEST_TIMEOUT = 20 * 60_000;
+const TEST_TIMEOUT = 15 * 60_000;
 
 async function runBuildAndVerifyPreview({
   po,
@@ -51,11 +51,15 @@ async function runBuildAndVerifyPreview({
   );
 }
 
-test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previews", async ({
+async function setUpLocalAgent(po: PageObject) {
+  await po.setUpDyadPro({ autoApprove: true, localAgent: true });
+}
+
+test("local-agent builds a Vite scaffold without stopping its preview", async ({
   po,
 }, testInfo) => {
   testInfo.setTimeout(TEST_TIMEOUT);
-  await po.setUpDyadPro({ autoApprove: true, localAgent: true });
+  await setUpLocalAgent(po);
 
   // Build mode creates an app from the actual bundled Vite scaffold.
   await po.chatActions.selectChatMode("build");
@@ -72,8 +76,13 @@ test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previ
     expectedMode: "in-place",
     previewText: "Welcome to Your Blank App",
   });
+});
 
-  await po.navigation.goToAppsTab();
+test("local-agent builds Next.js 15 without stopping its preview", async ({
+  po,
+}, testInfo) => {
+  testInfo.setTimeout(TEST_TIMEOUT);
+  await setUpLocalAgent(po);
   await po.importApp("next15-build");
   await po.chatActions.selectLocalAgentMode();
   await po.appManagement.ensurePnpmInstall();
@@ -83,8 +92,13 @@ test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previ
     expectedMode: "isolated",
     previewText: "Next.js 15 build fixture",
   });
+});
 
-  await po.navigation.goToAppsTab();
+test("local-agent builds Next.js 16 without stopping its preview", async ({
+  po,
+}, testInfo) => {
+  testInfo.setTimeout(TEST_TIMEOUT);
+  await setUpLocalAgent(po);
   await po.importApp("next16-build");
   await po.chatActions.selectLocalAgentMode();
   await po.appManagement.ensurePnpmInstall();

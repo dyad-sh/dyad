@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { runningApps } from "@/ipc/utils/process_manager";
 import type { AgentContext } from "./types";
 
 vi.mock("@/ipc/services/app_operation_coordinator", () => ({
@@ -39,6 +40,7 @@ describe("run_build", () => {
   const temporaryDirectories: string[] = [];
 
   afterEach(async () => {
+    runningApps.clear();
     await Promise.all(
       temporaryDirectories.splice(0).map((directory) =>
         fs.rm(directory, {
@@ -291,6 +293,53 @@ describe("run_build", () => {
     });
   });
 
+  it.runIf(process.platform !== "win32")(
+    "uses Dirent metadata instead of serial lstat calls on POSIX",
+    async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+      temporaryDirectories.push(root);
+      const sourceRoot = path.join(root, "app");
+      const snapshotRoot = path.join(root, "snapshot");
+      await Promise.all([fs.mkdir(sourceRoot), fs.mkdir(snapshotRoot)]);
+      await fs.writeFile(path.join(snapshotRoot, "regular.txt"), "content");
+      const lstat = vi.spyOn(fs, "lstat");
+
+      try {
+        await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
+        expect(lstat).not.toHaveBeenCalled();
+      } finally {
+        lstat.mockRestore();
+      }
+    },
+  );
+
+  it("rejects external file links in the Windows copy backend", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const sourceRoot = path.join(root, "app");
+    const snapshotRoot = path.join(root, "snapshot");
+    const externalFile = path.join(root, "external.txt");
+    await Promise.all([
+      fs.mkdir(sourceRoot),
+      fs.mkdir(snapshotRoot),
+      fs.writeFile(externalFile, "outside"),
+    ]);
+    const linkPath = path.join(sourceRoot, "external-link.txt");
+    await fs.symlink(externalFile, linkPath, "file");
+
+    await expect(
+      copySnapshotEntriesOnWindows(
+        sourceRoot,
+        await fs.realpath(sourceRoot),
+        snapshotRoot,
+        [linkPath],
+      ),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("points outside the app"),
+    });
+  });
+
   it("removes dangling links from an isolated snapshot", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
     temporaryDirectories.push(root);
@@ -345,6 +394,23 @@ describe("run_build", () => {
     expect(onXmlComplete).toHaveBeenCalledWith(
       expect.stringContaining('title="Build limit reached" state="warning"'),
     );
+  });
+
+  it("refuses to run a host build for an active cloud preview", async () => {
+    runningApps.set(44, {
+      mode: "cloud",
+    } as never);
+    const ctx = {
+      appId: 44,
+      appPath: "/unused",
+      onXmlComplete: vi.fn(),
+      onXmlStream: vi.fn(),
+    } as unknown as AgentContext;
+
+    await expect(runBuildTool.execute({}, ctx)).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("cloud sandbox"),
+    });
   });
 
   it("completes the status when an unchanged workspace refuses a retry", async () => {

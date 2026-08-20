@@ -4,7 +4,13 @@ import { ThemeProvider } from "../contexts/ThemeContext";
 import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
-import { useEffect, useMemo, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAppOutputSubscription } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -49,6 +55,8 @@ import { useSyncDefaultChatMode } from "@/hooks/useSyncDefaultChatMode";
 import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
 import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
+import { CommandPalette } from "@/components/CommandPalette";
+import { CHAT_SCOPE_PREFIX } from "@/lib/commandPalette";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { streamMessage } = useStreamChat({ hasChatId: false });
@@ -111,7 +119,42 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
     selectedComponentsPreviewAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState("");
   useSyncDefaultChatMode();
+
+  const openCommandPalette = useCallback((query: string = "") => {
+    setCommandPaletteQuery(query);
+    setIsCommandPaletteOpen(true);
+  }, []);
+
+  const handleCommandPaletteOpenChange = useCallback((open: boolean) => {
+    setIsCommandPaletteOpen(open);
+    if (!open) setCommandPaletteQuery("");
+  }, []);
+
+  useEffect(() => {
+    const handleCommandPaletteShortcut = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        (event.key.toLowerCase() !== "k" && event.key.toLowerCase() !== "p")
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.repeat) return;
+      openCommandPalette(
+        event.key.toLowerCase() === "k" ? CHAT_SCOPE_PREFIX : "",
+      );
+    };
+
+    window.addEventListener("keydown", handleCommandPaletteShortcut);
+    return () =>
+      window.removeEventListener("keydown", handleCommandPaletteShortcut);
+  }, [openCommandPalette]);
 
   // Initialize plan events listener
   usePlanEvents();
@@ -194,7 +237,7 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
           <ThemeProvider>
             <DeepLinkProvider>
               <SidebarProvider defaultOpen={false}>
-                <TitleBar />
+                <TitleBar onOpenCommandPalette={() => openCommandPalette("")} />
                 <AppSidebar />
                 <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
                   <SubscriptionStatusBanner />
@@ -212,6 +255,12 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                 />
                 <ReleaseNotesDialog />
                 <ForceCloseDialog />
+                <CommandPalette
+                  open={isCommandPaletteOpen}
+                  query={commandPaletteQuery}
+                  onOpenChange={handleCommandPaletteOpenChange}
+                  onQueryChange={setCommandPaletteQuery}
+                />
               </SidebarProvider>
             </DeepLinkProvider>
           </ThemeProvider>

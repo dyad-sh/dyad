@@ -57,7 +57,7 @@ export const SETTING_IDS = {
   reset: "setting-reset",
 } as const;
 
-type SearchableSettingItem = {
+export type SearchableSettingItem = {
   id: string;
   label: string;
   description: string;

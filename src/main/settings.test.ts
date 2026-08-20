@@ -15,6 +15,7 @@ import {
   decrypt,
   notifyRendererErrorToastListenerReady,
   writeCrashSentinel,
+  claimCrashSentinel,
   setSentinelActiveChat,
   readCrashSentinel,
   rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock,
@@ -1363,6 +1364,9 @@ describe("crash sentinel", () => {
     mockGetUserDataPath.mockReturnValue(mockUserDataPath);
     mockPath.join.mockImplementation((...args: string[]) => args.join("/"));
     store = {};
+    mockFs.existsSync.mockImplementation(
+      (p) => store[p as string] !== undefined,
+    );
     mockFs.writeFileSync.mockImplementation((p, data) => {
       store[p as string] = data as string;
     });
@@ -1377,20 +1381,52 @@ describe("crash sentinel", () => {
     });
   });
 
-  it("writeCrashSentinel writes JSON with a timestamp and no active chat", () => {
-    writeCrashSentinel();
+  it("writeCrashSentinel persists the launch time with no active chat", () => {
+    writeCrashSentinel(1700000000000);
     const data = readCrashSentinel();
-    expect(typeof data?.ts).toBe("number");
+    expect(data?.ts).toBe(1700000000000);
     expect(data?.activeChatId).toBeUndefined();
   });
 
+  it("claimCrashSentinel reports the previous session and takes over the file", () => {
+    store[sentinelPath] = JSON.stringify({
+      ts: 1600000000000,
+      activeChatId: 5,
+    });
+
+    const previousSession = claimCrashSentinel(1700000000000);
+
+    expect(previousSession.existed).toBe(true);
+    expect(previousSession.previous?.ts).toBe(1600000000000);
+    expect(previousSession.previous?.activeChatId).toBe(5);
+    // The file now belongs to this session, so a crash below is attributed here.
+    expect(readCrashSentinel()?.ts).toBe(1700000000000);
+    expect(readCrashSentinel()?.activeChatId).toBeUndefined();
+  });
+
+  it("claimCrashSentinel reports no previous session after a clean exit", () => {
+    const previousSession = claimCrashSentinel(1700000000000);
+
+    expect(previousSession.existed).toBe(false);
+    expect(previousSession.previous).toBeNull();
+    expect(readCrashSentinel()?.ts).toBe(1700000000000);
+  });
+
+  it("claimCrashSentinel flags a legacy sentinel as existing but unparseable", () => {
+    store[sentinelPath] = "1600000000000";
+
+    const previousSession = claimCrashSentinel(1700000000000);
+
+    expect(previousSession.existed).toBe(true);
+    expect(previousSession.previous).toBeNull();
+  });
+
   it("setSentinelActiveChat records the chat id, preserving the timestamp", () => {
-    writeCrashSentinel();
-    const ts = readCrashSentinel()?.ts;
+    writeCrashSentinel(1700000000000);
     setSentinelActiveChat(42);
     const data = readCrashSentinel();
     expect(data?.activeChatId).toBe(42);
-    expect(data?.ts).toBe(ts);
+    expect(data?.ts).toBe(1700000000000);
   });
 
   it("readCrashSentinel returns null for the legacy bare-timestamp format", () => {

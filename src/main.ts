@@ -23,10 +23,8 @@ import {
   tryWriteSettings,
   readSettings,
   readEffectiveSettings,
-  writeCrashSentinel,
+  claimCrashSentinel,
   clearCrashSentinel,
-  crashSentinelExists,
-  readCrashSentinel,
   recordRendererCrash,
   readRendererCrashRecord,
   clearRendererCrashRecord,
@@ -156,10 +154,56 @@ import {
   type WindowSessionDescriptor,
 } from "./window_infrastructure/main/window_session";
 import { DyadError, DyadErrorKind, isDyadError } from "./errors/dyad_error";
+import {
+  formatErrorBanner,
+  formatExitBanner,
+  formatPreviousSessionBanner,
+  formatStartBanner,
+} from "./main/session_banner";
 
-log.errorHandler.startCatching();
+const LAUNCH_TIME = Date.now();
+
+// Above the dev block so a failure there is still reported. Only registers
+// process handlers; it writes nothing, so it can't fix the log directory early.
+log.errorHandler.startCatching({
+  // Runs before electron-log logs the error itself. Must not return false:
+  // that suppresses both the stack trace and the error dialog.
+  onError: ({ errorName }) => {
+    const kind =
+      errorName === "Unhandled rejection"
+        ? "unhandledRejection"
+        : "uncaughtException";
+    log.error(formatErrorBanner(process.pid, kind, Date.now() - LAUNCH_TIME));
+  },
+});
+
+// In dev, keep minidumps and logs under the project's ./userData, not the OS
+// one. Must run before crashReporter.start and before the first log call, when
+// electron-log caches its dir. macOS logs ignore userData: ~/Library/Logs/dyad.
+if (process.env.NODE_ENV === "development") {
+  const devUserData = getUserDataPath();
+  fs.mkdirSync(devUserData, { recursive: true });
+  app.setPath("userData", devUserData);
+
+  const devCrashDumps = path.join(devUserData, "Crashpad");
+  fs.mkdirSync(devCrashDumps, { recursive: true });
+  app.setPath("crashDumps", devCrashDumps);
+}
+
 log.eventLogger.startLogging();
 log.scope.labelPadding = false;
+
+// First line of every session. See session_banner.ts.
+log.info(
+  formatStartBanner({
+    pid: process.pid,
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron ?? "unknown",
+    node: process.versions.node ?? "unknown",
+  }),
+);
 const execFileAsync = promisify(execFile);
 
 // Prefer the Dyad-managed pnpm (if installed) for everything spawned from the
@@ -199,7 +243,10 @@ async function logStartupExecutablePaths(): Promise<void> {
     resolveStartupExecutablePath("pnpm"),
   ]);
 
+  // Resolves after module evaluation, so in a short-lived second instance this
+  // lands after that process's exit banner. The pid keeps it attributable.
   log.info("Startup executable paths", {
+    pid: process.pid,
     node,
     npm,
     pnpm,
@@ -209,19 +256,6 @@ async function logStartupExecutablePaths(): Promise<void> {
 }
 
 void logStartupExecutablePaths();
-
-// In dev, keep minidumps under the project's ./userData (matching where Dyad
-// writes its other dev files) instead of the OS userData dir, so they don't
-// mingle with a prod install's dumps. Must run before crashReporter.start.
-if (process.env.NODE_ENV === "development") {
-  const devUserData = getUserDataPath();
-  fs.mkdirSync(devUserData, { recursive: true });
-  app.setPath("userData", devUserData);
-
-  const devCrashDumps = path.join(devUserData, "Crashpad");
-  fs.mkdirSync(devCrashDumps, { recursive: true });
-  app.setPath("crashDumps", devCrashDumps);
-}
 
 // Capture native crashes (main/renderer/GPU/utility) as local minidumps. Not
 // uploaded; parsed on the next launch into a summary we send as telemetry.
@@ -373,6 +407,11 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  // Take over the sentinel before any startup work that can crash. Migrations,
+  // the keychain and git all run below; if one of them kills us, a sentinel
+  // still naming the previous session would report this crash as that one.
+  const previousSession = claimCrashSentinel(LAUNCH_TIME);
+
   // Linux: claim the dyad:// scheme for this build (best-effort, see module).
   // setAsDefaultProtocolClient above is unreliable on Linux. Pass this instance's
   // userData so a browser-launched deep link forwards here, not a second window.
@@ -453,8 +492,19 @@ export async function onReady() {
   // settings.isRunning may still be true. Honour it once, then clear it so
   // subsequent runs rely solely on the sentinel.
   const legacyIsRunningCrash = settings.isRunning === true;
-  if (crashSentinelExists() || legacyIsRunningCrash) {
-    logger.warn("App was force-closed on previous run");
+  // previousSession.previous is null for the legacy bare-timestamp sentinel,
+  // which still counts as existing.
+  if (previousSession.existed || legacyIsRunningCrash) {
+    // Scoped and at warn, unlike this session's own banners. Deliberate: warn is
+    // the only level that survives the filtered log tail users paste into bug
+    // reports (see readAppLogs in debug_handlers), and this is the line that
+    // tells us their last session crashed.
+    logger.warn(
+      formatPreviousSessionBanner(
+        previousSession.previous?.ts,
+        settings.lastKnownPerformance?.timestamp,
+      ),
+    );
     pendingCrashDetected = true;
 
     // Store performance data to send after window is created
@@ -465,7 +515,7 @@ export async function onReady() {
 
     // The chat that was streaming when the crash happened, if any, so the
     // dialog can offer a one-click upload of it.
-    pendingActiveChatId = readCrashSentinel()?.activeChatId ?? null;
+    pendingActiveChatId = previousSession.previous?.activeChatId ?? null;
   }
 
   // TODO: Remove legacyIsRunningCrash migration path after a few releases
@@ -476,8 +526,6 @@ export async function onReady() {
       "clearing the legacy isRunning crash flag",
     );
   }
-
-  writeCrashSentinel();
 
   // Record the GPU's feature status (is compositing / WebGL hardware-accelerated)
   // on every dump written from here on. It's useful context when reading a dump,
@@ -1305,6 +1353,8 @@ if (IS_TEST_BUILD) {
   const gotTheLock = app.requestSingleInstanceLock();
 
   if (!gotTheLock) {
+    // This instance already logged a start banner above, so terminate it.
+    log.info(formatExitBanner(process.pid, "duplicate instance"));
     app.quit();
   } else {
     app.on("second-instance", (_event, commandLine, _workingDirectory) => {
@@ -1639,6 +1689,15 @@ app.on("will-quit", () => {
 
 app.on("quit", (_event, exitCode) => {
   logLifecycle("app:quit", { exitCode });
+  // Unscoped and at info, matching this session's start banner. The
+  // previous-session banner is deliberately scoped and at warn; see onReady.
+  log.info(
+    formatExitBanner(
+      process.pid,
+      `exitCode=${exitCode}`,
+      Date.now() - LAUNCH_TIME,
+    ),
+  );
 });
 
 app.on("activate", () => {

@@ -125,13 +125,29 @@ interface CrashSentinelData {
   activeChatId?: number;
 }
 
-export function writeCrashSentinel(): void {
+// startedAt should be the launch time, so a crash reported on the next run can
+// point at the start banner of the lost session. It's captured a moment before
+// that banner is written, so the printed time is near it, not identical.
+export function writeCrashSentinel(startedAt: number): void {
   try {
-    const data: CrashSentinelData = { ts: Date.now() };
+    const data: CrashSentinelData = { ts: startedAt };
     fs.writeFileSync(getCrashSentinelPath(), JSON.stringify(data));
   } catch (error) {
     logger.error("Error writing crash sentinel:", error);
   }
+}
+
+// Takes over the sentinel for this session, returning what the previous one
+// held. Read and write are paired here so the write can't accidentally be
+// ordered before the read, which would make every launch look like a crash.
+export function claimCrashSentinel(startedAt: number): {
+  previous: CrashSentinelData | null;
+  existed: boolean;
+} {
+  const existed = crashSentinelExists();
+  const previous = readCrashSentinel();
+  writeCrashSentinel(startedAt);
+  return { previous, existed };
 }
 
 // Records the chat that just started streaming into the existing sentinel,
@@ -158,8 +174,10 @@ function readLegacyCrashSentinelTimestamp(sentinelPath: string): number {
       return legacyTimestamp;
     }
   } catch {
-    // Missing or malformed legacy sentinels can be replaced with a fresh timestamp.
+    // Nothing readable to recover a start time from.
   }
+  // Only reached when this session never wrote a sentinel, so it's a stand-in,
+  // not a launch time. The next run's log banner will report it as one.
   return Date.now();
 }
 
@@ -173,14 +191,14 @@ export function clearCrashSentinel(): void {
   }
 }
 
-export function crashSentinelExists(): boolean {
+function crashSentinelExists(): boolean {
   return fs.existsSync(getCrashSentinelPath());
 }
 
 // Reads and parses the sentinel. Returns null if missing or not a JSON object
 // (e.g. the legacy bare-timestamp format from older builds). That's harmless:
-// crash detection is existence-based, and only activeChatId is consumed, so a
-// null here just means no chat to offer for upload.
+// crash detection is existence-based, so a null here just means no chat to
+// offer for upload and no start time for the previous-session log banner.
 export function readCrashSentinel(): CrashSentinelData | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(getCrashSentinelPath(), "utf-8"));

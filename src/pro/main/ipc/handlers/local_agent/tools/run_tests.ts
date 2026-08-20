@@ -308,7 +308,12 @@ async function runSpec(
     grep,
     source: "agent",
     headed: settings.testHeaded ?? false,
-    parallel: (settings.testParallel ?? false) && !grep && !preview,
+    // Deliberately not gated on `preview`: the runner already drops
+    // `--fully-parallel` while the preview endpoint is live, and it clears that
+    // endpoint when a preview run falls back to an ordinary browser. Deciding
+    // it here instead would leave the fallback — a whole-file run in its own
+    // browser — stuck running serially for no reason.
+    parallel: (settings.testParallel ?? false) && !grep,
     slowMo,
     preview,
     externalSignal: ctx.abortSignal,

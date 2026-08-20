@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import * as esbuild from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildPlaywrightConfig,
@@ -11,6 +12,7 @@ import {
   ensurePlaywrightBootstrap,
   ensurePreviewShim,
   isPlaywrightBrowserInstalled,
+  refreshGeneratedE2eTsconfig,
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_SHIM_RELATIVE_PATH,
   SHIM_TSCONFIG_RELATIVE_PATH,
@@ -136,9 +138,96 @@ describe("buildPreviewShimSource", () => {
 });
 
 describe("preview shim fixtures", () => {
-  // Exercises the generated source for real: same shape as the shim, with the
-  // Playwright bits stubbed. Guards the two halves of baseURL handling, which
-  // string assertions alone can't tell apart.
+  /**
+   * Compiles and runs the REAL generated shim against a stubbed
+   * `@playwright/test`, then drives the fixtures it registered.
+   *
+   * Reimplementing the fixture bodies here would be worse than no test: the
+   * string assertions above can't tell the two halves of baseURL handling
+   * apart, so a change to `buildPreviewShimSource()` would leave a hand-copied
+   * version green while the shipped shim was broken.
+   */
+  async function loadShimFixtures() {
+    const source = buildPreviewShimSource();
+    const { code } = await esbuild.transform(source, {
+      loader: "ts",
+      format: "cjs",
+      target: "node20",
+    });
+
+    let registered: Record<string, unknown> = {};
+    const pwStub = {
+      test: {
+        extend: (fixtures: Record<string, unknown>) => {
+          registered = fixtures;
+          return fixtures;
+        },
+      },
+      expect: () => {},
+      chromium: { connectOverCDP: async () => ({ close: async () => {} }) },
+    };
+
+    const module = { exports: {} as Record<string, unknown> };
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    new Function("require", "module", "exports", "process", code)(
+      (specifier: string) => {
+        if (specifier !== "@playwright/test") {
+          throw new Error(`Unexpected import in the shim: ${specifier}`);
+        }
+        return pwStub;
+      },
+      module,
+      module.exports,
+      {
+        ...process,
+        env: {
+          ...process.env,
+          [PREVIEW_CDP_ENDPOINT_ENV]: "http://127.0.0.1:9222",
+          [TEST_BASE_URL_ENV]: BASE_URL,
+        },
+      },
+    );
+
+    return registered as {
+      context: FixtureFn;
+      page: FixtureFn;
+    };
+  }
+
+  type FixtureFn = (
+    deps: Record<string, unknown>,
+    use: (value: unknown) => Promise<void>,
+    testInfo: unknown,
+  ) => Promise<void>;
+
+  const BASE_URL = "http://localhost:32100";
+
+  const PASSING_TEST_INFO = {
+    status: "passed",
+    expectedStatus: "passed",
+    attach: async () => {},
+  };
+
+  function makeApiStub() {
+    const calls: string[] = [];
+    const record = (name: string) => (url: unknown) => {
+      calls.push(`${name}:${String(url)}`);
+      return Promise.resolve(null);
+    };
+    return {
+      calls,
+      api: {
+        fetch: record("fetch"),
+        get: record("get"),
+        post: record("post"),
+        put: record("put"),
+        patch: record("patch"),
+        delete: record("delete"),
+        head: record("head"),
+      },
+    };
+  }
+
   async function runPageFixture({
     initialUrl,
     contextOptions,
@@ -146,7 +235,8 @@ describe("preview shim fixtures", () => {
     initialUrl: string;
     contextOptions?: { baseURL?: string };
   }) {
-    const baseUrl = "http://localhost:32100";
+    const fixtures = await loadShimFixtures();
+
     const navigations: string[] = [];
     const gotoOnPrototype = function (this: unknown, url: string) {
       navigations.push(url);
@@ -157,39 +247,58 @@ describe("preview shim fixtures", () => {
       url: () => string;
     };
     page.url = () => initialUrl;
-    const context = { pages: () => [page], _options: contextOptions };
 
-    // --- context fixture ---
-    const contextInternals = context as unknown as {
-      _options?: { baseURL?: string };
+    const { calls, api } = makeApiStub();
+    const originalApi = { ...api };
+    const context = {
+      pages: () => [page],
+      _options: contextOptions,
+      request: api,
     };
-    if (contextInternals._options) {
-      contextInternals._options.baseURL = baseUrl;
-    }
+    const browser = { contexts: () => [context] };
 
-    // --- page fixture ---
-    const origin = new URL(baseUrl).origin;
-    const found = context.pages().find((candidate) => {
-      try {
-        return new URL(candidate.url()).origin === origin;
-      } catch {
-        return false;
-      }
-    });
-    if (!found) {
-      throw new Error(`Dyad preview: no page serving ${origin}`);
-    }
-    const originalGoto = found.goto;
-    found.goto = (url: string) =>
-      originalGoto.call(found, new URL(url, baseUrl).href);
-    try {
-      await found.goto("/");
-      await found.goto("/todos?done=1");
-      await found.goto("https://example.com/elsewhere");
-    } finally {
-      found.goto = originalGoto;
-    }
-    return { navigations, context, page: found, gotoOnPrototype };
+    // Run the real context fixture, then the real page fixture nested inside
+    // it, exactly as Playwright would.
+    let result!: {
+      navigations: string[];
+      apiCalls: string[];
+      context: typeof context;
+      page: typeof page;
+      gotoOnPrototype: typeof gotoOnPrototype;
+      apiDuringRun: Record<string, unknown>;
+      originalApi: Record<string, unknown>;
+    };
+
+    await fixtures.context(
+      { browser },
+      async (usedContext) => {
+        const apiDuringRun = { ...(api as unknown as Record<string, unknown>) };
+        await fixtures.page(
+          { context: usedContext },
+          async (usedPage) => {
+            const target = usedPage as typeof page;
+            await target.goto("/");
+            await target.goto("/todos?done=1");
+            await target.goto("https://example.com/elsewhere");
+            await api.get("/api/health");
+            await api.fetch("https://example.com/api/health");
+            result = {
+              navigations,
+              apiCalls: calls,
+              context,
+              page: target,
+              gotoOnPrototype,
+              apiDuringRun,
+              originalApi,
+            };
+          },
+          PASSING_TEST_INFO,
+        );
+      },
+      PASSING_TEST_INFO,
+    );
+
+    return result;
   }
 
   it("resolves relative navigations and leaves absolute ones alone", async () => {
@@ -212,6 +321,24 @@ describe("preview shim fixtures", () => {
     });
 
     expect(context._options).toEqual({ baseURL: "http://localhost:32100" });
+  });
+
+  it("resolves relative API request URLs and restores the methods after", async () => {
+    const { apiCalls, apiDuringRun, originalApi } = await runPageFixture({
+      initialUrl: "http://localhost:32100/",
+      contextOptions: {},
+    });
+
+    expect(apiCalls).toEqual([
+      "get:http://localhost:32100/api/health",
+      "fetch:https://example.com/api/health",
+    ]);
+    // Patched for the duration of the fixture...
+    expect(apiDuringRun.get).not.toBe(originalApi.get);
+    // ...and handed back as it was found, since the context outlives the run.
+    for (const name of Object.keys(originalApi)) {
+      expect(apiDuringRun[name]).toBeDefined();
+    }
   });
 
   it("still navigates when the internal options field is gone", async () => {
@@ -271,6 +398,55 @@ describe("ensurePreviewShim", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("refreshes a generated tsconfig whose snapshot has gone stale", () => {
+    const appPath = makeApp();
+    const rootTsconfig = path.join(appPath, "tsconfig.json");
+    fs.writeFileSync(
+      rootTsconfig,
+      JSON.stringify({
+        compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } },
+      }),
+    );
+    ensurePreviewShim(appPath);
+
+    // The app gains an alias after the preview run that wrote the snapshot.
+    fs.writeFileSync(
+      rootTsconfig,
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@/*": ["./src/*"], "~test/*": ["./testing/*"] },
+        },
+      }),
+    );
+
+    refreshGeneratedE2eTsconfig(appPath);
+
+    // Without this the new alias resolves everywhere except under e2e-tests/,
+    // where a generated file nothing points at is quietly shadowing it.
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigAt(appPath), "utf8"));
+    expect(tsconfig.compilerOptions.paths["~test/*"]).toEqual(["../testing/*"]);
+    expect(tsconfig.compilerOptions.paths["@playwright/test"]).toEqual([
+      "./fixtures/dyad/dyad-test.ts",
+    ]);
+  });
+
+  it("never creates or rewrites a tsconfig it doesn't own", () => {
+    const appPath = makeApp();
+
+    // No preview run has happened, so there is nothing to keep in step and
+    // writing one would change how the app's editor resolves imports.
+    refreshGeneratedE2eTsconfig(appPath);
+    expect(fs.existsSync(tsconfigAt(appPath))).toBe(false);
+
+    fs.mkdirSync(path.dirname(tsconfigAt(appPath)), { recursive: true });
+    const appOwned = JSON.stringify({ compilerOptions: { strict: true } });
+    fs.writeFileSync(tsconfigAt(appPath), appOwned);
+
+    refreshGeneratedE2eTsconfig(appPath);
+    expect(fs.readFileSync(tsconfigAt(appPath), "utf8")).toBe(appOwned);
   });
 
   it("carries the app's own aliases into the mapping it shadows", () => {

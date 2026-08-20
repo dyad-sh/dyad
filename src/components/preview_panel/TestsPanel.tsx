@@ -27,6 +27,7 @@ import {
   EyeOff,
   Gauge,
   Snail,
+  ShieldAlert,
   Zap,
   ShieldCheck,
   CircleDot,
@@ -34,7 +35,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
@@ -647,7 +648,7 @@ export function TestsPanel() {
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
@@ -732,6 +733,13 @@ export function TestsPanel() {
     queryKey: queryKeys.previewView.automationStatus,
     queryFn: () => ipc.previewView.getAutomationStatus(),
     enabled: previewRunEnabled,
+    // Chromium can publish its DevTools port after the first lookup's window
+    // closes. Without a retry that one unlucky poll would disable every headed
+    // run — and advise a restart that fixes nothing — until this panel
+    // remounts. Stop as soon as the endpoint answers; the main process caches
+    // it, so these are cheap.
+    refetchInterval: (query) =>
+      query.state.data?.cdpReady === true ? false : 2_000,
   });
   const canRunInPreview = previewRunEnabled && !!automationStatus?.cdpReady;
   // The experiment only opens its CDP port at boot, so with it freshly enabled
@@ -888,7 +896,7 @@ export function TestsPanel() {
       // disabled in that state; per-file and per-test runs reach here too.
       const preview = canRunInPreview && headed;
       if (preview) {
-        setPreviewNativeView(true);
+        setPreviewNativeViewAppId(appId);
         setPreviewMode("preview");
       }
       const startedAt = Date.now();
@@ -902,8 +910,10 @@ export function TestsPanel() {
           testLine: line,
           headed,
           // A single targeted test can't parallelize, so only opt in for
-          // file/all runs. Preview runs share one page, so never.
-          parallel: parallel && !isSingleTest && !preview,
+          // file/all runs. Preview runs are serialized by the runner itself,
+          // which also knows when one has fallen back to an ordinary browser
+          // and parallelism is worth having again.
+          parallel: parallel && !isSingleTest,
           slowMo,
           preview,
         });
@@ -942,7 +952,7 @@ export function TestsPanel() {
       slowMo,
       canRunInPreview,
       setPreviewMode,
-      setPreviewNativeView,
+      setPreviewNativeViewAppId,
     ],
   );
 
@@ -1430,6 +1440,23 @@ export function TestsPanel() {
           )
         )}
       </div>
+
+      {/* The experiment opens an unauthenticated CDP port on 127.0.0.1 for the
+          whole session, not just while tests run. That is easy to enable once
+          and forget, so say so where the feature is actually used rather than
+          only in the Settings switch the user saw weeks ago. */}
+      {canRunInPreview && (
+        <div
+          data-testid="tests-panel-debug-port-notice"
+          className="flex items-start gap-1.5 border-b border-border/60 px-4 py-1.5 text-[11px] text-amber-700 dark:text-amber-500"
+        >
+          <ShieldAlert size={12} className="mt-0.5 shrink-0" />
+          <span>
+            Debugging port open on 127.0.0.1 for this whole session. Turn off
+            "Run tests in preview panel" in Settings → Experiments to close it.
+          </span>
+        </div>
+      )}
 
       {/* Run-related status + banners only apply once testing is enabled. */}
       {testingEnabled && (

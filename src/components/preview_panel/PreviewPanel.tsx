@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
-import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 import { usePreviewReloadToken } from "@/hooks/useAppRun";
 import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
@@ -130,8 +130,13 @@ export function PreviewPanel() {
   const { recorder, recorderReloadKey } = useHoistedRecorder();
   // Only a preview-driven test run turns this on; there is no user-facing way
   // to enter the native view.
-  const useNativePreview = useAtomValue(previewNativeViewAtom);
-  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const nativeViewAppId = useAtomValue(previewNativeViewAppIdAtom);
+  const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
+  // The native view belongs to the app whose run opened it. Another app's
+  // preview must keep using the iframe, and its idle run state must not be
+  // mistaken for this run having finished.
+  const useNativePreview =
+    nativeViewAppId !== null && nativeViewAppId === selectedAppId;
   const setPreviewMode = useSetAtom(previewModeAtom);
   const testRunPhase = useAtomValue(currentTestRunStateAtom).phase;
   const {
@@ -160,9 +165,14 @@ export function PreviewPanel() {
   // unmounted — otherwise returning to the Preview tab would reopen a dead test
   // view. Users who already navigated elsewhere keep their place; clearing the
   // flag is enough for them.
+  //
+  // Gated on the view's *owning* app, not just any selected app: `testRunPhase`
+  // is the selected app's, so without this, selecting a second app mid-run
+  // would read its idle phase, tear down the live view, and drag that app's
+  // preview to the Tests panel.
   useEffect(() => {
     if (!useNativePreview || testRunPhase !== "idle") return;
-    setPreviewNativeView(false);
+    setPreviewNativeViewAppId(null);
     if (previewMode === "preview") {
       setPreviewMode("tests");
     }
@@ -170,7 +180,7 @@ export function PreviewPanel() {
     useNativePreview,
     testRunPhase,
     previewMode,
-    setPreviewNativeView,
+    setPreviewNativeViewAppId,
     setPreviewMode,
   ]);
 

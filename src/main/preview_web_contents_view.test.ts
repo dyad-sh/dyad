@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserWindow } from "electron";
 
 type Listener = (...args: any[]) => void;
@@ -119,6 +119,7 @@ import {
   getPreviewViewStatus,
   hidePreviewView,
   isSupportedPreviewUrl,
+  reservePreviewViewForAutomation,
   waitForPreviewView,
   previewViewGoBack,
   previewViewGoForward,
@@ -175,6 +176,14 @@ beforeEach(() => {
   resetPreviewViewsForTesting();
   h.createdViews.length = 0;
   h.shell.openExternal.mockClear();
+});
+
+// Restored here rather than at the end of each test body: an assertion that
+// throws first would otherwise leave virtual timers installed for the rest of
+// the file, hanging every later test that waits on a real setTimeout (as
+// waitForPreviewView does) and turning one failure into a cascade.
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("isSupportedPreviewUrl", () => {
@@ -372,51 +381,68 @@ describe("hidePreviewView", () => {
 });
 
 describe("preview screenshots and renderer overlays", () => {
-  it("captures once per second and replaces the native surface while an overlay is open", async () => {
+  it("stays idle until an overlay needs the fallback, then refreshes it", async () => {
     vi.useFakeTimers();
     const { window, asBrowserWindow } = createWindow();
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
     const view = latestView();
 
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    expect(view.webContents.capturePage).toHaveBeenCalledTimes(1);
+    // Nothing is covering the native surface, so a capture would be a full
+    // raster plus a multi-hundred-KB IPC message the renderer never paints.
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(view.webContents.capturePage).not.toHaveBeenCalled();
     expect(sentOn(window, previewViewEvents.screenshotUpdated.channel)).toEqual(
-      [
-        {
-          channel: previewViewEvents.screenshotUpdated.channel,
-          payload: {
-            dataUrl: "data:image/png;base64,screenshot-1",
-          },
-        },
-      ],
+      [],
     );
 
     setPreviewViewOverlayActive(asBrowserWindow, true);
-
     expect(view.setVisible).toHaveBeenLastCalledWith(false);
-    expect(
-      sentOn(window, previewViewEvents.screenshotUpdated.channel),
-    ).toHaveLength(2);
 
-    // The cached renderer image keeps refreshing while the native surface is
-    // hidden, without allowing the WebContentsView to flash back on top.
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(view.webContents.capturePage).toHaveBeenCalledTimes(3);
+    // Captured immediately on activation so the fallback isn't blank, then kept
+    // fresh for as long as the overlay is up.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(1);
     expect(view.webContents.capturePage).toHaveBeenLastCalledWith(undefined, {
       stayHidden: true,
     });
-
-    setPreviewViewOverlayActive(asBrowserWindow, false);
-    expect(view.setVisible).toHaveBeenLastCalledWith(true);
-
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(view.webContents.capturePage).toHaveBeenCalledTimes(4);
     expect(
       sentOn(window, previewViewEvents.screenshotUpdated.channel).at(-1),
     ).toEqual({
       channel: previewViewEvents.screenshotUpdated.channel,
-      payload: { dataUrl: "data:image/png;base64,screenshot-4" },
+      payload: { dataUrl: "data:image/png;base64,screenshot-1" },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(3);
+
+    setPreviewViewOverlayActive(asBrowserWindow, false);
+    expect(view.setVisible).toHaveBeenLastCalledWith(true);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
+  it("seeds the cache from did-stop-loading so the first overlay frame isn't blank", async () => {
+    vi.useFakeTimers();
+    const { window, asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    view.webContents.emit("did-stop-loading");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(1);
+
+    window.webContents.sent.length = 0;
+    setPreviewViewOverlayActive(asBrowserWindow, true);
+
+    // Replayed synchronously, before the fresh capture resolves.
+    expect(
+      sentOn(window, previewViewEvents.screenshotUpdated.channel)[0],
+    ).toEqual({
+      channel: previewViewEvents.screenshotUpdated.channel,
+      payload: { dataUrl: "data:image/png;base64,screenshot-1" },
     });
 
     vi.useRealTimers();
@@ -428,12 +454,15 @@ describe("preview screenshots and renderer overlays", () => {
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
     const view = latestView();
 
+    setPreviewViewOverlayActive(asBrowserWindow, true);
     await vi.advanceTimersByTimeAsync(1_000);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(2);
+
     hidePreviewView(asBrowserWindow);
     window.webContents.sent.length = 0;
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(3_000);
 
-    expect(view.webContents.capturePage).toHaveBeenCalledTimes(1);
+    expect(view.webContents.capturePage).toHaveBeenCalledTimes(2);
     setPreviewViewOverlayActive(asBrowserWindow, true);
     expect(sentOn(window, previewViewEvents.screenshotUpdated.channel)).toEqual(
       [],
@@ -767,6 +796,118 @@ describe("waitForPreviewView", () => {
       reason: "it is showing http://localhost:42999/",
     });
     vi.useRealTimers();
+  });
+
+  it("waits for a still-loading page rather than reporting it ready", async () => {
+    // Isolation restarts the dev server before a run, so the view can be on the
+    // right origin while the page is still coming up. Attaching CDP then drives
+    // a half-built or error page and blames the user's app for it.
+    vi.useFakeTimers();
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    latestView().webContents.loading = true;
+
+    const pending = waitForPreviewView(asBrowserWindow, {
+      url: APP_URL,
+      timeoutMs: 5_000,
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    latestView().webContents.loading = false;
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(pending).resolves.toEqual({ ok: true });
+  });
+
+  it("reports a page that never finishes loading", async () => {
+    vi.useFakeTimers();
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    latestView().webContents.loading = true;
+
+    const pending = waitForPreviewView(asBrowserWindow, {
+      url: APP_URL,
+      timeoutMs: 1_000,
+    });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      reason: `it is still loading ${APP_URL}`,
+    });
+  });
+
+  it("gives up as soon as the run is stopped", async () => {
+    // Stop must not sit out the full timeout and then blame the preview.
+    vi.useFakeTimers();
+    const { asBrowserWindow } = createWindow();
+    const controller = new AbortController();
+
+    const pending = waitForPreviewView(asBrowserWindow, {
+      url: APP_URL,
+      timeoutMs: 15_000,
+      signal: controller.signal,
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      reason: "the run was stopped",
+      aborted: true,
+    });
+  });
+});
+
+describe("automation reservations", () => {
+  it("keeps the view alive while a starting run has claimed it", () => {
+    // The claim is taken before isolation setup, long before
+    // beginPreviewAutomation. The Tests panel already shows the run as active,
+    // so the user can hit the "Tests running…" chip in that window and unmount
+    // the preview — which must not destroy the page the run will attach to.
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    const release = reservePreviewViewForAutomation(asBrowserWindow);
+    hidePreviewView(asBrowserWindow);
+
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+
+    // The run takes over and the renderer comes back for it.
+    beginPreviewAutomation(asBrowserWindow);
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    expect(view.setVisible).toHaveBeenLastCalledWith(true);
+    release();
+    expect(view.webContents.close).not.toHaveBeenCalled();
+  });
+
+  it("destroys a view the renderer abandoned once the claim is released", () => {
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    const release = reservePreviewViewForAutomation(asBrowserWindow);
+    hidePreviewView(asBrowserWindow);
+    expect(view.webContents.close).not.toHaveBeenCalled();
+
+    // The run never got as far as beginPreviewAutomation (an agent run that
+    // fell back to its own browser, say), so nothing else will clean this up.
+    release();
+    expect(view.webContents.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op for a view the renderer still wants", () => {
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    reservePreviewViewForAutomation(asBrowserWindow)();
+
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(getPreviewViewStatus(asBrowserWindow).exists).toBe(true);
   });
 });
 

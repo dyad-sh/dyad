@@ -9,6 +9,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
 import {
   beginPreviewAutomation,
+  reservePreviewViewForAutomation,
   waitForPreviewView,
 } from "@/main/preview_web_contents_view";
 import { eq } from "drizzle-orm";
@@ -1081,6 +1082,15 @@ export async function runAppTestsWithIsolation({
     previewCdpEndpoint = endpoint.httpEndpoint;
   }
 
+  // Claim the view now, before isolation setup. The run doesn't take real
+  // ownership until beginPreviewAutomation() far below, and in between the
+  // Tests panel already shows the run as active: the "Tests running…" chip and
+  // the exit button both unmount the preview component, whose cleanup would
+  // otherwise destroy the very page this run is waiting to attach to.
+  const releasePreviewReservation = previewWindow
+    ? reservePreviewViewForAutomation(previewWindow)
+    : () => {};
+
   // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
   // run's teardown — so a concurrent invocation sees THIS run as its prior
   // and chains behind it. If we awaited before registering, two rapid Run
@@ -1256,10 +1266,21 @@ export async function runAppTestsWithIsolation({
                   // every call while the user is elsewhere — inside the app lock,
                   // holding up other operations — so it gives up sooner.
                   ...(source === "agent" ? { timeoutMs: 5_000 } : {}),
+                  signal: controller.signal,
                 })
               : ({ ok: false, reason: "the app isn't running" } as const);
 
             if (!ready.ok) {
+              if ("aborted" in ready && ready.aborted) {
+                // Stop pressed during the wait. Reporting a preview problem
+                // here would blame the panel for the user's own decision.
+                return {
+                  appId,
+                  results: [],
+                  infraError: { message: "Test run stopped." },
+                  isolation: prepared.isolation,
+                };
+              }
               if (source === "agent") {
                 // Nothing opened the native view — the user is looking at
                 // another app, another window, or a page with no preview at
@@ -1274,6 +1295,8 @@ export async function runAppTestsWithIsolation({
                 previewWindow = undefined;
                 previewCdpEndpoint = undefined;
                 previewBaseUrl = undefined;
+                // Nothing is going to drive that view now, so stop holding it.
+                releasePreviewReservation();
               } else {
                 return {
                   appId,
@@ -1328,6 +1351,7 @@ export async function runAppTestsWithIsolation({
                       1,
                       Math.min(remainingMs ?? 15_000, 15_000),
                     ),
+                    signal: controller.signal,
                   });
                   if (!ready.ok) {
                     throw new Error(ready.reason);
@@ -1418,6 +1442,10 @@ export async function runAppTestsWithIsolation({
           cause: error,
         });
   } finally {
+    // Before the finished event: the renderer drops the native view as soon as
+    // it sees the run go idle, and a still-standing claim would downgrade that
+    // teardown into an invisible view nobody owns.
+    releasePreviewReservation();
     if (externalSignal) {
       externalSignal.removeEventListener("abort", onExternalAbort);
     }

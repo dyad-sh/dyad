@@ -13,7 +13,7 @@ import {
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
 
@@ -41,7 +41,7 @@ export function useTestRunEvents() {
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   // Held in a ref so switching apps doesn't re-run the effect and resubscribe,
   // which is what this hook exists to avoid (a terminal event could land in
@@ -132,7 +132,7 @@ export function useTestRunEvents() {
           // app should be pulled into the native test view — anywhere else it
           // would replace another app's preview with a view nothing drives.
           if (payload.preview && payload.appId === selectedAppIdRef.current) {
-            setPreviewNativeView(true);
+            setPreviewNativeViewAppId(payload.appId);
             setPreviewMode("preview");
           }
           applyStarted({

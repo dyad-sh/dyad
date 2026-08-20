@@ -129,6 +129,11 @@ const GITIGNORE_ENTRIES = [
   "/playwright-report/",
   "/playwright/.cache/",
   ".last-run.json",
+  // Dyad-generated preview plumbing, regenerated on every run. Committing it
+  // would hand a teammate who doesn't use Dyad a tsconfig that shadows the
+  // app's own path aliases for everything under e2e-tests/.
+  "/e2e-tests/tsconfig.json",
+  "/e2e-tests/fixtures/dyad/",
 ];
 
 /** Where the JSON reporter writes results, relative to the app root. */
@@ -710,6 +715,34 @@ function readFileOrNull(filePath: string): string | null {
  * still produces valid results, it just launches a normal browser instead of
  * using the preview.
  */
+/**
+ * Rewrites the Dyad-generated `e2e-tests/tsconfig.json` from the app's current
+ * `paths`, if one is there.
+ *
+ * That file snapshots the app's aliases rebased onto the test directory, and as
+ * the closest tsconfig above the specs it replaces the app's mappings outright
+ * for both Playwright and the editor. Written only by preview runs, it would
+ * otherwise keep serving a snapshot from whenever the last preview run happened
+ * — so an alias added afterwards (or the experiment being switched back off)
+ * silently stops resolving, with a generated file nothing points at as the
+ * cause. Run from the ordinary bootstrap path too, so it tracks the app.
+ *
+ * A no-op when the file is absent or the app owns it: this must never create
+ * the mapping for an app that has not opted into preview runs.
+ */
+export function refreshGeneratedE2eTsconfig(appPath: string): void {
+  const tsconfigPath = path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
+  const existing = readFileOrNull(tsconfigPath);
+  if (existing === null || !existing.includes(DYAD_CONFIG_SENTINEL)) return;
+
+  const refreshed = buildE2eTsconfigSource(appPath);
+  if (refreshed === existing) return;
+  fs.writeFileSync(tsconfigPath, refreshed);
+  logger.info(
+    `Refreshed ${E2E_TSCONFIG_RELATIVE_PATH} from the app's current tsconfig paths`,
+  );
+}
+
 export function ensurePreviewShim(appPath: string): { warning?: string } {
   const shimPath = path.join(appPath, PREVIEW_SHIM_RELATIVE_PATH);
   const existingShim = readFileOrNull(shimPath);
@@ -1239,6 +1272,10 @@ export async function ensurePlaywrightBootstrap({
   // Idempotent app configuration — cheap, runs every time.
   appendGitignoreEntries(appPath);
   ensureTestScript(appPath);
+  // Before the preview branch below, which rewrites the same file anyway: this
+  // is the path that keeps a snapshot from an earlier preview run in step with
+  // the app for every OTHER kind of run.
+  refreshGeneratedE2eTsconfig(appPath);
 
   let previewRouted = false;
   if (writePreviewShim) {

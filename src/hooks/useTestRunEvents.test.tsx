@@ -12,7 +12,7 @@ import {
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 
 const { outputListeners, runStateListeners, listAppTestsMock } = vi.hoisted(
   () => ({
@@ -94,6 +94,9 @@ describe("useTestRunEvents", () => {
   it("opens the native preview for an agent preview run", () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
+    // Seeded away from the default so the previewMode assertion below can only
+    // pass if the hook actually switches back.
+    store.set(previewModeAtom, "code");
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
     act(() => {
@@ -105,7 +108,7 @@ describe("useTestRunEvents", () => {
       });
     });
 
-    expect(store.get(previewNativeViewAtom)).toBe(true);
+    expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
     expect(store.get(previewModeAtom)).toBe("preview");
   });
 
@@ -126,7 +129,7 @@ describe("useTestRunEvents", () => {
       });
     });
 
-    expect(store.get(previewNativeViewAtom)).toBe(false);
+    expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
     // The run itself is still tracked — only the view switch is scoped.
     expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(true);
   });

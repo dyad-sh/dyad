@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AppWindow,
   Blocks,
@@ -152,6 +152,14 @@ export function CommandPalette({
     debouncedTerm,
   );
   const selectedApp = apps.find((app) => app.id === selectedAppId) ?? null;
+  const { data: isSelectedAppCapacitor } = useQuery({
+    queryKey: queryKeys.appUpgrades.isCapacitor({
+      appId: selectedAppId,
+    }),
+    queryFn: () =>
+      ipc.capacitor.isCapacitor({ appId: selectedAppId as number }),
+    enabled: selectedAppId !== null,
+  });
   const chatResults = debouncedTerm
     ? searchedChats
     : parsedQuery.term
@@ -342,7 +350,9 @@ export function CommandPalette({
               <CommandGroup
                 heading={`Current App · ${selectedApp?.name ?? "App"}`}
               >
-                {APP_DETAIL_TARGETS.map((item) => {
+                {APP_DETAIL_TARGETS.filter(
+                  (item) => item.id !== "mobile" || isSelectedAppCapacitor,
+                ).map((item) => {
                   const Icon = item.icon;
                   return (
                     <CommandItem

@@ -637,6 +637,63 @@ describe("automation (preview test runs)", () => {
     expect(getPreviewViewStatus(asBrowserWindow).automationActive).toBe(false);
   });
 
+  it("rotates to a fresh partition without reporting an interruption", () => {
+    const { window, asBrowserWindow, view, destroyed, automation } =
+      showAndAutomate();
+    setPreviewViewBounds(asBrowserWindow, { ...BOUNDS, width: 640 });
+    setPreviewViewOverlayActive(asBrowserWindow, true);
+    const firstPartition = (
+      view.options as { webPreferences: { partition: string } }
+    ).webPreferences.partition;
+
+    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
+
+    const replacement = latestView();
+    const replacementPartition = (
+      replacement.options as { webPreferences: { partition: string } }
+    ).webPreferences.partition;
+    expect(h.createdViews).toHaveLength(2);
+    expect(view.webContents.close).toHaveBeenCalledTimes(1);
+    expect(view.webContents.session.clearStorageData).toHaveBeenCalledTimes(1);
+    expect(destroyed).not.toHaveBeenCalled();
+    expect(replacementPartition).not.toBe(firstPartition);
+    expect(window.contentView.addChildView).toHaveBeenLastCalledWith(
+      replacement,
+    );
+    expect(replacement.setBounds).toHaveBeenCalledWith({
+      ...BOUNDS,
+      width: 640,
+    });
+    expect(replacement.setVisible).toHaveBeenCalledWith(false);
+    expect(replacement.webContents.loadURL).toHaveBeenCalledWith(APP_URL);
+    expect(getPreviewViewStatus(asBrowserWindow).automationActive).toBe(true);
+  });
+
+  it("keeps replacements hidden and destroys the final one on end", () => {
+    const { asBrowserWindow, automation } = showAndAutomate();
+    hidePreviewView(asBrowserWindow);
+
+    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
+    const replacement = latestView();
+    expect(replacement.setVisible).toHaveBeenCalledWith(false);
+
+    automation!.end();
+
+    expect(replacement.webContents.close).toHaveBeenCalledTimes(1);
+    expect(getPreviewViewStatus(asBrowserWindow).exists).toBe(false);
+  });
+
+  it("refuses to rotate after the driven view was destroyed", () => {
+    const { window, destroyed, automation } = showAndAutomate();
+    window.emit("closed");
+
+    expect(automation!.rotate({ url: APP_URL })).toEqual({
+      ok: false,
+      reason: "the native preview was destroyed during the test run",
+    });
+    expect(destroyed).toHaveBeenCalledTimes(1);
+  });
+
   it("reports a view destroyed out from under the run", () => {
     const { window, view, destroyed } = showAndAutomate();
 

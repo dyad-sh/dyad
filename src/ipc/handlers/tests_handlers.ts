@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { glob } from "glob";
 import log from "electron-log";
 import { BrowserWindow } from "electron";
@@ -25,6 +26,7 @@ import type {
   MigrateLegacyTestResult,
   RunAppTestsResult,
   TestCase,
+  TestCaseResult,
   TestIsolation,
   TestResult,
   TestsRunStatePayload,
@@ -57,9 +59,15 @@ import {
   TEST_SLOW_MO_ENV,
 } from "../utils/playwright_bootstrap";
 import {
+  aggregateTestResults,
   parsePlaywrightReport,
   PLAYWRIGHT_REPORT_ERROR_FILE,
 } from "../utils/playwright_report";
+import {
+  exactDiscoveredTitleGrep,
+  parsePreviewTestDiscovery,
+  type DiscoveredPreviewTest,
+} from "../utils/playwright_discovery";
 import { parseTestCases } from "../utils/parse_test_cases";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
@@ -278,10 +286,371 @@ export interface RunAppTestsCoreOptions {
    * Experimental: CDP endpoint of this Dyad instance. When set, the generated
    * fixture shim connects to it and drives the page already loaded in the
    * preview panel's native view instead of launching a browser, so the user
-   * watches the run in place. Implies serial execution (one shared page) and
-   * makes `headed` meaningless.
+   * watches the run in place. Tests run sequentially in separate processes and
+   * fresh native views; `headed` has no additional meaning.
    */
   previewCdpEndpoint?: string;
+  /** Replaces the native preview with a fresh session before/after tests. */
+  rotatePreviewView?: (timeoutMs?: number) => Promise<void>;
+}
+
+function appendRequestedTestTarget(
+  args: string[],
+  normalizedTestFile: string | undefined,
+  testLine: number | undefined,
+): void {
+  if (normalizedTestFile) {
+    const escapedFile = escapeRegExpForSelector(normalizedTestFile);
+    args.push(
+      testLine && Number.isInteger(testLine) && testLine > 0
+        ? `${escapedFile}:${testLine}`
+        : escapedFile,
+    );
+  } else {
+    args.push(`${E2E_TEST_DIR}/`);
+  }
+}
+
+function aggregatePreviewCases(
+  casesByFile: Map<string, TestCaseResult[]>,
+): TestResult[] {
+  return [...casesByFile.entries()]
+    .map(([file, tests]) => {
+      tests.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
+      return aggregateTestResults(file, tests);
+    })
+    .sort((a, b) => a.file.localeCompare(b.file));
+}
+
+function timeoutInfraError(timeoutMs: number | undefined): {
+  message: string;
+} {
+  return {
+    message: `The test run exceeded the ${Math.round((timeoutMs ?? 0) / 60000)}-minute limit and was stopped before it could finish.`,
+  };
+}
+
+async function runPreviewTestBatch({
+  appId,
+  appPath,
+  baseUrl,
+  normalizedTestFile,
+  testLine,
+  grep,
+  slowMo,
+  signal,
+  timeoutMs,
+  emit,
+  testEnv,
+  previewEndpoint,
+  rotatePreviewView,
+  installed,
+}: {
+  appId: number;
+  appPath: string;
+  baseUrl: string;
+  normalizedTestFile: string | undefined;
+  testLine: number | undefined;
+  grep: string | undefined;
+  slowMo: boolean | undefined;
+  signal: AbortSignal | undefined;
+  timeoutMs: number | undefined;
+  emit: (chunk: string, phase: "setup" | "running") => void;
+  testEnv: Record<string, string> | undefined;
+  previewEndpoint: string;
+  rotatePreviewView: ((timeoutMs?: number) => Promise<void>) | undefined;
+  installed: boolean;
+}): Promise<RunAppTestsResult> {
+  const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+  const casesByFile = new Map<string, TestCaseResult[]>();
+  const resultsRoot = path.join(appPath, "test-results");
+  fs.mkdirSync(resultsRoot, { recursive: true });
+  for (const entry of fs.readdirSync(resultsRoot, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.startsWith("dyad-preview-")) {
+      try {
+        fs.rmSync(path.join(resultsRoot, entry.name), {
+          recursive: true,
+          force: true,
+        });
+      } catch (error) {
+        logger.warn(`Failed to remove stale preview test artifacts: ${error}`);
+      }
+    }
+  }
+  const batchDir = path.join(resultsRoot, `dyad-preview-${randomUUID()}`);
+  fs.mkdirSync(batchDir, { recursive: true });
+
+  const remainingTimeout = (): number | undefined => {
+    if (deadline === undefined) return undefined;
+    return Math.max(0, deadline - Date.now());
+  };
+  const runnerEnv = (reportPath: string) =>
+    getPackageManagerCommandEnv({
+      ...process.env,
+      ...testEnv,
+      [TEST_BASE_URL_ENV]: baseUrl,
+      [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
+      PLAYWRIGHT_NO_COPY_PROMPT: "1",
+      ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
+      PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,
+      CI: "true",
+    });
+
+  let result: RunAppTestsResult = { appId, results: [] };
+  try {
+    const discoveryReportPath = path.join(batchDir, "discovery.json");
+    const discoveryArgs = [
+      "playwright",
+      "test",
+      "--config",
+      DYAD_CONFIG_FILENAME,
+    ];
+    appendRequestedTestTarget(discoveryArgs, normalizedTestFile, testLine);
+    if (grep) discoveryArgs.push("-g", grep);
+    discoveryArgs.push("--list", "--reporter=json", "--trace=off");
+
+    const discoveryTimeout = remainingTimeout();
+    if (discoveryTimeout === 0) {
+      result.infraError = timeoutInfraError(timeoutMs);
+      return result;
+    }
+
+    let discoveryRun;
+    try {
+      discoveryRun = await spawnStreaming({
+        command: "npx",
+        args: discoveryArgs,
+        cwd: appPath,
+        env: runnerEnv(discoveryReportPath),
+        signal,
+        timeoutMs: discoveryTimeout,
+        onOutput: (chunk) => emit(chunk, "setup"),
+      });
+    } catch (error) {
+      result.infraError = {
+        message: error instanceof Error ? error.message : String(error),
+      };
+      return result;
+    }
+
+    if (discoveryRun.aborted) {
+      result.infraError = { message: "Test run stopped." };
+      return result;
+    }
+    if (discoveryRun.timedOut) {
+      result.infraError = timeoutInfraError(timeoutMs);
+      return result;
+    }
+    if (!fs.existsSync(discoveryReportPath)) {
+      const tail = discoveryRun.stderr.trim() || discoveryRun.stdout.trim();
+      result.infraError = {
+        message:
+          tail.slice(-1500) ||
+          "Playwright couldn't discover the tests. Check the output for details.",
+      };
+      return result;
+    }
+
+    let discovered: DiscoveredPreviewTest[];
+    try {
+      const discovery = parsePreviewTestDiscovery(
+        JSON.parse(fs.readFileSync(discoveryReportPath, "utf8")),
+        appPath,
+      );
+      if (discovery.errors.length > 0) {
+        result.infraError = { message: discovery.errors.join("\n") };
+        return result;
+      }
+      discovered = discovery.tests;
+    } catch (error) {
+      result.infraError = {
+        message: `Failed to parse Playwright test discovery: ${error instanceof Error ? error.message : String(error)}`,
+      };
+      return result;
+    }
+
+    if (discovered.length === 0) {
+      if (testLine) {
+        result.infraError = {
+          message: `No test was found at line ${testLine} — it may have moved. Try running the whole file.`,
+        };
+      }
+      return result;
+    }
+
+    const runnable = discovered.filter((test) => !test.skipped);
+    for (const skipped of discovered.filter((test) => test.skipped)) {
+      const cases = casesByFile.get(skipped.file) ?? [];
+      cases.push({
+        title: skipped.title,
+        line: skipped.line,
+        status: "inconclusive",
+      });
+      casesByFile.set(skipped.file, cases);
+    }
+
+    for (let index = 0; index < runnable.length; index += 1) {
+      const target = runnable[index];
+      emit(
+        `\nRunning preview test ${index + 1}/${runnable.length}: ${target.fullTitle}\n`,
+        "running",
+      );
+
+      const rotationTimeout = remainingTimeout();
+      if (rotationTimeout === 0) {
+        result.infraError = timeoutInfraError(timeoutMs);
+        break;
+      }
+      try {
+        await rotatePreviewView?.(rotationTimeout);
+      } catch (error) {
+        result.infraError = {
+          message: `Couldn't prepare a fresh preview for ${target.fullTitle}: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        break;
+      }
+
+      const invocationTimeout = remainingTimeout();
+      if (invocationTimeout === 0) {
+        result.infraError = timeoutInfraError(timeoutMs);
+        break;
+      }
+
+      const invocationDir = path.join(
+        batchDir,
+        String(index + 1).padStart(4, "0"),
+      );
+      const reportPath = path.join(invocationDir, "results.json");
+      const artifactsPath = path.join(invocationDir, "artifacts");
+      fs.mkdirSync(invocationDir, { recursive: true });
+
+      const args = ["playwright", "test", "--config", DYAD_CONFIG_FILENAME];
+      args.push(
+        `${escapeRegExpForSelector(target.file)}:${target.line}`,
+        "-g",
+        exactDiscoveredTitleGrep(target.file, target.fullTitle),
+        "--reporter=list,json",
+        "--trace=off",
+        "--workers=1",
+        `--output=${artifactsPath}`,
+      );
+      if (slowMo && !configSetsTimeout(appPath)) {
+        args.push(`--timeout=${SLOW_MO_TEST_TIMEOUT_MS}`);
+      }
+
+      let run;
+      try {
+        run = await spawnStreaming({
+          command: "npx",
+          args,
+          cwd: appPath,
+          env: runnerEnv(reportPath),
+          signal,
+          timeoutMs: invocationTimeout,
+          onOutput: (chunk) => emit(chunk, "running"),
+        });
+      } catch (error) {
+        result.infraError = {
+          message: error instanceof Error ? error.message : String(error),
+        };
+        break;
+      }
+
+      if (run.aborted) {
+        result.infraError = { message: "Test run stopped." };
+        break;
+      }
+      if (run.timedOut) {
+        result.infraError = timeoutInfraError(timeoutMs);
+        break;
+      }
+      if (!fs.existsSync(reportPath)) {
+        const tail = run.stderr.trim() || run.stdout.trim();
+        result.infraError = {
+          message:
+            tail.slice(-1500) ||
+            `Playwright didn't produce a report for ${target.fullTitle}.`,
+        };
+        break;
+      }
+
+      let parsed: TestResult[];
+      try {
+        parsed = parsePlaywrightReport(
+          JSON.parse(fs.readFileSync(reportPath, "utf8")),
+          appPath,
+        );
+      } catch (error) {
+        result.infraError = {
+          message: `Failed to parse the report for ${target.fullTitle}: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        break;
+      }
+
+      const reportError = parsed.find(
+        (fileResult) => fileResult.file === PLAYWRIGHT_REPORT_ERROR_FILE,
+      );
+      if (reportError) {
+        result.infraError = {
+          message:
+            reportError.error ||
+            `Playwright reported a runner error for ${target.fullTitle}.`,
+        };
+        break;
+      }
+
+      const executedCases = parsed.flatMap((fileResult) =>
+        (fileResult.tests ?? []).map((test) => ({
+          file: fileResult.file,
+          test,
+        })),
+      );
+      if (executedCases.length !== 1) {
+        result.infraError = {
+          message: `Preview isolation expected exactly one test for ${target.fullTitle}, but Playwright reported ${executedCases.length}.`,
+        };
+        break;
+      }
+
+      const executed = executedCases[0];
+      const cases = casesByFile.get(executed.file) ?? [];
+      cases.push(executed.test);
+      casesByFile.set(executed.file, cases);
+    }
+  } finally {
+    try {
+      await rotatePreviewView?.(signal?.aborted ? 1 : remainingTimeout());
+    } catch (error) {
+      if (!result.infraError) {
+        result.infraError = {
+          message: `Couldn't restore a clean preview after the test run: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+    result.results = aggregatePreviewCases(casesByFile);
+  }
+
+  const passed = result.results.filter(
+    (entry) => entry.status === "passed",
+  ).length;
+  const failed = result.results.filter(
+    (entry) => entry.status === "failed",
+  ).length;
+  const inconclusive = result.results.filter(
+    (entry) => entry.status === "inconclusive",
+  ).length;
+  sendTelemetryEvent("e2e_tests_run", {
+    total: result.results.length,
+    passed,
+    failed,
+    inconclusive,
+    first_run: installed,
+    single_file: Boolean(normalizedTestFile),
+    parallel: false,
+    slow_mo: Boolean(slowMo),
+  });
+
+  return result;
 }
 
 /**
@@ -303,6 +672,7 @@ export async function runAppTestsCore({
   onOutput,
   testEnv,
   previewCdpEndpoint,
+  rotatePreviewView,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
   const appPath = getDyadAppPath(app.path);
@@ -366,6 +736,25 @@ export async function runAppTestsCore({
     return { appId, results: [], infraError: { message: "Test run stopped." } };
   }
 
+  if (previewEndpoint) {
+    return runPreviewTestBatch({
+      appId,
+      appPath,
+      baseUrl,
+      normalizedTestFile: normalizedTestFile ?? undefined,
+      testLine,
+      grep,
+      slowMo,
+      signal,
+      timeoutMs,
+      emit,
+      testEnv,
+      previewEndpoint,
+      rotatePreviewView,
+      installed,
+    });
+  }
+
   // 2. Run the tests. Use list reporter for live stdout + json for parsing.
   const resultsJsonPath = path.join(appPath, TEST_RESULTS_JSON);
   // Clear any stale report so a crash doesn't surface old results.
@@ -385,19 +774,7 @@ export async function runAppTestsCore({
   // one that honors DYAD_TEST_BASE_URL, so it's passed explicitly rather than
   // Dyad taking over the canonical config name.
   const args = ["playwright", "test", "--config", DYAD_CONFIG_FILENAME];
-  if (normalizedTestFile) {
-    const escapedFile = escapeRegExpForSelector(normalizedTestFile);
-    const target =
-      testLine && Number.isInteger(testLine) && testLine > 0
-        ? `${escapedFile}:${testLine}`
-        : escapedFile;
-    args.push(target);
-  } else {
-    // Existing user configs can point at a different testDir. Dyad's panel only
-    // lists specs under e2e-tests/, so an all-run must target that directory
-    // explicitly instead of executing every spec the user's config knows about.
-    args.push(`${E2E_TEST_DIR}/`);
-  }
+  appendRequestedTestTarget(args, normalizedTestFile ?? undefined, testLine);
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
   // the pattern can't be interpreted as a shell command or smuggle a flag.
@@ -417,8 +794,8 @@ export async function runAppTestsCore({
   // Override the generated config's serial defaults (`workers: 1`,
   // `fullyParallel: false`) so a file's independent tests run concurrently.
   // `--fully-parallel` is what parallelizes tests *within* a single file.
-  // Preview runs share the single page inside the preview panel, so they can
-  // only ever be serial.
+  // Preview tests each get a fresh page but still drive the same visible panel,
+  // so they can only ever be sequential.
   if (parallel && !previewEndpoint) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
   }
@@ -921,11 +1298,12 @@ export async function runAppTestsWithIsolation({
 
           // Isolation may have restarted the dev server, so only now is the
           // preview guaranteed to be settled on the URL the run will target.
+          let previewBaseUrl: string | undefined;
           if (previewWindow && previewCdpEndpoint) {
-            const baseUrl = getRunningTestBaseUrl(appId);
-            const ready = baseUrl
+            previewBaseUrl = getRunningTestBaseUrl(appId) ?? undefined;
+            const ready = previewBaseUrl
               ? await waitForPreviewView(previewWindow, {
-                  url: baseUrl,
+                  url: previewBaseUrl,
                   // A panel run was just started by someone looking at the
                   // preview, so waiting out a slow mount is worth it. An agent
                   // run falls back instead of failing, and pays this wait on
@@ -949,6 +1327,7 @@ export async function runAppTestsWithIsolation({
                 );
                 previewWindow = undefined;
                 previewCdpEndpoint = undefined;
+                previewBaseUrl = undefined;
               } else {
                 return {
                   appId,
@@ -986,6 +1365,30 @@ export async function runAppTestsWithIsolation({
             };
           }
 
+          const automationWindow = previewWindow;
+          const automationBaseUrl = previewBaseUrl;
+          const rotatePreviewView =
+            automation && automationWindow && automationBaseUrl
+              ? async (remainingMs?: number) => {
+                  const rotated = automation.rotate({
+                    url: automationBaseUrl,
+                  });
+                  if (!rotated.ok) {
+                    throw new Error(rotated.reason);
+                  }
+                  const ready = await waitForPreviewView(automationWindow, {
+                    url: automationBaseUrl,
+                    timeoutMs: Math.max(
+                      1,
+                      Math.min(remainingMs ?? 15_000, 15_000),
+                    ),
+                  });
+                  if (!ready.ok) {
+                    throw new Error(ready.reason);
+                  }
+                }
+              : undefined;
+
           let result: RunAppTestsResult;
           try {
             result = await runAppTestsCore({
@@ -1001,6 +1404,7 @@ export async function runAppTestsWithIsolation({
               onOutput: emit,
               testEnv: prepared.testCredentials,
               previewCdpEndpoint,
+              rotatePreviewView,
               // The run turned out to need its own browser, so stop holding the
               // preview view frozen (no navigation, no hiding) for it.
               onPreviewFallback: () => automation?.end(),
@@ -1019,7 +1423,6 @@ export async function runAppTestsWithIsolation({
             // fix budget.
             result = {
               ...result,
-              results: [],
               infraError: {
                 message:
                   "The preview was closed while tests were running, so the run was interrupted.",

@@ -60,6 +60,10 @@ import {
 import type { FirstPromptEvent, FirstPromptPayload } from "./state";
 import { resolveFirstPromptDefaultChatMode } from "./provider_resume";
 import type { UserSettings } from "@/lib/schemas";
+import {
+  mergeRejectedPromptIntoChatDraft,
+  removeSubmittedFirstPromptAttachments,
+} from "./editing_buffer";
 
 export interface FirstPromptChatStream {
   submit(request: {
@@ -202,27 +206,21 @@ export function FirstPromptProvider({
         store.set(homeChatInputValueAtom, "");
       }
       const currentAttachments = store.get(attachmentsAtom);
-      if (
-        currentAttachments.length === payload.attachments.length &&
-        currentAttachments.every(
-          (attachment, index) =>
-            attachment.file === payload.attachments[index]?.file &&
-            attachment.type === payload.attachments[index]?.type,
-        )
-      ) {
-        store.set(attachmentsAtom, []);
-      }
+      store.set(
+        attachmentsAtom,
+        removeSubmittedFirstPromptAttachments(
+          currentAttachments,
+          payload.attachments,
+        ),
+      );
       if (store.get(homeSelectedAppAtom)?.id === payload.selectedApp?.id) {
         store.set(homeSelectedAppAtom, null);
       }
     },
     preserveRejectedPrompt(chatId, payload) {
-      store.set(chatInputValuesByIdAtom, (current) => {
-        if (current.get(chatId)) return current;
-        const next = new Map(current);
-        next.set(chatId, payload.prompt);
-        return next;
-      });
+      store.set(chatInputValuesByIdAtom, (current) =>
+        mergeRejectedPromptIntoChatDraft(current, chatId, payload.prompt),
+      );
     },
     showError(message, failure) {
       const key =

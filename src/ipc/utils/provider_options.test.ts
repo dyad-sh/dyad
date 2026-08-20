@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ModelSelection, UserSettings } from "@/lib/schemas";
-import { getProviderOptions } from "./provider_options";
+import {
+  getModelScopedProviderOptions,
+  getProviderOptions,
+} from "./provider_options";
 
 const settingsFor = (provider: string, name: string, effortLevel: string) =>
   ({
@@ -84,5 +87,87 @@ describe("getProviderOptions model effort", () => {
         "custom-provider",
       )["custom-provider"],
     ).toEqual({ reasoningEffort: "low" });
+  });
+});
+
+describe("getModelScopedProviderOptions", () => {
+  const selection = {
+    provider: "auto",
+    name: "auto",
+    effortLevel: "medium",
+  } as unknown as ModelSelection;
+
+  it("matches getProviderOptions' family branch for each provider", () => {
+    // The two functions must stay in lockstep: this asserts the model-scoped
+    // slice equals what getProviderOptions would emit for the same family,
+    // so drift in either shows up here.
+    const anthropicScoped = getModelScopedProviderOptions({
+      providerId: "anthropic",
+      modelName: "claude-opus-4-8",
+      modelSelection: selection,
+    });
+    const anthropicFull = optionsFor(
+      settingsFor("anthropic", "claude-opus-4-8", "medium"),
+      "anthropic",
+      undefined,
+      selection,
+    );
+    expect(anthropicScoped.anthropic).toEqual(anthropicFull.anthropic);
+
+    const openaiScoped = getModelScopedProviderOptions({
+      providerId: "openai",
+      modelName: "gpt-5.6-sol",
+      modelSelection: selection,
+    });
+    const openaiFull = optionsFor(
+      settingsFor("openai", "gpt-5.6-sol", "medium"),
+      "openai",
+      undefined,
+      selection,
+    );
+    expect(openaiScoped.openai).toEqual(openaiFull.openai);
+
+    const googleScoped = getModelScopedProviderOptions({
+      providerId: "google",
+      modelName: "gemini-3-flash-preview",
+      modelSelection: selection,
+    });
+    const googleFull = optionsFor(
+      settingsFor("google", "gemini-3-flash-preview", "medium"),
+      "google",
+      undefined,
+      { ...selection, name: "gemini-3-flash-preview" } as ModelSelection,
+    );
+    expect(googleScoped.google).toEqual(googleFull.google);
+  });
+
+  it("gives the anthropic family adaptive thinking (what makes temperature legal)", () => {
+    const scoped = getModelScopedProviderOptions({
+      providerId: "anthropic",
+      modelName: "claude-opus-4-8",
+      modelSelection: selection,
+    });
+    expect(scoped.anthropic.thinking).toEqual({
+      type: "adaptive",
+      display: "summarized",
+    });
+    expect(scoped.anthropic.effort).toBe("medium");
+  });
+
+  it("returns nothing for unknown families and non-thinking gemini variants", () => {
+    expect(
+      getModelScopedProviderOptions({
+        providerId: "xai",
+        modelName: "grok-4.6",
+        modelSelection: selection,
+      }),
+    ).toEqual({});
+    expect(
+      getModelScopedProviderOptions({
+        providerId: "google",
+        modelName: "gemini-2.5-flash-lite",
+        modelSelection: selection,
+      }),
+    ).toEqual({});
   });
 });

@@ -32,6 +32,11 @@ vi.mock("./model_effort", () => ({
 }));
 
 vi.mock("../shared/language_model_helpers", () => ({
+  // The auto chain now computes each fallback model's own call options
+  // (temperature/maxOutputTokens) via findLanguageModel -> getLanguageModels.
+  // An empty catalog means "no per-model data", which exercises the
+  // conservative path without inventing model entries these tests don't need.
+  getLanguageModels: vi.fn(async () => []),
   getLanguageModelProviders: vi.fn(async () => [
     {
       id: "auto",

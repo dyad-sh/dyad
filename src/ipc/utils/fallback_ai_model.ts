@@ -10,8 +10,29 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("fallback_model");
 
 // Types
+
+/**
+ * The model-derived subset of call options — what a model should receive
+ * because of what it is, as opposed to what the request is. Everything else
+ * (prompt, tools, headers, request metadata) passes through unchanged.
+ */
+export interface FallbackModelCallOptions {
+  temperature?: number;
+  maxOutputTokens?: number;
+  providerOptions?: Record<string, unknown>;
+}
+
 interface FallbackSettings {
   models: Array<LanguageModel>;
+  /**
+   * Per-model call-option overrides, parallel to `models`. The caller's
+   * options are computed for the PRIMARY selection and encode that model's
+   * constraints; an entry here expresses what the model at the same index
+   * would have received had it been selected as primary. Models without an
+   * entry get the conservative default on failover: `temperature` stripped
+   * (valid on every provider), everything else forwarded.
+   */
+  modelCallOptions?: Array<FallbackModelCallOptions | undefined>;
 }
 
 interface RetryState {
@@ -186,11 +207,12 @@ class FallbackModel implements LanguageModelV3 {
    * `temperature` ("`temperature` may only be set to 1 when thinking is
    * enabled"), converting a recoverable blip into a fatal stream error.
    *
-   * When calling any model other than the primary, drop `temperature` and let
-   * the provider default apply: an absent temperature is valid on every
-   * provider, and no per-model catalog data is available at this layer to
-   * recompute a better one. Applies to sticky-index first attempts too —
-   * after a failover, `currentModelIndex` stays non-zero for
+   * When calling any model other than the primary, apply that model's
+   * `modelCallOptions` entry — the options it would have received as the
+   * primary selection, computed at chain-build time where catalog access
+   * exists. Without an entry, fall back to stripping `temperature` (an absent
+   * temperature is valid on every provider). Applies to sticky-index first
+   * attempts too — after a failover, `currentModelIndex` stays non-zero for
    * `modelResetInterval`, so a fresh request's first call can already target a
    * fallback model.
    */
@@ -198,9 +220,35 @@ class FallbackModel implements LanguageModelV3 {
     options: LanguageModelV3CallOptions,
   ): LanguageModelV3CallOptions {
     if (this.currentModelIndex === 0) return options;
-    if (options.temperature === undefined) return options;
-    const { temperature: _dropped, ...rest } = options;
-    return rest;
+    const overrides = this.settings.modelCallOptions?.[this.currentModelIndex];
+    if (!overrides) {
+      // No per-model knowledge: strip temperature (an absent temperature is
+      // valid on every provider) and forward the rest.
+      if (options.temperature === undefined) return options;
+      const { temperature: _dropped, ...rest } = options;
+      return rest;
+    }
+    // Rebuild the model-derived subset as if this model had been primary.
+    // temperature is REPLACED (undefined in the overrides means "unset", not
+    // "keep the primary's"); maxOutputTokens falls back to the caller's when
+    // the catalog had none; providerOptions merge at the provider-family key —
+    // request-scoped keys (e.g. dyad-engine) pass through, the fallback's
+    // family entry is added, and a stale foreign family key is inert because
+    // providers only read their own key.
+    const { temperature: _replaced, ...rest } = options;
+    return {
+      ...rest,
+      ...(overrides.temperature !== undefined
+        ? { temperature: overrides.temperature }
+        : {}),
+      ...(overrides.maxOutputTokens !== undefined
+        ? { maxOutputTokens: overrides.maxOutputTokens }
+        : {}),
+      providerOptions: {
+        ...options.providerOptions,
+        ...(overrides.providerOptions ?? {}),
+      } as LanguageModelV3CallOptions["providerOptions"],
+    };
   }
 
   private checkAndResetModel(): void {

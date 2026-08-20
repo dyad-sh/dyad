@@ -108,6 +108,93 @@ describe("fallback model call options", () => {
     expect(fallbackSeen[0].prompt).toEqual([]);
   });
 
+  it("applies a fallback model's own call options as if it were primary", async () => {
+    const primarySeen: LanguageModelV3CallOptions[] = [];
+    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const model = createFallback({
+      models: [
+        fakeModel({
+          modelId: "primary",
+          behavior: "reject-retryable",
+          seen: primarySeen,
+        }),
+        fakeModel({
+          modelId: "fallback",
+          behavior: "succeed",
+          seen: fallbackSeen,
+        }),
+      ],
+      modelCallOptions: [
+        undefined, // primary always gets the caller's options
+        {
+          temperature: 1,
+          maxOutputTokens: 32_000,
+          providerOptions: {
+            anthropic: { thinking: { type: "adaptive" } },
+          },
+        },
+      ],
+    }) as unknown as LanguageModelV3;
+
+    const result = await model.doStream({
+      prompt: [],
+      temperature: 0.2,
+      maxOutputTokens: 128_000,
+      providerOptions: {
+        "dyad-engine": { dyadRequestId: "req-1" },
+        openai: { reasoningEffort: "medium" },
+      },
+    } as unknown as LanguageModelV3CallOptions);
+    await drain(result.stream);
+
+    expect(fallbackSeen).toHaveLength(1);
+    const seen = fallbackSeen[0];
+    // The model-derived subset is the fallback's own...
+    expect(seen.temperature).toBe(1);
+    expect(seen.maxOutputTokens).toBe(32_000);
+    expect((seen.providerOptions as any).anthropic).toEqual({
+      thinking: { type: "adaptive" },
+    });
+    // ...request-scoped options pass through untouched.
+    expect((seen.providerOptions as any)["dyad-engine"]).toEqual({
+      dyadRequestId: "req-1",
+    });
+    expect(seen.prompt).toEqual([]);
+  });
+
+  it("unsets temperature when the fallback's own options have none", async () => {
+    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const model = createFallback({
+      models: [
+        fakeModel({
+          modelId: "primary",
+          behavior: "reject-retryable",
+          seen: [],
+        }),
+        fakeModel({
+          modelId: "fallback",
+          behavior: "succeed",
+          seen: fallbackSeen,
+        }),
+      ],
+      modelCallOptions: [
+        undefined,
+        // catalog had no temperature/cap for this model: undefined means
+        // "unset", never "inherit the primary's"
+        { providerOptions: { anthropic: { thinking: { type: "adaptive" } } } },
+      ],
+    }) as unknown as LanguageModelV3;
+
+    const result = await model.doStream({
+      prompt: [],
+      temperature: 0.2,
+    } as unknown as LanguageModelV3CallOptions);
+    await drain(result.stream);
+
+    expect(fallbackSeen).toHaveLength(1);
+    expect(fallbackSeen[0].temperature).toBeUndefined();
+  });
+
   it("drops temperature on a sticky non-primary index without a same-request failover", async () => {
     // After a failover the index stays on the fallback for modelResetInterval;
     // a FRESH request's first call then already targets the fallback while its

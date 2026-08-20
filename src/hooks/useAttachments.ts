@@ -139,6 +139,24 @@ export function useAttachments() {
     setPendingFiles(null);
   };
 
+  const clearSubmittedAttachments = useCallback(
+    (submittedAttachments: readonly FileAttachment[]) => {
+      setAttachments((current) => {
+        const remaining = [...current];
+        for (const submitted of submittedAttachments) {
+          const index = remaining.findIndex(
+            (candidate) =>
+              candidate.file === submitted.file &&
+              candidate.type === submitted.type,
+          );
+          if (index !== -1) remaining.splice(index, 1);
+        }
+        return remaining.length === current.length ? current : remaining;
+      });
+    },
+    [setAttachments],
+  );
+
   const replaceAttachments = (newAttachments: FileAttachment[]) => {
     const validation = validateChatAttachmentFiles(
       newAttachments.map(({ file }) => file),
@@ -207,6 +225,7 @@ export function useAttachments() {
     handleDragLeave,
     handleDrop,
     clearAttachments,
+    clearSubmittedAttachments,
     handlePaste,
     addAttachments,
     replaceAttachments,

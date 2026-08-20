@@ -265,6 +265,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDragLeave,
     handleDrop,
     clearAttachments,
+    clearSubmittedAttachments,
     replaceAttachments,
     handlePaste,
     confirmPendingFiles,
@@ -535,18 +536,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // Dismiss image jobs that were auto-added
-    if (visibleSuccessfulImageJobs.length > 0) {
-      setDismissedImageJobIds((prev) => {
-        const next = new Set(prev);
-        for (const job of visibleSuccessfulImageJobs) {
-          next.add(job.id);
-        }
-        return next;
-      });
-    }
-
     const currentInput = promptWithImages;
+    const submittedInputValue = inputValue;
+    const submittedImageJobIds = visibleSuccessfulImageJobs.map(
+      (job) => job.id,
+    );
 
     // Use all selected components for multi-component editing
     const componentsToSend =
@@ -595,8 +589,34 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
       onAccepted: () => {
-        clearComposerAfterSubmit();
-        clearAttachments();
+        setInputValue((current) =>
+          current === submittedInputValue ? "" : current,
+        );
+        const currentComponents = store.get(selectedComponentsPreviewAtom);
+        if (
+          currentComponents.length === componentsToSend.length &&
+          currentComponents.every(
+            (component, index) => component === componentsToSend[index],
+          )
+        ) {
+          setSelectedComponents([]);
+          sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
+          setVisualEditingSelectedComponent(null);
+          if (previewIframeRef?.contentWindow) {
+            previewIframeRef.contentWindow.postMessage(
+              { type: "clear-dyad-component-overlays" },
+              "*",
+            );
+          }
+        }
+        clearSubmittedAttachments(attachments);
+        if (submittedImageJobIds.length > 0) {
+          setDismissedImageJobIds((previous) => {
+            const next = new Set(previous);
+            for (const jobId of submittedImageJobIds) next.add(jobId);
+            return next;
+          });
+        }
       },
     });
     posthog.capture("chat:submit", { chatMode });

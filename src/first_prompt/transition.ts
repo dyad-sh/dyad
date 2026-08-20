@@ -99,7 +99,6 @@ function startDispatching(
     },
     commands: [
       { type: "SubmitPrompt", appId, chatId, payload },
-      { type: "ClearEditingBuffer" },
       { type: "ScheduleSettle" },
       { type: "OpenPreviewIfSetupRequired", appId },
     ],

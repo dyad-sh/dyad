@@ -142,7 +142,6 @@ export type FirstPromptCommand =
       readonly chatId: number;
     }
   | { readonly type: "ShowSetupDialog" }
-  | { readonly type: "ClearEditingBuffer" }
   | {
       readonly type: "ShowError";
       readonly message: string;

@@ -67,6 +67,7 @@ export interface FirstPromptChatStream {
     appId: number;
     attachments: FirstPromptPayload["attachments"];
     requestedChatMode?: FirstPromptPayload["chatMode"] | null;
+    onAccepted: () => void;
   }): void;
 }
 
@@ -158,13 +159,14 @@ export function FirstPromptProvider({
       }
       return opened;
     },
-    submitPrompt({ appId, chatId, payload }) {
+    submitPrompt({ appId, chatId, payload, onAccepted }) {
       chatStream.submit({
         prompt: payload.prompt,
         chatId,
         appId,
         attachments: payload.attachments,
         requestedChatMode: getRequestedChatModeForFirstPrompt(payload),
+        onAccepted,
       });
       posthog.capture("home:chat-submit", {
         existingApp: payload.selectedApp !== undefined,
@@ -190,13 +192,26 @@ export function FirstPromptProvider({
       posthog.capture("home:ai-setup-dialog-open");
       setIsSetupDialogOpen(true);
     },
-    clearEditingBuffer() {
-      // Clear submitted prompt text from the home composer.
-      store.set(homeChatInputValueAtom, "");
-      // Clear submitted attachments from the home composer.
-      store.set(attachmentsAtom, []);
-      // Clear the submitted app selection from the home composer.
-      store.set(homeSelectedAppAtom, null);
+    clearEditingBuffer(payload) {
+      // Acceptance may arrive after the user has started another draft. Clear
+      // each submitted field only while it still matches that exact snapshot.
+      if (store.get(homeChatInputValueAtom) === payload.prompt) {
+        store.set(homeChatInputValueAtom, "");
+      }
+      const currentAttachments = store.get(attachmentsAtom);
+      if (
+        currentAttachments.length === payload.attachments.length &&
+        currentAttachments.every(
+          (attachment, index) =>
+            attachment.file === payload.attachments[index]?.file &&
+            attachment.type === payload.attachments[index]?.type,
+        )
+      ) {
+        store.set(attachmentsAtom, []);
+      }
+      if (store.get(homeSelectedAppAtom)?.id === payload.selectedApp?.id) {
+        store.set(homeSelectedAppAtom, null);
+      }
     },
     showError(message, failure) {
       const key =

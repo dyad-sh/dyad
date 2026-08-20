@@ -74,7 +74,6 @@ const COMMAND_KINDS = [
   "NavigateHome",
   "SelectChat",
   "ShowSetupDialog",
-  "ClearEditingBuffer",
   "ShowError",
 ] as const satisfies readonly FirstPromptCommand["type"][];
 

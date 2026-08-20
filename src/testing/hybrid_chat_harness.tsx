@@ -745,6 +745,7 @@ export async function setupHybridChatHarness(
           appId: number;
           attachments: readonly FileAttachment[];
           requestedChatMode?: "build" | "ask" | "local-agent" | "plan";
+          onAccepted: () => void;
         }) =>
           chatStreamManager.ensure(request.chatId).send({
             type: "submit",

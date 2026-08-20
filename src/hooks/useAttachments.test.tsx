@@ -140,4 +140,24 @@ describe("useAttachments", () => {
       `You can attach up to ${MAX_CHAT_ATTACHMENTS} files at a time.`,
     );
   });
+
+  it("clears only the accepted submission and preserves newer attachments", () => {
+    const { store, Wrapper } = makeWrapper();
+    const { result } = renderHook(useAttachments, { wrapper: Wrapper });
+    const submittedFile = makeFile("submitted.txt");
+    const newerFile = makeFile("newer.txt");
+
+    act(() => {
+      result.current.addAttachments([submittedFile]);
+    });
+    const submittedAttachments = [...store.get(attachmentsAtom)];
+    act(() => {
+      result.current.addAttachments([newerFile]);
+      result.current.clearSubmittedAttachments(submittedAttachments);
+    });
+
+    expect(store.get(attachmentsAtom)).toEqual([
+      { file: newerFile, type: "chat-context" },
+    ]);
+  });
 });

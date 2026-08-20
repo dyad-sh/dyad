@@ -41,12 +41,13 @@ export interface FirstPromptDeps {
     appId: number;
     chatId: number;
     payload: FirstPromptPayload;
+    onAccepted: () => void;
   }): void;
   refreshQueries(appId: number): Promise<void>;
   navigateHome(): void;
   selectChat(appId: number, chatId: number): void;
   showSetupDialog(): void;
-  clearEditingBuffer(): void;
+  clearEditingBuffer(payload: FirstPromptPayload): void;
   showError(
     message: string,
     failure: "createApp" | "createChat" | "postCreate",
@@ -218,6 +219,9 @@ export function createFirstPromptCommandRunner(options: {
             appId: command.appId,
             chatId: command.chatId,
             payload: command.payload,
+            onAccepted: () => {
+              if (!disposed) deps.clearEditingBuffer(command.payload);
+            },
           });
           relinquishOwnedCreation(deps);
           return;
@@ -251,10 +255,6 @@ export function createFirstPromptCommandRunner(options: {
 
         case "ShowSetupDialog":
           deps.showSetupDialog();
-          return;
-
-        case "ClearEditingBuffer":
-          deps.clearEditingBuffer();
           return;
 
         case "ShowError":

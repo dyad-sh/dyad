@@ -44,6 +44,16 @@ a control and focus must follow it while persistence is pending, keep it
 focusable with `aria-disabled`, guard repeat activation synchronously, and
 restore focus with `{ preventScroll: true }`.
 
+## Global shortcuts that open dialogs
+
+Register truly global shortcuts in the capture phase so focused editors or
+dialog content that stops keydown propagation cannot swallow them. When the
+shortcut opens a modal, coordinate exclusivity in the shared Dialog wrapper
+using Base UI's imperative `actionsRef.close()`; closing only the dialogs known
+to the feature leaves other modal roots and focus traps stacked underneath.
+Do not automatically dismiss an open `AlertDialog`; suppress the new modal
+until the user resolves that blocking confirmation.
+
 ## TooltipTrigger render prop
 
 `TooltipTrigger` from `@base-ui/react/tooltip` (wrapped in `src/components/ui/tooltip.tsx`) renders a `<button>` by default. Wrapping another button-like element (`<button>`, `<Button>`, `<DropdownMenuTrigger>`, `<PopoverTrigger>`, `<MiniSelectTrigger>`, `<ToggleGroupItem>`) inside it creates invalid nested `<button>` HTML. Use the `render` prop instead:

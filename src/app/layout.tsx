@@ -56,7 +56,11 @@ import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
 import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 import { CommandPalette } from "@/components/CommandPalette";
-import { CHAT_SCOPE_PREFIX } from "@/lib/commandPalette";
+import {
+  announceCommandPaletteOpening,
+  CHAT_SCOPE_PREFIX,
+  hasBlockingAlertDialogOpen,
+} from "@/lib/commandPalette";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { streamMessage } = useStreamChat({ hasChatId: false });
@@ -124,6 +128,8 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   useSyncDefaultChatMode();
 
   const openCommandPalette = useCallback((query: string = "") => {
+    if (hasBlockingAlertDialogOpen()) return;
+    announceCommandPaletteOpening();
     setCommandPaletteQuery(query);
     setIsCommandPaletteOpen(true);
   }, []);
@@ -151,9 +157,9 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
       );
     };
 
-    window.addEventListener("keydown", handleCommandPaletteShortcut);
+    window.addEventListener("keydown", handleCommandPaletteShortcut, true);
     return () =>
-      window.removeEventListener("keydown", handleCommandPaletteShortcut);
+      window.removeEventListener("keydown", handleCommandPaletteShortcut, true);
   }, [openCommandPalette]);
 
   // Initialize plan events listener

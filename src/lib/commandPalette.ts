@@ -1,4 +1,5 @@
 export const CHAT_SCOPE_PREFIX = "chat: ";
+export const COMMAND_PALETTE_OPENING_EVENT = "dyad:command-palette-opening";
 
 export type CommandPaletteQuery =
   | { scope: "all"; term: string }
@@ -35,6 +36,35 @@ export function scoreCommandPaletteItem(
   )
     ? 50
     : 0;
+}
+
+export function getCommandPaletteSnippet(
+  text: string,
+  query: string,
+  radius = 50,
+): string {
+  const trimmedQuery = query.trim();
+  const matchIndex = text.toLowerCase().indexOf(trimmedQuery.toLowerCase());
+
+  if (!trimmedQuery || matchIndex === -1) {
+    return text.length > radius * 2 ? `${text.slice(0, radius * 2)}…` : text;
+  }
+
+  const start = Math.max(0, matchIndex - radius);
+  const end = Math.min(text.length, matchIndex + trimmedQuery.length + radius);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
+
+export function announceCommandPaletteOpening(): void {
+  window.dispatchEvent(new Event(COMMAND_PALETTE_OPENING_EVENT));
+}
+
+export function hasBlockingAlertDialogOpen(
+  root: Pick<Document, "querySelector"> = document,
+): boolean {
+  return Boolean(
+    root.querySelector('[data-slot="alert-dialog-content"][data-open]'),
+  );
 }
 
 export async function revealCommandPaletteTarget(

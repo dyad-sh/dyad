@@ -62,6 +62,8 @@ export function useSelectChat() {
             // Ignore navigation errors here; navigation handling is centralized.
           });
       }
+
+      return navigationResult;
     },
   };
 }

@@ -43,6 +43,7 @@ import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
 import {
+  getCommandPaletteSnippet,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
   scoreCommandPaletteItem,
@@ -170,7 +171,7 @@ export function CommandPalette({
 
   const openConfigureTarget = async (targetId: string) => {
     if (!targetChat || !selectedAppId) return;
-    selectChat({ chatId: targetChat.id, appId: selectedAppId });
+    await selectChat({ chatId: targetChat.id, appId: selectedAppId });
     setIsPreviewOpen(true);
     setPreviewMode("configure");
     await revealCommandPaletteTarget(targetId);
@@ -196,6 +197,7 @@ export function CommandPalette({
       data-testid="command-palette"
       className="max-w-2xl"
       filter={commandFilter}
+      closeOnCommandPaletteOpen={false}
     >
       <CommandInput
         value={query}
@@ -356,24 +358,31 @@ export function CommandPalette({
 
             {parsedQuery.term && searchedApps.length > 0 && (
               <CommandGroup heading="Apps">
-                {searchedApps.map((app) => (
-                  <CommandItem
-                    key={app.id}
-                    value={`${app.name} ${app.matchedChatTitle ?? ""} ${app.matchedChatMessage ?? ""}`}
-                    data-testid={`command-palette-app-${app.id}`}
-                    onSelect={() =>
-                      closeAndRun(() =>
-                        navigate({
-                          to: "/app-details",
-                          search: { appId: app.id },
-                        }),
-                      )
-                    }
-                  >
-                    <AppWindow />
-                    <span className="truncate">{app.name}</span>
-                  </CommandItem>
-                ))}
+                {searchedApps.map((app) => {
+                  const matchedText =
+                    app.matchedChatMessage ?? app.matchedChatTitle ?? "";
+                  const snippet = matchedText
+                    ? getCommandPaletteSnippet(matchedText, parsedQuery.term)
+                    : "";
+                  return (
+                    <CommandItem
+                      key={app.id}
+                      value={`${app.name} ${snippet}`}
+                      data-testid={`command-palette-app-${app.id}`}
+                      onSelect={() =>
+                        closeAndRun(() =>
+                          navigate({
+                            to: "/app-details",
+                            search: { appId: app.id },
+                          }),
+                        )
+                      }
+                    >
+                      <AppWindow />
+                      <span className="truncate">{app.name}</span>
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             )}
           </>
@@ -388,10 +397,13 @@ export function CommandPalette({
                   "matchedMessageContent" in chat
                     ? (chat as ChatSearchResult).matchedMessageContent
                     : null;
+                const snippet = matchedContent
+                  ? getCommandPaletteSnippet(matchedContent, parsedQuery.term)
+                  : null;
                 return (
                   <CommandItem
                     key={chat.id}
-                    value={`${chat.title || "Untitled Chat"} ${matchedContent ?? ""}`}
+                    value={`${chat.title || "Untitled Chat"} ${snippet ?? ""}`}
                     data-testid={`command-palette-chat-${chat.id}`}
                     onSelect={() =>
                       closeAndRun(() =>
@@ -404,9 +416,9 @@ export function CommandPalette({
                       <div className="truncate">
                         {chat.title || "Untitled Chat"}
                       </div>
-                      {matchedContent && (
+                      {snippet && (
                         <div className="line-clamp-2 text-xs text-muted-foreground">
-                          {matchedContent}
+                          {snippet}
                         </div>
                       )}
                     </div>

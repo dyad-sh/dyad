@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  getCommandPaletteSnippet,
+  hasBlockingAlertDialogOpen,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
   scoreCommandPaletteItem,
@@ -24,6 +26,29 @@ describe("scoreCommandPaletteItem", () => {
     expect(scoreCommandPaletteItem("Theme", "database", ["appearance"])).toBe(
       0,
     );
+  });
+});
+
+describe("getCommandPaletteSnippet", () => {
+  it("bounds long content while preserving the matched context", () => {
+    const text = `${"a".repeat(80)}needle${"b".repeat(80)}`;
+    const snippet = getCommandPaletteSnippet(text, "needle", 10);
+
+    expect(snippet).toBe(`…${"a".repeat(10)}needle${"b".repeat(10)}…`);
+    expect(snippet.length).toBeLessThan(text.length);
+  });
+});
+
+describe("hasBlockingAlertDialogOpen", () => {
+  it("protects an open destructive confirmation from palette replacement", () => {
+    const alert = document.createElement("div");
+    alert.dataset.slot = "alert-dialog-content";
+    alert.dataset.open = "";
+    document.body.append(alert);
+
+    expect(hasBlockingAlertDialogOpen()).toBe(true);
+    alert.remove();
+    expect(hasBlockingAlertDialogOpen()).toBe(false);
   });
 });
 

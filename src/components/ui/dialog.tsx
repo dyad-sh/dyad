@@ -3,9 +3,40 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { COMMAND_PALETTE_OPENING_EVENT } from "@/lib/commandPalette";
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+function Dialog({
+  actionsRef,
+  closeOnCommandPaletteOpen = true,
+  ...props
+}: DialogPrimitive.Root.Props & {
+  closeOnCommandPaletteOpen?: boolean;
+}) {
+  const internalActionsRef = React.useRef<DialogPrimitive.Root.Actions>(null);
+  const dialogActionsRef = actionsRef ?? internalActionsRef;
+
+  React.useEffect(() => {
+    const closeForCommandPalette = () => {
+      if (closeOnCommandPaletteOpen) dialogActionsRef.current?.close();
+    };
+    window.addEventListener(
+      COMMAND_PALETTE_OPENING_EVENT,
+      closeForCommandPalette,
+    );
+    return () =>
+      window.removeEventListener(
+        COMMAND_PALETTE_OPENING_EVENT,
+        closeForCommandPalette,
+      );
+  }, [closeOnCommandPaletteOpen, dialogActionsRef]);
+
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      actionsRef={dialogActionsRef}
+      {...props}
+    />
+  );
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {

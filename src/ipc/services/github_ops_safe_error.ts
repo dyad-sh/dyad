@@ -5,6 +5,7 @@ import {
 
 const PUBLIC_GIT_DOCUMENTATION_URL =
   /\bhttps?:\/\/(?:gh\.io|docs\.github\.com|git-lfs\.github\.com|git-scm\.com)(?:\/[^\s<>"'.,;:!?)}\]]*)?/gi;
+const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
 
 function redactQuotedAbsolutePaths(message: string): string {
   return message
@@ -12,17 +13,17 @@ function redactQuotedAbsolutePaths(message: string): string {
     .map((line) => {
       let result = "";
       let cursor = 0;
+      const pathStart = /(['"`])(?:\/|[A-Za-z]:[\\/]|\\\\)/g;
 
       while (cursor < line.length) {
-        const match = line
-          .slice(cursor)
-          .match(/(['"`])(?:\/|[A-Za-z]:[\\/]|\\\\)/);
-        if (match?.index === undefined) {
+        pathStart.lastIndex = cursor;
+        const match = pathStart.exec(line);
+        if (!match) {
           result += line.slice(cursor);
           break;
         }
 
-        const start = cursor + match.index;
+        const start = match.index;
         const quote = match[1];
         let closing = line.indexOf(quote, start + match[0].length);
         while (
@@ -66,7 +67,7 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted token]",
     )
     .replaceAll(
-      /\b(?:https?|ssh|git):\/\/[^\s<>"']*[^\s<>"'.,;:!?)}\]]/gi,
+      /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>"']*[^\s<>"'.,;:!?)}\]]/gi,
       "[redacted URL]",
     )
     .replaceAll(
@@ -78,6 +79,10 @@ function redactSensitiveGitOutput(message: string): string {
       /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
       "[redacted identity]",
     )
+    .replaceAll(
+      /\b[A-Z0-9._%+-]+@(?:localhost\b|[A-Z0-9.-]+\.\(none\))/gi,
+      "[redacted identity]",
+    )
     .replaceAll(/(\bdenied to\s+)[^\s.,;:!?)}\]]+/gi, "$1[redacted identity]")
     .replaceAll(
       /\b(?:[a-z0-9-]+\.)+(?:internal|lan|corp)\b/gi,
@@ -85,11 +90,11 @@ function redactSensitiveGitOutput(message: string): string {
     )
     .replaceAll(/\[\/[^\r\n\]]+\]/g, "[[redacted path]]")
     .replaceAll(
-      /(^|[\s("'`=[,])\/[^\r\n]*?\/\.git(?:\/[^\s"'`,;:)}\]]+)?/gm,
+      /(^|[\s("'`=[,])\/(?:Users|home)\/[^\r\n]*?(?=\s+(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b)|$)/gm,
       "$1[redacted path]",
     )
     .replaceAll(
-      /\b[A-Za-z]:[\\/][^\r\n]*?[\\/]\.git(?:[\\/][^\s"'`,;:)}\]]+)?/g,
+      /\b[A-Za-z]:[\\/]Users[\\/][^\r\n]*?(?=\s+(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b)|$)/g,
       "[redacted path]",
     )
     .replaceAll(
@@ -100,7 +105,12 @@ function redactSensitiveGitOutput(message: string): string {
       /\b[A-Za-z]:[\\/](?:[^\\/\s"']+[\\/])+[^\\/\s"']+/g,
       "[redacted path]",
     )
-    .replaceAll(/\\\\[^\\\s"'`]+(?:\\[^\\\s"'`]+)+/g, "[redacted path]");
+    .replaceAll(/(\b[A-Z][A-Z0-9_]{2,}\s*=\s*)[^\s]+/g, "$1[redacted secret]")
+    .replaceAll(/\\\\[^\\\s"'`]+(?:\\[^\\\s"'`]+)+/g, "[redacted path]")
+    .replaceAll(
+      /\b(?:sk-[A-Za-z0-9_-]{16,}|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
+      "[redacted secret]",
+    );
 
   return redacted.replaceAll(
     /DYAD_PUBLIC_GIT_DOCUMENTATION_URL_(\d+)/g,
@@ -126,6 +136,14 @@ export function safeGithubOpsErrorMessage(
       : "";
   if (!raw) return fallback;
 
-  const boundedRaw = raw.slice(0, MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH * 2);
+  const boundedRaw = raw
+    .slice(0, MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH * 2)
+    .split("\n")
+    .map((line) =>
+      line.length > MAX_GITHUB_OPS_ERROR_LINE_LENGTH
+        ? `${line.slice(0, MAX_GITHUB_OPS_ERROR_LINE_LENGTH)} … [line truncated]`
+        : line,
+    )
+    .join("\n");
   return truncateGithubOpsErrorMessage(redactSensitiveGitOutput(boundedRaw));
 }

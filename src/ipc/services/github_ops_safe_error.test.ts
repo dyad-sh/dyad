@@ -113,6 +113,34 @@ describe("safeGithubOpsErrorMessage", () => {
       String.raw`fatal: unable to create C:\Users\John Smith\dyad-apps\demo\.git\index.lock`,
       "fatal: unable to create [redacted path]",
     ],
+    [
+      "fatal: cannot access /Users/alice/Secret Project/customer.txt",
+      "fatal: cannot access [redacted path]",
+    ],
+    [
+      String.raw`fatal: unable to read C:\Users\John Smith\dyad-apps\demo\src\App.tsx`,
+      "fatal: unable to read [redacted path]",
+    ],
+    [
+      "fatal: unable to auto-detect email address (got 'root@hostname.(none)')",
+      "fatal: unable to auto-detect email address (got '[redacted identity]')",
+    ],
+    [
+      "fatal: unable to auto-detect email address (got 'alice@localhost')",
+      "fatal: unable to auto-detect email address (got '[redacted identity]')",
+    ],
+    [
+      "fatal: repository 'file:///Users/alice/dyad-apps/demo' does not exist",
+      "fatal: repository '[redacted URL]' does not exist",
+    ],
+    [
+      "hook: OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456",
+      "hook: OPENAI_API_KEY=[redacted secret]",
+    ],
+    [
+      "hook: token eyJabcdefghijklmnopqrstuvwxyz.abcdefghi.abcdefghij",
+      "hook: token [redacted secret]",
+    ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(
       safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
@@ -131,8 +159,8 @@ describe("safeGithubOpsErrorMessage", () => {
       "GitHub operation failed",
     );
 
-    expect(result).toHaveLength(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH);
-    expect(result).toMatch(/\n… \[GitHub error output truncated\]$/);
+    expect(result).toContain("… [line truncated]");
+    expect(result.length).toBeLessThan(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH);
   });
 
   it("pre-bounds raw output before running redaction", () => {
@@ -141,7 +169,17 @@ describe("safeGithubOpsErrorMessage", () => {
       "GitHub operation failed",
     );
 
-    expect(result).toHaveLength(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH);
-    expect(result).toMatch(/\n… \[GitHub error output truncated\]$/);
+    expect(result).toContain("… [line truncated]");
+    expect(result.length).toBeLessThan(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH);
+  });
+
+  it("bounds individual lines before running redaction", () => {
+    const result = safeGithubOpsErrorMessage(
+      new Error(`hook: ${" /a".repeat(20_000)}`),
+      "GitHub operation failed",
+    );
+
+    expect(result).toContain("… [line truncated]");
+    expect(result.length).toBeLessThan(5000);
   });
 });

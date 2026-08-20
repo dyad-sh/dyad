@@ -9,7 +9,10 @@ import {
   appOperationCoordinator,
   readAppResource,
 } from "@/ipc/services/app_operation_coordinator";
-import { detectNextJsMajorVersion } from "@/ipc/utils/framework_utils";
+import {
+  detectFrameworkType,
+  detectNextJsMajorVersion,
+} from "@/ipc/utils/framework_utils";
 import { choosePackageManagerForApp } from "@/ipc/utils/package_manager_selection";
 import { runningApps } from "@/ipc/utils/process_manager";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
@@ -128,13 +131,13 @@ function getScript(packageJson: PackageJson, name: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-async function gatherBuildProjectFacts(
+export async function gatherBuildProjectFacts(
   ctx: AgentContext,
   buildScript: string,
 ): Promise<BuildProjectFacts> {
   const previewRunning = runningApps.has(ctx.appId);
   return {
-    frameworkType: ctx.frameworkType,
+    frameworkType: detectFrameworkType(ctx.appPath),
     buildScript,
     nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
     previewRunning,

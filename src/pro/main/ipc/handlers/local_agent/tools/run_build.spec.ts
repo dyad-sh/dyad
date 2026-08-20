@@ -17,6 +17,7 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
 import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
+  gatherBuildProjectFacts,
   runBuildTool,
   removeStaleSnapshots,
   secureSnapshotSymlinks,
@@ -115,6 +116,34 @@ describe("run_build", () => {
         buildScript: "tsc -b && vite build",
       }),
     ).toBe("isolated");
+  });
+
+  it("refreshes framework facts after a Vite app gains Nitro", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-build-test-"),
+    );
+    temporaryDirectories.push(appPath);
+    await Promise.all([
+      fs.writeFile(path.join(appPath, "vite.config.ts"), "export default {}"),
+      fs.writeFile(path.join(appPath, "nitro.config.ts"), "export default {}"),
+      fs.writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify({
+          devDependencies: { vite: "latest", nitro: "latest" },
+        }),
+      ),
+    ]);
+
+    const facts = await gatherBuildProjectFacts(
+      {
+        appId: 123_456,
+        appPath,
+        frameworkType: "vite",
+      } as AgentContext,
+      "vite build",
+    );
+
+    expect(facts.frameworkType).toBe("vite-nitro");
   });
 
   it("requires Next 16 isolated dev output before building beside a preview", () => {

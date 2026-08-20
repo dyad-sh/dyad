@@ -28,9 +28,11 @@ async function resolveGitPath(
   }
 }
 
+type GitHookName = "pre-commit" | "prepare-commit-msg" | "commit-msg";
+
 async function isGitHookAvailable(
   appPath: string,
-  hookName: "pre-commit" | "commit-msg",
+  hookName: GitHookName,
 ): Promise<boolean> {
   const hookPath = await resolveGitPath(appPath, `hooks/${hookName}`);
   if (!hookPath) return false;
@@ -58,6 +60,12 @@ export async function isCommitMsgHookAvailable(
   return isGitHookAvailable(appPath, "commit-msg");
 }
 
+export async function isPrepareCommitMsgHookAvailable(
+  appPath: string,
+): Promise<boolean> {
+  return isGitHookAvailable(appPath, "prepare-commit-msg");
+}
+
 export async function runPreCommitHook({
   path,
   signal,
@@ -78,14 +86,23 @@ export async function runPreCommitHook({
   });
 }
 
-export async function runCommitMsgHook({
+/**
+ * Runs one of Git's commit-message hooks against `message` and reads back
+ * whatever the hook left in `COMMIT_EDITMSG`, so a hook that rewrites the
+ * message (rather than only validating it) is honored.
+ */
+async function runMessageHook({
   path,
   message,
   signal,
+  hookName,
+  hookArgs,
 }: {
   path: string;
   message: string;
   signal?: AbortSignal;
+  hookName: "prepare-commit-msg" | "commit-msg";
+  hookArgs: (messagePath: string) => string[];
 }): Promise<BufferedProcessResult & { message: string }> {
   const messagePath = await resolveGitPath(path, "COMMIT_EDITMSG");
   if (!messagePath) {
@@ -96,7 +113,7 @@ export async function runCommitMsgHook({
   const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
   const result = await runBufferedProcess({
     command: gitLocation,
-    args: ["hook", "run", "commit-msg", "--", messagePath],
+    args: ["hook", "run", hookName, "--", ...hookArgs(messagePath)],
     cwd: path,
     env: getPackageManagerCommandEnv(gitEnv),
     signal,
@@ -112,6 +129,51 @@ export async function runCommitMsgHook({
       "",
     ),
   };
+}
+
+/**
+ * Runs `prepare-commit-msg`, which Git invokes after `pre-commit` and before
+ * `commit-msg` to let a hook rewrite the message (adding a ticket ID or a
+ * Gerrit Change-Id, for example). Running it here keeps Git's ordering intact
+ * so `commit-msg` validates the same text that actually gets committed.
+ *
+ * The `message` source argument matches what Git passes for a `-m` commit,
+ * which is how `gitCommit` always creates commits.
+ */
+export async function runPrepareCommitMsgHook({
+  path,
+  message,
+  signal,
+}: {
+  path: string;
+  message: string;
+  signal?: AbortSignal;
+}): Promise<BufferedProcessResult & { message: string }> {
+  return runMessageHook({
+    path,
+    message,
+    signal,
+    hookName: "prepare-commit-msg",
+    hookArgs: (messagePath) => [messagePath, "message"],
+  });
+}
+
+export async function runCommitMsgHook({
+  path,
+  message,
+  signal,
+}: {
+  path: string;
+  message: string;
+  signal?: AbortSignal;
+}): Promise<BufferedProcessResult & { message: string }> {
+  return runMessageHook({
+    path,
+    message,
+    signal,
+    hookName: "commit-msg",
+    hookArgs: (messagePath) => [messagePath],
+  });
 }
 
 export function formatPreCommitOutput(stdout: string, stderr: string): string {

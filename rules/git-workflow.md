@@ -173,7 +173,9 @@ After a commit with lint-staged hooks, re-check both `git status --short` and an
 
 ## Runtime commit hook policy
 
-Dyad's low-level `gitCommit` helper always passes `--no-verify`; it does not expose a caller option. Workflows that create user-requested commits must explicitly run every hook they promise to preserve before calling `gitCommit`: the manual UI flow runs `pre-commit`, then runs `commit-msg` against `COMMIT_EDITMSG` and commits the hook-adjusted message. Keep hook execution separate so failures can be surfaced and recovered from before committing; do not assume an explicit `pre-commit` run preserves `commit-msg`, because `--no-verify` bypasses both.
+Dyad's low-level `gitCommit` helper is hook-free and does not expose a caller option. `--no-verify` alone is not enough: it bypasses only `pre-commit` and `commit-msg`, while Git still runs `prepare-commit-msg` (and `post-commit`), so a hook that appends to the message would rewrite it _after_ an explicit `commit-msg` run had already validated it. `gitCommit` therefore also passes `-c core.hooksPath=.dyad-no-git-hooks`, a path that is never created, so Git finds no hooks at all.
+
+Workflows that create user-requested commits must explicitly run every hook they promise to preserve, **in Git's own order**, before calling `gitCommit`. The manual UI flow runs `pre-commit`, then `prepare-commit-msg`, then `commit-msg` against `COMMIT_EDITMSG`, and commits whatever message those hooks left behind. Keep hook execution separate so failures can be surfaced and recovered from before committing, and never reorder the two message hooks — `commit-msg` must be the last thing to see the message that gets committed.
 
 When native Git commands accept a revision followed by optional paths, append
 `--` after the revision even when no paths are supplied. A branch name can also

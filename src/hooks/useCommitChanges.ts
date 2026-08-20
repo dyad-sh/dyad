@@ -15,6 +15,14 @@ function isPreCommitFailure(error: Error | null): boolean {
   );
 }
 
+function isCommitMsgFailure(error: Error | null): boolean {
+  return (
+    error !== null &&
+    (error as Error & { code?: string }).code ===
+      GIT_ERROR_CODES.COMMIT_MSG_FAILED
+  );
+}
+
 function isCommitCancelled(error: Error): boolean {
   return (
     (error as Error & { code?: string }).code ===
@@ -80,8 +88,19 @@ export function useCommitChanges() {
         queryKey: queryKeys.versions.list({ appId }),
       });
     },
-    onError: (error: Error) => {
-      if (!isPreCommitFailure(error) && !isCommitCancelled(error)) {
+    onError: (error: Error, { appId }) => {
+      // Staging runs before any hook, and hooks like lint-staged routinely
+      // rewrite and re-stage files before failing. The dialog stays open on
+      // this path, so refetch or it keeps rendering the pre-hook file list and
+      // diffs. `byApp` is a prefix of the per-file diff keys, so both refresh.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
+      });
+      if (
+        !isPreCommitFailure(error) &&
+        !isCommitMsgFailure(error) &&
+        !isCommitCancelled(error)
+      ) {
         showError(`Failed to commit: ${error.message}`);
       }
     },
@@ -144,6 +163,7 @@ export function useCommitChanges() {
     isCancellingCommit,
     commitProgress,
     preCommitError: isPreCommitFailure(commitError) ? commitError : null,
+    commitMsgError: isCommitMsgFailure(commitError) ? commitError : null,
     resetCommitError,
   };
 }

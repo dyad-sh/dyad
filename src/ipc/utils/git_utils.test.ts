@@ -128,6 +128,32 @@ describe("gitCommit", () => {
 
     expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
   });
+
+  it("does not let prepare-commit-msg rewrite the message", async () => {
+    // `--no-verify` bypasses only pre-commit and commit-msg; Git still runs
+    // prepare-commit-msg, which would rewrite the message after an explicit
+    // commit-msg run had already validated it.
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-prepare-msg-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hookPath = path.join(repoDir, ".git", "hooks", "prepare-commit-msg");
+    await fs.promises.writeFile(
+      hookPath,
+      '#!/bin/sh\necho "appended-by-hook" >> "$1"\n',
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(hookPath, 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+
+    await gitCommit({ path: repoDir, message: "validated message" });
+
+    expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%B"])).toBe(
+      "validated message",
+    );
+  });
 });
 
 describe("GitService explicit commit hooks", () => {
@@ -167,6 +193,40 @@ describe("GitService explicit commit hooks", () => {
 
     expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%s"])).toBe(
       "validated: manual message",
+    );
+  });
+
+  it("runs prepare-commit-msg before commit-msg and commits exactly what was validated", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-msg-hook-order-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hooksDir = path.join(repoDir, ".git", "hooks");
+    // Mirrors the common pairing: prepare-commit-msg appends a trailer, and
+    // commit-msg rejects any message that is missing it.
+    await fs.promises.writeFile(
+      path.join(hooksDir, "prepare-commit-msg"),
+      '#!/bin/sh\nprintf "\\nChange-Id: I1234\\n" >> "$1"\n',
+    );
+    await fs.promises.writeFile(
+      path.join(hooksDir, "commit-msg"),
+      '#!/bin/sh\ngrep -q "^Change-Id: " "$1" || { echo "missing Change-Id"; exit 1; }\n',
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(path.join(hooksDir, "prepare-commit-msg"), 0o755);
+      await fs.promises.chmod(path.join(hooksDir, "commit-msg"), 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+
+    await new GitService().stageAllAndCommitWithPreCommit({
+      path: repoDir,
+      message: "manual message",
+    });
+
+    // The trailer appears exactly once: prepare-commit-msg ran here rather
+    // than again inside `gitCommit`, which would have duplicated it.
+    expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%B"])).toBe(
+      "manual message\n\nChange-Id: I1234",
     );
   });
 });

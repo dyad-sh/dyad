@@ -55,10 +55,7 @@ export function useFixPreCommitWithAI() {
           appId,
           initialChatMode: "local-agent",
         });
-        setIsChatPanelHidden(false);
-        selectChat({ chatId, appId });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-        await streamMessage({
+        const accepted = await streamMessage({
           prompt: buildPreCommitFixPrompt({
             commitMessage,
             failureOutput,
@@ -66,11 +63,17 @@ export function useFixPreCommitWithAI() {
           chatId,
           appId,
           requestedChatMode: "local-agent",
-          onSettled: () => {
-            isStartingRef.current = false;
-            setIsStarting(false);
-          },
         });
+        if (!accepted) {
+          await ipc.chat.deleteChat(chatId);
+          chatId = null;
+          void queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+          return false;
+        }
+
+        setIsChatPanelHidden(false);
+        selectChat({ chatId, appId });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
         return true;
       } catch (error) {
         if (chatId !== null) {
@@ -88,9 +91,10 @@ export function useFixPreCommitWithAI() {
             ? error.message
             : "Failed to start the pre-commit fix",
         );
+        return false;
+      } finally {
         isStartingRef.current = false;
         setIsStarting(false);
-        return false;
       }
     },
     [queryClient, selectChat, setIsChatPanelHidden, streamMessage],

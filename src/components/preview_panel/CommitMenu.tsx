@@ -55,7 +55,9 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(appId);
   const {
     commitChanges,
+    cancelCommit,
     isCommitting,
+    isCancellingCommit,
     commitProgress,
     preCommitError,
     resetCommitError,
@@ -272,8 +274,20 @@ export function CommitMenu({ appId }: CommitMenuProps) {
           <DialogFooter className="px-6 pb-6 pt-2">
             <Button
               variant="outline"
-              onClick={dismissDialog}
-              disabled={isCommitting || isStartingAiFix}
+              onClick={
+                isCommitting &&
+                (commitProgress?.phase === "pre-commit" ||
+                  commitProgress?.phase === "commit-msg")
+                  ? () => void cancelCommit()
+                  : dismissDialog
+              }
+              disabled={
+                isStartingAiFix ||
+                (isCommitting &&
+                  commitProgress?.phase !== "pre-commit" &&
+                  commitProgress?.phase !== "commit-msg") ||
+                isCancellingCommit
+              }
             >
               {t("preview.cancel")}
             </Button>

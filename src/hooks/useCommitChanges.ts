@@ -15,17 +15,29 @@ function isPreCommitFailure(error: Error | null): boolean {
   );
 }
 
+function isCommitCancelled(error: Error): boolean {
+  return (
+    (error as Error & { code?: string }).code ===
+    GIT_ERROR_CODES.COMMIT_CANCELLED
+  );
+}
+
 export function useCommitChanges() {
   const queryClient = useQueryClient();
   const screenshotManager = useScreenshotManager();
   const [commitProgress, setCommitProgress] = useState<CommitProgress | null>(
     null,
   );
+  const [isCancellingCommit, setIsCancellingCommit] = useState(false);
   const activeCommitRef = useRef<{
     appId: number;
     operationId: string;
   } | null>(null);
-  const inFlightCommitRef = useRef<Promise<string> | null>(null);
+  const inFlightCommitRef = useRef<{
+    appId: number;
+    message: string;
+    promise: Promise<string>;
+  } | null>(null);
 
   useEffect(() => {
     return ipc.events.git.onCommitProgress((progress) => {
@@ -69,7 +81,7 @@ export function useCommitChanges() {
       });
     },
     onError: (error: Error) => {
-      if (!isPreCommitFailure(error)) {
+      if (!isPreCommitFailure(error) && !isCommitCancelled(error)) {
         showError(`Failed to commit: ${error.message}`);
       }
     },
@@ -77,7 +89,15 @@ export function useCommitChanges() {
 
   const commitChanges = useCallback(
     ({ appId, message }: { appId: number; message: string }) => {
-      if (inFlightCommitRef.current) return inFlightCommitRef.current;
+      const inFlight = inFlightCommitRef.current;
+      if (inFlight) {
+        if (inFlight.appId === appId && inFlight.message === message) {
+          return inFlight.promise;
+        }
+        const error = new Error("Another commit is already in progress.");
+        showError(error.message);
+        return Promise.reject(error);
+      }
 
       const operationId = `commit:${globalThis.crypto.randomUUID()}`;
       activeCommitRef.current = { appId, operationId };
@@ -91,19 +111,37 @@ export function useCommitChanges() {
             activeCommitRef.current = null;
             inFlightCommitRef.current = null;
             setCommitProgress(null);
+            setIsCancellingCommit(false);
           }
         }
       };
       const promise = run();
-      inFlightCommitRef.current = promise;
+      inFlightCommitRef.current = { appId, message, promise };
       return promise;
     },
     [mutateCommitChanges],
   );
 
+  const cancelCommit = useCallback(async () => {
+    const active = activeCommitRef.current;
+    if (!active || isCancellingCommit) return;
+
+    setIsCancellingCommit(true);
+    try {
+      await ipc.git.cancelCommit(active);
+    } catch (error) {
+      setIsCancellingCommit(false);
+      showError(
+        error instanceof Error ? error.message : "Failed to cancel the commit",
+      );
+    }
+  }, [isCancellingCommit]);
+
   return {
     commitChanges,
+    cancelCommit,
     isCommitting,
+    isCancellingCommit,
     commitProgress,
     preCommitError: isPreCommitFailure(commitError) ? commitError : null,
     resetCommitError,

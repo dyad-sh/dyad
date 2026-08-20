@@ -111,7 +111,7 @@ import { db } from "@/db";
 import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
 import { reserveRecordingStart } from "@/ipc/services/recording_registry";
 
-const mockEvent = {} as IpcMainInvokeEvent;
+const mockEvent = { sender: { id: 99 } } as IpcMainInvokeEvent;
 
 const mockApp = {
   id: 1,
@@ -177,7 +177,7 @@ describe("recording admission", () => {
   });
 
   it("refuses commit and discard while a recording owns the app", async () => {
-    const commit = registeredHandlers.at(-2)!;
+    const commit = registeredHandlers.at(-3)!;
     const discard = registeredHandlers.at(-1)!;
     const reservation = reserveRecordingStart(1);
     expect(reservation).not.toBeNull();
@@ -214,12 +214,13 @@ describe("commit progress", () => {
 
   it("emits correlated phases to the renderer that started the commit", async () => {
     const send = vi.fn();
-    const commit = registeredHandlers.at(-2)!;
+    const commit = registeredHandlers.at(-3)!;
 
     await expect(
       commit(
         {
           sender: {
+            id: 99,
             isDestroyed: () => false,
             isCrashed: () => false,
             send,
@@ -243,6 +244,44 @@ describe("commit progress", () => {
         { appId: 1, operationId: "commit:123", phase: "committing" },
       ],
     ]);
+  });
+
+  it("aborts only the matching commit owned by the requesting renderer", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    gitServiceMocks.stageAllAndCommitWithPreCommit.mockImplementationOnce(
+      async ({ signal, onProgress }) => {
+        receivedSignal = signal;
+        onProgress("pre-commit");
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+        return "unreachable";
+      },
+    );
+    const commit = registeredHandlers.at(-3)!;
+    const cancel = registeredHandlers.at(-2)!;
+    const sender = {
+      id: 99,
+      isDestroyed: () => false,
+      isCrashed: () => false,
+      send: vi.fn(),
+    };
+
+    const commitPromise = commit(
+      { sender },
+      { appId: 1, message: "Save work", operationId: "commit:cancel" },
+    );
+    await vi.waitFor(() => expect(receivedSignal).toBeDefined());
+
+    await cancel(
+      { sender: { ...sender, id: 100 } },
+      { appId: 1, operationId: "commit:cancel" },
+    );
+    expect(receivedSignal?.aborted).toBe(false);
+
+    await cancel({ sender }, { appId: 1, operationId: "commit:cancel" });
+    expect(receivedSignal?.aborted).toBe(true);
+    await expect(commitPromise).rejects.toThrow("aborted");
   });
 });
 

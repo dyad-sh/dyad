@@ -173,7 +173,7 @@ After a commit with lint-staged hooks, re-check both `git status --short` and an
 
 ## Runtime commit hook policy
 
-Dyad's low-level `gitCommit` helper always passes `--no-verify`; it does not expose a caller option. Workflows that require repository verification must run the pre-commit hook explicitly before calling `gitCommit`, as the manual UI commit flow does. Keep hook execution separate so failures can be surfaced and recovered from before committing.
+Dyad's low-level `gitCommit` helper always passes `--no-verify`; it does not expose a caller option. Workflows that create user-requested commits must explicitly run every hook they promise to preserve before calling `gitCommit`: the manual UI flow runs `pre-commit`, then runs `commit-msg` against `COMMIT_EDITMSG` and commits the hook-adjusted message. Keep hook execution separate so failures can be surfaced and recovered from before committing; do not assume an explicit `pre-commit` run preserves `commit-msg`, because `--no-verify` bypasses both.
 
 When native Git commands accept a revision followed by optional paths, append
 `--` after the revision even when no paths are supplied. A branch name can also

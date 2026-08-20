@@ -66,6 +66,7 @@ describe("useFixPreCommitWithAI", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createChat.mockResolvedValue(44);
+    mocks.streamMessage.mockResolvedValue(true);
   });
 
   it("opens a new Agent chat and submits the failed hook context", async () => {
@@ -97,5 +98,27 @@ describe("useFixPreCommitWithAI", () => {
         prompt: expect.stringContaining("lint failed"),
       }),
     );
+    expect(result.current.isStarting).toBe(false);
+  });
+
+  it("deletes the unused chat when the prompt is rejected", async () => {
+    mocks.streamMessage.mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    let started = true;
+    await act(async () => {
+      started = await result.current.fixPreCommitWithAI({
+        appId: 7,
+        commitMessage: "Save checkout fix",
+        failureOutput: "x".repeat(200_000),
+      });
+    });
+
+    expect(started).toBe(false);
+    expect(mocks.deleteChat).toHaveBeenCalledWith(44);
+    expect(mocks.selectChat).not.toHaveBeenCalled();
+    expect(result.current.isStarting).toBe(false);
   });
 });

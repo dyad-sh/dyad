@@ -8,6 +8,7 @@ import type { CommitProgress } from "@/ipc/types/github";
 import { useCommitChanges } from "./useCommitChanges";
 
 const mocks = vi.hoisted(() => ({
+  cancelCommit: vi.fn(),
   commitChanges: vi.fn(),
   commitProgressListeners: new Set<(progress: CommitProgress) => void>(),
   onCommitProgress: vi.fn((listener: (progress: CommitProgress) => void) => {
@@ -21,7 +22,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/ipc/types", () => ({
   ipc: {
-    git: { commitChanges: mocks.commitChanges },
+    git: {
+      cancelCommit: mocks.cancelCommit,
+      commitChanges: mocks.commitChanges,
+    },
     events: { git: { onCommitProgress: mocks.onCommitProgress } },
   },
 }));
@@ -132,5 +136,80 @@ describe("useCommitChanges", () => {
       await commitPromise;
     });
     expect(result.current.commitProgress).toBeNull();
+  });
+
+  it("reuses an identical in-flight request and rejects a different one", async () => {
+    let resolveCommit!: (hash: string) => void;
+    mocks.commitChanges.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveCommit = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useCommitChanges(), {
+      wrapper: Wrapper,
+    });
+
+    let first!: Promise<string>;
+    let duplicate!: Promise<string>;
+    act(() => {
+      first = result.current.commitChanges({ appId: 7, message: "Save work" });
+      duplicate = result.current.commitChanges({
+        appId: 7,
+        message: "Save work",
+      });
+    });
+
+    expect(duplicate).toBe(first);
+    await expect(
+      result.current.commitChanges({ appId: 8, message: "Other work" }),
+    ).rejects.toThrow("Another commit is already in progress");
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Another commit is already in progress.",
+    );
+    expect(mocks.commitChanges).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveCommit("commit-hash");
+      await first;
+    });
+  });
+
+  it("cancels the active operation without showing a failure toast", async () => {
+    let rejectCommit!: (error: Error) => void;
+    mocks.commitChanges.mockImplementationOnce(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectCommit = reject;
+        }),
+    );
+    mocks.cancelCommit.mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => useCommitChanges(), {
+      wrapper: Wrapper,
+    });
+
+    let commitPromise!: Promise<string>;
+    act(() => {
+      commitPromise = result.current.commitChanges({
+        appId: 7,
+        message: "Save work",
+      });
+    });
+    await waitFor(() => expect(mocks.commitChanges).toHaveBeenCalledOnce());
+    const { operationId } = mocks.commitChanges.mock.calls[0][0];
+
+    await act(async () => {
+      await result.current.cancelCommit();
+    });
+    expect(mocks.cancelCommit).toHaveBeenCalledWith({ appId: 7, operationId });
+
+    const cancelled = Object.assign(new Error("cancelled"), {
+      code: GIT_ERROR_CODES.COMMIT_CANCELLED,
+    });
+    await act(async () => {
+      rejectCommit(cancelled);
+      await expect(commitPromise).rejects.toBe(cancelled);
+    });
+    expect(mocks.showError).not.toHaveBeenCalled();
   });
 });

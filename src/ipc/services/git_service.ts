@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 import {
   ensureGitLineEndingPolicy,
@@ -13,8 +14,10 @@ import {
 } from "../utils/git_utils";
 import {
   formatPreCommitOutput,
+  isCommitMsgHookAvailable,
   isPreCommitHookAvailable,
   PRE_COMMIT_TIMEOUT_MS,
+  runCommitMsgHook,
   runPreCommitHook,
 } from "./pre_commit_service";
 import type { CommitProgressPhase } from "../types/github";
@@ -90,11 +93,14 @@ export class GitService {
     path,
     message,
     onProgress,
+    signal,
   }: {
     path: string;
     message: string;
     onProgress?: (phase: CommitProgressPhase) => void;
+    signal?: AbortSignal;
   }): Promise<string> {
+    signal?.throwIfAborted();
     onProgress?.("staging");
     await gitAddAll({ path });
 
@@ -102,12 +108,13 @@ export class GitService {
       onProgress?.("pre-commit");
       let result;
       try {
-        result = await runPreCommitHook({ path });
+        result = await runPreCommitHook({ path, signal });
       } catch (error) {
         const details = error instanceof Error ? error.message : String(error);
-        throw GitStateError(
+        throw new DyadError(
           `Pre-commit checks could not start. ${details}`,
-          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+          DyadErrorKind.External,
+          { cause: error },
         );
       }
 
@@ -120,8 +127,8 @@ export class GitService {
       }
       if (result.aborted) {
         throw GitStateError(
-          `Pre-commit checks were cancelled before they completed.\n\n${output}`,
-          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+          "Pre-commit checks were cancelled.",
+          GIT_ERROR_CODES.COMMIT_CANCELLED,
         );
       }
       if (result.code !== 0) {
@@ -132,8 +139,45 @@ export class GitService {
       }
     }
 
+    let validatedMessage = message;
+    if (await isCommitMsgHookAvailable(path)) {
+      onProgress?.("commit-msg");
+      let result;
+      try {
+        result = await runCommitMsgHook({ path, message, signal });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        throw new DyadError(
+          `Commit-message checks could not start. ${details}`,
+          DyadErrorKind.External,
+          { cause: error },
+        );
+      }
+
+      const output = formatPreCommitOutput(result.stdout, result.stderr);
+      if (result.timedOut) {
+        throw new DyadError(
+          `Commit-message checks exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      if (result.aborted) {
+        throw GitStateError(
+          "Commit-message checks were cancelled.",
+          GIT_ERROR_CODES.COMMIT_CANCELLED,
+        );
+      }
+      if (result.code !== 0) {
+        throw new DyadError(
+          `Commit-message checks failed with exit code ${result.code ?? "unknown"}.\n\n${output}`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      validatedMessage = result.message;
+    }
+
     onProgress?.("committing");
-    return gitCommit({ path, message });
+    return gitCommit({ path, message: validatedMessage });
   }
 
   /**

@@ -63,10 +63,15 @@ export const CommitChangesParamsSchema = z.object({
   filesToStage: z.array(z.string()).optional(),
 });
 
+export const CancelCommitParamsSchema = CommitChangesParamsSchema.pick({
+  appId: true,
+  operationId: true,
+});
+
 export const CommitProgressSchema = z.object({
   appId: z.number(),
   operationId: z.string().min(1).max(256),
-  phase: z.enum(["staging", "pre-commit", "committing"]),
+  phase: z.enum(["staging", "pre-commit", "commit-msg", "committing"]),
 });
 
 export const UncommittedFileSchema = z.object({
@@ -208,6 +213,12 @@ export const gitContracts = {
     invalidates: (input) => [{ family: "versions", appId: input.appId }],
   }),
 
+  cancelCommit: defineContract({
+    channel: "git:cancel-commit",
+    input: CancelCommitParamsSchema,
+    output: z.void(),
+  }),
+
   discardChanges: defineContract({
     channel: "git:discard-changes",
     input: GitBranchAppIdParamsSchema,
@@ -243,6 +254,7 @@ export type ListRemoteGitBranchesParams = z.infer<
   typeof ListRemoteGitBranchesParamsSchema
 >;
 export type CommitChangesParams = z.infer<typeof CommitChangesParamsSchema>;
+export type CancelCommitParams = z.infer<typeof CancelCommitParamsSchema>;
 export type CommitProgress = z.infer<typeof CommitProgressSchema>;
 export type CommitProgressPhase = CommitProgress["phase"];
 export type UncommittedFile = z.infer<typeof UncommittedFileSchema>;

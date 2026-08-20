@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { isPlausibleAdminEmail } from "./coolify_admin_email";
 
+describe("reserved domains", () => {
+  it("refuses a subdomain of a documentation domain", () => {
+    // RFC 2606 reserves everything under these, so Coolify's seeder will
+    // refuse the address minutes into an install.
+    expect(isPlausibleAdminEmail("admin@mail.example.com")).toBe(false);
+    expect(isPlausibleAdminEmail("admin@notexample.com")).toBe(true);
+  });
+});
+
 describe("isPlausibleAdminEmail", () => {
   // Coolify resolves the domain, so these fail on the server however
   // well-formed they look. Catching them here means the user finds out while

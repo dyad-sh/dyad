@@ -239,9 +239,11 @@ function targetFrom(input: SetupServer, privateKey: string) {
   };
 }
 
-/** Test-only: the pin map outlives a single case otherwise. */
+/** Test-only: the pin map and the controller both outlive a single case. */
 export function resetCoolifySetupStateForTests(): void {
   inspectedFingerprints.clear();
+  controller?.dispose();
+  controller = null;
 }
 
 export function registerCoolifySetupHandlers() {

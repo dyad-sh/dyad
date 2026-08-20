@@ -53,6 +53,11 @@ describe("safeGithubOpsErrorMessage", () => {
       "authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz",
       "GitHub operation failed",
     ],
+    ["hook: Bearer opaqueHookSecret123", "hook: Bearer [redacted secret]"],
+    ["hook: glpat-abcdefghijklmnop", "hook: [redacted token]"],
+    ["hook: xoxb-1234567890-secret", "hook: [redacted token]"],
+    ["hook: AKIAABCDEFGHIJKLMNOP", "hook: [redacted token]"],
+    ["hook: sk-ant-abcdefghijklmnop", "hook: [redacted token]"],
     ["Authorization: Basic dXNlcjpwYXNz", "GitHub operation failed"],
     ["Private-Token=Custom abc secret", "GitHub operation failed"],
     [

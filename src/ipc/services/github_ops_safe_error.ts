@@ -7,7 +7,7 @@ const PUBLIC_GIT_DOCUMENTATION_URL =
   /\b(?:https:\/\/gh\.io\/lfs|https:\/\/git-lfs\.github\.com\/?)(?=$|[\s"'.,;:!?)}\]])/gi;
 const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
 const UNSAFE_GITHUB_ERROR_RESIDUAL =
-  /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bsk-[A-Za-z0-9_-]{16,}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
+  /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bglpat-[A-Za-z0-9_-]{10,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
 
 function redactQuotedAbsolutePaths(message: string): string {
   return message
@@ -130,6 +130,14 @@ function redactSensitiveGitOutput(message: string): string {
     .replaceAll(
       /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/gi,
       "[redacted token]",
+    )
+    .replaceAll(
+      /\b(?:glpat-[A-Za-z0-9_-]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|sk-ant-[A-Za-z0-9_-]{10,})\b/gi,
+      "[redacted token]",
+    )
+    .replaceAll(
+      /\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b/gi,
+      "Bearer [redacted secret]",
     )
     .replaceAll(
       /\b(?:[\w.-]{1,64}@[\w.-]{1,255}|[\w-]{1,63}(?:\.[\w-]{1,63})+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,

@@ -218,8 +218,10 @@ describe("GitHub connector actions (integration)", () => {
     expect(details.textContent).toContain("https://gh.io/lfs");
     expect(details.textContent).toContain("https://git-lfs.github.com");
     expect(
-      within(connectedRepo).getByText("See troubleshooting guide"),
-    ).toBeTruthy();
+      within(connectedRepo)
+        .getByRole("link", { name: "See troubleshooting guide" })
+        .getAttribute("href"),
+    ).toBe("https://www.dyad.sh/docs/integrations/github#troubleshooting");
     expect(
       within(connectedRepo).getByRole("button", { name: "Copy" }),
     ).toBeTruthy();

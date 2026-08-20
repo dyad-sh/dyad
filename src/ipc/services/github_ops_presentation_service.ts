@@ -45,7 +45,10 @@ export class GithubOpsPresentationService {
         entity: { kind: "app", id: appId },
       });
     if (!target) return;
-    this.windows.endpointForSession(target)?.send("toast:error", { message });
+    this.windows.endpointForSession(target)?.send("toast:error", {
+      message,
+      persist: true,
+    });
   }
 
   forget(operationId: string | undefined): void {

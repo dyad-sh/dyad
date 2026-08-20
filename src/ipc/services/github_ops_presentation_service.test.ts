@@ -25,6 +25,7 @@ describe("GithubOpsPresentationService", () => {
 
     expect(first.send).toHaveBeenCalledWith("toast:error", {
       message: "Push failed",
+      persist: true,
     });
     expect(second.send).not.toHaveBeenCalled();
   });

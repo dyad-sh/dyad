@@ -73,6 +73,7 @@ interface LinkedGitHubRepo {
 function GitHubTroubleshootingLink({ className = "" }: { className?: string }) {
   return (
     <a
+      href="https://www.dyad.sh/docs/integrations/github#troubleshooting"
       onClick={(event) => {
         event.preventDefault();
         ipc.system.openExternalUrl(
@@ -442,18 +443,17 @@ function ConnectedGitHubConnector({
                           ? "Your changes are ready to sync to GitHub."
                           : `Resolve ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} to ${isSyncConflict ? "continue syncing" : "finish merging"}.`}
                 </p>
+                {conflictRecoveryStage === "verification-failed" && (
+                  <div className="mt-2">
+                    <GitHubOperationError
+                      message={
+                        conflictVerificationError ??
+                        "Dyad couldn't check the repository."
+                      }
+                    />
+                  </div>
+                )}
               </div>
-
-              {conflictRecoveryStage === "verification-failed" && (
-                <div className="mt-2">
-                  <GitHubOperationError
-                    message={
-                      conflictVerificationError ??
-                      "Dyad couldn't check the repository."
-                    }
-                  />
-                </div>
-              )}
 
               {conflictRecoveryStage === "conflicted" && (
                 <ul className="mt-2 space-y-1" aria-label="Conflicted files">

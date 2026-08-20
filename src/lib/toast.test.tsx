@@ -37,6 +37,14 @@ describe("showError", () => {
     });
   });
 
+  it("keeps producer-scoped persistent error toasts open", () => {
+    showError("Git push failed", { persist: true });
+
+    expect(toast.custom).toHaveBeenCalledWith(expect.any(Function), {
+      duration: Infinity,
+    });
+  });
+
   it("auto-dismisses non-actionable error toasts", () => {
     showError("Could not read settings");
 

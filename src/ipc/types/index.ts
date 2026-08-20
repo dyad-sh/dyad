@@ -30,7 +30,7 @@ export { settingsContracts } from "./settings";
 export { appContracts } from "./app";
 export { chatContracts, chatStreamContract } from "./chat";
 export { agentContracts, agentEvents } from "./agent";
-export { githubContracts, gitContracts } from "./github";
+export { githubContracts, gitContracts, gitEvents } from "./github";
 export {
   connectionFlowContracts,
   connectionFlowEvents,
@@ -99,7 +99,7 @@ export { settingsClient } from "./settings";
 export { appClient } from "./app";
 export { chatClient, chatStreamClient } from "./chat";
 export { agentClient, agentEventClient } from "./agent";
-export { githubClient, gitClient } from "./github";
+export { githubClient, gitClient, gitEventClient } from "./github";
 export {
   connectionFlowClient,
   connectionFlowEventClient,
@@ -485,7 +485,7 @@ import { settingsClient } from "./settings";
 import { appClient } from "./app";
 import { chatClient, chatStreamClient } from "./chat";
 import { agentClient, agentEventClient } from "./agent";
-import { githubClient, gitClient } from "./github";
+import { githubClient, gitClient, gitEventClient } from "./github";
 import {
   connectionFlowClient,
   connectionFlowEventClient,
@@ -608,6 +608,7 @@ export const ipc = {
   // Event clients for main->renderer pub/sub
   events: {
     agent: agentEventClient,
+    git: gitEventClient,
     connectionFlow: connectionFlowEventClient,
     supabase: supabaseEventClient,
     system: systemEventClient,

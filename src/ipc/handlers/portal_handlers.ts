@@ -59,7 +59,6 @@ export function registerPortalHandlers() {
         const commitHash = await gitService.stageAllAndCommit({
           path: appPath,
           message: "Generate database migration file",
-          noVerify: true,
         });
 
         logger.info(`Successfully committed migration changes: ${commitHash}`);

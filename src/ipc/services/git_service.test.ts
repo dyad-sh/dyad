@@ -2,15 +2,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ensureGitLineEndingPolicy: vi.fn(),
+  GIT_ERROR_CODES: { PRE_COMMIT_FAILED: "PRE_COMMIT_FAILED" },
+  GitStateError: vi.fn((message: string, code: string) =>
+    Object.assign(new Error(message), { code }),
+  ),
   gitInit: vi.fn(),
   gitAdd: vi.fn(),
   gitAddAll: vi.fn(),
   gitCommit: vi.fn(async () => "commit-hash"),
   gitRemove: vi.fn(),
   hasStagedChanges: vi.fn(async () => true),
+  isPreCommitHookAvailable: vi.fn(async () => true),
+  runPreCommitHook: vi.fn(async () => ({
+    code: 0,
+    stdout: "checks passed",
+    stderr: "",
+    aborted: false,
+    timedOut: false,
+  })),
 }));
 
 vi.mock("../utils/git_utils", () => mocks);
+vi.mock("./pre_commit_service", () => ({
+  PRE_COMMIT_TIMEOUT_MS: 10 * 60_000,
+  formatPreCommitOutput: (stdout: string, stderr: string) =>
+    [stdout, stderr].filter(Boolean).join("\n") ||
+    "The hook produced no output.",
+  isPreCommitHookAvailable: mocks.isPreCommitHookAvailable,
+  runPreCommitHook: mocks.runPreCommitHook,
+}));
 
 import { GitService } from "./git_service";
 
@@ -22,10 +42,27 @@ describe("GitService", () => {
     vi.clearAllMocks();
     callOrder.length = 0;
     for (const [name, fn] of Object.entries(mocks)) {
+      if (typeof fn !== "function") continue;
+      if (name === "GitStateError") {
+        fn.mockImplementation((message: string, code: string) =>
+          Object.assign(new Error(message), { code }),
+        );
+        continue;
+      }
       fn.mockImplementation(async () => {
         callOrder.push(name);
         if (name === "gitCommit") return "commit-hash";
         if (name === "hasStagedChanges") return true;
+        if (name === "isPreCommitHookAvailable") return true;
+        if (name === "runPreCommitHook") {
+          return {
+            code: 0,
+            stdout: "checks passed",
+            stderr: "",
+            aborted: false,
+            timedOut: false,
+          };
+        }
         return undefined;
       });
     }
@@ -48,7 +85,6 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "Init Dyad app",
-      noVerify: true,
     });
     expect(hash).toBe("commit-hash");
   });
@@ -67,7 +103,6 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "custom",
-      noVerify: true,
     });
   });
 
@@ -81,9 +116,76 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "msg",
-      noVerify: false,
     });
     expect(hash).toBe("commit-hash");
+  });
+
+  it("runs pre-commit separately before a user-initiated commit", async () => {
+    const phases: string[] = [];
+    const hash = await service.stageAllAndCommitWithPreCommit({
+      path: "/repo",
+      message: "msg",
+      onProgress: (phase) => phases.push(phase),
+    });
+
+    expect(callOrder).toEqual([
+      "gitAddAll",
+      "isPreCommitHookAvailable",
+      "runPreCommitHook",
+      "gitCommit",
+    ]);
+    expect(mocks.gitCommit).toHaveBeenCalledWith({
+      path: "/repo",
+      message: "msg",
+    });
+    expect(hash).toBe("commit-hash");
+    expect(phases).toEqual(["staging", "pre-commit", "committing"]);
+  });
+
+  it("commits directly when no pre-commit hook is installed", async () => {
+    const phases: string[] = [];
+    mocks.isPreCommitHookAvailable.mockImplementation(async () => {
+      callOrder.push("isPreCommitHookAvailable");
+      return false;
+    });
+
+    await service.stageAllAndCommitWithPreCommit({
+      path: "/repo",
+      message: "msg",
+      onProgress: (phase) => phases.push(phase),
+    });
+
+    expect(callOrder).toEqual([
+      "gitAddAll",
+      "isPreCommitHookAvailable",
+      "gitCommit",
+    ]);
+    expect(mocks.runPreCommitHook).not.toHaveBeenCalled();
+    expect(phases).toEqual(["staging", "committing"]);
+  });
+
+  it("returns a coded error and does not commit when pre-commit fails", async () => {
+    mocks.runPreCommitHook.mockImplementation(async () => {
+      callOrder.push("runPreCommitHook");
+      return {
+        code: 1,
+        stdout: "",
+        stderr: "lint failed",
+        aborted: false,
+        timedOut: false,
+      };
+    });
+
+    await expect(
+      service.stageAllAndCommitWithPreCommit({
+        path: "/repo",
+        message: "msg",
+      }),
+    ).rejects.toMatchObject({
+      code: "PRE_COMMIT_FAILED",
+      message: expect.stringContaining("lint failed"),
+    });
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
   });
 
   it("stageAllAndCommitIfChanged commits when changes are staged", async () => {
@@ -170,7 +272,6 @@ describe("GitService", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "msg",
-      noVerify: true,
       paths: ["e2e-tests/a.spec.ts"],
     });
     expect(result).toEqual({

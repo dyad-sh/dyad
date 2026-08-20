@@ -37,6 +37,9 @@ import {
 } from "@/components/chat/uncommittedFileStatus";
 import { CommitFileList } from "@/components/chat/CommitFileList";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { useFixPreCommitWithAI } from "@/hooks/useFixPreCommitWithAI";
+import { PreCommitFailureAlert } from "@/components/chat/PreCommitFailureAlert";
+import { CommitButtonLabel } from "@/components/chat/CommitButtonLabel";
 
 interface CommitMenuProps {
   appId: number;
@@ -50,7 +53,15 @@ interface CommitMenuProps {
 export function CommitMenu({ appId }: CommitMenuProps) {
   const { t } = useTranslation("home");
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(appId);
-  const { commitChanges, isCommitting } = useCommitChanges();
+  const {
+    commitChanges,
+    isCommitting,
+    commitProgress,
+    preCommitError,
+    resetCommitError,
+  } = useCommitChanges();
+  const { fixPreCommitWithAI, isStarting: isStartingAiFix } =
+    useFixPreCommitWithAI();
   const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
@@ -91,6 +102,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   // round trip out to a diff closes the dialog through openStagedDiffAtom
   // instead, so the draft survives that.
   const dismissDialog = () => {
+    resetCommitError();
     closeCommitDialog({ source: "editor", appId });
   };
 
@@ -99,8 +111,8 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     try {
       await commitChanges({ appId, message: commitMessage.trim() });
     } catch {
-      // useCommitChanges surfaces the error via a toast. Keep the dialog open
-      // and preserve the message so the user can retry without retyping it.
+      // useCommitChanges surfaces ordinary errors via a toast and exposes
+      // pre-commit failures inline. Keep the dialog open in either case.
       return;
     }
     closeCommitDialog({ source: "editor", appId });
@@ -110,6 +122,18 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     clearStagedDiff(appId);
   };
 
+  const handleFixPreCommitWithAI = async () => {
+    if (!preCommitError) return;
+    const started = await fixPreCommitWithAI({
+      appId,
+      commitMessage: commitMessage.trim(),
+      failureOutput: preCommitError.message,
+    });
+    if (!started) return;
+    resetCommitError();
+    closeCommitDialog({ source: "editor", appId });
+  };
+
   return (
     <div className="flex items-center" data-testid="commit-menu">
       <Button
@@ -117,7 +141,10 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         size="sm"
         className="rounded-r-none border-r-0"
         disabled={!hasUncommittedFiles}
-        onClick={() => setOpenCommitDialog({ source: "editor", appId })}
+        onClick={() => {
+          resetCommitError();
+          setOpenCommitDialog({ source: "editor", appId });
+        }}
         data-testid="editor-commit-button"
       >
         <GitCommitVertical size={14} />
@@ -185,7 +212,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
             setOpenCommitDialog({ source: "editor", appId });
             return;
           }
-          if (isCommitting) return;
+          if (isCommitting || isStartingAiFix) return;
           dismissDialog();
         }}
       >
@@ -228,17 +255,25 @@ export function CommitMenu({ appId }: CommitMenuProps) {
                 onSelectFile={(path) =>
                   openStagedDiff(path, { source: "editor", appId })
                 }
-                disabled={isCommitting}
+                disabled={isCommitting || isStartingAiFix}
                 testId="editor-commit-files-list"
               />
             </div>
+
+            {preCommitError && (
+              <PreCommitFailureAlert
+                error={preCommitError}
+                isStartingFix={isStartingAiFix}
+                onFix={handleFixPreCommitWithAI}
+              />
+            )}
           </div>
 
           <DialogFooter className="px-6 pb-6 pt-2">
             <Button
               variant="outline"
               onClick={dismissDialog}
-              disabled={isCommitting}
+              disabled={isCommitting || isStartingAiFix}
             >
               {t("preview.cancel")}
             </Button>
@@ -247,11 +282,15 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               disabled={
                 !commitMessage.trim() ||
                 isCommitting ||
+                isStartingAiFix ||
                 uncommittedFiles.length === 0
               }
               data-testid="editor-commit-confirm-button"
             >
-              {isCommitting ? t("preview.committing") : t("preview.commit")}
+              <CommitButtonLabel
+                isCommitting={isCommitting}
+                phase={commitProgress?.phase ?? null}
+              />
             </Button>
           </DialogFooter>
         </DialogContent>

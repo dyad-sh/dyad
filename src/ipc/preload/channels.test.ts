@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { supabaseEvents } from "../types/supabase";
+import { gitEvents } from "../types/github";
 import { VALID_INVOKE_CHANNELS, VALID_RECEIVE_CHANNELS } from "./channels";
 
 describe("user-input preload channels", () => {
@@ -17,6 +18,14 @@ describe("user-input preload channels", () => {
 describe("supabase preload channels", () => {
   it("allows every Supabase receive contract", () => {
     for (const event of Object.values(supabaseEvents)) {
+      expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
+    }
+  });
+});
+
+describe("git preload channels", () => {
+  it("allows every Git receive contract", () => {
+    for (const event of Object.values(gitEvents)) {
       expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
     }
   });

@@ -264,7 +264,6 @@ describe("switchAppToPublishableKey", () => {
     expect(gitCommitMock).toHaveBeenCalledWith({
       path: appPath,
       message: "switch Supabase client to publishable API key",
-      noVerify: true,
       paths: [relativePath],
     });
   });

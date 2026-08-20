@@ -163,6 +163,12 @@ export function createElectronMock(shared: ElectronMockShared) {
         webContents,
       })),
     },
+    nativeTheme: {
+      shouldUseDarkColors: false,
+      themeSource: "system",
+      on: vi.fn(),
+      off: vi.fn(),
+    },
     safeStorage: {
       isEncryptionAvailable: vi.fn(() => false),
       encryptString: vi.fn((s: string) => Buffer.from(s)),

@@ -65,7 +65,7 @@ vi.mock("@/hooks/useLoadAppFile", () => ({
 }));
 
 vi.mock("@/contexts/ThemeContext", () => ({
-  useTheme: () => ({ theme: "light" }),
+  useTheme: () => ({ theme: "light", isDarkMode: false }),
 }));
 
 describe("FileEditor cursor persistence", () => {

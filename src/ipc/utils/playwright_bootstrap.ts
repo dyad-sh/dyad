@@ -307,15 +307,80 @@ function requireBaseUrl(): string {
   return baseUrl;
 }
 
+function findPreviewContext(browser: pw.Browser, origin: string) {
+  return browser.contexts().find((candidateContext) =>
+    candidateContext.pages().some((candidatePage) => {
+      try {
+        return new URL(candidatePage.url()).origin === origin;
+      } catch {
+        return false;
+      }
+    }),
+  );
+}
+
+async function clearMediaEmulation(page: pw.Page): Promise<void> {
+  try {
+    // connectOverCDP initializes every Electron target with Playwright's media
+    // defaults. Clear those overrides outside the test preview so Dyad's own
+    // renderer continues to follow Electron/OS accessibility preferences.
+    await page.emulateMedia({
+      media: null,
+      colorScheme: null,
+      reducedMotion: null,
+      forcedColors: null,
+      contrast: null,
+    });
+  } catch {
+    // A window can close while the browser-wide CDP connection is attaching.
+  }
+}
+
+async function protectNonPreviewContexts(
+  browser: pw.Browser,
+): Promise<() => Promise<void>> {
+  const origin = new URL(requireBaseUrl()).origin;
+  const previewContext = findPreviewContext(browser, origin);
+  const protectedContexts = browser
+    .contexts()
+    .filter((context) => context !== previewContext);
+  const onPage = (page: pw.Page) => {
+    void clearMediaEmulation(page);
+  };
+
+  for (const context of protectedContexts) {
+    context.on("page", onPage);
+  }
+  await Promise.all(
+    protectedContexts.map((context) =>
+      Promise.all(context.pages().map(clearMediaEmulation)),
+    ),
+  );
+
+  return async () => {
+    for (const context of protectedContexts) {
+      context.off("page", onPage);
+    }
+    await Promise.all(
+      protectedContexts.map((context) =>
+        Promise.all(context.pages().map(clearMediaEmulation)),
+      ),
+    );
+  };
+}
+
 export const test = !endpoint
   ? pw.test
   : pw.test.extend({
       browser: [
         async ({}, use) => {
           const browser = await pw.chromium.connectOverCDP(endpoint, { slowMo });
+          let restoreNonPreviewMedia = async () => {};
           try {
+            restoreNonPreviewMedia = await protectNonPreviewContexts(browser);
             await use(browser);
           } finally {
+            await restoreNonPreviewMedia();
             // Disconnects this client; it never closes Dyad itself.
             await browser.close();
           }
@@ -328,15 +393,7 @@ export const test = !endpoint
         // The native test preview has its own Electron session partition, which
         // CDP exposes as a separate BrowserContext. Find the context that owns
         // the app page instead of accidentally borrowing Dyad's default one.
-        const context = browser.contexts().find((candidateContext) =>
-          candidateContext.pages().some((candidatePage) => {
-            try {
-              return new URL(candidatePage.url()).origin === origin;
-            } catch {
-              return false;
-            }
-          }),
-        );
+        const context = findPreviewContext(browser, origin);
         if (!context) {
           throw new Error(
             \`Dyad preview: no browser context is serving \${origin}.\`,

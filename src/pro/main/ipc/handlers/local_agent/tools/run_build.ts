@@ -35,6 +35,7 @@ const SNAPSHOT_MARKER_CONTENT = "dyad-build-snapshot-v1";
 const SNAPSHOT_ROOT_NAME = "build-snapshots";
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
   ".git",
+  SNAPSHOT_MARKER,
   ".next",
   ".output",
   ".turbo",

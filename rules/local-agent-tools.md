@@ -92,8 +92,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   directory links as junctions, and copy linked files so snapshot setup does
   not require symbolic-link privileges.
 - Keep build snapshots in a Dyad-owned scratch root and mark every owned
-  directory before copying. Startup and stale cleanup must require that marker
-  before recursive deletion; a name pattern alone is never proof of ownership.
+  directory before copying. Reserve the marker name from copied app inputs.
+  Startup and stale cleanup must require that marker before recursive deletion;
+  a name pattern alone is never proof of ownership.
 - Start one deadline before snapshot validation/copying and give the build only
   the remaining budget. Stream build output while it runs, and do not consume a
   retry when snapshot setup fails before the build process starts.

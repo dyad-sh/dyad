@@ -35,5 +35,6 @@ export function isPlausibleAdminEmail(email: string): boolean {
   const reserved = ["test", "example", "invalid", "localhost", "local"];
   const lastLabel = domain.slice(domain.lastIndexOf(".") + 1);
   if (reserved.includes(lastLabel)) return false;
-  return !["example.com", "example.net", "example.org"].includes(domain);
+  const documentation = ["example.com", "example.net", "example.org"];
+  return !documentation.some((d) => domain === d || domain.endsWith(`.${d}`));
 }

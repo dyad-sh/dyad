@@ -221,6 +221,32 @@ export type SupabaseOrganizationCredentials = z.infer<
 export const CoolifySchema = z.object({
   instanceUrl: z.string().optional(),
   accessToken: SecretSchema.optional(),
+  /**
+   * The admin account on a server Dyad set up itself.
+   *
+   * Kept because Dyad invented this password on the user's behalf, for their
+   * own machine — showing it once and forgetting it leaves them locked out of
+   * a server they own. Encrypted like the token, and only ever handed to the
+   * renderer when it is asked for.
+   */
+  adminEmail: z.string().optional(),
+  adminPassword: SecretSchema.optional(),
+  /**
+   * The address the admin account above belongs to.
+   *
+   * An account is only good for the instance Dyad made it on. Without this,
+   * connecting to a second Coolify shows its address beside the first one's
+   * password, which reads as a way in and is not one.
+   */
+  adminInstanceUrl: z.string().optional(),
+  /**
+   * The token from the last connection, kept when signing out.
+   *
+   * Dyad minted this one itself, so throwing it away means the only way back
+   * in is making another in Coolify — for a token Dyad still had a moment ago.
+   * Not used to talk to anything: it is shown so it can be pasted back.
+   */
+  previousAccessToken: SecretSchema.optional(),
 });
 export type Coolify = z.infer<typeof CoolifySchema>;
 

@@ -57,6 +57,7 @@ import { registerWindowInfrastructureHandlers } from "./handlers/window_infrastr
 import { registerDistributedMachineHandlers } from "./handlers/distributed_machine_handlers";
 import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
 import { registerCoolifyHandlers } from "./handlers/coolify_handlers";
+import { registerCoolifySetupHandlers } from "./handlers/coolify_setup_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -119,4 +120,5 @@ export function registerIpcHandlers() {
   registerDistributedMachineHandlers();
   registerImageGenerationHandlers();
   registerCoolifyHandlers();
+  registerCoolifySetupHandlers();
 }

@@ -76,6 +76,14 @@ export function registerFakeCoolify(app: Express): void {
 
   const base = "/coolify/api/v1";
 
+  // The same API at the root of the host too: an installed Coolify lives
+  // there, while a pasted URL points at the /coolify mount. Rewritten rather
+  // than registered twice, which would drift.
+  app.use((req, _res, next) => {
+    if (req.url.startsWith("/api/v1")) req.url = `/coolify${req.url}`;
+    next();
+  });
+
   // Lets a spec choose the shape of the run before it starts. Named fields
   // rather than a spread, which would also let a caller replace the Maps.
   app.post("/coolify/test/reset", (req, res) => {

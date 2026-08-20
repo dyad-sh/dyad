@@ -78,6 +78,8 @@ async function connectGithubFromPublishPanel(po: any) {
  */
 async function connectCoolify(po: any, fakeLlmPort: number) {
   await po.page.getByRole("tab", { name: "Your Own Server" }).click();
+  // The tab opens on the installer, so switch to the paste-a-token form.
+  await po.page.getByTestId("coolify-setup-use-existing").click();
 
   await po.page
     .getByTestId("coolify-instance-url")

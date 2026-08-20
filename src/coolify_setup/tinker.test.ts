@@ -34,6 +34,24 @@ function fakeSession(
   };
 }
 
+describe("the container it runs in", () => {
+  it("refuses a name that could end the command", async () => {
+    // The name is interpolated into a command that runs as root, and both
+    // command shapes build it themselves.
+    expect(() => tinkerCommand("coolify; rm -rf /")).toThrow();
+    await expect(
+      runTinker(
+        { run: async () => ({ code: 0, stdout: "", stderr: "" }) } as never,
+        "echo 1;",
+        {
+          container: "coolify; rm -rf /",
+          env: { A: "b" },
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "validation" });
+  });
+});
+
 describe("extractOutput", () => {
   it("takes the printed output, not the echo of the line printing it", () => {
     // Both appear in the transcript. Matching the marker without its prompt

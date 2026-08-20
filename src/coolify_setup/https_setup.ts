@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { sleep } from "./sleep";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 import { runTinker } from "./tinker";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
@@ -193,16 +194,19 @@ export async function domainPointsAtServer(
   host: string,
   { resolve = resolveBoth }: { resolve?: typeof resolveBoth } = {},
 ): Promise<boolean> {
-  // Nothing to compare against: the server is known by a name rather than an
-  // address, and resolving it would only be asking DNS about DNS.
-  if (isIP(host) === 0) return true;
+  // A server known by a name is resolved to the addresses it stands for, so
+  // the domain is compared against the same thing either way. A name that
+  // does not resolve leaves nothing to compare, which the verdict below reads
+  // as not knowing rather than as a wrong answer.
+  const expectedIps =
+    isIP(host) === 0 ? (await resolve(host)).addresses : [host];
   const resolved = await resolve(domain);
   // Only a domain that resolves somewhere else is an objection. A resolver we
   // could not reach and a name with no records yet both come back with nothing
   // to compare, which is not knowing rather than knowing it is wrong.
   return (
     domainCheckVerdict({
-      expectedIps: [host],
+      expectedIps,
       actualIps: resolved.addresses,
     }) !== "points-elsewhere"
   );
@@ -274,31 +278,44 @@ export async function tryEnableHttps(
 
   const url = httpsUrlFor(domain);
   onProgress?.(`Requesting a certificate for ${domain}…\n`);
-  await applyInstanceDomain(session, domain, { signal });
 
-  const deadline = now() + timeoutMs;
-  while (now() < deadline) {
-    if (signal?.aborted) {
-      throw new DyadError("Cancelled.", DyadErrorKind.UserCancelled);
+  // True only when the domain earned its place. Every other way out of the
+  // block below — no certificate, a cancel, a failure part-way through
+  // applying it — leaves Coolify answering at a name that serves nothing, so
+  // the domain comes back off before anyone is told what happened.
+  let keepDomain = false;
+  try {
+    await applyInstanceDomain(session, domain, { signal });
+
+    const deadline = now() + timeoutMs;
+    while (now() < deadline) {
+      if (signal?.aborted) {
+        throw new DyadError("Cancelled.", DyadErrorKind.UserCancelled);
+      }
+      if (await check(url)) {
+        keepDomain = true;
+        onProgress?.(`Coolify is available over HTTPS at ${url}\n`);
+        return { instanceUrl: url, secure: true };
+      }
+      await sleep(intervalMs, signal);
     }
-    if (await check(url)) {
-      onProgress?.(`Coolify is available over HTTPS at ${url}\n`);
-      return { instanceUrl: url, secure: true };
+
+    onProgress?.("No certificate arrived; leaving Coolify on plain HTTP.\n");
+    return {
+      instanceUrl: plainUrlFor(host),
+      secure: false,
+      reason: !domain.endsWith(".sslip.io")
+        ? `No certificate was issued for ${domain}. Check that it points at this server.`
+        : `No certificate was issued for ${domain}. The free service that ` +
+          `provides these names shares one certificate allowance between ` +
+          `everyone using it, and it can run out.`,
+    };
+  } finally {
+    // Without the signal, which by this point may be the reason we are here.
+    // Bounded by the tinker call's own timeout, so a wedged server cannot
+    // hold the cancel open.
+    if (!keepDomain) {
+      await applyInstanceDomain(session, null).catch(() => {});
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-
-  // Put it back, so the dashboard is reachable at the address the user will be
-  // given rather than at a domain whose certificate never arrived.
-  onProgress?.("No certificate arrived; leaving Coolify on plain HTTP.\n");
-  await applyInstanceDomain(session, null, { signal });
-  return {
-    instanceUrl: plainUrlFor(host),
-    secure: false,
-    reason: !domain.endsWith(".sslip.io")
-      ? `No certificate was issued for ${domain}. Check that it points at this server.`
-      : `No certificate was issued for ${domain}. The free service that ` +
-        `provides these names shares one certificate allowance between ` +
-        `everyone using it, and it can run out.`,
-  };
 }

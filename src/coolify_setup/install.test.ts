@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { installCoolify, preflight, waitForAdminSeeded } from "./install";
+import {
+  buildInstallScript,
+  installCoolify,
+  preflight,
+  waitForAdminSeeded,
+} from "./install";
 import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 import { DyadErrorKind } from "@/errors/dyad_error";
@@ -28,6 +33,61 @@ function transcript(output: string): string {
   ].join("\n");
 }
 
+describe("what the installer is sent", () => {
+  const CREDENTIALS = {
+    username: "dyad",
+    email: "me@gmail.com",
+    password: "Abc123@xyz",
+  };
+
+  it("keeps the password out of the command line", async () => {
+    // Anyone with a shell on that machine can read a command line out of ps.
+    let sentCommand = "";
+    let sentInput: string | undefined;
+    const session = {
+      run: async (command: string, options?: { input?: string }) => {
+        sentCommand = command;
+        sentInput = options?.input;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      end: () => {},
+    };
+
+    await installCoolify(session as never, CREDENTIALS);
+
+    expect(sentCommand).not.toContain(CREDENTIALS.password);
+    expect(sentInput).toContain(CREDENTIALS.password);
+  });
+
+  it("fails the install when the download fails", () => {
+    // curl reports the failure and bash, handed nothing, exits 0 — so without
+    // this the pipeline's status is 0 and a server with no Coolify on it
+    // reads as installed.
+    expect(buildInstallScript(CREDENTIALS)).toContain("set -o pipefail");
+  });
+
+  it("feeds the script over stdin rather than as arguments", async () => {
+    let sent: string | undefined;
+    const session = {
+      run: async (_command: string, options?: { input?: string }) => {
+        sent = options?.input;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      end: () => {},
+    };
+
+    await installCoolify(session as never, CREDENTIALS);
+
+    expect(sent).toContain(CREDENTIALS.password);
+  });
+
+  it("refuses a credential that could end its own quoting", () => {
+    expect(() =>
+      buildInstallScript({ ...CREDENTIALS, password: "a'; rm -rf /" }),
+    ).toThrow();
+  });
+});
+
 describe("preflight", () => {
   it("reads a healthy server as ready", async () => {
     const session = sessionAnswering(
@@ -37,6 +97,24 @@ describe("preflight", () => {
       ready: true,
       alreadyInstalled: false,
       memoryMb: 1967,
+    });
+  });
+
+  it("refuses when docker is there but will not say what it is running", async () => {
+    // A stopped daemon reports no containers, which reads exactly like a
+    // machine with no Coolify — and installing over an instance that is
+    // merely stopped is the outcome worth refusing.
+    const session = sessionAnswering(
+      vi.fn(async () => ({
+        code: 0,
+        stdout: "mem=1967\ncontainer=\ndockerok=no\nbusy=no\n",
+        stderr: "",
+      })) as never,
+    );
+
+    await expect(preflight(session)).resolves.toMatchObject({
+      ready: false,
+      alreadyInstalled: false,
     });
   });
 

@@ -487,6 +487,20 @@ describe("running a command", () => {
     await expect(session.run("preflight")).resolves.toMatchObject({ code: 1 });
   });
 
+  it("reports a channel error instead of letting it take the process down", async () => {
+    // A stream with no error listener throws where it stands, which in the
+    // main process means the whole app rather than the command.
+    const session = await connectSsh(
+      TARGET,
+      trustOnFirstUse(() => {}),
+    );
+    scriptStream(h.clients[0], (s) => {
+      queueMicrotask(() => s.emit("error", new Error("channel died")));
+    });
+
+    await expect(session.run("uname -a")).rejects.toThrow(/channel died/);
+  });
+
   it("lets go of the signal when the socket is already gone", async () => {
     // ssh2 throws where it stands rather than calling back, which would skip
     // the cleanup and strand a listener on a signal nobody will ever answer.

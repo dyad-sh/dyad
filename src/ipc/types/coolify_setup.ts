@@ -200,8 +200,10 @@ export const coolifySetupContracts = {
   /**
    * The credentials for a server Dyad set up, on request.
    *
-   * A separate call rather than part of the status, so secrets cross to the
-   * renderer only when someone asks to see them rather than on every poll.
+   * A separate call rather than part of the status, so the panel can show
+   * them long after the install that made them. The finished screen carries
+   * its own copy in the snapshot while it is up; this is how they are read
+   * once it is gone.
    */
   revealCredentials: defineContract({
     channel: "coolify-setup:reveal-credentials",

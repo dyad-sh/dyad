@@ -8,6 +8,7 @@ import {
   tryEnableHttps,
 } from "./https_setup";
 import type { SshSession } from "@/ipc/utils/ssh_client";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 function transcript(output: string): string {
   return [
@@ -206,19 +207,98 @@ describe("domainPointsAtServer", () => {
     ).toBe(true);
   });
 
-  it("says nothing about a server known by a name", async () => {
-    const resolve = vi.fn(answers(["203.0.113.5"]));
+  it("compares a server known by a name against what the name resolves to", async () => {
+    // Both sides are names here, so both are resolved. Accepting any domain
+    // when the server is named would point Coolify — and the root token
+    // stored with it — at whatever that domain happens to serve.
+    const byName = async (target: string) => ({
+      addresses:
+        target === "box.example.com" ? ["203.0.113.5"] : ["198.51.100.9"],
+      failed: false,
+    });
+
     expect(
       await domainPointsAtServer("coolify.example.com", "box.example.com", {
-        resolve,
+        resolve: byName,
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts a domain that resolves to the same place as the named server", async () => {
+    expect(
+      await domainPointsAtServer("coolify.example.com", "box.example.com", {
+        resolve: answers(["203.0.113.5"]),
       }),
     ).toBe(true);
-    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when the server's own name does not resolve", async () => {
+    // Not knowing where the server is is not the same as knowing the domain
+    // is wrong, and refusing here would block a setup over a private name.
+    const nothingForTheServer = async (target: string) => ({
+      addresses: target === "box.internal" ? [] : ["198.51.100.9"],
+      failed: target === "box.internal",
+    });
+
+    expect(
+      await domainPointsAtServer("coolify.example.com", "box.internal", {
+        resolve: nothingForTheServer,
+      }),
+    ).toBe(true);
   });
 });
 
 describe("tryEnableHttps", () => {
   const FAST = { timeoutMs: 40, intervalMs: 5 };
+
+  it("takes the domain back off when the cancel lands while it is being set", async () => {
+    // The script sets the fqdn before it rebuilds the proxy, so a cancel here
+    // has almost certainly already been written to the instance.
+    const controller = new AbortController();
+    const scripts: string[] = [];
+    let applies = 0;
+    const session = {
+      run: vi.fn(async (_command: string, options?: { input?: string }) => {
+        scripts.push(options?.input ?? "");
+        applies += 1;
+        if (applies === 1) {
+          controller.abort();
+          throw new DyadError("Cancelled.", DyadErrorKind.UserCancelled);
+        }
+        return { code: 0, stdout: transcript("applied"), stderr: "" };
+      }) as unknown as SshSession["run"],
+      end: vi.fn(),
+    };
+
+    await expect(
+      tryEnableHttps(session, "203.0.113.5", {
+        ...FAST,
+        signal: controller.signal,
+        check: async () => false,
+      }),
+    ).rejects.toThrow(/Cancelled/);
+
+    expect(scripts.some((t) => t.includes("fqdn = null"))).toBe(true);
+  });
+
+  it("takes the domain back off when the user cancels the wait", async () => {
+    // The domain is set before the certificate is asked for. Cancelling in
+    // between and leaving it there points the dashboard at a name that serves
+    // nothing.
+    const { session, scripts } = fakeSession();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      tryEnableHttps(session, "203.0.113.5", {
+        ...FAST,
+        signal: controller.signal,
+        check: async () => false,
+      }),
+    ).rejects.toThrow(/Cancelled/);
+
+    expect(scripts.some((t) => t.includes("fqdn = null"))).toBe(true);
+  });
 
   it("reports the encrypted address once a certificate arrives", async () => {
     const { session } = fakeSession();

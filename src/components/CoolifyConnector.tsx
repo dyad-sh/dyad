@@ -314,10 +314,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // say about how it went, outranks anything else this panel could show. Read
   // from the main process rather than remembered here, so leaving the screen
   // and coming back finds it again.
-  // A failure leaves the form on screen with the installer's output under it,
-  // which is the same panel the user would land on anyway — so it is only a
-  // reason to hold the view when something is running or finished. Being held
-  // there after a failure made the token form unreachable.
+  // A failure is not one of them: it leaves the form on screen with the
+  // installer's output under it, which is the panel the user would land on
+  // anyway, and holding the view there puts the token form out of reach.
   if (setupState.type === "running" || setupState.type === "done") {
     return (
       <div className="space-y-3" data-testid="coolify-connector">

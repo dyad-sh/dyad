@@ -1,4 +1,5 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { sleep } from "./sleep";
 import { plainUrlFor } from "./https_setup";
 import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
@@ -62,6 +63,10 @@ export async function preflight(
       // with its name is. A failed install leaves the directory behind, and
       // treating that as an install refuses the retry that would fix it.
       `echo "container=$(docker ps -a --filter name=^coolify$ --format '{{.Names}}' 2>/dev/null | head -1)"`,
+      // Whether the answer above means anything. A docker that is installed
+      // but not running answers nothing at all, which reads the same as a
+      // machine with no Coolify on it.
+      `echo "dockerok=$(if docker info >/dev/null 2>&1; then echo yes; elif command -v docker >/dev/null 2>&1; then echo no; else echo absent; fi)"`,
       // A cloud server runs its own updates on first boot and holds the
       // package lock while it does. Coolify's installer needs that lock to
       // install Docker, fails when it cannot get it, and leaves the server
@@ -92,6 +97,21 @@ export async function preflight(
       reason:
         "Dyad could not read anything back from this server. It answered the " +
         "connection but not the question — check it and try again.",
+    };
+  }
+
+  // Docker is there but will not answer, so what it said about Coolify is
+  // not evidence. Installing over an instance that is merely stopped is the
+  // outcome worth refusing.
+  if (read("dockerok") === "no") {
+    return {
+      ready: false,
+      alreadyInstalled: false,
+      memoryMb: null,
+      reason:
+        "Docker is installed on this server but not responding, so Dyad " +
+        "cannot tell whether Coolify is already on it. Start Docker and try " +
+        "again.",
     };
   }
 
@@ -144,7 +164,7 @@ export async function preflight(
  * The installer itself is piped to a shell, which is Coolify's documented way
  * of running it.
  */
-export function buildInstallCommand(credentials: AdminCredentials): string {
+export function buildInstallScript(credentials: AdminCredentials): string {
   for (const [label, value] of Object.entries(credentials)) {
     if (!isShellSafe(value)) {
       throw new DyadError(
@@ -154,11 +174,29 @@ export function buildInstallCommand(credentials: AdminCredentials): string {
     }
   }
   return (
-    `env ROOT_USERNAME='${credentials.username}' ` +
-    `ROOT_USER_EMAIL='${credentials.email}' ` +
-    `ROOT_USER_PASSWORD='${credentials.password}' ` +
-    `bash -c "curl -fsSL ${INSTALLER_URL} | bash"`
+    [
+      // Without it the pipeline reports what the last command did, and a curl
+      // that downloaded nothing still ends in a bash that exits 0 — so a
+      // failed download would read as a finished install.
+      "set -o pipefail",
+      `export ROOT_USERNAME='${credentials.username}'`,
+      `export ROOT_USER_EMAIL='${credentials.email}'`,
+      `export ROOT_USER_PASSWORD='${credentials.password}'`,
+      'curl -fsSL "$1" | bash',
+    ].join("\n") + "\n"
   );
+}
+
+/**
+ * The command the script above is fed to.
+ *
+ * The address is an argument and the credentials are not: a command line is
+ * readable by every user on the machine through `ps`, while stdin is not. The
+ * installer's address is public, and having it there says what a long-running
+ * root command is doing.
+ */
+export function buildInstallCommand(): string {
+  return `bash -s -- ${INSTALLER_URL}`;
 }
 
 export async function installCoolify(
@@ -169,7 +207,8 @@ export async function installCoolify(
     signal,
   }: { onOutput?: (chunk: string) => void; signal?: AbortSignal } = {},
 ): Promise<void> {
-  const result = await session.run(buildInstallCommand(credentials), {
+  const result = await session.run(buildInstallCommand(), {
+    input: buildInstallScript(credentials),
     onOutput,
     signal,
   });
@@ -237,7 +276,7 @@ export async function waitForDashboard(
     } catch {
       // Not listening yet, which is the expected state for the first minute.
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await sleep(intervalMs, signal);
   }
   return false;
 }
@@ -354,7 +393,7 @@ export async function waitForAdminSeeded(
       timeoutMs: attemptTimeoutMs,
     });
     if (answered) return { seeded: true };
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await sleep(intervalMs, signal);
   }
 
   const output = await runAdminSeeder(session, { signal });

@@ -172,6 +172,24 @@ describe("cancelling", () => {
     gate.resolve(RESULT);
   });
 
+  it("carries out a command from a transition that stays put", async () => {
+    // A second cancel does not change the state, and setState answers "no
+    // change" the same way it answers "disposed" — so the abort it asks for
+    // has to be run on the strength of the transition, not the state change.
+    const abort = vi.spyOn(AbortController.prototype, "abort");
+    const gate = deferred();
+    const { controller } = harness(async () => gate.promise);
+
+    controller.start(TARGET);
+    const before = abort.mock.calls.length;
+    controller.cancel();
+    controller.cancel();
+
+    expect(abort.mock.calls.length - before).toBe(2);
+    gate.resolve(RESULT);
+    abort.mockRestore();
+  });
+
   it("is quiet when there is nothing to stop", () => {
     const { controller } = harness(async () => RESULT);
     expect(() => controller.cancel()).not.toThrow();

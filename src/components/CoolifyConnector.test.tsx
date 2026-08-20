@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -108,9 +108,12 @@ beforeEach(() => {
 });
 
 function CoolifyConnector(props: { appId: number | null }) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  // One client for the life of the test, so a rerender keeps the cache it
+  // built — a fresh one per render would throw away anything a test invalidated
+  // or cached and quietly pass on the re-seed below.
+  const [client] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   // Seeded rather than fetched: what the main process is doing is present on
   // the first render in the app too, once any window has asked. Waiting for
   // it here would make an "it is not shown" assertion pass before the answer

@@ -63,6 +63,7 @@ export class CoolifySetupController {
    */
   private readonly store = new SnapshotStore<CoolifySetupState>(IDLE);
   private aborters = new Map<string, AbortController>();
+  private disposed = false;
   private runs = new Map<string, Promise<SetupResult>>();
 
   constructor(private readonly options: CoolifySetupControllerOptions) {
@@ -77,6 +78,7 @@ export class CoolifySetupController {
 
   /** Stops telling anyone anything. Nothing in flight is cancelled by it. */
   dispose(): void {
+    this.disposed = true;
     this.store.dispose();
   }
 
@@ -137,7 +139,12 @@ export class CoolifySetupController {
     // A disposed store keeps nothing and tells nobody, so running the
     // commands anyway would start an install over SSH that no window could
     // see, cancel, or hear the end of — while `start` reported it as running.
-    if (!this.store.setState(result.state)) return;
+    // A transition can ask for something without changing the state — a
+    // second cancel re-sends the abort — and setState answers false for that
+    // as well as for a disposed store. Only the disposed case is a reason to
+    // do nothing.
+    this.store.setState(result.state);
+    if (this.disposed) return;
     for (const command of result.commands) this.run(command);
   }
 

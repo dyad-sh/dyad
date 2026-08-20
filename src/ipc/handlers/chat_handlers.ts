@@ -324,7 +324,7 @@ export function registerChatHandlers() {
     if (Object.keys(updates).length === 0) {
       return;
     }
-    if (modelSelection !== undefined) {
+    if (chatMode !== undefined || modelSelection !== undefined) {
       await withChatQueueLock(chatId, () =>
         db.update(chats).set(updates).where(eq(chats.id, chatId)),
       );

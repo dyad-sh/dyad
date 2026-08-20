@@ -42,12 +42,14 @@ export interface FirstPromptDeps {
     chatId: number;
     payload: FirstPromptPayload;
     onAccepted: () => void;
+    onAcceptanceRejected: (reason: string) => void;
   }): void;
   refreshQueries(appId: number): Promise<void>;
   navigateHome(): void;
   selectChat(appId: number, chatId: number): void;
   showSetupDialog(): void;
   clearEditingBuffer(payload: FirstPromptPayload): void;
+  preserveRejectedPrompt(chatId: number, payload: FirstPromptPayload): void;
   showError(
     message: string,
     failure: "createApp" | "createChat" | "postCreate",
@@ -221,6 +223,11 @@ export function createFirstPromptCommandRunner(options: {
             payload: command.payload,
             onAccepted: () => {
               if (!disposed) deps.clearEditingBuffer(command.payload);
+            },
+            onAcceptanceRejected: () => {
+              if (!disposed) {
+                deps.preserveRejectedPrompt(command.chatId, command.payload);
+              }
             },
           });
           relinquishOwnedCreation(deps);

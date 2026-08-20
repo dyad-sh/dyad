@@ -197,6 +197,25 @@ describe("useStreamChat main-owned queue", () => {
     expect(onSettled).toHaveBeenCalledExactlyOnceWith({ success: false });
   });
 
+  it("forwards acceptance rejection callbacks to the stream actor", async () => {
+    const onAcceptanceRejected = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
+
+    await act(() =>
+      result.current.streamMessage({
+        chatId: CHAT_ID,
+        prompt: "preserve this draft",
+        onAcceptanceRejected,
+      }),
+    );
+
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({
+      type: "submit",
+      request: expect.objectContaining({ onAcceptanceRejected }),
+    });
+  });
+
   it("surfaces authoritative queue rejection", async () => {
     const rejection = new Error("queue revision changed");
     mocks.dispatchQueueEvent.mockRejectedValueOnce(rejection);

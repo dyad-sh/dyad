@@ -27,6 +27,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import {
   attachmentsAtom,
+  chatInputValuesByIdAtom,
   homeChatInputValueAtom,
   homeSelectedAppAtom,
 } from "@/atoms/chatAtoms";
@@ -68,6 +69,7 @@ export interface FirstPromptChatStream {
     attachments: FirstPromptPayload["attachments"];
     requestedChatMode?: FirstPromptPayload["chatMode"] | null;
     onAccepted: () => void;
+    onAcceptanceRejected: (reason: string) => void;
   }): void;
 }
 
@@ -159,7 +161,7 @@ export function FirstPromptProvider({
       }
       return opened;
     },
-    submitPrompt({ appId, chatId, payload, onAccepted }) {
+    submitPrompt({ appId, chatId, payload, onAccepted, onAcceptanceRejected }) {
       chatStream.submit({
         prompt: payload.prompt,
         chatId,
@@ -167,6 +169,7 @@ export function FirstPromptProvider({
         attachments: payload.attachments,
         requestedChatMode: getRequestedChatModeForFirstPrompt(payload),
         onAccepted,
+        onAcceptanceRejected,
       });
       posthog.capture("home:chat-submit", {
         existingApp: payload.selectedApp !== undefined,
@@ -212,6 +215,14 @@ export function FirstPromptProvider({
       if (store.get(homeSelectedAppAtom)?.id === payload.selectedApp?.id) {
         store.set(homeSelectedAppAtom, null);
       }
+    },
+    preserveRejectedPrompt(chatId, payload) {
+      store.set(chatInputValuesByIdAtom, (current) => {
+        if (current.get(chatId)) return current;
+        const next = new Map(current);
+        next.set(chatId, payload.prompt);
+        return next;
+      });
     },
     showError(message, failure) {
       const key =

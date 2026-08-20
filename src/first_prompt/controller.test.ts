@@ -56,6 +56,7 @@ function createHarness() {
     selectChat: vi.fn(),
     showSetupDialog: vi.fn(),
     clearEditingBuffer: vi.fn(),
+    preserveRejectedPrompt: vi.fn(),
     showError: vi.fn(),
   };
   const controller = new FirstPromptController({
@@ -185,6 +186,7 @@ describe("FirstPromptController", () => {
       chatId: 2,
       payload: { ...payload, chatMode: "local-agent" },
       onAccepted: expect.any(Function),
+      onAcceptanceRejected: expect.any(Function),
     });
   });
 
@@ -221,6 +223,7 @@ describe("FirstPromptController", () => {
       chatId: 2,
       payload: editedPayload,
       onAccepted: expect.any(Function),
+      onAcceptanceRejected: expect.any(Function),
     });
   });
 
@@ -261,6 +264,7 @@ describe("FirstPromptController", () => {
         selectedApp: { id: 41, name: "Existing app" },
       }),
       onAccepted: expect.any(Function),
+      onAcceptanceRejected: expect.any(Function),
     });
   });
 
@@ -289,6 +293,7 @@ describe("FirstPromptController", () => {
         selectedApp: { id: 41, name: "Existing app" },
       }),
       onAccepted: expect.any(Function),
+      onAcceptanceRejected: expect.any(Function),
     });
   });
 
@@ -333,6 +338,24 @@ describe("FirstPromptController", () => {
     harness.clock.advanceBy(2_000);
     await flushCommands();
     expect(harness.controller.getSnapshot().type).toBe("idle");
+  });
+
+  it("preserves a rejected prompt in the created chat", async () => {
+    const harness = createHarness();
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+
+    const submittedRequest = (
+      harness.deps.submitPrompt as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    submittedRequest.onAcceptanceRejected("quota exceeded");
+
+    expect(harness.deps.preserveRejectedPrompt).toHaveBeenCalledExactlyOnceWith(
+      2,
+      payload,
+    );
+    expect(harness.deps.clearEditingBuffer).not.toHaveBeenCalled();
   });
 
   it("waits for both settle and a deferred preview decision", async () => {

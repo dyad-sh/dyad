@@ -1416,10 +1416,72 @@ ${componentSnippet}
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
       const acceptTurn = () =>
-        withChatQueueLock(req.chatId, () =>
-          acceptChatTurn(db, {
+        withChatQueueLock(req.chatId, async () => {
+          const latestChat = db
+            .select({
+              chatMode: chats.chatMode,
+              modelSelection: chats.modelSelection,
+            })
+            .from(chats)
+            .where(eq(chats.id, req.chatId))
+            .get();
+          if (!latestChat) {
+            throw new DyadError(
+              `Chat not found: ${req.chatId}`,
+              DyadErrorKind.NotFound,
+            );
+          }
+
+          selectedModel = latestChat.modelSelection
+            ? await normalizeModelSelection(latestChat.modelSelection)
+            : selectedModel;
+          const latestResolution = await resolveChatModeForTurn({
+            storedChatMode: latestChat.chatMode,
+            requestedChatMode:
+              req.requestedChatMode ??
+              normalizeStoredChatMode(latestChat.chatMode),
+            settings: { ...baseSettings, selectedModel },
+          });
+          ({ settings: storedSettings, mode: selectedChatMode } =
+            latestResolution);
+          assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+          isBasicAgentModeRequest = isBasicAgentMode({
+            ...storedSettings,
+            selectedChatMode,
+          });
+
+          if (
+            isBasicAgentModeRequest &&
+            freeAgentQuotaReservationId === null &&
+            !isAcceptedReplay
+          ) {
+            const quotaReservation = await reserveFreeAgentQuotaSlot();
+            if (quotaReservation.kind === "quota-exceeded") {
+              const { quotaStatus } = quotaReservation;
+              safeSend(event.sender, "chat:response:error", {
+                chatId: req.chatId,
+                invocationRef: req.invocationRef,
+                streamId: req.streamId,
+                error: JSON.stringify({
+                  type: "FREE_AGENT_QUOTA_EXCEEDED",
+                  hoursUntilReset: quotaStatus.hoursUntilReset,
+                  resetTime: quotaStatus.resetTime,
+                }),
+              } satisfies ChatStreamErrorPayload);
+              return null;
+            }
+            freeAgentQuotaReservationId = quotaReservation.reservationId;
+          } else if (
+            !isBasicAgentModeRequest &&
+            freeAgentQuotaReservationId !== null
+          ) {
+            await releaseFreeAgentQuotaSlot(freeAgentQuotaReservationId);
+            freeAgentQuotaReservationId = null;
+          }
+
+          return acceptChatTurn(db, {
             chatId: req.chatId,
-            storedChatMode: chat.chatMode,
+            storedChatMode: latestChat.chatMode,
             selectedChatMode,
             selectedModel,
             content:
@@ -1430,10 +1492,13 @@ ${componentSnippet}
             chatTurnIntentId: req.intentId,
             chatTurnIntent: executionObserver(req)?.intent,
             usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
-          }),
-        );
+          });
+        });
 
       const acceptedTurn = await acceptTurn();
+      if (acceptedTurn === null) {
+        return req.chatId;
+      }
       mutatedPersistedChat = true;
       if (
         freeAgentQuotaReservationId !== null &&

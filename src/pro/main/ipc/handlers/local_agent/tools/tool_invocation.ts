@@ -48,7 +48,7 @@ export const FILE_MUTATION_POLICIES = {
   generate_image: "never",
   generate_test_assertions: "always",
   git_restore_file: "always",
-  reinstall_and_restart_app: "always",
+  reinstall_and_restart_app: "never",
 } as const satisfies Record<MutationToolName, FileMutationPolicy>;
 
 export async function isPathGitVisible(

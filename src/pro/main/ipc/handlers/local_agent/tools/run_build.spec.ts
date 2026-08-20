@@ -15,6 +15,8 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
 }));
 
 import {
+  accumulateBuildOutput,
+  copySnapshotEntriesOnWindows,
   runBuildTool,
   removeStaleSnapshots,
   secureSnapshotSymlinks,
@@ -51,6 +53,58 @@ describe("run_build", () => {
     expect(runBuildTool.getConsentPreview?.({})).toBe(
       "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
     );
+  });
+
+  it("accumulates streamed build output instead of replacing earlier chunks", () => {
+    const first = accumulateBuildOutput("", "compiling...\n");
+    const second = accumulateBuildOutput(first, "bundling...\n");
+
+    expect(second).toBe("compiling...\nbundling...\n");
+  });
+
+  it("bounds concurrent filesystem work in the Windows snapshot copier", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const sourceRoot = path.join(root, "app");
+    const snapshotRoot = path.join(root, "snapshot");
+    await Promise.all([fs.mkdir(sourceRoot), fs.mkdir(snapshotRoot)]);
+    const sourcePaths = await Promise.all(
+      Array.from({ length: 65 }, async (_, index) => {
+        const sourcePath = path.join(sourceRoot, `file-${index}.txt`);
+        await fs.writeFile(sourcePath, String(index));
+        return sourcePath;
+      }),
+    );
+
+    const realLstat = fs.lstat.bind(fs);
+    let active = 0;
+    let maximumActive = 0;
+    const lstat = vi.spyOn(fs, "lstat").mockImplementation(async (...args) => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      try {
+        return await realLstat(...args);
+      } finally {
+        active -= 1;
+      }
+    });
+
+    try {
+      await copySnapshotEntriesOnWindows(
+        sourceRoot,
+        await fs.realpath(sourceRoot),
+        snapshotRoot,
+        sourcePaths,
+      );
+    } finally {
+      lstat.mockRestore();
+    }
+
+    expect(maximumActive).toBe(32);
+    await expect(
+      fs.readFile(path.join(snapshotRoot, "file-64.txt"), "utf8"),
+    ).resolves.toBe("64");
   });
 
   it("builds standard Vite in place beside a preview", () => {

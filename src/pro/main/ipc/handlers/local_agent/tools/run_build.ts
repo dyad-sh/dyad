@@ -27,6 +27,7 @@ const runBuildSchema = z.object({});
 const MAX_BUILD_RUNS_PER_TURN = 3;
 const BUILD_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 16_000;
+const WINDOWS_SNAPSHOT_COPY_CONCURRENCY = 32;
 const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
 const SNAPSHOT_PREFIX = ".dyad-build-";
 const SNAPSHOT_NAME_PATTERN = /^\.dyad-build-[A-Za-z0-9]{6}$/;
@@ -178,25 +179,25 @@ async function copySnapshotEntries(
     // Node's portable copy before treating snapshot setup as unavailable.
   }
 
-  const realSource =
-    process.platform === "win32" ? await fs.realpath(source) : source;
+  if (process.platform === "win32") {
+    await copySnapshotEntriesOnWindows(
+      source,
+      await fs.realpath(source),
+      destination,
+      entries.map((entry) => path.join(source, entry)),
+      signal,
+    );
+    return;
+  }
+
   await Promise.all(
     entries.map((entry) =>
-      process.platform === "win32"
-        ? copySnapshotEntryOnWindows(
-            source,
-            realSource,
-            destination,
-            path.join(source, entry),
-            signal,
-          )
-        : fs.cp(path.join(source, entry), path.join(destination, entry), {
-            recursive: true,
-            verbatimSymlinks: true,
-            mode:
-              process.platform === "linux" ? fsConstants.COPYFILE_FICLONE : 0,
-            filter: () => !signal?.aborted,
-          }),
+      fs.cp(path.join(source, entry), path.join(destination, entry), {
+        recursive: true,
+        verbatimSymlinks: true,
+        mode: process.platform === "linux" ? fsConstants.COPYFILE_FICLONE : 0,
+        filter: () => !signal?.aborted,
+      }),
     ),
   );
 
@@ -211,13 +212,39 @@ function throwIfBuildCancelled(signal?: AbortSignal): void {
   }
 }
 
+export async function copySnapshotEntriesOnWindows(
+  sourceRoot: string,
+  realSourceRoot: string,
+  snapshotRoot: string,
+  initialPaths: string[],
+  signal?: AbortSignal,
+): Promise<void> {
+  const pendingPaths = [...initialPaths];
+  while (pendingPaths.length > 0) {
+    throwIfBuildCancelled(signal);
+    const batch = pendingPaths.splice(0, WINDOWS_SNAPSHOT_COPY_CONCURRENCY);
+    const discoveredPaths = await Promise.all(
+      batch.map((sourcePath) =>
+        copySnapshotEntryOnWindows(
+          sourceRoot,
+          realSourceRoot,
+          snapshotRoot,
+          sourcePath,
+          signal,
+        ),
+      ),
+    );
+    pendingPaths.push(...discoveredPaths.flat());
+  }
+}
+
 async function copySnapshotEntryOnWindows(
   sourceRoot: string,
   realSourceRoot: string,
   snapshotRoot: string,
   sourcePath: string,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<string[]> {
   throwIfBuildCancelled(signal);
   const destinationPath = path.join(
     snapshotRoot,
@@ -229,7 +256,7 @@ async function copySnapshotEntryOnWindows(
     try {
       realTarget = await fs.realpath(sourcePath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
     const targetStat = await fs.stat(realTarget);
@@ -239,28 +266,18 @@ async function copySnapshotEntryOnWindows(
     );
     if (!targetStat.isDirectory()) {
       await fs.copyFile(realTarget, destinationPath);
-      return;
+      return [];
     }
     await fs.symlink(mappedTarget, destinationPath, "junction");
-    return;
+    return [];
   }
   if (stat.isDirectory()) {
     await fs.mkdir(destinationPath, { recursive: true });
     const children = await fs.readdir(sourcePath);
-    await Promise.all(
-      children.map((child) =>
-        copySnapshotEntryOnWindows(
-          sourceRoot,
-          realSourceRoot,
-          snapshotRoot,
-          path.join(sourcePath, child),
-          signal,
-        ),
-      ),
-    );
-    return;
+    return children.map((child) => path.join(sourcePath, child));
   }
   await fs.copyFile(sourcePath, destinationPath);
+  return [];
 }
 
 function pathIsInside(rootPath: string, candidatePath: string): boolean {
@@ -347,45 +364,6 @@ export async function secureSnapshotSymlinks(
   }
 }
 
-async function validateSourceLinks(
-  sourceRoot: string,
-  rootEntries: string[],
-  signal?: AbortSignal,
-): Promise<void> {
-  const realSourceRoot = await fs.realpath(sourceRoot);
-  const pendingDirectories = rootEntries.map((entry) =>
-    path.join(sourceRoot, entry),
-  );
-  while (pendingDirectories.length > 0) {
-    throwIfBuildCancelled(signal);
-    const entryPath = pendingDirectories.pop();
-    if (!entryPath) break;
-    const stat = await fs.lstat(entryPath);
-    if (!stat.isSymbolicLink()) {
-      if (stat.isDirectory()) {
-        const children = await fs.readdir(entryPath);
-        pendingDirectories.push(
-          ...children.map((child) => path.join(entryPath, child)),
-        );
-      }
-      continue;
-    }
-    let realTarget: string;
-    try {
-      realTarget = await fs.realpath(entryPath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw error;
-    }
-    if (!pathIsInside(realSourceRoot, realTarget)) {
-      throw new DyadError(
-        `Cannot isolate the linked path ${path.relative(sourceRoot, entryPath)} because it points outside the app. Replace the external link with a local dependency before running a production build.`,
-        DyadErrorKind.Precondition,
-      );
-    }
-  }
-}
-
 function getBuildSnapshotRoot(): string {
   return path.join(getUserDataPath(), SNAPSHOT_ROOT_NAME);
 }
@@ -417,7 +395,6 @@ async function createSnapshot(
     const entries = (await fs.readdir(appPath)).filter(
       (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
     );
-    await validateSourceLinks(appPath, entries, signal);
     tempRoot = await fs.mkdtemp(path.join(snapshotRoot, SNAPSHOT_PREFIX));
     await fs.writeFile(
       path.join(tempRoot, SNAPSHOT_MARKER),
@@ -511,6 +488,10 @@ function tail(value: string): string {
     : `[Earlier output omitted]\n${value.slice(-MAX_RESULT_OUTPUT_CHARS)}`;
 }
 
+export function accumulateBuildOutput(previous: string, chunk: string): string {
+  return tail(previous + chunk);
+}
+
 async function resolvePackageManager(appPath: string) {
   const support = await getPnpmMinimumReleaseAgeSupport();
   return choosePackageManagerForApp(appPath, support.available);
@@ -569,8 +550,8 @@ function createBuildAbortScope(userSignal?: AbortSignal): BuildAbortScope {
   };
 }
 
-function streamBuildOutput(ctx: AgentContext, chunk: string): void {
-  const output = tail(chunk.trim());
+function streamBuildOutput(ctx: AgentContext, accumulatedOutput: string): void {
+  const output = accumulatedOutput.trim();
   if (!output) return;
   ctx.onXmlStream(
     `<dyad-status title="Production build output">\n${escapeXmlContent(output)}\n</dyad-status>`,
@@ -666,12 +647,16 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               '<dyad-status title="Running production build"></dyad-status>',
             );
             const buildStartedAt = Date.now();
+            let streamedOutput = "";
             const result = await runBuildProcess({
               cwd: snapshot?.path ?? ctx.appPath,
               packageManager,
               signal: abortScope.signal,
               timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
-              onOutput: (chunk) => streamBuildOutput(ctx, chunk),
+              onOutput: (chunk) => {
+                streamedOutput = accumulateBuildOutput(streamedOutput, chunk);
+                streamBuildOutput(ctx, streamedOutput);
+              },
             });
             const buildMs = Date.now() - buildStartedAt;
             const timing = snapshot

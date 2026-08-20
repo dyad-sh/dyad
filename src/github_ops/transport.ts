@@ -7,7 +7,10 @@ import type {
   GithubOpsEvent,
   GithubOpsState,
 } from "./state";
-import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "./state";
+import {
+  MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH,
+  MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH,
+} from "./error_message";
 
 export const GITHUB_OPS_MACHINE_ID = "github_ops";
 export const GITHUB_OPS_INVOCATION_KIND = "github-operation";
@@ -191,7 +194,10 @@ export const GithubOpsStateSchema: z.ZodType<GithubOpsState> =
           .optional(),
         resolutionChatId: z.number().int().positive().optional(),
         verificationAttempt: z.number().int().positive().optional(),
-        verificationError: z.string().max(1_000).optional(),
+        verificationError: z
+          .string()
+          .max(MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH)
+          .optional(),
         banner: githubOpsBannerSchema.nullable(),
       })
       .strict(),
@@ -313,7 +319,7 @@ export const GithubOpsProducerEventSchema = z.union([
     .object({
       type: z.literal("CONFLICT_VERIFICATION_FAILED"),
       verificationAttempt: z.number().int().positive(),
-      message: z.string().max(1_000),
+      message: z.string().max(MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH),
     })
     .strict(),
 ]);

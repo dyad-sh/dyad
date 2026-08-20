@@ -15,6 +15,8 @@ import {
   type GithubOpsState,
 } from "./state";
 import { transition } from "./transition";
+import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "./error_message";
+import { GithubOpsRemoteSnapshotSchema } from "./transport";
 
 const REPRESENTATIVE_OPS: readonly GithubOperation[] = [
   { type: "push", mode: "normal" },
@@ -808,13 +810,28 @@ describe("github_ops transition", () => {
     const failedPush = transition(runningPush, {
       type: "OP_FAILED",
       op: { type: "push", mode: "normal" },
-      failure: { kind: "unknown", message: "push rejected" },
+      failure: {
+        kind: "unknown",
+        message: `push rejected ${"x".repeat(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH)}`,
+      },
     });
     expect(failedPush.state.banner).toMatchObject({
       kind: "error",
       message: expect.stringContaining("created and linked"),
     });
     expect(failedPush.state.banner?.message).toContain("push rejected");
+    expect(failedPush.state.banner?.message).toHaveLength(
+      MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH,
+    );
+    expect(
+      GithubOpsRemoteSnapshotSchema.safeParse({
+        appId: 7,
+        revision: 1,
+        state: failedPush.state,
+        activeInvocationRef: null,
+        conflictResolutionClaimed: false,
+      }).success,
+    ).toBe(true);
   });
 
   it("reports rebase success only after its composite push completes", () => {

@@ -15,6 +15,7 @@ import {
   githubOpsDefinition,
 } from "@/ipc/services/github_ops_definition";
 import { githubOpsClientDefinition } from "./client_definition";
+import { MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH } from "./error_message";
 import type { GithubOpsIgnoreReason } from "./state";
 import {
   githubOpsKey,
@@ -432,9 +433,10 @@ describe("main-hosted github_ops actor", () => {
   });
 
   it("makes a failed conflict-file verification retryable", async () => {
-    service.getConflicts.mockRejectedValueOnce(
-      new Error("temporary conflict probe failure"),
+    const verboseProbeFailure = "x".repeat(
+      MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH + 500,
     );
+    service.getConflicts.mockRejectedValueOnce(new Error(verboseProbeFailure));
     const { actorA, host } = createHarness();
     await actorA.resync();
     const local: GithubOpsHostedActor = host.ensure(
@@ -460,12 +462,22 @@ describe("main-hosted github_ops actor", () => {
     await flush();
 
     expect(service.getConflicts).toHaveBeenCalledOnce();
-    expect(actorA.getSnapshot().state).toMatchObject({
+    const failedSnapshot = actorA.getSnapshot();
+    expect(failedSnapshot.state).toMatchObject({
       type: "conflicted",
       resolution: "verification-failed",
       resolutionChatId: 42,
-      verificationError: "temporary conflict probe failure",
     });
+    expect(
+      failedSnapshot.state.type === "conflicted"
+        ? failedSnapshot.state.verificationError
+        : undefined,
+    ).toHaveLength(MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH);
+    expect(
+      failedSnapshot.state.type === "conflicted"
+        ? failedSnapshot.state.verificationError
+        : undefined,
+    ).toMatch(/\n… \[GitHub error output truncated\]$/);
     expect(presentation.showError).not.toHaveBeenCalled();
 
     await actorA.dispatch({ type: "RETRY_CONFLICT_VERIFICATION" });

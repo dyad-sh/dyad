@@ -12,6 +12,7 @@ import type {
   GithubOpsState,
   GithubOpsTransitionResult,
 } from "./state";
+import { truncateGithubOpsErrorMessage } from "./error_message";
 
 const PUSH_NORMAL: GithubOperation = { type: "push", mode: "normal" };
 
@@ -187,10 +188,11 @@ function operationFailed(
     return ignore(state, "stale-op");
   }
 
-  const failureMessage =
+  const failureMessage = truncateGithubOpsErrorMessage(
     state.banner?.kind === "success"
       ? `${state.banner.message} The follow-up operation failed: ${failure.message}`
-      : failure.message;
+      : failure.message,
+  );
   const banner: GithubOpsBanner = {
     kind: "error",
     ...(failure.code ? { code: failure.code } : {}),

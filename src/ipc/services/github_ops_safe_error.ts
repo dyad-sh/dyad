@@ -1,11 +1,9 @@
-import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "@/github_ops/state";
-
-const TRUNCATION_NOTICE = "\n… [GitHub error output truncated]";
+import { truncateGithubOpsErrorMessage } from "@/github_ops/error_message";
 
 function redactSensitiveGitOutput(message: string): string {
   return message
     .replaceAll(
-      /\b(?:authorization|private-token|access-token)\s*[:=]\s*(?:Bearer\s+)?[^\s]+/gi,
+      /\b(?:authorization|private-token|access-token)\s*[:=][^\r\n]*/gi,
       "[redacted credential]",
     )
     .replaceAll(
@@ -17,6 +15,8 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted URL]",
     )
     .replaceAll(/\bgit@[\w.-]+:[^\s]+/gi, "[redacted remote]")
+    .replaceAll(/(['"`])\/[^\r\n]*?\1/g, "$1[redacted path]$1")
+    .replaceAll(/(['"])[A-Za-z]:[\\/][^\r\n]*?\1/g, "$1[redacted path]$1")
     .replaceAll(
       /(^|[\s("'`])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,
       "$1[redacted path]",
@@ -45,13 +45,5 @@ export function safeGithubOpsErrorMessage(
       : "";
   if (!raw) return fallback;
 
-  const redacted = redactSensitiveGitOutput(raw);
-  if (redacted.length <= MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH) return redacted;
-
-  return (
-    redacted.slice(
-      0,
-      MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH - TRUNCATION_NOTICE.length,
-    ) + TRUNCATION_NOTICE
-  );
+  return truncateGithubOpsErrorMessage(redactSensitiveGitOutput(raw));
 }

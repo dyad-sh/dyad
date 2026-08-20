@@ -10,6 +10,10 @@ import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_p
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { ignore } from "@/state_machines/types";
+import {
+  MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH,
+  truncateGithubOpsErrorMessage,
+} from "@/github_ops/error_message";
 import type { GithubOpsCommand } from "@/github_ops/state";
 import { INITIAL_GITHUB_OPS_STATE } from "@/github_ops/state";
 import { transition } from "@/github_ops/transition";
@@ -195,6 +199,10 @@ function createCommandRunner(
     operationId: string | undefined,
     verificationAttempt: number | undefined,
   ) => {
+    const boundedMessage = truncateGithubOpsErrorMessage(
+      message,
+      MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH,
+    );
     const state = context.getSnapshot().state;
     if (state.type === "conflicted" && state.resolution === "checking") {
       if (
@@ -204,7 +212,7 @@ function createCommandRunner(
         emit({
           type: "CONFLICT_VERIFICATION_FAILED",
           verificationAttempt,
-          message,
+          message: boundedMessage,
         });
       }
       return;
@@ -212,7 +220,7 @@ function createCommandRunner(
     githubOpsPresentationService.showError(
       context.key.appId,
       operationId,
-      message,
+      boundedMessage,
     );
   };
 

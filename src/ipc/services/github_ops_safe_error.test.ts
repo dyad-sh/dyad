@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "@/github_ops/state";
+import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "@/github_ops/error_message";
 import { safeGithubOpsErrorMessage } from "./github_ops_safe_error";
 
 describe("safeGithubOpsErrorMessage", () => {
@@ -52,6 +52,16 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz",
       "[redacted credential]",
+    ],
+    ["Authorization: Basic dXNlcjpwYXNz", "[redacted credential]"],
+    ["Private-Token=Custom abc secret", "[redacted credential]"],
+    [
+      "fatal: Unable to create '/Users/alice/My Projects/secret/.git/index.lock'",
+      "fatal: Unable to create '[redacted path]'",
+    ],
+    [
+      String.raw`fatal: "C:\Users\alice\My Projects\secret\.git\index.lock" exists`,
+      'fatal: "[redacted path]" exists',
     ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(

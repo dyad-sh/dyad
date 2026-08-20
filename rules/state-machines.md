@@ -175,6 +175,10 @@ Background and before/after examples of why this pattern exists:
   wire-compatible with values such as `bigint`. When an existing domain payload
   legitimately exceeds the shared default, declare a bounded per-machine
   ceiling and enforce aggregate projected state below its snapshot ceiling.
+- When increasing a shared error-message bound, audit every producer, state,
+  and snapshot codec that consumes it, including transitions that prepend
+  context. Bound the final stored value at each tighter contract so one verbose
+  failure cannot commit state that remote snapshot validation refuses to send.
 - When a remote machine uses an object key, canonicalize it through the same
   interner used by main-process producers only after subscription authorization
   succeeds, then pass that canonical key to `ActorHost`. Its actor map is

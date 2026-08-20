@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getCommandPaletteSnippet,
   hasBlockingAlertDialogOpen,
+  isTerminalShortcutTarget,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
   scoreCommandPaletteItem,
@@ -26,6 +27,12 @@ describe("scoreCommandPaletteItem", () => {
     expect(scoreCommandPaletteItem("Theme", "database", ["appearance"])).toBe(
       0,
     );
+    expect(
+      scoreCommandPaletteItem("Configure environment variables", "env vars", [
+        "env",
+        "secrets",
+      ]),
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -49,6 +56,18 @@ describe("hasBlockingAlertDialogOpen", () => {
     expect(hasBlockingAlertDialogOpen()).toBe(true);
     alert.remove();
     expect(hasBlockingAlertDialogOpen()).toBe(false);
+  });
+});
+
+describe("isTerminalShortcutTarget", () => {
+  it("recognizes descendants of the xterm surface", () => {
+    const terminal = document.createElement("div");
+    terminal.dataset.testid = "terminal-xterm";
+    const child = document.createElement("textarea");
+    terminal.append(child);
+
+    expect(isTerminalShortcutTarget(child)).toBe(true);
+    expect(isTerminalShortcutTarget(document.body)).toBe(false);
   });
 });
 

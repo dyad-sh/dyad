@@ -3,6 +3,7 @@ import {
   SECTION_IDS,
   SETTING_IDS,
   SETTINGS_SEARCH_INDEX,
+  searchSettings,
 } from "./settingsSearchIndex";
 
 describe("SETTINGS_SEARCH_INDEX", () => {
@@ -154,6 +155,11 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       ],
       sectionId: SECTION_IDS.experiments,
       sectionLabel: "Experiments",
+      requiresPro: true,
     });
+  });
+
+  it("exposes the shared fuzzy settings ranking", () => {
+    expect(searchSettings("theme")[0]?.item.label).toBe("Theme");
   });
 });

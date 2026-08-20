@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 import { useAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
-import { SECTION_IDS, SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
-import Fuse from "fuse.js";
+import { SECTION_IDS, searchSettings } from "@/lib/settingsSearchIndex";
 import { SearchIcon, XIcon } from "lucide-react";
 
 type SettingsSection = {
@@ -26,18 +25,6 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: SECTION_IDS.dangerZone, label: "Danger Zone" },
 ];
 
-const fuse = new Fuse(SETTINGS_SEARCH_INDEX, {
-  keys: [
-    { name: "label", weight: 2 },
-    { name: "description", weight: 1 },
-    { name: "keywords", weight: 1.5 },
-    { name: "sectionLabel", weight: 0.5 },
-  ],
-  threshold: 0.4,
-  includeScore: true,
-  ignoreLocation: true,
-});
-
 export function SettingsList({ show }: { show: boolean }) {
   const [activeSection, setActiveSection] = useAtom(activeSettingsSectionAtom);
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,7 +43,7 @@ export function SettingsList({ show }: { show: boolean }) {
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
-    return fuse.search(searchQuery.trim());
+    return searchSettings(searchQuery);
   }, [searchQuery]);
 
   useEffect(() => {

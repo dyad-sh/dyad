@@ -35,7 +35,7 @@ test("command palette supports scoped chat and unfiltered configuration search",
   await expect(po.page.locator("#app-settings-overview")).toBeVisible();
 
   await po.page.keyboard.press("Control+p");
-  await input.fill("environment variables");
+  await input.fill("env vars");
   await po.page
     .getByTestId("command-palette-app-setting-environment-variables")
     .click();

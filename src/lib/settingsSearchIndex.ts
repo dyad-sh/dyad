@@ -1,3 +1,5 @@
+import Fuse from "fuse.js";
+
 export const SECTION_IDS = {
   general: "general-settings",
   workflow: "workflow-settings",
@@ -17,7 +19,6 @@ export const SETTING_IDS = {
   autoUpdate: "setting-auto-update",
   releaseChannel: "setting-release-channel",
   runtimeMode: "setting-runtime-mode",
-  nodeRuntime: "setting-node-runtime",
   nodePath: "setting-node-path",
   customAppsFolder: "setting-custom-apps-folder",
   defaultChatMode: "setting-default-chat-mode",
@@ -64,6 +65,7 @@ export type SearchableSettingItem = {
   keywords: string[];
   sectionId: string;
   sectionLabel: string;
+  requiresPro?: boolean;
 };
 
 export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
@@ -113,14 +115,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Node Path",
     description: "Set a custom Node.js installation path",
     keywords: ["node", "path", "nodejs", "binary", "executable"],
-    sectionId: SECTION_IDS.general,
-    sectionLabel: "General",
-  },
-  {
-    id: SETTING_IDS.nodeRuntime,
-    label: "Node Runtime",
-    description: "Choose between system Node.js and Dyad-managed Node.js",
-    keywords: ["node", "nodejs", "runtime", "managed", "system"],
     sectionId: SECTION_IDS.general,
     sectionLabel: "General",
   },
@@ -541,6 +535,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "explorer", "agent", "research", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableAutoReview,
@@ -549,6 +544,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "review", "automatic", "agent", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableReviewButton,
@@ -557,6 +553,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "review", "manual", "button", "agent", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableImplementerSubagent,
@@ -565,6 +562,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "implementer", "write", "agent", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableAdvancedSubagents,
@@ -583,6 +581,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.autoFixReviewIssues,
@@ -591,6 +590,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "review", "fix", "automatic", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
 
   {
@@ -634,3 +634,28 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Danger Zone",
   },
 ];
+
+const SETTINGS_SEARCH_OPTIONS = {
+  keys: [
+    { name: "label", weight: 2 },
+    { name: "description", weight: 1 },
+    { name: "keywords", weight: 1.5 },
+    { name: "sectionLabel", weight: 0.5 },
+  ],
+  threshold: 0.4,
+  includeScore: true,
+  ignoreLocation: true,
+};
+
+const settingsSearch = new Fuse(SETTINGS_SEARCH_INDEX, SETTINGS_SEARCH_OPTIONS);
+
+export function searchSettings(
+  query: string,
+  items: SearchableSettingItem[] = SETTINGS_SEARCH_INDEX,
+) {
+  const fuse =
+    items === SETTINGS_SEARCH_INDEX
+      ? settingsSearch
+      : new Fuse(items, SETTINGS_SEARCH_OPTIONS);
+  return fuse.search(query.trim());
+}

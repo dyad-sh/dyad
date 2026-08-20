@@ -9,6 +9,11 @@ When adding a new toggle/setting to the Settings page:
 5. Import and add the switch to the relevant section in `src/pages/settings.tsx`
 6. Adding a field to `DEFAULT_SETTINGS` breaks the inline snapshots in `src/main/settings.test.ts`. The snapshot helper sorts keys alphabetically, so place a manually added field in alphabetical order or, after confirming the diff is limited to the new default, regenerate with `npm test -- src/main/settings.test.ts -u`.
 
+Every settings search-index entry must point to an element that renders with the
+same ID. If the control is conditional (for example, Pro-only), encode that
+availability in the index and filter search surfaces with the same condition so
+they never offer a destination that cannot render.
+
 If the setting adds a built-in default, update the inline snapshots in
 `src/main/settings.test.ts`; otherwise `npm test` will fail with
 default settings snapshot mismatches.

@@ -39,16 +39,20 @@ import { useSearchApps } from "@/hooks/useSearchApps";
 import { useSearchChats } from "@/hooks/useSearchChats";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
-import { SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
+import {
+  searchSettings,
+  SETTINGS_SEARCH_INDEX,
+} from "@/lib/settingsSearchIndex";
 import {
   getCommandPaletteSnippet,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
   scoreCommandPaletteItem,
 } from "@/lib/commandPalette";
-import type { ChatSearchResult } from "@/lib/schemas";
+import { isDyadProEnabled, type ChatSearchResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
 type CommandPaletteProps = {
@@ -134,10 +138,12 @@ export function CommandPalette({
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
   const { apps } = useLoadApps();
+  const { settings } = useSettings();
   const { chats, invalidateChats } = useChats(selectedAppId);
   const { selectChat } = useSelectChat();
   const parsedQuery = useMemo(() => parseCommandPaletteQuery(query), [query]);
   const debouncedTerm = useDebounce(parsedQuery.term, 150);
+  const isDebouncing = parsedQuery.term !== debouncedTerm;
   const { apps: searchedApps, loading: appsLoading } = useSearchApps(
     parsedQuery.scope === "all" ? debouncedTerm : "",
   );
@@ -146,7 +152,28 @@ export function CommandPalette({
     debouncedTerm,
   );
   const selectedApp = apps.find((app) => app.id === selectedAppId) ?? null;
-  const chatResults = parsedQuery.term ? searchedChats : chats;
+  const chatResults = debouncedTerm
+    ? searchedChats
+    : parsedQuery.term
+      ? []
+      : chats;
+  const availableSettings = useMemo(
+    () =>
+      SETTINGS_SEARCH_INDEX.filter(
+        (setting) =>
+          !setting.requiresPro ||
+          (settings !== null && isDyadProEnabled(settings)),
+      ),
+    [settings],
+  );
+  const settingsScoreById = useMemo(() => {
+    if (!parsedQuery.term) return new Map<string, number>();
+    return new Map(
+      searchSettings(parsedQuery.term, availableSettings).map(
+        (result, index) => [result.item.id, 100 - Math.min(index, 90)],
+      ),
+    );
+  }, [availableSettings, parsedQuery.term]);
   const targetChat =
     chats.find((chat) => chat.id === selectedChatId) ?? chats[0] ?? null;
 
@@ -185,8 +212,17 @@ export function CommandPalette({
     selectChat({ chatId, appId: selectedAppId });
   };
 
-  const commandFilter = (value: string, _search: string, keywords?: string[]) =>
-    scoreCommandPaletteItem(value, parsedQuery.term, keywords);
+  const commandFilter = (
+    value: string,
+    _search: string,
+    keywords?: string[],
+  ) => {
+    if (value.startsWith("setting:")) {
+      if (!parsedQuery.term) return 1;
+      return settingsScoreById.get(value.slice("setting:".length)) ?? 0;
+    }
+    return scoreCommandPaletteItem(value, parsedQuery.term, keywords);
+  };
 
   return (
     <CommandDialog
@@ -210,7 +246,7 @@ export function CommandPalette({
         <CommandEmpty data-testid="command-palette-empty">
           {parsedQuery.scope === "chat" && !selectedAppId
             ? "Select an app to search chats"
-            : appsLoading || chatsLoading
+            : appsLoading || chatsLoading || isDebouncing
               ? "Searching..."
               : "No results found"}
         </CommandEmpty>
@@ -275,10 +311,10 @@ export function CommandPalette({
             </CommandGroup>
 
             <CommandGroup heading="Settings">
-              {SETTINGS_SEARCH_INDEX.map((setting) => (
+              {availableSettings.map((setting) => (
                 <CommandItem
                   key={setting.id}
-                  value={`${setting.label} ${setting.description}`}
+                  value={`setting:${setting.id}`}
                   keywords={[...setting.keywords, setting.sectionLabel]}
                   data-testid={`command-palette-setting-${setting.id}`}
                   onSelect={() =>
@@ -367,7 +403,8 @@ export function CommandPalette({
                   return (
                     <CommandItem
                       key={app.id}
-                      value={`${app.name} ${snippet}`}
+                      value={`${app.name} #app-${app.id}`}
+                      keywords={snippet ? [snippet] : []}
                       data-testid={`command-palette-app-${app.id}`}
                       onSelect={() =>
                         closeAndRun(() =>
@@ -403,7 +440,8 @@ export function CommandPalette({
                 return (
                   <CommandItem
                     key={chat.id}
-                    value={`${chat.title || "Untitled Chat"} ${snippet ?? ""}`}
+                    value={`${chat.title || "Untitled Chat"} #chat-${chat.id}`}
+                    keywords={snippet ? [snippet] : []}
                     data-testid={`command-palette-chat-${chat.id}`}
                     onSelect={() =>
                       closeAndRun(() =>

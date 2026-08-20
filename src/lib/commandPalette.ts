@@ -1,3 +1,6 @@
+import Fuse from "fuse.js";
+import { scrollAndHighlightElement } from "./scrollAndHighlight";
+
 export const CHAT_SCOPE_PREFIX = "chat: ";
 export const COMMAND_PALETTE_OPENING_EVENT = "dyad:command-palette-opening";
 
@@ -31,11 +34,17 @@ export function scoreCommandPaletteItem(
     return 100 - Math.min(valueIndex, 90);
   }
 
-  return keywords.some((keyword) =>
-    keyword.toLowerCase().includes(normalizedTerm),
-  )
-    ? 50
-    : 0;
+  const fuzzyMatch = new Fuse([{ value, keywords }], {
+    keys: [
+      { name: "value", weight: 2 },
+      { name: "keywords", weight: 1.5 },
+    ],
+    threshold: 0.4,
+    includeScore: true,
+    ignoreLocation: true,
+  }).search(normalizedTerm)[0];
+  if (!fuzzyMatch) return 0;
+  return Math.max(1, Math.round((1 - (fuzzyMatch.score ?? 1)) * 50));
 }
 
 export function getCommandPaletteSnippet(
@@ -67,6 +76,13 @@ export function hasBlockingAlertDialogOpen(
   );
 }
 
+export function isTerminalShortcutTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest('[data-testid="terminal-xterm"], .xterm'))
+  );
+}
+
 export async function revealCommandPaletteTarget(
   id: string,
   options: { attempts?: number; delayMs?: number } = {},
@@ -77,17 +93,10 @@ export async function revealCommandPaletteTarget(
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-      element.classList.remove("settings-highlight");
-      void element.offsetWidth;
-      element.classList.add("settings-highlight");
-
-      const removeHighlight = () => {
-        element.classList.remove("settings-highlight");
-      };
-      element.addEventListener("animationend", removeHighlight, { once: true });
-      element.addEventListener("animationcancel", removeHighlight, {
-        once: true,
+      scrollAndHighlightElement(element, {
+        behavior: "smooth",
+        block: "start",
+        highlight: true,
       });
       return true;
     }

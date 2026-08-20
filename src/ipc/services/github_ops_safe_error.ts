@@ -47,6 +47,38 @@ function redactQuotedAbsolutePaths(message: string): string {
     .join("\n");
 }
 
+function redactUnquotedAbsolutePaths(message: string): string {
+  return message
+    .split("\n")
+    .map((line) => {
+      let result = "";
+      let cursor = 0;
+      const pathStart = /(^|[\s("'`=[,])(?:\/(?!\/)|[A-Za-z]:[\\/]|\\\\)/g;
+      const pathEnd =
+        /(?=:\d+(?::\d+)*\b)|:(?=\s)|(?=\])|\s+(?=… \[line truncated\]|(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|because\b|but\b))/g;
+
+      while (cursor < line.length) {
+        pathStart.lastIndex = cursor;
+        const match = pathStart.exec(line);
+        if (!match) {
+          result += line.slice(cursor);
+          break;
+        }
+
+        const prefixLength = match[1]?.length ?? 0;
+        const start = match.index + prefixLength;
+        pathEnd.lastIndex = pathStart.lastIndex;
+        const endMatch = pathEnd.exec(line);
+        const end = endMatch?.index ?? line.length;
+        result += `${line.slice(cursor, start)}[redacted path]`;
+        cursor = end;
+      }
+
+      return result;
+    })
+    .join("\n");
+}
+
 function redactSensitiveGitOutput(message: string): string {
   const publicDocumentationUrls: string[] = [];
   const protectedMessage = message.replaceAll(
@@ -57,7 +89,9 @@ function redactSensitiveGitOutput(message: string): string {
     },
   );
 
-  const redacted = redactQuotedAbsolutePaths(protectedMessage)
+  const redacted = redactUnquotedAbsolutePaths(
+    redactQuotedAbsolutePaths(protectedMessage),
+  )
     .replaceAll(
       /\b(?:authorization|private-token|access-token)\s*[:=][^\r\n]*/gi,
       "[redacted credential]",
@@ -71,7 +105,7 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted URL]",
     )
     .replaceAll(
-      /\b(?:[\w.-]+@[\w.-]+|[\w.-]+\.[\w.-]+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,
+      /\b(?:[\w.-]{1,64}@[\w.-]{1,255}|[\w-]{1,63}(?:\.[\w-]{1,63})+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,
       "[redacted remote]",
     )
     .replaceAll(/\b(?:[\w.-]+\/)+[\w.-]+\.git\b/gi, "[redacted remote]")
@@ -88,25 +122,18 @@ function redactSensitiveGitOutput(message: string): string {
       /\b(?:[a-z0-9-]+\.)+(?:internal|lan|corp)\b/gi,
       "[redacted host]",
     )
-    .replaceAll(/\[\/[^\r\n\]]+\]/g, "[[redacted path]]")
     .replaceAll(
-      /(^|[\s("'`=[,])\/(?:Users|home)\/[^\r\n]*?(?=\s+(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b)|$)/gm,
-      "$1[redacted path]",
+      /(\b(?:resolve host|host)\s*:\s*)[\w.-]+/gi,
+      "$1[redacted host]",
     )
     .replaceAll(
-      /\b[A-Za-z]:[\\/]Users[\\/][^\r\n]*?(?=\s+(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b)|$)/g,
-      "[redacted path]",
+      /(\b[\w.-]*(?:key|token|secret|password|credential)[\w.-]*\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
+      "$1[redacted secret]",
     )
     .replaceAll(
-      /(^|[\s("'`=[,])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,
-      "$1[redacted path]",
+      /(\b[A-Z][A-Z0-9_]{2,}\s*=\s*)(?!\[redacted secret\])[^\s]+/g,
+      "$1[redacted secret]",
     )
-    .replaceAll(
-      /\b[A-Za-z]:[\\/](?:[^\\/\s"']+[\\/])+[^\\/\s"']+/g,
-      "[redacted path]",
-    )
-    .replaceAll(/(\b[A-Z][A-Z0-9_]{2,}\s*=\s*)[^\s]+/g, "$1[redacted secret]")
-    .replaceAll(/\\\\[^\\\s"'`]+(?:\\[^\\\s"'`]+)+/g, "[redacted path]")
     .replaceAll(
       /\b(?:sk-[A-Za-z0-9_-]{16,}|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
       "[redacted secret]",

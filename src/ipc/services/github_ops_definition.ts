@@ -199,10 +199,6 @@ function createCommandRunner(
     operationId: string | undefined,
     verificationAttempt: number | undefined,
   ) => {
-    const boundedMessage = truncateGithubOpsErrorMessage(
-      message,
-      MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH,
-    );
     const state = context.getSnapshot().state;
     if (state.type === "conflicted" && state.resolution === "checking") {
       if (
@@ -212,7 +208,10 @@ function createCommandRunner(
         emit({
           type: "CONFLICT_VERIFICATION_FAILED",
           verificationAttempt,
-          message: boundedMessage,
+          message: truncateGithubOpsErrorMessage(
+            message,
+            MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH,
+          ),
         });
       }
       return;
@@ -220,7 +219,7 @@ function createCommandRunner(
     githubOpsPresentationService.showError(
       context.key.appId,
       operationId,
-      boundedMessage,
+      message,
     );
   };
 

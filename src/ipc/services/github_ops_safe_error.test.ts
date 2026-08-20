@@ -122,6 +122,18 @@ describe("safeGithubOpsErrorMessage", () => {
       "fatal: unable to read [redacted path]",
     ],
     [
+      "fatal: cannot access /Volumes/Client Work/customer.txt",
+      "fatal: cannot access [redacted path]",
+    ],
+    [
+      "fatal: cannot open /Users/alice/app/.git/index.lock: Permission denied",
+      "fatal: cannot open [redacted path]: Permission denied",
+    ],
+    [
+      "hook: /Users/alice/app/src/App.tsx:42:7: type error",
+      "hook: [redacted path]:42:7: type error",
+    ],
+    [
       "fatal: unable to auto-detect email address (got 'root@hostname.(none)')",
       "fatal: unable to auto-detect email address (got '[redacted identity]')",
     ],
@@ -140,6 +152,15 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "hook: token eyJabcdefghijklmnopqrstuvwxyz.abcdefghi.abcdefghij",
       "hook: token [redacted secret]",
+    ],
+    [
+      "hook: api_key=ordinary-lowercase-secret",
+      "hook: api_key=[redacted secret]",
+    ],
+    ['hook: token: "abc123"', "hook: token: [redacted secret]"],
+    [
+      "fatal: Could not resolve host: gitlab.local",
+      "fatal: Could not resolve host: [redacted host]",
     ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(
@@ -181,5 +202,12 @@ describe("safeGithubOpsErrorMessage", () => {
 
     expect(result).toContain("… [line truncated]");
     expect(result.length).toBeLessThan(5000);
+  });
+
+  it("handles a long dotted line without mistaking it for an SCP remote", () => {
+    const message = `hook: ${"segment.".repeat(500)}`;
+    expect(
+      safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
+    ).toBe(message);
   });
 });

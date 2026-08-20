@@ -688,6 +688,28 @@ describe("main-hosted github_ops actor", () => {
     );
   });
 
+  it("preserves detailed generic probe failures beyond the verification-event bound", async () => {
+    const detailedMessage = Array.from(
+      { length: 80 },
+      (_, index) => `repository refresh detail ${index}`,
+    ).join("\n");
+    service.getGitState.mockRejectedValueOnce(new Error(detailedMessage));
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await flush();
+
+    expect(detailedMessage.length).toBeGreaterThan(
+      MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH,
+    );
+    expect(presentation.showError).toHaveBeenCalledExactlyOnceWith(
+      7,
+      undefined,
+      detailedMessage,
+    );
+  });
+
   it("rejects dispatch for the null-app subscription sentinel", async () => {
     const { clientA } = createHarness();
     const sentinel = clientA.actor(githubOpsClientDefinition, githubOpsKey(0));

@@ -292,9 +292,8 @@ export function registerRendererIpcListeners({
   );
 
   unsubscribes.push(
-    ipcClient.events.misc.onErrorToast(({ message, action, persist }) => {
+    ipcClient.events.misc.onErrorToast(({ message, action }) => {
       showError(message, {
-        persist,
         action: action
           ? {
               label: action.label,

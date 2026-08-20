@@ -51,10 +51,10 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       "authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz",
-      "[redacted credential]",
+      "GitHub operation failed",
     ],
-    ["Authorization: Basic dXNlcjpwYXNz", "[redacted credential]"],
-    ["Private-Token=Custom abc secret", "[redacted credential]"],
+    ["Authorization: Basic dXNlcjpwYXNz", "GitHub operation failed"],
+    ["Private-Token=Custom abc secret", "GitHub operation failed"],
     [
       "fatal: Unable to create '/Users/alice/My Projects/secret/.git/index.lock'",
       "fatal: Unable to create '[redacted path]'",
@@ -147,6 +147,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "error: symlink [redacted path] (No such file or directory)",
     ],
     [
+      "error: cannot stat /srv/data/out.bin during sync",
+      "error: cannot stat [redacted path] during sync",
+    ],
+    [
       "fatal: unable to auto-detect email address (got 'root@hostname.(none)')",
       "fatal: unable to auto-detect email address (got '[redacted identity]')",
     ],
@@ -184,6 +188,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "ssh: connect to host [redacted host] port 22: Connection refused",
     ],
     [
+      "curl: Failed to connect to 10.0.0.5 port 443: Connection refused",
+      "curl: Failed to connect to [redacted host] port 443: Connection refused",
+    ],
+    [
       "ssh: Could not resolve hostname buildbox: Name or service not known",
       "ssh: Could not resolve hostname [redacted host]: Name or service not known",
     ],
@@ -198,6 +206,10 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "hook: DYAD_PUBLIC_GIT_DOCUMENTATION_URL_7",
       "hook: DYAD_PUBLIC_GIT_DOCUMENTATION_URL_7",
+    ],
+    [
+      "hook: -----BEGIN OPENSSH PRIVATE KEY-----\nsecretpayload\n-----END OPENSSH PRIVATE KEY-----",
+      "hook: [redacted private key]",
     ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(
@@ -217,6 +229,17 @@ describe("safeGithubOpsErrorMessage", () => {
         new Error("hook#x/Users/alice/private-project"),
         "GitHub operation failed",
       ),
+    ).toBe("GitHub operation failed");
+  });
+
+  it.each([
+    "hook#x/srv/clients/acme/build.log",
+    String.raw`error:D:\Projects\acme-client\.git\index.lock`,
+    "hook: ~/Clients/acme/config",
+    "hook: -----BEGIN PRIVATE KEY-----\nincomplete",
+  ])("falls back for a residual sensitive form: %s", (message) => {
+    expect(
+      safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
     ).toBe("GitHub operation failed");
   });
 

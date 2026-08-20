@@ -7,7 +7,7 @@ const PUBLIC_GIT_DOCUMENTATION_URL =
   /\b(?:https:\/\/gh\.io\/lfs|https:\/\/git-lfs\.github\.com\/?)(?=$|[\s"'.,;:!?)}\]])/gi;
 const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
 const UNSAFE_GITHUB_ERROR_RESIDUAL =
-  /(?:\/Users\/|\/home\/|[A-Za-z]:[\\/]Users[\\/]|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bsk-[A-Za-z0-9_-]{16,}\b)/i;
+  /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bsk-[A-Za-z0-9_-]{16,}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
 
 function redactQuotedAbsolutePaths(message: string): string {
   return message
@@ -75,10 +75,22 @@ function redactUnquotedAbsolutePaths(message: string): string {
         const start = match.index + prefixLength;
         pathEnd.lastIndex = pathStart.lastIndex;
         const endMatch = pathEnd.exec(line);
-        const end = endMatch?.index ?? line.length;
+        let end = endMatch?.index ?? line.length;
+        if (!endMatch) {
+          const firstWhitespaceOffset = line
+            .slice(pathStart.lastIndex)
+            .search(/\s/);
+          if (firstWhitespaceOffset !== -1) {
+            const firstWhitespace = pathStart.lastIndex + firstWhitespaceOffset;
+            const possiblePathRemainder = line.slice(firstWhitespace + 1);
+            if (!/[\\/]/.test(possiblePathRemainder)) {
+              end = firstWhitespace;
+            }
+          }
+        }
         const hiddenText = line.slice(start, end);
         const remainderNotice =
-          !endMatch && /\s/.test(hiddenText)
+          end === line.length && !endMatch && /\s/.test(hiddenText)
             ? " … [path remainder redacted]"
             : "";
         result += `${line.slice(cursor, start)}[redacted path]${remainderNotice}`;
@@ -92,7 +104,11 @@ function redactUnquotedAbsolutePaths(message: string): string {
 
 function redactSensitiveGitOutput(message: string): string {
   const publicDocumentationUrls: string[] = [];
-  const protectedMessage = message.replaceAll(
+  const privateKeysRedacted = message.replaceAll(
+    /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g,
+    "[redacted private key]",
+  );
+  const protectedMessage = privateKeysRedacted.replaceAll(
     PUBLIC_GIT_DOCUMENTATION_URL,
     (url) => {
       const index = publicDocumentationUrls.push(url) - 1;
@@ -145,6 +161,10 @@ function redactSensitiveGitOutput(message: string): string {
       /(\bconnect to host\s+)(?:\[[A-F0-9:]+\]|[^\s]+)/gi,
       "$1[redacted host]",
     )
+    .replaceAll(
+      /(\bconnect to\s+)(?:\[[A-F0-9:]+\]|(?:\d{1,3}\.){3}\d{1,3})/gi,
+      "$1[redacted host]",
+    )
     .replaceAll(/(\bresolve hostname\s+)[^:\s]+/gi, "$1[redacted host]")
     .replaceAll(
       /(\b[\w.-]*(?:key|token|secret|password|credential)[\w.-]*\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
@@ -194,5 +214,9 @@ export function safeGithubOpsErrorMessage(
     .join("\n");
   const safeMessage = redactSensitiveGitOutput(boundedRaw);
   if (UNSAFE_GITHUB_ERROR_RESIDUAL.test(safeMessage)) return fallback;
+  const actionableText = safeMessage
+    .replaceAll(/\[redacted [^\]]+\]/g, "")
+    .replaceAll(/[\p{P}\p{S}\s]/gu, "");
+  if (!actionableText) return fallback;
   return truncateGithubOpsErrorMessage(safeMessage);
 }

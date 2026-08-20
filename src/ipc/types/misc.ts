@@ -558,7 +558,6 @@ export const miscEvents = {
     channel: "toast:error",
     payload: z.object({
       message: z.string(),
-      persist: z.boolean().optional(),
       action: z
         .object({
           label: z.string(),

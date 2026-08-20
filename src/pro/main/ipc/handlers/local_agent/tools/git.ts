@@ -16,6 +16,7 @@ import {
 } from "@/ipc/utils/git_utils";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
+import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 import {
   AgentContext,
   escapeXmlAttr,
@@ -454,6 +455,7 @@ export const gitRestoreFileTool: ToolDefinition<
       isComplete,
     ),
   execute: async (args, ctx: AgentContext) => {
+    assertImplementerPathAllowed(ctx, args.path);
     const operationPath = await assertMutationPathAllowed({
       appPath: ctx.appPath,
       relativePath: args.path,
@@ -495,7 +497,9 @@ export const gitRestoreFileTool: ToolDefinition<
       } catch {
         return successMessage;
       }
-      if (ctx.isSharedModulesChanged) {
+      if (ctx.allowDeploySideEffects === false) {
+        ctx.onDeferredFunctionDeploy?.(functionName);
+      } else if (ctx.isSharedModulesChanged) {
         ctx.pendingFunctionDeploys.push(functionName);
       } else {
         try {

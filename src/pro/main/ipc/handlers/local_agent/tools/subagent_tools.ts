@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { ToolSet } from "ai";
 import type { SubagentThreadSummary } from "@/ipc/types";
 
-import { buildAgentToolSet } from "../tool_definitions";
+import { buildAgentToolSet, type AgentToolName } from "../tool_definitions";
 import {
   cancelSubagent,
   followupSubagent,
@@ -99,6 +99,12 @@ export function buildSubagentContext(
         ctx.pendingFunctionDeploys.push(functionName);
       }
     },
+    onDeferredFunctionDelete: (functionName) => {
+      ctx.pendingFunctionDeletes ??= [];
+      if (!ctx.pendingFunctionDeletes.includes(functionName)) {
+        ctx.pendingFunctionDeletes.push(functionName);
+      }
+    },
     canUseExplorerSubagent: false,
     canUseImplementerSubagent: false,
     canUseAdvancedSubagentTools: false,
@@ -117,16 +123,28 @@ export function buildSubagentContext(
 }
 
 /**
- * Session state the ORCHESTRATOR owns. A sub-agent writing here would corrupt
- * the parent's view of its own run rather than do the work it was asked to do.
+ * Session state and unscoped app/provider mutations the ORCHESTRATOR owns. A
+ * sub-agent writing here would corrupt the parent's view of its own run or
+ * escape the bounded path assignment.
  *
- * Deliberately short. Recursion needs no entry: `spawn_agent` and the advanced
+ * Recursion needs no entry: `spawn_agent` and the advanced
  * sub-agent tools already gate on `!ctx.subagentThreadId`, and the child
  * context sets it, so a sub-agent cannot spawn regardless of this list.
  * Explorer needs no entries either: it is built with `readOnly: true`, which
  * `shouldIncludeTool` uses to strip every state-modifying tool.
  */
-const SUBAGENT_DENYLIST = new Set(["update_todos", "set_chat_summary"]);
+const SUBAGENT_DENYLIST = new Set<AgentToolName>([
+  "update_todos",
+  "set_chat_summary",
+  "write_app_blueprint",
+  "add_integration",
+  "add_dependency",
+  "execute_sql",
+  "enable_nitro",
+  "generate_image",
+  "generate_test_assertions",
+  "reinstall_and_restart_app",
+]);
 
 export function buildSubagentToolSet(
   params: SubagentToolContextParams,
@@ -242,6 +260,9 @@ export const spawnAgentTool: ToolDefinition<
         ctx.deliveredExplorerThreadIds.push(threadId);
       }
     }
+    if (args.persona === "implementer" && subagent.status === "partial") {
+      ctx.partialImplementerVerificationRequired = true;
+    }
     return JSON.stringify({
       threadId: subagent.id,
       status: subagent.status,
@@ -285,10 +306,22 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
   requiresMutationLease: false,
   requiresBlueprintApproval: false,
   isEnabled: canUseAdvancedSubagentTools,
-  execute: async (args, ctx) =>
-    JSON.stringify(
-      await waitForSubagents(ctx.chatId, args.thread_ids, ctx.abortSignal),
-    ),
+  execute: async (args, ctx) => {
+    const summaries = await waitForSubagents(
+      ctx.chatId,
+      args.thread_ids,
+      ctx.abortSignal,
+    );
+    if (
+      summaries.some(
+        (summary) =>
+          summary.persona === "implementer" && summary.status === "partial",
+      )
+    ) {
+      ctx.partialImplementerVerificationRequired = true;
+    }
+    return JSON.stringify(summaries);
+  },
 };
 
 export const cancelAgentTool: ToolDefinition<{ thread_id: string }> = {

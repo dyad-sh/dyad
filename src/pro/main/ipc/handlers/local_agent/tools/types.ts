@@ -89,6 +89,8 @@ export interface AgentContext {
   sharedServerModulePaths: string[];
   /** Function deploys skipped because a shared module had already changed. */
   pendingFunctionDeploys: string[];
+  /** Remote function deletions deferred until root-owned finalization. */
+  pendingFunctionDeletes?: string[];
   /** Preserve remote Supabase functions that are absent from local files. */
   skipPruneEdgeFunctions?: boolean;
   chatSummary?: string;
@@ -150,6 +152,10 @@ export interface AgentContext {
   onSharedServerModuleChange?: (relativePath: string) => void;
   /** Propagates child function deploy work to the root turn. */
   onDeferredFunctionDeploy?: (functionName: string) => void;
+  /** Propagates child function deletion work to the root turn. */
+  onDeferredFunctionDelete?: (functionName: string) => void;
+  /** A partial Implementer must be followed by a successful root check. */
+  partialImplementerVerificationRequired?: boolean;
   /** Turn-scoped schema gates for root orchestration tools. */
   canUseExplorerSubagent?: boolean;
   /** True when settings or the selected Auto Sidekick model enables it. */

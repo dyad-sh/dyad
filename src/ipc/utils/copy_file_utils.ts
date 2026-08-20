@@ -48,11 +48,13 @@ export async function executeCopyFile({
   to,
   appId,
   isSharedModulesChanged,
+  allowDeploySideEffects,
 }: {
   from: string;
   to: string;
   appId: number;
   isSharedModulesChanged?: boolean;
+  allowDeploySideEffects?: boolean;
 }): Promise<CopyFileResult> {
   const normalizedSource = from.replaceAll("\\", "/");
   const readsMedia =
@@ -161,7 +163,10 @@ export async function executeCopyFile({
       let skippedFunctionDeploy: string | undefined;
       if (supabaseProjectId && isServerFunction(operationPath)) {
         const functionName = extractFunctionNameFromPath(operationPath);
-        if (!effectiveSharedModulesChanged) {
+        if (
+          !effectiveSharedModulesChanged &&
+          allowDeploySideEffects !== false
+        ) {
           try {
             await deploySupabaseFunction({
               supabaseProjectId,

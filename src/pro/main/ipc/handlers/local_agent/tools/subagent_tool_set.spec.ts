@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/main/settings", () => ({
+  readSettings: vi.fn(() => ({ agentToolConsents: {} })),
+  writeSettings: vi.fn(),
+}));
 
 // tool_definitions and subagent_tools import each other. Evaluating
 // subagent_tools first leaves the registry holding undefined entries, so this
 // import must come first — it is load-bearing, not an unused import.
-import "../tool_definitions";
+import { recordRootImplementerVerification } from "../tool_definitions";
 import { buildSubagentToolSet } from "./subagent_tools";
 import type { AgentContext } from "./types";
 
@@ -37,6 +42,25 @@ function toolNamesFor(persona: "explorer" | "implementer"): Set<string> {
 }
 
 describe("sub-agent tool set", () => {
+  it("only clears partial status after a root verification tool succeeds", () => {
+    const ctx = {
+      partialImplementerVerificationRequired: true,
+    } as AgentContext;
+
+    recordRootImplementerVerification(ctx, "write_file");
+    expect(ctx.partialImplementerVerificationRequired).toBe(true);
+
+    recordRootImplementerVerification(ctx, "git_diff");
+    expect(ctx.partialImplementerVerificationRequired).toBe(false);
+
+    const childCtx = {
+      partialImplementerVerificationRequired: true,
+      subagentThreadId: "child-1",
+    } as AgentContext;
+    recordRootImplementerVerification(childCtx, "run_type_checks");
+    expect(childCtx.partialImplementerVerificationRequired).toBe(true);
+  });
+
   it("lets the Implementer verify its own work", () => {
     const names = toolNamesFor("implementer");
 
@@ -53,6 +77,14 @@ describe("sub-agent tool set", () => {
 
     expect(names.has("update_todos")).toBe(false);
     expect(names.has("set_chat_summary")).toBe(false);
+    expect(names.has("write_app_blueprint")).toBe(false);
+    expect(names.has("add_integration")).toBe(false);
+    expect(names.has("add_dependency")).toBe(false);
+    expect(names.has("execute_sql")).toBe(false);
+    expect(names.has("enable_nitro")).toBe(false);
+    expect(names.has("generate_image")).toBe(false);
+    expect(names.has("generate_test_assertions")).toBe(false);
+    expect(names.has("reinstall_and_restart_app")).toBe(false);
   });
 
   it("blocks recursion without relying on the denylist", () => {

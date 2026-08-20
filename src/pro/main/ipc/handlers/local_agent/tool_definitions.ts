@@ -473,6 +473,27 @@ const CAPABILITY_GATED_BLUEPRINT_TOOLS = new Set<string>([
   "execute_sandbox_script",
 ]);
 
+const ROOT_IMPLEMENTER_VERIFICATION_TOOLS = new Set<string>([
+  "git_diff",
+  "run_type_checks",
+  "run_tests",
+  "run_build",
+  "run_pre_commit",
+]);
+
+export function recordRootImplementerVerification(
+  ctx: AgentContext,
+  toolName: string,
+): void {
+  if (
+    !ctx.subagentThreadId &&
+    ctx.partialImplementerVerificationRequired &&
+    ROOT_IMPLEMENTER_VERIFICATION_TOOLS.has(toolName)
+  ) {
+    ctx.partialImplementerVerificationRequired = false;
+  }
+}
+
 function toolModifiesState(
   tool: (typeof TOOL_DEFINITIONS)[number],
   ctx: AgentContext,
@@ -664,6 +685,8 @@ export function buildAgentToolSet(
             // (including failures) for retry/fallback telemetry
             trackFileEditTool(invocationCtx, tool.name, processedArgs);
             const result = await tool.execute(processedArgs, invocationCtx);
+
+            recordRootImplementerVerification(invocationCtx, tool.name);
 
             // Only completed mutations unblock run_tests. Failed tool calls are
             // still present in fileEditTracker for retry/fallback telemetry, but

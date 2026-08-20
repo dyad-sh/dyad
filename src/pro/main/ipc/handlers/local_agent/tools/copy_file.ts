@@ -3,6 +3,7 @@ import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { isPathGitVisible } from "./tool_invocation";
+import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 
 const copyFileSchema = z.object({
   from: z
@@ -39,11 +40,14 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    assertImplementerPathAllowed(ctx, args.from);
+    assertImplementerPathAllowed(ctx, args.to);
     const result = await executeCopyFile({
       from: args.from,
       to: args.to,
       appId: ctx.appId,
       isSharedModulesChanged: ctx.isSharedModulesChanged,
+      allowDeploySideEffects: ctx.allowDeploySideEffects,
     });
 
     if (result.sharedModuleChanged) {
@@ -52,7 +56,11 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
     }
 
     if (result.skippedFunctionDeploy) {
-      ctx.pendingFunctionDeploys.push(result.skippedFunctionDeploy);
+      if (ctx.allowDeploySideEffects === false) {
+        ctx.onDeferredFunctionDeploy?.(result.skippedFunctionDeploy);
+      } else {
+        ctx.pendingFunctionDeploys.push(result.skippedFunctionDeploy);
+      }
     }
 
     queueCloudSandboxSnapshotSync({

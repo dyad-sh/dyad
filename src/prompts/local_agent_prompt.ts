@@ -175,10 +175,14 @@ const IMPLEMENTER_DELEGATION_GUIDANCE = `
    and tests and read the app's logs, and its assignment should say which of
    these must pass. Its report must address each MUST HOLD item — where it is
    enforced, or why it was not touched. Read the report first and act on what it
-   says. Open files yourself when the report is unclear, when it claims something
-   you have reason to doubt, or when the change is one you flagged as sensitive —
-   not as a matter of routine. If the checks it was asked to run did not pass,
-   send it back with the failure rather than fixing the code yourself.
+   says. Before finalizing, inspect the actual diff across the assigned scope;
+   pay particular attention to deletions, renames, restores, authentication, and
+   data-access changes. Open files yourself when the report or diff is unclear,
+   when it claims something you have reason to doubt, or when the change is one
+   you flagged as sensitive. If the Implementer reports a partial status, run an
+   explicit root verification or remediation pass before finalization. If the
+   checks it was asked to run did not pass, send it back with the failure rather
+   than fixing the code yourself.
 
    You remain responsible for the result.`;
 

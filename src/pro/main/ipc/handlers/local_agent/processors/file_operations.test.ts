@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   gitAddAll: vi.fn(),
   gitCommit: vi.fn(),
   deployAffectedSupabaseFunctions: vi.fn(),
+  deleteSupabaseFunction: vi.fn(),
   readSettings: vi.fn(),
 }));
 
@@ -35,6 +36,10 @@ vi.mock("../../../../../../supabase_admin/supabase_utils", async () => {
 
 vi.mock("../../../../../../main/settings", () => ({
   readSettings: mocks.readSettings,
+}));
+
+vi.mock("@/supabase_admin/supabase_management_client", () => ({
+  deleteSupabaseFunction: mocks.deleteSupabaseFunction,
 }));
 
 import {
@@ -73,6 +78,7 @@ describe("deployAllFunctionsIfNeeded", () => {
     vi.clearAllMocks();
     mocks.readSettings.mockReturnValue({ skipPruneEdgeFunctions: false });
     mocks.deployAffectedSupabaseFunctions.mockResolvedValue([]);
+    mocks.deleteSupabaseFunction.mockResolvedValue(undefined);
   });
 
   it("delegates shared changes and skipped direct function deploys to the shared deploy helper", async () => {
@@ -121,6 +127,28 @@ describe("deployAllFunctionsIfNeeded", () => {
       success: true,
       warning:
         "Some Supabase functions failed to deploy: Failed to bundle alpha",
+    });
+  });
+
+  it("runs deferred child function deletions during root finalization", async () => {
+    const result = await deployAllFunctionsIfNeeded({
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: "org",
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
+      pendingFunctionDeletes: ["old-function", "old-function"],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(mocks.deleteSupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-function",
+      organizationSlug: "org",
     });
   });
 });

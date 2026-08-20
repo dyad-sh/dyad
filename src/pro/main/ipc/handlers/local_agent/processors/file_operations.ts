@@ -19,6 +19,7 @@ import {
   type AgentContext,
 } from "../tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
 
 const logger = log.scope("file_operations");
 
@@ -68,18 +69,33 @@ export async function deployAllFunctionsIfNeeded(
     | "isSharedModulesChanged"
     | "sharedServerModulePaths"
     | "pendingFunctionDeploys"
+    | "pendingFunctionDeletes"
     | "onXmlStream"
     | "onXmlComplete"
   >,
 ): Promise<FileOperationResult> {
   if (
     !ctx.supabaseProjectId ||
-    (!ctx.isSharedModulesChanged && ctx.pendingFunctionDeploys.length === 0)
+    (!ctx.isSharedModulesChanged &&
+      ctx.pendingFunctionDeploys.length === 0 &&
+      (ctx.pendingFunctionDeletes?.length ?? 0) === 0)
   ) {
     return { success: true };
   }
 
   try {
+    const deleteErrors: string[] = [];
+    for (const functionName of new Set(ctx.pendingFunctionDeletes ?? [])) {
+      try {
+        await deleteSupabaseFunction({
+          supabaseProjectId: ctx.supabaseProjectId,
+          functionName,
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        });
+      } catch (error) {
+        deleteErrors.push(`${functionName}: ${error}`);
+      }
+    }
     const settings = readSettings();
     const deployErrors = await deployAffectedSupabaseFunctions({
       appPath: ctx.appPath,
@@ -99,10 +115,17 @@ export async function deployAllFunctionsIfNeeded(
       },
     });
 
-    if (deployErrors.length > 0) {
+    if (deleteErrors.length > 0 || deployErrors.length > 0) {
+      const warning =
+        deleteErrors.length === 0
+          ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
+          : `Some Supabase function operations failed: ${[
+              ...deleteErrors.map((error) => `delete ${error}`),
+              ...deployErrors,
+            ].join(", ")}`;
       return {
         success: true,
-        warning: `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`,
+        warning,
       };
     }
 

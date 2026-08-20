@@ -97,6 +97,28 @@ describe("spawn_agent schema", () => {
     expect(root.workspaceMutated).toBe(true);
   });
 
+  it("queues child function deletions for root finalization", () => {
+    const root = {
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
+      pendingFunctionDeletes: [],
+      referencedApps: new Map(),
+      fileEditTracker: { attemptsByFile: new Map() },
+    } as unknown as AgentContext;
+    const child = buildSubagentContext({
+      ctx: root,
+      threadId: "implementer-1",
+      persona: "implementer",
+      taskName: "Remove old function",
+      scope: ["supabase/functions/old"],
+      abortSignal: new AbortController().signal,
+    });
+
+    child.onDeferredFunctionDelete?.("old");
+
+    expect(root.pendingFunctionDeletes).toEqual(["old"]);
+  });
+
   it("blocks Explorer spawning until its report is returned", async () => {
     subagentManagerMocks.waitForSubagents.mockResolvedValueOnce([
       {
@@ -299,6 +321,39 @@ describe("spawn_agent schema", () => {
       error: null,
     });
     expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
+  });
+
+  it("requires root verification after a partial Implementer report", async () => {
+    subagentManagerMocks.spawnModelSubagent.mockResolvedValueOnce(
+      "implementer-1",
+    );
+    subagentManagerMocks.waitForSubagents.mockResolvedValueOnce([
+      {
+        id: "implementer-1",
+        status: "partial",
+        result: { report: "Stopped before verification completed." },
+        error: null,
+      },
+    ]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      onXmlComplete: vi.fn(),
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: [],
+    } as unknown as AgentContext;
+
+    await spawnAgentTool.execute(
+      {
+        persona: "implementer",
+        task_name: "Update auth",
+        assignment: "Make the bounded authentication edit",
+        scope: ["src/auth.ts"],
+      },
+      ctx,
+    );
+
+    expect(ctx.partialImplementerVerificationRequired).toBe(true);
   });
 
   it("keeps schema introspection safe when no spawn persona is enabled", () => {

@@ -802,6 +802,7 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
+      pendingFunctionDeletes: [],
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
       spawnedSubagentThreadIds,
       spawnedImplementerThreadIds,
@@ -1849,6 +1850,7 @@ export async function handleLocalAgentStream(
     }
 
     const implementerThreadIds = ctx.spawnedImplementerThreadIds ?? [];
+    const partialImplementerNames: string[] = [];
     if (abortController.signal.aborted) {
       await Promise.allSettled(
         spawnedSubagentThreadIds.map((threadId) =>
@@ -1871,6 +1873,20 @@ export async function handleLocalAgentStream(
           `Implementer sub-agent did not complete successfully: ${unsuccessful
             .map((thread) => `${thread.taskName} (${thread.status})`)
             .join(", ")}`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      partialImplementerNames.push(
+        ...implementers
+          .filter((thread) => thread.status === "partial")
+          .map((thread) => thread.taskName),
+      );
+      if (
+        partialImplementerNames.length > 0 &&
+        ctx.partialImplementerVerificationRequired !== false
+      ) {
+        throw new DyadError(
+          `Implementer sub-agent reached its step limit and requires explicit root verification before finalization: ${partialImplementerNames.join(", ")}`,
           DyadErrorKind.Precondition,
         );
       }
@@ -1901,6 +1917,14 @@ export async function handleLocalAgentStream(
     // the message's `content` column, so anything appended only to fullResponse
     // would be invisible to subsequent agent turns.
     const postTurnXmlParts: string[] = [];
+
+    if (partialImplementerNames.length > 0) {
+      const partialNotice = `<dyad-status title="Implementer step limit" state="warning">${escapeXmlContent(`Stopped after the model-step budget: ${partialImplementerNames.join(", ")}. The root agent reviewed the resulting changes before finalization.`)}</dyad-status>`;
+      postTurnXmlParts.push(partialNotice);
+      fullResponse += `\n\n${partialNotice}`;
+      await updateResponseInDb(placeholderMessageId, fullResponse);
+      sendChunk(fullResponse);
+    }
 
     // Check if we hit the step limit and append a notice to the response
     if (totalStepsExecuted >= maxToolCallSteps) {

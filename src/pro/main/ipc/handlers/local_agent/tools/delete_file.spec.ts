@@ -98,6 +98,21 @@ describe("deleteFileTool", () => {
   });
 
   describe("execute safety checks", () => {
+    it("rejects Implementer deletes outside the assigned scope", async () => {
+      const context = {
+        ...mockContext,
+        subagentPersona: "implementer" as const,
+        subagentPathScope: ["src/auth"],
+      };
+
+      await expect(
+        deleteFileTool.execute({ path: "src/admin.ts" }, context),
+      ).rejects.toThrow("Implementer may only edit its assigned paths");
+
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fs.rmdirSync).not.toHaveBeenCalled();
+    });
+
     it.each([".", "./", ".\\", "foo/..", "foo\\.."])(
       "rejects project-root-equivalent path: %s",
       async (path) => {
@@ -217,6 +232,30 @@ describe("deleteFileTool", () => {
         functionName: "hello-world",
         organizationSlug: null,
       });
+    });
+
+    it("defers an Implementer's remote function deletion to the root", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      const onDeferredFunctionDelete = vi.fn();
+      const context = {
+        ...mockContext,
+        supabaseProjectId: "project-id",
+        subagentPersona: "implementer" as const,
+        subagentPathScope: ["supabase/functions/hello-world"],
+        allowDeploySideEffects: false,
+        onDeferredFunctionDelete,
+      };
+
+      await deleteFileTool.execute(
+        { path: "supabase/functions/hello-world/index.ts" },
+        context,
+      );
+
+      expect(onDeferredFunctionDelete).toHaveBeenCalledWith("hello-world");
+      expect(deleteSupabaseFunction).not.toHaveBeenCalled();
     });
   });
 

@@ -11,6 +11,7 @@ import {
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 
 const logger = log.scope("delete_file");
 
@@ -47,6 +48,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       result.startsWith("File deleted,"),
 
     execute: async (args, ctx: AgentContext) => {
+      assertImplementerPathAllowed(ctx, args.path);
       const { relativePath: operationPath, fullPath: fullFilePath } =
         await prepareDeletePath(ctx.appPath, args.path);
 
@@ -75,14 +77,19 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
 
         // Delete Supabase function if applicable
         if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
-          try {
-            await deleteSupabaseFunction({
-              supabaseProjectId: ctx.supabaseProjectId,
-              functionName: getFunctionNameFromPath(operationPath),
-              organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-            });
-          } catch (error) {
-            return `File deleted, but failed to delete Supabase function: ${error}`;
+          const functionName = getFunctionNameFromPath(operationPath);
+          if (ctx.allowDeploySideEffects === false) {
+            ctx.onDeferredFunctionDelete?.(functionName);
+          } else {
+            try {
+              await deleteSupabaseFunction({
+                supabaseProjectId: ctx.supabaseProjectId,
+                functionName,
+                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+              });
+            } catch (error) {
+              return `File deleted, but failed to delete Supabase function: ${error}`;
+            }
           }
         }
       } else {

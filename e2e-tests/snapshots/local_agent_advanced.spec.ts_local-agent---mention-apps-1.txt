@@ -824,7 +824,7 @@
       },
       {
         "name": "run_build",
-        "description": "Run the app's production build as a selective, expensive verification step.\n\n- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.\n- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.\n- Finish related edits first and run once. A failed build may be retried only after making a relevant change.\n- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot while a preview is running.",
+        "description": "Run the app's production build as a selective, expensive verification step.\n\n- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.\n- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.\n- Finish related edits first and run once. A failed build may be retried only after making a relevant change.\n- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use a detached Git worktree containing the current workspace changes and freshly installed dependencies while a preview is running.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

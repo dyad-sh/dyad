@@ -15,6 +15,8 @@ import {
 } from "@/ipc/utils/framework_utils";
 import { choosePackageManagerForApp } from "@/ipc/utils/package_manager_selection";
 import { runningApps } from "@/ipc/utils/process_manager";
+import { runBufferedProcess } from "@/ipc/utils/buffered_process";
+import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import {
   getPackageManagerCommandEnv,
@@ -35,12 +37,11 @@ const WINDOWS_SNAPSHOT_COPY_CONCURRENCY = 32;
 const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
 const SNAPSHOT_PREFIX = ".dyad-build-";
 const SNAPSHOT_NAME_PATTERN = /^\.dyad-build-[A-Za-z0-9]{6}$/;
-const SNAPSHOT_MARKER = ".dyad-build-snapshot";
-const SNAPSHOT_MARKER_CONTENT = "dyad-build-snapshot-v1";
+const SNAPSHOT_MARKER_SUFFIX = ".owner.json";
+const SNAPSHOT_MARKER_SCHEMA = "dyad-build-worktree-v1";
 const SNAPSHOT_ROOT_NAME = "build-snapshots";
+const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
-  ".git",
-  SNAPSHOT_MARKER,
   "node_modules",
   ".next",
   ".output",
@@ -96,10 +97,17 @@ interface BuildAttemptState {
   mutationCountAtLastRun?: number;
 }
 
-interface Snapshot {
+export interface Snapshot {
   path: string;
+  worktreePath: string;
   setupMs: number;
-  strategy: "macos-clone" | "linux-reflink" | "windows-copy" | "copy";
+  strategy: "git-worktree-overlay";
+  sourceRepoPath: string;
+}
+
+interface SnapshotMarker {
+  schema: typeof SNAPSHOT_MARKER_SCHEMA;
+  sourceRepoPath: string;
 }
 
 const activeBuilds = new Set<number>();
@@ -152,68 +160,201 @@ export async function gatherBuildProjectFacts(
   };
 }
 
-function snapshotStrategy(): Snapshot["strategy"] {
-  if (process.platform === "darwin") return "macos-clone";
-  if (process.platform === "linux") return "linux-reflink";
-  if (process.platform === "win32") return "windows-copy";
-  return "copy";
+function throwIfBuildCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+  }
 }
 
-async function copySnapshotEntries(
-  source: string,
-  destination: string,
-  entries: string[],
+async function runSnapshotGit(
+  cwd: string,
+  args: string[],
   signal?: AbortSignal,
-): Promise<void> {
-  if (process.platform === "darwin" && entries.length > 0) {
-    const result = await spawnStreaming({
-      command: "/bin/cp",
-      args: [
-        "-cR",
-        ...entries.map((entry) => path.join(source, entry)),
-        destination,
-      ],
-      cwd: source,
-      signal,
-    });
-    if (result.code === 0 && !result.aborted && !result.timedOut) return;
-    if (result.aborted) {
-      throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+) {
+  const { env, gitLocation } = getGitProcessEnvironment();
+  const result = await runBufferedProcess({
+    command: gitLocation,
+    args,
+    cwd,
+    env,
+    signal,
+    maxOutputBytes: MAX_GIT_OUTPUT_BYTES,
+  });
+  if (result.aborted) {
+    throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+  }
+  if (result.timedOut) {
+    throw new Error(`Git command timed out: git ${args.join(" ")}`);
+  }
+  if (result.stdoutTruncated || result.stderrTruncated) {
+    throw new Error(
+      `Git command output exceeded the snapshot limit: git ${args.join(" ")}`,
+    );
+  }
+  if (result.code !== 0) {
+    throw new Error(
+      result.stderr.trim() ||
+        result.stdout.trim() ||
+        `Git command failed: git ${args.join(" ")}`,
+    );
+  }
+  return result;
+}
+
+function normalizeSnapshotRelativePath(
+  rawPath: string,
+  appRelativePath: string,
+): string | null {
+  const withoutTrailingSlash = rawPath.replace(/\/$/, "");
+  const normalized = path.posix.normalize(withoutTrailingSlash);
+  if (
+    !normalized ||
+    normalized === "." ||
+    path.posix.isAbsolute(normalized) ||
+    normalized === ".." ||
+    normalized.startsWith("../")
+  ) {
+    return null;
+  }
+  const segments = normalized.split("/");
+  if (segments.includes(".git") || segments.includes("node_modules")) {
+    return null;
+  }
+  const normalizedAppPath = appRelativePath
+    ? path.posix.normalize(appRelativePath)
+    : "";
+  const pathWithinApp = normalizedAppPath
+    ? normalized === normalizedAppPath
+      ? ""
+      : normalized.startsWith(`${normalizedAppPath}/`)
+        ? normalized.slice(normalizedAppPath.length + 1)
+        : null
+    : normalized;
+  const [appRootName] = pathWithinApp?.split("/") ?? [];
+  return appRootName && SNAPSHOT_EXCLUDED_NAMES.has(appRootName)
+    ? null
+    : normalized;
+}
+
+export function parseWorkspaceOverlayPaths(
+  statusOutput: string,
+  appRelativePath = "",
+): string[] {
+  const fields = statusOutput.split("\0");
+  const paths = new Set<string>();
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    if (!field || field.length < 4) continue;
+    const status = field.slice(0, 2);
+    const currentPath = normalizeSnapshotRelativePath(
+      field.slice(3),
+      appRelativePath,
+    );
+    if (currentPath) paths.add(currentPath);
+    if (status.includes("R") || status.includes("C")) {
+      const previousPath = normalizeSnapshotRelativePath(
+        fields[index + 1] ?? "",
+        appRelativePath,
+      );
+      if (previousPath) paths.add(previousPath);
+      index += 1;
     }
-    // clonefile can fail for a destination on another filesystem. Retry with
-    // Node's portable copy before treating snapshot setup as unavailable.
   }
 
+  const sorted = [...paths].sort(
+    (left, right) => left.length - right.length || left.localeCompare(right),
+  );
+  return sorted.filter(
+    (candidate, index) =>
+      !sorted
+        .slice(0, index)
+        .some((parent) => candidate.startsWith(`${parent}/`)),
+  );
+}
+
+function toNativeSnapshotPath(relativePath: string): string {
+  return path.join(...relativePath.split("/"));
+}
+
+async function overlayWorkspacePath(
+  sourceRoot: string,
+  realSourceRoot: string,
+  snapshotRoot: string,
+  relativePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfBuildCancelled(signal);
+  const nativeRelativePath = toNativeSnapshotPath(relativePath);
+  const sourcePath = path.join(sourceRoot, nativeRelativePath);
+  const destinationPath = path.join(snapshotRoot, nativeRelativePath);
+  await fs.rm(destinationPath, { recursive: true, force: true });
+  const sourceStat = await fs.lstat(sourcePath).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
+  if (!sourceStat) return;
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
   if (process.platform === "win32") {
     await copySnapshotEntriesOnWindows(
-      source,
-      await fs.realpath(source),
-      destination,
-      entries.map((entry) => path.join(source, entry)),
+      sourceRoot,
+      realSourceRoot,
+      snapshotRoot,
+      [sourcePath],
       signal,
     );
     return;
   }
-
-  await Promise.all(
-    entries.map((entry) =>
-      fs.cp(path.join(source, entry), path.join(destination, entry), {
-        recursive: true,
-        verbatimSymlinks: true,
-        mode: process.platform === "linux" ? fsConstants.COPYFILE_FICLONE : 0,
-        filter: () => !signal?.aborted,
-      }),
-    ),
-  );
-
-  if (signal?.aborted) {
-    throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
-  }
+  await fs.cp(sourcePath, destinationPath, {
+    recursive: true,
+    verbatimSymlinks: true,
+    mode: fsConstants.COPYFILE_FICLONE,
+    filter: () => !signal?.aborted,
+  });
+  throwIfBuildCancelled(signal);
 }
 
-function throwIfBuildCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+async function overlayWorkspaceState(
+  sourceRoot: string,
+  snapshotRoot: string,
+  appRelativePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const status = await runSnapshotGit(
+    sourceRoot,
+    [
+      "-c",
+      "core.fsmonitor=false",
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=normal",
+      "--ignored=matching",
+    ],
+    signal,
+  );
+  const overlayPaths = parseWorkspaceOverlayPaths(
+    status.stdout,
+    appRelativePath,
+  );
+  const realSourceRoot = await fs.realpath(sourceRoot);
+  for (
+    let index = 0;
+    index < overlayPaths.length;
+    index += WINDOWS_SNAPSHOT_COPY_CONCURRENCY
+  ) {
+    await Promise.all(
+      overlayPaths
+        .slice(index, index + WINDOWS_SNAPSHOT_COPY_CONCURRENCY)
+        .map((relativePath) =>
+          overlayWorkspacePath(
+            sourceRoot,
+            realSourceRoot,
+            snapshotRoot,
+            relativePath,
+            signal,
+          ),
+        ),
+    );
   }
 }
 
@@ -300,7 +441,7 @@ function pathIsInside(rootPath: string, candidatePath: string): boolean {
 
 function externalSnapshotLinkError(relativePath: string): DyadError {
   return new DyadError(
-    `Cannot isolate the linked path ${relativePath} because it points outside the app. Replace the external link with a local dependency before running a production build.`,
+    `Cannot isolate the linked path ${relativePath} because it points outside the Git repository. Replace the external link with a repository-local dependency before running a production build.`,
     DyadErrorKind.Precondition,
   );
 }
@@ -425,33 +566,110 @@ function getBuildSnapshotRoot(): string {
   return path.join(getUserDataPath(), SNAPSHOT_ROOT_NAME);
 }
 
-async function createSnapshot(
+function getSnapshotMarkerPath(snapshotPath: string): string {
+  return `${snapshotPath}${SNAPSHOT_MARKER_SUFFIX}`;
+}
+
+async function writeSnapshotMarker(
+  snapshotPath: string,
+  sourceRepoPath: string,
+): Promise<void> {
+  const marker: SnapshotMarker = {
+    schema: SNAPSHOT_MARKER_SCHEMA,
+    sourceRepoPath,
+  };
+  await fs.writeFile(
+    getSnapshotMarkerPath(snapshotPath),
+    JSON.stringify(marker),
+    "utf8",
+  );
+}
+
+async function readSnapshotMarker(
+  snapshotPath: string,
+): Promise<SnapshotMarker | null> {
+  try {
+    const parsed = JSON.parse(
+      await fs.readFile(getSnapshotMarkerPath(snapshotPath), "utf8"),
+    ) as Partial<SnapshotMarker>;
+    return parsed.schema === SNAPSHOT_MARKER_SCHEMA &&
+      typeof parsed.sourceRepoPath === "string" &&
+      path.isAbsolute(parsed.sourceRepoPath)
+      ? (parsed as SnapshotMarker)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function removeExcludedSnapshotRoots(
+  snapshotPath: string,
+): Promise<void> {
+  await Promise.all(
+    [...SNAPSHOT_EXCLUDED_NAMES].map((entry) =>
+      fs.rm(path.join(snapshotPath, entry), { recursive: true, force: true }),
+    ),
+  );
+}
+
+export async function createBuildWorktree(
   appPath: string,
+  snapshotRoot: string,
   signal?: AbortSignal,
 ): Promise<Snapshot> {
   const startedAt = Date.now();
   let tempRoot: string | undefined;
+  let sourceRepoPath: string | undefined;
   try {
-    const snapshotRoot = getBuildSnapshotRoot();
     await fs.mkdir(snapshotRoot, { recursive: true });
-    await removeStaleSnapshots(snapshotRoot);
-
-    const entries = await listSnapshotEntries(appPath);
-    tempRoot = await fs.mkdtemp(path.join(snapshotRoot, SNAPSHOT_PREFIX));
-    await fs.writeFile(
-      path.join(tempRoot, SNAPSHOT_MARKER),
-      SNAPSHOT_MARKER_CONTENT,
-      "utf8",
+    const repoResult = await runSnapshotGit(
+      appPath,
+      ["rev-parse", "--show-toplevel"],
+      signal,
     );
-    await copySnapshotEntries(appPath, tempRoot, entries, signal);
-    await secureSnapshotSymlinks(appPath, tempRoot, signal);
+    sourceRepoPath = await fs.realpath(repoResult.stdout.trim());
+    const realAppPath = await fs.realpath(appPath);
+    if (!pathIsInside(sourceRepoPath, realAppPath)) {
+      throw new Error("The app path is outside its Git repository.");
+    }
+    const appRelativePath = path.relative(sourceRepoPath, realAppPath);
+    const appRelativePosix = appRelativePath.split(path.sep).join("/");
+
+    tempRoot = await fs.mkdtemp(path.join(snapshotRoot, SNAPSHOT_PREFIX));
+    await writeSnapshotMarker(tempRoot, sourceRepoPath);
+    const emptyHooksPath = path.join(snapshotRoot, ".empty-hooks");
+    await fs.mkdir(emptyHooksPath, { recursive: true });
+    await runSnapshotGit(
+      sourceRepoPath,
+      [
+        "-c",
+        `core.hooksPath=${emptyHooksPath}`,
+        "worktree",
+        "add",
+        "--detach",
+        tempRoot,
+        "HEAD",
+      ],
+      signal,
+    );
+    const snapshotAppPath = path.join(tempRoot, appRelativePath);
+    await removeExcludedSnapshotRoots(snapshotAppPath);
+    await overlayWorkspaceState(
+      sourceRepoPath,
+      tempRoot,
+      appRelativePosix,
+      signal,
+    );
+    await secureSnapshotSymlinks(sourceRepoPath, tempRoot, signal);
     return {
-      path: tempRoot,
+      path: snapshotAppPath,
+      worktreePath: tempRoot,
       setupMs: Date.now() - startedAt,
-      strategy: snapshotStrategy(),
+      strategy: "git-worktree-overlay",
+      sourceRepoPath,
     };
   } catch (error) {
-    if (tempRoot) await removeSnapshot(tempRoot);
+    if (tempRoot) void removeSnapshot(tempRoot, sourceRepoPath ?? appPath);
     if (error instanceof DyadError) throw error;
     throw new DyadError(
       `Could not prepare the isolated build workspace: ${error instanceof Error ? error.message : String(error)}`,
@@ -460,10 +678,14 @@ async function createSnapshot(
   }
 }
 
-export async function listSnapshotEntries(appPath: string): Promise<string[]> {
-  return (await fs.readdir(appPath)).filter(
-    (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
-  );
+async function createSnapshot(
+  appPath: string,
+  signal?: AbortSignal,
+): Promise<Snapshot> {
+  const snapshotRoot = getBuildSnapshotRoot();
+  await fs.mkdir(snapshotRoot, { recursive: true });
+  await removeStaleSnapshots(snapshotRoot);
+  return createBuildWorktree(appPath, snapshotRoot, signal);
 }
 
 export async function removeStaleSnapshots(
@@ -490,16 +712,14 @@ export async function removeStaleSnapshots(
         try {
           const [stat, marker] = await Promise.all([
             fs.lstat(snapshotPath),
-            fs
-              .readFile(path.join(snapshotPath, SNAPSHOT_MARKER), "utf8")
-              .catch(() => null),
+            readSnapshotMarker(snapshotPath),
           ]);
           if (
             stat.isDirectory() &&
-            marker === SNAPSHOT_MARKER_CONTENT &&
+            marker &&
             (options.removeAll || stat.mtimeMs < cutoff)
           ) {
-            await removeSnapshot(snapshotPath);
+            await removeSnapshot(snapshotPath, marker.sourceRepoPath);
           }
         } catch (error) {
           logger.warn(
@@ -517,16 +737,52 @@ export async function cleanupStaleBuildSnapshots(): Promise<void> {
   await removeStaleSnapshots(snapshotRoot, { removeAll: true });
 }
 
-async function removeSnapshot(snapshotPath: string): Promise<void> {
+export async function removeSnapshot(
+  snapshotPath: string,
+  sourceRepoPath?: string,
+): Promise<void> {
+  const marker = sourceRepoPath
+    ? { sourceRepoPath }
+    : await readSnapshotMarker(snapshotPath);
+  let removedByGit = false;
+  if (marker?.sourceRepoPath) {
+    try {
+      await runSnapshotGit(
+        marker.sourceRepoPath,
+        ["worktree", "remove", "--force", snapshotPath],
+        AbortSignal.timeout(30_000),
+      );
+      removedByGit = true;
+    } catch (error) {
+      logger.warn(
+        `Failed to unregister build worktree ${snapshotPath}:`,
+        error,
+      );
+    }
+  }
   try {
-    await fs.rm(snapshotPath, {
-      recursive: true,
-      force: true,
-      maxRetries: 3,
-      retryDelay: 100,
-    });
+    if (!removedByGit) {
+      await fs.rm(snapshotPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+    }
+    await fs.rm(getSnapshotMarkerPath(snapshotPath), { force: true });
   } catch (error) {
     logger.warn(`Failed to remove build snapshot ${snapshotPath}:`, error);
+  }
+  if (!removedByGit && marker?.sourceRepoPath) {
+    try {
+      await runSnapshotGit(
+        marker.sourceRepoPath,
+        ["worktree", "prune"],
+        AbortSignal.timeout(30_000),
+      );
+    } catch (error) {
+      logger.warn(`Failed to prune stale build worktree metadata:`, error);
+    }
   }
 }
 
@@ -569,12 +825,14 @@ export function getCleanInstallArgs({
 
 async function runSnapshotInstallProcess({
   cwd,
+  repositoryRoot,
   packageManager,
   signal,
   timeoutMs,
   onOutput,
 }: {
   cwd: string;
+  repositoryRoot: string;
   packageManager: "npm" | "pnpm";
   signal?: AbortSignal;
   timeoutMs: number;
@@ -582,10 +840,16 @@ async function runSnapshotInstallProcess({
 }) {
   const lockfileName =
     packageManager === "pnpm" ? "pnpm-lock.yaml" : "package-lock.json";
-  const hasLockfile = await fs
-    .stat(path.join(cwd, lockfileName))
-    .then((stat) => stat.isFile())
-    .catch(() => false);
+  let lockfileDirectory = cwd;
+  let hasLockfile = false;
+  while (pathIsInside(repositoryRoot, lockfileDirectory)) {
+    hasLockfile = await fs
+      .stat(path.join(lockfileDirectory, lockfileName))
+      .then((stat) => stat.isFile())
+      .catch(() => false);
+    if (hasLockfile || lockfileDirectory === repositoryRoot) break;
+    lockfileDirectory = path.dirname(lockfileDirectory);
+  }
   return spawnStreaming({
     command: packageManager,
     args: getCleanInstallArgs({ packageManager, hasLockfile }),
@@ -665,13 +929,13 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
-- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot with freshly installed dependencies while a preview is running.`,
+- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use a detached Git worktree containing the current workspace changes and freshly installed dependencies while a preview is running.`,
   inputSchema: runBuildSchema,
   defaultConsent: "always",
   modifiesState: true,
 
   getConsentPreview: () =>
-    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may install dependencies in a temporary workspace first. This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
+    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may prepare a temporary Git worktree and install dependencies first. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
 
   buildXml: (_args, isComplete) =>
     isComplete
@@ -757,6 +1021,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               const installStartedAt = Date.now();
               const installResult = await runSnapshotInstallProcess({
                 cwd: snapshot.path,
+                repositoryRoot: snapshot.worktreePath,
                 packageManager,
                 signal: abortScope.signal,
                 timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
@@ -853,7 +1118,10 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           } finally {
             abortScope.dispose();
             if (snapshot) {
-              void removeSnapshot(snapshot.path);
+              void removeSnapshot(
+                snapshot.worktreePath,
+                snapshot.sourceRepoPath,
+              );
             }
           }
         },

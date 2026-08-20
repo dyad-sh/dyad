@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runningApps } from "@/ipc/utils/process_manager";
@@ -18,15 +20,24 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
 import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
+  createBuildWorktree,
   gatherBuildProjectFacts,
   getCleanInstallArgs,
-  listSnapshotEntries,
+  parseWorkspaceOverlayPaths,
   runBuildTool,
+  removeSnapshot,
   removeStaleSnapshots,
   secureSnapshotSymlinks,
   selectBuildExecutionMode,
   type BuildProjectFacts,
 } from "./run_build";
+
+const execFileAsync = promisify(execFile);
+
+async function runGit(cwd: string, ...args: string[]): Promise<string> {
+  const result = await execFileAsync("git", args, { cwd });
+  return result.stdout;
+}
 
 const safeViteFacts: BuildProjectFacts = {
   frameworkType: "vite",
@@ -56,7 +67,7 @@ describe("run_build", () => {
     expect(runBuildTool.modifiesState).toBe(true);
     expect(runBuildTool.inputSchema.parse({})).toEqual({});
     expect(runBuildTool.getConsentPreview?.({})).toBe(
-      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may install dependencies in a temporary workspace first. This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
+      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may prepare a temporary Git worktree and install dependencies first. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
     );
   });
 
@@ -79,23 +90,125 @@ describe("run_build", () => {
     ).toEqual(["install", "--legacy-peer-deps", "--prefer-offline"]);
   });
 
-  it("excludes live dependencies and generated output from clean snapshots", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "dyad-build-test-"),
+  it("parses dirty, renamed, untracked, and ignored overlay paths", () => {
+    const paths = parseWorkspaceOverlayPaths(
+      " M packages/app/src/changed.ts\0" +
+        "D  packages/app/src/deleted.ts\0" +
+        "R  packages/app/src/renamed.ts\0packages/app/src/old.ts\0" +
+        "?? packages/app/new/\0" +
+        "!! packages/app/.env\0" +
+        "!! packages/app/node_modules/\0" +
+        "!! packages/app/dist/\0" +
+        " M packages/shared/config.ts\0",
+      "packages/app",
     );
-    temporaryDirectories.push(appPath);
+
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "packages/app/.env",
+        "packages/app/new",
+        "packages/app/src/changed.ts",
+        "packages/app/src/deleted.ts",
+        "packages/app/src/old.ts",
+        "packages/app/src/renamed.ts",
+        "packages/shared/config.ts",
+      ]),
+    );
+    expect(paths).not.toEqual(
+      expect.arrayContaining([
+        "packages/app/node_modules",
+        "packages/app/dist",
+      ]),
+    );
+  });
+
+  it("creates a Git-aware worktree with the live state of a nested app", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const repoPath = path.join(root, "repo");
+    const appPath = path.join(repoPath, "packages", "app");
+    const sharedPath = path.join(repoPath, "packages", "shared");
+    const snapshotsPath = path.join(root, "snapshots");
     await Promise.all([
+      fs.mkdir(path.join(appPath, "src"), { recursive: true }),
+      fs.mkdir(sharedPath, { recursive: true }),
+    ]);
+    await Promise.all([
+      fs.writeFile(
+        path.join(repoPath, ".gitignore"),
+        ".env\nnode_modules\ndist\n",
+      ),
+      fs.writeFile(path.join(appPath, "package.json"), '{"name":"app"}\n'),
+      fs.writeFile(path.join(appPath, "src", "changed.ts"), "before\n"),
+      fs.writeFile(path.join(appPath, "src", "deleted.ts"), "delete me\n"),
+      fs.writeFile(path.join(sharedPath, "config.ts"), "before\n"),
+    ]);
+    await runGit(repoPath, "init");
+    await runGit(repoPath, "config", "user.email", "test@example.com");
+    await runGit(repoPath, "config", "user.name", "Test User");
+    await runGit(repoPath, "add", ".");
+    await runGit(
+      repoPath,
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "-m",
+      "initial",
+    );
+
+    await Promise.all([
+      fs.writeFile(path.join(appPath, "src", "changed.ts"), "after\n"),
+      fs.rm(path.join(appPath, "src", "deleted.ts")),
+      fs.writeFile(path.join(sharedPath, "config.ts"), "after\n"),
+      fs.mkdir(path.join(appPath, "new")),
       fs.mkdir(path.join(appPath, "node_modules")),
       fs.mkdir(path.join(appPath, "dist")),
-      fs.writeFile(path.join(appPath, "package.json"), "{}"),
-      fs.writeFile(path.join(appPath, "pnpm-lock.yaml"), "lockfileVersion: 9"),
+    ]);
+    await Promise.all([
+      fs.writeFile(path.join(appPath, "new", "file.ts"), "new\n"),
+      fs.writeFile(path.join(appPath, ".env"), "SECRET=test\n"),
+      fs.writeFile(path.join(appPath, "node_modules", "live.txt"), "live\n"),
+      fs.writeFile(path.join(appPath, "dist", "live.txt"), "live\n"),
     ]);
 
-    const entries = await listSnapshotEntries(appPath);
-    expect(entries).toHaveLength(2);
-    expect(entries).toEqual(
-      expect.arrayContaining(["package.json", "pnpm-lock.yaml"]),
-    );
+    const snapshot = await createBuildWorktree(appPath, snapshotsPath);
+    try {
+      expect(await fs.realpath(snapshot.path)).toBe(
+        await fs.realpath(path.join(snapshot.worktreePath, "packages", "app")),
+      );
+      expect(
+        (await runGit(snapshot.path, "rev-parse", "--show-toplevel")).trim(),
+      ).toBe(await fs.realpath(snapshot.worktreePath));
+      await expect(
+        fs.readFile(path.join(snapshot.path, "src", "changed.ts"), "utf8"),
+      ).resolves.toBe("after\n");
+      await expect(
+        fs.lstat(path.join(snapshot.path, "src", "deleted.ts")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.readFile(path.join(snapshot.path, "new", "file.ts"), "utf8"),
+      ).resolves.toBe("new\n");
+      await expect(
+        fs.readFile(path.join(snapshot.path, ".env"), "utf8"),
+      ).resolves.toBe("SECRET=test\n");
+      await expect(
+        fs.readFile(
+          path.join(snapshot.worktreePath, "packages", "shared", "config.ts"),
+          "utf8",
+        ),
+      ).resolves.toBe("after\n");
+      await expect(
+        fs.lstat(path.join(snapshot.path, "node_modules")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.lstat(path.join(snapshot.path, "dist")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.lstat(path.join(snapshot.worktreePath, ".dyad-build-snapshot")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await removeSnapshot(snapshot.worktreePath, snapshot.sourceRepoPath);
+    }
   });
 
   it("accumulates streamed build output instead of replacing earlier chunks", () => {
@@ -289,7 +402,7 @@ describe("run_build", () => {
       secureSnapshotSymlinks(sourceRoot, snapshotRoot),
     ).rejects.toMatchObject({
       kind: "precondition",
-      message: expect.stringContaining("points outside the app"),
+      message: expect.stringContaining("points outside the Git repository"),
     });
   });
 
@@ -336,7 +449,7 @@ describe("run_build", () => {
       ),
     ).rejects.toMatchObject({
       kind: "precondition",
-      message: expect.stringContaining("points outside the app"),
+      message: expect.stringContaining("points outside the Git repository"),
     });
   });
 
@@ -363,15 +476,35 @@ describe("run_build", () => {
   it("cleans only marked Dyad-owned snapshot directories", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
     temporaryDirectories.push(root);
-    const owned = path.join(root, ".dyad-build-ABC123");
-    const unowned = path.join(root, ".dyad-build-DEF456");
-    await Promise.all([fs.mkdir(owned), fs.mkdir(unowned)]);
+    const repoPath = path.join(root, "repo");
+    const snapshotRoot = path.join(root, "snapshots");
+    const owned = path.join(snapshotRoot, ".dyad-build-ABC123");
+    const unowned = path.join(snapshotRoot, ".dyad-build-DEF456");
+    await Promise.all([fs.mkdir(repoPath), fs.mkdir(snapshotRoot)]);
+    await fs.mkdir(unowned);
+    await fs.writeFile(path.join(repoPath, "package.json"), "{}");
+    await runGit(repoPath, "init");
+    await runGit(repoPath, "config", "user.email", "test@example.com");
+    await runGit(repoPath, "config", "user.name", "Test User");
+    await runGit(repoPath, "add", ".");
+    await runGit(
+      repoPath,
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "-m",
+      "initial",
+    );
+    await runGit(repoPath, "worktree", "add", "--detach", owned, "HEAD");
     await fs.writeFile(
-      path.join(owned, ".dyad-build-snapshot"),
-      "dyad-build-snapshot-v1",
+      `${owned}.owner.json`,
+      JSON.stringify({
+        schema: "dyad-build-worktree-v1",
+        sourceRepoPath: repoPath,
+      }),
     );
 
-    await removeStaleSnapshots(root, { removeAll: true });
+    await removeStaleSnapshots(snapshotRoot, { removeAll: true });
 
     await expect(fs.lstat(owned)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.lstat(unowned)).resolves.toMatchObject({});

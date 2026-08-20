@@ -75,21 +75,28 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## Production build snapshots
 
-- Keep the in-place-versus-isolated build decision independent of the host OS;
-  only the snapshot copy backend may vary. macOS uses `/bin/cp -cR`, Linux uses
-  `COPYFILE_FICLONE` with copy fallback, and Windows uses an ordinary
-  copy—Node's clone flag is not a portable copy-on-write guarantee.
-- Apply snapshot exclusions at the same path depth on every backend. A root-only
-  exclusion in the clone path plus recursive basename filtering in the copy
-  path produces different build inputs across operating systems.
+- Keep the in-place-versus-isolated build decision independent of the host OS.
+  Create an isolated build from a detached Git worktree on every platform, then
+  overlay the live repository's tracked edits and deletions plus untracked and
+  relevant ignored inputs. The overlay copy backend may vary—use clone-on-write
+  when Node and the filesystem support it and an ordinary bounded copy on
+  Windows—but the resulting inputs must have the same semantics.
+- Preserve the app's path relative to the Git top-level in the temporary
+  worktree. Run the package manager from that corresponding app directory, but
+  overlay repository-wide changes so monorepo configuration and sibling
+  packages match the live workspace.
+- Apply overlay exclusions at the same path depth on every backend. Exclude
+  `node_modules` anywhere in the repository and generated output roots under
+  the target app; never overlay live dependency trees or build output.
 - An isolated build must exclude the live app's `node_modules` and install a
   clean dependency tree inside the snapshot with the package manager selected
   from the live app's existing signals. Use the lockfile's frozen/CI mode when
   available, prefer the local package cache, stream install output, and surface
-  install failures separately without consuming a build attempt. After copying
-  app inputs, inspect preserved symlinks and junctions: remap targets inside the
-  source app into the snapshot, and reject targets outside the app rather than
-  leaving a path back to live files.
+  install failures separately without consuming a build attempt. After
+  materializing the worktree and overlay, inspect preserved symlinks and
+  junctions: remap targets inside the source repository into the worktree, and
+  reject targets outside the repository rather than leaving a path back to live
+  files.
 - On Windows, do not classify junctions from `Dirent`: libuv may report a
   reparse-point directory as an ordinary directory. Use `lstat`, recreate
   directory links as junctions, and copy linked files so snapshot setup does
@@ -98,10 +105,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   especially on Windows where every entry uses explicit filesystem calls. An
   unbounded recursive `Promise.all` can queue a large source tree before
   cancellation is observed.
-- Keep build snapshots in a Dyad-owned scratch root and mark every owned
-  directory before copying. Reserve the marker name from copied app inputs.
-  Startup and stale cleanup must require that marker before recursive deletion;
-  a name pattern alone is never proof of ownership.
+- Keep build worktrees in a Dyad-owned scratch root and write an ownership
+  sidecar before registering each one. Keep the sidecar outside the worktree so
+  Git-aware tools do not see a Dyad-only untracked file. Startup and stale
+  cleanup must require a valid sidecar before deletion; a name pattern alone is
+  never proof of ownership. Unregister with `git worktree remove --force`, then
+  fall back to filesystem deletion and `git worktree prune` when necessary.
 - Start one deadline before snapshot validation/copying and give the build only
   the remaining budget. Stream build output while it runs, and do not consume a
   retry when snapshot setup fails before the build process starts.

@@ -349,7 +349,7 @@ CREATE TRIGGER on_auth_user_created
 - Write functions in the supabase/functions folder
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
 - Reusable utilities belong in the supabase/functions/_shared folder. Import them in your edge functions with relative paths like ../_shared/logger.ts.
-- The function will be deployed automatically after the code is updated.
+- Edge Functions are deployed automatically after edits, either immediately or during end-of-turn finalization.
 - Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
 
 2. Configuration:

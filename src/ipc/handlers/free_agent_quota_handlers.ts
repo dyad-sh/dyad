@@ -9,6 +9,7 @@ import { registerTrustedIpcHandler } from "./trusted_handle";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 import fetch from "node-fetch";
 import { withLock } from "../utils/lock_utils";
+import { shouldSimulateFreeAgentQuotaExceeded } from "../utils/free_agent_quota_fixture";
 
 const logger = log.scope("free_agent_quota_handlers");
 const FREE_AGENT_QUOTA_ADMISSION_LOCK = "free-agent-quota-admission";
@@ -188,6 +189,18 @@ export async function unmarkMessageAsUsingFreeAgentQuota(
  * since the oldest message was sent (not a rolling window).
  */
 export async function getFreeAgentQuotaStatus() {
+  if (shouldSimulateFreeAgentQuotaExceeded()) {
+    const now = Date.now();
+    return {
+      messagesUsed: FREE_AGENT_QUOTA_LIMIT,
+      messagesLimit: FREE_AGENT_QUOTA_LIMIT,
+      isQuotaExceeded: true,
+      windowStartTime: now,
+      resetTime: now + QUOTA_WINDOW_MS,
+      hoursUntilReset: Math.ceil(QUOTA_WINDOW_MS / (60 * 60 * 1000)),
+    };
+  }
+
   // Get all messages with usingFreeAgentModeQuota = true, ordered by creation time
   const quotaMessages = await db
     .select({

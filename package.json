@@ -18,6 +18,7 @@
     "clean": "rimraf out scaffold/node_modules",
     "start": "node scripts/start-supervisor.mjs",
     "start:onboarding": "node scripts/start-onboarding.mjs",
+    "start:out-of-quota": "cross-env NODE_ENV=development DYAD_SIMULATE_FREE_AGENT_QUOTA_EXCEEDED=true npm start",
     "copy-data-to-dev": "node scripts/copy-data-to-dev.mjs",
     "start:expired-sub": "node scripts/start-subscription-status.mjs payment_past_due",
     "start:ending-sub": "node scripts/start-subscription-status.mjs subscription_ending",

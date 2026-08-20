@@ -186,6 +186,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
     string | null
   >(null);
+  const isAwaitingTurnAcceptanceRef = useRef(false);
   const messages = useChatMessages(chatId);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -512,7 +513,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         attachments.length === 0 &&
         !hasSuccessfulImageJobs) ||
       !chatId ||
-      pendingFiles
+      pendingFiles ||
+      isAwaitingTurnAcceptanceRef.current
     ) {
       return;
     }
@@ -541,6 +543,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     const submittedImageJobIds = visibleSuccessfulImageJobs.map(
       (job) => job.id,
     );
+    const dismissSubmittedImageJobs = () => {
+      if (submittedImageJobIds.length === 0) return;
+      setDismissedImageJobIds((previous) => {
+        const next = new Set(previous);
+        for (const jobId of submittedImageJobIds) next.add(jobId);
+        return next;
+      });
+    };
 
     // Use all selected components for multi-component editing
     const componentsToSend =
@@ -555,6 +565,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         attachments,
         selectedComponents: componentsToSend,
       });
+      dismissSubmittedImageJobs();
       resetEditingState();
       return;
     }
@@ -572,6 +583,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         // Only clear input, attachments, and components on successful queue
         clearComposerAfterSubmit();
         clearAttachments();
+        dismissSubmittedImageJobs();
       }
       // If queue failed, leave input/attachments intact for the user
       return;
@@ -606,14 +618,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         }
       }
       clearSubmittedAttachments(attachments);
-      if (submittedImageJobIds.length > 0) {
-        setDismissedImageJobIds((previous) => {
-          const next = new Set(previous);
-          for (const jobId of submittedImageJobIds) next.add(jobId);
-          return next;
-        });
-      }
+      dismissSubmittedImageJobs();
     };
+    isAwaitingTurnAcceptanceRef.current = true;
     await streamMessage({
       prompt: currentInput,
       chatId,
@@ -621,8 +628,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       redo: false,
       selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
-      onAccepted: clearAcceptedPayload,
+      onAccepted: () => {
+        isAwaitingTurnAcceptanceRef.current = false;
+        clearAcceptedPayload();
+      },
+      onAcceptanceRejected: () => {
+        isAwaitingTurnAcceptanceRef.current = false;
+      },
       onSettled: ({ queued }) => {
+        isAwaitingTurnAcceptanceRef.current = false;
         if (queued) clearAcceptedPayload();
       },
     });

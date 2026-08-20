@@ -29,6 +29,12 @@ import { chats, messages } from "@/db/schema";
 import { readSettings, writeSettings } from "@/main/settings";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
+import {
+  commitFreeAgentQuotaSlot,
+  releaseFreeAgentQuotaSlot,
+  reserveFreeAgentQuotaSlot,
+  type FreeAgentQuotaReservationResult,
+} from "@/ipc/handlers/free_agent_quota_handlers";
 
 function errorEvents(harness: HybridChatHarness) {
   return harness.bridge.sentEvents.filter(
@@ -468,6 +474,48 @@ describe("chat mode (integration)", () => {
       writeSettings(originalSettings);
     }
   }, 60_000);
+
+  it("swaps a pending quota reservation for its durable mark atomically", async () => {
+    await harness.db
+      .update(messages)
+      .set({ usingFreeAgentModeQuota: false })
+      .where(eq(messages.usingFreeAgentModeQuota, true));
+    const quotaChatId = await harness.createChat();
+    await harness.db.insert(messages).values(
+      Array.from({ length: FREE_AGENT_QUOTA_LIMIT - 2 }, (_, index) => ({
+        chatId: quotaChatId,
+        role: "user" as const,
+        content: `atomic commit quota message ${index + 1}`,
+        usingFreeAgentModeQuota: true,
+      })),
+    );
+
+    const firstReservation = await reserveFreeAgentQuotaSlot();
+    expect(firstReservation.kind).toBe("reserved");
+    if (firstReservation.kind !== "reserved") return;
+
+    let secondReservationPromise:
+      | Promise<FreeAgentQuotaReservationResult>
+      | undefined;
+    await commitFreeAgentQuotaSlot(firstReservation.reservationId, () => {
+      harness.db
+        .insert(messages)
+        .values({
+          chatId: quotaChatId,
+          role: "user",
+          content: "durable replacement for pending reservation",
+          usingFreeAgentModeQuota: true,
+        })
+        .run();
+      secondReservationPromise = reserveFreeAgentQuotaSlot();
+    });
+
+    const secondReservation = await secondReservationPromise;
+    expect(secondReservation?.kind).toBe("reserved");
+    if (secondReservation?.kind === "reserved") {
+      await releaseFreeAgentQuotaSlot(secondReservation.reservationId);
+    }
+  });
 
   it("lets main resolve an implicit Google-only first turn", async () => {
     writeSettings({

@@ -1479,20 +1479,35 @@ ${componentSnippet}
             freeAgentQuotaReservationId = null;
           }
 
-          return acceptChatTurn(db, {
-            chatId: req.chatId,
-            storedChatMode: latestChat.chatMode,
-            selectedChatMode,
-            selectedModel,
-            content:
-              implementPlanDisplayPrompt ??
-              displayUserPrompt ??
-              defaultAiUserPrompt,
-            userInputRequestId: req.userInputRequestId,
-            chatTurnIntentId: req.intentId,
-            chatTurnIntent: executionObserver(req)?.intent,
-            usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
-          });
+          const persistAcceptedTurn = () =>
+            acceptChatTurn(db, {
+              chatId: req.chatId,
+              storedChatMode: latestChat.chatMode,
+              selectedChatMode,
+              selectedModel,
+              content:
+                implementPlanDisplayPrompt ??
+                displayUserPrompt ??
+                defaultAiUserPrompt,
+              userInputRequestId: req.userInputRequestId,
+              chatTurnIntentId: req.intentId,
+              chatTurnIntent: executionObserver(req)?.intent,
+              usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
+            });
+          if (freeAgentQuotaReservationId === null) {
+            return persistAcceptedTurn();
+          }
+
+          const reservationId = freeAgentQuotaReservationId;
+          const acceptedTurn = await commitFreeAgentQuotaSlot(
+            reservationId,
+            persistAcceptedTurn,
+          );
+          freeAgentQuotaReservationId = null;
+          if (acceptedTurn.userMessageId !== null) {
+            reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
+          }
+          return acceptedTurn;
         });
 
       const acceptedTurn = await acceptTurn();
@@ -1500,14 +1515,6 @@ ${componentSnippet}
         return req.chatId;
       }
       mutatedPersistedChat = true;
-      if (
-        freeAgentQuotaReservationId !== null &&
-        acceptedTurn.userMessageId !== null
-      ) {
-        await commitFreeAgentQuotaSlot(freeAgentQuotaReservationId);
-        freeAgentQuotaReservationId = null;
-        reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
-      }
 
       // Accept the user message and latch an implicit chat's first mode in one
       // synchronous transaction. This keeps the idempotent message insert and

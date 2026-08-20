@@ -102,10 +102,18 @@ export function reserveFreeAgentQuotaSlot(): Promise<FreeAgentQuotaReservationRe
   });
 }
 
-/** Retires a pending slot after its durable mark commits with turn acceptance. */
-export function commitFreeAgentQuotaSlot(reservationId: number): Promise<void> {
+/**
+ * Replaces a pending slot with its durable message mark while admission is
+ * locked, so another reservation never counts both representations.
+ */
+export function commitFreeAgentQuotaSlot<T>(
+  reservationId: number,
+  commit: () => T,
+): Promise<T> {
   return withLock(FREE_AGENT_QUOTA_ADMISSION_LOCK, async () => {
+    const result = commit();
     pendingQuotaReservations.delete(reservationId);
+    return result;
   });
 }
 

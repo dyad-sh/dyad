@@ -43,28 +43,12 @@ describe("run_build", () => {
     );
   });
 
-  it("defaults to allowed while preserving the exact build lifecycle preview", () => {
+  it("defaults to allowed with an empty schema and generic lifecycle preview", () => {
     expect(runBuildTool.defaultConsent).toBe("always");
     expect(runBuildTool.modifiesState).toBe(true);
-    expect(
-      runBuildTool.inputSchema.parse({
-        expected_prebuild_script: null,
-        expected_build_script: "vite build",
-        expected_postbuild_script: "node scripts/publish.mjs",
-      }),
-    ).toEqual({
-      expected_prebuild_script: null,
-      expected_build_script: "vite build",
-      expected_postbuild_script: "node scripts/publish.mjs",
-    });
-    expect(
-      runBuildTool.getConsentPreview?.({
-        expected_prebuild_script: null,
-        expected_build_script: "vite build",
-        expected_postbuild_script: "node scripts/publish.mjs",
-      }),
-    ).toBe(
-      "prebuild: (none)\nbuild: vite build\npostbuild: node scripts/publish.mjs\nThis executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
+    expect(runBuildTool.inputSchema.parse({})).toEqual({});
+    expect(runBuildTool.getConsentPreview?.({})).toBe(
+      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
     );
   });
 
@@ -193,16 +177,9 @@ describe("run_build", () => {
       onXmlStream: vi.fn(),
     } as unknown as AgentContext;
 
-    await expect(
-      runBuildTool.execute(
-        {
-          expected_prebuild_script: null,
-          expected_build_script: "vite build",
-          expected_postbuild_script: null,
-        },
-        ctx,
-      ),
-    ).resolves.toContain("3-build limit");
+    await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+      "3-build limit",
+    );
 
     expect(onXmlComplete).toHaveBeenCalledWith(
       expect.stringContaining('title="Build limit reached" state="warning"'),
@@ -220,16 +197,9 @@ describe("run_build", () => {
       onXmlStream: vi.fn(),
     } as unknown as AgentContext;
 
-    await expect(
-      runBuildTool.execute(
-        {
-          expected_prebuild_script: null,
-          expected_build_script: "vite build",
-          expected_postbuild_script: null,
-        },
-        ctx,
-      ),
-    ).resolves.toContain("workspace has not changed");
+    await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+      "workspace has not changed",
+    );
 
     expect(onXmlComplete).toHaveBeenCalledWith(
       expect.stringContaining('title="Build not repeated" state="warning"'),

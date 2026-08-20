@@ -21,26 +21,7 @@ import type { AppFrameworkType } from "@/lib/framework_constants";
 import type { AgentContext, ToolDefinition } from "./types";
 import { escapeXmlAttr, escapeXmlContent } from "./types";
 
-const runBuildSchema = z.object({
-  expected_prebuild_script: z
-    .string()
-    .nullable()
-    .describe(
-      "The exact current value of package.json scripts.prebuild, or null when it is absent. Read package.json first and copy it verbatim.",
-    ),
-  expected_build_script: z
-    .string()
-    .min(1)
-    .describe(
-      "The exact current value of package.json scripts.build. Read package.json first and copy the value verbatim. The build is rejected if it changed before execution.",
-    ),
-  expected_postbuild_script: z
-    .string()
-    .nullable()
-    .describe(
-      "The exact current value of package.json scripts.postbuild, or null when it is absent. Read package.json first and copy it verbatim.",
-    ),
-});
+const runBuildSchema = z.object({});
 
 const MAX_BUILD_RUNS_PER_TURN = 3;
 const BUILD_TIMEOUT_MS = 10 * 60_000;
@@ -385,10 +366,6 @@ function tail(value: string): string {
     : `[Earlier output omitted]\n${value.slice(-MAX_RESULT_OUTPUT_CHARS)}`;
 }
 
-function normalizeExpectedScript(value: string | null): string | null {
-  return value === null ? null : value.trim();
-}
-
 async function resolvePackageManager(appPath: string) {
   const support = await getPnpmMinimumReleaseAgeSupport();
   return choosePackageManagerForApp(appPath, support.available);
@@ -417,7 +394,6 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
   name: "run_build",
   description: `Run the app's production build as a selective, expensive verification step.
 
-- Read package.json first and pass scripts.prebuild, scripts.build, and scripts.postbuild exactly (using null for absent lifecycle hooks) so the complete command lifecycle can be revalidated before execution.
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
@@ -426,20 +402,15 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
   defaultConsent: "always",
   modifiesState: true,
 
-  getConsentPreview: (args) =>
-    [
-      `prebuild: ${args.expected_prebuild_script ?? "(none)"}`,
-      `build: ${args.expected_build_script}`,
-      `postbuild: ${args.expected_postbuild_script ?? "(none)"}`,
-      "This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
-    ].join("\n"),
+  getConsentPreview: () =>
+    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). This executes project and dependency code with your user account. A workspace snapshot protects the live preview from ordinary build output, but is not a security sandbox.",
 
   buildXml: (_args, isComplete) =>
     isComplete
       ? undefined
       : '<dyad-status title="Running production build"></dyad-status>',
 
-  execute: async (args, ctx) => {
+  execute: async (_args, ctx) => {
     if (activeBuilds.has(ctx.appId)) {
       const body =
         "A production build is already running for this app. Wait for it to finish instead of starting another one.";
@@ -486,20 +457,6 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             throw new DyadError(
               "This app does not define a package.json scripts.build command, so production build verification is unavailable.",
               DyadErrorKind.Precondition,
-            );
-          }
-          const prebuildScript = getScript(packageJson, "prebuild");
-          const postbuildScript = getScript(packageJson, "postbuild");
-          if (
-            buildScript !== args.expected_build_script.trim() ||
-            prebuildScript !==
-              normalizeExpectedScript(args.expected_prebuild_script) ||
-            postbuildScript !==
-              normalizeExpectedScript(args.expected_postbuild_script)
-          ) {
-            throw new DyadError(
-              "The package.json build lifecycle changed or did not match the approved commands. Read package.json again and retry with the exact current values.",
-              DyadErrorKind.Conflict,
             );
           }
           const facts = await gatherBuildProjectFacts(ctx, buildScript);

@@ -8,11 +8,7 @@ export const fixture: LocalAgentFixture = {
       toolCalls: [
         {
           name: "run_build",
-          args: {
-            expected_prebuild_script: null,
-            expected_build_script: "next build",
-            expected_postbuild_script: null,
-          },
+          args: {},
         },
       ],
     },

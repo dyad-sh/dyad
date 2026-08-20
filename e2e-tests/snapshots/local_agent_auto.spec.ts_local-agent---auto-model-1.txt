@@ -847,44 +847,11 @@
       {
         "type": "function",
         "name": "run_build",
-        "description": "Run the app's production build as a selective, expensive verification step.\n\n- Read package.json first and pass scripts.prebuild, scripts.build, and scripts.postbuild exactly (using null for absent lifecycle hooks). The complete command lifecycle is shown for approval.\n- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.\n- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.\n- Finish related edits first and run once. A failed build may be retried only after making a relevant change.\n- The preview is never stopped. Dyad builds in place only when concurrent safety is proven; otherwise it uses an isolated workspace snapshot.",
+        "description": "Run the app's production build as a selective, expensive verification step.\n\n- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.\n- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.\n- Finish related edits first and run once. A failed build may be retried only after making a relevant change.\n- The preview is never stopped. Standard Vite and preview-safe Next.js 16+ builds run in place. Unknown concurrent builds use an isolated workspace snapshot while a preview is running.",
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
-          "properties": {
-            "expected_prebuild_script": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "The exact current value of package.json scripts.prebuild, or null when it is absent. Read package.json first and copy it verbatim."
-            },
-            "expected_build_script": {
-              "type": "string",
-              "minLength": 1,
-              "description": "The exact current value of package.json scripts.build. Read package.json first and copy the value verbatim. The build is rejected if it changed before execution."
-            },
-            "expected_postbuild_script": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "The exact current value of package.json scripts.postbuild, or null when it is absent. Read package.json first and copy it verbatim."
-            }
-          },
-          "required": [
-            "expected_prebuild_script",
-            "expected_build_script",
-            "expected_postbuild_script"
-          ],
+          "properties": {},
           "additionalProperties": false
         }
       },

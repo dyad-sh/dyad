@@ -11,12 +11,13 @@ export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
 export const PRE_COMMIT_STAGING_TIMEOUT_MS = 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 12_000;
 
-async function resolvePreCommitHookPath(
+async function resolveGitPath(
   appPath: string,
+  gitPath: string,
 ): Promise<string | null> {
   try {
     const result = await execGit(
-      ["rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit"],
+      ["rev-parse", "--path-format=absolute", "--git-path", gitPath],
       appPath,
       { maxBuffer: 64_000 },
     );
@@ -27,10 +28,11 @@ async function resolvePreCommitHookPath(
   }
 }
 
-export async function isPreCommitHookAvailable(
+async function isGitHookAvailable(
   appPath: string,
+  hookName: "pre-commit" | "commit-msg",
 ): Promise<boolean> {
-  const hookPath = await resolvePreCommitHookPath(appPath);
+  const hookPath = await resolveGitPath(appPath, `hooks/${hookName}`);
   if (!hookPath) return false;
 
   try {
@@ -42,6 +44,18 @@ export async function isPreCommitHookAvailable(
   } catch {
     return false;
   }
+}
+
+export async function isPreCommitHookAvailable(
+  appPath: string,
+): Promise<boolean> {
+  return isGitHookAvailable(appPath, "pre-commit");
+}
+
+export async function isCommitMsgHookAvailable(
+  appPath: string,
+): Promise<boolean> {
+  return isGitHookAvailable(appPath, "commit-msg");
 }
 
 export async function runPreCommitHook({
@@ -62,6 +76,42 @@ export async function runPreCommitHook({
     maxOutputBytes: 256_000,
     waitForCloseAfterForceKill: true,
   });
+}
+
+export async function runCommitMsgHook({
+  path,
+  message,
+  signal,
+}: {
+  path: string;
+  message: string;
+  signal?: AbortSignal;
+}): Promise<BufferedProcessResult & { message: string }> {
+  const messagePath = await resolveGitPath(path, "COMMIT_EDITMSG");
+  if (!messagePath) {
+    throw new Error("Could not resolve Git's commit message file");
+  }
+
+  await fsPromises.writeFile(messagePath, `${message}\n`, "utf8");
+  const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
+  const result = await runBufferedProcess({
+    command: gitLocation,
+    args: ["hook", "run", "commit-msg", "--", messagePath],
+    cwd: path,
+    env: getPackageManagerCommandEnv(gitEnv),
+    signal,
+    timeoutMs: PRE_COMMIT_TIMEOUT_MS,
+    maxOutputBytes: 256_000,
+    waitForCloseAfterForceKill: true,
+  });
+
+  return {
+    ...result,
+    message: (await fsPromises.readFile(messagePath, "utf8")).replace(
+      /\r?\n$/,
+      "",
+    ),
+  };
 }
 
 export function formatPreCommitOutput(stdout: string, stderr: string): string {

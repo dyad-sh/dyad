@@ -36,6 +36,7 @@ import {
   gitCommit,
   getGitStateFingerprint,
 } from "@/ipc/utils/git_utils";
+import { GitService } from "@/ipc/services/git_service";
 
 const execFileAsync = promisify(execFile);
 
@@ -127,26 +128,46 @@ describe("gitCommit", () => {
 
     expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
   });
+});
 
-  it("also bypasses pre-commit hooks without a caller option", async () => {
+describe("GitService explicit commit hooks", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      repoDir = undefined;
+    }
+  });
+
+  it("runs commit-msg and commits the message updated by the hook", async () => {
     repoDir = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), "git-verify-default-"),
+      path.join(os.tmpdir(), "git-commit-msg-"),
     );
     await runGit(repoDir, ["init"]);
-    const hookPath = path.join(repoDir, ".git", "hooks", "pre-commit");
-    await fs.promises.writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    const hookPath = path.join(repoDir, ".git", "hooks", "commit-msg");
+    await fs.promises.writeFile(
+      hookPath,
+      '#!/bin/sh\nprintf "validated: %s\\n" "$(cat "$1")" > "$1"\n',
+    );
     if (process.platform !== "win32") {
       await fs.promises.chmod(hookPath, 0o755);
     }
     await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
-    await gitAddAll({ path: repoDir });
 
-    const commitHash = await gitCommit({
+    await new GitService().stageAllAndCommitWithPreCommit({
       path: repoDir,
-      message: "explicit user commit",
+      message: "manual message",
     });
 
-    expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
+    expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%s"])).toBe(
+      "validated: manual message",
+    );
   });
 });
 

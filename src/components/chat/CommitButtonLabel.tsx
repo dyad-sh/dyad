@@ -19,9 +19,11 @@ export function CommitButtonLabel({
       ? t("preview.preparingChanges")
       : phase === "pre-commit"
         ? t("preview.runningPreCommitChecks")
-        : phase === "committing"
-          ? t("preview.creatingCommit")
-          : t("preview.committing");
+        : phase === "commit-msg"
+          ? t("preview.validatingCommitMessage")
+          : phase === "committing"
+            ? t("preview.creatingCommit")
+            : t("preview.committing");
 
   return (
     <>
@@ -29,7 +31,7 @@ export function CommitButtonLabel({
         aria-hidden="true"
         className="h-4 w-4 animate-spin motion-reduce:animate-none"
       />
-      {label}
+      <span aria-live="polite">{label}</span>
     </>
   );
 }

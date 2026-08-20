@@ -86,13 +86,13 @@ export function useStreamChat({
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
         !chatId
       ) {
-        return;
+        return false;
       }
 
       if (prompt.length > MAX_CHAT_PROMPT_CHARS) {
         showError(CHAT_PROMPT_LENGTH_LIMIT_MESSAGE);
         onSettled?.({ success: false });
-        return;
+        return false;
       }
 
       const attachmentValidation = validateChatAttachmentFiles(
@@ -101,7 +101,7 @@ export function useStreamChat({
       if (!attachmentValidation.ok) {
         showError(attachmentValidation.message);
         onSettled?.({ success: false });
-        return;
+        return false;
       }
 
       // The machine decides what happens next: idle/errored chats start a
@@ -124,6 +124,7 @@ export function useStreamChat({
           onSettled,
         },
       });
+      return true;
     },
     [chatStreamManager],
   );

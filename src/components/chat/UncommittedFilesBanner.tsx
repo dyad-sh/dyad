@@ -36,7 +36,9 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     useUncommittedFiles(appId);
   const {
     commitChanges,
+    cancelCommit,
     isCommitting,
+    isCancellingCommit,
     commitProgress,
     preCommitError,
     resetCommitError,
@@ -300,8 +302,21 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </Button>
             <Button
               variant="outline"
-              onClick={dismissDialog}
-              disabled={isCommitting || isDiscarding || isStartingAiFix}
+              onClick={
+                isCommitting &&
+                (commitProgress?.phase === "pre-commit" ||
+                  commitProgress?.phase === "commit-msg")
+                  ? () => void cancelCommit()
+                  : dismissDialog
+              }
+              disabled={
+                isDiscarding ||
+                isStartingAiFix ||
+                (isCommitting &&
+                  commitProgress?.phase !== "pre-commit" &&
+                  commitProgress?.phase !== "commit-msg") ||
+                isCancellingCommit
+              }
             >
               Cancel
             </Button>

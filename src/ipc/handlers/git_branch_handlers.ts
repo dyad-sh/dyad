@@ -40,6 +40,7 @@ import { githubContracts, gitContracts } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { safeSend } from "../utils/safe_sender";
 import type {
+  CancelCommitParams,
   CommitChangesParams,
   GitBranchAppIdParams,
   CreateGitBranchParams,
@@ -51,6 +52,14 @@ import type {
 } from "../types/github";
 
 const logger = log.scope("git_branch_handlers");
+
+interface ActiveCommitOperation {
+  appId: number;
+  controller: AbortController;
+  senderId: number;
+}
+
+const activeCommitOperations = new Map<string, ActiveCommitOperation>();
 
 export async function handleAbortMerge(
   event: IpcMainInvokeEvent,
@@ -422,20 +431,52 @@ async function handleCommitChanges(
   event: IpcMainInvokeEvent,
   { appId, message, operationId }: CommitChangesParams,
 ): Promise<string> {
-  return withAppGitOp(appId, "commit", async (appPath) => {
-    await ensureDyadGitignored(appPath);
-    return gitService.stageAllAndCommitWithPreCommit({
-      path: appPath,
-      message,
-      onProgress: (phase) => {
-        safeSend(event.sender, "git:commit-progress", {
-          appId,
-          operationId,
-          phase,
-        });
-      },
-    });
+  if (activeCommitOperations.has(operationId)) {
+    throw new DyadError(
+      "A commit operation with this identifier is already active.",
+      DyadErrorKind.Conflict,
+    );
+  }
+
+  const controller = new AbortController();
+  activeCommitOperations.set(operationId, {
+    appId,
+    controller,
+    senderId: event.sender.id,
   });
+  try {
+    return await withAppGitOp(appId, "commit", async (appPath) => {
+      await ensureDyadGitignored(appPath);
+      return gitService.stageAllAndCommitWithPreCommit({
+        path: appPath,
+        message,
+        signal: controller.signal,
+        onProgress: (phase) => {
+          safeSend(event.sender, "git:commit-progress", {
+            appId,
+            operationId,
+            phase,
+          });
+        },
+      });
+    });
+  } finally {
+    const active = activeCommitOperations.get(operationId);
+    if (active?.controller === controller) {
+      activeCommitOperations.delete(operationId);
+    }
+  }
+}
+
+async function handleCancelCommit(
+  event: IpcMainInvokeEvent,
+  { appId, operationId }: CancelCommitParams,
+): Promise<void> {
+  const active = activeCommitOperations.get(operationId);
+  if (active?.appId !== appId || active.senderId !== event.sender.id) {
+    return;
+  }
+  active.controller.abort();
 }
 
 async function handleDiscardChanges(
@@ -511,5 +552,6 @@ export function registerGithubBranchHandlers() {
     handleGetUncommittedFileDiff,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
+  createTypedHandler(gitContracts.cancelCommit, handleCancelCommit);
   createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);
 }

@@ -182,14 +182,16 @@ describe("useStreamChat main-owned queue", () => {
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
-    await act(() =>
-      result.current.streamMessage({
+    let accepted = true;
+    await act(async () => {
+      accepted = await result.current.streamMessage({
         chatId: CHAT_ID,
         prompt: "a".repeat(MAX_CHAT_PROMPT_CHARS + 1),
         onSettled,
-      }),
-    );
+      });
+    });
 
+    expect(accepted).toBe(false);
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.showError).toHaveBeenCalledExactlyOnceWith(
       CHAT_PROMPT_LENGTH_LIMIT_MESSAGE,

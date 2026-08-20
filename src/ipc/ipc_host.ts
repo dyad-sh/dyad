@@ -58,6 +58,7 @@ import { registerDistributedMachineHandlers } from "./handlers/distributed_machi
 import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
 import { registerCoolifyHandlers } from "./handlers/coolify_handlers";
 import { registerPreviewViewHandlers } from "./handlers/preview_view_handlers";
+import { registerNativeThemeHandlers } from "./handlers/native_theme_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -121,4 +122,5 @@ export function registerIpcHandlers() {
   registerImageGenerationHandlers();
   registerCoolifyHandlers();
   registerPreviewViewHandlers();
+  registerNativeThemeHandlers();
 }

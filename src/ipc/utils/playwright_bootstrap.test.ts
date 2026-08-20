@@ -112,6 +112,23 @@ describe("buildPreviewShimSource", () => {
     expect(source).not.toContain("page.close()");
   });
 
+  it("clears Playwright media emulation outside the preview context", () => {
+    // connectOverCDP initializes every Electron page, including Dyad's own
+    // renderer, with Playwright's default light color scheme. Only the preview
+    // context should retain test-controlled media emulation.
+    expect(source).toContain("context !== previewContext");
+    expect(source).toContain("page.emulateMedia({");
+    expect(source).toContain("colorScheme: null");
+    expect(source).toContain("reducedMotion: null");
+    expect(source).toContain("forcedColors: null");
+    expect(source).toContain("contrast: null");
+    expect(source).toContain('context.on("page", onPage)');
+    expect(source).toContain('context.off("page", onPage)');
+    expect(source.indexOf("await restoreNonPreviewMedia()")).toBeLessThan(
+      source.indexOf("await browser.close()"),
+    );
+  });
+
   it("resolves relative URLs for API requests too", () => {
     // page.request/context.request resolve relative URLs in Playwright's
     // SERVER half, from the options the borrowed context was created with —

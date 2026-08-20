@@ -193,6 +193,12 @@ export const SCREENSHOT_ERRORS = {
   emptyImage: "Failed to capture screenshot",
 } as const;
 
+export const NativeThemeStateSchema = z.object({
+  shouldUseDarkColors: z.boolean(),
+});
+
+export type NativeThemeState = z.infer<typeof NativeThemeStateSchema>;
+
 // =============================================================================
 // System Contracts
 // =============================================================================
@@ -229,6 +235,12 @@ export const systemContracts = {
     channel: "get-system-platform",
     input: z.void(),
     output: z.string(),
+  }),
+
+  getNativeThemeState: defineContract({
+    channel: "native-theme:get-state",
+    input: z.void(),
+    output: NativeThemeStateSchema,
   }),
 
   getInitialLoadTelemetryContext: defineContract({
@@ -417,6 +429,11 @@ export const systemContracts = {
 // =============================================================================
 
 export const systemEvents = {
+  nativeThemeUpdated: defineEvent({
+    channel: "native-theme:updated",
+    payload: NativeThemeStateSchema,
+  }),
+
   telemetryEvent: defineEvent({
     channel: "telemetry:event",
     payload: TelemetryEventPayloadSchema,

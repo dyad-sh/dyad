@@ -9,7 +9,12 @@ import {
 import type { SetupServer, SetupSnapshot } from "../types/coolify_setup";
 import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "@/main/settings";
-import { connectSsh, trustOnFirstUse } from "../utils/ssh_client";
+import {
+  SshError,
+  connectSsh,
+  expectFingerprint,
+  trustOnFirstUse,
+} from "../utils/ssh_client";
 import type { SshSession } from "../utils/ssh_client";
 import { ensureServerKey } from "@/coolify_setup/server_key";
 import { preflight } from "@/coolify_setup/install";
@@ -17,6 +22,7 @@ import { runServerSetup } from "@/coolify_setup/setup_flow";
 import { CoolifySetupController } from "@/coolify_setup/controller";
 import { uuidIdSource } from "@/state_machines/clock";
 import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
+import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("coolify_setup_handlers");
@@ -39,6 +45,17 @@ const INSPECT_TIMEOUT_MS = 30_000;
  */
 let controller: CoolifySetupController | null = null;
 
+/**
+ * What the last look at each server saw its host key to be.
+ *
+ * The panel shows this fingerprint and asks the user to commit to a
+ * minutes-long install on the strength of it, so the install talks to the
+ * machine they were shown rather than to whatever answers that address by the
+ * time it starts. Held here rather than sent through the renderer, which
+ * would make it something the caller could choose.
+ */
+const inspectedFingerprints = new Map<string, string>();
+
 function broadcastState(state: SetupSnapshot) {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -53,10 +70,17 @@ function setupController(): CoolifySetupController {
     onChanged: broadcastState,
     execute: (target, hooks) => {
       const key = ensureServerKey();
+      // Trust on first use only when there has been no first use. A server
+      // that was looked at is held to what it showed then.
+      const pinned = inspectedFingerprints.get(hostIdentity(target.host));
       return runServerSetup({
         target: targetFrom(target, key.privateKey),
         adminEmail: target.adminEmail,
-        verifyHostKey: trustOnFirstUse(() => {}),
+        verifyHostKey: pinned
+          ? expectFingerprint(pinned)
+          : trustOnFirstUse((fp) => {
+              inspectedFingerprints.set(hostIdentity(target.host), fp);
+            }),
         customDomain: target.customDomain,
         signal: hooks.signal,
         connect: (t, verify, signal): Promise<SshSession> =>
@@ -66,50 +90,88 @@ function setupController(): CoolifySetupController {
         // server whose dashboard never answers still has this account on it,
         // and Dyad is the only thing that knows the password it invented.
         onAccountKnown: ({ credentials, dashboardUrl }) => {
-          writeSettings({
-            coolify: {
-              ...readSettings().coolify,
-              adminEmail: credentials.email,
-              adminPassword: { value: credentials.password },
-              adminInstanceUrl: dashboardUrl,
-            },
-          });
+          try {
+            writeSettings({
+              coolify: {
+                ...readSettings().coolify,
+                adminEmail: credentials.email,
+                adminPassword: { value: credentials.password },
+                adminInstanceUrl: dashboardUrl,
+              },
+            });
+          } catch (error) {
+            // The account exists on the server whatever happened here, and a
+            // second attempt is refused because Coolify is now installed. The
+            // finished screen still shows the password, so ending the run
+            // over this would throw away the only copy of it.
+            logger.error("Could not store the admin account", error);
+          }
         },
-      }).then((result) => {
-        // The account exists either way, so it is stored either way. Keeping
-        // it only when a token was also minted discards the password in the
-        // one case the user needs it — where they must sign in to Coolify and
-        // make a token by hand, which is what the token failing means.
-        writeSettings({
-          coolify: {
-            ...readSettings().coolify,
+      })
+        .catch((error: unknown) => {
+          // A key that does not match is not the user declining, and reporting
+          // it as one would file it as a cancellation and say nothing.
+          if (
+            pinned &&
+            error instanceof SshError &&
+            error.failure === "host-key-rejected"
+          ) {
+            throw new DyadError(
+              "This server is not the one Dyad looked at: its SSH identity " +
+                "has changed since. Nothing was sent to it. Check the address " +
+                "and look at the server again before installing.",
+              DyadErrorKind.External,
+            );
+          }
+          throw error;
+        })
+        .then((result) => {
+          let stored = true;
+          // The account exists either way, so it is stored either way. Keeping
+          // it only when a token was also minted discards the password in the
+          // one case the user needs it — where they must sign in to Coolify and
+          // make a token by hand, which is what the token failing means.
+          try {
+            writeSettings({
+              coolify: {
+                ...readSettings().coolify,
+                adminEmail: result.credentials.email,
+                adminPassword: { value: result.credentials.password },
+                // Stored even when no token was minted: it names the server this
+                // account is on, which is how connecting elsewhere later knows
+                // the account does not come along.
+                adminInstanceUrl: result.dashboardUrl,
+                // The address and token go together: an address stored without a
+                // token would read as an instance Dyad can talk to and cannot.
+                ...(result.token
+                  ? {
+                      instanceUrl: result.dashboardUrl,
+                      accessToken: { value: result.token },
+                    }
+                  : {}),
+              },
+            });
+          } catch (error) {
+            // Same reason as the write above: the server is set up, a retry is
+            // refused because Coolify is on it now, and the screen this
+            // returns to is where the password is shown.
+            stored = false;
+            logger.error("Could not store the finished setup", error);
+          }
+          return {
+            dashboardUrl: result.dashboardUrl,
+            secure: result.secure,
+            insecureReason: result.insecureReason ?? null,
             adminEmail: result.credentials.email,
-            adminPassword: { value: result.credentials.password },
-            // Stored even when no token was minted: it names the server this
-            // account is on, which is how connecting elsewhere later knows
-            // the account does not come along.
-            adminInstanceUrl: result.dashboardUrl,
-            // The address and token go together: an address stored without a
-            // token would read as an instance Dyad can talk to and cannot.
-            ...(result.token
-              ? {
-                  instanceUrl: result.dashboardUrl,
-                  accessToken: { value: result.token },
-                }
-              : {}),
-          },
+            adminPassword: result.credentials.password,
+            tokenStored: stored && Boolean(result.token),
+            tokenUnavailableReason: stored
+              ? (result.tokenUnavailableReason ?? null)
+              : "Dyad could not save these details on this computer. Copy the " +
+                "password below before leaving this screen.",
+            version: result.version,
+          };
         });
-        return {
-          dashboardUrl: result.dashboardUrl,
-          secure: result.secure,
-          insecureReason: result.insecureReason ?? null,
-          adminEmail: result.credentials.email,
-          adminPassword: result.credentials.password,
-          tokenStored: Boolean(result.token),
-          tokenUnavailableReason: result.tokenUnavailableReason ?? null,
-          version: result.version,
-        };
-      });
     },
   });
   return controller;
@@ -133,6 +195,20 @@ function serverIdentity(url: string): string {
   } catch {
     return url.trim().toLowerCase();
   }
+}
+
+/**
+ * The key a server's fingerprint is remembered under.
+ *
+ * serverIdentity is for URLs, and a bare address is not one: `fe80::1` parses
+ * as the scheme `fe80:` and leaves no hostname at all, so every address shaped
+ * that way would share one entry.
+ */
+function hostIdentity(host: string): string {
+  return host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
 }
 
 function sameServer(a: string | null | undefined, b: string | null): boolean {
@@ -163,6 +239,11 @@ function targetFrom(input: SetupServer, privateKey: string) {
   };
 }
 
+/** Test-only: the pin map outlives a single case otherwise. */
+export function resetCoolifySetupStateForTests(): void {
+  inspectedFingerprints.clear();
+}
+
 export function registerCoolifySetupHandlers() {
   createTypedHandler(coolifySetupContracts.getServerKey, async () => {
     const key = ensureServerKey();
@@ -179,6 +260,7 @@ export function registerCoolifySetupHandlers() {
       targetFrom(input, key.privateKey),
       trustOnFirstUse((fp) => {
         fingerprint = fp;
+        inspectedFingerprints.set(hostIdentity(input.host), fp);
       }),
     );
     try {
@@ -224,6 +306,13 @@ export function registerCoolifySetupHandlers() {
         "Enter an email address whose domain resolves. Coolify checks this " +
           "when it creates the admin account, and rejects addresses like " +
           "admin@example.test.",
+        DyadErrorKind.Validation,
+      );
+    }
+    if (input.customDomain && !isPlausibleInstanceDomain(input.customDomain)) {
+      throw new DyadError(
+        "Enter the domain on its own, with no port or path — for example " +
+          "coolify.yourdomain.com.",
         DyadErrorKind.Validation,
       );
     }

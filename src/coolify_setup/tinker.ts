@@ -29,7 +29,18 @@ const END = "__DYAD_OUT_END__";
  * read, and the whole thing succeeds having done nothing.
  */
 export function tinkerCommand(container = "coolify"): string {
+  assertSafeContainer(container);
   return `docker exec -i ${container} php artisan tinker --no-ansi`;
+}
+
+/** Docker's own grammar. The name is interpolated into a root command. */
+function assertSafeContainer(container: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) {
+    throw new DyadError(
+      `Refusing to run against an unsafe container name: ${container}`,
+      DyadErrorKind.Validation,
+    );
+  }
 }
 
 /**
@@ -121,6 +132,7 @@ export async function runTinker(
   script: string,
   { env = {}, container = "coolify", signal, timeoutMs }: TinkerOptions = {},
 ): Promise<string> {
+  assertSafeContainer(container);
   const names = envArgs(env);
   const command = names
     ? `docker exec -i ${names} ${container} php artisan tinker --no-ansi`

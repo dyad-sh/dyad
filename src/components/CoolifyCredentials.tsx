@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Eye, EyeOff, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
+import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -29,6 +30,8 @@ function Field({
 }) {
   const [shown, setShown] = useState(false);
   const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
   const id = label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="flex items-center justify-between gap-2">
@@ -57,10 +60,15 @@ function Field({
         <Button
           variant="ghost"
           size="sm"
-          onClick={async () => {
-            await navigator.clipboard.writeText(value);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+          onClick={() => {
+            navigator.clipboard
+              .writeText(value)
+              .then(() => {
+                setCopied(true);
+                clearTimeout(resetTimer.current);
+                resetTimer.current = setTimeout(() => setCopied(false), 2000);
+              })
+              .catch(showError);
           }}
           aria-label={`Copy ${label}`}
         >

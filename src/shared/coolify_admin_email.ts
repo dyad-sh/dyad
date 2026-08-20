@@ -18,7 +18,18 @@ export function isPlausibleAdminEmail(email: string): boolean {
   // here too, so it is said while the address is being typed rather than
   // after Dyad has connected and looked the server over.
   if (/['"\\`$\n\r#!]/.test(trimmed)) return false;
-  const domain = trimmed.slice(trimmed.lastIndexOf("@") + 1).toLowerCase();
+  // One trailing dot is a legal way to write an absolute name, and Coolify
+  // resolves the same domain either way — so it is removed before the checks
+  // below rather than letting `dyad.test.` past the reserved list.
+  const domain = trimmed
+    .slice(trimmed.lastIndexOf("@") + 1)
+    .toLowerCase()
+    .replace(/\.$/, "");
+  // Every label has to be a label. `foo..com` and `.com` are not addresses
+  // Coolify will accept, and finding that out costs the whole install. Said
+  // as "not empty" rather than as an alphabet, so an internationalised domain
+  // is left alone.
+  if (!/^[^\s.@]+(\.[^\s.@]+)+$/.test(domain)) return false;
   // Reserved by RFC 2606 and RFC 6761 for testing and documentation, so none
   // of them resolve and none of them can ever be accepted.
   const reserved = ["test", "example", "invalid", "localhost", "local"];

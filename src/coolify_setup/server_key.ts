@@ -46,12 +46,40 @@ export interface ServerKey {
  * user pastes into a console by hand, and making them do that again for every
  * server would be the most tedious part of the whole flow.
  */
+/**
+ * The stored line when it names the key on disk, and the derived one when not.
+ *
+ * Both halves matter. Deriving alone renames the key — the comment comes from
+ * whichever constant did the deriving — and the panel would show a different
+ * line each launch than the one already installed on the server. Trusting the
+ * stored file alone would hand back a public half belonging to some other key.
+ */
+function storedMatching(keyPath: string, derived: string): string {
+  try {
+    // The first line only, and matched on both fields. What comes back is
+    // pasted into a server's authorized_keys, so anything further down the
+    // file would be installed alongside the key it was checked for.
+    const stored = fs
+      .readFileSync(`${keyPath}.pub`, "utf8")
+      .split("\n")[0]
+      .trim();
+    const [storedType, storedKey] = stored.split(/\s+/);
+    const [derivedType, derivedKey] = derived.split(/\s+/);
+    const sameKey = storedType === derivedType && storedKey === derivedKey;
+    return sameKey ? `${stored}\n` : derived;
+  } catch {
+    return derived;
+  }
+}
+
 export function ensureServerKey(): ServerKey {
   const keyPath = serverKeyPath();
   if (fs.existsSync(keyPath)) {
     const privateKey = fs.readFileSync(keyPath, "utf8");
-    const publicKey = publicKeyFromPrivate(privateKey);
-    if (publicKey) return { privateKey, publicKey };
+    const derived = publicKeyFromPrivate(privateKey);
+    if (derived) {
+      return { privateKey, publicKey: storedMatching(keyPath, derived) };
+    }
     // A file that cannot be read as a key is worse than none: it would fail at
     // connect time with something about the wire format. Say so here instead.
     throw new DyadError(

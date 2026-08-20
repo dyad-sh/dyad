@@ -79,13 +79,13 @@ export function hostKeyFingerprint(key: Buffer): string {
  *
  * A parameter rather than a policy baked in here, because the answer differs by
  * how we arrived. A server the user typed the address of has nothing to check
- * against, so the honest answer is to show them the fingerprint. A server Dyad
- * asked a provider to create comes with its fingerprint in the reply, and there
- * the check can be exact without asking anyone anything.
+ * against, so the honest answer is to show them the fingerprint. One Dyad has
+ * already looked at can be checked exactly.
+ *
+ * Synchronous: ssh2 decides during the handshake, with nothing to await into,
+ * so anything that needs asking is answered before connecting.
  */
-export type HostKeyVerifier = (
-  fingerprint: string,
-) => boolean | Promise<boolean>;
+export type HostKeyVerifier = (fingerprint: string) => boolean;
 
 /** Accepts any host, reporting the fingerprint. Trust on first use. */
 export function trustOnFirstUse(
@@ -286,15 +286,6 @@ export async function connectSsh(
       keepaliveInterval: 15_000,
       hostVerifier: (key: Buffer) => {
         const accepted = verifyHostKey(hostKeyFingerprint(key));
-        // The library's hook is synchronous, so an async verifier cannot be
-        // awaited here. Callers that need to ask the user resolve that before
-        // connecting and pass the answer in.
-        if (accepted instanceof Promise) {
-          throw new DyadError(
-            "Host key verification must be decided before connecting.",
-            DyadErrorKind.Internal,
-          );
-        }
         if (!accepted) rejectedHostKey = true;
         return accepted;
       },
@@ -372,6 +363,23 @@ export async function connectSsh(
               stream.close();
               return;
             }
+
+            const failCommand = (error: unknown) => {
+              stopListening();
+              reject(
+                connectionError ??
+                  classify(
+                    error as NodeJS.ErrnoException & { level?: string },
+                    {
+                      connected: true,
+                    },
+                  ),
+              );
+            };
+            // A channel error with nobody listening is thrown, which would end
+            // the main process rather than the command.
+            stream.on("error", failCommand);
+            stream.stderr.on("error", failCommand);
 
             stream.on("data", (chunk: Buffer) => {
               const text = chunk.toString("utf8");

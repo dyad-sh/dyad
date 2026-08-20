@@ -35,6 +35,7 @@ function fakeServer(
   } = {},
 ) {
   const commands: string[] = [];
+  const scripts: string[] = [];
   let probes = 0;
   const session: SshSession = {
     run: vi.fn(async (command: string, options?: { input?: string }) => {
@@ -43,6 +44,7 @@ function fakeServer(
       // input rather than in the command — which is the whole point of
       // piping them.
       const script = options?.input ?? "";
+      scripts.push(script);
       if (command.includes("MemTotal")) {
         probes += 1;
         const after = overrides.probeAfterInstall;
@@ -105,7 +107,7 @@ function fakeServer(
     }) as unknown as SshSession["run"],
     end: vi.fn(),
   };
-  return { session, commands, httpsWorks: overrides.httpsWorks };
+  return { session, commands, scripts, httpsWorks: overrides.httpsWorks };
 }
 
 function run(
@@ -425,9 +427,10 @@ describe("runServerSetup", () => {
     expect(result.secure).toBe(false);
     expect(result.dashboardUrl).toBe("http://203.0.113.5:8000");
     expect(result.insecureReason).toBeTruthy();
-    // Taken back off, so the dashboard answers at the address handed over.
-    const reverts = server.commands.filter((c) => c.includes("tinker")).length;
-    expect(reverts).toBeGreaterThan(0);
+    // The revert itself, not just that some tinker ran: reading the version
+    // and minting a token are tinkers too, and they run in this test either
+    // way.
+    expect(server.scripts.some((t) => t.includes("fqdn = null"))).toBe(true);
   });
 
   it("stops when the dashboard never answers", async () => {

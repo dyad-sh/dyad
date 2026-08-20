@@ -40,14 +40,24 @@ const STEP_LABELS: Record<SetupStep, string> = {
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
   return (
     <Button
       variant="outline"
       size="sm"
-      onClick={async () => {
-        await navigator.clipboard.writeText(value);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+      onClick={() => {
+        // A refused clipboard is worth saying out loud. This is often the
+        // only copy of a password Dyad invented, and a button that quietly
+        // does nothing reads as one that worked.
+        navigator.clipboard
+          .writeText(value)
+          .then(() => {
+            setCopied(true);
+            clearTimeout(resetTimer.current);
+            resetTimer.current = setTimeout(() => setCopied(false), 2000);
+          })
+          .catch(showError);
       }}
       aria-label={label}
     >
@@ -496,6 +506,10 @@ export function CoolifyServerSetup({
             // Until the broadcast lands this window still shows the form, and
             // a second press is refused as a second setup.
             !can.canStart ||
+            // Nothing is known yet about what the main process is doing, and
+            // an install already running would refuse this press.
+            snapshot.isPending ||
+            snapshot.isError ||
             run.isPending ||
             serverKey.isError ||
             !host.trim() ||

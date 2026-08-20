@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// The mocked class, so the handler recognises what it is handed.
+import { SshError } from "../utils/ssh_client";
+import { DyadErrorKind } from "@/errors/dyad_error";
 
 const h = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -10,6 +13,8 @@ const h = vi.hoisted(() => ({
   sessionEnded: 0,
   reportsAccount: true,
   runCalls: 0,
+  verifiedAgainst: [] as string[],
+  writeThrows: false,
 }));
 
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
@@ -25,6 +30,7 @@ vi.mock("./base", () => ({
 vi.mock("@/main/settings", () => ({
   readSettings: () => h.settings,
   writeSettings: (value: Record<string, unknown>) => {
+    if (h.writeThrows) throw new Error("keychain is unavailable");
     h.written.push(value);
     Object.assign(h.settings, value);
   },
@@ -52,6 +58,20 @@ vi.mock("../utils/ssh_client", () => ({
   trustOnFirstUse: (onSeen: (fp: string) => void) => (fingerprint: string) => {
     onSeen(fingerprint);
     return true;
+  },
+  // Recorded where it is built, not where it is called: the flow is mocked
+  // here, so what this proves is which verifier the handler chose.
+  expectFingerprint: (expected: string) => {
+    h.verifiedAgainst.push(expected);
+    return (fingerprint: string) => fingerprint === expected;
+  },
+  SshError: class SshError extends Error {
+    constructor(
+      readonly failure: string,
+      message: string,
+    ) {
+      super(message);
+    }
   },
 }));
 
@@ -85,7 +105,7 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
   }),
 }));
 
-const { registerCoolifySetupHandlers } =
+const { registerCoolifySetupHandlers, resetCoolifySetupStateForTests } =
   await import("./coolify_setup_handlers");
 
 function call(channel: string, input?: unknown) {
@@ -121,6 +141,9 @@ beforeEach(() => {
   h.sessionEnded = 0;
   h.reportsAccount = true;
   h.runCalls = 0;
+  h.verifiedAgainst.length = 0;
+  h.writeThrows = false;
+  resetCoolifySetupStateForTests();
   registerCoolifySetupHandlers();
 });
 
@@ -160,6 +183,57 @@ describe("run", () => {
     await expect(
       call("coolify-setup:run", { ...TARGET, adminEmail: "admin@dyad.test" }),
     ).rejects.toMatchObject({ kind: "validation" });
+  });
+
+  it("holds the install to the identity the inspection saw", async () => {
+    // The panel shows that fingerprint and asks the user to commit minutes to
+    // it. Without the pin, the install accepts whatever answers the address by
+    // the time it starts.
+    await call("coolify-setup:inspect", TARGET);
+    await call("coolify-setup:run", TARGET);
+
+    expect(h.verifiedAgainst).toContain("SHA256:fingerprint");
+  });
+
+  it("does not hold one server to what another one showed", async () => {
+    // Addresses are remembered as themselves. Read as URLs, everything shaped
+    // like fe80::1 parses as a scheme with no hostname and shares one entry,
+    // so a second server would be refused for the first one's key.
+    await call("coolify-setup:inspect", { ...TARGET, host: "fe80::1" });
+    await call("coolify-setup:run", { ...TARGET, host: "fe80::2" });
+
+    expect(h.verifiedAgainst).toEqual([]);
+  });
+
+  it("says the identity changed rather than reporting a cancellation", async () => {
+    // host-key-rejected is how a user declining is reported too, and that
+    // reads as "nothing happened" — which is the wrong thing to say when a
+    // server has been swapped underneath the address.
+    await call("coolify-setup:inspect", TARGET);
+    h.setupError = new SshError(
+      "host-key-rejected",
+      "The server's identity was not accepted, so nothing was sent to it.",
+      DyadErrorKind.UserCancelled,
+    );
+
+    await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
+      /identity has changed/,
+    );
+  });
+
+  it("finishes when the account cannot be written down", async () => {
+    // The account is on the server either way, and a retry is refused because
+    // Coolify is installed now — so ending the run here would lose the only
+    // copy of a password Dyad invented.
+    h.writeThrows = true;
+
+    await expect(call("coolify-setup:run", TARGET)).resolves.toMatchObject({
+      adminPassword: "Abc123@xyz",
+      // Nothing was written, so the next screen has no token to use — saying
+      // otherwise sends the user to a panel that cannot work.
+      tokenStored: false,
+      tokenUnavailableReason: expect.stringContaining("could not save"),
+    });
   });
 
   it("stores the token it minted", async () => {

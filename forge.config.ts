@@ -44,8 +44,19 @@ const pgRuntimeDependencies = [
   "xtend",
 ] as const;
 
-function isPgRuntimeDependency(file: string): boolean {
-  return pgRuntimeDependencies.some((dependency) => {
+const ssh2RuntimeDependencies = [
+  "ssh2",
+  "asn1",
+  "safer-buffer",
+  "bcrypt-pbkdf",
+  "tweetnacl",
+] as const;
+
+function isRuntimeDependency(
+  file: string,
+  packages: readonly string[],
+): boolean {
+  return packages.some((dependency) => {
     const modulePath = `/node_modules/${dependency}`;
     return file === modulePath || file.startsWith(`${modulePath}/`);
   });
@@ -87,6 +98,9 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/node-pty")) {
     return false;
   }
+  if (isRuntimeDependency(file, ssh2RuntimeDependencies)) {
+    return false;
+  }
   if (file.startsWith("/node_modules/mustardscript")) {
     return false;
   }
@@ -111,7 +125,7 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/@typescript/old")) {
     return false;
   }
-  if (isPgRuntimeDependency(file)) {
+  if (isRuntimeDependency(file, pgRuntimeDependencies)) {
     return false;
   }
   if (file === "/node_modules/ws" || file.startsWith("/node_modules/ws/")) {

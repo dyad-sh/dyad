@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
 import { coolifyContracts } from "@/ipc/types/coolify";
 import { supabaseContracts } from "@/ipc/types/supabase";
+import { coolifySetupContracts } from "@/ipc/types/coolify_setup";
 import { queryInvalidationScopeKey, type WindowSessionId } from "./types";
 import { RendererQueryInvalidationConsumer } from "./renderer_query_invalidation";
 
@@ -200,6 +201,30 @@ describe("Coolify contracts and the window that acted", () => {
       expect(claims, `${channel} must not claim apps`).not.toContain("apps");
       expect(claims, `${channel} must not claim app`).not.toContain("app");
     }
+  });
+
+  it("lets the installer decide when its own window refreshes", () => {
+    // coolify-setup:run stores a token, which makes every app read as
+    // connected — so the panel that ran the install would be unmounted by its
+    // own invalidation, taking with it the screen that says the server ended
+    // up unencrypted. The panel refreshes coolify itself, when it is ready.
+    const contract = coolifySetupContracts.run as {
+      originHandles?: (input: unknown) => Array<{ family: string }>;
+      invalidates?: (input: unknown) => Array<{ family: string }>;
+    };
+    const claims = (contract.originHandles?.({}) ?? []).map((s) => s.family);
+    const publishes = (contract.invalidates?.({}) ?? []).map((s) => s.family);
+
+    expect(claims).toContain("coolify");
+    // Not apps: nothing repeats that locally, so it must still arrive.
+    expect(claims).not.toContain("apps");
+    expect(publishes).toContain("apps");
+    expect(publishes).toContain("coolify");
+
+    // There is no second publisher to worry about any more: a window that
+    // wants to see a run in progress asks for the snapshot rather than
+    // pressing Install again, so every run is published by the one window
+    // that started it.
   });
 
   it("publishes project creation so other windows see the new project", () => {

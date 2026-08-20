@@ -137,6 +137,27 @@ describe("exceptions from a self-hosted instance", () => {
     expect(payload.ipc_channel).toBe("coolify:discover");
   });
 
+  it("redacts setting a server up, not only deploying to one", () => {
+    // Its failures quote the installer's own output, the server's address, and
+    // the address the user signs in with. The prefix differs from the deploy
+    // channels by one word, which is all it took to miss the filter.
+    sendTelemetryException(
+      new Error(
+        "Installing Coolify failed. The server said: connect ECONNRESET " +
+          "203.0.113.5:22 for someone@theirdomain.com",
+      ),
+      { ipc_channel: "coolify-setup:run" },
+    );
+
+    const payload = sent.calls[0];
+    // The stack header repeats the message, so the whole payload is checked
+    // rather than the message field alone.
+    expect(JSON.stringify(payload)).not.toContain("203.0.113.5");
+    expect(JSON.stringify(payload)).not.toContain("theirdomain.com");
+    expect(payload.exception_message).toBeUndefined();
+    expect(payload.ipc_channel).toBe("coolify-setup:run");
+  });
+
   it("keeps the message for every other channel", () => {
     sendTelemetryException(new Error("something broke"), {
       ipc_channel: "apps:list",

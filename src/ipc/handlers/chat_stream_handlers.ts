@@ -86,7 +86,7 @@ import {
   clearPendingLocalAgentInputsForChat,
   handleLocalAgentStream,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
-import { isPreCommitHookAvailable } from "../../pro/main/ipc/handlers/local_agent/tools/run_pre_commit";
+import { isPreCommitHookAvailable } from "../services/pre_commit_service";
 import { userInputRegistry } from "../../user_input/main";
 
 import { safeSend, type SafeSender } from "../utils/safe_sender";

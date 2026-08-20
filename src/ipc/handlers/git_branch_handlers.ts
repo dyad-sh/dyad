@@ -38,7 +38,9 @@ import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
+import { safeSend } from "../utils/safe_sender";
 import type {
+  CommitChangesParams,
   GitBranchAppIdParams,
   CreateGitBranchParams,
   GitBranchParams,
@@ -417,12 +419,22 @@ async function withAppGitOp<T>(
 }
 
 async function handleCommitChanges(
-  _event: IpcMainInvokeEvent,
-  { appId, message }: { appId: number; message: string },
+  event: IpcMainInvokeEvent,
+  { appId, message, operationId }: CommitChangesParams,
 ): Promise<string> {
   return withAppGitOp(appId, "commit", async (appPath) => {
     await ensureDyadGitignored(appPath);
-    return gitService.stageAllAndCommit({ path: appPath, message });
+    return gitService.stageAllAndCommitWithPreCommit({
+      path: appPath,
+      message,
+      onProgress: (phase) => {
+        safeSend(event.sender, "git:commit-progress", {
+          appId,
+          operationId,
+          phase,
+        });
+      },
+    });
   });
 }
 

@@ -23,6 +23,9 @@ import { useCommitMessage } from "@/hooks/useCommitMessage";
 import { useDiscardChanges } from "@/hooks/useDiscardChanges";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { CommitFileList } from "@/components/chat/CommitFileList";
+import { PreCommitFailureAlert } from "@/components/chat/PreCommitFailureAlert";
+import { useFixPreCommitWithAI } from "@/hooks/useFixPreCommitWithAI";
+import { CommitButtonLabel } from "@/components/chat/CommitButtonLabel";
 
 interface UncommittedFilesBannerProps {
   appId: number | null;
@@ -31,7 +34,15 @@ interface UncommittedFilesBannerProps {
 export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const { uncommittedFiles, hasUncommittedFiles, isLoading } =
     useUncommittedFiles(appId);
-  const { commitChanges, isCommitting } = useCommitChanges();
+  const {
+    commitChanges,
+    isCommitting,
+    commitProgress,
+    preCommitError,
+    resetCommitError,
+  } = useCommitChanges();
+  const { fixPreCommitWithAI, isStarting: isStartingAiFix } =
+    useFixPreCommitWithAI();
   const { discardChanges, isDiscarding } = useDiscardChanges();
   const { send: sendPreviewEvent } = useVersionPreview(appId);
   const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
@@ -84,6 +95,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   // instead, so the draft survives that.
   const dismissDialog = () => {
     setShowDiscardConfirm(false);
+    resetCommitError();
     closeCommitDialog({ source: "banner", appId });
   };
 
@@ -109,8 +121,8 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     try {
       await commitChanges({ appId, message: commitMessage.trim() });
     } catch {
-      // useCommitChanges surfaces the error via a toast. Keep the dialog open
-      // and preserve the message so the user can retry without retyping it.
+      // useCommitChanges surfaces ordinary errors via a toast and exposes
+      // pre-commit failures inline. Keep the dialog open in either case.
       return;
     }
     setShowDiscardConfirm(false);
@@ -130,6 +142,19 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     clearStagedDiff(appId);
   };
 
+  const handleFixPreCommitWithAI = async () => {
+    if (!preCommitError) return;
+    const started = await fixPreCommitWithAI({
+      appId,
+      commitMessage: commitMessage.trim(),
+      failureOutput: preCommitError.message,
+    });
+    if (!started) return;
+    setShowDiscardConfirm(false);
+    resetCommitError();
+    closeCommitDialog({ source: "banner", appId });
+  };
+
   return (
     <>
       <div
@@ -146,7 +171,10 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setOpenCommitDialog({ source: "banner", appId })}
+          onClick={() => {
+            resetCommitError();
+            setOpenCommitDialog({ source: "banner", appId });
+          }}
           data-testid="review-commit-button"
         >
           Review & commit
@@ -161,7 +189,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             return;
           }
           // Prevent closing while committing or discarding
-          if (isCommitting || isDiscarding) return;
+          if (isCommitting || isDiscarding || isStartingAiFix) return;
           dismissDialog();
         }}
       >
@@ -200,10 +228,18 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               <CommitFileList
                 files={uncommittedFiles}
                 onSelectFile={openStagedDiff}
-                disabled={isCommitting || isDiscarding}
+                disabled={isCommitting || isDiscarding || isStartingAiFix}
                 testId="changed-files-list"
               />
             </div>
+
+            {preCommitError && (
+              <PreCommitFailureAlert
+                error={preCommitError}
+                isStartingFix={isStartingAiFix}
+                onFix={handleFixPreCommitWithAI}
+              />
+            )}
           </div>
 
           {showDiscardConfirm && (
@@ -229,7 +265,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                     variant="destructive"
                     size="sm"
                     onClick={handleDiscard}
-                    disabled={isDiscarding}
+                    disabled={isDiscarding || isStartingAiFix}
                     data-testid="confirm-discard-button"
                   >
                     {isDiscarding ? "Discarding..." : "Yes, discard all"}
@@ -238,7 +274,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => setShowDiscardConfirm(false)}
-                    disabled={isDiscarding}
+                    disabled={isDiscarding || isStartingAiFix}
                   >
                     Keep changes
                   </Button>
@@ -252,7 +288,12 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               variant="outline"
               className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"
               onClick={() => setShowDiscardConfirm(true)}
-              disabled={isCommitting || isDiscarding || showDiscardConfirm}
+              disabled={
+                isCommitting ||
+                isDiscarding ||
+                isStartingAiFix ||
+                showDiscardConfirm
+              }
               data-testid="discard-button"
             >
               Discard all
@@ -260,16 +301,24 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             <Button
               variant="outline"
               onClick={dismissDialog}
-              disabled={isCommitting || isDiscarding}
+              disabled={isCommitting || isDiscarding || isStartingAiFix}
             >
               Cancel
             </Button>
             <Button
               onClick={handleCommit}
-              disabled={!commitMessage.trim() || isCommitting || isDiscarding}
+              disabled={
+                !commitMessage.trim() ||
+                isCommitting ||
+                isDiscarding ||
+                isStartingAiFix
+              }
               data-testid="commit-button"
             >
-              {isCommitting ? "Committing..." : "Commit"}
+              <CommitButtonLabel
+                isCommitting={isCommitting}
+                phase={commitProgress?.phase ?? null}
+              />
             </Button>
           </DialogFooter>
         </DialogContent>

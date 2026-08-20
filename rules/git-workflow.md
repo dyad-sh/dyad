@@ -171,6 +171,10 @@ commit the corresponding tracked `.claude/skills/...` path instead.
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+## Runtime commit hook policy
+
+Dyad's low-level `gitCommit` helper always passes `--no-verify`; it does not expose a caller option. Workflows that require repository verification must run the pre-commit hook explicitly before calling `gitCommit`, as the manual UI commit flow does. Keep hook execution separate so failures can be surfaced and recovered from before committing.
+
 When native Git commands accept a revision followed by optional paths, append
 `--` after the revision even when no paths are supplied. A branch name can also
 name a project file or directory (for example `src`), and omitting the separator

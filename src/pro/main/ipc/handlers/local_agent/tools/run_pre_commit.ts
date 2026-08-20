@@ -1,10 +1,9 @@
-import fs, { promises as fsPromises } from "node:fs";
+import { promises as fsPromises, type Dirent } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import { z } from "zod";
 import {
   ensureGitLineEndingPolicy,
-  execGit,
   getGitStateFingerprint,
   getGitProcessEnvironment,
 } from "@/ipc/utils/git_utils";
@@ -13,6 +12,13 @@ import {
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import {
+  formatPreCommitOutput,
+  isPreCommitHookAvailable,
+  PRE_COMMIT_STAGING_TIMEOUT_MS,
+  PRE_COMMIT_TIMEOUT_MS,
+  runPreCommitHook,
+} from "@/ipc/services/pre_commit_service";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
@@ -29,10 +35,9 @@ import {
 } from "./types";
 import { trackWorkspaceMutation } from "./tool_invocation";
 
+export { isPreCommitHookAvailable } from "@/ipc/services/pre_commit_service";
+
 export const MAX_PRE_COMMIT_RUNS_PER_TURN = 3;
-export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
-export const PRE_COMMIT_STAGING_TIMEOUT_MS = 60_000;
-const MAX_RESULT_OUTPUT_CHARS = 12_000;
 const FINGERPRINT_TIMEOUT_MS = 30_000;
 const MAX_HOOK_CHANGED_PATHS = 10_000;
 const logger = log.scope("run_pre_commit");
@@ -47,39 +52,6 @@ async function waitForAll<T>(promises: Promise<T>[]): Promise<T[]> {
     }
     return result.value;
   });
-}
-
-async function resolvePreCommitHookPath(
-  appPath: string,
-): Promise<string | null> {
-  try {
-    const result = await execGit(
-      ["rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit"],
-      appPath,
-      { maxBuffer: 64_000 },
-    );
-    if (result.exitCode !== 0) return null;
-    return result.stdout.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function isPreCommitHookAvailable(
-  appPath: string,
-): Promise<boolean> {
-  const hookPath = await resolvePreCommitHookPath(appPath);
-  if (!hookPath) return false;
-
-  try {
-    const stat = await fsPromises.stat(hookPath);
-    if (!stat.isFile()) return false;
-    if (process.platform === "win32") return true;
-    await fsPromises.access(hookPath, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function tryGetGitStateFingerprint(
@@ -99,7 +71,7 @@ async function collectSupabaseFunctionEntryPoints(
   appPath: string,
 ): Promise<Set<string>> {
   const functionsPath = path.join(appPath, "supabase", "functions");
-  let entries: fs.Dirent[];
+  let entries: Dirent[];
   try {
     entries = await fsPromises.readdir(functionsPath, { withFileTypes: true });
   } catch (error) {
@@ -317,17 +289,6 @@ function appendNote(body: string, note?: string): string {
   return note ? `${body}\n\n${note}` : body;
 }
 
-function tail(value: string): string {
-  return value.length > MAX_RESULT_OUTPUT_CHARS
-    ? `[Earlier output truncated]\n${value.slice(-MAX_RESULT_OUTPUT_CHARS)}`
-    : value;
-}
-
-function formatProcessOutput(stdout: string, stderr: string): string {
-  const parts = [stdout.trim(), stderr.trim()].filter(Boolean);
-  return tail(parts.join("\n")) || "The hook produced no output.";
-}
-
 function complete(
   ctx: AgentContext,
   title: string,
@@ -426,7 +387,7 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit staging timed out",
-            `Staging the workspace exceeded ${Math.round(PRE_COMMIT_STAGING_TIMEOUT_MS / 60_000)} minute and was stopped. The hook was not run.\n\n${formatProcessOutput(stageResult.stdout, stageResult.stderr)}`,
+            `Staging the workspace exceeded ${Math.round(PRE_COMMIT_STAGING_TIMEOUT_MS / 60_000)} minute and was stopped. The hook was not run.\n\n${formatPreCommitOutput(stageResult.stdout, stageResult.stderr)}`,
             "warning",
           );
         }
@@ -434,7 +395,7 @@ export const runPreCommitTool: ToolDefinition<
           return complete(
             ctx,
             "Pre-commit staging failed",
-            `Git could not stage the workspace before pre-commit (exit code ${stageResult.code ?? "unknown"}). The hook was not run.\n\n${formatProcessOutput(stageResult.stdout, stageResult.stderr)}`,
+            `Git could not stage the workspace before pre-commit (exit code ${stageResult.code ?? "unknown"}). The hook was not run.\n\n${formatPreCommitOutput(stageResult.stdout, stageResult.stderr)}`,
             "warning",
           );
         }
@@ -534,15 +495,9 @@ export const runPreCommitTool: ToolDefinition<
 
         let result: BufferedProcessResult;
         try {
-          result = await runBufferedProcess({
-            command: gitLocation,
-            args: ["hook", "run", "pre-commit"],
-            cwd: ctx.appPath,
-            env,
+          result = await runPreCommitHook({
+            path: ctx.appPath,
             signal: ctx.abortSignal,
-            timeoutMs: PRE_COMMIT_TIMEOUT_MS,
-            maxOutputBytes: 256_000,
-            waitForCloseAfterForceKill: true,
           });
         } catch (error) {
           // A process that never spawned is not an actual hook run and should not
@@ -614,14 +569,14 @@ export const runPreCommitTool: ToolDefinition<
             ctx,
             "Pre-commit timed out",
             appendNote(
-              `The pre-commit hook exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped.\n\n${formatProcessOutput(result.stdout, result.stderr)}${fingerprintNote}`,
+              `The pre-commit hook exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and was stopped.\n\n${formatPreCommitOutput(result.stdout, result.stderr)}${fingerprintNote}`,
               reconciliationNote,
             ),
             "warning",
           );
         }
 
-        const output = formatProcessOutput(result.stdout, result.stderr);
+        const output = formatPreCommitOutput(result.stdout, result.stderr);
         if (result.code !== 0) {
           ctx.preCommitLastRunPassed = false;
           const remaining =

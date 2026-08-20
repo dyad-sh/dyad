@@ -18,12 +18,16 @@ import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
 import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { GIT_ERROR_CODES, type GitErrorCode } from "@/shared/git_error_codes";
 import {
   isDotenvFilePath,
   redactDotenvValues,
   selectTextLineRange,
 } from "@/utils/dotenv_redaction";
 import { runBufferedProcess } from "./buffered_process";
+
+export { GIT_ERROR_CODES } from "@/shared/git_error_codes";
+
 const logger = log.scope("git_utils");
 
 const GIT_STATE_FINGERPRINT_TIMEOUT_MS = 30_000;
@@ -863,16 +867,14 @@ export async function gitCommit({
   path,
   message,
   amend,
-  noVerify = false,
   paths,
 }: GitCommitParams): Promise<string> {
   // Perform the commit using dugite with -c user.name/email config
-  const commitArgs = ["commit", "-m", message];
+  // Hook execution is owned by workflows that require explicit verification;
+  // the low-level commit operation must never invoke hooks implicitly.
+  const commitArgs = ["commit", "-m", message, "--no-verify"];
   if (amend) {
     commitArgs.push("--amend");
-  }
-  if (noVerify) {
-    commitArgs.push("--no-verify");
   }
   if (paths?.length) {
     // `--` scopes the commit to these paths, so unrelated staged changes stay
@@ -2822,17 +2824,6 @@ export async function gitFetch({
     { env: getGitNetworkEnv(accessToken) },
   );
 }
-
-export const GIT_ERROR_CODES = {
-  MERGE_IN_PROGRESS: "MERGE_IN_PROGRESS",
-  REBASE_IN_PROGRESS: "REBASE_IN_PROGRESS",
-  MERGE_CONFLICT: "MERGE_CONFLICT",
-  NON_FAST_FORWARD: "NON_FAST_FORWARD",
-  DIVERGENT_BRANCHES: "DIVERGENT_BRANCHES",
-  UNCOMMITTED_CHANGES: "UNCOMMITTED_CHANGES",
-} as const;
-
-type GitErrorCode = (typeof GIT_ERROR_CODES)[keyof typeof GIT_ERROR_CODES];
 
 class CodedGitError extends DyadError {
   readonly code: GitErrorCode;

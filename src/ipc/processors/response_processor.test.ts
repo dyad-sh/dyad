@@ -303,7 +303,6 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(gitCommit).toHaveBeenCalledWith({
       path: "/mock/apps/test-app",
       message: "wrote 1 file(s), installed or updated react package(s)",
-      noVerify: true,
     });
   });
 
@@ -330,7 +329,6 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(gitCommit).toHaveBeenCalledWith({
       path: "/mock/apps/test-app",
       message: "wrote 1 file(s), installed or updated react package(s)",
-      noVerify: true,
     });
     const contentUpdate = dbUpdates.find(
       (update) => typeof update.content === "string",
@@ -357,7 +355,6 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(gitCommit).toHaveBeenCalledWith({
       path: "/mock/apps/test-app",
       message: "updated project files",
-      noVerify: true,
     });
   });
 

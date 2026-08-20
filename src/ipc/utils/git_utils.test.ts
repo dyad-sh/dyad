@@ -107,7 +107,7 @@ describe("gitCommit", () => {
     }
   });
 
-  it("can create an internal checkpoint while bypassing a failing pre-commit hook", async () => {
+  it("always bypasses pre-commit hooks", async () => {
     repoDir = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "git-no-verify-"),
     );
@@ -122,14 +122,13 @@ describe("gitCommit", () => {
 
     const commitHash = await gitCommit({
       path: repoDir,
-      message: "internal checkpoint",
-      noVerify: true,
+      message: "checkpoint",
     });
 
     expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
   });
 
-  it("runs pre-commit hooks by default for explicit user commits", async () => {
+  it("also bypasses pre-commit hooks without a caller option", async () => {
     repoDir = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "git-verify-default-"),
     );
@@ -142,9 +141,12 @@ describe("gitCommit", () => {
     await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
     await gitAddAll({ path: repoDir });
 
-    await expect(
-      gitCommit({ path: repoDir, message: "explicit user commit" }),
-    ).rejects.toThrow();
+    const commitHash = await gitCommit({
+      path: repoDir,
+      message: "explicit user commit",
+    });
+
+    expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
   });
 });
 

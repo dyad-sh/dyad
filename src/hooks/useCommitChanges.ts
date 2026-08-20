@@ -1,22 +1,60 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ipc } from "@/ipc/types";
+import type { CommitProgress } from "@/ipc/types/github";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 import { useScreenshotManager } from "@/screenshot/ScreenshotProvider";
+import { GIT_ERROR_CODES } from "@/shared/git_error_codes";
+
+function isPreCommitFailure(error: Error | null): boolean {
+  return (
+    error !== null &&
+    (error as Error & { code?: string }).code ===
+      GIT_ERROR_CODES.PRE_COMMIT_FAILED
+  );
+}
 
 export function useCommitChanges() {
   const queryClient = useQueryClient();
   const screenshotManager = useScreenshotManager();
+  const [commitProgress, setCommitProgress] = useState<CommitProgress | null>(
+    null,
+  );
+  const activeCommitRef = useRef<{
+    appId: number;
+    operationId: string;
+  } | null>(null);
+  const inFlightCommitRef = useRef<Promise<string> | null>(null);
 
-  const { mutateAsync: commitChanges, isPending: isCommitting } = useMutation({
+  useEffect(() => {
+    return ipc.events.git.onCommitProgress((progress) => {
+      const active = activeCommitRef.current;
+      if (
+        active?.appId === progress.appId &&
+        active.operationId === progress.operationId
+      ) {
+        setCommitProgress(progress);
+      }
+    });
+  }, []);
+
+  const {
+    mutateAsync: mutateCommitChanges,
+    isPending: isCommitting,
+    error: commitError,
+    reset: resetCommitError,
+  } = useMutation({
     mutationFn: async ({
       appId,
       message,
+      operationId,
     }: {
       appId: number;
       message: string;
+      operationId: string;
     }) => {
-      return ipc.git.commitChanges({ appId, message });
+      return ipc.git.commitChanges({ appId, message, operationId });
     },
     onSuccess: (_, { appId }) => {
       showSuccess("Changes committed successfully");
@@ -31,12 +69,43 @@ export function useCommitChanges() {
       });
     },
     onError: (error: Error) => {
-      showError(`Failed to commit: ${error.message}`);
+      if (!isPreCommitFailure(error)) {
+        showError(`Failed to commit: ${error.message}`);
+      }
     },
   });
+
+  const commitChanges = useCallback(
+    ({ appId, message }: { appId: number; message: string }) => {
+      if (inFlightCommitRef.current) return inFlightCommitRef.current;
+
+      const operationId = `commit:${globalThis.crypto.randomUUID()}`;
+      activeCommitRef.current = { appId, operationId };
+      setCommitProgress(null);
+
+      const run = async () => {
+        try {
+          return await mutateCommitChanges({ appId, message, operationId });
+        } finally {
+          if (activeCommitRef.current?.operationId === operationId) {
+            activeCommitRef.current = null;
+            inFlightCommitRef.current = null;
+            setCommitProgress(null);
+          }
+        }
+      };
+      const promise = run();
+      inFlightCommitRef.current = promise;
+      return promise;
+    },
+    [mutateCommitChanges],
+  );
 
   return {
     commitChanges,
     isCommitting,
+    commitProgress,
+    preCommitError: isPreCommitFailure(commitError) ? commitError : null,
+    resetCommitError,
   };
 }

@@ -4,6 +4,17 @@ import { IpcMainInvokeEvent } from "electron";
 const registeredHandlers = vi.hoisted(
   () => [] as Array<(event: any, input: any) => Promise<unknown>>,
 );
+const gitServiceMocks = vi.hoisted(() => ({
+  stageAllAndCommitWithPreCommit: vi.fn(),
+}));
+
+vi.mock("@/ipc/services/git_service", () => ({
+  gitService: gitServiceMocks,
+}));
+
+vi.mock("@/ipc/handlers/gitignoreUtils", () => ({
+  ensureDyadGitignored: vi.fn(),
+}));
 
 vi.mock("@/ipc/utils/git_utils", () => ({
   gitListBranches: vi.fn(),
@@ -182,6 +193,56 @@ describe("recording admission", () => {
     } finally {
       reservation?.release();
     }
+  });
+});
+
+describe("commit progress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registeredHandlers.length = 0;
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(mockApp as any);
+    gitServiceMocks.stageAllAndCommitWithPreCommit.mockImplementation(
+      async ({ onProgress }) => {
+        onProgress("staging");
+        onProgress("pre-commit");
+        onProgress("committing");
+        return "commit-hash";
+      },
+    );
+    registerGithubBranchHandlers();
+  });
+
+  it("emits correlated phases to the renderer that started the commit", async () => {
+    const send = vi.fn();
+    const commit = registeredHandlers.at(-2)!;
+
+    await expect(
+      commit(
+        {
+          sender: {
+            isDestroyed: () => false,
+            isCrashed: () => false,
+            send,
+          },
+        },
+        { appId: 1, message: "Save work", operationId: "commit:123" },
+      ),
+    ).resolves.toBe("commit-hash");
+
+    expect(send.mock.calls).toEqual([
+      [
+        "git:commit-progress",
+        { appId: 1, operationId: "commit:123", phase: "staging" },
+      ],
+      [
+        "git:commit-progress",
+        { appId: 1, operationId: "commit:123", phase: "pre-commit" },
+      ],
+      [
+        "git:commit-progress",
+        { appId: 1, operationId: "commit:123", phase: "committing" },
+      ],
+    ]);
   });
 });
 

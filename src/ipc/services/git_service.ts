@@ -2,13 +2,22 @@ import log from "electron-log";
 
 import {
   ensureGitLineEndingPolicy,
+  GIT_ERROR_CODES,
   gitAdd,
   gitAddAll,
   gitCommit,
   gitInit,
   gitRemove,
   hasStagedChanges,
+  GitStateError,
 } from "../utils/git_utils";
+import {
+  formatPreCommitOutput,
+  isPreCommitHookAvailable,
+  PRE_COMMIT_TIMEOUT_MS,
+  runPreCommitHook,
+} from "./pre_commit_service";
+import type { CommitProgressPhase } from "../types/github";
 
 const logger = log.scope("git_service");
 
@@ -53,7 +62,7 @@ export class GitService {
     await gitInit({ path, ref });
     await ensureGitLineEndingPolicy({ path, writeGitattributes: true });
     await gitAddAll({ path });
-    return gitCommit({ path, message, noVerify: true });
+    return gitCommit({ path, message });
   }
 
   /**
@@ -63,14 +72,68 @@ export class GitService {
   async stageAllAndCommit({
     path,
     message,
-    noVerify = false,
   }: {
     path: string;
     message: string;
-    noVerify?: boolean;
   }): Promise<string> {
     await gitAddAll({ path });
-    return gitCommit({ path, message, noVerify });
+    return gitCommit({ path, message });
+  }
+
+  /**
+   * Stages all changes, runs an installed pre-commit hook as an explicit
+   * verification phase, then commits without invoking the hook a second time.
+   * Hook failures use a stable error code so the renderer can offer an AI fix
+   * without mistaking unrelated Git failures for pre-commit failures.
+   */
+  async stageAllAndCommitWithPreCommit({
+    path,
+    message,
+    onProgress,
+  }: {
+    path: string;
+    message: string;
+    onProgress?: (phase: CommitProgressPhase) => void;
+  }): Promise<string> {
+    onProgress?.("staging");
+    await gitAddAll({ path });
+
+    if (await isPreCommitHookAvailable(path)) {
+      onProgress?.("pre-commit");
+      let result;
+      try {
+        result = await runPreCommitHook({ path });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        throw GitStateError(
+          `Pre-commit checks could not start. ${details}`,
+          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+        );
+      }
+
+      const output = formatPreCommitOutput(result.stdout, result.stderr);
+      if (result.timedOut) {
+        throw GitStateError(
+          `Pre-commit checks exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
+          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+        );
+      }
+      if (result.aborted) {
+        throw GitStateError(
+          `Pre-commit checks were cancelled before they completed.\n\n${output}`,
+          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+        );
+      }
+      if (result.code !== 0) {
+        throw GitStateError(
+          `Pre-commit checks failed with exit code ${result.code ?? "unknown"}.\n\n${output}`,
+          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+        );
+      }
+    }
+
+    onProgress?.("committing");
+    return gitCommit({ path, message });
   }
 
   /**
@@ -80,17 +143,15 @@ export class GitService {
   async stageAllAndCommitIfChanged({
     path,
     message,
-    noVerify = false,
   }: {
     path: string;
     message: string;
-    noVerify?: boolean;
   }): Promise<string | null> {
     await gitAddAll({ path });
     if (!(await hasStagedChanges({ path }))) {
       return null;
     }
-    return gitCommit({ path, message, noVerify });
+    return gitCommit({ path, message });
   }
 
   /**
@@ -178,7 +239,6 @@ export class GitService {
       const commitHash = await gitCommit({
         path,
         message,
-        noVerify: true,
         paths: [filepath],
       });
       return { commitHash, uncommittedReason: null };

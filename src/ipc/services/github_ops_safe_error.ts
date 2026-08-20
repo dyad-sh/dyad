@@ -15,16 +15,24 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted URL]",
     )
     .replaceAll(/\bgit@[\w.-]+:[^\s]+/gi, "[redacted remote]")
+    .replaceAll(/\b(?:[\w.-]+\/)+[\w.-]+\.git\b/gi, "[redacted remote]")
+    .replaceAll(
+      /\b(?:[a-z0-9-]+\.)+(?:internal|local|lan|home|corp)\b/gi,
+      "[redacted host]",
+    )
     .replaceAll(/(['"`])\/[^\r\n]*?\1/g, "$1[redacted path]$1")
     .replaceAll(/(['"])[A-Za-z]:[\\/][^\r\n]*?\1/g, "$1[redacted path]$1")
+    .replaceAll(/(['"])\\\\[^\r\n]*?\1/g, "$1[redacted path]$1")
+    .replaceAll(/\[\/[^\r\n\]]+\]/g, "[[redacted path]]")
     .replaceAll(
-      /(^|[\s("'`])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,
+      /(^|[\s("'`=[,])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,
       "$1[redacted path]",
     )
     .replaceAll(
       /\b[A-Za-z]:[\\/](?:[^\\/\s"']+[\\/])+[^\\/\s"']+/g,
       "[redacted path]",
-    );
+    )
+    .replaceAll(/\\\\[^\\\s"'`]+(?:\\[^\\\s"'`]+)+/g, "[redacted path]");
 }
 
 /**

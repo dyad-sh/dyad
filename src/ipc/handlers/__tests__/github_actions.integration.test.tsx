@@ -200,9 +200,9 @@ describe("GitHub connector actions (integration)", () => {
       "remote: error: File node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node is 124.08 MB; this exceeds GitHub's file size limit of 100.00 MB",
       "remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.",
     ].join("\n");
-    vi.spyOn(githubOpsService, "run").mockRejectedValueOnce(
-      new DyadError(pushError, DyadErrorKind.Conflict),
-    );
+    const runSpy = vi
+      .spyOn(githubOpsService, "run")
+      .mockRejectedValueOnce(new DyadError(pushError, DyadErrorKind.Conflict));
 
     fireEvent.click(
       within(connectedRepo).getByRole("button", { name: "Sync to GitHub" }),
@@ -223,6 +223,21 @@ describe("GitHub connector actions (integration)", () => {
     expect(
       within(connectedRepo).getByRole("button", { name: "Copy" }),
     ).toBeTruthy();
+
+    runSpy.mockRejectedValueOnce(
+      new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth),
+    );
+    fireEvent.click(
+      within(connectedRepo).getByRole("button", { name: "Sync to GitHub" }),
+    );
+    await within(connectedRepo).findByText("Not authenticated with GitHub.", {
+      exact: false,
+    });
+    expect(
+      within(connectedRepo).queryByRole("region", {
+        name: "GitHub error details",
+      }),
+    ).toBeNull();
   }, 90_000);
 
   it("covers custom branches and normalized repository names", async () => {

@@ -63,6 +63,22 @@ describe("safeGithubOpsErrorMessage", () => {
       String.raw`fatal: "C:\Users\alice\My Projects\secret\.git\index.lock" exists`,
       'fatal: "[redacted path]" exists',
     ],
+    [
+      "fatal: --git-dir=/Users/alice/apps/demo/.git is unavailable",
+      "fatal: --git-dir=[redacted path] is unavailable",
+    ],
+    [
+      "fatal: repository [/Users/alice/apps/demo/.git] is unavailable",
+      "fatal: repository [[redacted path]] is unavailable",
+    ],
+    [
+      String.raw`fatal: "\\server\Secret Share\demo.git" is unavailable`,
+      'fatal: "[redacted path]" is unavailable',
+    ],
+    [
+      "Permission to acme/private.git denied while contacting proxy.corp.internal",
+      "Permission to [redacted remote] denied while contacting [redacted host]",
+    ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(
       safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),

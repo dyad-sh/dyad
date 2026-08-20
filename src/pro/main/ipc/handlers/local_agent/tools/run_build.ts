@@ -63,6 +63,7 @@ export interface BuildProjectFacts {
   buildScript: string;
   nextMajorVersion: number | null;
   previewRunning: boolean;
+  previewInDocker: boolean;
   nextDevOutputIsolated: boolean;
   hasBuildLifecycleHooks: boolean;
 }
@@ -76,6 +77,10 @@ export function selectBuildExecutionMode(
   }
 
   if (facts.hasBuildLifecycleHooks) {
+    return "isolated";
+  }
+
+  if (facts.previewInDocker) {
     return "isolated";
   }
 
@@ -159,12 +164,14 @@ export async function gatherBuildProjectFacts(
   buildScript: string,
   hasBuildLifecycleHooks = false,
 ): Promise<BuildProjectFacts> {
-  const previewRunning = runningApps.has(ctx.appId);
+  const runningApp = runningApps.get(ctx.appId);
+  const previewRunning = runningApp !== undefined;
   return {
     frameworkType: detectFrameworkType(ctx.appPath),
     buildScript,
     nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
     previewRunning,
+    previewInDocker: runningApp?.mode === "docker",
     hasBuildLifecycleHooks,
     nextDevOutputIsolated:
       !previewRunning ||

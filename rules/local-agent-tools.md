@@ -81,6 +81,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   relevant ignored inputs. The overlay copy backend may vary—use clone-on-write
   when Node and the filesystem support it and an ordinary bounded copy on
   Windows—but the resulting inputs must have the same semantics.
+- When a preview is Docker-backed, isolate even otherwise preview-safe builds.
+  The live dependency tree may contain Linux-native packages installed by the
+  container and must not be reused by a host-side production build.
 - Preserve the app's path relative to the Git top-level in the temporary
   worktree. Run the package manager from that corresponding app directory, but
   overlay repository-wide changes so monorepo configuration and sibling

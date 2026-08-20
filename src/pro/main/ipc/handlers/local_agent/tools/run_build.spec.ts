@@ -45,6 +45,7 @@ const safeViteFacts: BuildProjectFacts = {
   buildScript: "vite build",
   nextMajorVersion: null,
   previewRunning: true,
+  previewInDocker: false,
   nextDevOutputIsolated: false,
   hasBuildLifecycleHooks: false,
 };
@@ -418,6 +419,39 @@ describe("run_build", () => {
         hasBuildLifecycleHooks: true,
       }),
     ).toBe("isolated");
+    expect(
+      selectBuildExecutionMode({
+        ...safeViteFacts,
+        previewInDocker: true,
+      }),
+    ).toBe("isolated");
+  });
+
+  it("records Docker previews as requiring a clean host snapshot", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-build-test-"),
+    );
+    temporaryDirectories.push(appPath);
+    await Promise.all([
+      fs.writeFile(path.join(appPath, "vite.config.ts"), "export default {}"),
+      fs.writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify({ devDependencies: { vite: "latest" } }),
+      ),
+    ]);
+    runningApps.set(123_457, { mode: "docker" } as never);
+
+    const facts = await gatherBuildProjectFacts(
+      {
+        appId: 123_457,
+        appPath,
+        frameworkType: "vite",
+      } as AgentContext,
+      "vite build",
+    );
+
+    expect(facts.previewInDocker).toBe(true);
+    expect(selectBuildExecutionMode(facts)).toBe("isolated");
   });
 
   it("refreshes framework facts after a Vite app gains Nitro", async () => {

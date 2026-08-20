@@ -40,6 +40,7 @@ import {
   isAppliedGithubOpsReceipt,
   useGithubOps,
 } from "@/github_ops/useGithubOps";
+import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
@@ -90,7 +91,7 @@ function GitHubTroubleshootingLink({ className = "" }: { className?: string }) {
 }
 
 function GitHubOperationError({ message }: { message: string }) {
-  const showDetails = message.includes("\n") || message.length > 240;
+  const showDetails = isDetailedGithubOpsErrorMessage(message);
 
   if (!showDetails) {
     return (
@@ -444,16 +445,27 @@ function ConnectedGitHubConnector({
                           : `Resolve ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} to ${isSyncConflict ? "continue syncing" : "finish merging"}.`}
                 </p>
                 {conflictRecoveryStage === "verification-failed" && (
-                  <div className="mt-2">
-                    <GitHubOperationError
-                      message={
-                        conflictVerificationError ??
-                        "Dyad couldn't check the repository."
-                      }
-                    />
-                  </div>
+                  <p className="sr-only">
+                    {(
+                      conflictVerificationError ??
+                      "Dyad couldn't check the repository."
+                    )
+                      .split("\n", 1)[0]
+                      .slice(0, 240)}
+                  </p>
                 )}
               </div>
+
+              {conflictRecoveryStage === "verification-failed" && (
+                <div className="mt-2">
+                  <GitHubOperationError
+                    message={
+                      conflictVerificationError ??
+                      "Dyad couldn't check the repository."
+                    }
+                  />
+                </div>
+              )}
 
               {conflictRecoveryStage === "conflicted" && (
                 <ul className="mt-2 space-y-1" aria-label="Conflicted files">

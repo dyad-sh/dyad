@@ -25,7 +25,7 @@ describe("GithubOpsPresentationService", () => {
 
     expect(first.send).toHaveBeenCalledWith("toast:error", {
       message: "Push failed",
-      toastId: "github-ops-operation-1",
+      toastId: "github-ops-7",
     });
     expect(second.send).not.toHaveBeenCalled();
   });
@@ -48,12 +48,12 @@ describe("GithubOpsPresentationService", () => {
     expect(target.send).toHaveBeenNthCalledWith(1, "toast:error", {
       message,
       persist: true,
-      toastId: "github-ops-probe-7",
+      toastId: "github-ops-7",
     });
     expect(target.send).toHaveBeenNthCalledWith(2, "toast:error", {
       message,
       persist: true,
-      toastId: "github-ops-probe-7",
+      toastId: "github-ops-7",
     });
   });
 });

@@ -3,6 +3,7 @@ import {
   type WindowRegistry,
 } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
+import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
 
 export class GithubOpsPresentationService {
   private readonly initiatorByOperationId = new Map<string, WindowSessionId>();
@@ -45,10 +46,10 @@ export class GithubOpsPresentationService {
         entity: { kind: "app", id: appId },
       });
     if (!target) return;
-    const persist = message.includes("\n") || message.length > 240;
+    const persist = isDetailedGithubOpsErrorMessage(message);
     this.windows.endpointForSession(target)?.send("toast:error", {
       message,
-      toastId: `github-ops-${operationId ?? `probe-${appId}`}`,
+      toastId: `github-ops-${appId}`,
       ...(persist ? { persist: true } : {}),
     });
   }

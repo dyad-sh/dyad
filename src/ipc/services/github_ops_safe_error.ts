@@ -177,6 +177,10 @@ function redactSensitiveGitOutput(message: string): string {
       /(\bconnect to\s+)(?:\[[A-F0-9:]+\]|(?:\d{1,3}\.){3}\d{1,3})/gi,
       "$1[redacted host]",
     )
+    .replaceAll(
+      /(\bConnecting to\s+)[^\s[]+(?:\s+\[[A-F0-9:.]+\])?/gi,
+      "$1[redacted host]",
+    )
     .replaceAll(/(\bresolve hostname\s+)[^:\s]+/gi, "$1[redacted host]")
     .replaceAll(
       /(\b[\w.-]*(?:key|token|secret|password|credential)[\w.-]*\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,

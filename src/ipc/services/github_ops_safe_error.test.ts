@@ -198,6 +198,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "curl: Failed to connect to [redacted host] port 443: Connection refused",
     ],
     [
+      "debug1: Connecting to buildbox [10.0.0.5] port 22.",
+      "debug1: Connecting to [redacted host] port 22.",
+    ],
+    [
       "ssh: Could not resolve hostname buildbox: Name or service not known",
       "ssh: Could not resolve hostname [redacted host]: Name or service not known",
     ],

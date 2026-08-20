@@ -3,6 +3,10 @@ export const MAX_GITHUB_OPS_VERIFICATION_ERROR_LENGTH = 1_000;
 
 const TRUNCATION_NOTICE = "\n… [GitHub error output truncated]";
 
+export function isDetailedGithubOpsErrorMessage(message: string): boolean {
+  return message.includes("\n") || message.length > 240;
+}
+
 export function truncateGithubOpsErrorMessage(
   message: string,
   maxLength = MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH,

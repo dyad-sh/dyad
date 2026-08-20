@@ -92,6 +92,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   reparse-point directory as an ordinary directory. Use `lstat`, recreate
   directory links as junctions, and copy linked files so snapshot setup does
   not require symbolic-link privileges.
+- Bound recursive snapshot traversal with a fixed-size batch or worker pool, especially on Windows where every entry uses explicit filesystem calls. An unbounded recursive `Promise.all` can queue the entire `node_modules` tree before cancellation is observed.
 - Keep build snapshots in a Dyad-owned scratch root and mark every owned
   directory before copying. Reserve the marker name from copied app inputs.
   Startup and stale cleanup must require that marker before recursive deletion;
@@ -99,6 +100,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Start one deadline before snapshot validation/copying and give the build only
   the remaining budget. Stream build output while it runs, and do not consume a
   retry when snapshot setup fails before the build process starts.
+- `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
 - Select build mode around preview continuity, not whether a build may generate
   files. With no running preview, build in place. Beside a preview, run the exact
   standard Vite build in place, run Next.js 16+ in place only when `.next/dev`

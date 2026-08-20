@@ -9,7 +9,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
@@ -19,6 +27,8 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { githubOpsService } from "@/ipc/services/github_ops_service";
 
 type TestApp = {
   appId: number;
@@ -67,6 +77,7 @@ describe("GitHub connector actions (integration)", () => {
   }, 60_000);
 
   afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
     writeSettings({
       githubAccessToken: undefined,
@@ -174,6 +185,45 @@ describe("GitHub connector actions (integration)", () => {
   async function appRow(appId: number) {
     return harness.db.query.apps.findFirst({ where: eq(apps.id, appId) });
   }
+
+  it("shows detailed redacted push failures in the connected repository", async () => {
+    await resetFakeGitHub();
+    const app = await createFixtureApp("github-push-error-details");
+    await mountAppDetails(app);
+    await connectGitHub(app);
+    const connectedRepo = await createRepoThroughConnector(
+      "test-push-error-details",
+    );
+    const pushError = [
+      "Git push failed: remote: error: Trace: 983f3c92",
+      "remote: error: See https://gh.io/lfs for more information.",
+      "remote: error: File node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node is 124.08 MB; this exceeds GitHub's file size limit of 100.00 MB",
+      "remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.",
+    ].join("\n");
+    vi.spyOn(githubOpsService, "run").mockRejectedValueOnce(
+      new DyadError(pushError, DyadErrorKind.Conflict),
+    );
+
+    fireEvent.click(
+      within(connectedRepo).getByRole("button", { name: "Sync to GitHub" }),
+    );
+
+    const details = await within(connectedRepo).findByRole("region", {
+      name: "GitHub error details",
+    });
+    expect(details.textContent).toContain(
+      "File node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node is 124.08 MB",
+    );
+    expect(details.textContent).toContain("GH001: Large files detected");
+    expect(details.textContent).toContain("[redacted URL]");
+    expect(details.textContent).not.toContain("https://gh.io/lfs");
+    expect(
+      within(connectedRepo).getByText("See troubleshooting guide"),
+    ).toBeTruthy();
+    expect(
+      within(connectedRepo).getByRole("button", { name: "Copy" }),
+    ).toBeTruthy();
+  }, 90_000);
 
   it("covers custom branches and normalized repository names", async () => {
     await resetFakeGitHub();

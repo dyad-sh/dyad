@@ -17,7 +17,7 @@ import { safeJoin } from "./path_utils";
 import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
 import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import {
   isDotenvFilePath,
   redactDotenvValues,
@@ -1808,6 +1808,7 @@ export async function gitPush({
     return;
   } catch (error: any) {
     logger.error("Error during git push:", error);
+    if (isDyadError(error)) throw error;
     if (typeof error?.code === "string") throw error;
     throw new DyadError(
       `Git push failed: ${error.message}`,

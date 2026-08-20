@@ -12,6 +12,8 @@
 
 export type PushMode = "normal" | "force" | "lease";
 
+export const MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH = 32_000;
+
 export type ConnectRepositoryOperation =
   | {
       type: "connect-repo";

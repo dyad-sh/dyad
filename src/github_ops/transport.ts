@@ -7,6 +7,7 @@ import type {
   GithubOpsEvent,
   GithubOpsState,
 } from "./state";
+import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "./state";
 
 export const GITHUB_OPS_MACHINE_ID = "github_ops";
 export const GITHUB_OPS_INVOCATION_KIND = "github-operation";
@@ -138,7 +139,7 @@ const githubOpsBannerSchema = z
     kind: z.enum(["success", "error", "info"]),
     code: z.string().optional(),
     completedOperation: operationTypeSchema.optional(),
-    message: z.string(),
+    message: z.string().max(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH),
   })
   .strict();
 
@@ -265,7 +266,7 @@ const operationFailureSchema: z.ZodType<GithubOperationFailure> = z
   .object({
     code: z.string().optional(),
     kind: z.string(),
-    message: z.string(),
+    message: z.string().max(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH),
   })
   .strict();
 

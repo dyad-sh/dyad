@@ -722,7 +722,7 @@ describe("main-hosted github_ops actor", () => {
     expect(disposed).toBe(true);
   });
 
-  it("does not project repository paths from Git failures", async () => {
+  it("redacts repository paths while preserving Git failure details", async () => {
     service.run.mockRejectedValue(
       new Error(
         "fatal: Unable to create '/Users/alice/apps/demo/.git/index.lock'",
@@ -740,7 +740,7 @@ describe("main-hosted github_ops actor", () => {
         type: "idle",
         banner: {
           kind: "error",
-          message: "GitHub operation failed",
+          message: "fatal: Unable to create '[redacted path]'",
         },
       }),
     );

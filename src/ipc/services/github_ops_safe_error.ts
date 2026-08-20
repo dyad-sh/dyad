@@ -1,17 +1,36 @@
-const MAX_REMOTE_ERROR_LENGTH = 500;
-const UNSAFE_ERROR_CONTENT = [
-  /\b(?:https?|ssh|git):\/\/\S+/i,
-  /\bgit@[\w.-]+:[^\s]+/i,
-  /(?:^|[\s("'`])\/(?:[^/\s]+\/)+[^/\s]+/,
-  /\b[A-Za-z]:[\\/](?:[^\\/\s]+[\\/])+[^\\/\s]+/,
-  /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/i,
-  /\b(?:authorization|private-token|access-token)\s*[:=]/i,
-] as const;
+import { MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH } from "@/github_ops/state";
+
+const TRUNCATION_NOTICE = "\n… [GitHub error output truncated]";
+
+function redactSensitiveGitOutput(message: string): string {
+  return message
+    .replaceAll(
+      /\b(?:authorization|private-token|access-token)\s*[:=]\s*(?:Bearer\s+)?[^\s]+/gi,
+      "[redacted credential]",
+    )
+    .replaceAll(
+      /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/gi,
+      "[redacted token]",
+    )
+    .replaceAll(
+      /\b(?:https?|ssh|git):\/\/[^\s<>"']*[^\s<>"'.,;:!?)}\]]/gi,
+      "[redacted URL]",
+    )
+    .replaceAll(/\bgit@[\w.-]+:[^\s]+/gi, "[redacted remote]")
+    .replaceAll(
+      /(^|[\s("'`])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,
+      "$1[redacted path]",
+    )
+    .replaceAll(
+      /\b[A-Za-z]:[\\/](?:[^\\/\s"']+[\\/])+[^\\/\s"']+/g,
+      "[redacted path]",
+    );
+}
 
 /**
- * Keep detailed Git/GitHub failures main-only. Remote snapshots may be logged,
- * persisted in diagnostics, or observed by a different window, so they carry
- * only bounded messages that do not expose repository locations or remotes.
+ * Remote snapshots may be logged, persisted in diagnostics, or observed by a
+ * different window. Preserve actionable Git output while redacting sensitive
+ * repository details and bounding the projected message.
  */
 export function safeGithubOpsErrorMessage(
   error: unknown,
@@ -19,14 +38,20 @@ export function safeGithubOpsErrorMessage(
 ): string {
   const raw =
     error instanceof Error && error.message
-      ? error.message.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim()
+      ? error.message
+          .replaceAll(/\r\n?/g, "\n")
+          .replaceAll(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+          .trim()
       : "";
-  if (
-    !raw ||
-    raw.length > MAX_REMOTE_ERROR_LENGTH ||
-    UNSAFE_ERROR_CONTENT.some((pattern) => pattern.test(raw))
-  ) {
-    return fallback;
-  }
-  return raw;
+  if (!raw) return fallback;
+
+  const redacted = redactSensitiveGitOutput(raw);
+  if (redacted.length <= MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH) return redacted;
+
+  return (
+    redacted.slice(
+      0,
+      MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH - TRUNCATION_NOTICE.length,
+    ) + TRUNCATION_NOTICE
+  );
 }

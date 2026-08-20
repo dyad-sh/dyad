@@ -46,7 +46,8 @@ export class GithubOpsPresentationService {
         entity: { kind: "app", id: appId },
       });
     if (!target) return;
-    const persist = isDetailedGithubOpsErrorMessage(message);
+    const persist =
+      operationId === undefined && isDetailedGithubOpsErrorMessage(message);
     this.windows.endpointForSession(target)?.send("toast:error", {
       message,
       toastId: `github-ops-${appId}`,

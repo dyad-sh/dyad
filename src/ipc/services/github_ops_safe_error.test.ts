@@ -129,6 +129,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "fatal: cannot access [redacted path] … [path remainder redacted]",
     ],
     [
+      "fatal: cannot access /Users/alice/Secret Project",
+      "fatal: cannot access [redacted path] … [path remainder redacted]",
+    ],
+    [
       String.raw`fatal: unable to read C:\Users\John Smith\dyad-apps\demo\src\App.tsx`,
       "fatal: unable to read [redacted path] … [path remainder redacted]",
     ],
@@ -202,6 +206,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "debug1: Connecting to [redacted host] port 22.",
     ],
     [
+      "curl: Connected to buildbox (10.0.0.5) port 443",
+      "curl: Connected to [redacted host] port 443",
+    ],
+    [
       "ssh: Could not resolve hostname buildbox: Name or service not known",
       "ssh: Could not resolve hostname [redacted host]: Name or service not known",
     ],
@@ -209,6 +217,7 @@ describe("safeGithubOpsErrorMessage", () => {
       "hook: GIT_ASKPASS=/Users/alice/bin/askpass",
       "hook: GIT_ASKPASS=[redacted path]",
     ],
+    ["hook: ~/Clients/acme/config", "hook: [redacted path]"],
     [
       "hook: https://docs.github.com/ghp_abcdefghijklmnopqrstuvwxyz",
       "hook: [redacted URL]",
@@ -244,7 +253,6 @@ describe("safeGithubOpsErrorMessage", () => {
 
   it.each([
     "hook#x/srv/clients/acme/build.log",
-    "hook: ~/Clients/acme/config",
     "hook: -----BEGIN PRIVATE KEY-----\nincomplete",
   ])("falls back for a residual sensitive form: %s", (message) => {
     expect(
@@ -256,6 +264,7 @@ describe("safeGithubOpsErrorMessage", () => {
     "error:/data/clients/acme/build.log",
     "hook>/media/alice/work/x",
     "error:/Library/Caches/alice/x",
+    "build failed;/data/clients/acme/build.log",
   ])("redacts an absolute path after a diagnostic delimiter: %s", (message) => {
     expect(
       safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),

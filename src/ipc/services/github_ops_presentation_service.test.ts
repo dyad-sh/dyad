@@ -56,4 +56,24 @@ describe("GithubOpsPresentationService", () => {
       toastId: "github-ops-7",
     });
   });
+
+  it("lets detailed operation toasts expire because the banner persists", () => {
+    const windows = new WindowRegistry();
+    const target = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const session = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    windows.register(target, session);
+    windows.setVisibleEntities(session, [{ kind: "app", id: 7 }]);
+    const service = new GithubOpsPresentationService(windows);
+    service.recordInitiator("operation-1", session);
+    const message = `Git push failed:\n${"detail ".repeat(40)}`;
+
+    service.showError(7, "operation-1", message);
+
+    expect(target.send).toHaveBeenCalledWith("toast:error", {
+      message,
+      toastId: "github-ops-7",
+    });
+  });
 });

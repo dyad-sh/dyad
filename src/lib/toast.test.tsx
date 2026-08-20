@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { showError } from "./toast";
 import { toast } from "sonner";
 
@@ -22,6 +22,10 @@ vi.mock("../components/InputRequestToast", () => ({
 describe("showError", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("keeps actionable error toasts open until the user dismisses them", () => {
@@ -55,5 +59,20 @@ describe("showError", () => {
     expect(toast.custom).toHaveBeenCalledWith(expect.any(Function), {
       duration: 8_000,
     });
+  });
+
+  it("does not let a stale copy timer replace a newer toast", () => {
+    vi.useFakeTimers();
+    showError("Old Git error", { toastId: "github-ops-7" });
+    const oldToastRenderer = vi.mocked(toast.custom).mock.calls[0][0];
+    const oldToast = oldToastRenderer("github-ops-7") as {
+      props: { onCopy: () => void };
+    };
+    oldToast.props.onCopy();
+
+    showError("New Git error", { toastId: "github-ops-7" });
+    vi.advanceTimersByTime(2_000);
+
+    expect(toast.custom).toHaveBeenCalledTimes(3);
   });
 });

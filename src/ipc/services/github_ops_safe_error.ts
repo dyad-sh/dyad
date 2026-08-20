@@ -59,9 +59,9 @@ function redactUnquotedAbsolutePaths(message: string): string {
     .map((line) => {
       let result = "";
       let cursor = 0;
-      const pathStart = /(^|[\s("'`=[,:#>|])(?:\/(?!\/)|[A-Za-z]:[\\/]|\\\\)/g;
+      const pathStart = /(^|[^\w/])(?:~[\\/]|\/(?!\/)|[A-Za-z]:[\\/]|\\\\)/g;
       const pathEnd =
-        /(?=:\d+(?::\d+)*\b)|:(?=\s)|(?=\])|\s+(?=\(|… \[line truncated\]|(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|because\b|but\b|exited\b|returned\b))/g;
+        /(?=:\d+(?::\d+)*\b)|:(?=\s)|(?=\])|\s+(?=\(|… \[line truncated\]|(?:exists|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|during\b|because\b|but\b|exited\b|returned\b))/g;
 
       while (cursor < line.length) {
         pathStart.lastIndex = cursor;
@@ -75,19 +75,7 @@ function redactUnquotedAbsolutePaths(message: string): string {
         const start = match.index + prefixLength;
         pathEnd.lastIndex = pathStart.lastIndex;
         const endMatch = pathEnd.exec(line);
-        let end = endMatch?.index ?? line.length;
-        if (!endMatch) {
-          const firstWhitespaceOffset = line
-            .slice(pathStart.lastIndex)
-            .search(/\s/);
-          if (firstWhitespaceOffset !== -1) {
-            const firstWhitespace = pathStart.lastIndex + firstWhitespaceOffset;
-            const possiblePathRemainder = line.slice(firstWhitespace + 1);
-            if (!/[\\/]/.test(possiblePathRemainder)) {
-              end = firstWhitespace;
-            }
-          }
-        }
+        const end = endMatch?.index ?? line.length;
         const hiddenText = line.slice(start, end);
         const remainderNotice =
           end === line.length && !endMatch && /\s/.test(hiddenText)
@@ -179,6 +167,10 @@ function redactSensitiveGitOutput(message: string): string {
     )
     .replaceAll(
       /(\bConnecting to\s+)[^\s[]+(?:\s+\[[A-F0-9:.]+\])?/gi,
+      "$1[redacted host]",
+    )
+    .replaceAll(
+      /(\bConnected to\s+)[^\s(]+(?:\s+\([A-F0-9:.]+\))?/gi,
       "$1[redacted host]",
     )
     .replaceAll(/(\bresolve hostname\s+)[^:\s]+/gi, "$1[redacted host]")

@@ -62,6 +62,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   // navigates between chats and returns, they restart from selection (which
   // is harmless: their previous choice is still pre-selected).
   const [inPanelMode, setInPanelMode] = useState(false);
+  const [didSkip, setDidSkip] = useState(false);
 
   const providerOptions = [
     {
@@ -186,9 +187,17 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   const {
     canContinue,
+    canSkip,
     isSubmitting: isContinueSubmitting,
     handleContinue,
+    handleSkip,
   } = useIntegrationContinue();
+
+  const handleSkipClick = async () => {
+    if (await handleSkip()) {
+      setDidSkip(true);
+    }
+  };
 
   const handleBackClick = () => {
     setInPanelMode(false);
@@ -236,6 +245,21 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             )}
           </p>
         </div>
+      </DyadCard>
+    );
+  }
+
+  if (didSkip) {
+    return (
+      <DyadCard accentColor="slate" state="finished">
+        <DyadCardHeader icon={<Database size={15} />} accentColor="slate">
+          <DyadBadge color="slate">
+            {t("integrations.databaseSetup.integrationSkipped")}
+          </DyadBadge>
+          <span className="text-sm font-medium text-foreground">
+            {t("integrations.databaseSetup.skippedDescription")}
+          </span>
+        </DyadCardHeader>
       </DyadCard>
     );
   }
@@ -306,6 +330,25 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
               <ArrowLeft size={14} />
               {t("integrations.databaseSetup.back")}
             </Button>
+            {canSkip && (
+              <Button
+                onClick={handleSkipClick}
+                disabled={isContinueSubmitting}
+                variant="ghost"
+                className="w-full mt-2"
+                size="sm"
+                data-testid="integration-skip-button"
+              >
+                {isContinueSubmitting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    {t("integrations.databaseSetup.skipping")}
+                  </>
+                ) : (
+                  t("integrations.databaseSetup.skip")
+                )}
+              </Button>
+            )}
           </>
         ) : (
           <>
@@ -375,14 +418,35 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             </div>
 
             {isInteractive && (
-              <Button
-                onClick={handleNextClick}
-                disabled={!effectiveSelectedProvider}
-                className="w-full mt-3"
-                size="sm"
-              >
-                {t("integrations.databaseSetup.next")}
-              </Button>
+              <>
+                <Button
+                  onClick={handleNextClick}
+                  disabled={!effectiveSelectedProvider}
+                  className="w-full mt-3"
+                  size="sm"
+                >
+                  {t("integrations.databaseSetup.next")}
+                </Button>
+                {canSkip && (
+                  <Button
+                    onClick={handleSkipClick}
+                    disabled={isContinueSubmitting}
+                    variant="ghost"
+                    className="w-full mt-2"
+                    size="sm"
+                    data-testid="integration-skip-button"
+                  >
+                    {isContinueSubmitting ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        {t("integrations.databaseSetup.skipping")}
+                      </>
+                    ) : (
+                      t("integrations.databaseSetup.skip")
+                    )}
+                  </Button>
+                )}
+              </>
             )}
           </>
         )}

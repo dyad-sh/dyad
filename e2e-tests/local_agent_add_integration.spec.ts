@@ -56,6 +56,7 @@ testSkipIfWindows(
     });
 
     await expect(panelContinue).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await expect(messages.getByTestId("integration-skip-button")).toBeHidden();
     await panelContinue.click();
 
     // The regression: the armed follow-up is dispatched as a real turn, so the
@@ -72,5 +73,54 @@ testSkipIfWindows(
     await expect(
       messages.getByText("Supabase integration complete"),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);
+
+testSkipIfWindows(
+  "local-agent - skipping database integration resumes without a provider",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
+
+    await po.sendPrompt("tc=local-agent/add-integration", {
+      skipWaitForCompletion: true,
+    });
+
+    const messages = po.page.getByTestId("messages-list");
+    await expect(
+      messages.getByText("Let's connect a database first."),
+    ).toBeVisible({ timeout: Timeout.LONG });
+
+    // Skip remains available after the card hands off to Configure, allowing
+    // users to back out midway through setup.
+    await messages.getByRole("radio", { name: /Supabase/ }).click();
+    await messages.getByRole("button", { name: "Next" }).click();
+    const skipButton = messages.getByTestId("integration-skip-button");
+    await expect(skipButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+    await skipButton.click();
+
+    await expect(
+      messages.getByText("We don't want to use Supabase or Neon right now"),
+    ).toBeVisible({ timeout: Timeout.LONG });
+    await expect(messages.getByText("Integration skipped")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(
+      messages.getByText("No database integration was added."),
+    ).toBeVisible();
+    await expect(
+      po.page.getByTestId("integration-setup-continue-button"),
+    ).toBeHidden();
+    await expect(po.page.getByTestId("preview-mode-button")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // The visible user follow-up starts a real agent turn. Its terminal Retry
+    // action proves that continuation reached a completed assistant response
+    // without coupling this UI regression to the fake model's fallback prose.
+    await expect(messages.getByRole("button", { name: "Retry" })).toBeVisible({
+      timeout: Timeout.LONG,
+    });
   },
 );

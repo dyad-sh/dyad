@@ -9,6 +9,9 @@ import type {
   UserInputState,
 } from "./state";
 
+export const SKIP_DATABASE_INTEGRATION_PROMPT =
+  "We don't want to use Supabase or Neon right now";
+
 export type UserInputIgnoreReason =
   | "unknown-request"
   | "request-id-mismatch"
@@ -141,13 +144,17 @@ export function transition(
       const persist: UserInputCommand[] = isAlways(event.response)
         ? [{ type: "persist-always", descriptor, response: event.response }]
         : [];
-      if (
+      const integrationFollowUpPrompt =
         descriptor.kind === "integration" &&
-        event.response.kind === "integration" &&
-        event.response.completed &&
-        event.response.provider
-      ) {
-        const followUpPrompt = `Continue. I have completed the ${event.response.provider} integration.`;
+        event.response.kind === "integration"
+          ? event.response.completed && event.response.provider
+            ? `Continue. I have completed the ${event.response.provider} integration.`
+            : !event.response.completed && event.response.provider === null
+              ? SKIP_DATABASE_INTEGRATION_PROMPT
+              : null
+          : null;
+      if (integrationFollowUpPrompt) {
+        const followUpPrompt = integrationFollowUpPrompt;
         return applied(
           {
             status: "armed",

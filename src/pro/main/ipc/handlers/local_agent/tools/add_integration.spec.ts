@@ -94,6 +94,32 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
     ).toBe(false);
   });
 
+  it("treats skipping as a non-mutating choice and tells the agent to continue", async () => {
+    mocks.park.mockResolvedValue({
+      kind: "integration",
+      provider: null,
+      completed: false,
+    });
+
+    const result = await addIntegrationTool.execute({}, {
+      appPath,
+    } as AgentContext);
+
+    expect(result).toContain(
+      "Continue the original task without Supabase or Neon",
+    );
+    expect(
+      addIntegrationTool.shouldTrackMutation?.({}, result, {} as AgentContext),
+    ).toBe(false);
+    expect(
+      addIntegrationTool.shouldTrackFileMutation?.(
+        {},
+        result,
+        {} as AgentContext,
+      ),
+    ).toBe(false);
+  });
+
   it("conservatively tracks a file mutation when fingerprinting is uncertain", async () => {
     const abortController = new AbortController();
     abortController.abort();

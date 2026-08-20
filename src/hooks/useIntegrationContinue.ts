@@ -26,7 +26,7 @@ export function useIntegrationContinue() {
     integrationProviderSelectionAtom,
   );
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const { app } = useLoadApp(selectedAppId);
+  const { app, loading: isAppLoading } = useLoadApp(selectedAppId);
 
   const pendingIntegration =
     chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
@@ -34,6 +34,8 @@ export function useIntegrationContinue() {
   const completedProvider = getCompletedIntegrationProvider(app);
   const canContinue =
     !!pendingIntegration && !!provider && completedProvider === provider;
+  const canSkip =
+    !!pendingIntegration && !isAppLoading && completedProvider === null;
   const isSubmitting =
     pendingIntegration != null &&
     respondingRequestIds.has(pendingIntegration.requestId);
@@ -77,12 +79,44 @@ export function useIntegrationContinue() {
     setPreviewMode,
   ]);
 
+  const handleSkip = useCallback(async (): Promise<boolean> => {
+    if (!pendingIntegration || !canSkip || isSubmitting) {
+      return false;
+    }
+    const responded = await userInputReadModel.respond(
+      pendingIntegration.requestId,
+      {
+        kind: "integration",
+        provider: null,
+        completed: false,
+      },
+    );
+    if (!responded) return false;
+    setIntegrationProviderSelection((prev) => {
+      if (!prev.has(pendingIntegration.requestId)) return prev;
+      const next = new Map(prev);
+      next.delete(pendingIntegration.requestId);
+      return next;
+    });
+    setPreviewMode("preview");
+    return true;
+  }, [
+    pendingIntegration,
+    canSkip,
+    isSubmitting,
+    userInputReadModel,
+    setIntegrationProviderSelection,
+    setPreviewMode,
+  ]);
+
   return {
     pendingIntegration,
     provider,
     completedProvider,
     canContinue,
+    canSkip,
     isSubmitting,
     handleContinue,
+    handleSkip,
   };
 }

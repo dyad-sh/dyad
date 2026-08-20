@@ -20,7 +20,7 @@ export const addIntegrationTool: ToolDefinition<
 > = {
   name: "add_integration",
   description:
-    "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. The tool blocks until the user finishes the setup inside the chat and clicks Continue, then returns; you should then proceed with the next step.",
+    "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. The tool blocks until the user finishes the setup and clicks Continue or chooses to skip it, then returns; you should then proceed with the next step.",
   inputSchema: addIntegrationSchema,
   defaultConsent: "always",
   modifiesState: true,
@@ -29,6 +29,7 @@ export const addIntegrationTool: ToolDefinition<
   getConsentPreview: () => "Add database integration",
 
   shouldTrackMutation: (_args, result) =>
+    !result.startsWith("The user skipped the integration setup") &&
     !result.startsWith("The user dismissed the integration setup"),
   shouldTrackFileMutation: (_args, result) =>
     result.includes("Git-visible workspace files changed during setup.") ||
@@ -74,6 +75,13 @@ export const addIntegrationTool: ToolDefinition<
 
     const result = await userInputRegistry.park(requestId, ctx.abortSignal);
 
+    if (
+      result?.kind === "integration" &&
+      !result.completed &&
+      result.provider === null
+    ) {
+      return "The user skipped the integration setup. Continue the original task without Supabase or Neon, and do not prompt for a database integration again in this continuation.";
+    }
     if (
       result?.kind !== "integration" ||
       !result.completed ||

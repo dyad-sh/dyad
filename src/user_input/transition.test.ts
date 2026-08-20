@@ -12,7 +12,7 @@ import type {
   UserInputEvent,
   UserInputState,
 } from "./state";
-import { transition } from "./transition";
+import { SKIP_DATABASE_INTEGRATION_PROMPT, transition } from "./transition";
 
 const descriptor: UserInputDescriptor = {
   kind: "mcp-consent",
@@ -189,5 +189,54 @@ describe("user-input transition", () => {
         expect(result.state).toBe(state);
       }
     }
+  });
+
+  it("arms an exact visible follow-up when database setup is skipped", () => {
+    const awaiting = transition({ status: "idle" }, followUpRequest).state;
+    const skippedResponse = {
+      kind: "integration" as const,
+      provider: null,
+      completed: false,
+    };
+
+    const skipped = transition(awaiting, {
+      type: "human-decided",
+      requestId: followUpDescriptor.requestId,
+      response: skippedResponse,
+    });
+
+    expect(skipped.kind).toBe("applied");
+    if (skipped.kind !== "applied") throw new Error("Expected skip to apply");
+    expect(skipped.state).toMatchObject({
+      status: "armed",
+      followUpPrompt: SKIP_DATABASE_INTEGRATION_PROMPT,
+    });
+    expect(skipped.commands).toContainEqual({
+      type: "broadcast-armed",
+      descriptor: followUpDescriptor,
+      followUpPrompt: SKIP_DATABASE_INTEGRATION_PROMPT,
+    });
+    expect(skipped.commands).toContainEqual({
+      type: "resolve-park",
+      requestId: followUpDescriptor.requestId,
+      value: skippedResponse,
+    });
+
+    const due = transition(skipped.state, {
+      type: "stream-finished",
+      chatId: followUpDescriptor.chatId,
+    });
+    expect(due.kind).toBe("applied");
+    if (due.kind !== "applied") throw new Error("Expected follow-up to arm");
+    expect(due.state).toMatchObject({
+      status: "due",
+      followUpPrompt: SKIP_DATABASE_INTEGRATION_PROMPT,
+    });
+    expect(due.commands).toContainEqual({
+      type: "broadcast-follow-up-due",
+      requestId: followUpDescriptor.requestId,
+      chatId: followUpDescriptor.chatId,
+      prompt: SKIP_DATABASE_INTEGRATION_PROMPT,
+    });
   });
 });

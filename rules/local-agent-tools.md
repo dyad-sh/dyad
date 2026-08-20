@@ -87,7 +87,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Preserve the app's path relative to the Git top-level in the temporary
   worktree. Run the package manager from that corresponding app directory, but
   overlay repository-wide changes so monorepo configuration and sibling
-  packages match the live workspace.
+  packages match the live workspace. Canonicalize the source app path once and
+  use that same path for repository-relative package-manager-root mapping;
+  mixing a symlinked app path with a canonical Git root can escape the snapshot.
 - Apply overlay exclusions at the same path depth on every backend. Exclude
   `node_modules` anywhere in the repository and known generated output roots
   directly under the target app; never overlay live dependency trees or root
@@ -95,6 +97,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   because paths such as `app/out/page.tsx` can be application source. Enforce
   these exclusions during recursive traversal too: Git can report an untracked
   parent while ignored dependency or root-output directories sit beneath it.
+  Preserve an otherwise excluded app-root directory when Git tracks files under
+  it; committed `dist` or `out` content may be a build input rather than output.
 - An isolated build must exclude the live app's `node_modules` and install a
   clean dependency tree inside the snapshot with the package manager selected
   from the live app's existing signals. Use the lockfile's frozen/CI mode when
@@ -132,7 +136,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   fall back to filesystem deletion and `git worktree prune` when necessary.
 - Start one deadline before snapshot validation/copying and give the build only
   the remaining budget. Stream build output while it runs, and do not consume a
-  retry when snapshot setup fails before the build process starts.
+  retry when snapshot setup fails before the build process starts. Record every
+  non-user-cancelled setup failure, including snapshot creation and deadline
+  expiry, against the current mutation count so unchanged retries are refused.
 - Do not run a host-side production build while the active preview uses a cloud
   sandbox. Refuse with guidance to switch to the Host runtime until build
   execution is supported inside the active cloud sandbox.
@@ -140,6 +146,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   turn. Start cleanup without awaiting it; the marked-directory startup sweep
   remains the fallback for interrupted cleanup.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
+- Throttle full accumulated build-output previews rather than emitting once per
+  stdout/stderr chunk, and synchronously flush the final buffered preview when
+  the child process settles so batching never hides terminal output.
 - Select build mode around preview continuity, not whether a build may generate
   files. With no running preview, build in place. Beside a preview, run the exact
   standard Vite build in place, run Next.js 16+ in place only when `.next/dev`

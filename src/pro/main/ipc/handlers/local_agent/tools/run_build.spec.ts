@@ -20,6 +20,7 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
 import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
+  createBuildOutputPreview,
   createBuildWorktree,
   findPackageManagerRoot,
   gatherBuildProjectFacts,
@@ -146,9 +147,14 @@ describe("run_build", () => {
       fs.writeFile(path.join(appPath, "package.json"), '{"name":"app"}\n'),
       fs.writeFile(path.join(appPath, "src", "changed.ts"), "before\n"),
       fs.writeFile(path.join(appPath, "src", "deleted.ts"), "delete me\n"),
+      fs.mkdir(path.join(appPath, "out")),
       fs.writeFile(path.join(sharedPath, "config.ts"), "before\n"),
       fs.writeFile(path.join(modulePath, "shared.ts"), "submodule\n"),
     ]);
+    await fs.writeFile(
+      path.join(appPath, "out", "committed-input.ts"),
+      "tracked build input\n",
+    );
     await runGit(modulePath, "init");
     await runGit(modulePath, "config", "user.email", "test@example.com");
     await runGit(modulePath, "config", "user.name", "Test User");
@@ -216,6 +222,7 @@ describe("run_build", () => {
       expect(await fs.realpath(snapshot.path)).toBe(
         await fs.realpath(path.join(snapshot.worktreePath, "packages", "app")),
       );
+      expect(snapshot.sourceAppPath).toBe(await fs.realpath(appPath));
       expect(
         (await runGit(snapshot.path, "rev-parse", "--show-toplevel")).trim(),
       ).toBe(await fs.realpath(snapshot.worktreePath));
@@ -260,6 +267,12 @@ describe("run_build", () => {
       await expect(
         fs.lstat(path.join(snapshot.path, "dist")),
       ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.readFile(
+          path.join(snapshot.path, "out", "committed-input.ts"),
+          "utf8",
+        ),
+      ).resolves.toBe("tracked build input\n");
       await expect(
         fs.lstat(path.join(snapshot.path, "new", "node_modules")),
       ).rejects.toMatchObject({ code: "ENOENT" });
@@ -361,6 +374,28 @@ describe("run_build", () => {
     const second = accumulateBuildOutput(first, "bundling...\n");
 
     expect(second).toBe("compiling...\nbundling...\n");
+  });
+
+  it("batches build output previews and flushes the final buffer", () => {
+    vi.useFakeTimers();
+    const onPreview = vi.fn();
+    const preview = createBuildOutputPreview(onPreview, 100);
+
+    preview.append("compiling...\n");
+    preview.append("bundling...\n");
+    expect(onPreview).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(onPreview).toHaveBeenLastCalledWith("compiling...\nbundling...\n");
+
+    preview.append("done\n");
+    preview.flush();
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(onPreview).toHaveBeenLastCalledWith(
+      "compiling...\nbundling...\ndone\n",
+    );
+    vi.useRealTimers();
   });
 
   it("bounds concurrent filesystem work in the Windows snapshot copier", async () => {
@@ -765,11 +800,39 @@ describe("run_build", () => {
     } as unknown as AgentContext;
 
     await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
-      "Dependency setup already failed",
+      "Isolated build setup already failed",
     );
 
     expect(onXmlComplete).toHaveBeenCalledWith(
       expect.stringContaining('title="Build setup not repeated"'),
+    );
+  });
+
+  it("records snapshot setup failures before allowing another build", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    await fs.writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ scripts: { build: "custom-build" } }),
+    );
+    runningApps.set(46, { mode: "host" } as never);
+    const ctx = {
+      appId: 46,
+      appPath: root,
+      mutationCount: 12,
+      onXmlComplete: vi.fn(),
+      onXmlStream: vi.fn(),
+    } as unknown as AgentContext;
+
+    await expect(runBuildTool.execute({}, ctx)).rejects.toMatchObject({
+      kind: "precondition",
+    });
+    expect(ctx.buildAttemptState).toMatchObject({
+      count: 0,
+      mutationCountAtLastSetupFailure: 12,
+    });
+    await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+      "Isolated build setup already failed",
     );
   });
 });

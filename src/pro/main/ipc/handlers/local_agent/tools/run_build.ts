@@ -35,6 +35,7 @@ const runBuildSchema = z.object({});
 const MAX_BUILD_RUNS_PER_TURN = 3;
 const BUILD_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 16_000;
+const BUILD_OUTPUT_PREVIEW_INTERVAL_MS = 250;
 const WINDOWS_SNAPSHOT_COPY_CONCURRENCY = 32;
 const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
 const SNAPSHOT_PREFIX = ".dyad-build-";
@@ -115,6 +116,7 @@ export interface Snapshot {
   worktreePath: string;
   setupMs: number;
   strategy: "git-worktree-overlay";
+  sourceAppPath: string;
   sourceRepoPath: string;
 }
 
@@ -681,12 +683,37 @@ async function readSnapshotMarker(
 }
 
 async function removeExcludedSnapshotRoots(
+  sourceRepoPath: string,
   snapshotPath: string,
+  appRelativePath: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  const excludedPaths = [...SNAPSHOT_EXCLUDED_NAMES].map((entry) =>
+    appRelativePath ? path.posix.join(appRelativePath, entry) : entry,
+  );
+  const tracked = await runSnapshotGit(
+    sourceRepoPath,
+    ["ls-files", "-z", "--", ...excludedPaths],
+    signal,
+  );
+  const trackedPaths = tracked.stdout.split("\0").filter(Boolean);
   await Promise.all(
-    [...SNAPSHOT_EXCLUDED_NAMES].map((entry) =>
-      fs.rm(path.join(snapshotPath, entry), { recursive: true, force: true }),
-    ),
+    [...SNAPSHOT_EXCLUDED_NAMES].map((entry, index) => {
+      const excludedPath = excludedPaths[index];
+      if (
+        trackedPaths.some(
+          (trackedPath) =>
+            trackedPath === excludedPath ||
+            trackedPath.startsWith(`${excludedPath}/`),
+        )
+      ) {
+        return Promise.resolve();
+      }
+      return fs.rm(path.join(snapshotPath, entry), {
+        recursive: true,
+        force: true,
+      });
+    }),
   );
 }
 
@@ -835,7 +862,12 @@ export async function createBuildWorktree(
       signal,
     );
     const snapshotAppPath = path.join(tempRoot, appRelativePath);
-    await removeExcludedSnapshotRoots(snapshotAppPath);
+    await removeExcludedSnapshotRoots(
+      sourceRepoPath,
+      snapshotAppPath,
+      appRelativePosix,
+      signal,
+    );
     await overlayWorkspaceState(
       sourceRepoPath,
       tempRoot,
@@ -858,6 +890,7 @@ export async function createBuildWorktree(
       worktreePath: tempRoot,
       setupMs: Date.now() - startedAt,
       strategy: "git-worktree-overlay",
+      sourceAppPath: realAppPath,
       sourceRepoPath,
     };
   } catch (error) {
@@ -1016,6 +1049,34 @@ function tail(value: string): string {
 
 export function accumulateBuildOutput(previous: string, chunk: string): string {
   return tail(previous + chunk);
+}
+
+export function createBuildOutputPreview(
+  onPreview: (accumulatedOutput: string) => void,
+  intervalMs = BUILD_OUTPUT_PREVIEW_INTERVAL_MS,
+): { append: (chunk: string) => void; flush: () => void } {
+  let accumulatedOutput = "";
+  let lastPreviewedOutput = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (accumulatedOutput === lastPreviewedOutput) return;
+    lastPreviewedOutput = accumulatedOutput;
+    onPreview(accumulatedOutput);
+  };
+
+  return {
+    append: (chunk) => {
+      accumulatedOutput = accumulateBuildOutput(accumulatedOutput, chunk);
+      if (timer) return;
+      timer = setTimeout(flush, intervalMs);
+    },
+    flush,
+  };
 }
 
 async function matchesWorkspacePatterns(
@@ -1301,7 +1362,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           }
           if (state.mutationCountAtLastSetupFailure === currentMutationCount) {
             const body =
-              "Dependency setup already failed for this unchanged workspace. Do not run the production build again until you make a relevant fix.";
+              "Isolated build setup already failed for this unchanged workspace. Do not run the production build again until you make a relevant fix.";
             completeStatus(ctx, "Build setup not repeated", body, "warning");
             return body;
           }
@@ -1338,7 +1399,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             if (mode === "isolated") {
               snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
               const packageManagerResolution = await resolvePackageManager(
-                ctx.appPath,
+                snapshot.sourceAppPath,
                 snapshot.sourceRepoPath,
               );
               packageManager = packageManagerResolution.packageManager;
@@ -1353,21 +1414,17 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               ctx.onXmlStream(
                 '<dyad-status title="Installing isolated build dependencies"></dyad-status>',
               );
-              let streamedInstallOutput = "";
+              const installOutputPreview = createBuildOutputPreview((output) =>
+                streamBuildOutput(ctx, output),
+              );
               const installStartedAt = Date.now();
               const installResult = await runSnapshotInstallProcess({
                 cwd: snapshotInstallPath,
                 packageManager,
                 signal: abortScope.signal,
                 timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
-                onOutput: (chunk) => {
-                  streamedInstallOutput = accumulateBuildOutput(
-                    streamedInstallOutput,
-                    chunk,
-                  );
-                  streamBuildOutput(ctx, streamedInstallOutput);
-                },
-              });
+                onOutput: installOutputPreview.append,
+              }).finally(installOutputPreview.flush);
               dependencyInstallMs = Date.now() - installStartedAt;
               const installOutput = tail(
                 [installResult.stdout, installResult.stderr]
@@ -1409,17 +1466,16 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               '<dyad-status title="Running production build"></dyad-status>',
             );
             const buildStartedAt = Date.now();
-            let streamedOutput = "";
+            const buildOutputPreview = createBuildOutputPreview((output) =>
+              streamBuildOutput(ctx, output),
+            );
             const result = await runBuildProcess({
               cwd: snapshot?.path ?? ctx.appPath,
               packageManager,
               signal: abortScope.signal,
               timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
-              onOutput: (chunk) => {
-                streamedOutput = accumulateBuildOutput(streamedOutput, chunk);
-                streamBuildOutput(ctx, streamedOutput);
-              },
-            });
+              onOutput: buildOutputPreview.append,
+            }).finally(buildOutputPreview.flush);
             const buildMs = Date.now() - buildStartedAt;
             const timing = snapshot
               ? `Mode: isolated (${snapshot.strategy}); snapshot setup: ${snapshot.setupMs} ms; dependency install: ${dependencyInstallMs} ms; build: ${buildMs} ms.`
@@ -1449,6 +1505,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             completeStatus(ctx, "Build passed", body);
             return body;
           } catch (error) {
+            if (phase === "snapshot setup" && !ctx.abortSignal?.aborted) {
+              state.mutationCountAtLastSetupFailure = currentMutationCount;
+            }
             if (abortScope.timedOut()) {
               const elapsedMs = Date.now() - operationStartedAt;
               const body = `Production build timed out after 10 minutes during ${phase}. Elapsed: ${elapsedMs} ms.`;

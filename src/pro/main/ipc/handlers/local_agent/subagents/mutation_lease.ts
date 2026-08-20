@@ -94,6 +94,25 @@ export function releaseMutationLease(appId: number, threadId: string): void {
   if (leases.get(appId)?.threadId === threadId) leases.delete(appId);
 }
 
+/**
+ * Human-readable account of what is blocking finalization for this app, or
+ * null when nothing is. Diagnostic only — a held lease is otherwise invisible,
+ * and "Another app operation may still be active" once cost a full forensic
+ * pass to attribute to a hung Implementer's orphaned lease.
+ */
+export function describeMutationBlock(appId: number): string | null {
+  const lease = leases.get(appId);
+  if (lease) {
+    return `The app writer lease is still held by sub-agent thread ${lease.threadId} (scope: ${
+      lease.scope.join(", ") || "none"
+    }).`;
+  }
+  if (finalizingApps.has(appId)) {
+    return "Another finalization for this app is still in progress.";
+  }
+  return null;
+}
+
 export function hasMutationLease(appId: number): boolean {
   return leases.has(appId);
 }

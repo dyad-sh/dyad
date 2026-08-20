@@ -39,6 +39,7 @@ import { buildReviewTarget, type ReviewTarget } from "./review_target";
 import {
   acquireMutationLease,
   beginAppFinalization,
+  describeMutationBlock,
   endAppFinalization,
   hasMutationLease,
   releaseMutationLease,
@@ -83,6 +84,41 @@ const IMPLEMENTER_MAX_STEPS = 100;
 
 function maxStepsFor(persona: SubagentPersona): number {
   return persona === "implementer" ? IMPLEMENTER_MAX_STEPS : SUBAGENT_MAX_STEPS;
+}
+
+/**
+ * Resolve with `promise`, or reject as soon as `signal` aborts — whichever
+ * comes first. Exists because an awaited chain can contain steps that never
+ * observe the signal (a tool execute doing un-abortable I/O); callers that
+ * MUST reach their finally on cancellation race through this instead of
+ * awaiting directly. The listener is removed on settle so the signal does not
+ * retain the promise.
+ */
+export function raceWithAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(
+      new DyadError("Sub-agent run aborted.", DyadErrorKind.UserCancelled),
+    );
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () =>
+      reject(new DyadError("Sub-agent run aborted.", DyadErrorKind.UserCancelled));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 const logger = log.scope("subagent_manager");
@@ -579,7 +615,19 @@ export async function cancelSubagent(
       // Cancellation is not terminal until an already-entered atomic mutation
       // leaves admission. The wrapper's abort check prevents queued mutations
       // from entering after this drain.
-      await withMutationAdmission(chat.app.id, async () => {});
+      //
+      // Release the lease INSIDE the drain rather than leaving it to
+      // runThread.finally: a run parked on an await that ignores the abort
+      // signal never unwinds, and its orphaned lease then blocks every later
+      // spawn and beginAppFinalization for the app's lifetime (observed: a
+      // hung implementer poisoned the following turn's finalization for its
+      // full 10-minute deadline). Safe because the drain proves no atomic
+      // mutation is mid-flight, a woken zombie is fenced by
+      // assertMutationLease before it can write, and release is
+      // owner-checked so the finally's own release stays idempotent.
+      await withMutationAdmission(chat.app.id, async () => {
+        releaseMutationLease(chat.app.id, threadId);
+      });
     }
   }
   await finishThread(threadId, "cancelled", null, "Cancelled by user.");
@@ -1217,13 +1265,13 @@ export async function waitForSubagentsAndBeginFinalization(
 ): Promise<SubagentThreadSummary[]> {
   const deadlineAt = Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS;
   while (true) {
-    assertFinalizationWaitActive(abortSignal, deadlineAt);
+    assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
     const summaries =
       threadIds.length > 0
         ? await waitForSubagents(chatId, threadIds, abortSignal)
         : [];
     const finalized = await withMutationAdmission(appId, async () => {
-      assertFinalizationWaitActive(abortSignal, deadlineAt);
+      assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
       const pending =
         threadIds.length === 0
           ? []
@@ -1259,6 +1307,7 @@ export async function waitForSubagentsAndBeginFinalization(
 function assertFinalizationWaitActive(
   abortSignal: AbortSignal | undefined,
   deadlineAt: number,
+  appId?: number,
 ): void {
   if (abortSignal?.aborted) {
     throw new DyadError(
@@ -1267,8 +1316,14 @@ function assertFinalizationWaitActive(
     );
   }
   if (Date.now() >= deadlineAt) {
+    // Name the blocker: a held lease was previously indistinguishable from a
+    // concurrent finalization, which cost a full forensic investigation the
+    // one time it happened. describeMutationBlock reads module state only.
+    const blocker = appId != null ? describeMutationBlock(appId) : null;
     throw new DyadError(
-      "Timed out waiting to finalize the app. Another app operation may still be active.",
+      `Timed out waiting to finalize the app. ${
+        blocker ?? "Another app operation may still be active."
+      }`,
       DyadErrorKind.Conflict,
     );
   }
@@ -1576,11 +1631,16 @@ async function runModel(params: {
     stopWhen: stepCountIs(maxStepsFor(params.persona)),
     abortSignal: params.abortSignal,
   });
-  const [text, usage, steps] = await Promise.all([
-    result.text,
-    result.totalUsage,
-    result.steps,
-  ]);
+  // Race the aggregation against the abort signal. streamText forwards the
+  // signal to the model request, but a tool execute that ignores it leaves
+  // these promises pending forever — and runThread's finally (lease release,
+  // entitlement-watcher cleanup) never runs. The rejection is swallowed by
+  // runThread's aborted-signal check; the zombie chain cannot mutate the app
+  // afterwards because assertMutationLease rejects a thread without the lease.
+  const [text, usage, steps] = await raceWithAbort(
+    Promise.all([result.text, result.totalUsage, result.steps]),
+    params.abortSignal,
+  );
   if (streamError) throw streamError;
   if (claimedRootMessageIds.size > 0) {
     await db
@@ -2271,7 +2331,16 @@ async function startPendingFollowup(
         const lifecycle = await applyThreadLifecycle(thread, {
           type: "QUEUE_FOLLOWUP",
         });
-        if (lifecycle !== "applied") return;
+        if (lifecycle !== "applied") {
+          // Latent leak fixed: this return previously kept the acquired lease
+          // — release lived only in the catch, and run() (whose runThread
+          // finally would release) was never started. Unreachable without the
+          // advanced sub-agent tools, but a silent forever-lease when hit.
+          if (acquiredAppId !== null) {
+            releaseMutationLease(acquiredAppId, threadId);
+          }
+          return;
+        }
         run("Continue by addressing the queued root messages in order.");
         acquiredAppId = null;
       } catch (error) {

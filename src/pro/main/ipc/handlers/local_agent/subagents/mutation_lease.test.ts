@@ -6,6 +6,7 @@ import {
   assertImplementerPathAllowed,
   assertMutationLease,
   beginAppFinalization,
+  describeMutationBlock,
   endAppFinalization,
   normalizeMutationScope,
   releaseMutationLease,
@@ -189,5 +190,21 @@ describe("sub-agent mutation lease", () => {
     ).toBe(true);
     expect(beginAppFinalization(9)).toBe(false);
     releaseMutationLease(9, "implementer");
+  });
+
+  it("names the blocking holder so a stuck finalization is attributable", () => {
+    // A held lease was once completely silent — the finalization timeout said
+    // only "another app operation may still be active", and attributing it to
+    // a hung Implementer's orphaned lease took a full forensic pass.
+    expect(describeMutationBlock(11)).toBeNull();
+    acquireMutationLease({ appId: 11, threadId: "impl-11", scope: ["src/app"] });
+    expect(describeMutationBlock(11)).toContain("impl-11");
+    expect(describeMutationBlock(11)).toContain("src/app");
+    releaseMutationLease(11, "impl-11");
+
+    expect(beginAppFinalization(11)).toBe(true);
+    expect(describeMutationBlock(11)).toContain("finalization");
+    endAppFinalization(11);
+    expect(describeMutationBlock(11)).toBeNull();
   });
 });

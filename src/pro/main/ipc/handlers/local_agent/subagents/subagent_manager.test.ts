@@ -14,6 +14,7 @@ import {
   isTerminalSubagentStatus,
   isWaitCompleteStatus,
   prepareSubagentStepMessages,
+  raceWithAbort,
   reviewFollowupAvailability,
   setSubagentEventTarget,
   SUBAGENT_NONTERMINAL_STATUSES,
@@ -141,6 +142,30 @@ describe("sub-agent manager status policy", () => {
       report:
         "Review incomplete: every changed file was excluded from automated review.\n\n- bundle.bin (binary)\n- generated.js (exceeds per-file review limit)",
     });
+  });
+
+  it("raceWithAbort rejects on abort even when the awaited chain never settles", async () => {
+    // The regression this guards: a sub-agent tool execute that ignores the
+    // abort signal left runModel's aggregation pending forever, so runThread's
+    // finally (lease release, entitlement-watcher cleanup) never ran and the
+    // orphaned writer lease blocked every later finalization for the app.
+    const never = new Promise<string>(() => {});
+    const controller = new AbortController();
+    const raced = raceWithAbort(never, controller.signal);
+    controller.abort();
+    await expect(raced).rejects.toThrow("aborted");
+  });
+
+  it("raceWithAbort is transparent when the promise settles first", async () => {
+    const controller = new AbortController();
+    await expect(
+      raceWithAbort(Promise.resolve("done"), controller.signal),
+    ).resolves.toBe("done");
+    await expect(
+      raceWithAbort(Promise.reject(new Error("boom")), controller.signal),
+    ).rejects.toThrow("boom");
+    // no signal at all -> the same promise
+    await expect(raceWithAbort(Promise.resolve(7), undefined)).resolves.toBe(7);
   });
 
   it("blocks root finalization on Implementer failure but not on a step budget", () => {

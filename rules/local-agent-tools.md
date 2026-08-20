@@ -107,9 +107,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   confirms separate development output, and isolate Next.js 15 and unknown or
   custom build commands. Keep this decision independent of the host OS.
 - Acquire app-operation claims before reading and validating build scripts,
-  lifecycle hooks, and preview facts. If consent is requested by the user's
-  tool-permission settings, warn generically that the package manager runs the
-  current `prebuild`, `build`, and `postbuild` lifecycle.
+  lifecycle hooks, and preview facts. Re-detect framework facts from that
+  locked workspace instead of using turn-start context, because an integration
+  can change a Vite app into Vite/Nitro before `run_build`. If consent is
+  requested by the user's tool-permission settings, warn generically that the
+  package manager runs the current `prebuild`, `build`, and `postbuild`
+  lifecycle.
 - A workspace snapshot is an operational boundary for ordinary build outputs,
   not a security sandbox for project code. Build approval must say that project
   and dependency code runs with the user's account; do not claim that changing

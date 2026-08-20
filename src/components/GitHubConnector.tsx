@@ -88,6 +88,38 @@ function GitHubTroubleshootingLink({ className = "" }: { className?: string }) {
   );
 }
 
+function GitHubOperationError({ message }: { message: string }) {
+  const showDetails = message.includes("\n") || message.length > 240;
+
+  if (!showDetails) {
+    return (
+      <p className="text-red-600">
+        {message} <GitHubTroubleshootingLink />
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-red-200 bg-red-50/70 p-3 dark:border-red-900 dark:bg-red-950/40">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-red-800 dark:text-red-200">
+          GitHub operation failed
+        </p>
+        <CopyErrorMessage errorMessage={message} />
+      </div>
+      <div
+        role="region"
+        aria-label="GitHub error details"
+        tabIndex={0}
+        className="scrollbar-on-hover max-h-[min(50vh,20rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded border border-red-200/70 bg-white/60 p-2 font-mono text-xs whitespace-pre-wrap text-red-900 [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none dark:border-red-900 dark:bg-black/20 dark:text-red-100"
+      >
+        {message}
+      </div>
+      <GitHubTroubleshootingLink className="mt-2 inline-block text-sm" />
+    </div>
+  );
+}
+
 interface ConnectedGitHubConnectorProps {
   appId: number;
   app: any;
@@ -197,10 +229,6 @@ function ConnectedGitHubConnector({
   const showErrorBanner =
     banner?.kind === "error" &&
     (banner.code !== "MERGE_CONFLICT" || !conflictRecoveryStage);
-  const showDetailedError =
-    banner?.kind === "error" &&
-    (banner.message.includes("\n") || banner.message.length > 240);
-
   return (
     <div className="w-full" data-testid="github-connected-repo">
       {connection !== "ready" && (
@@ -276,29 +304,7 @@ function ConnectedGitHubConnector({
       </div>
       {showErrorBanner && (
         <div className="mt-2 space-y-2">
-          {showDetailedError ? (
-            <div className="rounded-md border border-red-200 bg-red-50/70 p-3 dark:border-red-900 dark:bg-red-950/40">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                  GitHub operation failed
-                </p>
-                <CopyErrorMessage errorMessage={banner.message} />
-              </div>
-              <div
-                role="region"
-                aria-label="GitHub error details"
-                tabIndex={0}
-                className="scrollbar-on-hover max-h-[min(50vh,20rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded border border-red-200/70 bg-white/60 p-2 font-mono text-xs whitespace-pre-wrap text-red-900 [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none dark:border-red-900 dark:bg-black/20 dark:text-red-100"
-              >
-                {banner.message}
-              </div>
-              <GitHubTroubleshootingLink className="mt-2 inline-block text-sm" />
-            </div>
-          ) : (
-            <p className="text-red-600">
-              {banner.message} <GitHubTroubleshootingLink />
-            </p>
-          )}
+          <GitHubOperationError message={banner.message} />
           {showRebaseRecoveryOptions && (
             <div className="space-y-2 rounded-md border border-orange-200 p-3 dark:border-orange-800 dark:bg-orange-900/20">
               <p className="text-sm text-orange-800 dark:text-orange-100">
@@ -1233,7 +1239,9 @@ export function UnconnectedGitHubConnector({
           </form>
 
           {createRepoError && (
-            <p className="text-red-600 mt-2">{createRepoError}</p>
+            <div className="mt-2">
+              <GitHubOperationError message={createRepoError} />
+            </div>
           )}
           {createRepoSuccess && (
             <p className="text-green-600 mt-2">{createRepoSuccess}</p>

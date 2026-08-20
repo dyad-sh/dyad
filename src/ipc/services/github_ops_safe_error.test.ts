@@ -88,6 +88,11 @@ describe("safeGithubOpsErrorMessage", () => {
       "Permission to [redacted remote] denied while contacting [redacted host]",
     ],
     ["trace: deploy@code.example.com:team/private", "trace: [redacted remote]"],
+    ["hook: src/App.tsx:42:7 failed", "hook: src/App.tsx:42:7 failed"],
+    [
+      "hook: src/main.ts:10:5: error TS1005",
+      "hook: src/main.ts:10:5: error TS1005",
+    ],
     [
       "changed .env.local and vite.config.local",
       "changed .env.local and vite.config.local",
@@ -99,6 +104,14 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "fatal: unable to auto-detect email address (got 'alice@Alices-MacBook-Pro.local')",
       "fatal: unable to auto-detect email address (got '[redacted identity]')",
+    ],
+    [
+      "fatal: unable to create /Users/John Smith/dyad-apps/demo/.git/index.lock",
+      "fatal: unable to create [redacted path]",
+    ],
+    [
+      String.raw`fatal: unable to create C:\Users\John Smith\dyad-apps\demo\.git\index.lock`,
+      "fatal: unable to create [redacted path]",
     ],
   ])("redacts unsafe main-process details: %s", (message, expected) => {
     expect(
@@ -115,6 +128,16 @@ describe("safeGithubOpsErrorMessage", () => {
   it("bounds unusually large Git output with a visible notice", () => {
     const result = safeGithubOpsErrorMessage(
       new Error("x".repeat(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH + 100)),
+      "GitHub operation failed",
+    );
+
+    expect(result).toHaveLength(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH);
+    expect(result).toMatch(/\n… \[GitHub error output truncated\]$/);
+  });
+
+  it("pre-bounds raw output before running redaction", () => {
+    const result = safeGithubOpsErrorMessage(
+      new Error("x".repeat(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH * 100)),
       "GitHub operation failed",
     );
 

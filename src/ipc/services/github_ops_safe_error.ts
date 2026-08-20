@@ -1,4 +1,7 @@
-import { truncateGithubOpsErrorMessage } from "@/github_ops/error_message";
+import {
+  MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH,
+  truncateGithubOpsErrorMessage,
+} from "@/github_ops/error_message";
 
 const PUBLIC_GIT_DOCUMENTATION_URL =
   /\bhttps?:\/\/(?:gh\.io|docs\.github\.com|git-lfs\.github\.com|git-scm\.com)(?:\/[^\s<>"'.,;:!?)}\]]*)?/gi;
@@ -67,7 +70,7 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted URL]",
     )
     .replaceAll(
-      /\b(?:[\w.-]+@[\w.-]+|[\w.-]+\.[\w.-]+):[^\s<>"']+/gi,
+      /\b(?:[\w.-]+@[\w.-]+|[\w.-]+\.[\w.-]+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,
       "[redacted remote]",
     )
     .replaceAll(/\b(?:[\w.-]+\/)+[\w.-]+\.git\b/gi, "[redacted remote]")
@@ -81,6 +84,14 @@ function redactSensitiveGitOutput(message: string): string {
       "[redacted host]",
     )
     .replaceAll(/\[\/[^\r\n\]]+\]/g, "[[redacted path]]")
+    .replaceAll(
+      /(^|[\s("'`=[,])\/[^\r\n]*?\/\.git(?:\/[^\s"'`,;:)}\]]+)?/gm,
+      "$1[redacted path]",
+    )
+    .replaceAll(
+      /\b[A-Za-z]:[\\/][^\r\n]*?[\\/]\.git(?:[\\/][^\s"'`,;:)}\]]+)?/g,
+      "[redacted path]",
+    )
     .replaceAll(
       /(^|[\s("'`=[,])\/(?:[^/\s"'`]+\/)+[^/\s"'`]+/gm,
       "$1[redacted path]",
@@ -115,5 +126,6 @@ export function safeGithubOpsErrorMessage(
       : "";
   if (!raw) return fallback;
 
-  return truncateGithubOpsErrorMessage(redactSensitiveGitOutput(raw));
+  const boundedRaw = raw.slice(0, MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH * 2);
+  return truncateGithubOpsErrorMessage(redactSensitiveGitOutput(boundedRaw));
 }

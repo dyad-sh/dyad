@@ -2,6 +2,8 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import log from "electron-log/main";
+import { glob } from "glob";
+import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -62,6 +64,7 @@ export interface BuildProjectFacts {
   nextMajorVersion: number | null;
   previewRunning: boolean;
   nextDevOutputIsolated: boolean;
+  hasBuildLifecycleHooks: boolean;
 }
 
 /** OS-independent decision: platform only affects how an isolated copy is made. */
@@ -70,6 +73,10 @@ export function selectBuildExecutionMode(
 ): BuildExecutionMode {
   if (!facts.previewRunning) {
     return "in-place";
+  }
+
+  if (facts.hasBuildLifecycleHooks) {
+    return "isolated";
   }
 
   if (facts.frameworkType === "vite" && facts.buildScript === "vite build") {
@@ -108,6 +115,12 @@ export interface Snapshot {
 interface SnapshotMarker {
   schema: typeof SNAPSHOT_MARKER_SCHEMA;
   sourceRepoPath: string;
+  submoduleWorktrees: SubmoduleWorktree[];
+}
+
+interface SubmoduleWorktree {
+  sourceRepoPath: string;
+  snapshotPath: string;
 }
 
 const activeBuilds = new Set<number>();
@@ -144,6 +157,7 @@ function getScript(packageJson: PackageJson, name: string): string | null {
 export async function gatherBuildProjectFacts(
   ctx: AgentContext,
   buildScript: string,
+  hasBuildLifecycleHooks = false,
 ): Promise<BuildProjectFacts> {
   const previewRunning = runningApps.has(ctx.appId);
   return {
@@ -151,6 +165,7 @@ export async function gatherBuildProjectFacts(
     buildScript,
     nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
     previewRunning,
+    hasBuildLifecycleHooks,
     nextDevOutputIsolated:
       !previewRunning ||
       (await fs
@@ -170,6 +185,7 @@ async function runSnapshotGit(
   cwd: string,
   args: string[],
   signal?: AbortSignal,
+  allowedExitCodes: readonly number[] = [0],
 ) {
   const { env, gitLocation } = getGitProcessEnvironment();
   const result = await runBufferedProcess({
@@ -191,7 +207,7 @@ async function runSnapshotGit(
       `Git command output exceeded the snapshot limit: git ${args.join(" ")}`,
     );
   }
-  if (result.code !== 0) {
+  if (!allowedExitCodes.includes(result.code ?? -1)) {
     throw new Error(
       result.stderr.trim() ||
         result.stdout.trim() ||
@@ -216,9 +232,18 @@ function normalizeSnapshotRelativePath(
   ) {
     return null;
   }
+  return isExcludedSnapshotRelativePath(normalized, appRelativePath)
+    ? null
+    : normalized;
+}
+
+function isExcludedSnapshotRelativePath(
+  normalized: string,
+  appRelativePath: string,
+): boolean {
   const segments = normalized.split("/");
   if (segments.includes(".git") || segments.includes("node_modules")) {
-    return null;
+    return true;
   }
   const normalizedAppPath = appRelativePath
     ? path.posix.normalize(appRelativePath)
@@ -230,10 +255,8 @@ function normalizeSnapshotRelativePath(
         ? normalized.slice(normalizedAppPath.length + 1)
         : null
     : normalized;
-  const [appRootName] = pathWithinApp?.split("/") ?? [];
-  return appRootName && SNAPSHOT_EXCLUDED_NAMES.has(appRootName)
-    ? null
-    : normalized;
+  const appSegments = pathWithinApp?.split("/") ?? [];
+  return appSegments.some((segment) => SNAPSHOT_EXCLUDED_NAMES.has(segment));
 }
 
 export function parseWorkspaceOverlayPaths(
@@ -281,6 +304,7 @@ async function overlayWorkspacePath(
   realSourceRoot: string,
   snapshotRoot: string,
   relativePath: string,
+  appRelativePath: string,
   signal?: AbortSignal,
 ): Promise<void> {
   throwIfBuildCancelled(signal);
@@ -301,6 +325,7 @@ async function overlayWorkspacePath(
       snapshotRoot,
       [sourcePath],
       signal,
+      appRelativePath,
     );
     return;
   }
@@ -308,7 +333,17 @@ async function overlayWorkspacePath(
     recursive: true,
     verbatimSymlinks: true,
     mode: fsConstants.COPYFILE_FICLONE,
-    filter: () => !signal?.aborted,
+    filter: (candidatePath) => {
+      if (signal?.aborted) return false;
+      const candidateRelativePath = path
+        .relative(sourceRoot, candidatePath)
+        .split(path.sep)
+        .join("/");
+      return !isExcludedSnapshotRelativePath(
+        candidateRelativePath,
+        appRelativePath,
+      );
+    },
   });
   throwIfBuildCancelled(signal);
 }
@@ -351,6 +386,7 @@ async function overlayWorkspaceState(
             realSourceRoot,
             snapshotRoot,
             relativePath,
+            appRelativePath,
             signal,
           ),
         ),
@@ -364,6 +400,7 @@ export async function copySnapshotEntriesOnWindows(
   snapshotRoot: string,
   initialPaths: string[],
   signal?: AbortSignal,
+  appRelativePath?: string,
 ): Promise<void> {
   const pendingPaths = [...initialPaths];
   while (pendingPaths.length > 0) {
@@ -377,6 +414,7 @@ export async function copySnapshotEntriesOnWindows(
           snapshotRoot,
           sourcePath,
           signal,
+          appRelativePath,
         ),
       ),
     );
@@ -390,8 +428,19 @@ async function copySnapshotEntryOnWindows(
   snapshotRoot: string,
   sourcePath: string,
   signal?: AbortSignal,
+  appRelativePath?: string,
 ): Promise<string[]> {
   throwIfBuildCancelled(signal);
+  const sourceRelativePath = path
+    .relative(sourceRoot, sourcePath)
+    .split(path.sep)
+    .join("/");
+  if (
+    appRelativePath !== undefined &&
+    isExcludedSnapshotRelativePath(sourceRelativePath, appRelativePath)
+  ) {
+    return [];
+  }
   const destinationPath = path.join(
     snapshotRoot,
     path.relative(sourceRoot, sourcePath),
@@ -573,10 +622,12 @@ function getSnapshotMarkerPath(snapshotPath: string): string {
 async function writeSnapshotMarker(
   snapshotPath: string,
   sourceRepoPath: string,
+  submoduleWorktrees: SubmoduleWorktree[] = [],
 ): Promise<void> {
   const marker: SnapshotMarker = {
     schema: SNAPSHOT_MARKER_SCHEMA,
     sourceRepoPath,
+    submoduleWorktrees,
   };
   await fs.writeFile(
     getSnapshotMarkerPath(snapshotPath),
@@ -592,11 +643,30 @@ async function readSnapshotMarker(
     const parsed = JSON.parse(
       await fs.readFile(getSnapshotMarkerPath(snapshotPath), "utf8"),
     ) as Partial<SnapshotMarker>;
-    return parsed.schema === SNAPSHOT_MARKER_SCHEMA &&
-      typeof parsed.sourceRepoPath === "string" &&
-      path.isAbsolute(parsed.sourceRepoPath)
-      ? (parsed as SnapshotMarker)
-      : null;
+    if (
+      parsed.schema !== SNAPSHOT_MARKER_SCHEMA ||
+      typeof parsed.sourceRepoPath !== "string" ||
+      !path.isAbsolute(parsed.sourceRepoPath)
+    ) {
+      return null;
+    }
+    const submoduleWorktrees = Array.isArray(parsed.submoduleWorktrees)
+      ? parsed.submoduleWorktrees.filter(
+          (worktree): worktree is SubmoduleWorktree =>
+            typeof worktree === "object" &&
+            worktree !== null &&
+            typeof worktree.sourceRepoPath === "string" &&
+            path.isAbsolute(worktree.sourceRepoPath) &&
+            typeof worktree.snapshotPath === "string" &&
+            path.isAbsolute(worktree.snapshotPath) &&
+            pathIsInside(snapshotPath, worktree.snapshotPath),
+        )
+      : [];
+    return {
+      schema: SNAPSHOT_MARKER_SCHEMA,
+      sourceRepoPath: parsed.sourceRepoPath,
+      submoduleWorktrees,
+    };
   } catch {
     return null;
   }
@@ -610,6 +680,109 @@ async function removeExcludedSnapshotRoots(
       fs.rm(path.join(snapshotPath, entry), { recursive: true, force: true }),
     ),
   );
+}
+
+async function materializeInitializedSubmodules(
+  sourceRepoPath: string,
+  snapshotRepoPath: string,
+  ownerSnapshotPath: string,
+  ownerSourceRepoPath: string,
+  emptyHooksPath: string,
+  registeredWorktrees: SubmoduleWorktree[],
+  appRelativePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const gitmodulesPath = path.join(sourceRepoPath, ".gitmodules");
+  const hasGitmodules = await fs
+    .stat(gitmodulesPath)
+    .then((stat) => stat.isFile())
+    .catch(() => false);
+  if (!hasGitmodules) return;
+
+  const config = await runSnapshotGit(
+    sourceRepoPath,
+    [
+      "config",
+      "-z",
+      "--file",
+      gitmodulesPath,
+      "--get-regexp",
+      "^submodule\\..*\\.path$",
+    ],
+    signal,
+    [0, 1],
+  );
+  for (const entry of config.stdout.split("\0")) {
+    const separatorIndex = entry.indexOf("\n");
+    if (separatorIndex < 0) continue;
+    const relativePath = normalizeSnapshotRelativePath(
+      entry.slice(separatorIndex + 1),
+      appRelativePath,
+    );
+    if (!relativePath) continue;
+    const sourceSubmodulePath = path.join(
+      sourceRepoPath,
+      toNativeSnapshotPath(relativePath),
+    );
+    const initialized = await fs
+      .lstat(path.join(sourceSubmodulePath, ".git"))
+      .then(() => true)
+      .catch(() => false);
+    if (!initialized) continue;
+
+    const snapshotSubmodulePath = path.join(
+      snapshotRepoPath,
+      toNativeSnapshotPath(relativePath),
+    );
+    const childAppRelativePath = !appRelativePath
+      ? ""
+      : relativePath === appRelativePath
+        ? ""
+        : relativePath.startsWith(`${appRelativePath}/`)
+          ? ""
+          : appRelativePath.startsWith(`${relativePath}/`)
+            ? appRelativePath.slice(relativePath.length + 1)
+            : "__outside_target_app__";
+    registeredWorktrees.push({
+      sourceRepoPath: sourceSubmodulePath,
+      snapshotPath: snapshotSubmodulePath,
+    });
+    await writeSnapshotMarker(
+      ownerSnapshotPath,
+      ownerSourceRepoPath,
+      registeredWorktrees,
+    );
+    await fs.rm(snapshotSubmodulePath, { recursive: true, force: true });
+    await runSnapshotGit(
+      sourceSubmodulePath,
+      [
+        "-c",
+        `core.hooksPath=${emptyHooksPath}`,
+        "worktree",
+        "add",
+        "--detach",
+        snapshotSubmodulePath,
+        "HEAD",
+      ],
+      signal,
+    );
+    await overlayWorkspaceState(
+      sourceSubmodulePath,
+      snapshotSubmodulePath,
+      childAppRelativePath,
+      signal,
+    );
+    await materializeInitializedSubmodules(
+      sourceSubmodulePath,
+      snapshotSubmodulePath,
+      ownerSnapshotPath,
+      ownerSourceRepoPath,
+      emptyHooksPath,
+      registeredWorktrees,
+      childAppRelativePath,
+      signal,
+    );
+  }
 }
 
 export async function createBuildWorktree(
@@ -637,6 +810,7 @@ export async function createBuildWorktree(
 
     tempRoot = await fs.mkdtemp(path.join(snapshotRoot, SNAPSHOT_PREFIX));
     await writeSnapshotMarker(tempRoot, sourceRepoPath);
+    const registeredSubmoduleWorktrees: SubmoduleWorktree[] = [];
     const emptyHooksPath = path.join(snapshotRoot, ".empty-hooks");
     await fs.mkdir(emptyHooksPath, { recursive: true });
     await runSnapshotGit(
@@ -657,6 +831,16 @@ export async function createBuildWorktree(
     await overlayWorkspaceState(
       sourceRepoPath,
       tempRoot,
+      appRelativePosix,
+      signal,
+    );
+    await materializeInitializedSubmodules(
+      sourceRepoPath,
+      tempRoot,
+      tempRoot,
+      sourceRepoPath,
+      emptyHooksPath,
+      registeredSubmoduleWorktrees,
       appRelativePosix,
       signal,
     );
@@ -741,9 +925,39 @@ export async function removeSnapshot(
   snapshotPath: string,
   sourceRepoPath?: string,
 ): Promise<void> {
+  const storedMarker = await readSnapshotMarker(snapshotPath);
   const marker = sourceRepoPath
-    ? { sourceRepoPath }
-    : await readSnapshotMarker(snapshotPath);
+    ? {
+        sourceRepoPath,
+        submoduleWorktrees: storedMarker?.submoduleWorktrees ?? [],
+      }
+    : storedMarker;
+  for (const worktree of [...(marker?.submoduleWorktrees ?? [])].reverse()) {
+    try {
+      await runSnapshotGit(
+        worktree.sourceRepoPath,
+        ["worktree", "remove", "--force", worktree.snapshotPath],
+        AbortSignal.timeout(30_000),
+      );
+    } catch (error) {
+      logger.warn(
+        `Failed to unregister build submodule worktree ${worktree.snapshotPath}:`,
+        error,
+      );
+      try {
+        await runSnapshotGit(
+          worktree.sourceRepoPath,
+          ["worktree", "prune"],
+          AbortSignal.timeout(30_000),
+        );
+      } catch (pruneError) {
+        logger.warn(
+          `Failed to prune build submodule worktree metadata for ${worktree.sourceRepoPath}:`,
+          pruneError,
+        );
+      }
+    }
+  }
   let removedByGit = false;
   if (marker?.sourceRepoPath) {
     try {
@@ -796,9 +1010,106 @@ export function accumulateBuildOutput(previous: string, chunk: string): string {
   return tail(previous + chunk);
 }
 
-async function resolvePackageManager(appPath: string) {
+async function matchesWorkspacePatterns(
+  workspaceRoot: string,
+  appPath: string,
+  workspaces: string[],
+): Promise<boolean> {
+  const positivePatterns = workspaces.filter(
+    (workspace) => !workspace.startsWith("!"),
+  );
+  if (positivePatterns.length === 0) return false;
+  const ignoredPatterns = workspaces
+    .filter((workspace) => workspace.startsWith("!"))
+    .map((workspace) => workspace.slice(1));
+  const matches = await glob(positivePatterns, {
+    cwd: workspaceRoot,
+    absolute: true,
+    follow: false,
+    ignore: ignoredPatterns,
+  });
+  const realAppPath = await fs.realpath(appPath);
+  for (const match of matches) {
+    const realMatch = await fs.realpath(match).catch(() => null);
+    if (realMatch === realAppPath) return true;
+  }
+  return false;
+}
+
+async function isNpmWorkspaceMember(
+  workspaceRoot: string,
+  appPath: string,
+): Promise<boolean> {
+  let packageJson: {
+    workspaces?: string[] | { packages?: string[] };
+  };
+  try {
+    packageJson = JSON.parse(
+      await fs.readFile(path.join(workspaceRoot, "package.json"), "utf8"),
+    ) as typeof packageJson;
+  } catch {
+    return false;
+  }
+  const workspaces = Array.isArray(packageJson.workspaces)
+    ? packageJson.workspaces
+    : packageJson.workspaces?.packages;
+  return workspaces?.length
+    ? matchesWorkspacePatterns(workspaceRoot, appPath, workspaces)
+    : false;
+}
+
+async function isPnpmWorkspaceMember(
+  workspaceRoot: string,
+  appPath: string,
+): Promise<boolean> {
+  try {
+    const parsed = parseYaml(
+      await fs.readFile(
+        path.join(workspaceRoot, "pnpm-workspace.yaml"),
+        "utf8",
+      ),
+    ) as { packages?: unknown } | null;
+    const workspaces = Array.isArray(parsed?.packages)
+      ? parsed.packages.filter(
+          (workspace): workspace is string => typeof workspace === "string",
+        )
+      : [];
+    return workspaces.length > 0
+      ? matchesWorkspacePatterns(workspaceRoot, appPath, workspaces)
+      : false;
+  } catch {
+    return false;
+  }
+}
+
+export async function findPackageManagerRoot(
+  appPath: string,
+  repoRoot: string,
+): Promise<string> {
+  let candidate = path.dirname(appPath);
+  while (pathIsInside(repoRoot, candidate)) {
+    if (
+      (await isPnpmWorkspaceMember(candidate, appPath)) ||
+      (await isNpmWorkspaceMember(candidate, appPath))
+    ) {
+      return candidate;
+    }
+    if (candidate === repoRoot) break;
+    candidate = path.dirname(candidate);
+  }
+  return appPath;
+}
+
+async function resolvePackageManager(appPath: string, repoRoot = appPath) {
   const support = await getPnpmMinimumReleaseAgeSupport();
-  return choosePackageManagerForApp(appPath, support.available);
+  const sourceInstallPath = await findPackageManagerRoot(appPath, repoRoot);
+  return {
+    packageManager: choosePackageManagerForApp(
+      sourceInstallPath,
+      support.available,
+    ),
+    sourceInstallPath,
+  };
 }
 
 export function getCleanInstallArgs({
@@ -825,14 +1136,12 @@ export function getCleanInstallArgs({
 
 async function runSnapshotInstallProcess({
   cwd,
-  repositoryRoot,
   packageManager,
   signal,
   timeoutMs,
   onOutput,
 }: {
   cwd: string;
-  repositoryRoot: string;
   packageManager: "npm" | "pnpm";
   signal?: AbortSignal;
   timeoutMs: number;
@@ -840,16 +1149,10 @@ async function runSnapshotInstallProcess({
 }) {
   const lockfileName =
     packageManager === "pnpm" ? "pnpm-lock.yaml" : "package-lock.json";
-  let lockfileDirectory = cwd;
-  let hasLockfile = false;
-  while (pathIsInside(repositoryRoot, lockfileDirectory)) {
-    hasLockfile = await fs
-      .stat(path.join(lockfileDirectory, lockfileName))
-      .then((stat) => stat.isFile())
-      .catch(() => false);
-    if (hasLockfile || lockfileDirectory === repositoryRoot) break;
-    lockfileDirectory = path.dirname(lockfileDirectory);
-  }
+  const hasLockfile = await fs
+    .stat(path.join(cwd, lockfileName))
+    .then((stat) => stat.isFile())
+    .catch(() => false);
   return spawnStreaming({
     command: packageManager,
     args: getCleanInstallArgs({ packageManager, hasLockfile }),
@@ -997,7 +1300,14 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               DyadErrorKind.Precondition,
             );
           }
-          const facts = await gatherBuildProjectFacts(ctx, buildScript);
+          const facts = await gatherBuildProjectFacts(
+            ctx,
+            buildScript,
+            Boolean(
+              getScript(packageJson, "prebuild") ||
+              getScript(packageJson, "postbuild"),
+            ),
+          );
           const mode = selectBuildExecutionMode(facts);
 
           ctx.onXmlStream(
@@ -1010,9 +1320,21 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           let phase: "snapshot setup" | "dependency installation" | "build" =
             "snapshot setup";
           try {
-            const packageManager = await resolvePackageManager(ctx.appPath);
+            let packageManager: "npm" | "pnpm";
             if (mode === "isolated") {
               snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
+              const packageManagerResolution = await resolvePackageManager(
+                ctx.appPath,
+                snapshot.sourceRepoPath,
+              );
+              packageManager = packageManagerResolution.packageManager;
+              const snapshotInstallPath = path.join(
+                snapshot.worktreePath,
+                path.relative(
+                  snapshot.sourceRepoPath,
+                  packageManagerResolution.sourceInstallPath,
+                ),
+              );
               phase = "dependency installation";
               ctx.onXmlStream(
                 '<dyad-status title="Installing isolated build dependencies"></dyad-status>',
@@ -1020,8 +1342,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               let streamedInstallOutput = "";
               const installStartedAt = Date.now();
               const installResult = await runSnapshotInstallProcess({
-                cwd: snapshot.path,
-                repositoryRoot: snapshot.worktreePath,
+                cwd: snapshotInstallPath,
                 packageManager,
                 signal: abortScope.signal,
                 timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
@@ -1060,6 +1381,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
                 );
                 return body;
               }
+            } else {
+              packageManager = (await resolvePackageManager(ctx.appPath))
+                .packageManager;
             }
             phase = "build";
             state.count += 1;

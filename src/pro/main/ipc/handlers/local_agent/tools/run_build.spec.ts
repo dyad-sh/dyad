@@ -21,6 +21,7 @@ import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
   createBuildWorktree,
+  findPackageManagerRoot,
   gatherBuildProjectFacts,
   getCleanInstallArgs,
   parseWorkspaceOverlayPaths,
@@ -45,6 +46,7 @@ const safeViteFacts: BuildProjectFacts = {
   nextMajorVersion: null,
   previewRunning: true,
   nextDevOutputIsolated: false,
+  hasBuildLifecycleHooks: false,
 };
 
 describe("run_build", () => {
@@ -126,12 +128,14 @@ describe("run_build", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
     temporaryDirectories.push(root);
     const repoPath = path.join(root, "repo");
+    const modulePath = path.join(root, "module");
     const appPath = path.join(repoPath, "packages", "app");
     const sharedPath = path.join(repoPath, "packages", "shared");
     const snapshotsPath = path.join(root, "snapshots");
     await Promise.all([
       fs.mkdir(path.join(appPath, "src"), { recursive: true }),
       fs.mkdir(sharedPath, { recursive: true }),
+      fs.mkdir(modulePath),
     ]);
     await Promise.all([
       fs.writeFile(
@@ -142,10 +146,32 @@ describe("run_build", () => {
       fs.writeFile(path.join(appPath, "src", "changed.ts"), "before\n"),
       fs.writeFile(path.join(appPath, "src", "deleted.ts"), "delete me\n"),
       fs.writeFile(path.join(sharedPath, "config.ts"), "before\n"),
+      fs.writeFile(path.join(modulePath, "shared.ts"), "submodule\n"),
     ]);
+    await runGit(modulePath, "init");
+    await runGit(modulePath, "config", "user.email", "test@example.com");
+    await runGit(modulePath, "config", "user.name", "Test User");
+    await runGit(modulePath, "add", ".");
+    await runGit(
+      modulePath,
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "-m",
+      "initial",
+    );
     await runGit(repoPath, "init");
     await runGit(repoPath, "config", "user.email", "test@example.com");
     await runGit(repoPath, "config", "user.name", "Test User");
+    await runGit(
+      repoPath,
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      modulePath,
+      "vendor/shared",
+    );
     await runGit(repoPath, "add", ".");
     await runGit(
       repoPath,
@@ -160,15 +186,28 @@ describe("run_build", () => {
       fs.writeFile(path.join(appPath, "src", "changed.ts"), "after\n"),
       fs.rm(path.join(appPath, "src", "deleted.ts")),
       fs.writeFile(path.join(sharedPath, "config.ts"), "after\n"),
+      fs.writeFile(
+        path.join(repoPath, "vendor", "shared", "shared.ts"),
+        "submodule dirty\n",
+      ),
       fs.mkdir(path.join(appPath, "new")),
       fs.mkdir(path.join(appPath, "node_modules")),
       fs.mkdir(path.join(appPath, "dist")),
     ]);
     await Promise.all([
       fs.writeFile(path.join(appPath, "new", "file.ts"), "new\n"),
+      fs.mkdir(path.join(appPath, "new", "node_modules")),
+      fs.mkdir(path.join(appPath, "new", "dist")),
       fs.writeFile(path.join(appPath, ".env"), "SECRET=test\n"),
       fs.writeFile(path.join(appPath, "node_modules", "live.txt"), "live\n"),
       fs.writeFile(path.join(appPath, "dist", "live.txt"), "live\n"),
+    ]);
+    await Promise.all([
+      fs.writeFile(
+        path.join(appPath, "new", "node_modules", "live.txt"),
+        "live\n",
+      ),
+      fs.writeFile(path.join(appPath, "new", "dist", "live.txt"), "live\n"),
     ]);
 
     const snapshot = await createBuildWorktree(appPath, snapshotsPath);
@@ -198,10 +237,33 @@ describe("run_build", () => {
         ),
       ).resolves.toBe("after\n");
       await expect(
+        fs.readFile(
+          path.join(snapshot.worktreePath, "vendor", "shared", "shared.ts"),
+          "utf8",
+        ),
+      ).resolves.toBe("submodule dirty\n");
+      expect(
+        (
+          await runGit(
+            path.join(snapshot.worktreePath, "vendor", "shared"),
+            "rev-parse",
+            "--show-toplevel",
+          )
+        ).trim(),
+      ).toBe(
+        await fs.realpath(path.join(snapshot.worktreePath, "vendor", "shared")),
+      );
+      await expect(
         fs.lstat(path.join(snapshot.path, "node_modules")),
       ).rejects.toMatchObject({ code: "ENOENT" });
       await expect(
         fs.lstat(path.join(snapshot.path, "dist")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.lstat(path.join(snapshot.path, "new", "node_modules")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        fs.lstat(path.join(snapshot.path, "new", "dist")),
       ).rejects.toMatchObject({ code: "ENOENT" });
       await expect(
         fs.lstat(path.join(snapshot.worktreePath, ".dyad-build-snapshot")),
@@ -209,6 +271,85 @@ describe("run_build", () => {
     } finally {
       await removeSnapshot(snapshot.worktreePath, snapshot.sourceRepoPath);
     }
+  });
+
+  it("uses only applicable workspace roots for package-manager signals", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const workspaceRoot = path.join(root, "workspace");
+    const workspaceApp = path.join(workspaceRoot, "packages", "app");
+    const independentRoot = path.join(root, "independent");
+    const independentApp = path.join(independentRoot, "packages", "app");
+    const pnpmRoot = path.join(root, "pnpm-workspace");
+    const pnpmApp = path.join(pnpmRoot, "packages", "app");
+    const excludedPnpmApp = path.join(pnpmRoot, "examples", "app");
+    await Promise.all([
+      fs.mkdir(workspaceApp, { recursive: true }),
+      fs.mkdir(independentApp, { recursive: true }),
+      fs.mkdir(pnpmApp, { recursive: true }),
+      fs.mkdir(excludedPnpmApp, { recursive: true }),
+    ]);
+    await Promise.all([
+      fs.writeFile(
+        path.join(workspaceRoot, "package.json"),
+        JSON.stringify({ workspaces: ["packages/*"] }),
+      ),
+      fs.writeFile(path.join(workspaceRoot, "package-lock.json"), "{}"),
+      fs.writeFile(
+        path.join(workspaceApp, "package.json"),
+        JSON.stringify({ packageManager: "npm@11.0.0" }),
+      ),
+      fs.writeFile(path.join(independentRoot, "package.json"), "{}"),
+      fs.writeFile(path.join(independentRoot, "package-lock.json"), "{}"),
+      fs.writeFile(path.join(independentApp, "package.json"), "{}"),
+      fs.writeFile(path.join(pnpmRoot, "package.json"), "{}"),
+      fs.writeFile(
+        path.join(pnpmRoot, "pnpm-workspace.yaml"),
+        "packages:\n  - packages/*\n",
+      ),
+      fs.writeFile(path.join(pnpmApp, "package.json"), "{}"),
+      fs.writeFile(path.join(excludedPnpmApp, "package.json"), "{}"),
+    ]);
+
+    await expect(
+      findPackageManagerRoot(workspaceApp, workspaceRoot),
+    ).resolves.toBe(workspaceRoot);
+    await expect(
+      findPackageManagerRoot(independentApp, independentRoot),
+    ).resolves.toBe(independentApp);
+    await expect(findPackageManagerRoot(pnpmApp, pnpmRoot)).resolves.toBe(
+      pnpmRoot,
+    );
+    await expect(
+      findPackageManagerRoot(excludedPnpmApp, pnpmRoot),
+    ).resolves.toBe(excludedPnpmApp);
+  });
+
+  it("accepts a repository with an empty .gitmodules file", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const repoPath = path.join(root, "repo");
+    const snapshotsPath = path.join(root, "snapshots");
+    await fs.mkdir(repoPath);
+    await Promise.all([
+      fs.writeFile(path.join(repoPath, "package.json"), "{}"),
+      fs.writeFile(path.join(repoPath, ".gitmodules"), ""),
+    ]);
+    await runGit(repoPath, "init");
+    await runGit(repoPath, "config", "user.email", "test@example.com");
+    await runGit(repoPath, "config", "user.name", "Test User");
+    await runGit(repoPath, "add", ".");
+    await runGit(
+      repoPath,
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "-m",
+      "initial",
+    );
+
+    const snapshot = await createBuildWorktree(repoPath, snapshotsPath);
+    await removeSnapshot(snapshot.worktreePath, snapshot.sourceRepoPath);
   });
 
   it("accumulates streamed build output instead of replacing earlier chunks", () => {
@@ -269,6 +410,12 @@ describe("run_build", () => {
       selectBuildExecutionMode({
         ...safeViteFacts,
         buildScript: "tsc -b && vite build",
+      }),
+    ).toBe("isolated");
+    expect(
+      selectBuildExecutionMode({
+        ...safeViteFacts,
+        hasBuildLifecycleHooks: true,
       }),
     ).toBe("isolated");
   });

@@ -87,7 +87,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   packages match the live workspace.
 - Apply overlay exclusions at the same path depth on every backend. Exclude
   `node_modules` anywhere in the repository and generated output roots under
-  the target app; never overlay live dependency trees or build output.
+  the target app; never overlay live dependency trees or build output. Enforce
+  these exclusions during recursive traversal too: Git can report an untracked
+  parent while ignored dependency/output directories sit beneath it.
 - An isolated build must exclude the live app's `node_modules` and install a
   clean dependency tree inside the snapshot with the package manager selected
   from the live app's existing signals. Use the lockfile's frozen/CI mode when
@@ -97,6 +99,14 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   junctions: remap targets inside the source repository into the worktree, and
   reject targets outside the repository rather than leaving a path back to live
   files.
+- For a nested workspace app, use ancestor package-manager and lockfile signals
+  only after confirming that the app belongs to that npm/pnpm workspace, then
+  install from the applicable workspace root. An unrelated ancestor lockfile
+  must not turn a child install into `npm ci`.
+- A detached superproject worktree does not populate Git submodules. Materialize
+  initialized live submodules from local state without fetching so isolated
+  builds retain both their inputs and Git boundary; leave live-uninitialized
+  submodules uninitialized.
 - On Windows, do not classify junctions from `Dirent`: libuv may report a
   reparse-point directory as an ordinary directory. Use `lstat`, recreate
   directory links as junctions, and copy linked files so snapshot setup does
@@ -126,6 +136,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   standard Vite build in place, run Next.js 16+ in place only when `.next/dev`
   confirms separate development output, and isolate Next.js 15 and unknown or
   custom build commands. Keep this decision independent of the host OS.
+  Because package managers may execute `prebuild` and `postbuild` around an
+  otherwise standard command, isolate any concurrent build with either hook.
 - Acquire app-operation claims before reading and validating build scripts,
   lifecycle hooks, and preview facts. Re-detect framework facts from that
   locked workspace instead of using turn-start context, because an integration

@@ -66,6 +66,7 @@ export function useStreamChat({
       selectedComponents,
       requestedChatMode,
       planAcceptInNewChat,
+      onAccepted,
       onSettled,
     }: {
       prompt: string;
@@ -76,6 +77,7 @@ export function useStreamChat({
       selectedComponents?: ComponentSelection[];
       requestedChatMode?: Chat["chatMode"] | null;
       planAcceptInNewChat?: boolean;
+      onAccepted?: () => void;
       onSettled?: (result: StreamSettledResult) => void;
     }) => {
       if (
@@ -115,6 +117,7 @@ export function useStreamChat({
           selectedComponents,
           requestedChatMode,
           planAcceptInNewChat,
+          onAccepted,
           onSettled,
         },
       });

@@ -294,6 +294,79 @@ describe("chat mode (integration)", () => {
     }
   }, 60_000);
 
+  it("atomically reserves the final Basic Agent quota slot across chats", async () => {
+    const originalSettings = readSettings();
+    await harness.db
+      .update(messages)
+      .set({ usingFreeAgentModeQuota: false })
+      .where(eq(messages.usingFreeAgentModeQuota, true));
+
+    const seedChatId = await harness.createChat();
+    const firstChatId = await harness.createChat();
+    const secondChatId = await harness.createChat();
+    await harness.db
+      .update(chats)
+      .set({ chatMode: "local-agent" })
+      .where(eq(chats.id, firstChatId));
+    await harness.db
+      .update(chats)
+      .set({ chatMode: "local-agent" })
+      .where(eq(chats.id, secondChatId));
+    await harness.db.insert(messages).values(
+      Array.from({ length: FREE_AGENT_QUOTA_LIMIT - 1 }, (_, index) => ({
+        chatId: seedChatId,
+        role: "user" as const,
+        content: `reserved quota message ${index + 1}`,
+        usingFreeAgentModeQuota: true,
+      })),
+    );
+    writeSettings({
+      enableDyadPro: false,
+      selectedChatMode: "local-agent",
+      defaultChatMode: "local-agent",
+    });
+
+    try {
+      const results = await Promise.all([
+        harness.streamChat("tc=local-agent/simple-response first contender", {
+          chatId: firstChatId,
+          requestedChatMode: "local-agent",
+          userInputRequestId: "first-quota-contender",
+        }),
+        harness.streamChat("tc=local-agent/simple-response second contender", {
+          chatId: secondChatId,
+          requestedChatMode: "local-agent",
+          userInputRequestId: "second-quota-contender",
+        }),
+      ]);
+
+      expect(
+        results.filter(
+          (result) => result.eventsFor("chat:response:error").length === 1,
+        ),
+      ).toHaveLength(1);
+      expect(
+        results.filter(
+          (result) => result.eventsFor("chat:response:end").length === 1,
+        ),
+      ).toHaveLength(1);
+
+      const quotaMessages = await harness.db.query.messages.findMany({
+        where: eq(messages.usingFreeAgentModeQuota, true),
+      });
+      expect(quotaMessages).toHaveLength(FREE_AGENT_QUOTA_LIMIT);
+      expect(
+        quotaMessages.filter(({ content }) => content.includes("contender")),
+      ).toHaveLength(1);
+    } finally {
+      await harness.db
+        .update(messages)
+        .set({ usingFreeAgentModeQuota: false })
+        .where(eq(messages.usingFreeAgentModeQuota, true));
+      writeSettings(originalSettings);
+    }
+  }, 60_000);
+
   it("lets main resolve an implicit Google-only first turn", async () => {
     writeSettings({
       enableDyadPro: false,

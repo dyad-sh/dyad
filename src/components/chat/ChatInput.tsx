@@ -583,11 +583,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // Not streaming - send immediately
-    // Clear input and components before sending
-    clearComposerAfterSubmit();
-
-    // Send message with attachments and clear them after sending
+    // Not streaming - send immediately. Keep the submitted payload in the
+    // composer until main confirms durable acceptance so admission errors
+    // (including exhausted Basic Agent quota) never discard the user's work.
     void openPreviewIfSetupRequired(appId);
     await streamMessage({
       prompt: currentInput,
@@ -596,8 +594,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       redo: false,
       selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
+      onAccepted: () => {
+        clearComposerAfterSubmit();
+        clearAttachments();
+      },
     });
-    clearAttachments();
     posthog.capture("chat:submit", { chatMode });
   };
 

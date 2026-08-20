@@ -147,6 +147,7 @@ import {
   isChatTurnAlreadyAccepted,
 } from "./chat_turn_acceptance";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
+import { withLock } from "@/ipc/utils/lock_utils";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -902,6 +903,7 @@ export function registerChatStreamHandlers() {
     let finishedNaturally = false;
     let replayedAcceptedFollowUp = false;
     let mutatedPersistedChat = false;
+    let reservedFreeAgentQuotaMessageId: number | null = null;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -1393,9 +1395,45 @@ ${componentSnippet}
         chatTurnIntentId: req.intentId,
         userInputRequestId: req.userInputRequestId,
       });
+      const acceptTurn = () =>
+        withChatQueueLock(req.chatId, () =>
+          acceptChatTurn(db, {
+            chatId: req.chatId,
+            storedChatMode: chat.chatMode,
+            selectedChatMode,
+            selectedModel,
+            content:
+              implementPlanDisplayPrompt ??
+              displayUserPrompt ??
+              defaultAiUserPrompt,
+            userInputRequestId: req.userInputRequestId,
+            chatTurnIntentId: req.intentId,
+            chatTurnIntent: executionObserver(req)?.intent,
+          }),
+        );
+
+      let acceptedTurn: Awaited<ReturnType<typeof acceptTurn>>;
       if (isBasicAgentModeRequest && !isAcceptedReplay) {
-        const quotaStatus = await getFreeAgentQuotaStatus();
-        if (quotaStatus.isQuotaExceeded) {
+        const quotaAdmission = await withLock(
+          "free-agent-quota-admission",
+          async () => {
+            const quotaStatus = await getFreeAgentQuotaStatus();
+            if (quotaStatus.isQuotaExceeded) {
+              return { kind: "quota-exceeded", quotaStatus } as const;
+            }
+
+            const acceptedTurn = await acceptTurn();
+            mutatedPersistedChat = true;
+            if (acceptedTurn.userMessageId !== null) {
+              await markMessageAsUsingFreeAgentQuota(
+                acceptedTurn.userMessageId,
+              );
+            }
+            return { kind: "accepted", acceptedTurn } as const;
+          },
+        );
+        if (quotaAdmission.kind === "quota-exceeded") {
+          const { quotaStatus } = quotaAdmission;
           safeSend(event.sender, "chat:response:error", {
             chatId: req.chatId,
             invocationRef: req.invocationRef,
@@ -1408,27 +1446,16 @@ ${componentSnippet}
           } satisfies ChatStreamErrorPayload);
           return req.chatId;
         }
+        acceptedTurn = quotaAdmission.acceptedTurn;
+        reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
+      } else {
+        acceptedTurn = await acceptTurn();
       }
 
       // Accept the user message and latch an implicit chat's first mode in one
       // synchronous transaction. This keeps the idempotent message insert and
       // the mode latch atomic. The conditional update also arbitrates
       // concurrent first turns; a loser reloads and uses the winner below.
-      const acceptedTurn = await withChatQueueLock(req.chatId, () =>
-        acceptChatTurn(db, {
-          chatId: req.chatId,
-          storedChatMode: chat.chatMode,
-          selectedChatMode,
-          selectedModel,
-          content:
-            implementPlanDisplayPrompt ??
-            displayUserPrompt ??
-            defaultAiUserPrompt,
-          userInputRequestId: req.userInputRequestId,
-          chatTurnIntentId: req.intentId,
-          chatTurnIntent: executionObserver(req)?.intent,
-        }),
-      );
       mutatedPersistedChat = true;
       if (acceptedTurn.userMessageId !== null) {
         executionObserver(req)?.onAccepted?.(acceptedTurn.userMessageId);
@@ -1488,6 +1515,15 @@ ${componentSnippet}
         selectedChatMode,
       };
       isBasicAgentModeRequest = isBasicAgentMode(settings);
+      if (
+        !isBasicAgentModeRequest &&
+        reservedFreeAgentQuotaMessageId !== null
+      ) {
+        await unmarkMessageAsUsingFreeAgentQuota(
+          reservedFreeAgentQuotaMessageId,
+        );
+        reservedFreeAgentQuotaMessageId = null;
+      }
       const freeModelMode = isFreeProModel(settings.selectedModel);
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),
@@ -2329,37 +2365,26 @@ This conversation includes one or more image attachments. When the user uploads 
         // injects a `<system-reminder>` into the user's latest message telling
         // the agent which `app_name` values are valid.
         if (isLocalAgentMode) {
-          // Mark the user message as using quota BEFORE starting the stream
-          // to prevent race conditions with parallel requests
-          if (isBasicAgentModeRequest && userMessageId) {
-            await markMessageAsUsingFreeAgentQuota(userMessageId);
-          }
-
-          let streamSuccess = false;
-          try {
-            streamSuccess = await handleLocalAgentStream(
-              event,
-              req,
-              abortController,
-              {
-                placeholderMessageId: placeholderAssistantMessage.id,
-                systemPrompt,
-                dyadRequestId: dyadRequestId ?? "[no-request-id]",
-                messageOverride: isSummarizeIntent ? chatMessages : undefined,
-                settingsOverride: settings,
-                modelSelectionOverride: selectedModel,
-                freeModelMode,
-                preCommitHookAvailable,
-                referencedApps: referencedAppsForAgent,
-                currentTurnHasOnDiskAttachment:
-                  hasScriptReadableAttachment(storedAttachments),
-              },
-            );
-          } finally {
-            // If the stream failed, was aborted, or threw, refund the quota
-            if (isBasicAgentModeRequest && userMessageId && !streamSuccess) {
-              await unmarkMessageAsUsingFreeAgentQuota(userMessageId);
-            }
+          const streamSuccess = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+            {
+              placeholderMessageId: placeholderAssistantMessage.id,
+              systemPrompt,
+              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              settingsOverride: settings,
+              modelSelectionOverride: selectedModel,
+              freeModelMode,
+              preCommitHookAvailable,
+              referencedApps: referencedAppsForAgent,
+              currentTurnHasOnDiskAttachment:
+                hasScriptReadableAttachment(storedAttachments),
+            },
+          );
+          if (streamSuccess) {
+            reservedFreeAgentQuotaMessageId = null;
           }
 
           finishedNaturally = streamSuccess;
@@ -2702,6 +2727,15 @@ This conversation includes one or more image attachments. When the user uploads 
 
       return "error";
     } finally {
+      if (reservedFreeAgentQuotaMessageId !== null) {
+        try {
+          await unmarkMessageAsUsingFreeAgentQuota(
+            reservedFreeAgentQuotaMessageId,
+          );
+        } catch (error) {
+          logger.error("Failed to refund reserved Basic Agent quota", error);
+        }
+      }
       if (mutatedPersistedChat) {
         queryInvalidationBus.publish(
           [{ family: "chats" }, { family: "chat", chatId: req.chatId }],

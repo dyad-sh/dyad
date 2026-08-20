@@ -75,10 +75,15 @@ testSkipIfWindows(
       "Basic Agent",
     );
     await expect(
-      po.page.getByText("tc=local-agent/simple-response message 11", {
-        exact: true,
-      }),
+      po.page
+        .getByTestId("messages-list")
+        .getByText("tc=local-agent/simple-response message 11", {
+          exact: true,
+        }),
     ).toHaveCount(0);
+    await expect(po.chatActions.getChatInput()).toContainText(
+      "tc=local-agent/simple-response message 11",
+    );
 
     // 7. Switch through the error box. This changes mode and dismisses the
     // error without automatically retrying the rejected prompt.
@@ -91,10 +96,15 @@ testSkipIfWindows(
       po.page.getByTestId("free-agent-quota-banner"),
     ).not.toBeVisible();
     await expect(
-      po.page.getByText("tc=local-agent/simple-response message 11", {
-        exact: true,
-      }),
+      po.page
+        .getByTestId("messages-list")
+        .getByText("tc=local-agent/simple-response message 11", {
+          exact: true,
+        }),
     ).toHaveCount(0);
+    await expect(po.chatActions.getChatInput()).toContainText(
+      "tc=local-agent/simple-response message 11",
+    );
 
     // 8. Verify the user can explicitly send a later message in Build mode.
     await po.sendPrompt("[dyad-qa=write] create a simple file");

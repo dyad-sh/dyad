@@ -18,6 +18,7 @@ import {
   getPnpmMinimumReleaseAgeSupport,
 } from "@/ipc/utils/socket_firewall";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import { getUserDataPath } from "@/paths/paths";
 import type { AgentContext, ToolDefinition } from "./types";
 import { escapeXmlAttr, escapeXmlContent } from "./types";
 
@@ -29,6 +30,9 @@ const MAX_RESULT_OUTPUT_CHARS = 16_000;
 const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
 const SNAPSHOT_PREFIX = ".dyad-build-";
 const SNAPSHOT_NAME_PATTERN = /^\.dyad-build-[A-Za-z0-9]{6}$/;
+const SNAPSHOT_MARKER = ".dyad-build-snapshot";
+const SNAPSHOT_MARKER_CONTENT = "dyad-build-snapshot-v1";
+const SNAPSHOT_ROOT_NAME = "build-snapshots";
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
   ".git",
   ".next",
@@ -173,23 +177,89 @@ async function copySnapshotEntries(
     // Node's portable copy before treating snapshot setup as unavailable.
   }
 
+  const realSource =
+    process.platform === "win32" ? await fs.realpath(source) : source;
   await Promise.all(
-    entries.map(async (entry) => {
-      if (signal?.aborted) {
-        throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
-      }
-      await fs.cp(path.join(source, entry), path.join(destination, entry), {
-        recursive: true,
-        verbatimSymlinks: true,
-        mode: process.platform === "linux" ? fsConstants.COPYFILE_FICLONE : 0,
-        filter: () => !signal?.aborted,
-      });
-    }),
+    entries.map((entry) =>
+      process.platform === "win32"
+        ? copySnapshotEntryOnWindows(
+            source,
+            realSource,
+            destination,
+            path.join(source, entry),
+            signal,
+          )
+        : fs.cp(path.join(source, entry), path.join(destination, entry), {
+            recursive: true,
+            verbatimSymlinks: true,
+            mode:
+              process.platform === "linux" ? fsConstants.COPYFILE_FICLONE : 0,
+            filter: () => !signal?.aborted,
+          }),
+    ),
   );
 
   if (signal?.aborted) {
     throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
   }
+}
+
+function throwIfBuildCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DyadError("Build cancelled.", DyadErrorKind.UserCancelled);
+  }
+}
+
+async function copySnapshotEntryOnWindows(
+  sourceRoot: string,
+  realSourceRoot: string,
+  snapshotRoot: string,
+  sourcePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfBuildCancelled(signal);
+  const destinationPath = path.join(
+    snapshotRoot,
+    path.relative(sourceRoot, sourcePath),
+  );
+  const stat = await fs.lstat(sourcePath);
+  if (stat.isSymbolicLink()) {
+    let realTarget: string;
+    try {
+      realTarget = await fs.realpath(sourcePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    const targetStat = await fs.stat(realTarget);
+    const mappedTarget = path.join(
+      snapshotRoot,
+      path.relative(realSourceRoot, realTarget),
+    );
+    if (!targetStat.isDirectory()) {
+      await fs.copyFile(realTarget, destinationPath);
+      return;
+    }
+    await fs.symlink(mappedTarget, destinationPath, "junction");
+    return;
+  }
+  if (stat.isDirectory()) {
+    await fs.mkdir(destinationPath, { recursive: true });
+    const children = await fs.readdir(sourcePath);
+    await Promise.all(
+      children.map((child) =>
+        copySnapshotEntryOnWindows(
+          sourceRoot,
+          realSourceRoot,
+          snapshotRoot,
+          path.join(sourcePath, child),
+          signal,
+        ),
+      ),
+    );
+    return;
+  }
+  await fs.copyFile(sourcePath, destinationPath);
 }
 
 function pathIsInside(rootPath: string, candidatePath: string): boolean {
@@ -205,6 +275,7 @@ function pathIsInside(rootPath: string, candidatePath: string): boolean {
 export async function secureSnapshotSymlinks(
   sourceRoot: string,
   snapshotRoot: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const [realSourceRoot, realSnapshotRoot] = await Promise.all([
     fs.realpath(sourceRoot),
@@ -212,21 +283,26 @@ export async function secureSnapshotSymlinks(
   ]);
   const pendingDirectories = [snapshotRoot];
   while (pendingDirectories.length > 0) {
+    throwIfBuildCancelled(signal);
     const directory = pendingDirectories.pop();
     if (!directory) break;
     const entries = await fs.readdir(directory, { withFileTypes: true });
     for (const entry of entries) {
       const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        pendingDirectories.push(entryPath);
+      const entryStat = await fs.lstat(entryPath);
+      if (!entryStat.isSymbolicLink()) {
+        if (entryStat.isDirectory()) pendingDirectories.push(entryPath);
         continue;
       }
-      if (!entry.isSymbolicLink()) continue;
 
       let realTarget: string;
       try {
         realTarget = await fs.realpath(entryPath);
-      } catch {
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          await fs.unlink(entryPath);
+          continue;
+        }
         throw new DyadError(
           `Cannot isolate the linked path ${path.relative(snapshotRoot, entryPath)} because its target is unavailable.`,
           DyadErrorKind.Precondition,
@@ -270,6 +346,49 @@ export async function secureSnapshotSymlinks(
   }
 }
 
+async function validateSourceLinks(
+  sourceRoot: string,
+  rootEntries: string[],
+  signal?: AbortSignal,
+): Promise<void> {
+  const realSourceRoot = await fs.realpath(sourceRoot);
+  const pendingDirectories = rootEntries.map((entry) =>
+    path.join(sourceRoot, entry),
+  );
+  while (pendingDirectories.length > 0) {
+    throwIfBuildCancelled(signal);
+    const entryPath = pendingDirectories.pop();
+    if (!entryPath) break;
+    const stat = await fs.lstat(entryPath);
+    if (!stat.isSymbolicLink()) {
+      if (stat.isDirectory()) {
+        const children = await fs.readdir(entryPath);
+        pendingDirectories.push(
+          ...children.map((child) => path.join(entryPath, child)),
+        );
+      }
+      continue;
+    }
+    let realTarget: string;
+    try {
+      realTarget = await fs.realpath(entryPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    if (!pathIsInside(realSourceRoot, realTarget)) {
+      throw new DyadError(
+        `Cannot isolate the linked path ${path.relative(sourceRoot, entryPath)} because it points outside the app. Replace the external link with a local dependency before running a production build.`,
+        DyadErrorKind.Precondition,
+      );
+    }
+  }
+}
+
+function getBuildSnapshotRoot(): string {
+  return path.join(getUserDataPath(), SNAPSHOT_ROOT_NAME);
+}
+
 async function createSnapshot(
   appPath: string,
   signal?: AbortSignal,
@@ -277,8 +396,9 @@ async function createSnapshot(
   const startedAt = Date.now();
   let tempRoot: string | undefined;
   try {
-    const parentPath = path.dirname(appPath);
-    await removeStaleSnapshots(parentPath);
+    const snapshotRoot = getBuildSnapshotRoot();
+    await fs.mkdir(snapshotRoot, { recursive: true });
+    await removeStaleSnapshots(snapshotRoot);
 
     const nodeModulesStat = await fs
       .stat(path.join(appPath, "node_modules"))
@@ -293,12 +413,18 @@ async function createSnapshot(
       );
     }
 
-    tempRoot = await fs.mkdtemp(path.join(parentPath, SNAPSHOT_PREFIX));
     const entries = (await fs.readdir(appPath)).filter(
       (entry) => !SNAPSHOT_EXCLUDED_NAMES.has(entry),
     );
+    await validateSourceLinks(appPath, entries, signal);
+    tempRoot = await fs.mkdtemp(path.join(snapshotRoot, SNAPSHOT_PREFIX));
+    await fs.writeFile(
+      path.join(tempRoot, SNAPSHOT_MARKER),
+      SNAPSHOT_MARKER_CONTENT,
+      "utf8",
+    );
     await copySnapshotEntries(appPath, tempRoot, entries, signal);
-    await secureSnapshotSymlinks(appPath, tempRoot);
+    await secureSnapshotSymlinks(appPath, tempRoot, signal);
     return {
       path: tempRoot,
       setupMs: Date.now() - startedAt,
@@ -314,7 +440,10 @@ async function createSnapshot(
   }
 }
 
-async function removeStaleSnapshots(parentPath: string): Promise<void> {
+export async function removeStaleSnapshots(
+  parentPath: string,
+  options: { removeAll?: boolean } = {},
+): Promise<void> {
   let entries: string[];
   try {
     entries = await fs.readdir(parentPath);
@@ -333,8 +462,17 @@ async function removeStaleSnapshots(parentPath: string): Promise<void> {
       .map(async (entry) => {
         const snapshotPath = path.join(parentPath, entry);
         try {
-          const stat = await fs.lstat(snapshotPath);
-          if (stat.isDirectory() && stat.mtimeMs < cutoff) {
+          const [stat, marker] = await Promise.all([
+            fs.lstat(snapshotPath),
+            fs
+              .readFile(path.join(snapshotPath, SNAPSHOT_MARKER), "utf8")
+              .catch(() => null),
+          ]);
+          if (
+            stat.isDirectory() &&
+            marker === SNAPSHOT_MARKER_CONTENT &&
+            (options.removeAll || stat.mtimeMs < cutoff)
+          ) {
             await removeSnapshot(snapshotPath);
           }
         } catch (error) {
@@ -345,6 +483,12 @@ async function removeStaleSnapshots(parentPath: string): Promise<void> {
         }
       }),
   );
+}
+
+export async function cleanupStaleBuildSnapshots(): Promise<void> {
+  const snapshotRoot = getBuildSnapshotRoot();
+  await fs.mkdir(snapshotRoot, { recursive: true });
+  await removeStaleSnapshots(snapshotRoot, { removeAll: true });
 }
 
 async function removeSnapshot(snapshotPath: string): Promise<void> {
@@ -375,10 +519,14 @@ async function runBuildProcess({
   cwd,
   packageManager,
   signal,
+  timeoutMs,
+  onOutput,
 }: {
   cwd: string;
   packageManager: "npm" | "pnpm";
   signal?: AbortSignal;
+  timeoutMs: number;
+  onOutput: (chunk: string) => void;
 }) {
   return spawnStreaming({
     command: packageManager,
@@ -386,8 +534,46 @@ async function runBuildProcess({
     cwd,
     env: getPackageManagerCommandEnv(),
     signal,
-    timeoutMs: BUILD_TIMEOUT_MS,
+    timeoutMs,
+    onOutput,
   });
+}
+
+interface BuildAbortScope {
+  signal: AbortSignal;
+  deadlineAt: number;
+  timedOut: () => boolean;
+  dispose: () => void;
+}
+
+function createBuildAbortScope(userSignal?: AbortSignal): BuildAbortScope {
+  const controller = new AbortController();
+  const deadlineAt = Date.now() + BUILD_TIMEOUT_MS;
+  let didTimeOut = false;
+  const abortForUser = () => controller.abort(userSignal?.reason);
+  if (userSignal?.aborted) abortForUser();
+  else userSignal?.addEventListener("abort", abortForUser, { once: true });
+  const timer = setTimeout(() => {
+    didTimeOut = true;
+    controller.abort(new Error("Production build deadline exceeded"));
+  }, BUILD_TIMEOUT_MS);
+  return {
+    signal: controller.signal,
+    deadlineAt,
+    timedOut: () => didTimeOut,
+    dispose: () => {
+      clearTimeout(timer);
+      userSignal?.removeEventListener("abort", abortForUser);
+    },
+  };
+}
+
+function streamBuildOutput(ctx: AgentContext, chunk: string): void {
+  const output = tail(chunk.trim());
+  if (!output) return;
+  ctx.onXmlStream(
+    `<dyad-status title="Production build output">\n${escapeXmlContent(output)}\n</dyad-status>`,
+  );
 }
 
 export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
@@ -462,22 +648,29 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           const facts = await gatherBuildProjectFacts(ctx, buildScript);
           const mode = selectBuildExecutionMode(facts);
 
-          state.count += 1;
-          state.mutationCountAtLastRun = currentMutationCount;
           ctx.onXmlStream(
             `<dyad-status title="${escapeXmlAttr(mode === "in-place" ? "Building beside preview" : "Preparing isolated build")}"></dyad-status>`,
           );
+          const abortScope = createBuildAbortScope(ctx.abortSignal);
+          const operationStartedAt = Date.now();
           let snapshot: Snapshot | undefined;
           try {
             if (mode === "isolated") {
-              snapshot = await createSnapshot(ctx.appPath, ctx.abortSignal);
+              snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
             }
             const packageManager = await resolvePackageManager(ctx.appPath);
+            state.count += 1;
+            state.mutationCountAtLastRun = currentMutationCount;
+            ctx.onXmlStream(
+              '<dyad-status title="Running production build"></dyad-status>',
+            );
             const buildStartedAt = Date.now();
             const result = await runBuildProcess({
               cwd: snapshot?.path ?? ctx.appPath,
               packageManager,
-              signal: ctx.abortSignal,
+              signal: abortScope.signal,
+              timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
+              onOutput: (chunk) => streamBuildOutput(ctx, chunk),
             });
             const buildMs = Date.now() - buildStartedAt;
             const timing = snapshot
@@ -487,16 +680,16 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               [result.stdout, result.stderr].filter(Boolean).join("\n"),
             );
 
+            if (abortScope.timedOut() || result.timedOut) {
+              const body = `Production build timed out after 10 minutes. ${timing}\n\n${output}`;
+              completeStatus(ctx, "Build timed out", body, "warning");
+              return body;
+            }
             if (result.aborted) {
               throw new DyadError(
                 "Build cancelled.",
                 DyadErrorKind.UserCancelled,
               );
-            }
-            if (result.timedOut) {
-              const body = `Production build timed out after 10 minutes. ${timing}\n\n${output}`;
-              completeStatus(ctx, "Build timed out", body, "warning");
-              return body;
             }
             if (result.code !== 0) {
               const body = `Production build failed with exit code ${result.code}. ${timing}\n\n${output}`;
@@ -507,7 +700,16 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             const body = `Production build passed. ${timing}${output ? `\n\n${output}` : ""}`;
             completeStatus(ctx, "Build passed", body);
             return body;
+          } catch (error) {
+            if (abortScope.timedOut()) {
+              const elapsedMs = Date.now() - operationStartedAt;
+              const body = `Production build timed out after 10 minutes during ${snapshot ? "the build" : "snapshot setup"}. Elapsed: ${elapsedMs} ms.`;
+              completeStatus(ctx, "Build timed out", body, "warning");
+              return body;
+            }
+            throw error;
           } finally {
+            abortScope.dispose();
             if (snapshot) {
               await removeSnapshot(snapshot.path);
             }

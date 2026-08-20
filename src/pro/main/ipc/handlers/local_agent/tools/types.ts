@@ -60,6 +60,7 @@ export const APP_MUTATING_TOOL_NAMES = [
   "generate_image",
   "generate_test_assertions",
   "git_restore_file",
+  "reinstall_and_restart_app",
 ] as const;
 export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 

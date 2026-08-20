@@ -8,13 +8,11 @@ const TEST_TIMEOUT = 20 * 60_000;
 async function runBuildAndVerifyPreview({
   po,
   fixture,
-  expectedScript,
   expectedMode,
   previewText,
 }: {
   po: PageObject;
   fixture: "run-build-vite" | "run-build-next";
-  expectedScript: "vite build" | "next build";
   expectedMode: "isolated" | "in-place";
   previewText: string;
 }) {
@@ -30,16 +28,6 @@ async function runBuildAndVerifyPreview({
   await po.sendPrompt(`tc=local-agent/${fixture}`, {
     skipWaitForCompletion: true,
   });
-  await po.agentConsent.waitForAgentConsentBanner(Timeout.EXTRA_LONG);
-  await expect(
-    po.page.getByText(`build: ${expectedScript}`, { exact: false }).last(),
-  ).toBeVisible();
-  await expect(
-    po.page.getByText("not a security sandbox", { exact: false }).last(),
-  ).toBeVisible();
-  await expect(preview).toBeVisible();
-  await po.agentConsent.clickAgentConsentAllowOnce();
-
   await po.chatActions.waitForChatCompletion({ timeout: BUILD_TIMEOUT });
   const buildCard = po.page
     .getByRole("button", { name: /Build passed/ })
@@ -81,7 +69,6 @@ test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previ
   await runBuildAndVerifyPreview({
     po,
     fixture: "run-build-vite",
-    expectedScript: "vite build",
     expectedMode: "in-place",
     previewText: "Welcome to Your Blank App",
   });
@@ -93,7 +80,6 @@ test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previ
   await runBuildAndVerifyPreview({
     po,
     fixture: "run-build-next",
-    expectedScript: "next build",
     expectedMode: "isolated",
     previewText: "Next.js 15 build fixture",
   });
@@ -105,7 +91,6 @@ test("local-agent builds Vite, Next.js 15, and Next.js 16 without stopping previ
   await runBuildAndVerifyPreview({
     po,
     fixture: "run-build-next",
-    expectedScript: "next build",
     expectedMode: "in-place",
     previewText: "Next.js 16 build fixture",
   });

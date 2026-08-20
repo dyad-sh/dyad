@@ -16,6 +16,7 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
 
 import {
   runBuildTool,
+  removeStaleSnapshots,
   secureSnapshotSymlinks,
   selectBuildExecutionMode,
   type BuildProjectFacts,
@@ -165,6 +166,43 @@ describe("run_build", () => {
       kind: "precondition",
       message: expect.stringContaining("points outside the app"),
     });
+  });
+
+  it("removes dangling links from an isolated snapshot", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const sourceRoot = path.join(root, "app");
+    const snapshotRoot = path.join(root, "snapshot");
+    await Promise.all([fs.mkdir(sourceRoot), fs.mkdir(snapshotRoot)]);
+    const danglingLink = path.join(snapshotRoot, "missing-package");
+    await fs.symlink(
+      path.join(sourceRoot, "missing-package"),
+      danglingLink,
+      "file",
+    );
+
+    await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
+
+    await expect(fs.lstat(danglingLink)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("cleans only marked Dyad-owned snapshot directories", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const owned = path.join(root, ".dyad-build-ABC123");
+    const unowned = path.join(root, ".dyad-build-DEF456");
+    await Promise.all([fs.mkdir(owned), fs.mkdir(unowned)]);
+    await fs.writeFile(
+      path.join(owned, ".dyad-build-snapshot"),
+      "dyad-build-snapshot-v1",
+    );
+
+    await removeStaleSnapshots(root, { removeAll: true });
+
+    await expect(fs.lstat(owned)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.lstat(unowned)).resolves.toMatchObject({});
   });
 
   it("completes the status when the per-turn limit refuses a build", async () => {

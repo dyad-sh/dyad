@@ -69,6 +69,7 @@ export const reinstallAndRestartAppTool: ToolDefinition<
   inputSchema: appLifecycleSchema,
   defaultConsent: "ask",
   modifiesState: true,
+  shouldTrackMutation: () => true,
 
   getConsentPreview: () =>
     "Delete node_modules, reinstall dependencies, and restart the current app",

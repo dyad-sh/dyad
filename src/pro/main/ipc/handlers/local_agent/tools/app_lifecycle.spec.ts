@@ -57,6 +57,9 @@ describe("app lifecycle tools", () => {
     expect(reinstallAndRestartAppTool.inputSchema.parse({})).toEqual({});
     expect(reinstallAndRestartAppTool.defaultConsent).toBe("ask");
     expect(reinstallAndRestartAppTool.modifiesState).toBe(true);
+    expect(reinstallAndRestartAppTool.shouldTrackMutation?.({}, "", ctx)).toBe(
+      true,
+    );
     expect(reinstallAndRestartAppTool.description).toContain(
       "Never use for ordinary code errors",
     );

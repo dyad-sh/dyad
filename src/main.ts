@@ -87,6 +87,7 @@ import {
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import { cleanupStaleBuildSnapshots } from "./pro/main/ipc/handlers/local_agent/tools/run_build";
 import {
   startChatSearchIndexer,
   stopChatSearchIndexer,
@@ -407,6 +408,9 @@ export async function onReady() {
 
   void recoverInterruptedSubagents().catch((error) =>
     logger.error("Failed to reconcile interrupted sub-agents", error),
+  );
+  void cleanupStaleBuildSnapshots().catch((error) =>
+    logger.error("Failed to clean stale production build snapshots", error),
   );
 
   // Reconcile any Neon test branches / Supabase test users leaked by a previous

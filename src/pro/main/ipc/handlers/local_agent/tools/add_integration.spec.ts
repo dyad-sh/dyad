@@ -176,10 +176,12 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
     ).toBe(true);
   });
 
-  it("keeps the card ephemeral until execute persists its terminal outcome", () => {
+  it("persists the pending card before execute parks", () => {
     expect(addIntegrationTool.buildXml?.({}, false)).toBe(
-      "<dyad-add-integration></dyad-add-integration>",
+      '<dyad-add-integration outcome="pending"></dyad-add-integration>',
     );
-    expect(addIntegrationTool.buildXml?.({}, true)).toBeUndefined();
+    expect(addIntegrationTool.buildXml?.({}, true)).toBe(
+      '<dyad-add-integration outcome="pending"></dyad-add-integration>',
+    );
   });
 });

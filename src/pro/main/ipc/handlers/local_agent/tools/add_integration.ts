@@ -38,15 +38,15 @@ export const addIntegrationTool: ToolDefinition<
       "Git-visible workspace file state could not be determined during setup.",
     ),
 
-  buildXml: (args, isComplete) => {
-    // Keep the interactive card in the streaming preview until the parked
-    // request settles. execute() then persists one durable terminal card with
-    // the outcome, avoiding a second stale chooser on chat replay.
-    if (isComplete) return undefined;
+  buildXml: (args, _isComplete) => {
+    // Persist the interactive card before execute() parks so reloads and
+    // cross-window tab transfers can reconstruct the pending request. A
+    // terminal outcome is appended after settlement; the renderer hides this
+    // pending card once its request is no longer live.
     if (args.provider && args.provider !== "none") {
-      return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
+      return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}" outcome="pending"></dyad-add-integration>`;
     }
-    return `<dyad-add-integration></dyad-add-integration>`;
+    return `<dyad-add-integration outcome="pending"></dyad-add-integration>`;
   },
 
   execute: async (args, ctx: AgentContext) => {

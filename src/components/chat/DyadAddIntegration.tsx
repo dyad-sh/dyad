@@ -2,10 +2,7 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import {
-  integrationProviderSelectionAtom,
-  startedIntegrationSetupRequestIdsAtom,
-} from "@/atoms/integrationAtoms";
+import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
 import { usePendingIntegrations } from "@/user_input/hooks";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -30,13 +27,13 @@ import { ipc } from "@/ipc/types";
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
   provider?: "neon" | "supabase";
-  skipped?: boolean;
+  outcome?: "pending" | "skipped" | "completed" | "dismissed";
 }
 
 export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   children,
   provider: requestedProvider,
-  skipped = false,
+  outcome,
 }) => {
   const { t } = useTranslation("home");
   const appId = useAtomValue(selectedAppIdAtom);
@@ -44,9 +41,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const pendingIntegrationMap = usePendingIntegrations();
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
-  );
-  const setStartedIntegrationSetupRequestIds = useSetAtom(
-    startedIntegrationSetupRequestIdsAtom,
   );
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -66,10 +60,8 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     "neon" | "supabase" | null
   >(null);
   // True after the user clicks Next: the chat card collapses to a "finish in
-  // the right panel" message with a Back button. Request-scoped setup history
-  // separately keeps Skip unavailable if this component later remounts.
+  // the right panel" message with a Back button.
   const [inPanelMode, setInPanelMode] = useState(false);
-  const [didSkip, setDidSkip] = useState(false);
 
   const providerOptions = [
     {
@@ -154,10 +146,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   };
 
   const completedProvider = getCompletedIntegrationProvider(app);
+  const displayedCompletedProvider =
+    outcome === "completed" && requestedProvider
+      ? requestedProvider
+      : completedProvider;
   const completedProviderName =
-    completedProvider === "supabase"
+    displayedCompletedProvider === "supabase"
       ? t("integrations.databaseSetup.providers.supabase.name")
-      : completedProvider === "neon"
+      : displayedCompletedProvider === "neon"
         ? t("integrations.databaseSetup.providers.neon.name")
         : null;
 
@@ -190,12 +186,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     setPreviewMode("configure");
     setIsPreviewOpen(true);
     setInPanelMode(true);
-    setStartedIntegrationSetupRequestIds((prev) => {
-      if (prev.has(pendingIntegration.requestId)) return prev;
-      const next = new Set(prev);
-      next.add(pendingIntegration.requestId);
-      return next;
-    });
   };
 
   const {
@@ -206,11 +196,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     handleSkip,
   } = useIntegrationContinue();
 
-  const handleSkipClick = async () => {
-    if (await handleSkip()) {
-      setDidSkip(true);
-    }
-  };
+  const handleSkipClick = () => void handleSkip();
 
   const handleBackClick = () => {
     setInPanelMode(false);
@@ -229,9 +215,29 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     }
   };
 
-  // Final completed view: no active pending request and the app has a linked
-  // provider. This covers historical replays of completed chats too.
-  if (completedProvider && !pendingIntegration) {
+  // A durable tool outcome describes what happened in this conversation and
+  // must win over the app's provider state today.
+  if (outcome === "skipped") {
+    return (
+      <DyadCard accentColor="slate" state="finished">
+        <DyadCardHeader icon={<Database size={15} />} accentColor="slate">
+          <DyadBadge color="slate">
+            {t("integrations.databaseSetup.integrationSkipped")}
+          </DyadBadge>
+          <span className="text-sm font-medium text-foreground">
+            {t("integrations.databaseSetup.skippedDescription")}
+          </span>
+        </DyadCardHeader>
+      </DyadCard>
+    );
+  }
+
+  // Final completed view: either the terminal tool outcome recorded it, or a
+  // legacy card without an outcome can derive it from the current app state.
+  if (
+    outcome === "completed" ||
+    (outcome === undefined && completedProvider && !pendingIntegration)
+  ) {
     return (
       <DyadCard accentColor="green" state="finished">
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
@@ -262,20 +268,10 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     );
   }
 
-  if (skipped || didSkip) {
-    return (
-      <DyadCard accentColor="slate" state="finished">
-        <DyadCardHeader icon={<Database size={15} />} accentColor="slate">
-          <DyadBadge color="slate">
-            {t("integrations.databaseSetup.integrationSkipped")}
-          </DyadBadge>
-          <span className="text-sm font-medium text-foreground">
-            {t("integrations.databaseSetup.skippedDescription")}
-          </span>
-        </DyadCardHeader>
-      </DyadCard>
-    );
-  }
+  // Once the durable pending card settles, its appended terminal card owns the
+  // historical presentation. Dismissed requests have no terminal UI.
+  if (!pendingIntegration && (outcome === "pending" || outcome === "dismissed"))
+    return null;
 
   // If there is no pending request for this chat and no completion, this is a
   // stale/historical render — show the radios in a read-only display state with

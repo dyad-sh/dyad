@@ -10,7 +10,8 @@ import {
   vi,
 } from "vitest";
 
-import { messages } from "@/db/schema";
+import { apps, messages } from "@/db/schema";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { ipc } from "@/ipc/types";
 import {
   setupHybridChatHarness,
@@ -125,6 +126,73 @@ describe("main-owned user-input follow-up recovery (integration)", () => {
             (event.args[0] as { outcome?: string }).outcome === "swept",
         ),
     ).toBe(true);
+  });
+
+  it("rejects Skip after an in-flight provider operation connects the app", async () => {
+    const chatId = await harness.createChat();
+    const requestId = userInputRegistry.request({
+      kind: "integration",
+      chatId,
+      classifier: "none",
+      followUpPrompt: "continue",
+    });
+    const parked = userInputRegistry.park(requestId);
+
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    let providerStarted!: () => void;
+    const providerStart = new Promise<void>((resolve) => {
+      providerStarted = resolve;
+    });
+    const providerOperation = appOperationCoordinator.run(
+      {
+        appId: harness.appId,
+        operation: "test-connect-provider",
+        resources: ["provider"],
+      },
+      async () => {
+        providerStarted();
+        await providerGate;
+        await harness.db
+          .update(apps)
+          .set({ supabaseProjectId: "connected-during-skip" })
+          .where(eq(apps.id, harness.appId));
+      },
+    );
+    await providerStart;
+
+    try {
+      const skip = ipc.userInput.respond({
+        requestId,
+        response: {
+          kind: "integration",
+          provider: null,
+          completed: false,
+        },
+      });
+      releaseProvider();
+      await providerOperation;
+
+      await expect(skip).rejects.toThrow(
+        "A database integration finished connecting before Skip could be applied.",
+      );
+      expect(
+        userInputRegistry
+          .getPending()
+          .some((entry) => entry.descriptor.requestId === requestId),
+      ).toBe(true);
+    } finally {
+      releaseProvider();
+      await providerOperation;
+      await harness.db
+        .update(apps)
+        .set({ supabaseProjectId: null })
+        .where(eq(apps.id, harness.appId));
+      userInputRegistry.sweepChat(chatId);
+      await parked;
+    }
   });
 
   it("settles a due owner before app deletion cascades its chat", async () => {

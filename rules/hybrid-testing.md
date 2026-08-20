@@ -213,3 +213,7 @@ runners cause rotating DOM/event timeouts while increasing total runtime.
 before the transport emits `chat:stream:end`. If a test asserts the latter
 channel, also await `harness.waitForEvent("chat:stream:end")` before inspecting
 the recorded bridge events.
+
+When a hybrid suite shares its harness app between tests, keep any test that
+deletes that app last. Creating a later chat against the deleted app fails the
+database foreign-key constraint before the behavior under test can run.

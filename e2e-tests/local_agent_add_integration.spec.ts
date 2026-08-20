@@ -96,6 +96,29 @@ testSkipIfWindows(
       messages.getByText("Let's connect a database first."),
     ).toBeVisible({ timeout: Timeout.LONG });
 
+    // Entering Configure does not begin a provider mutation by itself. Back
+    // returns to the choice card with the opt-out still available.
+    await messages.getByRole("radio", { name: /Supabase/ }).click();
+    await messages.getByRole("button", { name: "Next" }).click();
+    await messages.getByRole("button", { name: "Back" }).click();
+    await expect(messages.getByTestId("integration-skip-button")).toBeEnabled({
+      timeout: Timeout.MEDIUM,
+    });
+
+    // The pending card is persisted before the tool parks, so switching chats
+    // and back cannot strand the user without its controls.
+    const pendingChatId = new URL(po.page.url()).searchParams.get("id");
+    expect(pendingChatId).not.toBeNull();
+    await po.chatActions.clickNewChat();
+    await po.page
+      .getByTestId(`chat-tab-${pendingChatId}`)
+      .locator("button")
+      .first()
+      .click();
+    await expect(messages.getByTestId("integration-skip-button")).toBeEnabled({
+      timeout: Timeout.LONG,
+    });
+
     const completedAssistantMessages = messages.getByTestId(
       "copy-message-button",
     );

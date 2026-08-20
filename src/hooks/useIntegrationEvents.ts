@@ -2,10 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSettings } from "./useSettings";
-import {
-  integrationProviderSelectionAtom,
-  startedIntegrationSetupRequestIdsAtom,
-} from "@/atoms/integrationAtoms";
+import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { showUserInputNotification } from "@/lib/userInputNotification";
@@ -17,9 +14,6 @@ import { showUserInputNotification } from "@/lib/userInputNotification";
 export function useIntegrationEvents() {
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
-  );
-  const setStartedIntegrationSetupRequestIds = useSetAtom(
-    startedIntegrationSetupRequestIdsAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const queryClient = useQueryClient();
@@ -51,21 +45,11 @@ export function useIntegrationEvents() {
           next.delete(requestId);
           return next;
         });
-        setStartedIntegrationSetupRequestIds((prev) => {
-          if (!prev.has(requestId)) return prev;
-          const next = new Set(prev);
-          next.delete(requestId);
-          return next;
-        });
       },
     );
     return () => {
       unsubscribeRequested();
       unsubscribeSettled();
     };
-  }, [
-    setIntegrationProviderSelection,
-    setStartedIntegrationSetupRequestIds,
-    queryClient,
-  ]);
+  }, [setIntegrationProviderSelection, queryClient]);
 }

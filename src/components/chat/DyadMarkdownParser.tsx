@@ -868,7 +868,14 @@ function renderCustomTag(
               ? attributes.provider
               : undefined
           }
-          skipped={attributes.outcome === "skipped"}
+          outcome={
+            attributes.outcome === "pending" ||
+            attributes.outcome === "skipped" ||
+            attributes.outcome === "completed" ||
+            attributes.outcome === "dismissed"
+              ? attributes.outcome
+              : undefined
+          }
         >
           {content}
         </DyadAddIntegration>

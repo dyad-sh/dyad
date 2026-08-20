@@ -102,14 +102,9 @@ export function reserveFreeAgentQuotaSlot(): Promise<FreeAgentQuotaReservationRe
   });
 }
 
-/** Converts a pending slot into the accepted user message's durable mark. */
-export function commitFreeAgentQuotaSlot(
-  reservationId: number,
-  messageId: number,
-): Promise<void> {
+/** Retires a pending slot after its durable mark commits with turn acceptance. */
+export function commitFreeAgentQuotaSlot(reservationId: number): Promise<void> {
   return withLock(FREE_AGENT_QUOTA_ADMISSION_LOCK, async () => {
-    if (!pendingQuotaReservations.has(reservationId)) return;
-    await markMessageAsUsingFreeAgentQuota(messageId);
     pendingQuotaReservations.delete(reservationId);
   });
 }
@@ -159,22 +154,6 @@ export function registerFreeAgentQuotaHandlers() {
       },
     );
   }
-}
-
-/**
- * Marks a message as using the free agent quota.
- * This should be called BEFORE starting the agent stream to prevent race conditions.
- * If the stream fails, call unmarkMessageAsUsingFreeAgentQuota to refund the quota.
- */
-export async function markMessageAsUsingFreeAgentQuota(
-  messageId: number,
-): Promise<void> {
-  await db
-    .update(messages)
-    .set({ usingFreeAgentModeQuota: true })
-    .where(eq(messages.id, messageId));
-
-  logger.log(`Marked message ${messageId} as using free agent quota`);
 }
 
 /**

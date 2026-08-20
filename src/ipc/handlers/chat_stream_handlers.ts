@@ -1429,6 +1429,7 @@ ${componentSnippet}
             userInputRequestId: req.userInputRequestId,
             chatTurnIntentId: req.intentId,
             chatTurnIntent: executionObserver(req)?.intent,
+            usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
           }),
         );
 
@@ -1438,10 +1439,7 @@ ${componentSnippet}
         freeAgentQuotaReservationId !== null &&
         acceptedTurn.userMessageId !== null
       ) {
-        await commitFreeAgentQuotaSlot(
-          freeAgentQuotaReservationId,
-          acceptedTurn.userMessageId,
-        );
+        await commitFreeAgentQuotaSlot(freeAgentQuotaReservationId);
         freeAgentQuotaReservationId = null;
         reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
       }

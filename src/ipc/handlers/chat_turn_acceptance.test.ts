@@ -126,6 +126,35 @@ describe("acceptChatTurn", () => {
     });
   });
 
+  it("marks quota usage in the same transaction as turn acceptance", () => {
+    const accepted = acceptChatTurn(db, {
+      chatId,
+      storedChatMode: null,
+      selectedChatMode: "local-agent",
+      selectedModel: {
+        provider: "auto",
+        name: "auto",
+        effortLevel: "medium",
+      },
+      content: "atomic quota turn",
+      usingFreeAgentModeQuota: true,
+    });
+
+    expect(
+      db
+        .select({
+          id: messages.id,
+          usingFreeAgentModeQuota: messages.usingFreeAgentModeQuota,
+        })
+        .from(messages)
+        .where(eq(messages.id, accepted.userMessageId!))
+        .get(),
+    ).toEqual({
+      id: accepted.userMessageId,
+      usingFreeAgentModeQuota: true,
+    });
+  });
+
   it("compacts reordered queue positions without uniqueness collisions", async () => {
     const intent = (intentId: string): SerializableChatTurnIntent => {
       const envelope = {

@@ -69,6 +69,7 @@ export interface AcceptChatTurnInput {
   userInputRequestId?: string;
   chatTurnIntentId?: string;
   chatTurnIntent?: SerializableChatTurnIntent;
+  usingFreeAgentModeQuota?: boolean;
 }
 
 export interface AcceptedChatTurn {
@@ -102,6 +103,7 @@ export function acceptChatTurn(
       content: input.content,
       userInputRequestId: input.userInputRequestId,
       chatTurnIntentId: input.chatTurnIntentId,
+      usingFreeAgentModeQuota: input.usingFreeAgentModeQuota,
     });
     const insertedUserMessage = insert
       .onConflictDoNothing()

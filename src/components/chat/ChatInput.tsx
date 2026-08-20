@@ -581,6 +581,39 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // composer until main confirms durable acceptance so admission errors
     // (including exhausted Basic Agent quota) never discard the user's work.
     void openPreviewIfSetupRequired(appId);
+    let didClearAcceptedPayload = false;
+    const clearAcceptedPayload = () => {
+      if (didClearAcceptedPayload) return;
+      didClearAcceptedPayload = true;
+      setInputValue((current) =>
+        current === submittedInputValue ? "" : current,
+      );
+      const currentComponents = store.get(selectedComponentsPreviewAtom);
+      if (
+        currentComponents.length === componentsToSend.length &&
+        currentComponents.every(
+          (component, index) => component === componentsToSend[index],
+        )
+      ) {
+        setSelectedComponents([]);
+        sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
+        setVisualEditingSelectedComponent(null);
+        if (previewIframeRef?.contentWindow) {
+          previewIframeRef.contentWindow.postMessage(
+            { type: "clear-dyad-component-overlays" },
+            "*",
+          );
+        }
+      }
+      clearSubmittedAttachments(attachments);
+      if (submittedImageJobIds.length > 0) {
+        setDismissedImageJobIds((previous) => {
+          const next = new Set(previous);
+          for (const jobId of submittedImageJobIds) next.add(jobId);
+          return next;
+        });
+      }
+    };
     await streamMessage({
       prompt: currentInput,
       chatId,
@@ -588,35 +621,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       redo: false,
       selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
-      onAccepted: () => {
-        setInputValue((current) =>
-          current === submittedInputValue ? "" : current,
-        );
-        const currentComponents = store.get(selectedComponentsPreviewAtom);
-        if (
-          currentComponents.length === componentsToSend.length &&
-          currentComponents.every(
-            (component, index) => component === componentsToSend[index],
-          )
-        ) {
-          setSelectedComponents([]);
-          sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
-          setVisualEditingSelectedComponent(null);
-          if (previewIframeRef?.contentWindow) {
-            previewIframeRef.contentWindow.postMessage(
-              { type: "clear-dyad-component-overlays" },
-              "*",
-            );
-          }
-        }
-        clearSubmittedAttachments(attachments);
-        if (submittedImageJobIds.length > 0) {
-          setDismissedImageJobIds((previous) => {
-            const next = new Set(previous);
-            for (const jobId of submittedImageJobIds) next.add(jobId);
-            return next;
-          });
-        }
+      onAccepted: clearAcceptedPayload,
+      onSettled: ({ queued }) => {
+        if (queued) clearAcceptedPayload();
       },
     });
     posthog.capture("chat:submit", { chatMode });

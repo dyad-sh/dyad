@@ -242,7 +242,7 @@ export function AddPluginDialog({
                 data-testid="mcp-transport-select"
                 value={transport}
                 onChange={(e) => setTransport(e.target.value as Transport)}
-                className="w-full h-9 rounded-md border bg-transparent px-3 text-sm"
+                className="w-full h-9 rounded-md border border-input bg-background text-foreground px-3 text-sm"
               >
                 <option value="stdio">stdio</option>
                 <option value="http">http</option>

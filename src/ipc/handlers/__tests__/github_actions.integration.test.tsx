@@ -215,8 +215,8 @@ describe("GitHub connector actions (integration)", () => {
       "File node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node is 124.08 MB",
     );
     expect(details.textContent).toContain("GH001: Large files detected");
-    expect(details.textContent).toContain("[redacted URL]");
-    expect(details.textContent).not.toContain("https://gh.io/lfs");
+    expect(details.textContent).toContain("https://gh.io/lfs");
+    expect(details.textContent).toContain("https://git-lfs.github.com");
     expect(
       within(connectedRepo).getByText("See troubleshooting guide"),
     ).toBeTruthy();

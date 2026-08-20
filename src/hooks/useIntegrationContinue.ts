@@ -1,6 +1,9 @@
 import { useCallback } from "react";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
+import {
+  integrationProviderSelectionAtom,
+  startedIntegrationSetupRequestIdsAtom,
+} from "@/atoms/integrationAtoms";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -25,6 +28,12 @@ export function useIntegrationContinue() {
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
   );
+  const startedIntegrationSetupRequestIds = useAtomValue(
+    startedIntegrationSetupRequestIdsAtom,
+  );
+  const setStartedIntegrationSetupRequestIds = useSetAtom(
+    startedIntegrationSetupRequestIdsAtom,
+  );
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { app, loading: isAppLoading } = useLoadApp(selectedAppId);
 
@@ -35,7 +44,10 @@ export function useIntegrationContinue() {
   const canContinue =
     !!pendingIntegration && !!provider && completedProvider === provider;
   const canSkip =
-    !!pendingIntegration && !isAppLoading && completedProvider === null;
+    !!pendingIntegration &&
+    !startedIntegrationSetupRequestIds.has(pendingIntegration.requestId) &&
+    !isAppLoading &&
+    completedProvider === null;
   const isSubmitting =
     pendingIntegration != null &&
     respondingRequestIds.has(pendingIntegration.requestId);
@@ -65,6 +77,12 @@ export function useIntegrationContinue() {
       next.delete(pendingIntegration.requestId);
       return next;
     });
+    setStartedIntegrationSetupRequestIds((prev) => {
+      if (!prev.has(pendingIntegration.requestId)) return prev;
+      const next = new Set(prev);
+      next.delete(pendingIntegration.requestId);
+      return next;
+    });
     // Switch the right sidebar back to the preview so the user sees the
     // resumed conversation rather than a now-empty configure panel.
     setPreviewMode("preview");
@@ -76,6 +94,7 @@ export function useIntegrationContinue() {
     isSubmitting,
     userInputReadModel,
     setIntegrationProviderSelection,
+    setStartedIntegrationSetupRequestIds,
     setPreviewMode,
   ]);
 
@@ -98,6 +117,12 @@ export function useIntegrationContinue() {
       next.delete(pendingIntegration.requestId);
       return next;
     });
+    setStartedIntegrationSetupRequestIds((prev) => {
+      if (!prev.has(pendingIntegration.requestId)) return prev;
+      const next = new Set(prev);
+      next.delete(pendingIntegration.requestId);
+      return next;
+    });
     setPreviewMode("preview");
     return true;
   }, [
@@ -106,6 +131,7 @@ export function useIntegrationContinue() {
     isSubmitting,
     userInputReadModel,
     setIntegrationProviderSelection,
+    setStartedIntegrationSetupRequestIds,
     setPreviewMode,
   ]);
 

@@ -18,6 +18,8 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await po.chatActions.clickNewChat();
     await po.chatActions.selectLocalAgentMode();
 
     // The tool parks the turn on a user-input request rather than finishing the
@@ -36,6 +38,7 @@ testSkipIfWindows(
     await supabaseRadio.click();
     await expect(supabaseRadio).toHaveAttribute("aria-checked", "true");
     await messages.getByRole("button", { name: "Next" }).click();
+    await expect(messages.getByTestId("integration-skip-button")).toBeHidden();
 
     // Both Continue buttons — the Configure panel's and the chat card's mirror —
     // stay disabled until the connector actually links a project.
@@ -56,7 +59,6 @@ testSkipIfWindows(
     });
 
     await expect(panelContinue).toBeEnabled({ timeout: Timeout.MEDIUM });
-    await expect(messages.getByTestId("integration-skip-button")).toBeHidden();
     await panelContinue.click();
 
     // The regression: the armed follow-up is dispatched as a real turn, so the
@@ -81,6 +83,8 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await po.chatActions.clickNewChat();
     await po.chatActions.selectLocalAgentMode();
 
     await po.sendPrompt("tc=local-agent/add-integration", {
@@ -92,10 +96,10 @@ testSkipIfWindows(
       messages.getByText("Let's connect a database first."),
     ).toBeVisible({ timeout: Timeout.LONG });
 
-    // Skip remains available after the card hands off to Configure, allowing
-    // users to back out midway through setup.
-    await messages.getByRole("radio", { name: /Supabase/ }).click();
-    await messages.getByRole("button", { name: "Next" }).click();
+    const completedAssistantMessages = messages.getByTestId(
+      "copy-message-button",
+    );
+    const assistantCountBeforeSkip = await completedAssistantMessages.count();
     const skipButton = messages.getByTestId("integration-skip-button");
     await expect(skipButton).toBeEnabled({ timeout: Timeout.MEDIUM });
     await skipButton.click();
@@ -116,11 +120,13 @@ testSkipIfWindows(
       "aria-pressed",
       "true",
     );
-    // The visible user follow-up starts a real agent turn. Its terminal Retry
-    // action proves that continuation reached a completed assistant response
-    // without coupling this UI regression to the fake model's fallback prose.
-    await expect(messages.getByRole("button", { name: "Retry" })).toBeVisible({
-      timeout: Timeout.LONG,
-    });
+    // A new completed assistant message proves that the synthetic user message
+    // resumed the agent turn. This is tied to the fresh chat above, rather than
+    // the global Retry footer left by the import-time conversation.
+    await expect
+      .poll(() => completedAssistantMessages.count(), {
+        timeout: Timeout.LONG,
+      })
+      .toBeGreaterThan(assistantCountBeforeSkip);
   },
 );

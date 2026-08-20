@@ -2,7 +2,10 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
+import {
+  integrationProviderSelectionAtom,
+  startedIntegrationSetupRequestIdsAtom,
+} from "@/atoms/integrationAtoms";
 import { usePendingIntegrations } from "@/user_input/hooks";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -40,6 +43,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
   );
+  const setStartedIntegrationSetupRequestIds = useSetAtom(
+    startedIntegrationSetupRequestIdsAtom,
+  );
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const pendingIntegration =
@@ -58,9 +64,8 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     "neon" | "supabase" | null
   >(null);
   // True after the user clicks Next: the chat card collapses to a "finish in
-  // the right panel" message with a Back button. Local-only — if the user
-  // navigates between chats and returns, they restart from selection (which
-  // is harmless: their previous choice is still pre-selected).
+  // the right panel" message with a Back button. Request-scoped setup history
+  // separately keeps Skip unavailable if this component later remounts.
   const [inPanelMode, setInPanelMode] = useState(false);
   const [didSkip, setDidSkip] = useState(false);
 
@@ -183,6 +188,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     setPreviewMode("configure");
     setIsPreviewOpen(true);
     setInPanelMode(true);
+    setStartedIntegrationSetupRequestIds((prev) => {
+      if (prev.has(pendingIntegration.requestId)) return prev;
+      const next = new Set(prev);
+      next.add(pendingIntegration.requestId);
+      return next;
+    });
   };
 
   const {
@@ -330,25 +341,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
               <ArrowLeft size={14} />
               {t("integrations.databaseSetup.back")}
             </Button>
-            {canSkip && (
-              <Button
-                onClick={handleSkipClick}
-                disabled={isContinueSubmitting}
-                variant="ghost"
-                className="w-full mt-2"
-                size="sm"
-                data-testid="integration-skip-button"
-              >
-                {isContinueSubmitting ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    {t("integrations.databaseSetup.skipping")}
-                  </>
-                ) : (
-                  t("integrations.databaseSetup.skip")
-                )}
-              </Button>
-            )}
           </>
         ) : (
           <>

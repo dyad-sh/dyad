@@ -29,8 +29,9 @@ export const addIntegrationTool: ToolDefinition<
   getConsentPreview: () => "Add database integration",
 
   shouldTrackMutation: (_args, result) =>
-    !result.startsWith("The user skipped the integration setup") &&
-    !result.startsWith("The user dismissed the integration setup"),
+    !result.startsWith("The user dismissed the integration setup") &&
+    (!result.startsWith("The user skipped the integration setup") ||
+      result.includes("Git-visible workspace")),
   shouldTrackFileMutation: (_args, result) =>
     result.includes("Git-visible workspace files changed during setup.") ||
     result.includes(
@@ -76,16 +77,8 @@ export const addIntegrationTool: ToolDefinition<
     const result = await userInputRegistry.park(requestId, ctx.abortSignal);
 
     if (
-      result?.kind === "integration" &&
-      !result.completed &&
-      result.provider === null
-    ) {
-      return "The user skipped the integration setup. Continue the original task without Supabase or Neon, and do not prompt for a database integration again in this continuation.";
-    }
-    if (
       result?.kind !== "integration" ||
-      !result.completed ||
-      !result.provider
+      (result.completed && !result.provider)
     ) {
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
     }
@@ -113,6 +106,12 @@ export const addIntegrationTool: ToolDefinition<
       : gitVisibleFilesChanged
         ? " Git-visible workspace files changed during setup."
         : "";
+    if (!result.completed && result.provider === null) {
+      return `The user skipped the integration setup.${mutationNote} Continue the original task without Supabase or Neon, and do not prompt for a database integration again in this continuation.`;
+    }
+    if (!result.completed || !result.provider) {
+      return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
+    }
     return `User completed the ${result.provider} integration.${mutationNote} You can now continue with the next step.`;
   },
 };

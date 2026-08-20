@@ -372,7 +372,7 @@ describe("user-input registry", () => {
     await expect(registry.park(consent)).resolves.toBeNull();
   });
 
-  it("settles an incomplete integration response without arming a follow-up", async () => {
+  it("arms the explicit database-integration skip as a follow-up", async () => {
     const { registry, broadcast } = setup();
     const requestId = registry.request({
       kind: "integration",
@@ -393,13 +393,18 @@ describe("user-input registry", () => {
       provider: null,
       completed: false,
     });
-    expect(registry.getPending()).toEqual([]);
+    expect(registry.getPending()).toEqual([
+      expect.objectContaining({
+        status: "armed",
+        descriptor: expect.objectContaining({ requestId }),
+      }),
+    ]);
     registry.streamFinished(12);
     expect(
       broadcast.mock.calls.some(
         ([channel]) => channel === "user-input:follow-up-due",
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("dispose aborts all live parks and clears deadlines", async () => {

@@ -120,6 +120,36 @@ describe("addIntegrationTool Git-visible mutation tracking", () => {
     ).toBe(false);
   });
 
+  it("retains Git-visible mutation tracking when the user skips", async () => {
+    mocks.park.mockImplementation(async () => {
+      await fs.writeFile(path.join(appPath!, ".env.local"), "DATABASE_URL=x\n");
+      return {
+        kind: "integration",
+        provider: null,
+        completed: false,
+      };
+    });
+
+    const result = await addIntegrationTool.execute({}, {
+      appPath,
+    } as AgentContext);
+
+    expect(result).toContain("The user skipped the integration setup");
+    expect(result).toContain(
+      "Git-visible workspace files changed during setup",
+    );
+    expect(
+      addIntegrationTool.shouldTrackMutation?.({}, result, {} as AgentContext),
+    ).toBe(true);
+    expect(
+      addIntegrationTool.shouldTrackFileMutation?.(
+        {},
+        result,
+        {} as AgentContext,
+      ),
+    ).toBe(true);
+  });
+
   it("conservatively tracks a file mutation when fingerprinting is uncertain", async () => {
     const abortController = new AbortController();
     abortController.abort();

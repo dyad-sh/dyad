@@ -92,6 +92,7 @@ describe("safeGithubOpsErrorMessage", () => {
       "Permission to [redacted remote] denied while contacting [redacted host]",
     ],
     ["trace: deploy@code.example.com:team/private", "trace: [redacted remote]"],
+    ["trace: buildbox:team/private", "trace: [redacted remote]"],
     ["hook: src/App.tsx:42:7 failed", "hook: src/App.tsx:42:7 failed"],
     [
       "hook: src/main.ts:10:5: error TS1005",
@@ -213,7 +214,7 @@ describe("safeGithubOpsErrorMessage", () => {
   it("falls back when a high-confidence sensitive path survives redaction", () => {
     expect(
       safeGithubOpsErrorMessage(
-        new Error("hook:x/Users/alice/private-project"),
+        new Error("hook#x/Users/alice/private-project"),
         "GitHub operation failed",
       ),
     ).toBe("GitHub operation failed");

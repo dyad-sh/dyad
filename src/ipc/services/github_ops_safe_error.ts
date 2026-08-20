@@ -119,6 +119,10 @@ function redactSensitiveGitOutput(message: string): string {
       /\b(?:[\w.-]{1,64}@[\w.-]{1,255}|[\w-]{1,63}(?:\.[\w-]{1,63})+):(?!\d+(?::\d+)*\b)[^\s<>"']+/gi,
       "[redacted remote]",
     )
+    .replaceAll(
+      /\b[\w-]{1,63}:(?!\d)(?=[^\s<>"']*\/)[^\s<>"']+/gi,
+      "[redacted remote]",
+    )
     .replaceAll(/\b(?:[\w.-]+\/)+[\w.-]+\.git\b/gi, "[redacted remote]")
     .replaceAll(
       /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,

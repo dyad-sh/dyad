@@ -79,6 +79,11 @@ testSkipIfWindows(
       "Basic Agent",
     );
     await expect(basicAgentResponse).toHaveCount(responseCountBeforeQuotaError);
+    await expect(
+      po.page.getByText("tc=local-agent/simple-response message 11", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
 
     // 7. Switch through the error box. This changes mode and dismisses the
     // error without automatically retrying the rejected prompt.
@@ -91,6 +96,11 @@ testSkipIfWindows(
       po.page.getByTestId("free-agent-quota-banner"),
     ).not.toBeVisible();
     await expect(basicAgentResponse).toHaveCount(responseCountBeforeQuotaError);
+    await expect(
+      po.page.getByText("tc=local-agent/simple-response message 11", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
 
     // 8. Verify the user can explicitly send a later message in Build mode.
     await po.sendPrompt("[dyad-qa=write] create a simple file");

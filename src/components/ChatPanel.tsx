@@ -35,6 +35,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useChatMode } from "@/hooks/useChatMode";
 import { isDyadProEnabled } from "@/lib/schemas";
+import { isFreeProModel } from "@/lib/freeProModel";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
@@ -104,7 +105,7 @@ export function ChatPanel({
   const streamState = useChatStreamState(chatId) ?? { type: "idle" };
   const chatStreamManager = useChatStreamManager();
   const { settings } = useSettings();
-  const { selectedMode, setChatMode } = useChatMode(chatId);
+  const { selectedMode, selectedModel, setChatMode } = useChatMode(chatId);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
     settings &&
@@ -460,8 +461,10 @@ export function ChatPanel({
                   </div>
                   {showFreeAgentQuotaBanner && (
                     <FreeAgentQuotaBanner
-                      onSwitchToBuildMode={() =>
-                        void setChatMode("build").catch(() => {})
+                      onSwitchToBuildMode={
+                        isFreeProModel(selectedModel)
+                          ? undefined
+                          : () => void setChatMode("build").catch(() => {})
                       }
                     />
                   )}

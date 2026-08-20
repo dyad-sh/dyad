@@ -157,8 +157,10 @@ export function ChatErrorBox({
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
         You have used all {messagesLimit} free Basic Agent messages for today.
-        {resetText} Upgrade to Dyad Pro for unlimited Agent access, or switch
-        this chat to Build mode.
+        {resetText} Upgrade to Dyad Pro for unlimited Agent access
+        {onSwitchToBuildMode
+          ? ", or switch this chat to Build mode."
+          : ". To use Build mode, first choose a model other than Dyad Free."}
         <div className="mt-2 flex flex-wrap gap-2">
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-agent-quota-exceeded"

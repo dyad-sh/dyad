@@ -15,8 +15,50 @@ import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 
 type ChatTurnDatabase = Pick<
   BetterSQLite3Database<typeof schema>,
-  "transaction"
+  "select" | "transaction"
 >;
+
+export function isChatTurnAlreadyAccepted(
+  database: ChatTurnDatabase,
+  {
+    chatId,
+    chatTurnIntentId,
+    userInputRequestId,
+  }: Pick<
+    AcceptChatTurnInput,
+    "chatId" | "chatTurnIntentId" | "userInputRequestId"
+  >,
+): boolean {
+  if (
+    chatTurnIntentId &&
+    getAcceptedMessageId(chatTurnIntentId) !== undefined
+  ) {
+    return true;
+  }
+  if (!chatTurnIntentId && !userInputRequestId) {
+    return false;
+  }
+
+  return Boolean(
+    database
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.chatId, chatId),
+          or(
+            ...(chatTurnIntentId
+              ? [eq(messages.chatTurnIntentId, chatTurnIntentId)]
+              : []),
+            ...(userInputRequestId
+              ? [eq(messages.userInputRequestId, userInputRequestId)]
+              : []),
+          ),
+        ),
+      )
+      .get(),
+  );
+}
 
 export interface AcceptChatTurnInput {
   chatId: number;

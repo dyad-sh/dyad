@@ -109,6 +109,7 @@ import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled, isLocalAgentBackedMode } from "@/lib/schemas";
+import { isFreeProModel } from "@/lib/freeProModel";
 import { ReferencedAppsBar } from "./ReferencedAppsBar";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
@@ -149,6 +150,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     selectedMode: chatMode,
     effectiveMode,
     storedChatMode,
+    selectedModel,
     isLoading: isChatModeLoading,
     setChatMode,
   } = useChatMode(chatId);
@@ -725,11 +727,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           error={error}
           isDyadProEnabled={isProEnabled}
           onStartNewChat={handleNewChat}
-          onSwitchToBuildMode={() => {
-            void setChatMode("build")
-              .then(dismissError)
-              .catch(() => {});
-          }}
+          onSwitchToBuildMode={
+            isFreeProModel(selectedModel)
+              ? undefined
+              : () => {
+                  void setChatMode("build")
+                    .then(dismissError)
+                    .catch(() => {});
+                }
+          }
         />
       )}
       {/* Display loading or error state for proposal */}

@@ -60,4 +60,21 @@ describe("ChatErrorBox Basic Agent quota error", () => {
     expect(onSwitchToBuildMode).toHaveBeenCalledOnce();
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  it("explains that Dyad Free must be changed before using Build", () => {
+    render(
+      <ChatErrorBox
+        error='{"type":"FREE_AGENT_QUOTA_EXCEEDED"}'
+        isDyadProEnabled={false}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/first choose a model other than Dyad Free/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Switch to Build" }),
+    ).toBeNull();
+  });
 });

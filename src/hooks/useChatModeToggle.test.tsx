@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   posthogCapture: vi.fn(),
   search: {} as { id?: number },
   selectedMode: "build",
+  selectedModel: { provider: "openrouter", name: "test-model" },
+  isQuotaExceeded: false,
   setChatMode: vi.fn(),
   settings: {
     selectedChatMode: "build",
@@ -23,10 +25,15 @@ vi.mock("./useChatMode", () => ({
     mocks.lastChatId = chatId;
     return {
       selectedMode: mocks.selectedMode,
+      selectedModel: mocks.selectedModel,
       setChatMode: mocks.setChatMode,
       settings: mocks.settings,
     };
   },
+}));
+
+vi.mock("./useFreeAgentQuota", () => ({
+  useFreeAgentQuota: () => ({ isQuotaExceeded: mocks.isQuotaExceeded }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -58,6 +65,8 @@ describe("useChatModeToggle", () => {
     mocks.posthogCapture.mockReset();
     mocks.search = {};
     mocks.selectedMode = "build";
+    mocks.selectedModel = { provider: "openrouter", name: "test-model" };
+    mocks.isQuotaExceeded = false;
     mocks.setChatMode.mockReset();
     mocks.setChatMode.mockResolvedValue(undefined);
     mocks.settings = {
@@ -113,5 +122,44 @@ describe("useChatModeToggle", () => {
     expect(mocks.lastChatId).toBe(42);
     expect(mocks.setChatMode).toHaveBeenCalledWith("ask");
     expect(result.current.hasManuallySelectedChatMode).toBe(false);
+  });
+
+  it("skips Basic Agent when free quota is exhausted", () => {
+    mocks.selectedMode = "ask";
+    mocks.isQuotaExceeded = true;
+
+    const { result } = renderHook(() => useChatModeToggle(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.toggleChatMode());
+
+    expect(mocks.setChatMode).toHaveBeenCalledWith("plan");
+  });
+
+  it("cycles away from an already-selected exhausted Basic Agent", () => {
+    mocks.selectedMode = "local-agent";
+    mocks.isQuotaExceeded = true;
+
+    const { result } = renderHook(() => useChatModeToggle(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.toggleChatMode());
+
+    expect(mocks.setChatMode).toHaveBeenCalledWith("plan");
+  });
+
+  it("skips Build when Dyad Free is selected", () => {
+    mocks.selectedMode = "plan";
+    mocks.selectedModel = { provider: "auto", name: "free-pro" };
+
+    const { result } = renderHook(() => useChatModeToggle(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.toggleChatMode());
+
+    expect(mocks.setChatMode).toHaveBeenCalledWith("ask");
   });
 });

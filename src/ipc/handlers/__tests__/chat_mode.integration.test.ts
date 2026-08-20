@@ -25,6 +25,7 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { chats, messages } from "@/db/schema";
 import { readSettings, writeSettings } from "@/main/settings";
+import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 
 function errorEvents(harness: HybridChatHarness) {
   return harness.bridge.sentEvents.filter(
@@ -213,6 +214,81 @@ describe("chat mode (integration)", () => {
         where: eq(chats.id, arbitrationChatId),
       });
       expect(unchangedChat?.chatMode).toBe("build");
+    } finally {
+      writeSettings(originalSettings);
+    }
+  }, 60_000);
+
+  it("rejects exhausted Basic Agent quota before accepting the turn", async () => {
+    const originalSettings = readSettings();
+    const quotaChatId = await harness.createChat();
+    await harness.db
+      .update(chats)
+      .set({ chatMode: "local-agent" })
+      .where(eq(chats.id, quotaChatId));
+    await harness.db.insert(messages).values(
+      Array.from({ length: FREE_AGENT_QUOTA_LIMIT }, (_, index) => ({
+        chatId: quotaChatId,
+        role: "user" as const,
+        content: `quota message ${index + 1}`,
+        usingFreeAgentModeQuota: true,
+        ...(index === 0
+          ? { userInputRequestId: "accepted-before-exhaustion" }
+          : {}),
+      })),
+    );
+    writeSettings({
+      enableDyadPro: false,
+      selectedChatMode: "local-agent",
+      defaultChatMode: "local-agent",
+    });
+
+    try {
+      const result = await harness.streamChat("must not be accepted", {
+        chatId: quotaChatId,
+        requestedChatMode: "local-agent",
+        userInputRequestId: "exhausted-basic-agent",
+      });
+
+      const errorEvents = result.eventsFor("chat:response:error");
+      expect(errorEvents).toHaveLength(1);
+      expect(errorEvents[0].payload).toMatchObject({
+        error: expect.stringContaining("FREE_AGENT_QUOTA_EXCEEDED"),
+      });
+      expect(
+        result
+          .eventsFor("chat:response:chunk")
+          .some(({ payload }) =>
+            JSON.stringify(payload).includes("acceptedUserInputRequestId"),
+          ),
+      ).toBe(false);
+
+      const persistedMessages = await harness.db.query.messages.findMany({
+        where: eq(messages.chatId, quotaChatId),
+      });
+      expect(persistedMessages).toHaveLength(FREE_AGENT_QUOTA_LIMIT);
+      expect(
+        persistedMessages.some(
+          ({ content }) => content === "must not be accepted",
+        ),
+      ).toBe(false);
+      expect(
+        persistedMessages.some(
+          ({ role, content }) => role === "assistant" && content === "",
+        ),
+      ).toBe(false);
+
+      const replay = await harness.streamChat("quota message 1", {
+        chatId: quotaChatId,
+        requestedChatMode: "local-agent",
+        userInputRequestId: "accepted-before-exhaustion",
+      });
+      expect(replay.eventsFor("chat:response:error")).toHaveLength(0);
+      expect(replay.eventsFor("chat:response:end")).toHaveLength(1);
+      const messagesAfterReplay = await harness.db.query.messages.findMany({
+        where: eq(messages.chatId, quotaChatId),
+      });
+      expect(messagesAfterReplay).toHaveLength(FREE_AGENT_QUOTA_LIMIT);
     } finally {
       writeSettings(originalSettings);
     }

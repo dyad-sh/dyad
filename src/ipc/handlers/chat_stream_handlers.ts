@@ -142,7 +142,10 @@ import {
   normalizeStoredChatMode,
   resolveChatModeForTurn,
 } from "./chat_mode_resolution";
-import { acceptChatTurn } from "./chat_turn_acceptance";
+import {
+  acceptChatTurn,
+  isChatTurnAlreadyAccepted,
+} from "./chat_turn_acceptance";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
 import {
   getFreeAgentQuotaStatus,
@@ -1379,6 +1382,34 @@ ${componentSnippet}
         });
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
 
+      // Reject exhausted Basic Agent turns before idempotency insertion, mode
+      // latching, renderer acceptance, or assistant placeholder creation.
+      let isBasicAgentModeRequest = isBasicAgentMode({
+        ...storedSettings,
+        selectedChatMode,
+      });
+      const isAcceptedReplay = isChatTurnAlreadyAccepted(db, {
+        chatId: req.chatId,
+        chatTurnIntentId: req.intentId,
+        userInputRequestId: req.userInputRequestId,
+      });
+      if (isBasicAgentModeRequest && !isAcceptedReplay) {
+        const quotaStatus = await getFreeAgentQuotaStatus();
+        if (quotaStatus.isQuotaExceeded) {
+          safeSend(event.sender, "chat:response:error", {
+            chatId: req.chatId,
+            invocationRef: req.invocationRef,
+            streamId: req.streamId,
+            error: JSON.stringify({
+              type: "FREE_AGENT_QUOTA_EXCEEDED",
+              hoursUntilReset: quotaStatus.hoursUntilReset,
+              resetTime: quotaStatus.resetTime,
+            }),
+          } satisfies ChatStreamErrorPayload);
+          return req.chatId;
+        }
+      }
+
       // Accept the user message and latch an implicit chat's first mode in one
       // synchronous transaction. This keeps the idempotent message insert and
       // the mode latch atomic. The conditional update also arbitrates
@@ -1456,6 +1487,7 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
+      isBasicAgentModeRequest = isBasicAgentMode(settings);
       const freeModelMode = isFreeProModel(settings.selectedModel);
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),
@@ -2297,25 +2329,6 @@ This conversation includes one or more image attachments. When the user uploads 
         // injects a `<system-reminder>` into the user's latest message telling
         // the agent which `app_name` values are valid.
         if (isLocalAgentMode) {
-          // Check quota for Basic Agent mode (non-Pro users)
-          const isBasicAgentModeRequest = isBasicAgentMode(settings);
-          if (isBasicAgentModeRequest) {
-            const quotaStatus = await getFreeAgentQuotaStatus();
-            if (quotaStatus.isQuotaExceeded) {
-              safeSend(event.sender, "chat:response:error", {
-                chatId: req.chatId,
-                invocationRef: req.invocationRef,
-                streamId: req.streamId,
-                error: JSON.stringify({
-                  type: "FREE_AGENT_QUOTA_EXCEEDED",
-                  hoursUntilReset: quotaStatus.hoursUntilReset,
-                  resetTime: quotaStatus.resetTime,
-                }),
-              } satisfies ChatStreamErrorPayload);
-              return;
-            }
-          }
-
           // Mark the user message as using quota BEFORE starting the stream
           // to prevent race conditions with parallel requests
           if (isBasicAgentModeRequest && userMessageId) {

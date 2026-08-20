@@ -1,11 +1,39 @@
 import { useCallback, useMemo } from "react";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
-import { ChatModeSchema } from "../lib/schemas";
+import {
+  ChatModeSchema,
+  isDyadProEnabled,
+  type ChatMode,
+} from "../lib/schemas";
 import { useChatMode } from "./useChatMode";
+import { useFreeAgentQuota } from "./useFreeAgentQuota";
 import { useRouterState } from "@tanstack/react-router";
 import { useSetAtom } from "jotai";
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
+import { isFreeProModel } from "@/lib/freeProModel";
+
+export function getNextAvailableChatMode({
+  currentMode,
+  canUseBasicAgent,
+  canUseBuild,
+}: {
+  currentMode: ChatMode;
+  canUseBasicAgent: boolean;
+  canUseBuild: boolean;
+}): ChatMode {
+  const modes = ChatModeSchema.options;
+  const currentIndex = modes.indexOf(currentMode);
+
+  for (let offset = 1; offset <= modes.length; offset += 1) {
+    const candidate = modes[(currentIndex + offset) % modes.length];
+    if (candidate === "local-agent" && !canUseBasicAgent) continue;
+    if (candidate === "build" && !canUseBuild) continue;
+    return candidate;
+  }
+
+  return currentMode;
+}
 
 export function useChatModeToggle() {
   const routerState = useRouterState();
@@ -13,7 +41,9 @@ export function useChatModeToggle() {
     routerState.location.pathname === "/chat"
       ? (routerState.location.search.id as number | undefined)
       : null;
-  const { selectedMode, setChatMode, settings } = useChatMode(routeChatId);
+  const { selectedMode, selectedModel, setChatMode, settings } =
+    useChatMode(routeChatId);
+  const { isQuotaExceeded } = useFreeAgentQuota();
   const setHasManuallySelectedChatMode = useSetAtom(
     hasManuallySelectedChatModeAtom,
   );
@@ -37,9 +67,11 @@ export function useChatModeToggle() {
 
     const currentMode = selectedMode;
     // Migration on read ensures currentMode is never "agent"
-    const modes = ChatModeSchema.options;
-    const currentIndex = modes.indexOf(currentMode);
-    const newMode = modes[(currentIndex + 1) % modes.length];
+    const newMode = getNextAvailableChatMode({
+      currentMode,
+      canUseBasicAgent: isDyadProEnabled(settings) || !isQuotaExceeded,
+      canUseBuild: !isFreeProModel(selectedModel),
+    });
 
     if (routeChatId == null) {
       setHasManuallySelectedChatMode(true);
@@ -54,6 +86,8 @@ export function useChatModeToggle() {
     selectedMode,
     setChatMode,
     settings,
+    selectedModel,
+    isQuotaExceeded,
     routeChatId,
     setHasManuallySelectedChatMode,
     posthog,

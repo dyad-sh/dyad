@@ -29,6 +29,7 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderApiKeyValidationProvider, string> =
   {
     google: "Google",
     openrouter: "OpenRouter",
+    orcarouter: "OrcaRouter",
     auto: "Dyad",
   };
 
@@ -130,6 +131,15 @@ async function createValidationModel(
       });
       return openrouter("openrouter/free");
     }
+    case "orcarouter": {
+      const orcarouter = createOpenAICompatible({
+        name: "orcarouter",
+        apiKey,
+        baseURL: getOrcaRouterBaseUrl(),
+        ...getTestFetchOption(),
+      });
+      return orcarouter("orcarouter/auto");
+    }
     case "auto": {
       const settings = await readEffectiveSettings();
       const dyad = createDyadEngine({
@@ -170,6 +180,13 @@ function getOpenRouterBaseUrl() {
     return `http://localhost:${process.env.FAKE_LLM_PORT}/openrouter/v1`;
   }
   return "https://openrouter.ai/api/v1";
+}
+
+function getOrcaRouterBaseUrl() {
+  if (IS_TEST_BUILD && process.env.FAKE_LLM_PORT) {
+    return `http://localhost:${process.env.FAKE_LLM_PORT}/orcarouter/v1`;
+  }
+  return "https://api.orcarouter.ai/v1";
 }
 
 function classifyValidationError(

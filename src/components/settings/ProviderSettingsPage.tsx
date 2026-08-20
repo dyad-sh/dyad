@@ -59,6 +59,7 @@ type ApiKeyValidationDialogState = {
 const VALIDATED_API_KEY_PROVIDERS = new Set<string>([
   "google",
   "openrouter",
+  "orcarouter",
   "auto",
 ]);
 

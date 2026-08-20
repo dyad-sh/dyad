@@ -62,6 +62,11 @@ vi.mock("../shared/language_model_helpers", () => ({
       name: "OpenRouter",
       type: "cloud",
     },
+    {
+      id: "orcarouter",
+      name: "OrcaRouter",
+      type: "cloud",
+    },
   ]),
 }));
 
@@ -369,5 +374,62 @@ describe("getModelClient", () => {
     expect(capturedHeaders?.get("X-OpenRouter-Categories")).toBe(
       OPENROUTER_APP_CATEGORIES,
     );
+  });
+
+  test("creates an OrcaRouter chat model pointing at the OrcaRouter base URL", async () => {
+    let capturedUrl: string | undefined;
+    let capturedHeaders: Headers | undefined;
+    setModelClientFetchForTesting(
+      vi.fn(async (url, init) => {
+        capturedUrl = url.toString();
+        capturedHeaders = new Headers(init?.headers);
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl-test",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: "ok",
+                },
+                finish_reason: "stop",
+              },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }),
+    );
+
+    const { modelClient } = await getModelClient(
+      {
+        provider: "orcarouter",
+        name: "orcarouter/auto",
+      },
+      {
+        providerSettings: {
+          orcarouter: {
+            apiKey: {
+              value: "orcarouter-key",
+            },
+          },
+        },
+      } as unknown as UserSettings,
+    );
+
+    await generateText({
+      model: modelClient.model,
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(capturedUrl).toContain("https://api.orcarouter.ai/v1");
+    expect(capturedHeaders?.get("Authorization")).toBe("Bearer orcarouter-key");
+    expect((modelClient.model as { modelId: string }).modelId).toBe(
+      "orcarouter/auto",
+    );
+    expect(modelClient.builtinProviderId).toBe("orcarouter");
   });
 });

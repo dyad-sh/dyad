@@ -77,6 +77,7 @@ const providers = [
   "xai",
   "bedrock",
   "minimax",
+  "orcarouter",
 ] as const;
 
 export const cloudProviders = providers.filter(

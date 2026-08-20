@@ -662,20 +662,26 @@ export function createFakeLlmApp(getPort: () => number) {
     },
   );
 
-  ["lmstudio", "gateway", "engine", "ollama", "azure", "openrouter"].forEach(
-    (provider) => {
-      app.post(
-        `/${provider}/v1/chat/completions`,
-        createChatCompletionHandler(provider),
-      );
-      // Also add responses API endpoints for each provider
-      app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
-      app.post(
-        `/${provider}/v1/messages`,
-        createAnthropicMessagesHandler(provider),
-      );
-    },
-  );
+  [
+    "lmstudio",
+    "gateway",
+    "engine",
+    "ollama",
+    "azure",
+    "openrouter",
+    "orcarouter",
+  ].forEach((provider) => {
+    app.post(
+      `/${provider}/v1/chat/completions`,
+      createChatCompletionHandler(provider),
+    );
+    // Also add responses API endpoints for each provider
+    app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
+    app.post(
+      `/${provider}/v1/messages`,
+      createAnthropicMessagesHandler(provider),
+    );
+  });
 
   // Azure-specific endpoints (Azure client uses different URL patterns)
   app.post("/azure/chat/completions", createChatCompletionHandler("azure"));

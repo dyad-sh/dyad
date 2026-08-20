@@ -521,6 +521,21 @@ function getRegularModelClient(
         backupModelClients: [],
       };
     }
+    case "orcarouter": {
+      const provider = createOpenAICompatible({
+        name: "orcarouter",
+        baseURL: "https://api.orcarouter.ai/v1",
+        apiKey,
+        ...getModelClientFetchOption(),
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
     case "azure": {
       // Check if we're in e2e testing mode
       const testAzureBaseUrl = getEnvVar("TEST_AZURE_BASE_URL");

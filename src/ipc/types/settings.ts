@@ -5,6 +5,7 @@ import { UserSettingsSchema } from "../../lib/schemas";
 export const ProviderApiKeyValidationProviderSchema = z.enum([
   "google",
   "openrouter",
+  "orcarouter",
   "auto",
 ]);
 

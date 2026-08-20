@@ -556,6 +556,48 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 1,
     },
   ],
+  // https://www.orcarouter.ai
+  orcarouter: [
+    {
+      name: "orcarouter/auto",
+      displayName: "OrcaRouter Auto",
+      description:
+        "OrcaRouter's smart-routing gateway model — routes to the best available model for each request",
+      maxOutputTokens: 32_000,
+      contextWindow: 250_000,
+      temperature: 0,
+      dollarSigns: 1,
+    },
+    {
+      name: "orcarouter/fusion",
+      displayName: "OrcaRouter Fusion",
+      description:
+        "OrcaRouter's long-context flagship model (1M context window)",
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+      dollarSigns: 2,
+    },
+    {
+      name: "orcarouter/fusion-flash",
+      displayName: "OrcaRouter Fusion Flash",
+      description:
+        "Fast, cost-effective OrcaRouter model with a 200K context window",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 1,
+    },
+    {
+      name: "orcarouter/fusion-mini",
+      displayName: "OrcaRouter Fusion Mini",
+      description: "Lightweight OrcaRouter model with a 1M context window",
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+      dollarSigns: 1,
+    },
+  ],
 };
 
 export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
@@ -569,6 +611,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  orcarouter: "ORCAROUTER_API_KEY",
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
@@ -648,6 +691,13 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://platform.minimax.io/",
     gatewayPrefix: "minimax/",
+    secondary: true,
+  },
+  orcarouter: {
+    displayName: "OrcaRouter",
+    hasFreeTier: false,
+    websiteUrl: "https://www.orcarouter.ai",
+    gatewayPrefix: "orcarouter/",
     secondary: true,
   },
 };

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { COOLIFY_REQUIRED_SCOPES, COOLIFY_SCOPES } from "./coolify_scopes";
+import {
+  COOLIFY_REQUIRED_SCOPES,
+  COOLIFY_SCOPES,
+  COOLIFY_SCOPES_PHP_ARRAY,
+} from "./coolify_scopes";
 
 describe("the scopes Dyad asks for", () => {
   it("asks for exactly these four", () => {
@@ -13,6 +17,14 @@ describe("the scopes Dyad asks for", () => {
       "write",
       "deploy",
     ]);
+    // The two spellings are written out for the same reason. One is read by a
+    // user ticking boxes; the other is interpolated into a script that mints a
+    // token on their server, where a well-formed but wrong list would be taken
+    // at face value.
+    expect(COOLIFY_REQUIRED_SCOPES).toBe("read, read:sensitive, write, deploy");
+    expect(COOLIFY_SCOPES_PHP_ARRAY).toBe(
+      "['read', 'read:sensitive', 'write', 'deploy']",
+    );
   });
 
   it("keeps read:sensitive, which the deployment log is hidden behind", () => {

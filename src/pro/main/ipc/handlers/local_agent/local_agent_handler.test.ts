@@ -2370,6 +2370,64 @@ describe("handleLocalAgentStream", () => {
       expect(lastContentUpdate.data.content).toContain("world!");
     });
 
+    it("strips model-echoed Git context from streamed and persisted output", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      const echoedTag =
+        '<dyad-git-context commit="hallucinated"></dyad-git-context>';
+      mockStreamResult = {
+        fullStream: (async function* () {
+          yield { type: "text-delta", text: "Finished.<dyad-git-con" };
+          yield {
+            type: "text-delta",
+            text: 'text commit="hallucinated"></dyad-git-context>',
+          };
+        })(),
+        response: Promise.resolve({
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: `Finished.${echoedTag}` }],
+            },
+          ],
+        }),
+        steps: Promise.resolve([]),
+      };
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const sentPayloads = getMessagesByChannel("chat:response:chunk").map(
+        (message) => JSON.stringify(message.args[0]),
+      );
+      expect(sentPayloads.join("\n")).not.toContain("dyad-git-context");
+      expect(sentPayloads.join("\n")).toContain("Finished.");
+
+      const contentUpdates = dbOperations.updates.filter(
+        (update) => update.data.content !== undefined,
+      );
+      expect(contentUpdates.at(-1)?.data.content).toBe("Finished.");
+
+      const aiMessagesUpdate = dbOperations.updates.find(
+        (update) => update.data.aiMessagesJson !== undefined,
+      );
+      expect(JSON.stringify(aiMessagesUpdate?.data.aiMessagesJson)).toContain(
+        "Finished.",
+      );
+      expect(
+        JSON.stringify(aiMessagesUpdate?.data.aiMessagesJson),
+      ).not.toContain("dyad-git-context");
+    });
+
     it("should retry and resume when a stream terminates transiently", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();

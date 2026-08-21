@@ -107,6 +107,10 @@ import {
 } from "./prepare_step_utils";
 import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
+import {
+  GitContextEchoSanitizer,
+  stripGitContextEchoesFromAssistantMessages,
+} from "./git_context_sanitizer";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
@@ -1430,6 +1434,7 @@ export async function handleLocalAgentStream(
 
           let inThinkingBlock = false;
           let streamErrorFromIteration: unknown;
+          const gitContextEchoSanitizer = new GitContextEchoSanitizer();
 
           try {
             for await (const part of fullStream) {
@@ -1471,12 +1476,19 @@ export async function handleLocalAgentStream(
                   break;
 
                 case "text-delta":
-                  passProducedChatText = true;
-                  chunk += part.text;
-                  maybeCaptureRetryReplayText(
-                    activeRetryReplayEvents,
-                    part.text,
-                  );
+                  {
+                    const sanitizedText = gitContextEchoSanitizer.push(
+                      part.text,
+                    );
+                    if (sanitizedText.length > 0) {
+                      passProducedChatText = true;
+                      chunk += sanitizedText;
+                      maybeCaptureRetryReplayText(
+                        activeRetryReplayEvents,
+                        sanitizedText,
+                      );
+                    }
+                  }
                   break;
 
                 case "reasoning-start":
@@ -1635,6 +1647,15 @@ export async function handleLocalAgentStream(
             }
           }
 
+          const trailingText = gitContextEchoSanitizer.finish();
+          if (trailingText.length > 0) {
+            passProducedChatText = true;
+            fullResponse += trailingText;
+            maybeCaptureRetryReplayText(activeRetryReplayEvents, trailingText);
+            await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendChunk(fullResponse);
+          }
+
           // Close thinking block if still open
           if (inThinkingBlock) {
             const closingThinkBlock = "</think>\n";
@@ -1704,7 +1725,9 @@ export async function handleLocalAgentStream(
           try {
             const response = await streamResult.response;
             steps = (await streamResult.steps) ?? [];
-            responseMessages = response.messages;
+            responseMessages = stripGitContextEchoesFromAssistantMessages(
+              response.messages,
+            );
           } catch (err) {
             if (
               shouldRetryTransientStreamError({

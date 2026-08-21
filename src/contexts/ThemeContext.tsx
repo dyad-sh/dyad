@@ -26,15 +26,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     queryKey: queryKeys.system.nativeTheme,
     queryFn: () => ipc.system.getNativeThemeState(),
     staleTime: Infinity,
+    enabled: false,
   });
 
-  useEffect(
-    () =>
-      ipc.events.system.onNativeThemeUpdated((state) => {
-        queryClient.setQueryData(queryKeys.system.nativeTheme, state);
-      }),
-    [queryClient],
-  );
+  useEffect(() => {
+    let active = true;
+    let eventGeneration = 0;
+    const unsubscribe = ipc.events.system.onNativeThemeUpdated((state) => {
+      eventGeneration += 1;
+      queryClient.setQueryData(queryKeys.system.nativeTheme, state);
+    });
+
+    // Subscribe before requesting the initial state: invoke replies and
+    // main-to-renderer events are unordered, so a newer event must win over an
+    // older bootstrap response that happens to resolve later.
+    const requestGeneration = eventGeneration;
+    void ipc.system
+      .getNativeThemeState()
+      .then((state) => {
+        if (active && eventGeneration === requestGeneration) {
+          queryClient.setQueryData(queryKeys.system.nativeTheme, state);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [queryClient]);
 
   const isDarkMode =
     theme === "dark" ||

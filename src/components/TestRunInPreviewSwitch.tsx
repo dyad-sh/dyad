@@ -29,9 +29,9 @@ export function TestRunInPreviewSwitch() {
         preview panel instead of a separate window, so you can watch them run in
         place. The view lasts for the run only: component selection, the visual
         editor, the annotator, and console capture are unavailable while it is
-        open. Tests in a preview run share one browser page, so cookies and
-        stored data carry over between them unless a test clears them. Dyad must
-        be restarted for this setting to take effect.
+        open. Each test gets a fresh page and browser session, so cookies and
+        stored data do not carry over between tests. Dyad must be restarted for
+        this setting to take effect.
       </p>
       <p className="text-[13px] leading-relaxed text-amber-700 dark:text-amber-500">
         While enabled, Dyad opens a debugging port on 127.0.0.1 for the whole

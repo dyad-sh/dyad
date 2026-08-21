@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as esbuild from "esbuild";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPlaywrightConfig,
   buildPreviewShimSource,
@@ -104,8 +104,13 @@ describe("buildPreviewShimSource", () => {
 
   it("attaches to the existing page instead of opening one", () => {
     expect(source).toContain("connectOverCDP");
-    expect(source).toContain("browser.contexts().find");
-    expect(source).toContain("candidateContext.pages().some");
+    expect(source).toContain("findPreviewContext(browser, targetId)");
+    expect(source).toContain(
+      "for (const candidateContext of browser.contexts())",
+    );
+    expect(source).toContain(
+      "for (const candidatePage of candidateContext.pages())",
+    );
     expect(source).not.toContain("browser.contexts()[0]");
     expect(source).toContain("context.pages().find");
     // Closing the context or page would take the user's preview down with it.
@@ -113,11 +118,14 @@ describe("buildPreviewShimSource", () => {
     expect(source).not.toContain("page.close()");
   });
 
-  it("clears Playwright media emulation outside the preview context", () => {
+  it("clears Playwright media emulation outside all preview contexts", () => {
     // connectOverCDP initializes every Electron page, including Dyad's own
     // renderer, with Playwright's default light color scheme. Only the preview
     // context should retain test-controlled media emulation.
-    expect(source).toContain("context !== previewContext");
+    expect(source).toContain(
+      'navigator.userAgent.includes("DyadPreviewTarget/")',
+    );
+    expect(source).toContain("!previewContexts.has(context)");
     expect(source).toContain("page.emulateMedia({");
     expect(source).toContain("colorScheme: null");
     expect(source).toContain("reducedMotion: null");
@@ -165,7 +173,9 @@ describe("preview shim fixtures", () => {
    * apart, so a change to `buildPreviewShimSource()` would leave a hand-copied
    * version green while the shipped shim was broken.
    */
-  async function loadShimFixtures() {
+  async function loadShimFixtures(
+    browserToConnect: unknown = { close: async () => {} },
+  ) {
     const source = buildPreviewShimSource();
     const { code } = await esbuild.transform(source, {
       loader: "ts",
@@ -182,7 +192,7 @@ describe("preview shim fixtures", () => {
         },
       },
       expect: () => {},
-      chromium: { connectOverCDP: async () => ({ close: async () => {} }) },
+      chromium: { connectOverCDP: async () => browserToConnect },
     };
 
     const module = { exports: {} as Record<string, unknown> };
@@ -208,6 +218,7 @@ describe("preview shim fixtures", () => {
     );
 
     return registered as {
+      browser: [FixtureFn, { scope: "worker" }];
       context: FixtureFn;
       page: FixtureFn;
     };
@@ -246,6 +257,56 @@ describe("preview shim fixtures", () => {
       },
     };
   }
+
+  it("preserves media emulation in every active Dyad preview", async () => {
+    const makePage = (targetId?: string) => ({
+      evaluate: vi.fn(async (_fn: unknown, requestedTargetId?: string) =>
+        requestedTargetId === undefined
+          ? targetId !== undefined
+          : targetId === requestedTargetId,
+      ),
+      emulateMedia: vi.fn().mockResolvedValue(undefined),
+    });
+    const makeContext = (page: ReturnType<typeof makePage>) => ({
+      pages: () => [page],
+      on: vi.fn(),
+      off: vi.fn(),
+    });
+    const selectedPreviewPage = makePage("selected-preview");
+    const concurrentPreviewPage = makePage("another-preview");
+    const rendererPage = makePage();
+    const selectedPreviewContext = makeContext(selectedPreviewPage);
+    const concurrentPreviewContext = makeContext(concurrentPreviewPage);
+    const rendererContext = makeContext(rendererPage);
+    const browser = {
+      contexts: () => [
+        selectedPreviewContext,
+        concurrentPreviewContext,
+        rendererContext,
+      ],
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const fixtures = await loadShimFixtures(browser);
+
+    await fixtures.browser[0](
+      {},
+      async (usedBrowser) => expect(usedBrowser).toBe(browser),
+      PASSING_TEST_INFO,
+    );
+
+    expect(selectedPreviewPage.emulateMedia).not.toHaveBeenCalled();
+    expect(concurrentPreviewPage.emulateMedia).not.toHaveBeenCalled();
+    expect(rendererPage.emulateMedia).toHaveBeenCalledTimes(2);
+    expect(rendererContext.on).toHaveBeenCalledWith(
+      "page",
+      expect.any(Function),
+    );
+    expect(rendererContext.off).toHaveBeenCalledWith(
+      "page",
+      expect.any(Function),
+    );
+    expect(browser.close).toHaveBeenCalledOnce();
+  });
 
   async function runPageFixture({
     initialUrl,
@@ -417,6 +478,7 @@ describe("ensurePreviewShim", () => {
       "connectOverCDP",
     );
     const tsconfig = JSON.parse(fs.readFileSync(tsconfigAt(appPath), "utf8"));
+    expect(tsconfig.compilerOptions.allowJs).toBe(true);
     expect(tsconfig.compilerOptions.paths["@playwright/test"]).toEqual([
       "./fixtures/dyad/dyad-test.ts",
     ]);
@@ -518,7 +580,12 @@ describe("ensurePreviewShim", () => {
     expect(tsconfig.extends).toBe("../tsconfig.json");
     // `extends` carries `files: []` from a solution-style root, which would
     // leave the specs in no project at all.
-    expect(tsconfig.include).toContain("**/*.ts");
+    expect(tsconfig.include).toEqual([
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+    ]);
   });
 
   it("stands alone when the app has no tsconfig to inherit", () => {

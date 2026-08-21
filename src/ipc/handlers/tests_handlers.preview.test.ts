@@ -61,8 +61,12 @@ vi.mock("@/paths/paths", async (importOriginal) => ({
     path.join(os.tmpdir(), "dyad-tests-preview", "apps", appPath),
 }));
 
-import { runAppTestsCore } from "./tests_handlers";
+import {
+  buildPlaywrightCliInvocation,
+  runAppTestsCore,
+} from "./tests_handlers";
 import { PREVIEW_CDP_ENDPOINT_ENV } from "../utils/playwright_bootstrap";
+import { buildWindowsCommandInvocation } from "../utils/windows_command";
 
 const PROXY_URL = "http://localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
@@ -87,9 +91,38 @@ beforeEach(() => {
   h.runningApps.clear();
   h.runningApps.set(1, { proxyUrl: PROXY_URL });
   fs.mkdirSync(APP_PATH, { recursive: true });
+  const playwrightPackagePath = path.join(
+    APP_PATH,
+    "node_modules",
+    "@playwright",
+    "test",
+    "package.json",
+  );
+  fs.mkdirSync(path.dirname(playwrightPackagePath), { recursive: true });
+  fs.writeFileSync(playwrightPackagePath, "{}");
 });
 
 describe("preview runs", () => {
+  it("keeps exact titles out of the Windows batch-file transport", () => {
+    const titleGrep = "^shows 100% progress\non completion$";
+    const invocation = buildPlaywrightCliInvocation(
+      "C:\\app\\node_modules\\@playwright\\test\\cli.js",
+      ["test", "-g", titleGrep],
+      "win32",
+    );
+
+    expect(invocation.command).toBe("node.exe");
+    expect(
+      buildWindowsCommandInvocation(
+        invocation.command,
+        invocation.args,
+        "win32",
+        "cmd.exe",
+      ),
+    ).toEqual(invocation);
+    expect(invocation.args).toContain(titleGrep);
+  });
+
   it("hands the fixture shim the CDP endpoint", async () => {
     await runAppTestsCore({ appId: 1, previewCdpEndpoint: CDP_ENDPOINT });
 
@@ -139,6 +172,7 @@ describe("preview runs", () => {
 
   it("discovers and runs each test in its own fresh preview", async () => {
     const rotatePreviewView = vi.fn(async () => {});
+    const percentTitle = "shows 100% progress\non completion";
     h.spawnStreaming.mockImplementation(async (options) => {
       const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
       fs.mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -152,7 +186,7 @@ describe("preview runs", () => {
                 file: path.join(APP_PATH, "e2e-tests/auth.spec.ts"),
                 specs: [
                   {
-                    title: "first",
+                    title: percentTitle,
                     line: 3,
                     tests: [{ expectedStatus: "passed" }],
                   },
@@ -183,7 +217,7 @@ describe("preview runs", () => {
       const line = options.args.some((arg: string) => arg.endsWith(":3"))
         ? 3
         : 7;
-      const title = line === 3 ? "first" : "second";
+      const title = line === 3 ? percentTitle : "second";
       const failed = line === 3;
       fs.writeFileSync(
         reportPath,
@@ -240,7 +274,7 @@ describe("preview runs", () => {
         file: "e2e-tests/auth.spec.ts",
         status: "failed",
         tests: [
-          expect.objectContaining({ title: "first", status: "failed" }),
+          expect.objectContaining({ title: percentTitle, status: "failed" }),
           expect.objectContaining({ title: "second", status: "passed" }),
           expect.objectContaining({
             title: "disabled",
@@ -257,6 +291,11 @@ describe("preview runs", () => {
       testSpawns[1].env.PLAYWRIGHT_JSON_OUTPUT_NAME,
     );
     expect(testSpawns[0].args).toContain("--workers=1");
+    expect(
+      testSpawns[0].args.some((arg: string) =>
+        arg.includes("shows 100% progress\non completion"),
+      ),
+    ).toBe(true);
     expect(
       testSpawns[0].args.some((arg: string) =>
         /^--output=.*0001\/artifacts$/.test(arg),

@@ -14,6 +14,7 @@ import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
+import { getActiveWindowSessionId } from "@/window_infrastructure/chat_tab_session_storage";
 
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
 
@@ -127,11 +128,15 @@ export function useTestRunEvents() {
         });
         discardPendingOutput(appId);
         if (payload.source === "agent") {
-          // Run state is broadcast to every window, and each shows whichever
-          // app IT has selected. Only the window already looking at this run's
-          // app should be pulled into the native test view — anywhere else it
-          // would replace another app's preview with a view nothing drives.
-          if (payload.preview && payload.appId === selectedAppIdRef.current) {
+          // Run state is broadcast to every window, but preview automation is
+          // attached to the invoking window's native view. App selection alone
+          // cannot identify that owner when two windows show the same app.
+          if (
+            payload.preview &&
+            payload.previewOwnerWindowSessionId ===
+              getActiveWindowSessionId() &&
+            payload.appId === selectedAppIdRef.current
+          ) {
             setPreviewNativeViewAppId(payload.appId);
             setPreviewMode("preview");
           }

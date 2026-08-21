@@ -16,19 +16,35 @@ import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
+import { windowRegistry } from "@/window_infrastructure/main/window_registry";
+import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
 const TEMP_BASE = path.join(os.tmpdir(), "dyad-tests-handler-tests");
+const TEST_WINDOW_SESSION_ID = WindowSessionIdSchema.parse(
+  "10000000-0000-4000-8000-000000000001",
+);
+
+const { browserWindowFromWebContentsMock, resolveRemoteDebuggingEndpointMock } =
+  vi.hoisted(() => ({
+    browserWindowFromWebContentsMock: vi.fn(),
+    resolveRemoteDebuggingEndpointMock: vi.fn(),
+  }));
 
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
+  BrowserWindow: { fromWebContents: browserWindowFromWebContentsMock },
   app: {
     getPath: vi.fn(() =>
       path.join(os.tmpdir(), "dyad-tests-handler-user-data"),
     ),
     getAppPath: vi.fn(() => process.cwd()),
   },
+}));
+
+vi.mock("@/main/remote_debugging", () => ({
+  resolveRemoteDebuggingEndpoint: resolveRemoteDebuggingEndpointMock,
 }));
 
 vi.mock("@/paths/paths", async (importOriginal) => {
@@ -118,6 +134,8 @@ describe("tests handlers", () => {
     queueCloudSandboxSnapshotSyncMock.mockClear();
     prepareIsolatedTestDatabaseMock.mockReset();
     broadcastToRegisteredWindowsMock.mockClear();
+    browserWindowFromWebContentsMock.mockReset();
+    resolveRemoteDebuggingEndpointMock.mockReset();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
   });
@@ -142,6 +160,53 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it("assigns preview activation to the invoking window session", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        infraError: { message: "setup stopped" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+      const sender = {
+        id: 101,
+        isDestroyed: () => false,
+        send: vi.fn(),
+      };
+      windowRegistry.register(sender, TEST_WINDOW_SESSION_ID);
+      browserWindowFromWebContentsMock.mockReturnValue({});
+      resolveRemoteDebuggingEndpointMock.mockResolvedValue({
+        httpEndpoint: "http://127.0.0.1:9222",
+      });
+
+      try {
+        await runAppTestsWithIsolation({
+          event: { sender } as any,
+          appId,
+          source: "agent",
+          preview: true,
+        });
+      } finally {
+        windowRegistry.unregister(sender.id);
+      }
+
+      expect(broadcastToRegisteredWindowsMock).toHaveBeenCalledWith(
+        sender,
+        "tests:run-state",
+        expect.objectContaining({
+          appId,
+          source: "agent",
+          state: "started",
+          preview: true,
+          previewOwnerWindowSessionId: TEST_WINDOW_SESSION_ID,
+        }),
+      );
+    });
+
     it("owns the working tree without excluding Git ref snapshots", async () => {
       const appId = seedApp("app");
       harness.db

@@ -13,6 +13,18 @@ import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
+import {
+  configureChatTabWindowSession,
+  getActiveWindowSessionId,
+} from "@/window_infrastructure/chat_tab_session_storage";
+import {
+  PRIMARY_WINDOW_SESSION_ID,
+  WindowSessionIdSchema,
+} from "@/window_infrastructure/types";
+
+const OTHER_WINDOW_SESSION_ID = WindowSessionIdSchema.parse(
+  "10000000-0000-4000-8000-000000000002",
+);
 
 const { outputListeners, runStateListeners, listAppTestsMock } = vi.hoisted(
   () => ({
@@ -78,6 +90,9 @@ describe("useTestRunEvents", () => {
     runStateListeners.clear();
     listAppTestsMock.mockReset();
     listAppTestsMock.mockResolvedValue({ specs: [] });
+    configureChatTabWindowSession(PRIMARY_WINDOW_SESSION_ID, {
+      mayMigrateLegacySession: false,
+    });
   });
 
   it("ignores panel-initiated lifecycle events", () => {
@@ -105,11 +120,31 @@ describe("useTestRunEvents", () => {
         source: "agent",
         state: "started",
         preview: true,
+        previewOwnerWindowSessionId: getActiveWindowSessionId(),
       });
     });
 
     expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
     expect(store.get(previewModeAtom)).toBe("preview");
+  });
+
+  it("leaves another window showing the same app out of an agent preview run", () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        preview: true,
+        previewOwnerWindowSessionId: OTHER_WINDOW_SESSION_ID,
+      });
+    });
+
+    expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
+    expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(true);
   });
 
   it("leaves a window showing a different app alone", () => {
@@ -126,6 +161,7 @@ describe("useTestRunEvents", () => {
         source: "agent",
         state: "started",
         preview: true,
+        previewOwnerWindowSessionId: getActiveWindowSessionId(),
       });
     });
 

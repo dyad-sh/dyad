@@ -46,6 +46,7 @@ import {
   readAppResource,
 } from "../services/app_operation_coordinator";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
+import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { spawnStreaming } from "../utils/spawn_streaming";
 import {
   configSetsTimeout,
@@ -79,6 +80,7 @@ import {
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
 import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
+import { resolveNodeModulePackageJsonPathSync } from "../../../shared/node_module_resolution";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
 const logger = log.scope("tests_handlers");
@@ -219,7 +221,44 @@ function emitRunState(
   event: IpcMainInvokeEvent,
   payload: TestsRunStatePayload,
 ): void {
-  broadcastToRegisteredWindows(event.sender, "tests:run-state", payload);
+  const emittedPayload =
+    payload.source === "agent" && payload.state === "started" && payload.preview
+      ? {
+          ...payload,
+          previewOwnerWindowSessionId: windowRegistry.ensureRegistered(
+            event.sender,
+          ),
+        }
+      : payload;
+  broadcastToRegisteredWindows(event.sender, "tests:run-state", emittedPayload);
+}
+
+export function buildPlaywrightCliInvocation(
+  cliPath: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[] } {
+  return {
+    // A bare `node` is resolved as `node.cmd` by the shared Windows command
+    // builder. Name the real executable so grep values remain direct argv and
+    // titles containing `%` or newlines never pass through cmd.exe.
+    command: platform === "win32" ? "node.exe" : "node",
+    args: [cliPath, ...args],
+  };
+}
+
+function playwrightCliInvocationForApp(
+  appPath: string,
+  args: string[],
+): { command: string; args: string[] } {
+  const packageJsonPath = resolveNodeModulePackageJsonPathSync(appPath, [
+    "@playwright",
+    "test",
+  ]);
+  return buildPlaywrightCliInvocation(
+    path.join(path.dirname(packageJsonPath), "cli.js"),
+    args,
+  );
 }
 
 export interface RunAppTestsCoreOptions {
@@ -395,12 +434,7 @@ async function runPreviewTestBatch({
   let result: RunAppTestsResult = { appId, results: [] };
   try {
     const discoveryReportPath = path.join(batchDir, "discovery.json");
-    const discoveryArgs = [
-      "playwright",
-      "test",
-      "--config",
-      DYAD_CONFIG_FILENAME,
-    ];
+    const discoveryArgs = ["test", "--config", DYAD_CONFIG_FILENAME];
     appendRequestedTestTarget(discoveryArgs, normalizedTestFile, testLine);
     if (grep) discoveryArgs.push("-g", grep);
     discoveryArgs.push("--list", "--reporter=json", "--trace=off");
@@ -414,8 +448,7 @@ async function runPreviewTestBatch({
     let discoveryRun;
     try {
       discoveryRun = await spawnStreaming({
-        command: "npx",
-        args: discoveryArgs,
+        ...playwrightCliInvocationForApp(appPath, discoveryArgs),
         cwd: appPath,
         env: runnerEnv(discoveryReportPath),
         signal,
@@ -520,7 +553,7 @@ async function runPreviewTestBatch({
       const artifactsPath = path.join(invocationDir, "artifacts");
       fs.mkdirSync(invocationDir, { recursive: true });
 
-      const args = ["playwright", "test", "--config", DYAD_CONFIG_FILENAME];
+      const args = ["test", "--config", DYAD_CONFIG_FILENAME];
       args.push(
         `${escapeRegExpForSelector(target.file)}:${target.line}`,
         "-g",
@@ -537,8 +570,7 @@ async function runPreviewTestBatch({
       let run;
       try {
         run = await spawnStreaming({
-          command: "npx",
-          args,
+          ...playwrightCliInvocationForApp(appPath, args),
           cwd: appPath,
           env: runnerEnv(reportPath),
           signal,
@@ -769,7 +801,7 @@ export async function runAppTestsCore({
   // hardcode a baseURL, or may point at a different testDir. Ours is the only
   // one that honors DYAD_TEST_BASE_URL, so it's passed explicitly rather than
   // Dyad taking over the canonical config name.
-  const args = ["playwright", "test", "--config", DYAD_CONFIG_FILENAME];
+  const args = ["test", "--config", DYAD_CONFIG_FILENAME];
   appendRequestedTestTarget(args, normalizedTestFile ?? undefined, testLine);
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
@@ -814,8 +846,7 @@ export async function runAppTestsCore({
   let run;
   try {
     run = await spawnStreaming({
-      command: "npx",
-      args,
+      ...playwrightCliInvocationForApp(appPath, args),
       cwd: appPath,
       env: getPackageManagerCommandEnv({
         ...process.env,
@@ -844,7 +875,7 @@ export async function runAppTestsCore({
       onOutput: (chunk) => emit(chunk, "running"),
     });
   } catch (error) {
-    // A spawn failure (e.g. npx missing from PATH) rejects rather than exiting
+    // A spawn failure (e.g. Node missing from PATH) rejects rather than exiting
     // non-zero. Surface it as a structured infra error in the Tests panel
     // instead of letting it bubble up as a generic IPC failure.
     const message = error instanceof Error ? error.message : String(error);

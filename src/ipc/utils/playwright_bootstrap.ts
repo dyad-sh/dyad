@@ -1222,8 +1222,8 @@ export async function ensurePlaywrightBootstrap({
   ensurePreviewShim?: boolean;
 }): Promise<{ installed: boolean; previewRouted: boolean }> {
   // Yarn Plug'n'Play has no node_modules, so the installed-check below and the
-  // `npx playwright` runner can't work with it: every run would reinstall and
-  // then fail to resolve the runner. Dead-end with an actionable message
+  // direct Playwright CLI runner can't work with it: every run would reinstall
+  // and then fail to resolve the runner. Dead-end with an actionable message
   // instead. (Yarn classic and `nodeLinker: node-modules` apps are unaffected.)
   if (
     fs.existsSync(path.join(appPath, ".pnp.cjs")) ||

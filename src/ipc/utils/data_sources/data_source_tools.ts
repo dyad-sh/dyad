@@ -30,6 +30,7 @@ import {
 } from "./supabase_provider";
 import { executeD1Mutation, executeD1Plan } from "./cloudflare_d1_provider";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { buildOsintProfilesPresentation } from "./osint_profiles";
 
 /**
  * The agent's view of connected databases.
@@ -42,8 +43,9 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
  * The model never writes SQL. It emits a structured plan, which is validated
  * against the schema we discovered before anything is sent anywhere.
  *
- * The model may only reach sources the user selected for this conversation.
- * An id it invents, or one belonging to a source the user did not tick, is
+ * The model may only reach sources allowed for this conversation. The list is
+ * either an explicit per-chat subset or the enabled sources resolved by the
+ * main process from the Data Sources permission cards. An invented id is
  * refused here rather than trusted because it arrived in a tool call.
  */
 
@@ -98,9 +100,9 @@ async function loadCatalogue(dataSourceId: string): Promise<SchemaCatalogue> {
 /**
  * Resolves an id the model supplied, or refuses it.
  *
- * The allow-list is the ids the user ticked in the composer. Checking here
- * rather than trusting the argument is the difference between a tool the model
- * can use and a tool the model can point anywhere.
+ * Checking the trusted allow-list here rather than trusting the model argument
+ * is the difference between a tool the model can use and one it can point
+ * anywhere.
  */
 async function requireSelectedSource(
   dataSourceId: string,
@@ -108,7 +110,7 @@ async function requireSelectedSource(
 ) {
   if (!allowedIds.includes(dataSourceId)) {
     throw new Error(
-      "That data source is not selected for this conversation. Ask the user to select it in the composer.",
+      "That data source is not enabled for this conversation. Check its Chat Agent permission in Data Sources.",
     );
   }
   const [row] = await db
@@ -125,7 +127,7 @@ async function requireSelectedSource(
 /**
  * Builds the data-source tools for a conversation.
  *
- * `selectedIds` comes from what the user ticked, never from the model.
+ * `selectedIds` comes from trusted application state, never from the model.
  */
 export type DataSourceToolResultCallback = (
   result: ChatAgentToolResult,
@@ -363,6 +365,38 @@ export function buildDataSourceToolSet(
               plan: validation.plan,
             });
 
+      const queryRelatedRows = async (plan: QueryPlan) => {
+        const relatedValidation = validateQueryPlan(plan, catalogue);
+        if (!relatedValidation.ok) return [];
+        const relatedOutcome =
+          row.provider === "cloudflare-d1"
+            ? await executeD1Plan({
+                endpoint: row.projectUrl,
+                token: key,
+                plan: relatedValidation.plan,
+              })
+            : await executePlan({
+                projectUrl: row.projectUrl,
+                key: key ?? "",
+                plan: relatedValidation.plan,
+              });
+        return relatedOutcome.rows.filter(
+          (relatedRow): relatedRow is Record<string, unknown> =>
+            typeof relatedRow === "object" &&
+            relatedRow !== null &&
+            !Array.isArray(relatedRow),
+        );
+      };
+
+      const osintPresentation = await buildOsintProfilesPresentation({
+        sourceName: row.name,
+        table: validation.plan.table,
+        rows: outcome.rows,
+        catalogue,
+        executionMs: outcome.executionMs,
+        query: queryRelatedRows,
+      });
+
       // The rows go to the renderer as data so it can lay out a real table.
       // The model still receives them as text, because it has to reason about
       // the values; what it no longer has to do is retell them for display.
@@ -372,7 +406,7 @@ export function buildDataSourceToolSet(
         toolName: "query_data_source",
         status: "completed",
         result: `${outcome.rows.length} rows from ${validation.plan.table}`,
-        presentation: {
+        presentation: osintPresentation ?? {
           kind: "database-result",
           sourceName: row.name,
           table: validation.plan.table,

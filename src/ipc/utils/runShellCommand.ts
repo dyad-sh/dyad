@@ -10,6 +10,7 @@ export function runShellCommand(command: string): Promise<string | null> {
     const process = spawn(command, {
       shell: true,
       stdio: ["ignore", "pipe", "pipe"], // ignore stdin, pipe stdout/stderr
+      windowsHide: true,
     });
 
     process.stdout?.on("data", (data) => {

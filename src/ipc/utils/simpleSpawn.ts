@@ -23,6 +23,7 @@ export async function simpleSpawn({
       shell: true,
       stdio: "pipe",
       env,
+      windowsHide: true,
     });
 
     let stdout = "";

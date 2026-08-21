@@ -28,6 +28,7 @@ import {
   describeAttachments,
   getFirstImageAttachmentDataUrl,
   needsDocumentReading,
+  prepareDataSourceImageAttachments,
   prepareChatAgentMessage,
 } from "@/lib/chat_agent_attachments";
 import {
@@ -911,6 +912,10 @@ export default function ChatAgentPage() {
     const inputImage = videoIntent
       ? await getFirstImageAttachmentDataUrl(attachments)
       : undefined;
+    const dataSourceAttachments =
+      dataSourceIds.length > 0
+        ? await prepareDataSourceImageAttachments(attachments)
+        : [];
     setAttachments([]);
 
     if (videoIntent && selectedMcpActions.length === 0) {
@@ -940,7 +945,6 @@ export default function ChatAgentPage() {
       selectedMcpActions.length > 0
         ? getChatAgentMcpActionSelectionKeys(selectedMcpActions)
         : null;
-
     sendMessage(
       {
         message: messageForApi,
@@ -953,6 +957,8 @@ export default function ChatAgentPage() {
         // allow-list, so an empty array means the agent gets no database
         // tools at all rather than access to everything.
         dataSourceIds: dataSourceIds.length > 0 ? dataSourceIds : undefined,
+        attachments:
+          dataSourceAttachments.length > 0 ? dataSourceAttachments : undefined,
         projectId: conversationProjectId,
         conversationHistory: messages.map(({ role, content }) => ({
           role,

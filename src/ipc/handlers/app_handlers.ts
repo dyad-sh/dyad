@@ -469,6 +469,7 @@ async function executeAppLocalNode({
     shell: true,
     stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
     detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
+    windowsHide: true,
   });
 
   // Check if process spawned correctly
@@ -771,7 +772,10 @@ async function executeAppInDocker({
   // First, check if Docker is available
   try {
     await new Promise<void>((resolve, reject) => {
-      const checkDocker = spawn("docker", ["--version"], { stdio: "pipe" });
+      const checkDocker = spawn("docker", ["--version"], {
+        stdio: "pipe",
+        windowsHide: true,
+      });
       checkDocker.on("close", (code) => {
         if (code === 0) {
           resolve();
@@ -794,10 +798,12 @@ async function executeAppInDocker({
     await new Promise<void>((resolve) => {
       const stopContainer = spawn("docker", ["stop", containerName], {
         stdio: "pipe",
+        windowsHide: true,
       });
       stopContainer.on("close", () => {
         const removeContainer = spawn("docker", ["rm", containerName], {
           stdio: "pipe",
+          windowsHide: true,
         });
         removeContainer.on("close", () => resolve());
         removeContainer.on("error", () => resolve()); // Container might not exist
@@ -837,6 +843,7 @@ RUN npm install -g pnpm
     {
       cwd: appPath,
       stdio: "pipe",
+      windowsHide: true,
     },
   );
 
@@ -885,6 +892,7 @@ RUN npm install -g pnpm
     {
       stdio: "pipe",
       detached: false,
+      windowsHide: true,
     },
   );
 
@@ -1113,6 +1121,7 @@ async function stopDockerContainersOnPort(port: number): Promise<void> {
     // List container IDs that publish the given port
     const list = spawn("docker", ["ps", "--filter", `publish=${port}`, "-q"], {
       stdio: "pipe",
+      windowsHide: true,
     });
 
     let stdout = "";
@@ -1139,7 +1148,10 @@ async function stopDockerContainersOnPort(port: number): Promise<void> {
       containerIds.map(
         (id) =>
           new Promise<void>((resolve) => {
-            const stop = spawn("docker", ["stop", id], { stdio: "pipe" });
+            const stop = spawn("docker", ["stop", id], {
+              stdio: "pipe",
+              windowsHide: true,
+            });
             stop.on("close", () => resolve());
             stop.on("error", () => resolve());
           }),
@@ -1171,7 +1183,10 @@ async function searchAppFilesWithRipgrep({
       ".",
     ];
 
-    const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
+    const rg = spawn(getRgExecutablePath(), args, {
+      cwd: appPath,
+      windowsHide: true,
+    });
     let buffer = "";
 
     rg.stdout.on("data", (data) => {

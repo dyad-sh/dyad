@@ -1,5 +1,6 @@
 import { ipc, type FileAttachment } from "@/ipc/types";
 import type { ChatAgentAttachmentInfo } from "@/components/chat-agent/types";
+import type { ChatAgentStartParams } from "@/ipc/types/chat_agent";
 
 /** Attachment metadata to keep on the sent message, for its file cards. */
 export function describeAttachments(
@@ -48,6 +49,33 @@ function fileToBase64(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+const DATA_SOURCE_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+/** Image payloads that the main process can persist for database records. */
+export async function prepareDataSourceImageAttachments(
+  attachments: FileAttachment[],
+): Promise<NonNullable<ChatAgentStartParams["attachments"]>> {
+  const images = attachments.filter(({ file }) =>
+    DATA_SOURCE_IMAGE_TYPES.has(file.type),
+  );
+  return Promise.all(
+    images.map(async ({ file }) => ({
+      name: file.name,
+      mimeType: file.type as
+        | "image/jpeg"
+        | "image/png"
+        | "image/gif"
+        | "image/webp",
+      dataBase64: await fileToBase64(file),
+    })),
+  );
 }
 
 function isTextLikeFile(file: File): boolean {

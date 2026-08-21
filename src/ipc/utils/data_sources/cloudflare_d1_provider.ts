@@ -312,7 +312,7 @@ export async function executeD1Plan(input: {
   token: string | null;
   plan: QueryPlan;
 }): Promise<{
-  rows: unknown[];
+  rows: Array<Record<string, unknown>>;
   totalRows: number | null;
   executionMs: number;
 }> {
@@ -325,17 +325,10 @@ export async function executeD1Plan(input: {
     params,
   });
 
-  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
   return {
-    rows: rows.map((row) =>
-      columns.map((column) => {
-        const value = row[column];
-        if (value === null || value === undefined) return "";
-        return typeof value === "object"
-          ? JSON.stringify(value)
-          : String(value);
-      }),
-    ),
+    // Keep the column names. The table renderer and OSINT profile composer
+    // need keys such as full_name and storage_url, not anonymous value arrays.
+    rows,
     totalRows: rows.length,
     executionMs: durationMs,
   };

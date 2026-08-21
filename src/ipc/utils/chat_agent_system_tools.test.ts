@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import type { UserSettings } from "@/lib/schemas";
+
 import {
   buildChatAgentSystemToolSet,
+  isTerminalApplication,
   stripHtmlToText,
 } from "./chat_agent_system_tools";
 
@@ -29,9 +31,7 @@ describe("Chat Agent system tools", () => {
     expect(
       Object.keys(
         buildChatAgentSystemToolSet(
-          {
-            ...event,
-          },
+          { ...event },
           {
             ...settings,
             chatAgentSystemAccess: {
@@ -116,4 +116,20 @@ describe("Chat Agent system tools", () => {
       `),
     ).toBe("Example & result Useful content.");
   });
+});
+
+describe("isTerminalApplication", () => {
+  it.each(["Terminal", "Terminal.app", " iTerm2 ", "Warp", "WezTerm"])(
+    "blocks %s",
+    (application) => {
+      expect(isTerminalApplication(application)).toBe(true);
+    },
+  );
+
+  it.each(["Safari", "Finder", "Visual Studio Code"])(
+    "allows %s",
+    (application) => {
+      expect(isTerminalApplication(application)).toBe(false);
+    },
+  );
 });

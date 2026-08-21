@@ -13,6 +13,20 @@ const execFileAsync = promisify(execFile);
 const MAX_TERMINAL_OUTPUT = 30_000;
 const MAX_PAGE_BYTES = 1_000_000;
 const MAX_PAGE_TEXT = 20_000;
+const TERMINAL_APPLICATION_NAMES = new Set([
+  "terminal",
+  "terminal.app",
+  "iterm",
+  "iterm2",
+  "warp",
+  "alacritty",
+  "kitty",
+  "wezterm",
+]);
+
+export function isTerminalApplication(application: string): boolean {
+  return TERMINAL_APPLICATION_NAMES.has(application.trim().toLowerCase());
+}
 
 type ToolResultCallback = (result: {
   serverName: string;
@@ -59,6 +73,7 @@ async function runTerminalCommand(
       env: process.env,
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";
@@ -178,25 +193,40 @@ async function performComputerAction(input: {
   }
   if (input.action === "open_application") {
     if (!input.application) throw new Error("Application name is required.");
-    await execFileAsync("/usr/bin/open", ["-a", input.application]);
+    if (isTerminalApplication(input.application)) {
+      throw new Error(
+        "Opening a terminal window is disabled. Commands run silently in the background and their output is shown inside Meta Human OS.",
+      );
+    }
+    await execFileAsync("/usr/bin/open", ["-a", input.application], {
+      windowsHide: true,
+    });
     return `Opened ${input.application}.`;
   }
   if (input.action === "click") {
     if (input.x == null || input.y == null) {
       throw new Error("Click coordinates are required.");
     }
-    await execFileAsync("/usr/bin/osascript", [
-      "-e",
-      `tell application "System Events" to click at {${Math.round(input.x)}, ${Math.round(input.y)}}`,
-    ]);
+    await execFileAsync(
+      "/usr/bin/osascript",
+      [
+        "-e",
+        `tell application "System Events" to click at {${Math.round(input.x)}, ${Math.round(input.y)}}`,
+      ],
+      { windowsHide: true },
+    );
     return `Clicked at ${Math.round(input.x)}, ${Math.round(input.y)}.`;
   }
   if (input.action === "type_text") {
     if (!input.text) throw new Error("Text is required.");
-    await execFileAsync("/usr/bin/osascript", [
-      "-e",
-      `tell application "System Events" to keystroke "${escapeAppleScriptString(input.text)}"`,
-    ]);
+    await execFileAsync(
+      "/usr/bin/osascript",
+      [
+        "-e",
+        `tell application "System Events" to keystroke "${escapeAppleScriptString(input.text)}"`,
+      ],
+      { windowsHide: true },
+    );
     return "Typed the requested text.";
   }
   const keyCodes: Record<string, number> = {
@@ -216,10 +246,11 @@ async function performComputerAction(input: {
       `Unsupported key. Choose one of: ${Object.keys(keyCodes).join(", ")}.`,
     );
   }
-  await execFileAsync("/usr/bin/osascript", [
-    "-e",
-    `tell application "System Events" to key code ${code}`,
-  ]);
+  await execFileAsync(
+    "/usr/bin/osascript",
+    ["-e", `tell application "System Events" to key code ${code}`],
+    { windowsHide: true },
+  );
   return `Pressed ${input.key}.`;
 }
 

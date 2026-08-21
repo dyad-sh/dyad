@@ -40,6 +40,7 @@ export function registerPortalHandlers() {
           cwd: appPath,
           shell: true,
           stdio: "pipe",
+          windowsHide: true,
         });
 
         let stdout = "";

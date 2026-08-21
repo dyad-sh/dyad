@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ChatAgentActivityIndicator } from "./ChatAgentActivityIndicator";
 import { ChatAgentDatabaseResultCard } from "./ChatAgentDatabaseResultCard";
 import { ChatAgentToolResultCard } from "./ChatAgentToolResultCard";
+import { ChatAgentOsintProfileCards } from "./ChatAgentOsintProfileCards";
 
 describe("Chat Agent tool feedback", () => {
   it("keeps a thinking state while the model is reasoning", () => {
@@ -94,5 +95,49 @@ describe("Chat Agent tool feedback", () => {
     expect(card.textContent).toContain("orders");
     expect(card.textContent).toContain("WPI-1042");
     expect(card.textContent).toContain("paid");
+  });
+
+  it("renders an OSINT person as a visual profile with linked evidence", () => {
+    render(
+      <ChatAgentOsintProfileCards
+        presentation={{
+          kind: "osint-profiles",
+          sourceName: "osintstore",
+          table: "people",
+          executionMs: 14,
+          records: [
+            {
+              id: "1",
+              entityType: "person",
+              name: "Bruce Wayne",
+              subtitle: "US",
+              description: "Fictional QA record",
+              imageUrl: "dyad-media://vault/bruce.jpg",
+              fields: [{ label: "Date Of Birth", value: "19 Feb 1972" }],
+              evidence: [
+                {
+                  id: "7",
+                  title: "Bruce Wayne portrait",
+                  itemType: "image",
+                  relationship: "profile_image",
+                  url: "dyad-media://vault/bruce.jpg",
+                  mimeType: "image/jpeg",
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const card = screen.getByTestId("chat-agent-osint-profiles");
+    expect(card.textContent).toContain("Bruce Wayne");
+    expect(card.textContent).toContain("Person profile");
+    expect(card.textContent).toContain("Bruce Wayne portrait");
+    expect(screen.getByAltText("Bruce Wayne profile")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Bruce Wayne portrait"));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByAltText("Bruce Wayne portrait")).toBeTruthy();
   });
 });

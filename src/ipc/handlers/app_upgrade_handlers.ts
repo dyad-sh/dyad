@@ -163,6 +163,7 @@ async function applyComponentTagger(appPath: string) {
         cwd: appPath,
         shell: true,
         stdio: "pipe",
+        windowsHide: true,
       },
     );
 

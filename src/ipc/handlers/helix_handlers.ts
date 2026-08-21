@@ -103,6 +103,7 @@ function looksLikeHelixProcess(pid: number): boolean {
     const command = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
       encoding: "utf8",
       timeout: 2_000,
+      windowsHide: true,
     });
     return command.includes("next") && command.includes(String(HELIX_PORT));
   } catch {
@@ -319,6 +320,7 @@ async function startHelix(): Promise<HelixStatus> {
       // .cmd shims must run through a shell on Windows.
       shell: isWindows,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
       env: {
         ...process.env,
         ...(gatewayKey ? { AI_GATEWAY_API_KEY: gatewayKey } : {}),

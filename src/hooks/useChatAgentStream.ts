@@ -3,6 +3,7 @@ import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import type { ChatAgentToolResult } from "@/components/chat-agent/types";
 import type { ChatAgentRagSource } from "@/ipc/types/chat_agent";
+import type { ChatAgentStartParams } from "@/ipc/types/chat_agent";
 import { nextFlushDelay } from "@/lib/streaming_pace";
 
 /**
@@ -115,6 +116,7 @@ export function useChatAgentStream(
         selectedMcpWorkflowKeys?: string[];
         vectorCollectionIds?: string[];
         dataSourceIds?: string[];
+        attachments?: ChatAgentStartParams["attachments"];
         projectId?: string | null;
         regenerate?: boolean;
       },
@@ -198,6 +200,7 @@ export function useChatAgentStream(
             selectedMcpWorkflowKeys?: string[];
             vectorCollectionIds?: string[];
             dataSourceIds?: string[];
+            attachments?: ChatAgentStartParams["attachments"];
             projectId?: string | null;
             agentProfile?: "lovable-web-dev";
             conversationHistory?: Array<{
@@ -253,6 +256,8 @@ export function useChatAgentStream(
               : message.vectorCollectionIds,
           dataSourceIds:
             typeof message === "string" ? undefined : message.dataSourceIds,
+          attachments:
+            typeof message === "string" ? undefined : message.attachments,
           // The conversation's project, so its instructions and reference
           // files travel with it rather than with whatever is active now.
           projectId:

@@ -111,6 +111,7 @@ function looksLikeOpenWorker(pid: number): boolean {
     const command = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
       encoding: "utf8",
       timeout: 2_000,
+      windowsHide: true,
     });
     return command.includes("openworker-server");
   } catch {
@@ -385,6 +386,7 @@ async function startOpenWorker(): Promise<OpenWorkerStatus> {
       {
         cwd: dir,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
         env: { ...process.env, ...modelEnv, COWORKER_API_TOKEN: launchToken },
       },
     );

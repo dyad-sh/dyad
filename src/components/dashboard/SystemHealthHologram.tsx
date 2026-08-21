@@ -74,8 +74,7 @@ function StatTile({
   accent: string;
 }) {
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-cyan-400/12 bg-cyan-950/16 px-3 py-2.5">
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/30 to-transparent" />
+    <div className="group relative overflow-hidden border-l border-cyan-300/14 px-3 py-1.5">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="font-mono text-lg leading-none font-semibold text-cyan-50 tabular-nums">
@@ -97,7 +96,7 @@ function StatTile({
 
 function NoticeRow({ notice }: { notice: DashboardNotice }) {
   const content = (
-    <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-cyan-400/8 bg-cyan-950/12 px-2.5 py-2 transition-colors hover:border-cyan-300/20 hover:bg-cyan-400/5">
+    <div className="flex min-w-0 items-center gap-2.5 border-b border-cyan-400/7 px-1 py-2 transition-colors hover:bg-cyan-400/4">
       <span
         className={cn(
           "size-1.5 shrink-0 rounded-full",
@@ -158,7 +157,7 @@ export function SystemHealthHologram({
 
   return (
     <section
-      className="relative flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-300/16 bg-[#03101d]/72 shadow-[0_0_70px_-34px_rgba(34,211,238,0.55)] backdrop-blur-xl"
+      className="relative flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden"
       data-testid="dashboard-system-hologram"
     >
       <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(34,211,238,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.05)_1px,transparent_1px)] [background-size:28px_28px]" />
@@ -191,7 +190,7 @@ export function SystemHealthHologram({
         </span>
       </header>
 
-      <div className="relative grid grid-cols-2 gap-2.5 p-3 sm:grid-cols-4">
+      <div className="relative grid grid-cols-2 gap-y-4 px-1 py-4 sm:grid-cols-4">
         <StatTile
           icon={CheckCircle2}
           value={`${healthyCount}/${health.length}`}
@@ -222,8 +221,8 @@ export function SystemHealthHologram({
         />
       </div>
 
-      <div className="relative grid min-h-0 gap-3 px-3 pb-3 md:grid-cols-[1.08fr_0.92fr]">
-        <div className="min-h-0 rounded-xl border border-cyan-400/10 bg-[#020b15]/44 p-2.5">
+      <div className="relative grid min-h-0 gap-5 border-t border-cyan-400/10 px-1 py-4 md:grid-cols-[1.08fr_0.92fr]">
+        <div className="min-h-0 px-2.5">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[9px] font-semibold tracking-[0.2em] text-cyan-100/40 uppercase">
               Core services
@@ -235,7 +234,7 @@ export function SystemHealthHologram({
               <Link
                 key={row.id}
                 to={row.to}
-                className="flex min-w-0 items-center gap-2 rounded-lg border border-cyan-400/8 bg-cyan-950/10 px-2.5 py-2 transition-colors hover:border-cyan-300/20 hover:bg-cyan-400/5"
+                className="flex min-w-0 items-center gap-2 border-b border-cyan-400/7 px-1 py-2 transition-colors hover:bg-cyan-400/4"
                 title={`${row.label}: ${row.status}`}
               >
                 <span
@@ -260,7 +259,7 @@ export function SystemHealthHologram({
           </div>
         </div>
 
-        <div className="min-h-0 rounded-xl border border-cyan-400/10 bg-[#020b15]/44 p-2.5">
+        <div className="min-h-0 border-cyan-400/10 px-2.5 md:border-l">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-[9px] font-semibold tracking-[0.2em] text-cyan-100/40 uppercase">
               Action centre
@@ -280,7 +279,7 @@ export function SystemHealthHologram({
                 <NoticeRow key={notice.id} notice={notice} />
               ))
             ) : (
-              <div className="flex min-h-20 flex-col items-center justify-center rounded-lg border border-emerald-400/10 bg-emerald-400/4 text-center">
+              <div className="flex min-h-20 flex-col items-center justify-center border-y border-emerald-400/8 text-center">
                 {hasUnknownHealth ? (
                   <Activity className="size-5 text-cyan-300/55" />
                 ) : (
@@ -302,7 +301,7 @@ export function SystemHealthHologram({
         </div>
       </div>
 
-      <footer className="relative grid grid-cols-4 border-t border-cyan-400/10 bg-cyan-950/12">
+      <footer className="relative mt-auto grid grid-cols-4 border-t border-cyan-400/10 bg-cyan-950/12">
         {[
           ["Nodes", formatRatio(metrics.devicesHealthy, metrics.devices)],
           ["Sources", formatReadout(metrics.sources)],

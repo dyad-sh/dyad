@@ -19,6 +19,7 @@ import type { Agent } from "@/pages/agent-os/data";
 
 import { ParticleBackground } from "@/components/home/ParticleBackground";
 import { SystemHealthHologram } from "@/components/dashboard/SystemHealthHologram";
+import { DashboardSocialProfiles } from "@/components/dashboard/DashboardSocialProfiles";
 import {
   WeatherIcon,
   weatherCondition,
@@ -29,6 +30,7 @@ import {
 } from "@/hooks/useDashboardState";
 import type { HealthTone } from "@/lib/dashboard/system_health";
 import { cn } from "@/lib/utils";
+import { useSocialConnections, useSocialPosts } from "@/hooks/useSocialMedia";
 
 const TONE_DOT: Record<HealthTone, string> = {
   healthy: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]",
@@ -193,6 +195,21 @@ function ConditionsPanel() {
   );
 }
 
+function EnvironmentPanel() {
+  return (
+    <section className="relative overflow-hidden border-b border-cyan-300/12 px-2 pt-2 pb-5">
+      <div className="pointer-events-none absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(34,211,238,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.04)_1px,transparent_1px)] [background-size:24px_24px]" />
+      <p className="relative mb-3 text-[9px] font-semibold tracking-[0.22em] text-cyan-100/40 uppercase">
+        Local environment
+      </p>
+      <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-5">
+        <TimePanel />
+        <ConditionsPanel />
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const { health, overall, services, activity, metrics, notificationsEnabled } =
     useDashboardState();
@@ -200,8 +217,40 @@ export default function DashboardPage() {
   const { agents } = useAgentOsAgents();
   const setWorkspaceTabs = useSetAtom(agentWorkspaceTabsAtom);
   const setActiveWorkspaceTab = useSetAtom(activeAgentWorkspaceTabAtom);
+  const {
+    connections: socialConnections,
+    refreshXProfile,
+    isRefreshingXProfile,
+  } = useSocialConnections();
+  const { posts: socialPosts } = useSocialPosts();
 
   const hermesAgents = useMemo(() => dashboardAgents(agents), [agents]);
+  const linkedServices = useMemo(
+    () => [
+      ...services,
+      ...(socialConnections?.x.connected
+        ? [
+            {
+              id: "social:x",
+              name: `X · @${socialConnections.x.username ?? "connected"}`,
+              detail: "Social publishing account",
+              to: "/planner",
+            },
+          ]
+        : []),
+      ...(socialConnections?.facebook.connected
+        ? [
+            {
+              id: "social:facebook",
+              name: `Facebook · ${socialConnections.facebook.pageName ?? "connected"}`,
+              detail: "Social publishing page",
+              to: "/planner",
+            },
+          ]
+        : []),
+    ],
+    [services, socialConnections],
+  );
 
   /**
    * Opens the agent's chat the way the Agents page does.
@@ -252,27 +301,31 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* When and where, in the top corners as bare readouts. No panels: a
-            box either side of the orb is what made this look heavy, and this
-            information is legible without one. */}
-        <div className="flex shrink-0 items-start justify-between gap-6">
-          <TimePanel />
-          <ConditionsPanel />
-        </div>
-
-        {/* Operational centrepiece: health, alerts and live capacity replace
-            the decorative orb, using only state the owning screens report. */}
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto scrollbar-on-hover">
-          <SystemHealthHologram
-            health={health}
-            overall={overall}
-            metrics={metrics}
-            agentsOnline={reachableAgentCount(hermesAgents)}
-            agentTotal={hermesAgents.length}
-            connectionCount={services.length}
-            activity={activity}
-            notificationsEnabled={notificationsEnabled}
-          />
+        {/* One balanced command grid: human context and audience on the left,
+            operational health and alerts on the right. It becomes a single
+            readable column before either panel is squeezed. */}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-on-hover">
+          <div className="grid min-h-full items-stretch gap-6 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(34rem,1.28fr)]">
+            <div className="grid h-full grid-rows-[auto_1fr] gap-5 px-2">
+              <EnvironmentPanel />
+              <DashboardSocialProfiles
+                connections={socialConnections}
+                posts={socialPosts}
+                refreshing={isRefreshingXProfile}
+                onRefreshX={() => void refreshXProfile()}
+              />
+            </div>
+            <SystemHealthHologram
+              health={health}
+              overall={overall}
+              metrics={metrics}
+              agentsOnline={reachableAgentCount(hermesAgents)}
+              agentTotal={hermesAgents.length}
+              connectionCount={linkedServices.length}
+              activity={activity}
+              notificationsEnabled={notificationsEnabled}
+            />
+          </div>
         </div>
 
         {/* Agents, connections and activity remain as compact channels beneath
@@ -320,14 +373,14 @@ export default function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <ChannelLabel>LINKED</ChannelLabel>
-            {services.length === 0 ? (
+            {linkedServices.length === 0 ? (
               <p className="text-xs text-cyan-100/35">Nothing connected yet.</p>
             ) : (
               <ul
                 className="flex max-h-16 flex-wrap items-center gap-2 overflow-y-auto"
                 data-testid="dashboard-services"
               >
-                {services.map((service) => (
+                {linkedServices.map((service) => (
                   <li key={service.id}>
                     <Link
                       to={service.to}

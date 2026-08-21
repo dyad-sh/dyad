@@ -94,6 +94,7 @@ export function registerNodeHandlers() {
     if (platform() === "win32") {
       const newPath = execSync("cmd /c echo %PATH%", {
         encoding: "utf8",
+        windowsHide: true,
       }).trim();
       process.env.PATH = newPath;
     } else {

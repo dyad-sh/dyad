@@ -170,7 +170,10 @@ async function runRipgrep({
 
     args.push("--", query, ".");
 
-    const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
+    const rg = spawn(getRgExecutablePath(), args, {
+      cwd: appPath,
+      windowsHide: true,
+    });
     let buffer = "";
 
     rg.stdout.on("data", (data) => {

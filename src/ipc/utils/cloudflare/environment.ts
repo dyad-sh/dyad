@@ -47,6 +47,7 @@ export function run(
       env: options.env ?? process.env,
       // No shell: arguments stay arguments, whatever they contain.
       shell: false,
+      windowsHide: true,
     });
 
     let stdout = "";

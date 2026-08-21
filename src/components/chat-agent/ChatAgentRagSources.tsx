@@ -19,9 +19,63 @@ export function ragSourceFolder(sourcePath: string): string {
   return lastSeparator > 0 ? normalized.slice(0, lastSeparator) : normalized;
 }
 
-function RagSourceLink({ source }: { source: ChatAgentRagSource }) {
+export type RagSourceGroup = {
+  source: ChatAgentRagSource;
+  locations: ChatAgentRagSource[];
+};
+
+export function groupRagSources(
+  sources: ChatAgentRagSource[],
+): RagSourceGroup[] {
+  const groups = new Map<string, RagSourceGroup>();
+
+  for (const source of sources) {
+    const key = `${source.collectionId}:${source.sourceId}:${source.sourcePath}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.locations.push(source);
+    } else {
+      groups.set(key, { source, locations: [source] });
+    }
+  }
+
+  return [...groups.values()];
+}
+
+function compactPageList(pages: number[]): string {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  const ranges: string[] = [];
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const start = sorted[index];
+    let end = start;
+    while (sorted[index + 1] === end + 1) {
+      index += 1;
+      end = sorted[index];
+    }
+    ranges.push(start === end ? String(start) : `${start}–${end}`);
+  }
+
+  return ranges.join(", ");
+}
+
+export function ragSourceGroupLocator(locations: ChatAgentRagSource[]): string {
+  const pages = locations.flatMap((source) =>
+    source.page == null ? [] : [source.page],
+  );
+  if (pages.length > 0) {
+    const uniquePages = [...new Set(pages)];
+    return `${uniquePages.length === 1 ? "Page" : "Pages"} ${compactPageList(uniquePages)}`;
+  }
+
+  const locators = [...new Set(locations.map(ragSourceLocator))];
+  return locators.join(", ");
+}
+
+function RagSourceLink({ group }: { group: RagSourceGroup }) {
   const [missing, setMissing] = useState(false);
-  const locator = ragSourceLocator(source);
+  const { source, locations } = group;
+  const locator = ragSourceGroupLocator(locations);
 
   const open = async () => {
     const result = await ipc.vector.openSourceLocation({
@@ -69,6 +123,7 @@ export function ChatAgentRagSources({
   sources: ChatAgentRagSource[];
 }) {
   if (sources.length === 0) return null;
+  const groups = groupRagSources(sources);
 
   return (
     <section
@@ -77,10 +132,10 @@ export function ChatAgentRagSources({
     >
       <div className="chat-rag-sources-heading">Sources consulted</div>
       <div className="chat-rag-source-list">
-        {sources.map((source) => (
+        {groups.map((group) => (
           <RagSourceLink
-            key={`${source.collectionId}:${source.sourceId}:${source.page ?? ""}:${source.lineStart ?? ""}:${source.lineEnd ?? ""}`}
-            source={source}
+            key={`${group.source.collectionId}:${group.source.sourceId}:${group.source.sourcePath}`}
+            group={group}
           />
         ))}
       </div>

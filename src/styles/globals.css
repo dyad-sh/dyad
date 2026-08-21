@@ -9655,6 +9655,346 @@ html.theme-switching * {
   overflow: hidden;
 }
 
+/* OSINT records are identities, not spreadsheets. The profile composition
+   keeps the same cyan glass language as database cards while giving images,
+   names and evidence a deliberate visual hierarchy. */
+.chat-agent-osint-stack {
+  display: grid;
+  width: min(100%, 46rem);
+  gap: 0.8rem;
+}
+
+.chat-agent-osint-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--card) 96%, transparent),
+      color-mix(in srgb, var(--primary) 7%, var(--card))
+    ),
+    var(--card);
+  box-shadow:
+    0 20px 55px rgb(0 0 0 / 18%),
+    inset 0 1px 0 rgb(255 255 255 / 5%);
+}
+
+.chat-agent-osint-hero {
+  position: relative;
+  display: flex;
+  min-height: 9.5rem;
+  align-items: center;
+  gap: 1.25rem;
+  overflow: hidden;
+  padding: 1.25rem 1.35rem;
+  background:
+    radial-gradient(
+      circle at 8% 25%,
+      color-mix(in srgb, var(--primary) 22%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(
+      110deg,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 62%
+    );
+}
+
+.chat-agent-osint-aura {
+  position: absolute;
+  inset: auto -15% -80% 38%;
+  height: 11rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
+  filter: blur(36px);
+}
+
+.chat-agent-osint-avatar {
+  z-index: 1;
+  width: 7rem;
+  height: 7rem;
+  flex: 0 0 7rem;
+  border: 2px solid color-mix(in srgb, var(--primary) 42%, transparent);
+  border-radius: 1.45rem;
+  object-fit: cover;
+  box-shadow:
+    0 14px 30px rgb(0 0 0 / 28%),
+    0 0 0 5px color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.chat-agent-osint-avatar--fallback {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--primary) 24%, var(--card)),
+    color-mix(in srgb, var(--card) 94%, black)
+  );
+  color: color-mix(in srgb, var(--primary) 75%, white);
+  font-family: var(--font-jarvis-display);
+  font-size: 1.65rem;
+  letter-spacing: 0.12em;
+}
+
+.chat-agent-osint-identity {
+  z-index: 1;
+  min-width: 0;
+}
+
+.chat-agent-osint-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: color-mix(in srgb, var(--primary) 78%, white);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chat-agent-osint-identity h3 {
+  margin-top: 0.45rem;
+  color: var(--foreground);
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+
+.chat-agent-osint-identity p {
+  margin-top: 0.2rem;
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+  font-size: 0.86rem;
+}
+
+.chat-agent-osint-id {
+  display: inline-flex;
+  margin-top: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  font-family: ui-monospace, monospace;
+  font-size: 0.62rem;
+}
+
+.chat-agent-osint-description {
+  border-top: 1px solid color-mix(in srgb, var(--primary) 11%, transparent);
+  padding: 1rem 1.35rem 0;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.chat-agent-osint-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 1rem 1.35rem;
+}
+
+.chat-agent-osint-fields > div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--primary) 12%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  padding: 0.65rem 0.75rem;
+}
+
+.chat-agent-osint-fields dt {
+  color: color-mix(in srgb, var(--foreground) 38%, transparent);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.chat-agent-osint-fields dd {
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+  font-size: 0.78rem;
+}
+
+.chat-agent-osint-evidence {
+  margin: 0 1.35rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 12%, transparent);
+  padding-top: 0.9rem;
+}
+
+.chat-agent-osint-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chat-agent-osint-section-title span {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
+  padding: 0.1rem 0.4rem;
+  color: color-mix(in srgb, var(--primary) 78%, white);
+}
+
+.chat-agent-osint-evidence-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.chat-agent-osint-evidence-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 10%, transparent);
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.chat-agent-osint-modal {
+  width: min(94vw, 48rem);
+  max-width: 48rem;
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--border));
+  background:
+    radial-gradient(
+      circle at 15% 0%,
+      color-mix(in srgb, var(--primary) 12%, transparent),
+      transparent 42%
+    ),
+    var(--background);
+}
+
+.chat-agent-osint-preview {
+  width: 100%;
+  max-height: min(62vh, 38rem);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  object-fit: contain;
+}
+
+.chat-agent-osint-preview-empty {
+  display: grid;
+  min-height: 13rem;
+  place-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  border: 1px dashed color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: 1rem;
+  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  text-align: center;
+}
+
+.chat-agent-osint-preview-empty code {
+  max-width: 90%;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--primary) 72%, var(--foreground));
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-agent-osint-open-source {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, var(--border));
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.8rem;
+  color: color-mix(in srgb, var(--primary) 78%, var(--foreground));
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.chat-agent-osint-open-source:hover {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+}
+
+.chat-agent-osint-evidence-item:hover {
+  border-color: color-mix(in srgb, var(--primary) 34%, transparent);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  transform: translateY(-1px);
+}
+
+.chat-agent-osint-evidence-icon {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 1.8rem;
+  place-items: center;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
+  color: color-mix(in srgb, var(--primary) 72%, white);
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.chat-agent-osint-evidence-item strong,
+.chat-agent-osint-evidence-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-agent-osint-evidence-item strong {
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.chat-agent-osint-evidence-item small {
+  margin-top: 0.12rem;
+  color: color-mix(in srgb, var(--foreground) 38%, transparent);
+  font-size: 0.61rem;
+}
+
+.chat-agent-osint-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 10%, transparent);
+  padding: 0.62rem 1.35rem;
+  color: color-mix(in srgb, var(--foreground) 34%, transparent);
+  font-size: 0.61rem;
+}
+
+.chat-agent-osint-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+@media (max-width: 640px) {
+  .chat-agent-osint-hero {
+    align-items: flex-start;
+  }
+
+  .chat-agent-osint-avatar {
+    width: 5.25rem;
+    height: 5.25rem;
+    flex-basis: 5.25rem;
+  }
+
+  .chat-agent-osint-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chat-agent-db-head {
   display: flex;
   align-items: center;

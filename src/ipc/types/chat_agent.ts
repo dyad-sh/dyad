@@ -30,6 +30,26 @@ export const ChatAgentStartParamsSchema = z.object({
   /** Data sources the user ticked; the agent may reach no others. */
   dataSourceIds: z.array(z.string()).max(20).optional(),
   /**
+   * Image bytes attached to a turn that can write to a selected data source.
+   * The main process persists these into the configured storage destination
+   * before the model receives any storage metadata.
+   */
+  attachments: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(200),
+        mimeType: z.enum([
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "image/webp",
+        ]),
+        dataBase64: z.string().min(1).max(14_000_000),
+      }),
+    )
+    .max(5)
+    .optional(),
+  /**
    * The project this conversation belongs to.
    *
    * Sent per turn rather than read from settings, because a project sits above
@@ -276,8 +296,39 @@ const DatabaseResultPresentationSchema = z.object({
   truncatedColumns: z.number().optional(),
 });
 
+const OsintProfilesPresentationSchema = z.object({
+  kind: z.literal("osint-profiles"),
+  sourceName: z.string(),
+  table: z.string(),
+  records: z.array(
+    z.object({
+      id: z.string(),
+      entityType: z.enum(["person", "company", "entity"]),
+      name: z.string(),
+      subtitle: z.string().optional(),
+      description: z.string().optional(),
+      imageUrl: z.string().optional(),
+      fields: z.array(z.object({ label: z.string(), value: z.string() })),
+      evidence: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          itemType: z.string().optional(),
+          relationship: z.string().optional(),
+          url: z.string().optional(),
+          sourceUrl: z.string().optional(),
+          storageKey: z.string().optional(),
+          mimeType: z.string().optional(),
+        }),
+      ),
+    }),
+  ),
+  executionMs: z.number().optional(),
+});
+
 export const ChatAgentToolPresentationSchema = z.discriminatedUnion("kind", [
   DatabaseResultPresentationSchema,
+  OsintProfilesPresentationSchema,
   WebSearchPresentationSchema,
   CryptoMarketPresentationSchema,
   WeatherForecastPresentationSchema,

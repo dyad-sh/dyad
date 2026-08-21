@@ -62,8 +62,8 @@ export function ChatAgentDataSourceMenu({
           Data sources
         </DropdownMenuLabel>
         <p className="px-2 pb-2 text-xs leading-5 text-muted-foreground">
-          Selected databases can be queried to answer your questions. Access is
-          read-only and limited to what each connection key can already read.
+          Enabled databases are available automatically under their Chat Agent
+          permission. Select a subset here to limit this conversation.
         </p>
         <DropdownMenuSeparator />
 

@@ -71,6 +71,7 @@ export type ChatAgentConversation = {
   vectorCollectionIds?: string[];
   /** Connected databases available to this conversation. */
   dataSourceIds?: string[];
+  /** Native runtime selected for this conversation. */
   /**
    * The project this conversation was started in, if any.
    *

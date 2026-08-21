@@ -113,7 +113,10 @@ export function killProcess(process: ChildProcess): Promise<void> {
  */
 export function stopDockerContainer(containerName: string): Promise<void> {
   return new Promise<void>((resolve) => {
-    const stop = spawn("docker", ["stop", containerName], { stdio: "pipe" });
+    const stop = spawn("docker", ["stop", containerName], {
+      stdio: "pipe",
+      windowsHide: true,
+    });
     stop.on("close", () => resolve());
     stop.on("error", () => resolve());
   });
@@ -129,6 +132,7 @@ export function removeDockerVolumesForApp(appId: number): Promise<void> {
 
     const rm = spawn("docker", ["volume", "rm", "-f", pnpmVolume], {
       stdio: "pipe",
+      windowsHide: true,
     });
     rm.on("close", () => resolve());
     rm.on("error", () => resolve());
@@ -386,6 +390,7 @@ export function stopAllAppsSync(): void {
       // Fire-and-forget: spawn docker stop without awaiting
       const stop = spawn("docker", ["stop", containerName], {
         stdio: "ignore",
+        windowsHide: true,
       });
       stop.on("error", (err) => {
         logger.warn(

@@ -50,6 +50,7 @@ export const runTerminalCommandTool: ToolDefinition<
         env: process.env,
         shell: true,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
       });
       let stdout = "";
       let stderr = "";

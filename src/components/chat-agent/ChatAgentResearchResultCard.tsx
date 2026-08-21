@@ -11,6 +11,7 @@ import {
 import type { ChatAgentToolPresentation } from "@/ipc/types/chat_agent";
 import { ipc } from "@/ipc/types";
 import { ChatAgentDatabaseResultCard } from "./ChatAgentDatabaseResultCard";
+import { ChatAgentOsintProfileCards } from "./ChatAgentOsintProfileCards";
 import { ChatAgentMapCard } from "./ChatAgentMapCard";
 import { ChatAgentWeatherCard } from "./ChatAgentWeatherCard";
 
@@ -450,6 +451,10 @@ export function ChatAgentResearchResultCard({
 
   if (presentation.kind === "database-result") {
     return <ChatAgentDatabaseResultCard presentation={presentation} />;
+  }
+
+  if (presentation.kind === "osint-profiles") {
+    return <ChatAgentOsintProfileCards presentation={presentation} />;
   }
 
   if (presentation.kind === "weather-forecast") {

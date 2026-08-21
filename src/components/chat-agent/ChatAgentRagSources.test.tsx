@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   ChatAgentRagSources,
+  groupRagSources,
   ragSourceFolder,
+  ragSourceGroupLocator,
   ragSourceLocator,
 } from "./ChatAgentRagSources";
 import type { ChatAgentRagSource } from "@/ipc/types/chat_agent";
@@ -37,6 +39,38 @@ describe("ChatAgentRagSources", () => {
     expect(screen.getByRole("button").getAttribute("title")).toContain(
       source.sourcePath,
     );
+  });
+
+  it("groups pages from one document into one compact source card", () => {
+    const pages = [51, 52, 8, 50, 7, 49, 35, 47, 14, 13, 15];
+    const sources = pages.map((page) => ({ ...source, page }));
+
+    render(<ChatAgentRagSources sources={sources} />);
+
+    expect(screen.getAllByTestId("chat-rag-source-link")).toHaveLength(1);
+    expect(
+      screen
+        .getByTestId("chat-rag-source-link")
+        .textContent?.includes("Pages 7–8, 13–15, 35, 47, 49–52"),
+    ).toBe(true);
+    expect(groupRagSources(sources)).toHaveLength(1);
+    expect(ragSourceGroupLocator(sources)).toBe(
+      "Pages 7–8, 13–15, 35, 47, 49–52",
+    );
+  });
+
+  it("does not merge documents that only share a display name", () => {
+    expect(
+      groupRagSources([
+        source,
+        {
+          ...source,
+          collectionId: "other-collection",
+          sourceId: "other-source",
+          sourcePath: "/another-vault/Buildcheck Tender Summary.pdf",
+        },
+      ]),
+    ).toHaveLength(2);
   });
 
   it("formats text locations as line ranges", () => {

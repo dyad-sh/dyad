@@ -35,6 +35,7 @@ async function tryRun(command: string): Promise<string> {
     const { stdout } = await run(command, {
       timeout: COMMAND_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true,
     });
     return stdout;
   } catch {

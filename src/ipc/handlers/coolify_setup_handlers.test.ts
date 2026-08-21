@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 // The mocked class, so the handler recognises what it is handed.
 import { SshError } from "../utils/ssh_client";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { SETUP_NOT_STARTED } from "@/ipc/types/coolify_setup";
 
 const h = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -304,6 +305,25 @@ describe("run", () => {
     await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
       /Check the server/,
     );
+  });
+
+  it("marks a refusal that never reached the machine", async () => {
+    // The panel shows nothing for an error it cannot attribute, because the
+    // machine has nothing to show either. This mark is what makes a refusal
+    // speak, so losing it would make Install do nothing at all.
+    await expect(call("coolify-setup:run", TARGET)).rejects.toMatchObject({
+      code: SETUP_NOT_STARTED,
+    });
+  });
+
+  it("leaves a failure the machine took on unmarked", async () => {
+    // The run is returned rather than awaited, so what fails afterwards is
+    // the machine's to report and the panel already has it.
+    h.setupError = new DyadError("exit 1", DyadErrorKind.External);
+
+    await expect(checkThenRun()).rejects.not.toMatchObject({
+      code: SETUP_NOT_STARTED,
+    });
   });
 
   it("stores the token it minted", async () => {

@@ -161,12 +161,16 @@ export function CoolifyServerSetup({
       // A cancel comes back here too, because the flow rethrows it. Reported
       // as a red panel it says something went wrong, while the screen behind
       // it correctly says nothing did.
-      if (
+      // Anything the machine took on is on screen already, with the
+      // installer's own words under it, so saying it again in a toast reports
+      // one failure twice. What never reached the machine — a refusal to
+      // start, a rejected address, a call that did not arrive — has nowhere
+      // else to appear.
+      const theMachineHasIt =
         error instanceof DyadError &&
-        error.kind === DyadErrorKind.UserCancelled
-      ) {
-        return;
-      }
+        error.kind !== DyadErrorKind.Validation &&
+        error.kind !== DyadErrorKind.Precondition;
+      if (theMachineHasIt) return;
       showError(error);
     },
   });
@@ -532,7 +536,12 @@ export function CoolifyServerSetup({
             !adminEmail.trim() ||
             !emailLooksUsable ||
             !domainLooksUsable ||
-            inspectionForHost?.ready === false
+            // Checked first, always. The check is what shows the user the
+            // server's fingerprint, and installing without it means trusting
+            // whatever answers the address with the admin password and a
+            // token. It also catches an existing Coolify, too little memory
+            // and a held package lock, which is a failed install either way.
+            inspectionForHost?.ready !== true
           }
           onClick={() => run.mutate()}
           data-testid="coolify-setup-install"
@@ -540,6 +549,12 @@ export function CoolifyServerSetup({
           Install Coolify
         </Button>
       </div>
+      {!inspectionForHost && host.trim() && (
+        <p className="text-sm text-muted-foreground">
+          Check the server first. Dyad shows you its fingerprint, and installs
+          only onto the machine that answered.
+        </p>
+      )}
 
       {children}
     </div>

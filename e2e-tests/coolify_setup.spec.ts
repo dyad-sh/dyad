@@ -91,6 +91,12 @@ async function openInstaller(po: any) {
 async function fillAndInstall(po: any) {
   await po.page.getByTestId("coolify-setup-host").fill("127.0.0.1");
   await po.page.getByTestId("coolify-setup-email").fill("me@gmail.com");
+  // Install is offered only for a server Dyad has looked at, so this is the
+  // ordinary path rather than an extra step for the test.
+  await po.page.getByTestId("coolify-setup-inspect").click();
+  await expect(po.page.getByTestId("coolify-setup-inspection")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
   await po.page.getByTestId("coolify-setup-install").click();
 }
 
@@ -145,15 +151,9 @@ test("refuses a server that already has Coolify on it", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await openInstaller(po);
   await po.page.getByTestId("coolify-setup-host").fill("127.0.0.1");
-  // Filled, so that a disabled Install button means the server was refused
-  // rather than that the form is incomplete.
+  // Filled, so that a disabled Install button after the check means the
+  // server was refused rather than that the form is incomplete.
   await po.page.getByTestId("coolify-setup-email").fill("me@gmail.com");
-  // Waits like every other assertion here rather than on the default five
-  // seconds: what it claims is that the form is complete, and how long the
-  // panel takes to re-render under load is not part of that claim.
-  await expect(po.page.getByTestId("coolify-setup-install")).toBeEnabled({
-    timeout: Timeout.MEDIUM,
-  });
   await po.page.getByTestId("coolify-setup-inspect").click();
 
   await expect(po.page.getByTestId("coolify-setup-inspection")).toContainText(

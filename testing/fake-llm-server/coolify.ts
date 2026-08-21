@@ -1,3 +1,4 @@
+import { Router } from "express";
 import type { Express, Request, Response } from "express";
 
 /**
@@ -77,12 +78,10 @@ export function registerFakeCoolify(app: Express): void {
   const base = "/coolify/api/v1";
 
   // The same API at the root of the host too: an installed Coolify lives
-  // there, while a pasted URL points at the /coolify mount. Rewritten rather
-  // than registered twice, which would drift.
-  app.use((req, _res, next) => {
-    if (req.url.startsWith("/api/v1")) req.url = `/coolify${req.url}`;
-    next();
-  });
+  // there, while a pasted URL points at the /coolify mount. Mounted twice
+  // rather than rewriting the URL — a rewrite would move every /api/v1
+  // request on this shared server, including one another fake meant to answer.
+  const api = Router();
 
   // Lets a spec choose the shape of the run before it starts. Named fields
   // rather than a spread, which would also let a caller replace the Maps.
@@ -100,31 +99,31 @@ export function registerFakeCoolify(app: Express): void {
     res.json([...state.applications.values()]);
   });
 
-  app.get(`${base}/servers`, (req, res) => {
+  api.get("/servers", (req, res) => {
     if (!authed(req, res)) return;
     res.json(state.servers);
   });
 
-  app.get(`${base}/projects`, (req, res) => {
+  api.get("/projects", (req, res) => {
     if (!authed(req, res)) return;
     res.json(state.projects);
   });
 
-  app.post(`${base}/projects`, (req, res) => {
+  api.post("/projects", (req, res) => {
     if (!authed(req, res)) return;
     const project = { uuid: id("prj"), name: String(req.body?.name ?? "") };
     state.projects.push(project);
     res.json(project);
   });
 
-  app.get(`${base}/security/keys`, (req, res) => {
+  api.get("/security/keys", (req, res) => {
     if (!authed(req, res)) return;
     // The private half is echoed back the way an instance with
     // read:sensitive would, so a spec can assert what Dyad uploaded.
     res.json(state.keys);
   });
 
-  app.post(`${base}/security/keys`, (req, res) => {
+  api.post("/security/keys", (req, res) => {
     if (!authed(req, res)) return;
     const key: FakeKey = {
       uuid: id("key"),
@@ -136,7 +135,7 @@ export function registerFakeCoolify(app: Express): void {
     res.json({ uuid: key.uuid });
   });
 
-  app.post(`${base}/applications/private-deploy-key`, (req, res) => {
+  api.post("/applications/private-deploy-key", (req, res) => {
     if (!authed(req, res)) return;
     const uuid = id("app");
     // Resolved, not guessed: the pipeline compares this against the key it
@@ -170,7 +169,7 @@ export function registerFakeCoolify(app: Express): void {
     res.json({ uuid });
   });
 
-  app.get(`${base}/applications/:uuid`, (req, res) => {
+  api.get("/applications/:uuid", (req, res) => {
     if (!authed(req, res)) return;
     const found = state.applications.get(req.params.uuid);
     if (!found) {
@@ -180,7 +179,7 @@ export function registerFakeCoolify(app: Express): void {
     res.json(found);
   });
 
-  app.patch(`${base}/applications/:uuid`, (req, res) => {
+  api.patch("/applications/:uuid", (req, res) => {
     if (!authed(req, res)) return;
     const found = state.applications.get(req.params.uuid);
     if (!found) {
@@ -191,13 +190,13 @@ export function registerFakeCoolify(app: Express): void {
     res.json({ uuid: found.uuid });
   });
 
-  app.delete(`${base}/applications/:uuid`, (req, res) => {
+  api.delete("/applications/:uuid", (req, res) => {
     if (!authed(req, res)) return;
     state.applications.delete(req.params.uuid);
     res.json({ ok: true });
   });
 
-  app.post(`${base}/applications/:uuid/envs`, (req, res) => {
+  api.post("/applications/:uuid/envs", (req, res) => {
     if (!authed(req, res)) return;
     const found = state.applications.get(req.params.uuid);
     if (!found) {
@@ -209,7 +208,7 @@ export function registerFakeCoolify(app: Express): void {
   });
 
   // The client falls back to this when POSTing an existing variable 409s.
-  app.patch(`${base}/applications/:uuid/envs`, (req, res) => {
+  api.patch("/applications/:uuid/envs", (req, res) => {
     if (!authed(req, res)) return;
     const found = state.applications.get(req.params.uuid);
     if (!found) {
@@ -220,7 +219,7 @@ export function registerFakeCoolify(app: Express): void {
     res.json({ ok: true });
   });
 
-  app.post(`${base}/applications/:uuid/start`, (req, res) => {
+  api.post("/applications/:uuid/start", (req, res) => {
     if (!authed(req, res)) return;
     const deploymentUuid = id("dep");
     state.deployments.set(deploymentUuid, {
@@ -230,7 +229,7 @@ export function registerFakeCoolify(app: Express): void {
     res.json({ deployment_uuid: deploymentUuid });
   });
 
-  app.get(`${base}/deployments/:uuid`, (req, res) => {
+  api.get("/deployments/:uuid", (req, res) => {
     if (!authed(req, res)) return;
     const deployment = state.deployments.get(req.params.uuid);
     if (!deployment) {
@@ -250,4 +249,7 @@ export function registerFakeCoolify(app: Express): void {
           : JSON.stringify([{ output: "Build finished" }]),
     });
   });
+
+  app.use(base, api);
+  app.use("/api/v1", api);
 }

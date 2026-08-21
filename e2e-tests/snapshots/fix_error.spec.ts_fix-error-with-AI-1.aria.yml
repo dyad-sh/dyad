@@ -1,7 +1,10 @@
-- button:
+- button "Dismiss error banner":
   - img
-- img
-- text: Error Line 6 error
+- button "Collapse error banner" [expanded]:
+  - img
+- 'button "Show full error message: Error Line 6 error"':
+  - img
+  - text: ""
 - img
 - text: "Tip: Check if restarting the app fixes the error."
 - button "Copy":

@@ -9,6 +9,13 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
     name: "fix-error-with-AI-1.aria.yml",
   });
 
+  await po.previewPanel.collapsePreviewErrorBanner();
+  await expect(po.previewPanel.locatePreviewErrorBanner()).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Fix error with AI" }),
+  ).toBeHidden();
+  await po.previewPanel.expandPreviewErrorBanner();
+
   await expect(
     po.page.getByText("Error Line 6 error", { exact: true }),
   ).toBeVisible({ timeout: Timeout.MEDIUM });

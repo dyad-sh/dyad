@@ -7,6 +7,7 @@ import {
   buildReboundReviewState,
   buildBoundedModelHistory,
   buildExplorerFollowupAssignment,
+  buildSubagentAssignment,
   emitSubagentUpdate,
   isAcceptableImplementerJoinStatus,
   isReusableReviewStatus,
@@ -17,9 +18,12 @@ import {
   raceWithAbort,
   reviewFollowupAvailability,
   setSubagentEventTarget,
+  shouldDrainMutationOnAbort,
   SUBAGENT_NONTERMINAL_STATUSES,
   waitForAbortableDelay,
+  withFinalizationAdmission,
 } from "./subagent_manager";
+import { withMutationAdmission } from "./mutation_lease";
 
 describe("sub-agent manager status policy", () => {
   it("rejects immediately when a delay receives an already-aborted signal", async () => {
@@ -245,6 +249,64 @@ describe("sub-agent manager status policy", () => {
       { role: "assistant", content: "Option two uses callbacks." },
       { role: "user", content: "Address queued messages in order" },
     ]);
+  });
+
+  it("renders normalized Implementer scope into every assignment", () => {
+    expect(
+      buildSubagentAssignment("implementer", "Fix authentication", [
+        "src/auth",
+        "src/session.ts",
+      ]),
+    ).toBe(
+      "Fix authentication\n\nEXPECTED FILE FOCUS (advisory; cross it when correctness requires):\n- src/auth\n- src/session.ts",
+    );
+    expect(
+      buildSubagentAssignment("explorer", "Trace authentication", ["src/auth"]),
+    ).toBe("Trace authentication");
+  });
+
+  it("drains mutations on Implementer cancellation only", () => {
+    expect(shouldDrainMutationOnAbort("implementer")).toBe(true);
+    expect(shouldDrainMutationOnAbort("reviewer")).toBe(false);
+    expect(shouldDrainMutationOnAbort("explorer")).toBe(false);
+  });
+
+  it("aborts finalization while it is queued behind mutation admission", async () => {
+    const appId = 91_001;
+    let releaseMutation!: () => void;
+    let markEntered!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const mutation = withMutationAdmission(
+      appId,
+      () =>
+        new Promise<void>((resolve) => {
+          releaseMutation = resolve;
+          markEntered();
+        }),
+    );
+    await entered;
+
+    const controller = new AbortController();
+    let admitted = false;
+    const finalization = withFinalizationAdmission({
+      appId,
+      abortSignal: controller.signal,
+      deadlineAt: Date.now() + 10_000,
+      operation: async () => {
+        admitted = true;
+      },
+    });
+    controller.abort();
+
+    await expect(finalization).rejects.toMatchObject({
+      kind: "user_cancelled",
+    });
+    releaseMutation();
+    await mutation;
+    await Promise.resolve();
+    expect(admitted).toBe(false);
   });
 
   it("projects durable Explorer history and queued root messages into follow-ups", () => {

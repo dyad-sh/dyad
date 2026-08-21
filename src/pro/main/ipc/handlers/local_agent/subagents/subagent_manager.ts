@@ -43,6 +43,7 @@ import {
   endAppFinalization,
   hasActiveMutationTool,
   hasMutationLease,
+  normalizeMutationScope,
   quarantineActiveMutationTool,
   releaseMutationLease,
   waitForMutationToolDrain,
@@ -111,6 +112,26 @@ async function drainActiveMutationOrQuarantine(appId: number): Promise<void> {
     SAFE_ABORT_DRAIN_MAX_WAIT_MS,
   );
   if (!didDrain) quarantineActiveMutationTool(appId);
+}
+
+export async function withFinalizationAdmission<T>(params: {
+  appId: number;
+  abortSignal?: AbortSignal;
+  deadlineAt: number;
+  operation: () => Promise<T>;
+}): Promise<T> {
+  try {
+    return await withMutationAdmissionUntil(params);
+  } catch (error) {
+    // Preserve finalization-specific cancellation/timeout diagnostics while
+    // still allowing quarantine and other admission failures through.
+    assertFinalizationWaitActive(
+      params.abortSignal,
+      params.deadlineAt,
+      params.appId,
+    );
+    throw error;
+  }
 }
 
 function maxStepsFor(persona: SubagentPersona): number {
@@ -457,6 +478,12 @@ export async function spawnModelSubagent(params: {
   }
   await preflightPersonaModel(params.persona);
 
+  const normalizedScope = params.scope.map(normalizeMutationScope);
+  const initialAssignment = buildSubagentAssignment(
+    params.persona,
+    params.assignment,
+    normalizedScope,
+  );
   const threadId = crypto.randomUUID();
   const thread = await subagentDisposalRegistry.withAdmission(
     params.ctx.chatId,
@@ -471,7 +498,7 @@ export async function spawnModelSubagent(params: {
             acquireMutationLease({
               appId: params.ctx.appId,
               threadId,
-              scope: params.scope,
+              scope: normalizedScope,
             }),
         }));
       if (!reserved) {
@@ -486,10 +513,10 @@ export async function spawnModelSubagent(params: {
           chatId: params.ctx.chatId,
           persona: params.persona,
           taskName: params.taskName,
-          assignment: params.assignment,
+          assignment: initialAssignment,
           invocationSource: "model",
           contextJson: {
-            scope: params.scope,
+            scope: normalizedScope,
             sourceMessageId: params.ctx.messageId,
           },
         });
@@ -502,17 +529,21 @@ export async function spawnModelSubagent(params: {
               runThread(
                 thread.id,
                 params.ctx.appId,
-                assignment,
+                buildSubagentAssignment(
+                  params.persona,
+                  assignment,
+                  normalizedScope,
+                ),
                 params.ctx,
                 (abortSignal) =>
                   params.buildTools({
                     threadId: thread.id,
                     persona: params.persona,
                     taskName: params.taskName,
-                    scope: params.scope,
+                    scope: normalizedScope,
                     abortSignal,
                   }),
-                params.scope,
+                normalizedScope,
               ),
           });
         followupRunners.set(thread.id, run);
@@ -1065,10 +1096,11 @@ export async function sendSubagentMessage(
   chatId: number,
   threadId: string,
   content: string,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   assertPro();
   return subagentDisposalRegistry.withAdmission(chatId, () =>
-    sendSubagentMessageAdmitted(chatId, threadId, content),
+    sendSubagentMessageAdmitted(chatId, threadId, content, abortSignal),
   );
 }
 
@@ -1076,6 +1108,7 @@ async function sendSubagentMessageAdmitted(
   chatId: number,
   threadId: string,
   content: string,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   const thread = await getOwnedThread(chatId, threadId);
   const append = async () => {
@@ -1091,7 +1124,12 @@ async function sendSubagentMessageAdmitted(
   };
   if (thread.persona === "implementer") {
     const appId = await getThreadAppId(thread.chatId);
-    await withMutationAdmission(appId, append);
+    await withMutationAdmissionUntil({
+      appId,
+      abortSignal,
+      deadlineAt: Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS,
+      operation: append,
+    });
   } else {
     await append();
   }
@@ -1335,34 +1373,39 @@ export async function waitForSubagentsAndBeginFinalization(
       await waitForAbortableDelay(250, abortSignal);
       continue;
     }
-    const finalized = await withMutationAdmission(appId, async () => {
-      assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
-      const pending =
-        threadIds.length === 0
-          ? []
-          : await db.query.agentMessages.findMany({
-              where: and(
-                inArray(agentMessages.threadId, [...new Set(threadIds)]),
-                eq(agentMessages.consumed, false),
-                eq(agentMessages.role, "root"),
-              ),
-            });
-      const pendingIds = new Set(pending.map((message) => message.threadId));
-      const rows = await Promise.all(
-        [...new Set(threadIds)].map((id) => getOwnedThread(chatId, id)),
-      );
-      if (
-        !rows.every((row) =>
-          isSubagentJoinReady(
-            row.status,
-            pendingIds.has(row.id),
-            followupRunners.has(row.id),
-          ),
-        )
-      ) {
-        return false;
-      }
-      return beginAppFinalization(appId);
+    const finalized = await withFinalizationAdmission({
+      appId,
+      abortSignal,
+      deadlineAt,
+      operation: async () => {
+        assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
+        const pending =
+          threadIds.length === 0
+            ? []
+            : await db.query.agentMessages.findMany({
+                where: and(
+                  inArray(agentMessages.threadId, [...new Set(threadIds)]),
+                  eq(agentMessages.consumed, false),
+                  eq(agentMessages.role, "root"),
+                ),
+              });
+        const pendingIds = new Set(pending.map((message) => message.threadId));
+        const rows = await Promise.all(
+          [...new Set(threadIds)].map((id) => getOwnedThread(chatId, id)),
+        );
+        if (
+          !rows.every((row) =>
+            isSubagentJoinReady(
+              row.status,
+              pendingIds.has(row.id),
+              followupRunners.has(row.id),
+            ),
+          )
+        ) {
+          return false;
+        }
+        return beginAppFinalization(appId);
+      },
     });
     if (finalized) return summaries;
     await waitForAbortableDelay(250, abortSignal);
@@ -1709,7 +1752,9 @@ async function runModel(params: {
     // Give an entered mutation a bounded opportunity to drain. If it ignores
     // cancellation, quarantine it so other writers and finalization remain tied
     // to the real operation lifetime even after this model chain unwinds.
-    () => drainActiveMutationOrQuarantine(params.appId),
+    shouldDrainMutationOnAbort(params.persona)
+      ? () => drainActiveMutationOrQuarantine(params.appId)
+      : undefined,
   );
   if (streamError) throw streamError;
   if (claimedRootMessageIds.size > 0) {
@@ -1862,6 +1907,21 @@ export function buildBoundedModelHistory(params: {
   );
   history.push({ role: "user", content: params.currentAssignment });
   return history;
+}
+
+export function buildSubagentAssignment(
+  persona: SubagentPersona,
+  assignment: string,
+  scope: string[],
+): string {
+  if (persona !== "implementer") return assignment;
+  return `${assignment}\n\nEXPECTED FILE FOCUS (advisory; cross it when correctness requires):\n${scope
+    .map((path) => `- ${path}`)
+    .join("\n")}`;
+}
+
+export function shouldDrainMutationOnAbort(persona: SubagentPersona): boolean {
+  return persona === "implementer";
 }
 
 function systemPrompt(persona: SubagentPersona): string {

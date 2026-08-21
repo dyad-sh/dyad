@@ -48,6 +48,7 @@ vi.mock("@/supabase_admin/supabase_management_client", () => ({
 import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
+  isSupabaseFunctionNotFoundError,
   reconcileDeferredFunctionOperations,
   supabaseFunctionEntryExists,
 } from "./file_operations";
@@ -156,6 +157,29 @@ describe("deployAllFunctionsIfNeeded", () => {
       organizationSlug: "org",
     });
     expect(mocks.deployAffectedSupabaseFunctions).not.toHaveBeenCalled();
+  });
+
+  it("treats an already-missing deferred function as deleted", async () => {
+    mocks.deleteSupabaseFunction.mockRejectedValueOnce({
+      response: { status: 404 },
+    });
+
+    const result = await deployAllFunctionsIfNeeded({
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
+      pendingFunctionDeletes: ["never-deployed"],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(isSupabaseFunctionNotFoundError({ response: { status: 404 } })).toBe(
+      true,
+    );
   });
 
   it("does not delete remotely when local function inspection is uncertain", async () => {

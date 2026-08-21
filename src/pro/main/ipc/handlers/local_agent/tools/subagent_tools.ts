@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ToolSet } from "ai";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { SubagentThreadSummary } from "@/ipc/types";
+import { getErrorMessage } from "@/lib/errors";
 
 import { buildAgentToolSet, type AgentToolName } from "../tool_definitions";
 import {
@@ -256,9 +258,14 @@ export const spawnAgentTool: ToolDefinition<
       } catch (cancellationError) {
         // Keep the thread registered so the end-of-turn barrier remains
         // fail-closed when cancellation itself did not complete.
-        throw new AggregateError(
-          [error, cancellationError],
-          "The sub-agent wait and cancellation both failed.",
+        throw new DyadError(
+          `The sub-agent wait failed: ${getErrorMessage(error)} Cancellation also failed: ${getErrorMessage(cancellationError)}`,
+          isDyadError(error)
+            ? error.kind
+            : isDyadError(cancellationError)
+              ? cancellationError.kind
+              : DyadErrorKind.Conflict,
+          { cause: new AggregateError([error, cancellationError]) },
         );
       }
       // This tool has now taken responsibility for the thread: it cancelled it
@@ -371,7 +378,12 @@ export const sendMessageTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   requiresBlueprintApproval: false,
   isEnabled: canUseAdvancedSubagentTools,
   execute: async (args, ctx) => {
-    await sendSubagentMessage(ctx.chatId, args.thread_id, args.message);
+    await sendSubagentMessage(
+      ctx.chatId,
+      args.thread_id,
+      args.message,
+      ctx.abortSignal,
+    );
     return "Message queued durably.";
   },
 };

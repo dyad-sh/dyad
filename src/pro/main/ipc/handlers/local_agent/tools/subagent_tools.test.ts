@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const subagentManagerMocks = vi.hoisted(() => ({
   cancelSubagent: vi.fn(async () => {}),
@@ -236,7 +237,7 @@ describe("spawn_agent schema", () => {
       "implementer-1",
     );
     subagentManagerMocks.waitForSubagents.mockRejectedValueOnce(
-      new Error("wait failed"),
+      new DyadError("wait failed", DyadErrorKind.UserCancelled),
     );
     subagentManagerMocks.cancelSubagent.mockRejectedValueOnce(
       new Error("cancel failed"),
@@ -249,20 +250,48 @@ describe("spawn_agent schema", () => {
       spawnedImplementerThreadIds: [],
     } as unknown as AgentContext;
 
-    await expect(
-      spawnAgentTool.execute(
-        {
-          persona: "implementer",
-          task_name: "Fix the activity feed",
-          assignment: "Repair the activity feed query",
-          scope: ["src/app"],
-        },
-        ctx,
-      ),
-    ).rejects.toThrow("wait and cancellation both failed");
+    const result = spawnAgentTool.execute(
+      {
+        persona: "implementer",
+        task_name: "Fix the activity feed",
+        assignment: "Repair the activity feed query",
+        scope: ["src/app"],
+      },
+      ctx,
+    );
+    await expect(result).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+      message:
+        "The sub-agent wait failed: wait failed Cancellation also failed: cancel failed",
+    });
 
     expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
     expect(ctx.spawnedSubagentThreadIds).toEqual(["implementer-1"]);
+  });
+
+  it("binds queued messages to the root turn's abort signal", async () => {
+    const abortSignal = new AbortController().signal;
+    const ctx = {
+      chatId: 7,
+      abortSignal,
+    } as unknown as AgentContext;
+
+    await expect(
+      sendMessageTool.execute(
+        {
+          thread_id: "implementer-1",
+          message: "Also preserve the session invariant.",
+        },
+        ctx,
+      ),
+    ).resolves.toBe("Message queued durably.");
+
+    expect(subagentManagerMocks.sendSubagentMessage).toHaveBeenCalledWith(
+      7,
+      "implementer-1",
+      "Also preserve the session invariant.",
+      abortSignal,
+    );
   });
 
   it("hides advanced tools by default and when explicitly disabled", () => {

@@ -47,6 +47,15 @@ export async function supabaseFunctionEntryExists(
   }
 }
 
+export function isSupabaseFunctionNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    (error as { response?: { status?: unknown } }).response?.status === 404
+  );
+}
+
 export async function reconcileDeferredFunctionOperations(params: {
   pendingDeploys: string[];
   pendingDeletes: string[];
@@ -137,6 +146,9 @@ export async function deployAllFunctionsIfNeeded(
           organizationSlug: ctx.supabaseOrganizationSlug ?? null,
         });
       } catch (error) {
+        // Deferred queues can contain a function that was created and removed
+        // before root finalization, or one another path already removed.
+        if (isSupabaseFunctionNotFoundError(error)) continue;
         deleteErrors.push(`${functionName}: ${error}`);
       }
     }

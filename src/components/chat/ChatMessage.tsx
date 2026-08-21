@@ -7,7 +7,6 @@ import { DyadAttachment, type AttachmentSize } from "./DyadAttachment";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { StreamingLoadingAnimation } from "./StreamingLoadingAnimation";
 import {
-  CheckCircle,
   XCircle,
   Clock,
   GitCommit,
@@ -50,6 +49,7 @@ import {
 } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { SubagentTeamCard } from "./SubagentTeamCard";
+import { getVisibleMessageApprovalState } from "./messageApprovalStatus";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -134,6 +134,9 @@ const ChatMessage = ({
   const hasAssistantText =
     message.role === "assistant" &&
     (assistantTextContent.length > 0 || hasStreamingPreview);
+  const visibleApprovalState = getVisibleMessageApprovalState(
+    message.approvalState,
+  );
   //handle copy chat
   const { copyMessageContent, copied } = useCopyToClipboard();
   const handleCopyFormatted = async () => {
@@ -350,7 +353,7 @@ const ChatMessage = ({
                 )}
               </div>
             )}
-            {(hasAssistantText && !isStreaming) || message.approvalState ? (
+            {(hasAssistantText && !isStreaming) || visibleApprovalState ? (
               <div
                 className={`mt-2 flex items-center ${
                   hasAssistantText && !isStreaming ? "justify-between" : ""
@@ -381,19 +384,10 @@ const ChatMessage = ({
                   </Tooltip>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  {message.approvalState && (
+                  {visibleApprovalState && (
                     <div className="flex items-center space-x-1">
-                      {message.approvalState === "approved" ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                          <span>Approved</span>
-                        </>
-                      ) : message.approvalState === "rejected" ? (
-                        <>
-                          <XCircle className="h-4 w-4 text-red-500" />
-                          <span>Rejected</span>
-                        </>
-                      ) : null}
+                      <XCircle className="h-4 w-4 text-red-500" />
+                      <span>Rejected</span>
                     </div>
                   )}
                   {message.role === "assistant" && message.model && (

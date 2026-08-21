@@ -552,11 +552,11 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 20000,
-              "description": "A bounded assignment and intended outcome"
+              "description": "The assignment. For implementer tasks use the form GOAL / MUST HOLD / OUT OF SCOPE / DONE WHEN, where MUST HOLD lists every project rule the change could touch (access, scoping, invariants) or explains why none apply."
             },
             "scope": {
               "default": [],
-              "description": "Explicit relative paths or path prefixes in scope",
+              "description": "Advisory relative paths or path prefixes expected to be in scope",
               "maxItems": 100,
               "type": "array",
               "items": {

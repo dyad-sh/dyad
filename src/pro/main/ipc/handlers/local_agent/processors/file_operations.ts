@@ -3,8 +3,6 @@
  */
 
 import log from "electron-log";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import {
   gitCommit,
   gitAddAll,
@@ -12,6 +10,7 @@ import {
 } from "@/ipc/utils/git_utils";
 import {
   deployAffectedSupabaseFunctions,
+  supabaseFunctionEntryExists,
   type SupabaseDeployProgress,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
@@ -31,21 +30,7 @@ export interface FileOperationResult {
   warning?: string;
 }
 
-export async function supabaseFunctionEntryExists(
-  appPath: string,
-  functionName: string,
-): Promise<boolean> {
-  try {
-    await fs.access(
-      path.join(appPath, "supabase", "functions", functionName, "index.ts"),
-    );
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return false;
-    throw error;
-  }
-}
+export { supabaseFunctionEntryExists } from "../../../../../../supabase_admin/supabase_utils";
 
 export function isSupabaseFunctionNotFoundError(error: unknown): boolean {
   return (

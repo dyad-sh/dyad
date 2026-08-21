@@ -95,6 +95,22 @@ export function isSharedServerModule(filePath: string): boolean {
   return filePath.startsWith("supabase/functions/_shared/");
 }
 
+export async function supabaseFunctionEntryExists(
+  appPath: string,
+  functionName: string,
+): Promise<boolean> {
+  try {
+    await fs.access(
+      path.join(appPath, "supabase", "functions", functionName, "index.ts"),
+    );
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
+}
+
 /**
  * Extracts the function name from a Supabase function file path.
  * Handles nested paths like "supabase/functions/hello/lib/utils.ts" → "hello"

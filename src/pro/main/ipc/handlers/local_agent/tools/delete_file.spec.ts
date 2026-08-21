@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { deleteFileTool } from "./delete_file";
 import type { AgentContext } from "./types";
 import { gitRemove } from "@/ipc/utils/git_utils";
-import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
+import {
+  deleteSupabaseFunction,
+  deploySupabaseFunction,
+} from "../../../../../../supabase_admin/supabase_management_client";
 import { resolveSelfAlias } from "@/ipc/utils/path_test_utils";
 
 vi.mock("node:fs", async () => {
@@ -21,6 +25,20 @@ vi.mock("node:fs", async () => {
         realpath: vi.fn(async (filePath: string) => filePath),
         lstat: vi.fn(),
       },
+    },
+  };
+});
+
+vi.mock("node:fs/promises", async () => {
+  const actual =
+    await vi.importActual<typeof import("node:fs/promises")>(
+      "node:fs/promises",
+    );
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      access: vi.fn(),
     },
   };
 });
@@ -42,6 +60,7 @@ vi.mock("@/ipc/utils/git_utils", () => ({
 
 vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
   deleteSupabaseFunction: vi.fn().mockResolvedValue(undefined),
+  deploySupabaseFunction: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("deleteFileTool", () => {
@@ -80,6 +99,9 @@ describe("deleteFileTool", () => {
     );
     vi.mocked(fs.promises.realpath).mockImplementation(async (filePath) =>
       String(filePath),
+    );
+    vi.mocked(fsPromises.access).mockRejectedValue(
+      Object.assign(new Error("missing"), { code: "ENOENT" }),
     );
   });
 
@@ -283,6 +305,31 @@ describe("deleteFileTool", () => {
       );
 
       expect(onDeferredFunctionDelete).toHaveBeenCalledWith("hello-world");
+      expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+    });
+
+    it("redeploys a root function after deleting one of its nested files", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      vi.mocked(fsPromises.access).mockResolvedValueOnce(undefined);
+      const context = {
+        ...mockContext,
+        supabaseProjectId: "project-id",
+      };
+
+      await deleteFileTool.execute(
+        { path: "supabase/functions/hello-world/lib/util.ts" },
+        context,
+      );
+
+      expect(deploySupabaseFunction).toHaveBeenCalledWith({
+        supabaseProjectId: "project-id",
+        functionName: "hello-world",
+        appPath: "/test/app",
+        organizationSlug: null,
+      });
       expect(deleteSupabaseFunction).not.toHaveBeenCalled();
     });
 

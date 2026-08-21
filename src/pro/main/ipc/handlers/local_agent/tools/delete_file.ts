@@ -4,11 +4,15 @@ import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { lstatIfExists, prepareDeletePath } from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
-import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
+import {
+  deleteSupabaseFunction,
+  deploySupabaseFunction,
+} from "../../../../../../supabase_admin/supabase_management_client";
 import {
   extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
+  supabaseFunctionEntryExists,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
@@ -77,13 +81,24 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
             ctx.onDeferredFunctionDelete?.(functionName);
           } else {
             try {
-              await deleteSupabaseFunction({
-                supabaseProjectId: ctx.supabaseProjectId,
-                functionName,
-                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-              });
+              if (
+                await supabaseFunctionEntryExists(ctx.appPath, functionName)
+              ) {
+                await deploySupabaseFunction({
+                  supabaseProjectId: ctx.supabaseProjectId,
+                  functionName,
+                  appPath: ctx.appPath,
+                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                });
+              } else {
+                await deleteSupabaseFunction({
+                  supabaseProjectId: ctx.supabaseProjectId,
+                  functionName,
+                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                });
+              }
             } catch (error) {
-              return `File deleted, but failed to delete Supabase function: ${error}`;
+              return `File deleted, but failed to reconcile Supabase function: ${error}`;
             }
           }
         }

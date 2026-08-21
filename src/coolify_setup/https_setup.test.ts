@@ -269,6 +269,21 @@ describe("tryEnableHttps", () => {
     expect(asked.filter((n) => n === "box.example.com")).toHaveLength(1);
   });
 
+  it("says what it is doing while it takes the domain back off", async () => {
+    // The only stretch with nothing behind it on screen. On a slow server a
+    // silent wait here reads as a hang.
+    const { session } = fakeSession();
+    const said: string[] = [];
+
+    await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      check: async () => false,
+      onProgress: (message) => said.push(message),
+    });
+
+    expect(said.join("")).toMatch(/Removing the temporary domain/);
+  });
+
   it("gives the revert the full budget when nobody is waiting on a cancel", async () => {
     // The short bound exists so "Stopping…" cannot hang. On the ordinary
     // no-certificate path there is no cancel, and the domain still has to

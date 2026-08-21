@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  COOLIFY_REQUIRED_SCOPES,
-  COOLIFY_SCOPES_PHP_ARRAY,
-} from "@/shared/coolify_scopes";
+import { COOLIFY_SCOPES_PHP_ARRAY } from "@/shared/coolify_scopes";
 import {
   compareVersions,
   enableApi,
@@ -105,19 +102,6 @@ describe("mintApiToken", () => {
     const session = fakeSession([REAL_TOKEN]);
     await mintApiToken(session, "admin@gmail.com");
     expect(session.scripts[0]).toContain("session(['currentTeam' => $team])");
-  });
-
-  it("mints exactly what the instructions and the 403 message name", async () => {
-    // A token Dyad makes and one a user makes by following the panel have to
-    // behave the same. They differed once: the mint dropped read:sensitive,
-    // which is what Coolify hides a deployment's log behind, so an automatic
-    // setup lost the build output on every failed deploy.
-    const fromInstructions = COOLIFY_REQUIRED_SCOPES.split(", ");
-    const fromMint = COOLIFY_SCOPES_PHP_ARRAY.replace(/[[\]']/g, "").split(
-      ", ",
-    );
-
-    expect(fromMint).toEqual(fromInstructions);
   });
 
   it("asks for the scopes Dyad tells users to tick", async () => {

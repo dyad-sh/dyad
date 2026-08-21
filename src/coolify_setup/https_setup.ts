@@ -36,9 +36,10 @@ const APPLY_DOMAIN_TIMEOUT_MS = 60_000;
  * Shorter, and only when a cancel is waiting on it.
  *
  * The revert ignores the abort signal — it is undoing what the cancel
- * interrupted — so its own bound is how long "Stopping…" can last. Every other
- * way out of the certificate wait gets the same budget as the apply, because
- * nobody is being held up and the domain still has to come off.
+ * interrupted — so this bounds how long a cancel already waiting is held.
+ * A cancel that lands once the revert is under way waits for it: giving up
+ * part-way is worse than the delay. Every other exit gets the same budget as
+ * the apply, because nobody is being held up.
  */
 const CANCELLED_REVERT_TIMEOUT_MS = 10_000;
 
@@ -360,6 +361,13 @@ export async function tryEnableHttps(
     // Bounded by the tinker call's own timeout, so a wedged server cannot
     // hold the cancel open.
     if (!keepDomain) {
+      // Said out loud: this is the one stretch where the panel has nothing
+      // behind it, and on a slow server a silent wait reads as a hang.
+      onProgress?.("Removing the temporary domain…\n");
+      // Not raced against the signal. A cancel landing mid-revert waits for
+      // it, because abandoning a proxy rebuild half-way leaves Coolify
+      // answering at a name with no certificate — which is the state this
+      // whole block exists to avoid.
       await applyInstanceDomain(session, null, {
         timeoutMs: signal?.aborted
           ? CANCELLED_REVERT_TIMEOUT_MS

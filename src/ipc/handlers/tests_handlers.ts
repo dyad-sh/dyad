@@ -54,6 +54,7 @@ import {
   ensurePlaywrightBootstrap,
   DYAD_CONFIG_FILENAME,
   PREVIEW_CDP_ENDPOINT_ENV,
+  PREVIEW_TARGET_ID_ENV,
   SLOW_MO_DELAY_MS,
   SLOW_MO_TEST_TIMEOUT_MS,
   TEST_BASE_URL_ENV,
@@ -331,7 +332,7 @@ export interface RunAppTestsCoreOptions {
    */
   previewCdpEndpoint?: string;
   /** Replaces the native preview with a fresh session before/after tests. */
-  rotatePreviewView?: (timeoutMs?: number) => Promise<void>;
+  rotatePreviewView?: (timeoutMs?: number) => Promise<string>;
 }
 
 function appendRequestedTestTarget(
@@ -398,7 +399,7 @@ async function runPreviewTestBatch({
   emit: (chunk: string, phase: "setup" | "running") => void;
   testEnv: Record<string, string> | undefined;
   previewEndpoint: string;
-  rotatePreviewView: ((timeoutMs?: number) => Promise<void>) | undefined;
+  rotatePreviewView: ((timeoutMs?: number) => Promise<string>) | undefined;
   installed: boolean;
 }): Promise<RunAppTestsResult> {
   const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
@@ -424,12 +425,13 @@ async function runPreviewTestBatch({
     if (deadline === undefined) return undefined;
     return Math.max(0, deadline - Date.now());
   };
-  const runnerEnv = (reportPath: string) =>
+  const runnerEnv = (reportPath: string, targetId?: string) =>
     getPackageManagerCommandEnv({
       ...process.env,
       ...testEnv,
       [TEST_BASE_URL_ENV]: baseUrl,
       [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
+      ...(targetId ? { [PREVIEW_TARGET_ID_ENV]: targetId } : {}),
       PLAYWRIGHT_NO_COPY_PROMPT: "1",
       ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
       PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,
@@ -535,8 +537,9 @@ async function runPreviewTestBatch({
         result.infraError = timeoutInfraError(timeoutMs);
         break;
       }
+      let previewTargetId: string | undefined;
       try {
-        await rotatePreviewView?.(rotationTimeout);
+        previewTargetId = await rotatePreviewView?.(rotationTimeout);
       } catch (error) {
         result.infraError = {
           message: `Couldn't prepare a fresh preview for ${target.fullTitle}: ${error instanceof Error ? error.message : String(error)}`,
@@ -577,7 +580,7 @@ async function runPreviewTestBatch({
         run = await spawnStreaming({
           ...playwrightCliInvocationForApp(appPath, args),
           cwd: appPath,
-          env: runnerEnv(reportPath),
+          env: runnerEnv(reportPath, previewTargetId),
           signal,
           timeoutMs: invocationTimeout,
           onOutput: (chunk) => emit(chunk, "running"),
@@ -1441,6 +1444,7 @@ export async function runAppTestsWithIsolation({
                   if (!ready.ok) {
                     throw new Error(ready.reason);
                   }
+                  return rotated.targetId;
                 }
               : undefined;
 

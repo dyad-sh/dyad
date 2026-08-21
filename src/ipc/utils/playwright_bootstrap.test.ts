@@ -14,6 +14,7 @@ import {
   isPlaywrightBrowserInstalled,
   refreshGeneratedE2eTsconfig,
   PREVIEW_CDP_ENDPOINT_ENV,
+  PREVIEW_TARGET_ID_ENV,
   PREVIEW_SHIM_RELATIVE_PATH,
   SHIM_TSCONFIG_RELATIVE_PATH,
   TEST_BASE_URL_ENV,
@@ -200,6 +201,7 @@ describe("preview shim fixtures", () => {
         env: {
           ...process.env,
           [PREVIEW_CDP_ENDPOINT_ENV]: "http://127.0.0.1:9222",
+          [PREVIEW_TARGET_ID_ENV]: "selected-preview",
           [TEST_BASE_URL_ENV]: BASE_URL,
         },
       },
@@ -262,8 +264,13 @@ describe("preview shim fixtures", () => {
     const page = Object.create({ goto: gotoOnPrototype }) as {
       goto: (url: string) => Promise<null>;
       url: () => string;
+      evaluate: (
+        fn: (marker: string) => boolean,
+        marker: string,
+      ) => Promise<boolean>;
     };
     page.url = () => initialUrl;
+    page.evaluate = async (_fn, marker) => marker === "selected-preview";
 
     const { calls, api } = makeApiStub();
     const originalApi = { ...api };
@@ -272,7 +279,14 @@ describe("preview shim fixtures", () => {
       _options: contextOptions,
       request: api,
     };
-    const browser = { contexts: () => [context] };
+    const sameOriginDistractor = {
+      url: () => initialUrl,
+      evaluate: async () => false,
+    };
+    const distractorContext = {
+      pages: () => [sameOriginDistractor],
+    };
+    const browser = { contexts: () => [distractorContext, context] };
 
     // Run the real context fixture, then the real page fixture nested inside
     // it, exactly as Playwright would.

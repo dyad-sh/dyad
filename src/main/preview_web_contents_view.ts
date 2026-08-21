@@ -44,6 +44,8 @@ interface PreviewViewEntry {
   latestScreenshotDataUrl: string | null;
   screenshotTimer: ReturnType<typeof setInterval> | null;
   screenshotCapturePending: boolean;
+  /** Opaque marker used to select this exact view from the process-wide CDP endpoint. */
+  automationTargetId: string;
 }
 
 /**
@@ -65,13 +67,15 @@ const entries = new Map<number, PreviewViewEntry>();
  * component and hides the view; without this, that would destroy the page the
  * run is about to attach to and dead-end it.
  */
-const automationReservations = new Set<number>();
+const automationReservations = new Map<number, number>();
 
 function isClaimedForAutomation(
   key: number,
   entry: PreviewViewEntry | undefined,
 ): boolean {
-  return !!entry?.automationActive || automationReservations.has(key);
+  return (
+    !!entry?.automationActive || (automationReservations.get(key) ?? 0) > 0
+  );
 }
 
 /**
@@ -85,11 +89,16 @@ export function reservePreviewViewForAutomation(
   const key = resolveKey(window);
   if (key === null) return () => {};
 
-  automationReservations.add(key);
+  automationReservations.set(key, (automationReservations.get(key) ?? 0) + 1);
   let released = false;
   return () => {
     if (released) return;
     released = true;
+    const remaining = (automationReservations.get(key) ?? 1) - 1;
+    if (remaining > 0) {
+      automationReservations.set(key, remaining);
+      return;
+    }
     automationReservations.delete(key);
 
     // The renderer asked to hide while the claim was standing and no automation
@@ -276,9 +285,17 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
     latestScreenshotDataUrl: null,
     screenshotTimer: null,
     screenshotCapturePending: false,
+    automationTargetId: randomUUID(),
   };
 
   const contents = view.webContents;
+
+  // The remote-debugging endpoint exposes every window in this Electron
+  // process. Tag the exact native preview so Playwright never selects another
+  // same-origin preview from a different Dyad window.
+  contents.setUserAgent(
+    `${contents.getUserAgent()} DyadPreviewTarget/${entry.automationTargetId}`,
+  );
 
   contents.setWindowOpenHandler(({ url }) => {
     // A driven test must not spray the user's system browser with windows.
@@ -298,11 +315,11 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
     if (isMainFrame === false || isInPlace) return;
     if (entry.currentUrl && sameOrigin(url, entry.currentUrl)) return;
 
-    event.preventDefault();
     if (entry.automationActive) {
-      logger.debug(`Blocked off-origin navigation during automation: ${url}`);
+      logger.debug(`Allowing off-origin navigation during automation: ${url}`);
       return;
     }
+    event.preventDefault();
     logger.debug(`Opening off-origin preview navigation externally: ${url}`);
     openExternally(url);
   };
@@ -709,7 +726,7 @@ export interface PreviewAutomationSession {
   /** Replace the driven page with a fresh in-memory Electron session. */
   rotate: (options: {
     url: string;
-  }) => { ok: true } | { ok: false; reason: string };
+  }) => { ok: true; targetId: string } | { ok: false; reason: string };
   end: () => void;
 }
 
@@ -784,7 +801,7 @@ export function beginPreviewAutomation(
         );
       });
       activeEntry = replacement;
-      return { ok: true };
+      return { ok: true, targetId: replacement.automationTargetId };
     },
     end: () => {
       if (ended) return;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { FileWarning, TriangleAlert } from "lucide-react";
 import { useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
@@ -18,14 +18,15 @@ import {
   openStagedDiffAtom,
 } from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
-import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { useCommitMessage } from "@/hooks/useCommitMessage";
 import { useDiscardChanges } from "@/hooks/useDiscardChanges";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { CommitFileList } from "@/components/chat/CommitFileList";
-import { CommitCheckFailureAlert } from "@/components/chat/CommitCheckFailureAlert";
-import { useFixPreCommitWithAI } from "@/hooks/useFixPreCommitWithAI";
-import { CommitButtonLabel } from "@/components/chat/CommitButtonLabel";
+import { useCommitDialogRecovery } from "@/hooks/useCommitDialogRecovery";
+import {
+  CommitDialogFooter,
+  CommitRecoveryAlerts,
+} from "@/components/chat/CommitDialogActions";
 
 interface UncommittedFilesBannerProps {
   appId: number | null;
@@ -34,8 +35,14 @@ interface UncommittedFilesBannerProps {
 export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const { uncommittedFiles, hasUncommittedFiles, isLoading } =
     useUncommittedFiles(appId);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const onDialogEnded = useCallback(() => setShowDiscardConfirm(false), []);
+  const { isDialogOpen, commitMessage, setCommitMessage } = useCommitMessage(
+    "banner",
+    appId,
+    uncommittedFiles,
+  );
   const {
-    commitChanges,
     cancelCommit,
     isCommitting,
     isCancellingCommit,
@@ -43,21 +50,23 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     preCommitError,
     commitMsgError,
     resetCommitError,
-  } = useCommitChanges();
-  const { fixPreCommitWithAI, isStarting: isStartingAiFix } =
-    useFixPreCommitWithAI();
+    dismissDialog,
+    handleCommit,
+    handleFixPreCommitWithAI,
+    isStartingAiFix,
+    canFixPreCommitWithAI,
+  } = useCommitDialogRecovery({
+    appId: appId ?? -1,
+    source: "banner",
+    commitMessage,
+    onDialogEnded,
+  });
   const { discardChanges, isDiscarding } = useDiscardChanges();
   const { send: sendPreviewEvent } = useVersionPreview(appId);
   const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
   const closeCommitDialog = useSetAtom(closeCommitDialogAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
-  const { isDialogOpen, commitMessage, setCommitMessage } = useCommitMessage(
-    "banner",
-    appId,
-    uncommittedFiles,
-  );
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const confirmPanelRef = useRef<HTMLDivElement>(null);
   const canShowBanner = appId !== null && !isLoading && !!hasUncommittedFiles;
 
@@ -96,12 +105,6 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   // staged diff's back arrow cannot resurrect the dialog just dismissed. The
   // round trip out to a diff closes the dialog through openStagedDiffAtom
   // instead, so the draft survives that.
-  const dismissDialog = () => {
-    setShowDiscardConfirm(false);
-    resetCommitError();
-    closeCommitDialog({ source: "banner", appId });
-  };
-
   // The diff renders in the code panel, which this banner's dialog has to
   // reveal. Any selected version diff must close first, since CodeView
   // suppresses staged-diff mode whenever one is active.
@@ -114,25 +117,6 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     });
   };
 
-  // Nothing is staged after either of these, so a diff opened from this dialog
-  // has to close too - otherwise the code panel sits in staged-diff mode
-  // showing "no staged changes". Clearing rather than exiting keeps it from
-  // reopening the dialog on the way out. Both mirror CommitMenu.handleCommit.
-  const handleCommit = async () => {
-    if (!commitMessage.trim()) return;
-
-    try {
-      await commitChanges({ appId, message: commitMessage.trim() });
-    } catch {
-      // useCommitChanges surfaces ordinary errors via a toast and exposes
-      // pre-commit failures inline. Keep the dialog open in either case.
-      return;
-    }
-    setShowDiscardConfirm(false);
-    closeCommitDialog({ source: "banner", appId });
-    clearStagedDiff(appId);
-  };
-
   const handleDiscard = async () => {
     try {
       await discardChanges({ appId });
@@ -143,19 +127,6 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     setShowDiscardConfirm(false);
     closeCommitDialog({ source: "banner", appId });
     clearStagedDiff(appId);
-  };
-
-  const handleFixPreCommitWithAI = async () => {
-    if (!preCommitError) return;
-    const started = await fixPreCommitWithAI({
-      appId,
-      commitMessage: commitMessage.trim(),
-      failureOutput: preCommitError.message,
-    });
-    if (!started) return;
-    setShowDiscardConfirm(false);
-    resetCommitError();
-    closeCommitDialog({ source: "banner", appId });
   };
 
   return (
@@ -236,21 +207,13 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               />
             </div>
 
-            {preCommitError && (
-              <CommitCheckFailureAlert
-                kind="pre-commit"
-                error={preCommitError}
-                isStartingFix={isStartingAiFix}
-                onFix={handleFixPreCommitWithAI}
-              />
-            )}
-
-            {commitMsgError && (
-              <CommitCheckFailureAlert
-                kind="commit-msg"
-                error={commitMsgError}
-              />
-            )}
+            <CommitRecoveryAlerts
+              preCommitError={preCommitError}
+              commitMsgError={commitMsgError}
+              isStartingAiFix={isStartingAiFix}
+              canFixPreCommitWithAI={canFixPreCommitWithAI}
+              onFixPreCommitWithAI={() => void handleFixPreCommitWithAI()}
+            />
           </div>
 
           {showDiscardConfirm && (
@@ -295,55 +258,33 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
           )}
 
           <DialogFooter className="px-6 pb-6 pt-2">
-            <Button
-              variant="outline"
-              className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"
-              onClick={() => setShowDiscardConfirm(true)}
-              disabled={
-                isCommitting ||
-                isDiscarding ||
-                isStartingAiFix ||
-                showDiscardConfirm
+            <CommitDialogFooter
+              leadingAction={
+                <Button
+                  variant="outline"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"
+                  onClick={() => setShowDiscardConfirm(true)}
+                  disabled={
+                    isCommitting ||
+                    isDiscarding ||
+                    isStartingAiFix ||
+                    showDiscardConfirm
+                  }
+                  data-testid="discard-button"
+                >
+                  Discard all
+                </Button>
               }
-              data-testid="discard-button"
-            >
-              Discard all
-            </Button>
-            <Button
-              variant="outline"
-              onClick={
-                isCommitting &&
-                (commitProgress?.phase === "pre-commit" ||
-                  commitProgress?.phase === "commit-msg")
-                  ? () => void cancelCommit()
-                  : dismissDialog
-              }
-              disabled={
-                isDiscarding ||
-                isStartingAiFix ||
-                (isCommitting &&
-                  commitProgress?.phase !== "pre-commit" &&
-                  commitProgress?.phase !== "commit-msg") ||
-                isCancellingCommit
-              }
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCommit}
-              disabled={
-                !commitMessage.trim() ||
-                isCommitting ||
-                isDiscarding ||
-                isStartingAiFix
-              }
-              data-testid="commit-button"
-            >
-              <CommitButtonLabel
-                isCommitting={isCommitting}
-                phase={commitProgress?.phase ?? null}
-              />
-            </Button>
+              isCommitting={isCommitting}
+              isCancellingCommit={isCancellingCommit}
+              phase={commitProgress?.phase ?? null}
+              isBusy={isDiscarding || isStartingAiFix}
+              commitDisabled={!commitMessage.trim()}
+              commitButtonTestId="commit-button"
+              onDismiss={dismissDialog}
+              onCancelCommit={() => void cancelCommit()}
+              onCommit={() => void handleCommit()}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

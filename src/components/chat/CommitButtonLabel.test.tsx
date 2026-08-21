@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CommitButtonLabel } from "./CommitButtonLabel";
+import {
+  CommitButtonLabel,
+  CommitStatusAnnouncement,
+} from "./CommitButtonLabel";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -19,23 +22,38 @@ vi.mock("react-i18next", () => ({
 
 describe("CommitButtonLabel", () => {
   it("shows the main-owned pre-commit phase", () => {
-    render(<CommitButtonLabel isCommitting phase="pre-commit" />);
+    render(
+      <>
+        <CommitStatusAnnouncement isCommitting phase="pre-commit" />
+        <CommitButtonLabel isCommitting phase="pre-commit" />
+      </>,
+    );
 
-    expect(
-      screen
-        .getByText("Running pre-commit checks...")
-        .getAttribute("aria-live"),
-    ).toBe("polite");
+    expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
+    expect(screen.getByRole("status").textContent).toBe(
+      "Running pre-commit checks...",
+    );
   });
 
   it("announces commit-message validation", () => {
-    render(<CommitButtonLabel isCommitting phase="commit-msg" />);
+    render(<CommitStatusAnnouncement isCommitting phase="commit-msg" />);
 
-    expect(
-      screen
-        .getByText("Validating commit message...")
-        .getAttribute("aria-live"),
-    ).toBe("polite");
+    expect(screen.getByRole("status").textContent).toBe(
+      "Validating commit message...",
+    );
+  });
+
+  it("keeps the live region mounted while idle", () => {
+    const { rerender } = render(
+      <CommitStatusAnnouncement isCommitting={false} phase={null} />,
+    );
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+
+    rerender(<CommitStatusAnnouncement isCommitting phase="staging" />);
+
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status.textContent).toBe("Preparing changes...");
   });
 
   it("returns to the normal label when idle", () => {

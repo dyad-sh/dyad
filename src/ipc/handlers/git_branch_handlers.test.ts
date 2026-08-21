@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { IpcMainInvokeEvent } from "electron";
+import { EventEmitter } from "node:events";
 
 const registeredHandlers = vi.hoisted(
   () => [] as Array<(event: any, input: any) => Promise<unknown>>,
@@ -273,13 +274,48 @@ describe("commit progress", () => {
     );
     await vi.waitFor(() => expect(receivedSignal).toBeDefined());
 
-    await cancel(
-      { sender: { ...sender, id: 100 } },
-      { appId: 1, operationId: "commit:cancel" },
-    );
+    await expect(
+      cancel(
+        { sender: { ...sender, id: 100 } },
+        { appId: 1, operationId: "commit:cancel" },
+      ),
+    ).resolves.toBe(false);
     expect(receivedSignal?.aborted).toBe(false);
 
-    await cancel({ sender }, { appId: 1, operationId: "commit:cancel" });
+    await expect(
+      cancel({ sender }, { appId: 1, operationId: "commit:cancel" }),
+    ).resolves.toBe(true);
+    expect(receivedSignal?.aborted).toBe(true);
+    await expect(commitPromise).rejects.toThrow("aborted");
+  });
+
+  it("aborts an operation when its initiating renderer is destroyed", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    gitServiceMocks.stageAllAndCommitWithPreCommit.mockImplementationOnce(
+      async ({ signal }) => {
+        receivedSignal = signal;
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+        return "unreachable";
+      },
+    );
+    const commit = registeredHandlers.at(-3)!;
+    const sender = Object.assign(new EventEmitter(), {
+      id: 99,
+      isDestroyed: () => false,
+      isCrashed: () => false,
+      send: vi.fn(),
+    });
+
+    const commitPromise = commit(
+      { sender },
+      { appId: 1, message: "Save work", operationId: "commit:destroyed" },
+    );
+    await vi.waitFor(() => expect(receivedSignal).toBeDefined());
+
+    sender.emit("destroyed");
+
     expect(receivedSignal?.aborted).toBe(true);
     await expect(commitPromise).rejects.toThrow("aborted");
   });

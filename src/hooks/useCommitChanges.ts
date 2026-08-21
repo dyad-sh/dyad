@@ -147,7 +147,11 @@ export function useCommitChanges() {
 
     setIsCancellingCommit(true);
     try {
-      await ipc.git.cancelCommit(active);
+      const cancelled = await ipc.git.cancelCommit(active);
+      if (!cancelled) {
+        setIsCancellingCommit(false);
+        showError("The commit is already finishing and cannot be cancelled.");
+      }
     } catch (error) {
       setIsCancellingCommit(false);
       showError(

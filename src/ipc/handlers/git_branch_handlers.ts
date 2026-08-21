@@ -439,6 +439,11 @@ async function handleCommitChanges(
   }
 
   const controller = new AbortController();
+  const abortWhenSenderIsDestroyed = () => controller.abort();
+  event.sender.once?.("destroyed", abortWhenSenderIsDestroyed);
+  if (event.sender.isDestroyed?.()) {
+    controller.abort();
+  }
   activeCommitOperations.set(operationId, {
     appId,
     controller,
@@ -446,6 +451,7 @@ async function handleCommitChanges(
   });
   try {
     return await withAppGitOp(appId, "commit", async (appPath) => {
+      controller.signal.throwIfAborted();
       await ensureDyadGitignored(appPath);
       return gitService.stageAllAndCommitWithPreCommit({
         path: appPath,
@@ -461,6 +467,7 @@ async function handleCommitChanges(
       });
     });
   } finally {
+    event.sender.removeListener?.("destroyed", abortWhenSenderIsDestroyed);
     const active = activeCommitOperations.get(operationId);
     if (active?.controller === controller) {
       activeCommitOperations.delete(operationId);
@@ -471,12 +478,13 @@ async function handleCommitChanges(
 async function handleCancelCommit(
   event: IpcMainInvokeEvent,
   { appId, operationId }: CancelCommitParams,
-): Promise<void> {
+): Promise<boolean> {
   const active = activeCommitOperations.get(operationId);
   if (active?.appId !== appId || active.senderId !== event.sender.id) {
-    return;
+    return false;
   }
   active.controller.abort();
+  return true;
 }
 
 async function handleDiscardChanges(

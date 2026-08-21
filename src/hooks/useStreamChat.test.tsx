@@ -91,6 +91,30 @@ describe("useStreamChat main-owned queue", () => {
     });
   });
 
+  it("forwards authoritative acceptance callbacks to the actor", async () => {
+    const onAccepted = vi.fn();
+    const onAcceptanceRejected = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await result.current.streamMessage({
+        chatId: CHAT_ID,
+        prompt: "repair checks",
+        onAccepted,
+        onAcceptanceRejected,
+      });
+    });
+
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "submit",
+      request: expect.objectContaining({
+        onAccepted,
+        onAcceptanceRejected,
+      }),
+    });
+  });
+
   it("routes edit, remove, reorder, and clear through revisioned actor intents", async () => {
     const { Wrapper } = makeWrapper();
     mocks.streamState.current.queue = [

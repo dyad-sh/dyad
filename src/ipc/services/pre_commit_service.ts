@@ -1,6 +1,10 @@
 import fs, { promises as fsPromises } from "node:fs";
 
-import { execGit, getGitProcessEnvironment } from "@/ipc/utils/git_utils";
+import {
+  execGit,
+  getGitProcessEnvironment,
+  withGitAuthor,
+} from "@/ipc/utils/git_utils";
 import {
   runBufferedProcess,
   type BufferedProcessResult,
@@ -76,7 +80,7 @@ export async function runPreCommitHook({
   const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
   return runBufferedProcess({
     command: gitLocation,
-    args: ["hook", "run", "pre-commit"],
+    args: await withGitAuthor(["hook", "run", "pre-commit"]),
     cwd: path,
     env: getPackageManagerCommandEnv(gitEnv),
     signal,
@@ -113,7 +117,13 @@ async function runMessageHook({
   const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
   const result = await runBufferedProcess({
     command: gitLocation,
-    args: ["hook", "run", hookName, "--", ...hookArgs(messagePath)],
+    args: await withGitAuthor([
+      "hook",
+      "run",
+      hookName,
+      "--",
+      ...hookArgs(messagePath),
+    ]),
     cwd: path,
     env: getPackageManagerCommandEnv(gitEnv),
     signal,

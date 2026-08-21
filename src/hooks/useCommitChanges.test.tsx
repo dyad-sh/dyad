@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GIT_ERROR_CODES } from "@/shared/git_error_codes";
 import type { CommitProgress } from "@/ipc/types/github";
@@ -50,6 +50,10 @@ describe("useCommitChanges", () => {
     vi.clearAllMocks();
     mocks.commitProgressListeners.clear();
     queryClient = new QueryClient();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("exposes a coded pre-commit failure for the inline AI action", async () => {
@@ -119,7 +123,6 @@ describe("useCommitChanges", () => {
         queryKey: ["uncommittedFiles", 7],
       }),
     );
-    invalidateQueries.mockRestore();
   });
 
   it("keeps unrelated commit failures on the existing toast path", async () => {
@@ -235,7 +238,7 @@ describe("useCommitChanges", () => {
           rejectCommit = reject;
         }),
     );
-    mocks.cancelCommit.mockResolvedValueOnce(undefined);
+    mocks.cancelCommit.mockResolvedValueOnce(true);
     const { result } = renderHook(() => useCommitChanges(), {
       wrapper: Wrapper,
     });
@@ -263,5 +266,42 @@ describe("useCommitChanges", () => {
       await expect(commitPromise).rejects.toBe(cancelled);
     });
     expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("reports when cancellation arrives after the operation finished", async () => {
+    let resolveCommit!: (hash: string) => void;
+    mocks.commitChanges.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveCommit = resolve;
+        }),
+    );
+    mocks.cancelCommit.mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useCommitChanges(), {
+      wrapper: Wrapper,
+    });
+
+    let commitPromise!: Promise<string>;
+    act(() => {
+      commitPromise = result.current.commitChanges({
+        appId: 7,
+        message: "Save work",
+      });
+    });
+    await waitFor(() => expect(mocks.commitChanges).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      await result.current.cancelCommit();
+    });
+
+    expect(result.current.isCancellingCommit).toBe(false);
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "The commit is already finishing and cannot be cancelled.",
+    );
+
+    await act(async () => {
+      resolveCommit("commit-hash");
+      await commitPromise;
+    });
   });
 });

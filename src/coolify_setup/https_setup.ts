@@ -33,12 +33,14 @@ import {
 /** Long enough for the proxy to be rebuilt, short enough to give up on. */
 const APPLY_DOMAIN_TIMEOUT_MS = 60_000;
 /**
- * Shorter, because this one runs while the user is waiting to be let go.
+ * Shorter, and only when a cancel is waiting on it.
  *
- * The revert deliberately ignores the abort signal — it is undoing what the
- * cancel interrupted — so its own bound is how long "Stopping…" can last.
+ * The revert ignores the abort signal — it is undoing what the cancel
+ * interrupted — so its own bound is how long "Stopping…" can last. Every other
+ * way out of the certificate wait gets the same budget as the apply, because
+ * nobody is being held up and the domain still has to come off.
  */
-const REVERT_DOMAIN_TIMEOUT_MS = 10_000;
+const CANCELLED_REVERT_TIMEOUT_MS = 10_000;
 
 /** It answered in about fifteen seconds on a new server; this is slack. */
 const CERTIFICATE_TIMEOUT_MS = 120_000;
@@ -202,14 +204,19 @@ export async function hasTrustedCertificate(
 export async function domainPointsAtServer(
   domain: string,
   host: string,
-  { resolve = resolveBoth }: { resolve?: typeof resolveBoth } = {},
+  {
+    resolve = resolveBoth,
+    hostAddresses,
+  }: { resolve?: typeof resolveBoth; hostAddresses?: string[] } = {},
 ): Promise<boolean> {
   // A server known by a name is resolved to the addresses it stands for, so
   // the domain is compared against the same thing either way. A name that
   // does not resolve leaves nothing to compare, which the verdict below reads
   // as not knowing rather than as a wrong answer.
   const expectedIps =
-    isIP(host) === 0 ? (await resolve(host)).addresses : [host];
+    isIP(host) !== 0
+      ? [host]
+      : (hostAddresses ?? (await resolve(host)).addresses);
   const resolved = await resolve(domain);
   // Only a domain that resolves somewhere else is an objection. A resolver we
   // could not reach and a name with no records yet both come back with nothing
@@ -245,11 +252,7 @@ export interface HttpsOutcome {
  * name with no records yet, leaves this true — refusing there would decline
  * HTTPS for a server that could have had it.
  */
-async function resolvesPublicly(
-  host: string,
-  resolve: typeof resolveBoth,
-): Promise<boolean> {
-  const { addresses } = await resolve(host);
+function resolvesPublicly(addresses: string[]): boolean {
   if (addresses.length === 0) return true;
   return addresses.some(
     (address) => !isLoopbackAddress(address) && !isNonRoutableAddress(address),
@@ -292,7 +295,9 @@ export async function tryEnableHttps(
   // domain is applied, because a server on a LAN address would otherwise
   // apply it, rebuild the proxy, wait out the whole certificate poll for an
   // answer that cannot come, and take it all back off again.
-  if (isIP(host) === 0 && !(await resolvesPublicly(host, resolve))) {
+  const hostAddresses =
+    isIP(host) === 0 ? (await resolve(host)).addresses : undefined;
+  if (hostAddresses && !resolvesPublicly(hostAddresses)) {
     return {
       instanceUrl: plainUrlFor(host),
       secure: false,
@@ -304,7 +309,7 @@ export async function tryEnableHttps(
   // sslip.io name resolves to the address it was built from, by construction.
   if (
     customDomain &&
-    !(await domainPointsAtServer(domain, host, { resolve }))
+    !(await domainPointsAtServer(domain, host, { resolve, hostAddresses }))
   ) {
     return {
       instanceUrl: plainUrlFor(host),
@@ -356,7 +361,9 @@ export async function tryEnableHttps(
     // hold the cancel open.
     if (!keepDomain) {
       await applyInstanceDomain(session, null, {
-        timeoutMs: REVERT_DOMAIN_TIMEOUT_MS,
+        timeoutMs: signal?.aborted
+          ? CANCELLED_REVERT_TIMEOUT_MS
+          : APPLY_DOMAIN_TIMEOUT_MS,
       }).catch(() => {});
     }
   }

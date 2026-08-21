@@ -251,6 +251,45 @@ describe("domainPointsAtServer", () => {
 describe("tryEnableHttps", () => {
   const FAST = { timeoutMs: 40, intervalMs: 5 };
 
+  it("asks DNS about the server once, not once per check", async () => {
+    // The gate below and the domain comparison want the same answer, and a
+    // resolver that is slow to say so is slow twice.
+    const asked: string[] = [];
+    const { session } = fakeSession();
+    await tryEnableHttps(session, "box.example.com", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async (name: string) => {
+        asked.push(name);
+        return { addresses: ["203.0.113.5"], failed: false };
+      },
+      check: async () => true,
+    });
+
+    expect(asked.filter((n) => n === "box.example.com")).toHaveLength(1);
+  });
+
+  it("gives the revert the full budget when nobody is waiting on a cancel", async () => {
+    // The short bound exists so "Stopping…" cannot hang. On the ordinary
+    // no-certificate path there is no cancel, and the domain still has to
+    // come off.
+    const asked: Array<number | undefined> = [];
+    const session = {
+      run: vi.fn(async (_c: string, o?: { timeoutMs?: number }) => {
+        asked.push(o?.timeoutMs);
+        return { code: 0, stdout: transcript("applied"), stderr: "" };
+      }) as unknown as SshSession["run"],
+      end: vi.fn(),
+    };
+
+    await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      check: async () => false,
+    });
+
+    expect(asked[0]).toBe(asked[1]);
+  });
+
   it("does not wait for a certificate a private name can never get", async () => {
     // The certificate poll is two minutes, and a LAN name pays all of it for
     // an answer no certificate authority can give.

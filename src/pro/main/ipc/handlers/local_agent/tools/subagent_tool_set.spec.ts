@@ -5,10 +5,9 @@ vi.mock("@/main/settings", () => ({
   writeSettings: vi.fn(),
 }));
 
-// tool_definitions and subagent_tools import each other. Evaluating
-// subagent_tools first leaves the registry holding undefined entries, so this
-// import must come first — it is load-bearing, not an unused import.
-import { recordRootImplementerVerification } from "../tool_definitions";
+// tool_definitions and subagent_tools import each other. Evaluate the registry
+// first so buildSubagentToolSet sees fully initialized definitions.
+import "../tool_definitions";
 import { buildSubagentToolSet } from "./subagent_tools";
 import type { AgentContext } from "./types";
 
@@ -42,53 +41,9 @@ function toolNamesFor(persona: "explorer" | "implementer"): Set<string> {
 }
 
 describe("sub-agent tool set", () => {
-  it("only clears partial status after a root verification tool succeeds", () => {
-    const ctx = {
-      partialImplementerVerificationRequired: true,
-    } as AgentContext;
-
-    recordRootImplementerVerification(ctx, "write_file", "wrote file");
-    expect(ctx.partialImplementerVerificationRequired).toBe(true);
-
-    recordRootImplementerVerification(
-      ctx,
-      "run_type_checks",
-      "Found 2 type errors:\n...",
-    );
-    expect(ctx.partialImplementerVerificationRequired).toBe(true);
-
-    recordRootImplementerVerification(
-      ctx,
-      "git_diff",
-      "diff --git a/src/app.ts b/src/app.ts",
-    );
-    expect(ctx.partialImplementerVerificationRequired).toBe(true);
-
-    recordRootImplementerVerification(
-      ctx,
-      "run_type_checks",
-      "No type errors found.",
-    );
-    expect(ctx.partialImplementerVerificationRequired).toBe(false);
-
-    const childCtx = {
-      partialImplementerVerificationRequired: true,
-      subagentThreadId: "child-1",
-    } as AgentContext;
-    recordRootImplementerVerification(
-      childCtx,
-      "run_type_checks",
-      "No type errors found.",
-    );
-    expect(childCtx.partialImplementerVerificationRequired).toBe(true);
-  });
-
   it("lets the Implementer verify its own work", () => {
     const names = toolNamesFor("implementer");
 
-    // The reason the filter is a denylist: an agent that can change code must
-    // also be able to check it, rather than leaving the root agent to review a
-    // diff it cannot compile.
     expect(names.has("write_file")).toBe(true);
     expect(names.has("search_replace")).toBe(true);
     expect(names.has("run_type_checks")).toBe(true);
@@ -108,13 +63,13 @@ describe("sub-agent tool set", () => {
     expect(names.has("generate_test_assertions")).toBe(false);
     expect(names.has("reinstall_and_restart_app")).toBe(false);
     expect(names.has("execute_sandbox_script")).toBe(false);
+    expect(names.has("search_mcp_tools")).toBe(false);
+    expect(names.has("get_mcp_tool_schema")).toBe(false);
+    expect(names.has("explore_chat_history")).toBe(false);
     expect(names.has("planning_questionnaire")).toBe(false);
   });
 
-  it("blocks recursion without relying on the denylist", () => {
-    // spawn_agent gates on `!ctx.subagentThreadId`, which buildSubagentContext
-    // always sets. This must hold even though spawn_agent is absent from
-    // SUBAGENT_DENYLIST — if it ever regresses, a sub-agent could fan out.
+  it("blocks recursion", () => {
     expect(toolNamesFor("implementer").has("spawn_agent")).toBe(false);
     expect(toolNamesFor("explorer").has("spawn_agent")).toBe(false);
   });

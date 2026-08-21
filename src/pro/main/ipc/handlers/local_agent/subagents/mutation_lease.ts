@@ -11,6 +11,7 @@ interface MutationLease {
 
 const leases = new Map<number, MutationLease>();
 const finalizingApps = new Set<number>();
+const activeMutationTools = new Map<number, symbol>();
 const TOOL_FINALIZATION_WAIT_MS = 10 * 60 * 1000;
 
 export function withMutationAdmission<T>(
@@ -24,29 +25,53 @@ export async function withMutationToolAdmission<T>(
   ctx: AgentContext,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const deadlineAt = Date.now() + TOOL_FINALIZATION_WAIT_MS;
-  while (true) {
-    const result = await withMutationAdmission(ctx.appId, async () => {
-      if (finalizingApps.has(ctx.appId)) {
-        return { waiting: true as const };
+  if (activeMutationTools.has(ctx.appId)) {
+    throw new DyadError(
+      "Another mutation tool is still active for this app.",
+      DyadErrorKind.Conflict,
+    );
+  }
+  const reservation = Symbol("mutation-tool");
+  activeMutationTools.set(ctx.appId, reservation);
+  try {
+    const deadlineAt = Date.now() + TOOL_FINALIZATION_WAIT_MS;
+    while (true) {
+      const result = await withMutationAdmission(ctx.appId, async () => {
+        if (finalizingApps.has(ctx.appId)) {
+          return { waiting: true as const };
+        }
+        assertMutationLease(ctx);
+        return { waiting: false as const, value: await operation() };
+      });
+      if (!result.waiting) return result.value;
+      if (ctx.abortSignal?.aborted) {
+        throw new DyadError(
+          "Waiting to modify the app was cancelled.",
+          DyadErrorKind.UserCancelled,
+        );
       }
-      assertMutationLease(ctx);
-      return { waiting: false as const, value: await operation() };
-    });
-    if (!result.waiting) return result.value;
-    if (ctx.abortSignal?.aborted) {
-      throw new DyadError(
-        "Waiting to modify the app was cancelled.",
-        DyadErrorKind.UserCancelled,
-      );
+      if (Date.now() >= deadlineAt) {
+        throw new DyadError(
+          "Timed out waiting for the app to finish finalizing.",
+          DyadErrorKind.Conflict,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    if (Date.now() >= deadlineAt) {
-      throw new DyadError(
-        "Timed out waiting for the app to finish finalizing.",
-        DyadErrorKind.Conflict,
-      );
+  } finally {
+    if (activeMutationTools.get(ctx.appId) === reservation) {
+      activeMutationTools.delete(ctx.appId);
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+export function hasActiveMutationTool(appId: number): boolean {
+  return activeMutationTools.has(appId);
+}
+
+export async function waitForMutationToolDrain(appId: number): Promise<void> {
+  while (activeMutationTools.has(appId)) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
 
@@ -81,7 +106,13 @@ export function acquireMutationLease(params: {
 }
 
 export function beginAppFinalization(appId: number): boolean {
-  if (leases.has(appId) || finalizingApps.has(appId)) return false;
+  if (
+    leases.has(appId) ||
+    activeMutationTools.has(appId) ||
+    finalizingApps.has(appId)
+  ) {
+    return false;
+  }
   finalizingApps.add(appId);
   return true;
 }
@@ -101,6 +132,9 @@ export function releaseMutationLease(appId: number, threadId: string): void {
  * pass to attribute to a hung Implementer's orphaned lease.
  */
 export function describeMutationBlock(appId: number): string | null {
+  if (activeMutationTools.has(appId)) {
+    return "A mutation tool is still active for this app.";
+  }
   const lease = leases.get(appId);
   if (lease) {
     return `The app writer lease is still held by sub-agent thread ${lease.threadId} (scope: ${
@@ -138,27 +172,6 @@ export function assertMutationLease(ctx: AgentContext): void {
     throw new DyadError(
       "Another agent is currently editing this app. Wait for it to finish before making changes.",
       DyadErrorKind.Conflict,
-    );
-  }
-}
-
-export function assertImplementerPathAllowed(
-  ctx: AgentContext,
-  relativePath: string,
-): void {
-  if (ctx.subagentPersona !== "implementer") return;
-  const normalizedPath = normalizeMutationScope(relativePath);
-  const scope = ctx.subagentPathScope ?? [];
-  if (
-    scope.length === 0 ||
-    !scope.some(
-      (allowed) =>
-        normalizedPath === allowed || normalizedPath.startsWith(`${allowed}/`),
-    )
-  ) {
-    throw new DyadError(
-      `Implementer may only edit its assigned paths: ${scope.join(", ") || "none"}`,
-      DyadErrorKind.Precondition,
     );
   }
 }

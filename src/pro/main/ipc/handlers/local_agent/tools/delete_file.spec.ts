@@ -98,7 +98,12 @@ describe("deleteFileTool", () => {
   });
 
   describe("execute safety checks", () => {
-    it("rejects Implementer deletes outside the assigned scope", async () => {
+    it("treats the Implementer's assigned paths as advisory", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
       const context = {
         ...mockContext,
         subagentPersona: "implementer" as const,
@@ -107,9 +112,11 @@ describe("deleteFileTool", () => {
 
       await expect(
         deleteFileTool.execute({ path: "src/admin.ts" }, context),
-      ).rejects.toThrow("Implementer may only edit its assigned paths");
+      ).resolves.toContain("Successfully deleted");
 
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fs.unlinkSync).toHaveBeenCalledWith(
+        path.join(mockContext.appPath, "src/admin.ts"),
+      );
       expect(fs.rmdirSync).not.toHaveBeenCalled();
     });
 
@@ -256,6 +263,23 @@ describe("deleteFileTool", () => {
 
       expect(onDeferredFunctionDelete).toHaveBeenCalledWith("hello-world");
       expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+    });
+
+    it("propagates shared-module deletion to the root turn", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      const onSharedServerModuleChange = vi.fn();
+
+      await deleteFileTool.execute(
+        { path: "supabase/functions/_shared/auth.ts" },
+        { ...mockContext, onSharedServerModuleChange },
+      );
+
+      expect(onSharedServerModuleChange).toHaveBeenCalledWith(
+        "supabase/functions/_shared/auth.ts",
+      );
     });
   });
 

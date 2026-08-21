@@ -56,7 +56,7 @@ export const exploreChatHistoryTool: ToolDefinition<ExploreChatHistoryArgs> = {
   defaultConsent: "always",
   usesEngineEndpoint: true,
 
-  isEnabled: (ctx) => ctx.isDyadPro,
+  isEnabled: (ctx) => ctx.isDyadPro && !ctx.subagentThreadId,
 
   getConsentPreview: (args) =>
     `Research this app's chat history for "${args.query}" using the Dyad Engine and provide a summarized, cited report to the active AI model.`,

@@ -473,49 +473,6 @@ const CAPABILITY_GATED_BLUEPRINT_TOOLS = new Set<string>([
   "execute_sandbox_script",
 ]);
 
-const ROOT_IMPLEMENTER_VERIFICATION_TOOLS = new Set<string>([
-  "run_type_checks",
-  "run_tests",
-  "run_build",
-  "run_pre_commit",
-]);
-
-function isSuccessfulRootVerification(toolName: string, result: string) {
-  switch (toolName) {
-    case "run_type_checks":
-      return result.startsWith("No type errors found");
-    case "run_tests":
-      return (
-        result.startsWith("All runnable tests passed") ||
-        result.startsWith("The tests matching /")
-      );
-    case "run_build":
-      return result.startsWith("Production build passed.");
-    case "run_pre_commit":
-      return result.startsWith(
-        "Pre-commit passed. Do not run it again unless files change.",
-      );
-    default:
-      return false;
-  }
-}
-
-export function recordRootImplementerVerification(
-  ctx: AgentContext,
-  toolName: string,
-  result?: string,
-): void {
-  if (
-    !ctx.subagentThreadId &&
-    ctx.partialImplementerVerificationRequired &&
-    ROOT_IMPLEMENTER_VERIFICATION_TOOLS.has(toolName) &&
-    typeof result === "string" &&
-    isSuccessfulRootVerification(toolName, result)
-  ) {
-    ctx.partialImplementerVerificationRequired = false;
-  }
-}
-
 function toolModifiesState(
   tool: (typeof TOOL_DEFINITIONS)[number],
   ctx: AgentContext,
@@ -707,8 +664,6 @@ export function buildAgentToolSet(
             // (including failures) for retry/fallback telemetry
             trackFileEditTool(invocationCtx, tool.name, processedArgs);
             const result = await tool.execute(processedArgs, invocationCtx);
-
-            recordRootImplementerVerification(invocationCtx, tool.name, result);
 
             // Only completed mutations unblock run_tests. Failed tool calls are
             // still present in fileEditTracker for retry/fallback telemetry, but

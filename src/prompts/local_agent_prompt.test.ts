@@ -84,6 +84,8 @@ describe("local_agent_prompt", () => {
     );
     expect(enabled).toContain("MUST HOLD:");
     expect(enabled).toContain("Its report must address each MUST HOLD item");
+    expect(enabled).toContain("These are advisory");
+    expect(enabled).toContain("inspect the complete actual diff");
     expect(enabled).toContain("You remain responsible for the result");
   });
 

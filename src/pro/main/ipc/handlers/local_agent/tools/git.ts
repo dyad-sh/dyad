@@ -16,7 +16,6 @@ import {
 } from "@/ipc/utils/git_utils";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
-import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 import {
   AgentContext,
   escapeXmlAttr,
@@ -455,7 +454,6 @@ export const gitRestoreFileTool: ToolDefinition<
       isComplete,
     ),
   execute: async (args, ctx: AgentContext) => {
-    assertImplementerPathAllowed(ctx, args.path);
     const operationPath = await assertMutationPathAllowed({
       appPath: ctx.appPath,
       relativePath: args.path,
@@ -484,6 +482,7 @@ export const gitRestoreFileTool: ToolDefinition<
     if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
       ctx.sharedServerModulePaths.push(operationPath);
+      ctx.onSharedServerModuleChange?.(operationPath);
     }
     queueCloudSandboxSnapshotSync({
       appId: ctx.appId,

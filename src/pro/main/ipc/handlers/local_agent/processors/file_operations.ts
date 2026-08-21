@@ -3,6 +3,8 @@
  */
 
 import log from "electron-log";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import {
   gitCommit,
   gitAddAll,
@@ -27,6 +29,26 @@ export interface FileOperationResult {
   success: boolean;
   error?: string;
   warning?: string;
+}
+
+export async function reconcileDeferredFunctionOperations(params: {
+  pendingDeploys: string[];
+  pendingDeletes: string[];
+  functionExists: (functionName: string) => boolean | Promise<boolean>;
+}): Promise<{ deploys: string[]; deletes: string[] }> {
+  const deploys = new Set(params.pendingDeploys);
+  const deletes = new Set<string>();
+  for (const functionName of new Set(params.pendingDeletes)) {
+    if (await params.functionExists(functionName)) {
+      // A later write/restore won the turn: deploy the final local function.
+      deploys.add(functionName);
+    } else {
+      // A later delete won the turn: do not redeploy a stale queued version.
+      deploys.delete(functionName);
+      deletes.add(functionName);
+    }
+  }
+  return { deploys: [...deploys], deletes: [...deletes] };
 }
 
 function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
@@ -84,8 +106,22 @@ export async function deployAllFunctionsIfNeeded(
   }
 
   try {
+    const deferred = await reconcileDeferredFunctionOperations({
+      pendingDeploys: ctx.pendingFunctionDeploys,
+      pendingDeletes: ctx.pendingFunctionDeletes ?? [],
+      functionExists: async (functionName) => {
+        try {
+          await fs.access(
+            path.join(ctx.appPath, "supabase", "functions", functionName),
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    });
     const deleteErrors: string[] = [];
-    for (const functionName of new Set(ctx.pendingFunctionDeletes ?? [])) {
+    for (const functionName of deferred.deletes) {
       try {
         await deleteSupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,
@@ -97,7 +133,7 @@ export async function deployAllFunctionsIfNeeded(
       }
     }
     let deployErrors: string[] = [];
-    if (ctx.isSharedModulesChanged || ctx.pendingFunctionDeploys.length > 0) {
+    if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
       const settings = readSettings();
       deployErrors = await deployAffectedSupabaseFunctions({
         appPath: ctx.appPath,
@@ -106,7 +142,7 @@ export async function deployAllFunctionsIfNeeded(
         skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
         sharedModulesChanged: ctx.isSharedModulesChanged,
         changedSharedModulePaths: ctx.sharedServerModulePaths,
-        pendingFunctionDeploys: ctx.pendingFunctionDeploys,
+        pendingFunctionDeploys: deferred.deploys,
         onProgress: (progress: SupabaseDeployProgress) => {
           const statusXml = renderSupabaseDeployStatus(progress);
           if (progress.phase === "finished" || progress.phase === "failed") {

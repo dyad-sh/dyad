@@ -41,8 +41,10 @@ import {
   beginAppFinalization,
   describeMutationBlock,
   endAppFinalization,
+  hasActiveMutationTool,
   hasMutationLease,
   releaseMutationLease,
+  waitForMutationToolDrain,
   withMutationAdmission,
 } from "./mutation_lease";
 import {
@@ -69,8 +71,9 @@ const MAX_ACTIVITY_XML_CHARS = 200_000;
 const MAX_ACTIVITY_OUTPUT_CHARS = 200_000;
 const MAX_MODEL_HISTORY_CHARS = 100_000;
 const AUTO_REVIEW_BARRIER_MAX_WAIT_MS = 10 * 60 * 1000;
-const ROOT_FINALIZATION_MAX_WAIT_MS = 10 * 60 * 1000;
+const ROOT_FINALIZATION_MAX_WAIT_MS = 20 * 60 * 1000;
 const REVIEW_WRITER_MAX_WAIT_MS = 10 * 60 * 1000;
+const SAFE_ABORT_DRAIN_MAX_WAIT_MS = 30 * 1000;
 const SUBAGENT_MAX_STEPS = 50;
 /**
  * The Implementer is the only persona that both writes code and verifies it —
@@ -81,6 +84,23 @@ const SUBAGENT_MAX_STEPS = 50;
  * mid-verification, which is the one place a partial result is most misleading.
  */
 const IMPLEMENTER_MAX_STEPS = 100;
+
+async function waitForSafeAbortDrain(
+  waitForSafeAbort?: () => Promise<void>,
+): Promise<void> {
+  if (!waitForSafeAbort) return;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      waitForSafeAbort(),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, SAFE_ABORT_DRAIN_MAX_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 function maxStepsFor(persona: SubagentPersona): number {
   return persona === "implementer" ? IMPLEMENTER_MAX_STEPS : SUBAGENT_MAX_STEPS;
@@ -98,8 +118,12 @@ export function raceWithAbort<T>(
   waitForSafeAbort?: () => Promise<void>,
 ): Promise<T> {
   if (!signal) return promise;
+  const drain = () => waitForSafeAbortDrain(waitForSafeAbort);
   if (signal.aborted) {
-    return (waitForSafeAbort?.() ?? Promise.resolve()).then(() => {
+    // The caller is no longer awaiting the original promise, so attach a
+    // rejection handler before returning the cancellation result.
+    void promise.catch(() => {});
+    return drain().then(() => {
       throw new DyadError(
         "Sub-agent run aborted.",
         DyadErrorKind.UserCancelled,
@@ -117,7 +141,7 @@ export function raceWithAbort<T>(
     };
     const onAbort = () => {
       aborted = true;
-      void (waitForSafeAbort?.() ?? Promise.resolve()).then(
+      void drain().then(
         () => {
           finish(() =>
             reject(
@@ -638,18 +662,11 @@ export async function cancelSubagent(
       // leaves admission. The wrapper's abort check prevents queued mutations
       // from entering after this drain.
       //
-      // Release the lease INSIDE the drain rather than leaving it to
-      // runThread.finally: a run parked on an await that ignores the abort
-      // signal never unwinds, and its orphaned lease then blocks every later
-      // spawn and beginAppFinalization for the app's lifetime (observed: a
-      // hung implementer poisoned the following turn's finalization for its
-      // full 10-minute deadline). Safe because the drain proves no atomic
-      // mutation is mid-flight, a woken zombie is fenced by
-      // assertMutationLease before it can write, and release is
-      // owner-checked so the finally's own release stays idempotent.
-      await withMutationAdmission(chat.app.id, async () => {
-        releaseMutationLease(chat.app.id, threadId);
-      });
+      // Bound the user-facing drain. If a tool ignores cancellation, its
+      // mutation reservation remains as a quarantine that blocks new writers
+      // and root finalization until the underlying operation really settles.
+      await waitForSafeAbortDrain(() => waitForMutationToolDrain(chat.app.id));
+      releaseMutationLease(chat.app.id, threadId);
     }
   }
   await finishThread(threadId, "cancelled", null, "Cancelled by user.");
@@ -1290,8 +1307,17 @@ export async function waitForSubagentsAndBeginFinalization(
     assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
     const summaries =
       threadIds.length > 0
-        ? await waitForSubagents(chatId, threadIds, abortSignal)
+        ? await waitForSubagents(
+            chatId,
+            threadIds,
+            abortSignal,
+            Math.max(1, deadlineAt - Date.now()),
+          )
         : [];
+    if (hasActiveMutationTool(appId)) {
+      await waitForAbortableDelay(250, abortSignal);
+      continue;
+    }
     const finalized = await withMutationAdmission(appId, async () => {
       assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
       const pending =
@@ -1530,7 +1556,7 @@ async function runReview(
   const entitlementWatcher = watchEntitlement(threadId, controller);
   const writerDeadlineAt = Date.now() + REVIEW_WRITER_MAX_WAIT_MS;
   try {
-    while (hasMutationLease(appId)) {
+    while (hasMutationLease(appId) || hasActiveMutationTool(appId)) {
       if (Date.now() >= writerDeadlineAt) {
         throw new DyadError(
           "Timed out waiting for the app writer before starting review.",
@@ -1666,7 +1692,7 @@ async function runModel(params: {
     // still owns mutation admission. Draining the shared boundary keeps the
     // writer lease and root finalization tied to the real operation lifetime,
     // even when that operation does not itself observe AbortSignal.
-    () => withMutationAdmission(params.appId, async () => {}),
+    () => waitForMutationToolDrain(params.appId),
   );
   if (streamError) throw streamError;
   if (claimedRootMessageIds.size > 0) {
@@ -1825,7 +1851,7 @@ function systemPrompt(persona: SubagentPersona): string {
   if (persona === "reviewer")
     return "You are Dyad Reviewer. Be independent, concise, evidence-based, and read-only.";
   if (persona === "implementer")
-    return "You are Dyad Implementer. Complete only the bounded assignment using only provided tools and assigned paths. Report changed files and unresolved issues.";
+    return "You are Dyad Implementer. Complete the focused assignment using only provided tools. Treat assigned paths as the expected focus, but cross them when correctness requires it and report every changed file and unresolved issue.";
   return "You are Dyad Explorer. Investigate read-only, cite files and evidence, and return a concise report with confidence and recommended next action.";
 }
 

@@ -11,7 +11,6 @@ import {
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
-import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 
 const logger = log.scope("delete_file");
 
@@ -48,7 +47,6 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       result.startsWith("File deleted,"),
 
     execute: async (args, ctx: AgentContext) => {
-      assertImplementerPathAllowed(ctx, args.path);
       const { relativePath: operationPath, fullPath: fullFilePath } =
         await prepareDeletePath(ctx.appPath, args.path);
 
@@ -59,6 +57,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
         if (isSharedServerModule(operationPath)) {
           ctx.isSharedModulesChanged = true;
           ctx.sharedServerModulePaths.push(operationPath);
+          ctx.onSharedServerModuleChange?.(operationPath);
         }
 
         if (currentStat.isDirectory()) {

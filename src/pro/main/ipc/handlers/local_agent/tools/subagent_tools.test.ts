@@ -231,6 +231,40 @@ describe("spawn_agent schema", () => {
     expect(ctx.spawnedSubagentThreadIds).toEqual([]);
   });
 
+  it("keeps an Implementer registered when cancellation fails", async () => {
+    subagentManagerMocks.spawnModelSubagent.mockResolvedValueOnce(
+      "implementer-1",
+    );
+    subagentManagerMocks.waitForSubagents.mockRejectedValueOnce(
+      new Error("wait failed"),
+    );
+    subagentManagerMocks.cancelSubagent.mockRejectedValueOnce(
+      new Error("cancel failed"),
+    );
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      onXmlComplete: vi.fn(),
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: [],
+    } as unknown as AgentContext;
+
+    await expect(
+      spawnAgentTool.execute(
+        {
+          persona: "implementer",
+          task_name: "Fix the activity feed",
+          assignment: "Repair the activity feed query",
+          scope: ["src/app"],
+        },
+        ctx,
+      ),
+    ).rejects.toThrow("wait and cancellation both failed");
+
+    expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
+    expect(ctx.spawnedSubagentThreadIds).toEqual(["implementer-1"]);
+  });
+
   it("hides advanced tools by default and when explicitly disabled", () => {
     for (const canUseAdvancedSubagentTools of [undefined, false]) {
       const ctx = {
@@ -322,56 +356,6 @@ describe("spawn_agent schema", () => {
       error: null,
     });
     expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
-  });
-
-  it("requires root verification after a partial Implementer report", async () => {
-    subagentManagerMocks.spawnModelSubagent.mockResolvedValueOnce(
-      "implementer-1",
-    );
-    subagentManagerMocks.waitForSubagents.mockResolvedValueOnce([
-      {
-        id: "implementer-1",
-        status: "partial",
-        result: { report: "Stopped before verification completed." },
-        error: null,
-      },
-    ]);
-    const ctx = {
-      chatId: 7,
-      abortSignal: new AbortController().signal,
-      onXmlComplete: vi.fn(),
-      spawnedSubagentThreadIds: [],
-      spawnedImplementerThreadIds: [],
-    } as unknown as AgentContext;
-
-    await spawnAgentTool.execute(
-      {
-        persona: "implementer",
-        task_name: "Update auth",
-        assignment: "Make the bounded authentication edit",
-        scope: ["src/auth.ts"],
-      },
-      ctx,
-    );
-
-    expect(ctx.partialImplementerVerificationRequired).toBe(true);
-  });
-
-  it("re-arms root verification when an Implementer follow-up is queued", async () => {
-    subagentManagerMocks.followupSubagent.mockResolvedValueOnce("implementer");
-    const ctx = {
-      chatId: 7,
-      partialImplementerVerificationRequired: false,
-      spawnedSubagentThreadIds: ["implementer-1"],
-      spawnedImplementerThreadIds: ["implementer-1"],
-    } as unknown as AgentContext;
-
-    await followupTaskTool.execute(
-      { thread_id: "implementer-1", message: "Finish verification" },
-      ctx,
-    );
-
-    expect(ctx.partialImplementerVerificationRequired).toBe(true);
   });
 
   it("keeps schema introspection safe when no spawn persona is enabled", () => {

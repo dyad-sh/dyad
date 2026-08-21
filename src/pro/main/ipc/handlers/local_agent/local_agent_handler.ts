@@ -1881,15 +1881,6 @@ export async function handleLocalAgentStream(
           .filter((thread) => thread.status === "partial")
           .map((thread) => thread.taskName),
       );
-      if (
-        partialImplementerNames.length > 0 &&
-        ctx.partialImplementerVerificationRequired !== false
-      ) {
-        throw new DyadError(
-          `Implementer sub-agent reached its step limit and requires explicit root verification before finalization: ${partialImplementerNames.join(", ")}`,
-          DyadErrorKind.Precondition,
-        );
-      }
     }
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
@@ -1919,7 +1910,7 @@ export async function handleLocalAgentStream(
     const postTurnXmlParts: string[] = [];
 
     if (partialImplementerNames.length > 0) {
-      const partialNotice = `<dyad-status title="Implementer step limit" state="warning">${escapeXmlContent(`Stopped after the model-step budget: ${partialImplementerNames.join(", ")}. The root agent reviewed the resulting changes before finalization.`)}</dyad-status>`;
+      const partialNotice = `<dyad-status title="Implementer step limit" state="warning">${escapeXmlContent(`Stopped after the model-step budget: ${partialImplementerNames.join(", ")}. Partial changes were preserved; the root agent remains responsible for reviewing the final diff and choosing appropriate verification.`)}</dyad-status>`;
       postTurnXmlParts.push(partialNotice);
       fullResponse += `\n\n${partialNotice}`;
       await updateResponseInDb(placeholderMessageId, fullResponse);

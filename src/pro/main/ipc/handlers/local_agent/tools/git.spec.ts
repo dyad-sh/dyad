@@ -213,22 +213,26 @@ describe("local-agent Git tool definitions", () => {
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
       onXmlComplete: vi.fn(),
+      onSharedServerModuleChange: vi.fn(),
     } as unknown as AgentContext;
     try {
       const result = await gitRestoreFileTool.execute(
         {
           revision: "HEAD",
-          path: "supabase/functions/_private/file.ts",
+          path: "supabase/functions/_shared/file.ts",
         },
         ctx,
       );
 
-      expect(result).toContain("Restored supabase/functions/_private/file.ts");
+      expect(result).toContain("Restored supabase/functions/_shared/file.ts");
       expect(ctx.workspaceMutated).toBe(true);
       expect(mockRestoreAgentGitFile).toHaveBeenCalled();
       expect(mockDeploySupabaseFunction).not.toHaveBeenCalled();
+      expect(ctx.onSharedServerModuleChange).toHaveBeenCalledWith(
+        "supabase/functions/_shared/file.ts",
+      );
       expect(ctx.onXmlComplete).toHaveBeenCalledWith(
-        '<dyad-git operation="restore_file" revision="HEAD" path="supabase/functions/_private/file.ts" not_staged="true"></dyad-git>',
+        '<dyad-git operation="restore_file" revision="HEAD" path="supabase/functions/_shared/file.ts" not_staged="true"></dyad-git>',
       );
     } finally {
       await fs.promises.rm(appPath, { recursive: true, force: true });

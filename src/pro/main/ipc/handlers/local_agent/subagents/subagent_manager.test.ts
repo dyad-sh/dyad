@@ -168,6 +168,18 @@ describe("sub-agent manager status policy", () => {
     await expect(raceWithAbort(Promise.resolve(7), undefined)).resolves.toBe(7);
   });
 
+  it("observes the original promise when cancellation is already active", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      raceWithAbort(
+        Promise.reject(new Error("late failure")),
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ kind: "user_cancelled" });
+  });
+
   it("waits for the active mutation boundary before rejecting on abort", async () => {
     const controller = new AbortController();
     let finishDrain!: () => void;

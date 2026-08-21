@@ -15,7 +15,6 @@ import {
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
-import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 
 const logger = log.scope("rename_file");
 
@@ -44,8 +43,6 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       result.startsWith("File renamed,"),
 
     execute: async (args, ctx: AgentContext) => {
-      assertImplementerPathAllowed(ctx, args.from);
-      assertImplementerPathAllowed(ctx, args.to);
       const fromOperationPath = await assertMutationPathAllowed({
         appPath: ctx.appPath,
         relativePath: args.from,
@@ -71,9 +68,11 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
           ctx.isSharedModulesChanged = true;
           if (isSharedServerModule(fromOperationPath)) {
             ctx.sharedServerModulePaths.push(fromOperationPath);
+            ctx.onSharedServerModuleChange?.(fromOperationPath);
           }
           if (isSharedServerModule(toOperationPath)) {
             ctx.sharedServerModulePaths.push(toOperationPath);
+            ctx.onSharedServerModuleChange?.(toOperationPath);
           }
         }
 

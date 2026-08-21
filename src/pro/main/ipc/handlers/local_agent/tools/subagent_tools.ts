@@ -46,7 +46,9 @@ const baseSpawnShape = {
     .array(z.string().min(1).max(500))
     .max(100)
     .default([])
-    .describe("Explicit relative paths or path prefixes in scope"),
+    .describe(
+      "Advisory relative paths or path prefixes expected to be in scope",
+    ),
 };
 
 const spawnFallbackSchema = z.object({
@@ -123,32 +125,43 @@ export function buildSubagentContext(
 }
 
 /**
- * Session state and unscoped app/provider mutations the ORCHESTRATOR owns. A
- * sub-agent writing here would corrupt the parent's view of its own run or
- * escape the bounded path assignment.
- *
- * Recursion needs no entry: `spawn_agent` and the advanced
- * sub-agent tools already gate on `!ctx.subagentThreadId`, and the child
- * context sets it, so a sub-agent cannot spawn regardless of this list.
- * Explorer needs no entries either: it is built with `readOnly: true`, which
- * `shouldIncludeTool` uses to strip every state-modifying tool. Implementers
- * retain direct, scoped file/Git operations and bounded verification tools;
- * arbitrary sandbox-hosted MCP capabilities and user-questionnaire control
- * stay with the root orchestrator.
+ * Child capabilities are explicit and fail closed: adding a new root tool does
+ * not silently grant it to every sub-agent. This intentionally excludes MCP
+ * discovery/execution, sandbox scripts, nested agents/history explorers, and
+ * root-owned provider or application configuration side effects.
  */
-const SUBAGENT_DENYLIST = new Set<AgentToolName>([
-  "update_todos",
-  "set_chat_summary",
-  "write_app_blueprint",
-  "add_integration",
-  "add_dependency",
-  "execute_sql",
-  "enable_nitro",
-  "generate_image",
-  "generate_test_assertions",
-  "reinstall_and_restart_app",
-  "execute_sandbox_script",
-  "planning_questionnaire",
+const SUBAGENT_ALLOWED_TOOLS = new Set<AgentToolName>([
+  "read_file",
+  "list_files",
+  "grep",
+  "code_search",
+  "search_chats",
+  "read_chat",
+  "explore_code",
+  "write_file",
+  "search_replace",
+  "copy_file",
+  "delete_file",
+  "rename_file",
+  "git_status",
+  "git_diff",
+  "git_log",
+  "git_show_commit",
+  "git_show_file",
+  "git_restore_file",
+  "get_supabase_project_info",
+  "get_neon_project_info",
+  "get_database_table_schema",
+  "read_logs",
+  "run_type_checks",
+  "run_pre_commit",
+  "run_build",
+  "run_tests",
+  "restart_app",
+  "read_guide",
+  "web_search",
+  "web_crawl",
+  "web_fetch",
 ]);
 
 export function buildSubagentToolSet(
@@ -156,20 +169,15 @@ export function buildSubagentToolSet(
 ): ToolSet {
   const { ctx, persona } = params;
   const childCtx = buildSubagentContext(params);
-  // Previously an allowlist of five tools (read_file, list_files, grep,
-  // write_file, search_replace), which left the Implementer able to change code
-  // but unable to check it: no run_type_checks, no restart_app, no read_logs.
-  // The only verification in the loop was therefore the root agent re-reading
-  // files the sub-agent had written — reviewing a diff it did not watch being
-  // made, with no way to compile it. A denylist gives the Implementer the same
-  // verification tools the root agent has, so a mistake is caught where it was
-  // made rather than one level up.
   const allTools = buildAgentToolSet(childCtx, {
     readOnly: persona === "explorer",
     enableAppBlueprint: ctx.enableAppBlueprint,
+    freeModelMode: ctx.freeModelMode,
   });
   return Object.fromEntries(
-    Object.entries(allTools).filter(([name]) => !SUBAGENT_DENYLIST.has(name)),
+    Object.entries(allTools).filter(([name]) =>
+      SUBAGENT_ALLOWED_TOOLS.has(name),
+    ),
   );
 }
 
@@ -244,7 +252,16 @@ export const spawnAgentTool: ToolDefinition<
         ctx.abortSignal,
       );
     } catch (error) {
-      await cancelSubagent(ctx.chatId, threadId).catch(() => {});
+      try {
+        await cancelSubagent(ctx.chatId, threadId);
+      } catch (cancellationError) {
+        // Keep the thread registered so the end-of-turn barrier remains
+        // fail-closed when cancellation itself did not complete.
+        throw new AggregateError(
+          [error, cancellationError],
+          "The sub-agent wait and cancellation both failed.",
+        );
+      }
       // This tool has now taken responsibility for the thread: it cancelled it
       // and is about to report the failure to the model, which can retry or work
       // around it. Leaving the id in spawnedImplementerThreadIds would hand the
@@ -269,9 +286,6 @@ export const spawnAgentTool: ToolDefinition<
       if (!ctx.deliveredExplorerThreadIds.includes(threadId)) {
         ctx.deliveredExplorerThreadIds.push(threadId);
       }
-    }
-    if (args.persona === "implementer" && subagent.status === "partial") {
-      ctx.partialImplementerVerificationRequired = true;
     }
     return JSON.stringify({
       threadId: subagent.id,
@@ -322,14 +336,6 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
       args.thread_ids,
       ctx.abortSignal,
     );
-    if (
-      summaries.some(
-        (summary) =>
-          summary.persona === "implementer" && summary.status === "partial",
-      )
-    ) {
-      ctx.partialImplementerVerificationRequired = true;
-    }
     return JSON.stringify(summaries);
   },
 };
@@ -403,10 +409,6 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       if (!ctx.spawnedImplementerThreadIds.includes(args.thread_id)) {
         ctx.spawnedImplementerThreadIds.push(args.thread_id);
       }
-      // A new Implementer turn can independently reach its step budget. Re-arm
-      // the gate now so verification from an earlier run cannot authorize a
-      // later partial follow-up during finalization.
-      ctx.partialImplementerVerificationRequired = true;
     }
     return "Follow-up queued durably.";
   },

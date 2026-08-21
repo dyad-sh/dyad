@@ -3,12 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentContext } from "../tools/types";
 import {
   acquireMutationLease,
-  assertImplementerPathAllowed,
   assertMutationLease,
   beginAppFinalization,
   describeMutationBlock,
   endAppFinalization,
-  normalizeMutationScope,
   releaseMutationLease,
   withMutationAdmission,
   withMutationToolAdmission,
@@ -80,42 +78,9 @@ describe("sub-agent mutation lease", () => {
     expect(implementerAdmitted).toBe(true);
   });
 
-  it("enforces the Implementer's explicit path scope", () => {
-    const ctx = {
-      subagentPersona: "implementer",
-      subagentPathScope: ["src/components"],
-    } as AgentContext;
-    expect(() =>
-      assertImplementerPathAllowed(ctx, "src/components/Card.tsx"),
-    ).not.toThrow();
-    expect(() =>
-      assertImplementerPathAllowed(ctx, "src/server/secrets.ts"),
-    ).toThrow(/assigned paths/);
-  });
-
-  it("uses the pre-normalized Implementer path scope", () => {
-    const ctx = {
-      subagentPersona: "implementer",
-      subagentPathScope: ["src/components"],
-    } as AgentContext;
-
-    expect(() =>
-      assertImplementerPathAllowed(ctx, "src\\components\\Card.tsx"),
-    ).not.toThrow();
-    expect(ctx.subagentPathScope).toEqual(["src/components"]);
-  });
-
   it.each(["", ".", "./", "/", "..", "../src"])(
     "rejects %j as an app-root or escaping Implementer scope",
     (rootScope) => {
-      const ctx = {
-        subagentPersona: "implementer",
-        subagentPathScope: [normalizeMutationScope(rootScope)],
-      } as AgentContext;
-
-      expect(() =>
-        assertImplementerPathAllowed(ctx, "src/components/Card.tsx"),
-      ).toThrow(/assigned paths/);
       expect(() =>
         acquireMutationLease({
           appId: 7,
@@ -190,6 +155,25 @@ describe("sub-agent mutation lease", () => {
     ).toBe(true);
     expect(beginAppFinalization(9)).toBe(false);
     releaseMutationLease(9, "implementer");
+  });
+
+  it("does not begin root finalization while a mutation tool is still active", async () => {
+    let finishMutation!: () => void;
+    const mutation = withMutationToolAdmission(
+      { appId: 7 } as AgentContext,
+      () =>
+        new Promise<void>((resolve) => {
+          finishMutation = resolve;
+        }),
+    );
+    await Promise.resolve();
+
+    expect(beginAppFinalization(7)).toBe(false);
+    expect(describeMutationBlock(7)).toContain("mutation tool");
+
+    finishMutation();
+    await mutation;
+    expect(beginAppFinalization(7)).toBe(true);
   });
 
   it("names the blocking holder so a stuck finalization is attributable", () => {

@@ -157,14 +157,16 @@ const IMPLEMENTER_DELEGATION_GUIDANCE = `
        write what, what every query must be scoped by, and any invariant the
        rest of the app relies on. When unsure whether a rule applies, include
        it. If you believe none apply, write "none" and say why.
-     OUT OF SCOPE: paths and behaviours this task must not touch.
+     OUT OF SCOPE: the expected boundaries. These are advisory: cross them only
+       when the implementation genuinely requires it, and report every such
+       change explicitly.
      DONE WHEN: the checks that must pass before it reports back.
 
    The Implementer sees nothing but this assignment — not your plan, not the
    previous assignment, not the conversation. A rule left out of MUST HOLD does
    not exist for it. Prefer one substantial assignment over several small ones.
-   Use at most one Implementer at a time, and do not edit its assigned paths
-   while it is working.
+   Use at most one Implementer at a time, and do not edit the workspace while
+   it is working.
 
    Keep for yourself: deciding the approach, resolving ambiguity, and anything
    whose shape is not yet settled — the first use of a pattern, a schema or
@@ -175,14 +177,15 @@ const IMPLEMENTER_DELEGATION_GUIDANCE = `
    and tests and read the app's logs, and its assignment should say which of
    these must pass. Its report must address each MUST HOLD item — where it is
    enforced, or why it was not touched. Read the report first and act on what it
-   says. Before finalizing, inspect the actual diff across the assigned scope;
+   says. Before finalizing, inspect the complete actual diff, including changes
+   outside the advisory scope;
    pay particular attention to deletions, renames, restores, authentication, and
    data-access changes. Open files yourself when the report or diff is unclear,
    when it claims something you have reason to doubt, or when the change is one
-   you flagged as sensitive. If the Implementer reports a partial status, run an
-   explicit root verification or remediation pass before finalization. If the
-   checks it was asked to run did not pass, send it back with the failure rather
-   than fixing the code yourself.
+   you flagged as sensitive. If the Implementer reports a partial status, use
+   your judgment to remediate incomplete work and run the checks appropriate to
+   the final change. If the checks it was asked to run did not pass, decide
+   whether to send it back or finish the correction yourself.
 
    You remain responsible for the result.`;
 

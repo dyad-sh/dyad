@@ -154,8 +154,6 @@ export interface AgentContext {
   onDeferredFunctionDeploy?: (functionName: string) => void;
   /** Propagates child function deletion work to the root turn. */
   onDeferredFunctionDelete?: (functionName: string) => void;
-  /** A partial Implementer must be followed by a successful root check. */
-  partialImplementerVerificationRequired?: boolean;
   /** Turn-scoped schema gates for root orchestration tools. */
   canUseExplorerSubagent?: boolean;
   /** True when settings or the selected Auto Sidekick model enables it. */

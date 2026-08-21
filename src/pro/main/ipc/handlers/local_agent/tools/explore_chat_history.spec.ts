@@ -106,6 +106,12 @@ describe("tool exposure via shouldIncludeTool", () => {
     expect(
       shouldIncludeTool(searchChatsTool, pro, { freeModelMode: true }),
     ).toBe(true);
+    const child = makeAgentContext({
+      isDyadPro: true,
+      subagentThreadId: "child-1",
+    });
+    expect(shouldIncludeTool(exploreChatHistoryTool, child)).toBe(false);
+    expect(shouldIncludeTool(searchChatsTool, child)).toBe(true);
   });
 });
 

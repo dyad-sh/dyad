@@ -45,6 +45,7 @@ vi.mock("@/supabase_admin/supabase_management_client", () => ({
 import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
+  reconcileDeferredFunctionOperations,
 } from "./file_operations";
 
 describe("commitAllChanges", () => {
@@ -151,5 +152,27 @@ describe("deployAllFunctionsIfNeeded", () => {
       organizationSlug: "org",
     });
     expect(mocks.deployAffectedSupabaseFunctions).not.toHaveBeenCalled();
+  });
+});
+
+describe("reconcileDeferredFunctionOperations", () => {
+  it("deploys a function restored after a deferred delete", async () => {
+    await expect(
+      reconcileDeferredFunctionOperations({
+        pendingDeploys: [],
+        pendingDeletes: ["restored"],
+        functionExists: (name) => name === "restored",
+      }),
+    ).resolves.toEqual({ deploys: ["restored"], deletes: [] });
+  });
+
+  it("deletes a function removed after a deferred deploy", async () => {
+    await expect(
+      reconcileDeferredFunctionOperations({
+        pendingDeploys: ["removed"],
+        pendingDeletes: ["removed"],
+        functionExists: () => false,
+      }),
+    ).resolves.toEqual({ deploys: [], deletes: ["removed"] });
   });
 });

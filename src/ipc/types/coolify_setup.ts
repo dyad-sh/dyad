@@ -28,13 +28,6 @@ export const ServerKeySchema = z.object({
 });
 
 /**
- * Where the server is. Everything needed to reach it, and nothing else.
- *
- * Separate from the address of the account to create, because looking at a
- * server does not need one — demanding it there rejected a check the panel
- * was offering before the email had been typed.
- */
-/**
  * Marks a refusal that happened before the machine took the run on.
  *
  * The panel shows anything the machine recorded, with the installer's output
@@ -44,6 +37,13 @@ export const ServerKeySchema = z.object({
  */
 export const SETUP_NOT_STARTED = "coolify-setup-not-started";
 
+/**
+ * Where the server is. Everything needed to reach it, and nothing else.
+ *
+ * Separate from the address of the account to create, because looking at a
+ * server does not need one — demanding it there rejected a check the panel
+ * was offering before the email had been typed.
+ */
 export const SetupServerSchema = z.object({
   host: z.string().min(1),
   /** Coolify's installer needs root, and says so in its own documentation. */

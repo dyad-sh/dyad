@@ -23,7 +23,7 @@ export interface RemoteDebuggingEndpoint {
 }
 
 let switchApplied = false;
-let switchAppliedAt = 0;
+let preexistingPortFileContents = new Map<string, string>();
 let cachedEndpoint: RemoteDebuggingEndpoint | null = null;
 /**
  * When the poll below last gave up. Chromium writes its port file during
@@ -66,7 +66,15 @@ export function maybeEnableRemoteDebugging(): void {
     return;
   }
 
-  switchAppliedAt = Date.now();
+  preexistingPortFileContents = new Map(
+    candidatePortFilePaths().flatMap((filePath) => {
+      try {
+        return [[filePath, fs.readFileSync(filePath, "utf-8")] as const];
+      } catch {
+        return [];
+      }
+    }),
+  );
   app.commandLine.appendSwitch("remote-debugging-port", "0");
   switchApplied = true;
   logger.info(
@@ -95,12 +103,15 @@ function candidatePortFilePaths(): string[] {
 function readPortFile(filePath: string): number | null {
   try {
     // Chromium can leave this file behind after an unclean shutdown. Only
-    // accept a file written for the current launch; otherwise a recycled port
-    // could point Playwright at an unrelated local debugging service.
-    if (fs.statSync(filePath).mtimeMs < switchAppliedAt) {
+    // accept content that changed during the current launch; otherwise a
+    // recycled port could point Playwright at an unrelated local debugging
+    // service. Comparing contents avoids mixing Date.now() with filesystem
+    // timestamp precision, which can reject a genuinely fresh file.
+    const contents = fs.readFileSync(filePath, "utf-8");
+    if (preexistingPortFileContents.get(filePath) === contents) {
       return null;
     }
-    const firstLine = fs.readFileSync(filePath, "utf-8").split("\n")[0]?.trim();
+    const firstLine = contents.split("\n")[0]?.trim();
     const port = Number(firstLine);
     // A truncated or stale file can hold something that parses as a number but
     // isn't a bindable port. An out-of-range value would make `httpEndpoint`
@@ -154,7 +165,7 @@ export async function resolveRemoteDebuggingEndpoint(): Promise<RemoteDebuggingE
 /** Test-only: clears module state between cases. */
 export function resetRemoteDebuggingForTesting(): void {
   switchApplied = false;
-  switchAppliedAt = 0;
+  preexistingPortFileContents = new Map();
   cachedEndpoint = null;
   failedAt = null;
 }

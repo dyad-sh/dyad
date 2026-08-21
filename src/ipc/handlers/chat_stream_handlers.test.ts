@@ -17,6 +17,10 @@ import {
   processStreamChunks,
   takePartialResponseForStream,
 } from "@/ipc/handlers/chat_stream_handlers";
+import {
+  combineStreamSafety,
+  createInitialStreamSafety,
+} from "@/ipc/utils/stream_execution_guard";
 import type { AsyncIterableStream, TextStreamPart, ToolSet } from "ai";
 import fs from "node:fs";
 import path from "node:path";
@@ -1250,6 +1254,399 @@ describe("processFullResponse", () => {
       }),
     );
     expect(result).toEqual({ updatedFiles: true });
+  });
+
+  // Real production-path integration: the actual, unmodified
+  // `processStreamChunks` (which now feeds every raw stream part into
+  // stream_execution_guard.ts) composed with the actual, unmodified
+  // `processFullResponseActions` (the function that performs the real
+  // `fs.writeFileSync` side effect). Nothing here is a reimplementation or
+  // a mock of the guard integration itself — only `fs`/`db` I/O is mocked,
+  // exactly as the rest of this file already does. The conditional below
+  // mirrors the real gate in chat_stream_handlers.ts's registered handler
+  // (`if (shouldAutoApply && !hasDestructiveSql && accumulatedStreamSafety.confirmedSafe)`),
+  // since that gate lives inside a giant IPC-registration closure this
+  // file's existing tests never invoke directly (registerChatStreamHandlers
+  // is never called anywhere in this suite) — this is the same testing
+  // boundary the rest of the file already draws.
+  describe("stream safety integration (real production path)", () => {
+    async function* lengthCutoffParts() {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="src/injected.js">console.log('should not be written');</dyad-write>`,
+      };
+      yield {
+        type: "finish" as const,
+        finishReason: "length" as const,
+        totalUsage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 5,
+          outputTokenDetails: { textTokens: 5, reasoningTokens: 0 },
+          totalTokens: 15,
+        },
+      };
+    }
+
+    async function* safeParts() {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="src/safe.js">console.log('fine');</dyad-write>`,
+      };
+      yield {
+        type: "finish" as const,
+        finishReason: "stop" as const,
+        totalUsage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 5,
+          outputTokenDetails: { textTokens: 5, reasoningTokens: 0 },
+          totalTokens: 15,
+        },
+      };
+    }
+
+    it("executes zero times when a well-formed dyad-write tag is followed by a length cutoff", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      const streamResult = await processStreamChunks({
+        fullStream: lengthCutoffParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      // The tag itself is complete — proving this isn't a "the tag was
+      // truncated" false negative.
+      expect(streamResult.fullResponse).toContain(
+        '<dyad-write path="src/injected.js">',
+      );
+      expect(streamResult.fullResponse).toContain("</dyad-write>");
+      // But the surrounding generation was cut off, so the guard withholds
+      // confirmation.
+      expect(streamResult.streamSafety.confirmedSafe).toBe(false);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        streamResult.streamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      // The raw response text itself is never discarded or replaced by a
+      // placeholder — it stays intact and available for manual review even
+      // though auto-apply was withheld.
+      expect(streamResult.fullResponse).toContain("injected.js");
+    });
+
+    it("would have executed once under the pre-patch gate (shouldAutoApply + !hasDestructiveSql only, no stream-safety check)", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      const streamResult = await processStreamChunks({
+        fullStream: lengthCutoffParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      // Deliberately the OLD, pre-patch condition: no stream-safety check.
+      if (shouldAutoApply && !hasDestructiveSql) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        appPath("src/injected.js"),
+        "console.log('should not be written');",
+      );
+    });
+
+    it("still executes exactly once for a stream that completes safely", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      const streamResult = await processStreamChunks({
+        fullStream: safeParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      expect(streamResult.streamSafety.confirmedSafe).toBe(true);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        streamResult.streamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        appPath("src/safe.js"),
+        "console.log('fine');",
+      );
+    });
+
+    it("executes zero times on a provider error mid-stream, even with a complete tag already buffered", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      async function* errorParts() {
+        yield {
+          type: "text-delta" as const,
+          id: "1",
+          text: `<dyad-write path="src/errored.js">content</dyad-write>`,
+        };
+        yield { type: "error" as const, error: new Error("upstream 500") };
+      }
+
+      const streamResult = await processStreamChunks({
+        fullStream: errorParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      expect(streamResult.streamSafety.confirmedSafe).toBe(false);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        streamResult.streamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+  });
+
+  // fullResponse is cumulative across the initial stream and any
+  // search-replace-fix / continuation retry streams (see the three
+  // processStreamChunks call sites in chat_stream_handlers.ts, which all
+  // fold their result into the same accumulatedStreamSafety via
+  // combineStreamSafety). These tests drive that exact real sequence —
+  // two real processStreamChunks calls threaded through the real
+  // combineStreamSafety accumulator, the same way the real handler
+  // threads accumulatedStreamSafety across its retry loops — to prove a
+  // later stream can never launder content a prior unsafe stream
+  // contributed to the same turn's fullResponse.
+  describe("multi-stream safety accumulation (real production path)", () => {
+    async function* unsafeThenText(path: string) {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="${path}">launder me</dyad-write>`,
+      };
+      yield { type: "finish" as const, finishReason: "length" as const };
+    }
+
+    async function* safeThenText(path: string) {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="${path}">fine</dyad-write>`,
+      };
+      yield { type: "finish" as const, finishReason: "stop" as const };
+    }
+
+    async function runTwoStreamTurn(
+      streamA: AsyncGenerator<unknown>,
+      streamB: AsyncGenerator<unknown>,
+    ) {
+      let fullResponse = "";
+      let accumulatedStreamSafety = createInitialStreamSafety();
+
+      const resultA = await processStreamChunks({
+        fullStream: streamA as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse,
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+      fullResponse = resultA.fullResponse;
+      accumulatedStreamSafety = combineStreamSafety(
+        accumulatedStreamSafety,
+        resultA.streamSafety,
+      );
+
+      const resultB = await processStreamChunks({
+        fullStream: streamB as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse,
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+      fullResponse = resultB.fullResponse;
+      accumulatedStreamSafety = combineStreamSafety(
+        accumulatedStreamSafety,
+        resultB.streamSafety,
+      );
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        accumulatedStreamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      return { fullResponse, accumulatedStreamSafety };
+    }
+
+    beforeEach(() => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+    });
+
+    // A. Unsafe then safe: a length cutoff followed by a clean continuation
+    // must not launder the first stream's content into an executable turn.
+    it("A: unsafe stream followed by a safe stream stays unsafe — zero executions", async () => {
+      const { accumulatedStreamSafety } = await runTwoStreamTurn(
+        unsafeThenText("src/a.ts"),
+        safeThenText("src/b.ts"),
+      );
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(false);
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    // B. Safe then unsafe: a clean first stream followed by a cutoff must
+    // also withhold execution — the whole accumulated response is tainted.
+    it("B: safe stream followed by an unsafe stream becomes unsafe — zero executions", async () => {
+      const { accumulatedStreamSafety } = await runTwoStreamTurn(
+        safeThenText("src/a.ts"),
+        unsafeThenText("src/b.ts"),
+      );
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(false);
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    // C. Safe then safe: normal auto-apply behavior must be preserved —
+    // this accumulator must not become overly conservative and block
+    // legitimate multi-stream turns.
+    it("C: safe stream followed by a safe stream stays safe — executes exactly once with the full accumulated response", async () => {
+      const { accumulatedStreamSafety, fullResponse } = await runTwoStreamTurn(
+        safeThenText("src/a.ts"),
+        safeThenText("src/b.ts"),
+      );
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(true);
+      // Both streams' tags are present in the cumulative response, and both
+      // get applied — proving this isn't a "only the last stream's writes
+      // happen" false pass.
+      expect(fullResponse).toContain("src/a.ts");
+      expect(fullResponse).toContain("src/b.ts");
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(2);
+      expect(fs.writeFileSync).toHaveBeenCalledWith(appPath("src/a.ts"), "fine");
+      expect(fs.writeFileSync).toHaveBeenCalledWith(appPath("src/b.ts"), "fine");
+    });
+
+    // D. Three streams: unsafe stays sticky even across an additional safe
+    // stream on top of the safe-then-unsafe case (B), proving this isn't a
+    // "only looks at the immediately preceding stream" bug.
+    it("D: safe, then unsafe, then safe again — unsafe remains sticky across three streams", async () => {
+      let fullResponse = "";
+      let accumulatedStreamSafety = createInitialStreamSafety();
+
+      for (const [path, gen] of [
+        ["src/a.ts", safeThenText("src/a.ts")],
+        ["src/b.ts", unsafeThenText("src/b.ts")],
+        ["src/c.ts", safeThenText("src/c.ts")],
+      ] as const) {
+        const result = await processStreamChunks({
+          fullStream: gen as unknown as AsyncIterableStream<
+            TextStreamPart<ToolSet>
+          >,
+          fullResponse,
+          abortController: new AbortController(),
+          chatId: 1,
+          processResponseChunkUpdate: async ({ fullResponse }) =>
+            fullResponse,
+        });
+        fullResponse = result.fullResponse;
+        accumulatedStreamSafety = combineStreamSafety(
+          accumulatedStreamSafety,
+          result.streamSafety,
+        );
+        void path;
+      }
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(false);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        accumulatedStreamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
   });
 });
 

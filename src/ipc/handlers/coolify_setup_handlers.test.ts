@@ -209,6 +209,16 @@ describe("run", () => {
     expect(h.verifiedAgainst).toContain("SHA256:fingerprint");
   });
 
+  it("does not hold one port to what another on the same address showed", async () => {
+    // Two services on one address are two servers. Keyed by address alone,
+    // the second is checked against the first one's fingerprint and refused.
+    await call("coolify-setup:inspect", { ...TARGET, port: 22 });
+
+    await expect(
+      call("coolify-setup:run", { ...TARGET, port: 2222 }),
+    ).rejects.toThrow(/Check the server/);
+  });
+
   it("does not hold one server to what another one showed", async () => {
     // Addresses are remembered as themselves. Read as URLs, everything shaped
     // like fe80::1 parses as a scheme with no hostname and shares one entry,

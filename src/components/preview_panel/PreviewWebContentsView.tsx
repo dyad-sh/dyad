@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ExternalLink,
+  Loader2,
   Power,
   RefreshCw,
   X,
@@ -37,6 +38,7 @@ import {
   getRendererZoomFactor,
 } from "./previewViewBounds";
 import type { PreviewViewBounds } from "@/ipc/types";
+import { usePreviewNativeOverlay } from "./usePreviewNativeOverlay";
 
 /**
  * ResizeObserver catches every layout change that alters the placeholder's
@@ -73,8 +75,10 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const setPreviewMode = useSetAtom(previewModeAtom);
   // A preview-driven test run keeps this view alive even while the user browses
   // to another tab, so advertise it and offer the way back.
-  const isTestRunActive =
-    useAtomValue(currentTestRunStateAtom).phase !== "idle";
+  const testRunPhase = useAtomValue(currentTestRunStateAtom).phase;
+  const isTestRunActive = testRunPhase !== "idle";
+  const isTestRunSettingUp = testRunPhase === "setup";
+  const setTestSetupOverlayActive = usePreviewNativeOverlay("test-run-setup");
   const { restartApp } = useRunApp();
   // Errors raised while this view is up would otherwise be toasted underneath
   // the native surface. The overlay guard steps the view aside for toasts, but
@@ -96,6 +100,14 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const isCloudMode = mode === "cloud";
   const zoomLevel = settings?.zoomLevel;
   const isViewActive = !loading && !!appUrl;
+
+  // Renderer DOM cannot paint over a WebContentsView. While database and test
+  // setup are in flight, step the native surface aside and show its latest
+  // screenshot below instead; this also prevents stray clicks from reaching a
+  // page that is about to restart against isolated data.
+  useEffect(() => {
+    setTestSetupOverlayActive(isViewActive && isTestRunSettingUp);
+  }, [isTestRunSettingUp, isViewActive, setTestSetupOverlayActive]);
 
   const {
     mutateAsync: createCloudSandboxShareLink,
@@ -428,6 +440,23 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           isAppUrlReady={!!appUrl}
           hasStartupError={false}
         />
+        {isTestRunSettingUp && (
+          <div
+            className="flex shrink-0 items-center gap-2 border-b border-purple-200/70 bg-purple-50/70 px-3 py-2 text-sm dark:border-purple-900/50 dark:bg-purple-950/25"
+            data-testid="preview-native-test-setup-banner"
+          >
+            <Loader2
+              size={14}
+              className="shrink-0 animate-spin text-purple-600 dark:text-purple-300"
+            />
+            <span className="font-medium text-purple-700 dark:text-purple-300">
+              Setting up tests…
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground">
+              Preparing the app and test data.
+            </span>
+          </div>
+        )}
         {panelError && (
           <div
             className="flex shrink-0 items-center gap-2 border-b bg-red-50 px-3 py-2 text-xs text-red-900 dark:bg-red-950/60 dark:text-red-200"
@@ -481,8 +510,31 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
               aria-hidden="true"
               draggable={false}
               data-testid="preview-native-screenshot"
-              className="pointer-events-none absolute inset-0 size-full select-none object-fill"
+              className={`pointer-events-none absolute inset-0 size-full select-none object-fill ${
+                isTestRunSettingUp
+                  ? "opacity-50 transition-opacity motion-reduce:transition-none"
+                  : ""
+              }`}
             />
+          )}
+          {isNativeOverlayActive && isTestRunSettingUp && (
+            <div
+              className="absolute inset-0 flex items-center justify-center px-6 text-center"
+              data-testid="preview-native-test-setup-overlay"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex max-w-sm flex-col items-center gap-2.5 rounded-xl border border-border bg-(--background-lightest) px-6 py-5 shadow-lg">
+                <Loader2 className="size-7 animate-spin text-purple-600 dark:text-purple-300" />
+                <p className="text-base font-medium text-foreground">
+                  Setting up tests…
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Dyad is preparing the app and test data. Tests will start
+                  automatically.
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </div>

@@ -1,0 +1,128 @@
+<<<<<<< SEARCH
+async function notifyOrderConfirmed(
+  _orderId: string,
+  _email: string,
+): Promise<void> {
+  // Implementation elided — sends confirmation email
+}
+
+/**
+ * Processes an order end-to-end.
+ * Validation, payment, shipment creation, and persistence are all inlined here.
+ * TODO: Extract the validation block into a separate `validateOrder` function.
+ */
+export async function processOrder(order: Order): Promise<ProcessResult> {
+  logger.info(`Processing order for ${order.items.length} item(s)`);
+
+  // ── Validation block (extract this into validateOrder) ────────────────────
+  // Check inventory for each item
+  for (const item of order.items) {
+    const inventory = await getInventory(item.productId);
+    if (!inventory) {
+      logger.warn(`Product ${item.productId} not found in inventory`);
+      return { success: false, error: `Product ${item.productId} not found` };
+    }
+    if (inventory.quantity < item.quantity) {
+      logger.warn(
+        `Insufficient stock for ${item.productId}: need ${item.quantity}, have ${inventory.quantity}`,
+      );
+      return {
+        success: false,
+        error: `Insufficient stock for ${item.productId}`,
+      };
+    }
+  }
+
+  // Validate payment method
+  if (
+    !order.payment.method ||
+    !["card", "paypal", "bank"].includes(order.payment.method)
+  ) {
+    return { success: false, error: "Invalid payment method" };
+  }
+  if (!order.payment.amount || order.payment.amount <= 0) {
+    return { success: false, error: "Invalid payment amount" };
+  }
+
+  // Validate shipping address
+  if (!order.shipping.address.street || !order.shipping.address.city) {
+    return { success: false, error: "Incomplete shipping address" };
+  }
+  if (!order.shipping.address.postalCode.match(/^\d{5}(-\d{4})?$/)) {
+    return { success: false, error: "Invalid postal code" };
+  }
+  // ── End of validation block ───────────────────────────────────────────────
+
+  // Reserve inventory
+  const reservations: Array<{ productId: string; quantity: number }> = [];
+  for (const item of order.items) {
+    const ok = await reserveInventory(item.productId, item.quantity);
+    if (!ok) {
+
+=======
+async function notifyOrderConfirmed(
+  _orderId: string,
+  _email: string,
+): Promise<void> {
+  // Implementation elided — sends confirmation email
+}
+
+async function validateOrder(order: Order): Promise<ProcessResult | null> {
+  // Check inventory for each item
+  for (const item of order.items) {
+    const inventory = await getInventory(item.productId);
+    if (!inventory) {
+      logger.warn(`Product ${item.productId} not found in inventory`);
+      return { success: false, error: `Product ${item.productId} not found` };
+    }
+    if (inventory.quantity < item.quantity) {
+      logger.warn(
+        `Insufficient stock for ${item.productId}: need ${item.quantity}, have ${inventory.quantity}`,
+      );
+      return {
+        success: false,
+        error: `Insufficient stock for ${item.productId}`,
+      };
+    }
+  }
+
+  // Validate payment method
+  if (
+    !order.payment.method ||
+    !["card", "paypal", "bank"].includes(order.payment.method)
+  ) {
+    return { success: false, error: "Invalid payment method" };
+  }
+  if (!order.payment.amount || order.payment.amount <= 0) {
+    return { success: false, error: "Invalid payment amount" };
+  }
+
+  // Validate shipping address
+  if (!order.shipping.address.street || !order.shipping.address.city) {
+    return { success: false, error: "Incomplete shipping address" };
+  }
+  if (!order.shipping.address.postalCode.match(/^\d{5}(-\d{4})?$/)) {
+    return { success: false, error: "Invalid postal code" };
+  }
+
+  return null;
+}
+
+/**
+ * Processes an order end-to-end.
+ */
+export async function processOrder(order: Order): Promise<ProcessResult> {
+  logger.info(`Processing order for ${order.items.length} item(s)`);
+
+  const validationFailure = await validateOrder(order);
+  if (validationFailure) {
+    return validationFailure;
+  }
+
+  // Reserve inventory
+  const reservations: Array<{ productId: string; quantity: number }> = [];
+  for (const item of order.items) {
+    const ok = await reserveInventory(item.productId, item.quantity);
+    if (!ok) {
+
+>>>>>>> REPLACE

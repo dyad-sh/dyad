@@ -1,4 +1,4 @@
-import { describe, it } from "vitest";
+import { afterAll, describe, it } from "vitest";
 import { generateText, stepCountIs, type Tool } from "ai";
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
@@ -10,7 +10,15 @@ import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 import {
   SONNET_4_6,
   GEMINI_3_FLASH,
+  GPT_5_6_SOL_MODEL_NAME,
+  GPT_5_6_LUNA_MODEL_NAME,
 } from "@/ipc/shared/language_model_constants";
+import {
+  recordFailedSearchReplaceCall,
+  recordSearchReplaceCall,
+  renderNewlineProbeSummary,
+  writeNewlineProbeReport,
+} from "./helpers/newline_probe";
 import {
   GPT_5_4,
   getEvalModel,
@@ -442,6 +450,8 @@ interface ToolRunState {
   content: string;
   toolCalls: ToolCallRecord[];
   abortSignal?: AbortSignal;
+  /** Suite name, carried so the newline probe can label its samples. */
+  suiteName: string;
 }
 
 function makeRecord(
@@ -494,6 +504,17 @@ function searchReplaceHarnessTool(
           );
         }
         state.content = applySearchReplaceEdit(state.content, args);
+        recordSearchReplaceCall({
+          suite: state.suiteName,
+          model: label,
+          caseName: c.name,
+          callIndex: state.toolCalls.length,
+          filePath: args.file_path,
+          oldString: args.old_string,
+          newString: args.new_string,
+          fileBefore,
+          fileAfter: state.content,
+        });
         state.toolCalls.push(
           makeRecord(
             "search_replace",
@@ -507,6 +528,11 @@ function searchReplaceHarnessTool(
         return `Successfully applied edits to ${args.file_path}`;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        recordFailedSearchReplaceCall({
+          model: label,
+          caseName: c.name,
+          error: message,
+        });
         state.toolCalls.push(
           makeRecord(
             "search_replace",
@@ -588,9 +614,74 @@ interface SuiteConfig {
     c: EvalCase,
     label: string,
   ) => Record<string, Tool>;
+  /** Cases to run. Defaults to the shared CASES list. */
+  cases?: EvalCase[];
+  /** Skip the LLM judge round-trip (for suites measuring mechanics, not quality). */
+  skipJudge?: boolean;
 }
 
+// Cases for the newline probe. Deliberately shaped to maximize exposure to
+// the trailing-newline defect rather than to measure edit quality:
+//
+//  - Each asks for SEVERAL small independent changes, so the model makes many
+//    separate search_replace calls instead of one block rewrite. A stray blank
+//    line per call is the accumulating symptom users report.
+//  - Every edit site sits between non-blank lines. A trailing newline only
+//    corrupts when it has no real blank line to cancel against, so edits next
+//    to blank lines mask the defect.
+//  - One case edits the last function in the file, since a file's final
+//    newline is a common place for a model to carry a terminator along.
+const NEWLINE_PROBE_CASES: EvalCase[] = [
+  {
+    name: "Flip three permission methods",
+    fileName: "permissions.ts",
+    fileContent: loadFixture("permissions.ts"),
+    prompt:
+      "In `AdminPolicy` only, change `canDeleteContent`, `canManageUsers`, and " +
+      "`canManageRoles` to return `false` instead of `true`. Leave every other " +
+      "method and every other class exactly as it is.",
+  },
+  {
+    name: "Change three guard-clause return values",
+    fileName: "stat_utils.ts",
+    fileContent: loadFixture("stat_utils.ts"),
+    prompt:
+      "In `mean`, `variance`, and `populationVariance`, change the early-return " +
+      "value for the empty/too-short input guard from `0` to `NaN`. Do not touch " +
+      "any other function and do not change any other behavior.",
+  },
+  {
+    name: "Insert a guard line into three methods",
+    fileName: "permissions.ts",
+    fileContent: loadFixture("permissions.ts"),
+    prompt:
+      "In `AdminPolicy` only, add the line `// audited` as the first line inside " +
+      "the bodies of `canViewContent`, `canViewUsers`, and `canViewAuditLog`. " +
+      "Change nothing else.",
+  },
+  {
+    name: "Edit the last function in the file",
+    fileName: "stat_utils.ts",
+    fileContent: loadFixture("stat_utils.ts"),
+    prompt:
+      "In the final function in the file, `correlation`, return `NaN` instead of " +
+      "`0` when either standard deviation is zero. Change nothing else.",
+  },
+];
+
 const SUITES: SuiteConfig[] = [
+  {
+    // Measures search_replace serialization mechanics, not edit quality.
+    // Judge is skipped; the verdict comes from the newline probe report.
+    name: "newline_probe",
+    displayName: "newline_probe (trailing-newline measurement)",
+    systemPrompt: SIMPLE_SEARCH_REPLACE_SYSTEM_PROMPT,
+    cases: NEWLINE_PROBE_CASES,
+    skipJudge: true,
+    buildTools: (state, c, label) => ({
+      search_replace: searchReplaceHarnessTool(state, c, label),
+    }),
+  },
   {
     name: "search_replace",
     displayName: "search_replace",
@@ -667,6 +758,18 @@ const ALL_MODELS: Array<{
     label: "Gemini 3 Flash",
     temperature: 1,
   },
+  {
+    provider: "openai",
+    modelName: GPT_5_6_SOL_MODEL_NAME,
+    label: "GPT 5.6 Sol",
+    temperature: 1,
+  },
+  {
+    provider: "openai",
+    modelName: GPT_5_6_LUNA_MODEL_NAME,
+    label: "GPT 5.6 Luna",
+    temperature: 1,
+  },
 ];
 
 // ── Case runner ────────────────────────────────────────────────
@@ -705,6 +808,7 @@ async function runCase(
     content: c.fileContent,
     toolCalls: [],
     abortSignal: abortController.signal,
+    suiteName: suite.name,
   };
   const timeoutHandle = setTimeout(() => {
     abortController.abort(
@@ -783,23 +887,33 @@ async function runCase(
         `  Full record will be written to: ${recordDir}`,
     );
 
-    console.log(`\n[${suite.name} / ${label}] ${c.name} — calling judge...`);
-    judgeRecord = await judgeResult(
-      c.fileContent,
-      c.prompt,
-      state.content,
-      abortController.signal,
-    );
-    console.log(
-      `\n[${suite.name} / ${label}] ${c.name} — judge verdict: ${judgeRecord.pass ? "PASS" : "FAIL"}\n${judgeRecord.explanation}`,
-    );
-
-    if (!judgeRecord.pass) {
-      throw new Error(
-        `Judge (${JUDGE_LABEL}) said FAIL for ${label}:\n${judgeRecord.explanation}`,
+    // The newline probe measures serialization behavior, not edit quality, so
+    // it skips the judge call: the verdict is irrelevant to it and the judge
+    // is a second paid model round-trip per case.
+    if (suite.skipJudge || process.env.EVAL_SKIP_JUDGE === "1") {
+      console.log(
+        `\n[${suite.name} / ${label}] ${c.name} — judge skipped (probe suite)`,
       );
+      passed = true;
+    } else {
+      console.log(`\n[${suite.name} / ${label}] ${c.name} — calling judge...`);
+      judgeRecord = await judgeResult(
+        c.fileContent,
+        c.prompt,
+        state.content,
+        abortController.signal,
+      );
+      console.log(
+        `\n[${suite.name} / ${label}] ${c.name} — judge verdict: ${judgeRecord.pass ? "PASS" : "FAIL"}\n${judgeRecord.explanation}`,
+      );
+
+      if (!judgeRecord.pass) {
+        throw new Error(
+          `Judge (${JUDGE_LABEL}) said FAIL for ${label}:\n${judgeRecord.explanation}`,
+        );
+      }
+      passed = true;
     }
-    passed = true;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     if (totalDurationMs === 0) totalDurationMs = Date.now() - llmStartMs;
@@ -948,12 +1062,21 @@ if (!SUITE_FILTER_RAW || !MODEL_FILTER_RAW) {
       }
     });
   } else {
+    afterAll(async () => {
+      const summary = renderNewlineProbeSummary();
+      console.log(summary);
+      const dir = await writeNewlineProbeReport();
+      if (dir) {
+        console.log(`Newline probe report written to: ${dir}`);
+      }
+    });
+
     for (const suite of ACTIVE_SUITES) {
       for (const { provider, modelName, label, temperature } of MODELS) {
         describe.skipIf(!hasDyadProKey())(
           `${suite.displayName} — ${label}`,
           () => {
-            for (const c of CASES) {
+            for (const c of suite.cases ?? CASES) {
               it.concurrent(c.name, async () => {
                 try {
                   await runCase(

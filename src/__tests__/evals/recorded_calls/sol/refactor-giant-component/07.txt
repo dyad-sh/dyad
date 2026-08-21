@@ -1,0 +1,46 @@
+<<<<<<< SEARCH
+      {/* ── Avatar section ────────────────────────────────── */}
+      <section className="avatar-section">
+        <div className="avatar-container" onClick={handleAvatarClick}>
+          <img
+            src={avatarDisplayUrl}
+            alt={`${user.name}'s avatar`}
+            className={`avatar-image ${avatar.uploading ? "avatar-image--uploading" : ""}`}
+          />
+          {renderAvatarBadge()}
+          <div className="avatar-overlay">
+            <span>Change Photo</span>
+          </div>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="avatar-input"
+          onChange={handleAvatarSelect}
+        />
+        {avatar.url && (
+          <button className="avatar-remove-btn" onClick={handleAvatarRemove}>
+            Remove Photo
+          </button>
+        )}
+        {avatar.error && <p className="avatar-error">{avatar.error}</p>}
+        <div className="avatar-info">
+          <h2>{user.name}</h2>
+          <p className="avatar-info__role">{user.role}</p>
+          <p className="avatar-info__email">{user.email}</p>
+          <p className="avatar-info__joined">
+            Member since {new Date(user.createdAt).toLocaleDateString()}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Profile edit form ─────────────────────────────── */}
+
+=======
+      {/* ── Avatar section ────────────────────────────────── */}
+      <AvatarSection user={user} userId={resolvedUserId} />
+
+      {/* ── Profile edit form ─────────────────────────────── */}
+
+>>>>>>> REPLACE

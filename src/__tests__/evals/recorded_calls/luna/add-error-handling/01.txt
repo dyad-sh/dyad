@@ -1,0 +1,12 @@
+<<<<<<< SEARCH
+import { getAuthToken } from "./auth";
+
+const BASE_URL =
+
+=======
+import { getAuthToken } from "./auth";
+import { logger } from "./logger";
+
+const BASE_URL =
+
+>>>>>>> REPLACE

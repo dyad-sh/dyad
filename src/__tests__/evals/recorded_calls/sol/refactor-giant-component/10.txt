@@ -1,0 +1,51 @@
+<<<<<<< SEARCH
+      {/* ── Activity feed ─────────────────────────────────── */}
+      {showActivity && (
+        <section className="activity-feed">
+          <h2 className="activity-feed__title">Recent Activity</h2>
+          {activityState.loading && activityState.items.length === 0 ? (
+            <div className="activity-loading">
+              <div className="spinner spinner--small" />
+              <p>Loading activity…</p>
+            </div>
+          ) : activityState.error && activityState.items.length === 0 ? (
+            renderActivityError()
+          ) : activityState.items.length === 0 ? (
+            renderActivityEmpty()
+          ) : (
+            <>
+              {Object.entries(groupedActivity).map(([dateKey, items]) =>
+                renderActivityGroup(dateKey, items),
+              )}
+              {activityState.hasMore && (
+                <div className="activity-load-more">
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={activityState.loading}
+                    className="btn btn--secondary"
+                  >
+                    {activityState.loading ? "Loading…" : "Load More"}
+                  </button>
+                </div>
+              )}
+              {activityState.error && (
+                <div className="activity-inline-error">
+                  <p>Failed to load more: {activityState.error}</p>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ── Footer ────────────────────────────────────────── */}
+      <footer className="user-profile__footer">
+
+=======
+      {/* ── Activity feed ─────────────────────────────────── */}
+      {showActivity && <ActivityFeed userId={resolvedUserId} />}
+
+      {/* ── Footer ────────────────────────────────────────── */}
+      <footer className="user-profile__footer">
+
+>>>>>>> REPLACE

@@ -1,0 +1,35 @@
+<<<<<<< SEARCH
+      {/* ── Stats panel ───────────────────────────────────── */}
+      {showStats && (
+        <section className="stats-panel">
+          {renderStatsHeader()}
+          {stats.loading ? (
+            <div className="stats-loading">
+              <div className="spinner spinner--small" />
+              <p>Loading stats…</p>
+            </div>
+          ) : stats.error ? (
+            <div className="stats-error">
+              <p>{stats.error}</p>
+              <button onClick={() => loadStats(stats.period)}>Retry</button>
+            </div>
+          ) : (
+            <>
+              <div className={`stats-grid ${statsGridColumns}`}>
+                {stats.cards.map((card, i) => renderStatCard(card, i))}
+              </div>
+              {renderStatsSummary()}
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ── Activity feed ─────────────────────────────────── */}
+
+=======
+      {/* ── Stats panel ───────────────────────────────────── */}
+      {showStats && <StatsPanel userId={resolvedUserId} />}
+
+      {/* ── Activity feed ─────────────────────────────────── */}
+
+>>>>>>> REPLACE

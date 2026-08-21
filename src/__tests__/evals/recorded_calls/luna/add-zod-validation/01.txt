@@ -1,0 +1,27 @@
+<<<<<<< SEARCH
+import type { Request, Response } from "express";
+import { db } from "./db";
+import { logger } from "./logger";
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+type UserRole = "admin" | "member" | "guest";
+
+=======
+import type { Request, Response } from "express";
+import { z } from "zod";
+import { db } from "./db";
+import { logger } from "./logger";
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+type UserRole = "admin" | "member" | "guest";
+
+const createUserBodySchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  age: z.number().int().nonnegative(),
+  role: z.enum(["admin", "member", "guest"]),
+});
+
+>>>>>>> REPLACE

@@ -1,0 +1,52 @@
+<<<<<<< SEARCH
+export async function getResource<T>(
+  path: string,
+  headers?: Record<string, string>,
+): Promise<T> {
+  const data = await serviceRequest<T>(path, { method: "GET", headers });
+  return data;
+}
+
+export async function postResource<T>(path: string, body: unknown): Promise<T> {
+  const data = await serviceRequest<T>(path, { method: "POST", body });
+  return data;
+}
+
+export async function putResource<T>(path: string, body: unknown): Promise<T> {
+  const data = await serviceRequest<T>(path, { method: "PUT", body });
+  return data;
+}
+=======
+export async function getResource<T>(
+  path: string,
+  headers?: Record<string, string>,
+): Promise<T> {
+  try {
+    const data = await serviceRequest<T>(path, { method: "GET", headers });
+    return data;
+  } catch (err) {
+    logger.error(`GET ${path} failed`, err);
+    throw err;
+  }
+}
+
+export async function postResource<T>(path: string, body: unknown): Promise<T> {
+  try {
+    const data = await serviceRequest<T>(path, { method: "POST", body });
+    return data;
+  } catch (err) {
+    logger.error(`POST ${path} failed`, err);
+    throw err;
+  }
+}
+
+export async function putResource<T>(path: string, body: unknown): Promise<T> {
+  try {
+    const data = await serviceRequest<T>(path, { method: "PUT", body });
+    return data;
+  } catch (err) {
+    logger.error(`PUT ${path} failed`, err);
+    throw err;
+  }
+}
+>>>>>>> REPLACE

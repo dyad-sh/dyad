@@ -1264,7 +1264,7 @@ describe("processFullResponse", () => {
   // a mock of the guard integration itself — only `fs`/`db` I/O is mocked,
   // exactly as the rest of this file already does. The conditional below
   // mirrors the real gate in chat_stream_handlers.ts's registered handler
-  // (`if (shouldAutoApply && !hasDestructiveSql && lastStreamSafety.confirmedSafe)`),
+  // (`if (shouldAutoApply && !hasDestructiveSql && accumulatedStreamSafety.confirmedSafe)`),
   // since that gate lives inside a giant IPC-registration closure this
   // file's existing tests never invoke directly (registerChatStreamHandlers
   // is never called anywhere in this suite) — this is the same testing

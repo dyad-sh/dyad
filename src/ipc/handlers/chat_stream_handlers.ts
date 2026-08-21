@@ -1709,6 +1709,13 @@ ${componentSnippet}
           abortController,
           placeholderAssistantMessage.id,
         );
+        if (!abortController.signal.aborted) {
+          // Canned QA responses are deterministic local fixtures and do not
+          // have a provider finish reason to observe. Successful completion
+          // explicitly preserves their existing auto-apply behavior, while
+          // aborted fixtures remain blocked by the outer abort gate below.
+          accumulatedStreamSafety = { confirmedSafe: true };
+        }
       } else {
         // Normal AI processing for non-test prompts
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =

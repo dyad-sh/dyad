@@ -30,6 +30,8 @@ Prefer **`DyadError`** over growing `FILTERED_EXCEPTION_MESSAGES` in `telemetry.
 
 The renderer PostHog `before_send` (in `src/renderer.tsx`) drops ~90% of events for **non-Pro** users. Any event whose audience is primarily free users (conversion funnels like `promo_click`, upgrade CTAs) must be added to `shouldBypassNonProTelemetrySampling` in `src/lib/posthogTelemetry.ts`, or it will be silently undercounted 10x. Errors, `app:initial-load`, and `sandbox.script.*` already bypass sampling.
 
+Keep cross-source error throttling in renderer `before_send`: PostHog's internal exception rate limiter does not uniformly cover manually captured IPC exceptions or custom error-shaped events. `PostHogErrorDeduper` applies the shared tier-aware policy there and persists only bounded fingerprint hashes and counters, never raw error payloads.
+
 ## IPC handlers
 
 - **`createTypedHandler` / `createLoggedTypedHandler`** rethrow the original error after telemetry — `DyadError` is preserved.

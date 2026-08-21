@@ -26,6 +26,7 @@ import { queryKeys } from "./lib/queryKeys";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
+  PostHogErrorDeduper,
   shouldBypassNonProTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
@@ -98,6 +99,8 @@ const queryClient = new QueryClient({
   }),
 });
 
+const postHogErrorDeduper = new PostHogErrorDeduper(window.localStorage);
+
 const posthogClient = posthog.init(
   "phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab",
   {
@@ -128,10 +131,18 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
+      const isPro = isDyadProUser();
+      const dedupedEvent = postHogErrorDeduper.process(event, isPro);
+      if (!dedupedEvent) {
+        console.debug("Deduplicating PostHog error event", event?.event);
+        return null;
+      }
+      event = dedupedEvent;
+
       // For non-Pro users, only send 10% of events (but always send errors,
       // app:initial-load, promo_click, and sandbox.script.* — see
       // shouldBypassNonProTelemetrySampling).
-      if (!isDyadProUser()) {
+      if (!isPro) {
         if (
           !shouldBypassNonProTelemetrySampling(event) &&
           Math.random() > 0.1

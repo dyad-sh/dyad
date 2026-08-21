@@ -4,6 +4,9 @@ import {
   getExceptionTelemetryContext,
   getInitialLoadTelemetryProperties,
   getSettingsPersonTelemetryProperties,
+  isPostHogCrashTelemetryEvent,
+  isPostHogErrorTelemetryEvent,
+  PostHogErrorDeduper,
   shouldBypassNonProTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "@/lib/posthogTelemetry";
@@ -19,6 +22,248 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
     ...overrides,
   } as UserSettings;
 }
+
+class MemoryStorage {
+  readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function exceptionEvent(
+  message = "Failed to load app 123456",
+  filename = "file:///Users/alice/dyad/src/example.ts",
+) {
+  return {
+    event: "$exception",
+    properties: {
+      $exception_list: [
+        {
+          type: "TypeError",
+          value: message,
+          stacktrace: {
+            type: "raw",
+            frames: [
+              {
+                filename,
+                function: "loadApp",
+                lineno: 42,
+                colno: 7,
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+describe("PostHogErrorDeduper", () => {
+  it("deduplicates free-user errors for 24 hours", () => {
+    const deduper = new PostHogErrorDeduper();
+    const event = exceptionEvent();
+
+    expect(deduper.process(event, false, 0)).toBe(event);
+    expect(deduper.process(event, false, 23 * HOUR_MS)).toBeNull();
+    expect(deduper.process(event, false, 25 * HOUR_MS)).toMatchObject({
+      properties: {
+        dyad_error_suppressed_count: 1,
+        dyad_error_suppression_duration_ms: 25 * HOUR_MS,
+      },
+    });
+  });
+
+  it("deduplicates Pro errors for 10 minutes", () => {
+    const deduper = new PostHogErrorDeduper();
+    const event = exceptionEvent();
+
+    expect(deduper.process(event, true, 0)).toBe(event);
+    expect(deduper.process(event, true, 10 * 60 * 1000 - 1)).toBeNull();
+    expect(deduper.process(event, true, 10 * 60 * 1000)).toMatchObject({
+      properties: {
+        dyad_error_suppressed_count: 1,
+        dyad_error_suppression_duration_ms: 10 * 60 * 1000,
+      },
+    });
+  });
+
+  it("reports all suppressed repeats on the next admitted event", () => {
+    const deduper = new PostHogErrorDeduper();
+    const event = exceptionEvent();
+
+    deduper.process(event, true, 0);
+    deduper.process(event, true, 1_000);
+    deduper.process(event, true, 2_000);
+
+    expect(deduper.process(event, true, 10 * 60 * 1000)).toMatchObject({
+      properties: {
+        dyad_error_suppressed_count: 2,
+        dyad_error_suppression_duration_ms: 10 * 60 * 1000,
+      },
+    });
+    expect(deduper.process(event, true, 20 * 60 * 1000)).not.toHaveProperty(
+      "properties.dyad_error_suppressed_count",
+    );
+  });
+
+  it("normalizes volatile identifiers and user-specific source prefixes", () => {
+    const deduper = new PostHogErrorDeduper();
+    const first = exceptionEvent(
+      "App 123456 failed for 44d88612-fea8-4a8b-9d71-1cbe1c0187e1",
+      "file:///Users/alice/dyad/src/example.ts",
+    );
+    const repeat = exceptionEvent(
+      "App 987654 failed for 550e8400-e29b-41d4-a716-446655440000",
+      "file:///home/bob/dyad/src/example.ts",
+    );
+
+    expect(deduper.process(first, false, 0)).toBe(first);
+    expect(deduper.process(repeat, false, 1)).toBeNull();
+  });
+
+  it("keeps meaningful error codes and throw sites distinct", () => {
+    const deduper = new PostHogErrorDeduper();
+
+    expect(
+      deduper.process(exceptionEvent("Request failed: 400"), false, 0),
+    ).toBeTruthy();
+    expect(
+      deduper.process(exceptionEvent("Request failed: 500"), false, 1),
+    ).toBeTruthy();
+    expect(
+      deduper.process(
+        exceptionEvent("Request failed: 400", "file:///app/src/other.ts"),
+        false,
+        2,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("deduplicates custom error-shaped events", () => {
+    const deduper = new PostHogErrorDeduper();
+    const event = {
+      event: "extra-files:error",
+      properties: { error: "Git failed for app 123456", appId: 123456 },
+    };
+
+    expect(deduper.process(event, false, 0)).toBe(event);
+    expect(
+      deduper.process(
+        {
+          event: "extra-files:error",
+          properties: { error: "Git failed for app 987654", appId: 987654 },
+        },
+        false,
+        1,
+      ),
+    ).toBeNull();
+  });
+
+  it("always admits explicit crash telemetry", () => {
+    const deduper = new PostHogErrorDeduper();
+    const crash = {
+      event: "renderer:crash_detected",
+      properties: { error: true, reason: "crashed" },
+    };
+
+    expect(deduper.process(crash, false, 0)).toBe(crash);
+    expect(deduper.process(crash, false, 1)).toBe(crash);
+  });
+
+  it("shares hashed state without persisting raw telemetry", () => {
+    const storage = new MemoryStorage();
+    const event = exceptionEvent("uniquely sensitive error 123456");
+
+    expect(new PostHogErrorDeduper(storage).process(event, false, 0)).toBe(
+      event,
+    );
+    expect(
+      new PostHogErrorDeduper(storage).process(event, false, 1),
+    ).toBeNull();
+
+    const persisted = [...storage.values.values()].join("");
+    expect(persisted).not.toContain("uniquely sensitive");
+    expect(persisted).not.toContain("example.ts");
+    expect(Object.keys(JSON.parse(persisted))).toHaveLength(1);
+  });
+
+  it("recovers from malformed or unavailable storage", () => {
+    const malformedStorage = new MemoryStorage();
+    malformedStorage.setItem("dyadPostHogErrorDedupe:v1", "not-json");
+    const event = exceptionEvent();
+    const malformedDeduper = new PostHogErrorDeduper(malformedStorage);
+
+    expect(malformedDeduper.process(event, false, 0)).toBe(event);
+    expect(malformedDeduper.process(event, false, 1)).toBeNull();
+
+    const throwingStorage = {
+      getItem: () => {
+        throw new Error("storage disabled");
+      },
+      setItem: () => {
+        throw new Error("storage disabled");
+      },
+    };
+    const inMemoryDeduper = new PostHogErrorDeduper(throwingStorage);
+    expect(inMemoryDeduper.process(event, false, 0)).toBe(event);
+    expect(inMemoryDeduper.process(event, false, 1)).toBeNull();
+  });
+
+  it("bounds persisted fingerprint records", () => {
+    const storage = new MemoryStorage();
+    const deduper = new PostHogErrorDeduper(storage);
+
+    for (let index = 0; index < 550; index += 1) {
+      deduper.process(exceptionEvent(`Distinct error ${index}`), false, index);
+    }
+
+    const persisted = [...storage.values.values()][0];
+    expect(Object.keys(JSON.parse(persisted))).toHaveLength(500);
+  });
+});
+
+describe("PostHog error telemetry classification", () => {
+  it("recognizes exception and custom error shapes", () => {
+    expect(isPostHogErrorTelemetryEvent(exceptionEvent())).toBe(true);
+    expect(
+      isPostHogErrorTelemetryEvent({
+        event: "custom-event",
+        properties: { $exception_type: "TypeError" },
+      }),
+    ).toBe(true);
+    expect(
+      isPostHogErrorTelemetryEvent({
+        event: "custom-event",
+        properties: { error: true },
+      }),
+    ).toBe(true);
+    expect(
+      isPostHogErrorTelemetryEvent({
+        event: "custom-event",
+        properties: { error: false },
+      }),
+    ).toBe(false);
+    expect(isPostHogErrorTelemetryEvent({ event: "chat:submit" })).toBe(false);
+  });
+
+  it("recognizes all current explicit crash event names", () => {
+    for (const event of [
+      "app:crash_detected",
+      "renderer:crash_detected",
+      "utility_process:crash_detected",
+    ]) {
+      expect(isPostHogCrashTelemetryEvent({ event })).toBe(true);
+    }
+    expect(isPostHogCrashTelemetryEvent(exceptionEvent())).toBe(false);
+  });
+});
 
 describe("createExceptionFromTelemetry", () => {
   it("uses exception telemetry fields when present", () => {

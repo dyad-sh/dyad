@@ -82,14 +82,14 @@ function setupController(): CoolifySetupController {
       const key = ensureServerKey();
       // Trust on first use only when there has been no first use. A server
       // that was looked at is held to what it showed then.
-      const pinned = inspectedFingerprints.get(hostIdentity(target.host));
+      const pinned = inspectedFingerprints.get(serverKeyFor(target));
       return runServerSetup({
         target: targetFrom(target, key.privateKey),
         adminEmail: target.adminEmail,
         verifyHostKey: pinned
           ? expectFingerprint(pinned)
           : trustOnFirstUse((fp) => {
-              inspectedFingerprints.set(hostIdentity(target.host), fp);
+              inspectedFingerprints.set(serverKeyFor(target), fp);
             }),
         customDomain: target.customDomain,
         signal: hooks.signal,
@@ -212,17 +212,20 @@ function serverIdentity(url: string): string {
 }
 
 /**
- * The key a server's fingerprint is remembered under.
+ * The key a server's fingerprint and verdict are remembered under.
  *
- * serverIdentity is for URLs, and a bare address is not one: `fe80::1` parses
- * as the scheme `fe80:` and leaves no hostname at all, so every address shaped
- * that way would share one entry.
+ * The port is part of it: two services on one address are two servers, and
+ * holding the second to the first one's key would refuse a valid one. And
+ * serverIdentity is for URLs, which a bare address is not — `fe80::1` parses
+ * as the scheme `fe80:` and leaves no hostname at all, so every address
+ * shaped that way would share one entry.
  */
-function hostIdentity(host: string): string {
-  return host
+function serverKeyFor(input: SetupServer): string {
+  const host = input.host
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
+  return `${host}:${sshPort(input) ?? 22}`;
 }
 
 function sameServer(a: string | null | undefined, b: string | null): boolean {
@@ -281,7 +284,7 @@ export function registerCoolifySetupHandlers() {
       targetFrom(input, key.privateKey),
       trustOnFirstUse((fp) => {
         fingerprint = fp;
-        inspectedFingerprints.set(hostIdentity(input.host), fp);
+        inspectedFingerprints.set(serverKeyFor(input), fp);
       }),
     );
     try {
@@ -306,8 +309,8 @@ export function registerCoolifySetupHandlers() {
       ]);
       // Kept only while the answer stands: a server that was ready and has
       // since had Coolify put on it must not keep an old pass.
-      if (checks.ready) readyHosts.add(hostIdentity(input.host));
-      else readyHosts.delete(hostIdentity(input.host));
+      if (checks.ready) readyHosts.add(serverKeyFor(input));
+      else readyHosts.delete(serverKeyFor(input));
       return {
         ready: checks.ready,
         reason: checks.reason ?? null,
@@ -341,7 +344,7 @@ export function registerCoolifySetupHandlers() {
         DyadErrorKind.Validation,
       );
     }
-    if (!readyHosts.has(hostIdentity(input.host))) {
+    if (!readyHosts.has(serverKeyFor(input))) {
       throw new DyadError(
         "Check the server before installing. Dyad shows you its fingerprint " +
           "first, so the install goes to the machine that answered rather " +

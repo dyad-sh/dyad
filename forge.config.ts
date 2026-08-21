@@ -77,9 +77,10 @@ const ignore = (file: string) => {
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
 
-// Local builds without Apple credentials skip Developer ID signing and
-// notarization (the packager ad-hoc signs on arm64 instead). CI keeps the
-// full signing flow because the env vars are present there.
+// Local and E2E builds use an explicit ad-hoc identity. This keeps the whole
+// application bundle valid after Forge flips Electron fuses; relying on the
+// signature inherited from the downloaded Electron binary leaves the final
+// bundle with a stale CodeResources manifest.
 const hasMacSigningEnv = Boolean(process.env.APPLE_TEAM_ID);
 const hasMacNotarizeEnv = Boolean(
   process.env.APPLE_ID &&
@@ -128,7 +129,12 @@ const config: ForgeConfig = {
 
     osxSign:
       isEndToEndTestBuild || !hasMacSigningEnv
-        ? undefined
+        ? ({
+            identity: "-",
+            identityValidation: false,
+            continueOnError: false,
+            preEmbedProvisioningProfile: false,
+          } as Record<string, unknown>)
         : ({
             identity: process.env.APPLE_TEAM_ID,
             // Surface the actual signing error instead of silently continuing
@@ -170,12 +176,12 @@ const config: ForgeConfig = {
         ? {
             windowsSign,
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/Tiagocruz3/meta-human-os/main/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           }
         : {
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/Tiagocruz3/meta-human-os/main/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           },
     ),
@@ -207,8 +213,8 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
-          name: "dyad",
+          owner: "Tiagocruz3",
+          name: "meta-human-os",
         },
         draft: true,
         force: true,

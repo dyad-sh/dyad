@@ -209,6 +209,7 @@ export interface RemoteMachineContract<
     readonly key: Key;
     readonly event: Event;
     readonly currentState: State | undefined;
+    readonly dispatchContext?: DispatchContext;
   }) => void | Promise<void>;
 }
 

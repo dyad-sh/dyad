@@ -6,15 +6,22 @@ import type { WindowSessionId } from "@/window_infrastructure/types";
 import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
+// Authorization records the claim before revision admission. Keep it long
+// enough to span an async authorization/actor queue, while exact dispatch IDs
+// prevent a stale claim from being confirmed by a later retry.
 const TENTATIVE_ROUTE_TTL_MS = 30_000;
 
+interface GithubOpsRoute {
+  readonly appId: number;
+  readonly operationId: string;
+  readonly windowSessionId: WindowSessionId;
+}
+
 export class GithubOpsPresentationService {
-  private readonly initiatorByOperationId = new Map<
+  private readonly confirmedByOperationId = new Map<string, GithubOpsRoute>();
+  private readonly tentativeByDispatchId = new Map<
     string,
-    {
-      readonly appId: number;
-      readonly windowSessionId: WindowSessionId;
-      confirmed: boolean;
+    GithubOpsRoute & {
       expiry: ReturnType<typeof setTimeout> | null;
     }
   >();
@@ -26,44 +33,55 @@ export class GithubOpsPresentationService {
     appId: number,
     operationId: string,
     windowSessionId: string | undefined,
+    dispatchId: string = operationId,
   ): void {
-    if (!windowSessionId || this.initiatorByOperationId.has(operationId))
+    if (
+      !windowSessionId ||
+      this.confirmedByOperationId.has(operationId) ||
+      this.tentativeByDispatchId.has(dispatchId)
+    )
       return;
-    if (this.initiatorByOperationId.size >= 256) {
-      const oldestTentative = [...this.initiatorByOperationId].find(
-        ([, entry]) => !entry.confirmed,
-      )?.[0];
+    if (
+      this.confirmedByOperationId.size + this.tentativeByDispatchId.size >=
+      256
+    ) {
+      const oldestTentative = this.tentativeByDispatchId.keys().next().value;
       if (!oldestTentative) {
         throw new DyadError(
           "Too many GitHub operations are still settling. Please try again.",
           DyadErrorKind.Auth,
         );
       }
-      this.forget(oldestTentative);
+      this.forgetTentative(oldestTentative);
     }
     const entry = {
       appId,
+      operationId,
       windowSessionId: windowSessionId as WindowSessionId,
-      confirmed: false,
       expiry: null as ReturnType<typeof setTimeout> | null,
     };
     entry.expiry = setTimeout(() => {
-      if (
-        this.initiatorByOperationId.get(operationId) === entry &&
-        !entry.confirmed
-      ) {
-        this.initiatorByOperationId.delete(operationId);
+      if (this.tentativeByDispatchId.get(dispatchId) === entry) {
+        this.tentativeByDispatchId.delete(dispatchId);
       }
     }, TENTATIVE_ROUTE_TTL_MS);
-    this.initiatorByOperationId.set(operationId, entry);
+    this.tentativeByDispatchId.set(dispatchId, entry);
   }
 
-  confirm(operationId: string): void {
-    const entry = this.initiatorByOperationId.get(operationId);
-    if (!entry) return;
-    entry.confirmed = true;
+  confirm(operationId: string, dispatchId: string = operationId): void {
+    const entry = this.tentativeByDispatchId.get(dispatchId);
+    if (!entry || entry.operationId !== operationId) return;
     if (entry.expiry) clearTimeout(entry.expiry);
     entry.expiry = null;
+    this.tentativeByDispatchId.delete(dispatchId);
+    if (!this.confirmedByOperationId.has(operationId)) {
+      this.confirmedByOperationId.set(operationId, entry);
+    }
+    for (const [candidateId, candidate] of this.tentativeByDispatchId) {
+      if (candidate.operationId === operationId) {
+        this.forgetTentative(candidateId);
+      }
+    }
   }
 
   showError(
@@ -73,7 +91,7 @@ export class GithubOpsPresentationService {
     toastScope: "operation" | "git-state" | "conflicts" = "operation",
   ): void {
     const initiator = operationId
-      ? this.initiatorByOperationId.get(operationId)?.windowSessionId
+      ? this.confirmedByOperationId.get(operationId)?.windowSessionId
       : undefined;
     const target =
       this.windows.routePresentation({
@@ -110,15 +128,25 @@ export class GithubOpsPresentationService {
 
   forget(operationId: string | undefined): void {
     if (!operationId) return;
-    const entry = this.initiatorByOperationId.get(operationId);
-    if (entry?.expiry) clearTimeout(entry.expiry);
-    this.initiatorByOperationId.delete(operationId);
+    this.confirmedByOperationId.delete(operationId);
+    for (const [dispatchId, entry] of this.tentativeByDispatchId) {
+      if (entry.operationId === operationId) this.forgetTentative(dispatchId);
+    }
   }
 
   forgetApp(appId: number): void {
-    for (const [operationId, entry] of this.initiatorByOperationId) {
+    for (const [operationId, entry] of this.confirmedByOperationId) {
       if (entry.appId === appId) this.forget(operationId);
     }
+    for (const [dispatchId, entry] of this.tentativeByDispatchId) {
+      if (entry.appId === appId) this.forgetTentative(dispatchId);
+    }
+  }
+
+  private forgetTentative(dispatchId: string): void {
+    const entry = this.tentativeByDispatchId.get(dispatchId);
+    if (entry?.expiry) clearTimeout(entry.expiry);
+    this.tentativeByDispatchId.delete(dispatchId);
   }
 }
 

@@ -471,9 +471,18 @@ export const githubOpsDefinition: GithubOpsDefinition = {
     }
   },
   createObserver: () => ({
-    onTransitionApplied: ({ previous, state, event, commands }) => {
+    onTransitionApplied: ({
+      previous,
+      state,
+      event,
+      commands,
+      dispatchContext,
+    }) => {
       if ("operationId" in event) {
-        githubOpsPresentationService.confirm(event.operationId);
+        githubOpsPresentationService.confirm(
+          event.operationId,
+          dispatchContext?.messageId,
+        );
       }
       const previousOperationId = previous.activeInvocationRef?.operationId;
       const activeOperationId = state.activeInvocationRef?.operationId ?? null;
@@ -505,7 +514,9 @@ export const githubOpsDefinition: GithubOpsDefinition = {
           ? event.operationId
           : "invocationRef" in event
             ? event.invocationRef.operationId
-            : undefined;
+            : "recoveryInvocationRef" in event
+              ? event.recoveryInvocationRef?.operationId
+              : undefined;
       if (operationId !== state.activeInvocationRef?.operationId) {
         githubOpsPresentationService.forget(operationId);
       }
@@ -551,7 +562,13 @@ export const githubOpsDefinition: GithubOpsDefinition = {
         ? "reject-stale"
         : "allow-stale",
     authorizeSubscribe: ({ key }) => authorizeApp(key.appId),
-    authorizeDispatch: async ({ sender, key, event, currentState }) => {
+    authorizeDispatch: async ({
+      sender,
+      key,
+      event,
+      currentState,
+      dispatchContext,
+    }) => {
       if (key.appId === 0) {
         throw new DyadError(
           "A real app is required for GitHub operations",
@@ -568,6 +585,7 @@ export const githubOpsDefinition: GithubOpsDefinition = {
           key.appId,
           event.operationId,
           sender.windowSessionId,
+          dispatchContext?.messageId,
         );
       }
       if (

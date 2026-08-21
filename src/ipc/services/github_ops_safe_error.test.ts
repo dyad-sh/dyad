@@ -34,7 +34,7 @@ describe("safeGithubOpsErrorMessage", () => {
 
   it("redacts only an ambiguous path line from multiline Git output", () => {
     const message = [
-      String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
+      String.raw`fatal: cannot open "/tmp/Client\" Secret.txt"`,
       "hint: enable core.longpaths and retry",
     ].join("\n");
 
@@ -101,7 +101,7 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
-      "GitHub operation failed",
+      'fatal: cannot open "[redacted path]" because setting "core.longpaths" is disabled',
     ],
     [
       String.raw`hook: path="/tmp/Client\" Secret.txt" failed`,

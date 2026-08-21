@@ -46,6 +46,7 @@ describe("GithubOpsPresentationService", () => {
 
     service.recordInitiator(7, "shared-operation", firstSession);
     service.recordInitiator(7, "shared-operation", secondSession);
+    service.confirm("shared-operation");
     service.showError(7, "shared-operation", "Push failed");
 
     expect(first.send).toHaveBeenCalledWith("toast:error", {
@@ -53,6 +54,32 @@ describe("GithubOpsPresentationService", () => {
       toastId: "github-ops-7-operation",
     });
     expect(second.send).not.toHaveBeenCalled();
+  });
+
+  it("confirms the exact dispatch claim that was admitted", () => {
+    const windows = new WindowRegistry();
+    const first = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const second = { id: 2, isDestroyed: () => false, send: vi.fn() };
+    const firstSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    const secondSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    windows.register(first, firstSession);
+    windows.register(second, secondSession);
+    const service = new GithubOpsPresentationService(windows);
+    service.recordInitiator(7, "retried-operation", firstSession, "stale-a");
+    service.recordInitiator(7, "retried-operation", secondSession, "applied-b");
+
+    service.confirm("retried-operation", "applied-b");
+    service.showError(7, "retried-operation", "Retry failed");
+
+    expect(second.send).toHaveBeenCalledWith("toast:error", {
+      message: "Retry failed",
+      toastId: "github-ops-7-operation",
+    });
+    expect(first.send).not.toHaveBeenCalled();
   });
 
   it("expires unadmitted initiators but retains confirmed ownership", () => {
@@ -74,6 +101,7 @@ describe("GithubOpsPresentationService", () => {
       service.recordInitiator(7, "rejected", firstSession);
       vi.runAllTimers();
       service.recordInitiator(7, "rejected", secondSession);
+      service.confirm("rejected");
       service.showError(7, "rejected", "Rejected retry failed");
       expect(second.send).toHaveBeenCalled();
 

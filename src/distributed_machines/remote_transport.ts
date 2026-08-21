@@ -4,6 +4,7 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { Clock } from "@/state_machines/clock";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
 import { PendingReceiptLedger } from "@/state_machines/pending_receipt_ledger";
+import type { DispatchContext } from "@/state_machines/types";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import {
   ActorAdmissionError,
@@ -762,6 +763,11 @@ export class RemoteMachineTransport {
           currentState: actor.getSnapshot(),
           actor: authorizedMetadata,
           expectedObservedRevision: envelope.expectedRevision,
+          dispatchContext: {
+            messageId: envelope.messageId,
+            correlationId: envelope.correlationId,
+            causationId: envelope.causationId,
+          },
         });
         if (decision.kind === "deny") {
           return this.rejected(envelope.messageId, "unauthorized");
@@ -828,6 +834,11 @@ export class RemoteMachineTransport {
         currentState: actor.getSnapshot(),
         actor: actorMetadata,
         expectedObservedRevision: envelope.expectedRevision,
+        dispatchContext: {
+          messageId: envelope.messageId,
+          correlationId: envelope.correlationId,
+          causationId: envelope.causationId,
+        },
       });
       if (decision.kind === "deny") {
         if (decision.error.kind !== DyadErrorKind.Auth) {
@@ -1705,6 +1716,7 @@ export class RemoteMachineTransport {
       readonly currentState: unknown;
       readonly actor: ActorRuntimeMetadata;
       readonly expectedObservedRevision?: number;
+      readonly dispatchContext: DispatchContext;
     },
   ): Promise<RemoteAuthorizationDecision> {
     if (definition.remoteIntent) {
@@ -1716,6 +1728,7 @@ export class RemoteMachineTransport {
         key: context.key,
         event: context.intent,
         currentState: context.currentState,
+        dispatchContext: context.dispatchContext,
       });
       return { kind: "allow" };
     } catch (error) {

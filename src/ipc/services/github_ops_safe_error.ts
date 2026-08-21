@@ -26,6 +26,14 @@ function findUnescapedQuote(
     }
     const nextCharacter = line[index + 1] ?? "";
     if (precedingBackslashes % 2 === 1 && /\s/.test(nextCharacter)) {
+      const diagnosticRemainder = line.slice(index + 1);
+      if (
+        /^\s+(?:because|exists\b|is\b|was\b|does\b|cannot\b|could\b|failed\b|not\b|and\b|while\b|during\b|but\b|exited\b|returned\b)/i.test(
+          diagnosticRemainder,
+        )
+      ) {
+        return index;
+      }
       return -2;
     }
     const escapedQuoteContinuesPath =

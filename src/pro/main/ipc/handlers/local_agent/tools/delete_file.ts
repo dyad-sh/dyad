@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
@@ -7,16 +6,13 @@ import { lstatIfExists, prepareDeletePath } from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
+  extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("delete_file");
-
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
 
 const deleteFileSchema = z.object({
   path: z
@@ -76,7 +72,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
 
         // Delete Supabase function if applicable
         if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
-          const functionName = getFunctionNameFromPath(operationPath);
+          const functionName = extractFunctionNameFromPath(operationPath);
           if (ctx.allowDeploySideEffects === false) {
             ctx.onDeferredFunctionDelete?.(functionName);
           } else {

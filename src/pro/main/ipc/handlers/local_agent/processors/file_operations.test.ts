@@ -88,30 +88,35 @@ describe("deployAllFunctionsIfNeeded", () => {
   });
 
   it("delegates shared changes and skipped direct function deploys to the shared deploy helper", async () => {
-    const result = await deployAllFunctionsIfNeeded({
-      appPath: "/apps/test",
-      supabaseProjectId: "project-id",
-      supabaseOrganizationSlug: null,
-      isSharedModulesChanged: true,
-      sharedServerModulePaths: ["supabase/functions/_shared/foo.ts"],
-      pendingFunctionDeploys: ["beta"],
-      onXmlStream: vi.fn(),
-      onXmlComplete: vi.fn(),
-    });
-
-    expect(result).toEqual({ success: true });
-    expect(mocks.deployAffectedSupabaseFunctions).toHaveBeenCalledWith(
-      expect.objectContaining({
+    const access = vi.spyOn(fs, "access").mockResolvedValueOnce(undefined);
+    try {
+      const result = await deployAllFunctionsIfNeeded({
         appPath: "/apps/test",
         supabaseProjectId: "project-id",
         supabaseOrganizationSlug: null,
-        skipPruneEdgeFunctions: false,
-        sharedModulesChanged: true,
-        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        isSharedModulesChanged: true,
+        sharedServerModulePaths: ["supabase/functions/_shared/foo.ts"],
         pendingFunctionDeploys: ["beta"],
-        onProgress: expect.any(Function),
-      }),
-    );
+        onXmlStream: vi.fn(),
+        onXmlComplete: vi.fn(),
+      });
+
+      expect(result).toEqual({ success: true });
+      expect(mocks.deployAffectedSupabaseFunctions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appPath: "/apps/test",
+          supabaseProjectId: "project-id",
+          supabaseOrganizationSlug: null,
+          skipPruneEdgeFunctions: false,
+          sharedModulesChanged: true,
+          changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+          pendingFunctionDeploys: ["beta"],
+          onProgress: expect.any(Function),
+        }),
+      );
+    } finally {
+      access.mockRestore();
+    }
   });
 
   it("returns deploy warnings from the shared helper", async () => {
@@ -225,6 +230,16 @@ describe("reconcileDeferredFunctionOperations", () => {
       reconcileDeferredFunctionOperations({
         pendingDeploys: ["removed"],
         pendingDeletes: ["removed"],
+        functionExists: () => false,
+      }),
+    ).resolves.toEqual({ deploys: [], deletes: ["removed"] });
+  });
+
+  it("drops a deploy-only function removed before finalization", async () => {
+    await expect(
+      reconcileDeferredFunctionOperations({
+        pendingDeploys: ["removed"],
+        pendingDeletes: [],
         functionExists: () => false,
       }),
     ).resolves.toEqual({ deploys: [], deletes: ["removed"] });

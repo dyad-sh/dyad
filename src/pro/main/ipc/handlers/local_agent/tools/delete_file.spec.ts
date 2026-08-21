@@ -265,6 +265,27 @@ describe("deleteFileTool", () => {
       expect(deleteSupabaseFunction).not.toHaveBeenCalled();
     });
 
+    it("queues nested function files under the top-level function name", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      const onDeferredFunctionDelete = vi.fn();
+
+      await deleteFileTool.execute(
+        { path: "supabase/functions/hello-world/lib/util.ts" },
+        {
+          ...mockContext,
+          supabaseProjectId: "project-id",
+          allowDeploySideEffects: false,
+          onDeferredFunctionDelete,
+        },
+      );
+
+      expect(onDeferredFunctionDelete).toHaveBeenCalledWith("hello-world");
+      expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+    });
+
     it("propagates shared-module deletion to the root turn", async () => {
       vi.mocked(fs.lstatSync).mockReturnValue({
         isDirectory: () => false,

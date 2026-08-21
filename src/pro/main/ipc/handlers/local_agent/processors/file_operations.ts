@@ -61,15 +61,18 @@ export async function reconcileDeferredFunctionOperations(params: {
   pendingDeletes: string[];
   functionExists: (functionName: string) => boolean | Promise<boolean>;
 }): Promise<{ deploys: string[]; deletes: string[] }> {
-  const deploys = new Set(params.pendingDeploys);
+  const deploys = new Set<string>();
   const deletes = new Set<string>();
-  for (const functionName of new Set(params.pendingDeletes)) {
+  const affectedFunctions = new Set([
+    ...params.pendingDeploys,
+    ...params.pendingDeletes,
+  ]);
+  for (const functionName of affectedFunctions) {
     if (await params.functionExists(functionName)) {
-      // A later write/restore won the turn: deploy the final local function.
+      // The final local function exists, so deploy its final contents.
       deploys.add(functionName);
     } else {
-      // A later delete won the turn: do not redeploy a stale queued version.
-      deploys.delete(functionName);
+      // The final local function is absent, so do not deploy a stale version.
       deletes.add(functionName);
     }
   }

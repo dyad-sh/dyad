@@ -135,7 +135,7 @@ export interface AgentContext {
   subagentThreadId?: string;
   /** Persona for a child tool invocation. Root turns leave this undefined. */
   subagentPersona?: "explorer" | "reviewer" | "implementer";
-  /** Explicit relative path prefixes an Implementer may mutate. */
+  /** Advisory path focus projected into an Implementer's assignment; not enforced at runtime. */
   subagentPathScope?: string[];
   /** Child threads spawned by this root turn, joined before deploy/commit. */
   spawnedSubagentThreadIds?: string[];

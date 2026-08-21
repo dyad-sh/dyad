@@ -263,6 +263,9 @@ describe("sub-agent manager status policy", () => {
     expect(
       buildSubagentAssignment("explorer", "Trace authentication", ["src/auth"]),
     ).toBe("Trace authentication");
+    expect(
+      buildSubagentAssignment("implementer", "Fix authentication", []),
+    ).toBe("Fix authentication");
   });
 
   it("drains mutations on Implementer cancellation only", () => {

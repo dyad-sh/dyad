@@ -75,7 +75,7 @@ const MAX_ACTIVITY_OUTPUT_CHARS = 200_000;
 const MAX_MODEL_HISTORY_CHARS = 100_000;
 const AUTO_REVIEW_BARRIER_MAX_WAIT_MS = 10 * 60 * 1000;
 const ROOT_FINALIZATION_MAX_WAIT_MS = 20 * 60 * 1000;
-const REVIEW_WRITER_MAX_WAIT_MS = 10 * 60 * 1000;
+const REVIEW_WRITER_MAX_WAIT_MS = ROOT_FINALIZATION_MAX_WAIT_MS;
 const SAFE_ABORT_DRAIN_MAX_WAIT_MS = 30 * 1000;
 const SAFE_ABORT_BARRIER_MAX_WAIT_MS = 31 * 1000;
 const SUBAGENT_MAX_STEPS = 50;
@@ -1914,7 +1914,7 @@ export function buildSubagentAssignment(
   assignment: string,
   scope: string[],
 ): string {
-  if (persona !== "implementer") return assignment;
+  if (persona !== "implementer" || scope.length === 0) return assignment;
   return `${assignment}\n\nEXPECTED FILE FOCUS (advisory; cross it when correctness requires):\n${scope
     .map((path) => `- ${path}`)
     .join("\n")}`;

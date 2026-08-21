@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { SETUP_NOT_STARTED } from "@/ipc/types/coolify_setup";
+import { SETUP_MACHINE_REPORTED } from "@/ipc/types/coolify_setup";
 
 const toastMock = vi.hoisted(() => ({
   warning: vi.fn(),
@@ -568,7 +568,9 @@ describe("when the user stops it", () => {
     // and reporting it says something went wrong while the screen says
     // nothing did.
     h.run.mockRejectedValue(
-      new DyadError("Cancelled.", DyadErrorKind.UserCancelled),
+      Object.assign(new DyadError("Cancelled.", DyadErrorKind.UserCancelled), {
+        code: SETUP_MACHINE_REPORTED,
+      }),
     );
     const user = userEvent.setup();
     renderPanel();
@@ -581,16 +583,33 @@ describe("when the user stops it", () => {
     expect(h.showError).not.toHaveBeenCalled();
   });
 
-  it("still reports a refusal to start", async () => {
-    // The shape the handler actually refuses with: a refusal that never
-    // reached the machine says so on the error.
+  it("says what the machine never saw, rather than swallowing it", async () => {
+    // The IPC layer turns down bad input before the handler is reached, so
+    // that error carries no mark and the machine has no state for it. Left
+    // unsaid, pressing Install would do nothing at all.
     h.run.mockRejectedValue(
-      Object.assign(
-        new DyadError(
-          "A server is already being set up.",
-          DyadErrorKind.Precondition,
-        ),
-        { code: SETUP_NOT_STARTED },
+      new DyadError(
+        "[coolify-setup:run] Invalid input",
+        DyadErrorKind.Validation,
+      ),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
+    await user.click(screen.getByTestId("coolify-setup-install"));
+
+    await waitFor(() => expect(h.showError).toHaveBeenCalled());
+  });
+
+  it("still reports a refusal to start", async () => {
+    // The shape the handler actually refuses with: nothing reached the
+    // machine, so the error carries no mark and the panel says it out loud.
+    h.run.mockRejectedValue(
+      new DyadError(
+        "A server is already being set up.",
+        DyadErrorKind.Precondition,
       ),
     );
     const user = userEvent.setup();
@@ -607,9 +626,12 @@ describe("when the user stops it", () => {
     // The failure block carries the installer's own output; a toast beside it
     // repeats the same event with less to show.
     h.run.mockRejectedValue(
-      new DyadError(
-        "Installing Coolify failed (exit 1).",
-        DyadErrorKind.External,
+      Object.assign(
+        new DyadError(
+          "Installing Coolify failed (exit 1).",
+          DyadErrorKind.External,
+        ),
+        { code: SETUP_MACHINE_REPORTED },
       ),
     );
     const user = userEvent.setup();

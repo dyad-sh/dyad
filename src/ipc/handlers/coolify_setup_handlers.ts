@@ -3,7 +3,7 @@ import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createTypedHandler } from "./base";
 import {
-  SETUP_NOT_STARTED,
+  SETUP_MACHINE_REPORTED,
   coolifySetupContracts,
   coolifySetupEvents,
 } from "../types/coolify_setup";
@@ -323,43 +323,44 @@ export function registerCoolifySetupHandlers() {
 
   // DO NOT LOG this handler: its result carries the generated admin password.
   createTypedHandler(coolifySetupContracts.run, async (_, input) => {
+    // Checked before anything is done, because Coolify resolves the domain when
+    // it seeds its admin and a rejected address leaves an install with no
+    // account on it — minutes later, with nothing to show for them.
+    if (!isPlausibleAdminEmail(input.adminEmail)) {
+      throw new DyadError(
+        "Enter an email address whose domain resolves. Coolify checks this " +
+          "when it creates the admin account, and rejects addresses like " +
+          "admin@example.test.",
+        DyadErrorKind.Validation,
+      );
+    }
+    if (input.customDomain && !isPlausibleInstanceDomain(input.customDomain)) {
+      throw new DyadError(
+        "Enter the domain on its own, with no port or path — for example " +
+          "coolify.yourdomain.com.",
+        DyadErrorKind.Validation,
+      );
+    }
+    if (!readyHosts.has(hostIdentity(input.host))) {
+      throw new DyadError(
+        "Check the server before installing. Dyad shows you its fingerprint " +
+          "first, so the install goes to the machine that answered rather " +
+          "than to whatever holds the address by then.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    // One at a time is the machine's rule, not a check here; it refuses by
+    // throwing, and the panel shows that.
+    const run = setupController().start(input);
     try {
-      // Checked before anything is done, because Coolify resolves the domain when
-      // it seeds its admin and a rejected address leaves an install with no
-      // account on it — minutes later, with nothing to show for them.
-      if (!isPlausibleAdminEmail(input.adminEmail)) {
-        throw new DyadError(
-          "Enter an email address whose domain resolves. Coolify checks this " +
-            "when it creates the admin account, and rejects addresses like " +
-            "admin@example.test.",
-          DyadErrorKind.Validation,
-        );
-      }
-      if (
-        input.customDomain &&
-        !isPlausibleInstanceDomain(input.customDomain)
-      ) {
-        throw new DyadError(
-          "Enter the domain on its own, with no port or path — for example " +
-            "coolify.yourdomain.com.",
-          DyadErrorKind.Validation,
-        );
-      }
-      if (!readyHosts.has(hostIdentity(input.host))) {
-        throw new DyadError(
-          "Check the server before installing. Dyad shows you its fingerprint " +
-            "first, so the install goes to the machine that answered rather " +
-            "than to whatever holds the address by then.",
-          DyadErrorKind.Precondition,
-        );
-      }
-      // One at a time is the machine's rule, not a check here; it refuses by
-      // throwing, and the panel shows that. Returned rather than awaited, so
-      // a run that fails later is the machine's to report.
-      return setupController().start(input).result;
+      return await run.result;
     } catch (error) {
-      if (error instanceof DyadError) {
-        Object.assign(error, { code: SETUP_NOT_STARTED });
+      // Awaited only to mark it: the machine recorded this before rethrowing,
+      // so the panel is already showing it and a toast would be the same news
+      // twice. Everything above never got that far and stays unmarked, which
+      // is what makes it speak.
+      if (typeof error === "object" && error !== null) {
+        Object.assign(error, { code: SETUP_MACHINE_REPORTED });
       }
       throw error;
     }

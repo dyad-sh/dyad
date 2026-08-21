@@ -93,6 +93,7 @@ export function ChatSearchDialog({
       onOpenChange={onOpenChange}
       data-testid="chat-search-dialog"
       filter={commandFilter}
+      closeOnCommandPaletteOpen
     >
       <CommandInput
         placeholder="Search chats"

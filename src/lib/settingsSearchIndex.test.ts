@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAvailableSettings,
   SECTION_IDS,
   SETTING_IDS,
   SETTINGS_SEARCH_INDEX,
@@ -161,5 +162,14 @@ describe("SETTINGS_SEARCH_INDEX", () => {
 
   it("exposes the shared fuzzy settings ranking", () => {
     expect(searchSettings("theme")[0]?.item.label).toBe("Theme");
+  });
+
+  it("hides Pro-only destinations when Pro is unavailable", () => {
+    expect(getAvailableSettings(false).some((item) => item.requiresPro)).toBe(
+      false,
+    );
+    expect(getAvailableSettings(true).some((item) => item.requiresPro)).toBe(
+      true,
+    );
   });
 });

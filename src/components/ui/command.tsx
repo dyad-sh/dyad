@@ -35,7 +35,7 @@ function CommandDialog({
   children,
   className,
   showCloseButton = true,
-  closeOnCommandPaletteOpen = true,
+  closeOnCommandPaletteOpen = false,
   filter,
   open,
   onOpenChange,

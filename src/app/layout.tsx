@@ -59,7 +59,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import {
   announceCommandPaletteOpening,
   CHAT_SCOPE_PREFIX,
-  hasBlockingAlertDialogOpen,
+  hasBlockingCommandPaletteDialogOpen,
   isTerminalShortcutTarget,
 } from "@/lib/commandPalette";
 
@@ -129,7 +129,7 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   useSyncDefaultChatMode();
 
   const openCommandPalette = useCallback((query: string = "") => {
-    if (hasBlockingAlertDialogOpen()) return;
+    if (hasBlockingCommandPaletteDialogOpen()) return;
     announceCommandPaletteOpening();
     setCommandPaletteQuery(query);
     setIsCommandPaletteOpen(true);

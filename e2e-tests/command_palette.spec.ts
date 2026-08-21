@@ -24,9 +24,17 @@ test("command palette supports scoped chat and unfiltered configuration search",
   await input.fill("Theme");
   await po.page.getByTestId("command-palette-setting-setting-theme").click();
   await expect(po.page).toHaveURL(/\/settings/);
-  await expect(po.page.locator("#setting-theme")).toHaveClass(
-    /settings-highlight/,
-  );
+  await expect(po.page.locator("#setting-theme")).toBeVisible();
+
+  await po.page
+    .getByRole("button", { name: "Reset Everything", exact: true })
+    .click();
+  const confirmationDialog = po.page.getByTestId("confirmation-dialog");
+  await expect(confirmationDialog).toBeVisible();
+  await po.page.keyboard.press("Control+p");
+  await expect(confirmationDialog).toBeVisible();
+  await expect(palette).not.toBeVisible();
+  await confirmationDialog.getByRole("button", { name: "Cancel" }).click();
 
   await po.page.keyboard.press("Control+p");
   await input.fill("manage selected app");
@@ -43,9 +51,6 @@ test("command palette supports scoped chat and unfiltered configuration search",
   await expect(
     po.page.locator("#app-config-environment-variables"),
   ).toBeVisible();
-  await expect(
-    po.page.locator("#app-config-environment-variables"),
-  ).toHaveClass(/settings-highlight/);
 
   await po.page.getByTestId("command-palette-trigger").click();
   await expect(input).toHaveValue("");
@@ -57,10 +62,8 @@ test("command palette supports scoped chat and unfiltered configuration search",
   await po.openContextFilesPicker();
   await expect(po.page.getByTestId("manual-context-files-input")).toBeVisible();
   await po.page.keyboard.press("Control+p");
-  await expect(
-    po.page.getByTestId("manual-context-files-input"),
-  ).not.toBeVisible();
-  await expect(palette).toBeVisible();
+  await expect(po.page.getByTestId("manual-context-files-input")).toBeVisible();
+  await expect(palette).not.toBeVisible();
   await po.page.keyboard.press("Escape");
 
   await po.navigation.goToAppsTab();

@@ -5,9 +5,11 @@ import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { COMMAND_PALETTE_OPENING_EVENT } from "@/lib/commandPalette";
 
+const CommandPaletteDismissibleContext = React.createContext(false);
+
 function Dialog({
   actionsRef,
-  closeOnCommandPaletteOpen = true,
+  closeOnCommandPaletteOpen = false,
   ...props
 }: DialogPrimitive.Root.Props & {
   closeOnCommandPaletteOpen?: boolean;
@@ -31,11 +33,15 @@ function Dialog({
   }, [closeOnCommandPaletteOpen, dialogActionsRef]);
 
   return (
-    <DialogPrimitive.Root
-      data-slot="dialog"
-      actionsRef={dialogActionsRef}
-      {...props}
-    />
+    <CommandPaletteDismissibleContext.Provider
+      value={closeOnCommandPaletteOpen}
+    >
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        actionsRef={dialogActionsRef}
+        {...props}
+      />
+    </CommandPaletteDismissibleContext.Provider>
   );
 }
 
@@ -75,11 +81,18 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
 }) {
+  const isCommandPaletteDismissible = React.useContext(
+    CommandPaletteDismissibleContext,
+  );
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        data-command-palette-dismissible={
+          isCommandPaletteDismissible ? "true" : undefined
+        }
         className={cn(
           "bg-background data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-closed:fill-mode-forwards data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg outline-none",
           className,

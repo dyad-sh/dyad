@@ -43,8 +43,8 @@ import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import {
+  getAvailableSettings,
   searchSettings,
-  SETTINGS_SEARCH_INDEX,
 } from "@/lib/settingsSearchIndex";
 import {
   getCommandPaletteSnippet,
@@ -166,12 +166,7 @@ export function CommandPalette({
       ? []
       : chats;
   const availableSettings = useMemo(
-    () =>
-      SETTINGS_SEARCH_INDEX.filter(
-        (setting) =>
-          !setting.requiresPro ||
-          (settings !== null && isDyadProEnabled(settings)),
-      ),
+    () => getAvailableSettings(Boolean(settings && isDyadProEnabled(settings))),
     [settings],
   );
   const settingsScoreById = useMemo(() => {
@@ -201,7 +196,8 @@ export function CommandPalette({
     } else if (selectedAppId) {
       await navigate({ to, search: { appId: selectedAppId } });
     }
-    await revealCommandPaletteTarget(targetId);
+    const revealed = await revealCommandPaletteTarget(targetId);
+    if (!revealed) showError("Couldn't open that setting. Please try again.");
   };
 
   const openConfigureTarget = async (targetId: string) => {
@@ -209,7 +205,8 @@ export function CommandPalette({
     await selectChat({ chatId: targetChat.id, appId: selectedAppId });
     setIsPreviewOpen(true);
     setPreviewMode("configure");
-    await revealCommandPaletteTarget(targetId);
+    const revealed = await revealCommandPaletteTarget(targetId);
+    if (!revealed) showError("Couldn't open that setting. Please try again.");
   };
 
   const createChat = async () => {

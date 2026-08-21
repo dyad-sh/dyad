@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   getCommandPaletteSnippet,
-  hasBlockingAlertDialogOpen,
+  hasBlockingCommandPaletteDialogOpen,
   isTerminalShortcutTarget,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
@@ -46,16 +46,25 @@ describe("getCommandPaletteSnippet", () => {
   });
 });
 
-describe("hasBlockingAlertDialogOpen", () => {
-  it("protects an open destructive confirmation from palette replacement", () => {
+describe("hasBlockingCommandPaletteDialogOpen", () => {
+  it("protects open confirmations and dialogs with pending input", () => {
     const alert = document.createElement("div");
     alert.dataset.slot = "alert-dialog-content";
     alert.dataset.open = "";
     document.body.append(alert);
 
-    expect(hasBlockingAlertDialogOpen()).toBe(true);
+    expect(hasBlockingCommandPaletteDialogOpen()).toBe(true);
     alert.remove();
-    expect(hasBlockingAlertDialogOpen()).toBe(false);
+
+    const dialog = document.createElement("div");
+    dialog.dataset.slot = "dialog-content";
+    dialog.dataset.open = "";
+    document.body.append(dialog);
+    expect(hasBlockingCommandPaletteDialogOpen()).toBe(true);
+
+    dialog.dataset.commandPaletteDismissible = "true";
+    expect(hasBlockingCommandPaletteDialogOpen()).toBe(false);
+    dialog.remove();
   });
 });
 

@@ -68,11 +68,13 @@ export function announceCommandPaletteOpening(): void {
   window.dispatchEvent(new Event(COMMAND_PALETTE_OPENING_EVENT));
 }
 
-export function hasBlockingAlertDialogOpen(
+export function hasBlockingCommandPaletteDialogOpen(
   root: Pick<Document, "querySelector"> = document,
 ): boolean {
   return Boolean(
-    root.querySelector('[data-slot="alert-dialog-content"][data-open]'),
+    root.querySelector(
+      '[data-slot="alert-dialog-content"][data-open], [data-slot="dialog-content"][data-open]:not([data-command-palette-dismissible="true"]):not([data-testid="command-palette"])',
+    ),
   );
 }
 

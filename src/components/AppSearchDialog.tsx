@@ -92,6 +92,7 @@ export function AppSearchDialog({
       onOpenChange={onOpenChange}
       data-testid="app-search-dialog"
       filter={commandFilter}
+      closeOnCommandPaletteOpen
     >
       <CommandInput
         placeholder="Search apps"

@@ -4,8 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 import { useAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
-import { SECTION_IDS, searchSettings } from "@/lib/settingsSearchIndex";
+import {
+  getAvailableSettings,
+  SECTION_IDS,
+  searchSettings,
+} from "@/lib/settingsSearchIndex";
 import { SearchIcon, XIcon } from "lucide-react";
+import { useSettings } from "@/hooks/useSettings";
+import { isDyadProEnabled } from "@/lib/schemas";
 
 type SettingsSection = {
   id: string;
@@ -29,6 +35,11 @@ export function SettingsList({ show }: { show: boolean }) {
   const [activeSection, setActiveSection] = useAtom(activeSettingsSectionAtom);
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const { settings } = useSettings();
+  const availableSettings = useMemo(
+    () => getAvailableSettings(Boolean(settings && isDyadProEnabled(settings))),
+    [settings],
+  );
 
   const scrollAndNavigateTo = useScrollAndNavigateTo("/settings", {
     behavior: "smooth",
@@ -43,8 +54,8 @@ export function SettingsList({ show }: { show: boolean }) {
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
-    return searchSettings(searchQuery);
-  }, [searchQuery]);
+    return searchSettings(searchQuery, availableSettings);
+  }, [availableSettings, searchQuery]);
 
   useEffect(() => {
     if (!show) return;

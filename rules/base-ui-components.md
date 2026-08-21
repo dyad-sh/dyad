@@ -48,11 +48,12 @@ restore focus with `{ preventScroll: true }`.
 
 Register truly global shortcuts in the capture phase so focused editors or
 dialog content that stops keydown propagation cannot swallow them. When the
-shortcut opens a modal, coordinate exclusivity in the shared Dialog wrapper
-using Base UI's imperative `actionsRef.close()`; closing only the dialogs known
-to the feature leaves other modal roots and focus traps stacked underneath.
-Do not automatically dismiss an open `AlertDialog`; suppress the new modal
-until the user resolves that blocking confirmation.
+shortcut opens a modal, make dismissal opt-in in the shared Dialog wrapper and
+use Base UI's imperative `actionsRef.close()` only for disposable dialogs such
+as search pickers. Suppress the new modal while input-bearing dialogs or any
+`AlertDialog` are open so a mistyped shortcut cannot discard pending work.
+Legacy confirmation overlays must expose the same blocking marker as the shared
+`AlertDialog` until they are migrated.
 
 ## TooltipTrigger render prop
 

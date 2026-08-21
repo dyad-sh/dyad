@@ -635,6 +635,12 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 ];
 
+export function getAvailableSettings(isProEnabled: boolean) {
+  return SETTINGS_SEARCH_INDEX.filter(
+    (setting) => !setting.requiresPro || isProEnabled,
+  );
+}
+
 const SETTINGS_SEARCH_OPTIONS = {
   keys: [
     { name: "label", weight: 2 },

@@ -6,6 +6,9 @@ test("concurrent chat", async ({ po }) => {
   await po.sendPrompt("tc=chat1 [sleep=medium]", {
     skipWaitForCompletion: true,
   });
+  await expect
+    .poll(() => new URL(po.page.url()).searchParams.get("id"))
+    .not.toBeNull();
 
   await po.chatActions.clickNewChat();
   await po.sendPrompt("tc=chat2");

@@ -263,15 +263,21 @@ describe("run_build", () => {
         ),
       ).resolves.toBe("submodule dirty\n");
       expect(
-        (
-          await runGit(
-            path.join(snapshot.worktreePath, "vendor", "shared"),
-            "rev-parse",
-            "--show-toplevel",
-          )
-        ).trim(),
+        toPortablePath(
+          (
+            await runGit(
+              path.join(snapshot.worktreePath, "vendor", "shared"),
+              "rev-parse",
+              "--show-toplevel",
+            )
+          ).trim(),
+        ),
       ).toBe(
-        await fs.realpath(path.join(snapshot.worktreePath, "vendor", "shared")),
+        toPortablePath(
+          await fs.realpath(
+            path.join(snapshot.worktreePath, "vendor", "shared"),
+          ),
+        ),
       );
       await expect(
         fs.lstat(path.join(snapshot.path, "node_modules")),

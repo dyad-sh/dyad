@@ -647,6 +647,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   markers still exist does not prevent an undeclared boundary crossing.
   Classify calls through the owning API (for example, Jotai stores and hooks),
   not an expected import directory; domain values may be local or re-exported.
+- When a boundary inventory compares TypeScript source markers, canonicalize
+  line endings, whitespace, and formatter-added trailing commas before matching.
+  Raw multiline strings fail on CRLF checkouts and become stale after harmless
+  formatter reflows.
 - Cache parsed TypeScript source files across semantic boundary-inventory
   assertions. Re-parsing the full production tree for every exact inventory can
   exceed the test timeout only under full-suite concurrency, hiding an

@@ -72,14 +72,14 @@ const PERMANENT_UI_WRITE_ALLOWLIST = [
     atom: "attachmentsAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
     marker:
-      "store.set(\n        attachmentsAtom,\n        removeSubmittedFirstPromptAttachments(\n          currentAttachments,\n          payload.attachments,\n        ),\n      )",
+      "store.set(attachmentsAtom, removeSubmittedFirstPromptAttachments(currentAttachments, payload.attachments))",
     rationale: "Clear submitted attachments from the home composer.",
   },
   {
     atom: "chatInputValuesByIdAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
     marker:
-      "store.set(chatInputValuesByIdAtom, (current) =>\n        mergeRejectedPromptIntoChatDraft(current, chatId, payload.prompt),\n      )",
+      "store.set(chatInputValuesByIdAtom, (current) => mergeRejectedPromptIntoChatDraft(current, chatId, payload.prompt))",
     rationale:
       "Preserve a rejected first prompt in the destination chat composer.",
   },
@@ -188,6 +188,15 @@ function sourceFileFor(filePath: string): ts.SourceFile {
 
 function toPortablePath(filePath: string): string {
   return filePath.split(path.win32.sep).join(path.posix.sep);
+}
+
+function normalizePresentationWriteMarker(marker: string): string {
+  return marker
+    .replace(/,\s*\)/g, ")")
+    .replace(/\s+/g, " ")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .trim();
 }
 
 function relativeSourcePath(filePath: string): string {
@@ -840,6 +849,14 @@ describe("state-machine boundaries", () => {
     );
   });
 
+  it("normalizes presentation markers across line endings and formatter reflows", () => {
+    expect(
+      normalizePresentationWriteMarker(
+        "store.set(\r\n  atom,\r\n  value,\r\n)",
+      ),
+    ).toBe(normalizePresentationWriteMarker("store.set(atom, value)"));
+  });
+
   it("keeps only the permanent machine-to-UI presentation writes", () => {
     const writes = [
       ...collectMachineAtomWrites(),
@@ -871,7 +888,11 @@ describe("state-machine boundaries", () => {
           candidate.atom === entry.atom && candidate.file === entry.file,
       );
       expect(write, `${entry.file} retains ${entry.atom} write`).toBeDefined();
-      expect(write!.call.getText(write!.sourceFile)).toBe(entry.marker);
+      expect(
+        normalizePresentationWriteMarker(
+          write!.call.getText(write!.sourceFile),
+        ),
+      ).toBe(normalizePresentationWriteMarker(entry.marker));
       expect(
         precedingLine(write!.sourceFile, write!.call),
         `${entry.file} documents the ${entry.atom} permanent keep`,

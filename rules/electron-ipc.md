@@ -67,6 +67,9 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
   message while that chat is streaming. Main may persist an intermediate message,
   and caching a fallback result before the terminal invalidation can hide the
   completed proposal; disable the query during streaming and re-enable it on end.
+  Force a fresh read on re-enable: an older in-flight request can settle after
+  the terminal invalidation, clear its invalidated flag, and otherwise leave its
+  intermediate result fresh under the global query `staleTime`.
 - A null chat mode means the automatic default is still implicit. Renderer
   submissions must preserve that distinction with the existing null
   `requestedChatMode` sentinel instead of sending the computed display mode as

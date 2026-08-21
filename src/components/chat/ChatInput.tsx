@@ -279,7 +279,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     isLoading: isProposalLoading,
     error: proposalError,
     refreshProposal,
-  } = useProposal(chatId, { enabled: !isStreaming });
+  } = useProposal(chatId, { isStreaming });
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 

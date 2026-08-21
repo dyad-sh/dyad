@@ -230,6 +230,7 @@ describe("spawn_agent schema", () => {
     // even though the model was told about the failure and could recover.
     expect(ctx.spawnedImplementerThreadIds).toEqual([]);
     expect(ctx.spawnedSubagentThreadIds).toEqual([]);
+    expect(ctx.cancelledImplementerNames).toEqual(["Fix the activity feed"]);
   });
 
   it("keeps an Implementer registered when cancellation fails", async () => {

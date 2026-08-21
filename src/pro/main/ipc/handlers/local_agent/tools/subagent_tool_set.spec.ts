@@ -8,7 +8,10 @@ vi.mock("@/main/settings", () => ({
 // tool_definitions and subagent_tools import each other. Evaluate the registry
 // first so buildSubagentToolSet sees fully initialized definitions.
 import "../tool_definitions";
-import { buildSubagentToolSet } from "./subagent_tools";
+import {
+  buildSubagentToolSet,
+  validateSubagentAllowedToolNames,
+} from "./subagent_tools";
 import type { AgentContext } from "./types";
 
 // Kept out of subagent_tools.test.ts on purpose: that file mocks the whole
@@ -41,6 +44,15 @@ function toolNamesFor(persona: "explorer" | "implementer"): Set<string> {
 }
 
 describe("sub-agent tool set", () => {
+  it("rejects allowlist names missing from the tool registry", () => {
+    expect(() =>
+      validateSubagentAllowedToolNames(
+        ["read_file", "run_typechecks"],
+        [{ name: "read_file" }],
+      ),
+    ).toThrow(/run_typechecks/);
+  });
+
   it("lets the Implementer verify its own work", () => {
     const names = toolNamesFor("implementer");
 

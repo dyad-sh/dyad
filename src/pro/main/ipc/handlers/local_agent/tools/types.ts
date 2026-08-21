@@ -141,6 +141,8 @@ export interface AgentContext {
   spawnedSubagentThreadIds?: string[];
   /** Implementer children that must finish before root deploy/commit. */
   spawnedImplementerThreadIds?: string[];
+  /** Successfully cancelled Implementers whose preserved edits need a warning. */
+  cancelledImplementerNames?: string[];
   /** Explorer reports already returned directly to the root as tool results. */
   deliveredExplorerThreadIds?: string[];
   /**

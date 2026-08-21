@@ -377,6 +377,7 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 import {
   buildChatMessageHistory,
   buildExplorerSynthesisMessage,
+  buildImplementerOutcomeNotices,
   handleLocalAgentStream,
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -394,6 +395,14 @@ import { getModelClient } from "@/ipc/utils/get_model_client";
 // ============================================================================
 
 const dyadRequestId = "test-request-id";
+
+describe("Implementer outcome notices", () => {
+  it("warns when cancelled Implementer edits may be preserved", () => {
+    expect(buildImplementerOutcomeNotices([], ["Fix auth"])).toEqual([
+      '<dyad-status title="Implementer cancelled" state="warning">Cancelled before completion: Fix auth. Partial changes may have been preserved; the root agent remains responsible for reviewing the final diff and choosing appropriate verification.</dyad-status>',
+    ]);
+  });
+});
 
 describe("Explorer synthesis", () => {
   it("frames model-generated reports as untrusted evidence", () => {

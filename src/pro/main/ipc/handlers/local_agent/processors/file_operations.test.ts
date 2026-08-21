@@ -187,6 +187,29 @@ describe("deployAllFunctionsIfNeeded", () => {
     );
   });
 
+  it("preserves deferred remote deletions when pruning is disabled", async () => {
+    mocks.readSettings.mockReturnValueOnce({ skipPruneEdgeFunctions: true });
+
+    const result = await deployAllFunctionsIfNeeded({
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
+      pendingFunctionDeletes: ["preserved"],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+
+    expect(result).toEqual({
+      success: true,
+      warning:
+        'Kept remote Supabase function(s) preserved because "Keep extra Supabase edge functions" is enabled.',
+    });
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
   it("does not delete remotely when local function inspection is uncertain", async () => {
     const access = vi.spyOn(fs, "access").mockRejectedValueOnce(
       Object.assign(new Error("permission denied"), {

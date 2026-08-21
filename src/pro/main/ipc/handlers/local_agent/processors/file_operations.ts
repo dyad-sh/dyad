@@ -125,8 +125,14 @@ export async function deployAllFunctionsIfNeeded(
       functionExists: (functionName) =>
         supabaseFunctionEntryExists(ctx.appPath, functionName),
     });
+    const settings = readSettings();
+    const preservedDeletes = settings.skipPruneEdgeFunctions
+      ? deferred.deletes
+      : [];
     const deleteErrors: string[] = [];
-    for (const functionName of deferred.deletes) {
+    for (const functionName of settings.skipPruneEdgeFunctions
+      ? []
+      : deferred.deletes) {
       try {
         await deleteSupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,
@@ -142,7 +148,6 @@ export async function deployAllFunctionsIfNeeded(
     }
     let deployErrors: string[] = [];
     if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
-      const settings = readSettings();
       deployErrors = await deployAffectedSupabaseFunctions({
         appPath: ctx.appPath,
         supabaseProjectId: ctx.supabaseProjectId,
@@ -162,17 +167,30 @@ export async function deployAllFunctionsIfNeeded(
       });
     }
 
-    if (deleteErrors.length > 0 || deployErrors.length > 0) {
-      const warning =
-        deleteErrors.length === 0
-          ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
-          : `Some Supabase function operations failed: ${[
-              ...deleteErrors.map((error) => `delete ${error}`),
-              ...deployErrors,
-            ].join(", ")}`;
+    if (
+      preservedDeletes.length > 0 ||
+      deleteErrors.length > 0 ||
+      deployErrors.length > 0
+    ) {
+      const warnings: string[] = [];
+      if (preservedDeletes.length > 0) {
+        warnings.push(
+          `Kept remote Supabase function(s) ${preservedDeletes.join(", ")} because "Keep extra Supabase edge functions" is enabled.`,
+        );
+      }
+      if (deleteErrors.length > 0 || deployErrors.length > 0) {
+        warnings.push(
+          deleteErrors.length === 0
+            ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
+            : `Some Supabase function operations failed: ${[
+                ...deleteErrors.map((error) => `delete ${error}`),
+                ...deployErrors,
+              ].join(", ")}`,
+        );
+      }
       return {
         success: true,
-        warning,
+        warning: warnings.join(" "),
       };
     }
 

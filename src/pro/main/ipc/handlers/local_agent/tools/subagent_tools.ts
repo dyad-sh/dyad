@@ -4,7 +4,7 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { SubagentThreadSummary } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 
-import { buildAgentToolSet, type AgentToolName } from "../tool_definitions";
+import { buildAgentToolSet, TOOL_DEFINITIONS } from "../tool_definitions";
 import {
   cancelSubagent,
   followupSubagent,
@@ -132,7 +132,7 @@ export function buildSubagentContext(
  * discovery/execution, sandbox scripts, nested agents/history explorers, and
  * root-owned provider or application configuration side effects.
  */
-const SUBAGENT_ALLOWED_TOOLS = new Set<AgentToolName>([
+const SUBAGENT_ALLOWED_TOOL_NAMES = [
   "read_file",
   "list_files",
   "grep",
@@ -163,11 +163,31 @@ const SUBAGENT_ALLOWED_TOOLS = new Set<AgentToolName>([
   "web_search",
   "web_crawl",
   "web_fetch",
-]);
+] as const;
+const SUBAGENT_ALLOWED_TOOLS = new Set<string>(SUBAGENT_ALLOWED_TOOL_NAMES);
+
+export function validateSubagentAllowedToolNames(
+  allowedNames: readonly string[],
+  registeredTools: readonly Pick<ToolDefinition, "name">[],
+): void {
+  const registeredNames = new Set(registeredTools.map((tool) => tool.name));
+  const unknownNames = allowedNames.filter(
+    (name) => !registeredNames.has(name),
+  );
+  if (unknownNames.length > 0) {
+    throw new Error(
+      `Unknown sub-agent tool(s) in allowlist: ${unknownNames.join(", ")}`,
+    );
+  }
+}
 
 export function buildSubagentToolSet(
   params: SubagentToolContextParams,
 ): ToolSet {
+  validateSubagentAllowedToolNames(
+    SUBAGENT_ALLOWED_TOOL_NAMES,
+    TOOL_DEFINITIONS,
+  );
   const { ctx, persona } = params;
   const childCtx = buildSubagentContext(params);
   const allTools = buildAgentToolSet(childCtx, {
@@ -276,6 +296,12 @@ export const spawnAgentTool: ToolDefinition<
       // transient wait failure here would kill the whole turn at the very end,
       // discarding milestones the agent had already finished by other means.
       const implementers = ctx.spawnedImplementerThreadIds;
+      if (args.persona === "implementer") {
+        ctx.cancelledImplementerNames ??= [];
+        if (!ctx.cancelledImplementerNames.includes(args.task_name)) {
+          ctx.cancelledImplementerNames.push(args.task_name);
+        }
+      }
       if (implementers) {
         const at = implementers.indexOf(threadId);
         if (at >= 0) implementers.splice(at, 1);

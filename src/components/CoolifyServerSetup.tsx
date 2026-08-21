@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
-import { SETUP_NOT_STARTED } from "@/ipc/types/coolify_setup";
+import { SETUP_MACHINE_REPORTED } from "@/ipc/types/coolify_setup";
 import type {
   SetupPreflight,
   SetupResult,
@@ -13,7 +13,6 @@ import type {
   SetupStep,
 } from "@/ipc/types";
 import { showError } from "@/lib/toast";
-import { DyadError } from "@/errors/dyad_error";
 import { queryKeys } from "@/lib/queryKeys";
 import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
@@ -159,17 +158,15 @@ export function CoolifyServerSetup({
     // one still watching by the time it arrives. Only a refusal to start —
     // one setup at a time — belongs to the caller.
     onError: (error) => {
-      // Anything the machine took on is on screen already — a failure with the
-      // installer's own words under it, or a cancel that correctly says
-      // nothing went wrong. Saying it again in a toast reports one event
-      // twice. What never reached the machine says so on the error, which the
-      // kind cannot: the flow raises Precondition as well, when its own look
-      // at the server refuses at install time.
-      const neverStarted =
-        (error as { code?: string }).code === SETUP_NOT_STARTED;
-      // Anything that is not one of ours did not come from the flow either, so
-      // it has nowhere else to appear.
-      if (!neverStarted && error instanceof DyadError) return;
+      // Anything the machine took on is on screen already — a failure with
+      // the installer's own words under it, or a cancel that correctly says
+      // nothing went wrong — and it says so on the error. Everything else is
+      // shown, because an error nobody reports is a button that does nothing:
+      // a refusal that never started, and whatever the IPC layer turns down
+      // before the handler is reached.
+      const machineReported =
+        (error as { code?: string }).code === SETUP_MACHINE_REPORTED;
+      if (machineReported) return;
       showError(error);
     },
   });

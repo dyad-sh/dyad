@@ -28,14 +28,16 @@ export const ServerKeySchema = z.object({
 });
 
 /**
- * Marks a refusal that happened before the machine took the run on.
+ * Marks a failure the machine took on and has already put on screen.
  *
- * The panel shows anything the machine recorded, with the installer's output
- * under it. What never got that far — a rejected address, a server nobody
- * checked, a setup already going — has nowhere to appear but a toast, and
- * this is how the two are told apart.
+ * The panel shows anything it cannot attribute, because an error nobody
+ * reports is a button that does nothing. So the mark goes on the case that
+ * IS accounted for — a run that failed or was cancelled, which the finished
+ * screen carries with the installer's own words — and everything else,
+ * including whatever the IPC layer refuses before this handler is reached,
+ * is said out loud.
  */
-export const SETUP_NOT_STARTED = "coolify-setup-not-started";
+export const SETUP_MACHINE_REPORTED = "coolify-setup-machine-reported";
 
 /**
  * Where the server is. Everything needed to reach it, and nothing else.

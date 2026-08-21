@@ -97,7 +97,7 @@ describe("exactDiscoveredTitleGrep", () => {
   it("escapes titles and permits only runner-owned prefixes", () => {
     const grep = new RegExp(
       exactDiscoveredTitleGrep(
-        "nested/editor.spec.ts",
+        "e2e-tests/nested/editor.spec.ts",
         "account saves (draft)",
       ),
     );
@@ -106,6 +106,9 @@ describe("exactDiscoveredTitleGrep", () => {
       grep.test("chromium nested/editor.spec.ts account saves (draft)"),
     ).toBe(true);
     expect(grep.test("nested/editor.spec.ts account saves (draft)")).toBe(true);
+    expect(
+      grep.test("e2e-tests/nested/editor.spec.ts account saves (draft)"),
+    ).toBe(false);
     expect(grep.test("other.spec.ts account saves (draft)")).toBe(false);
     expect(grep.test("account saves draft")).toBe(false);
     expect(grep.test("account saves (draft) later")).toBe(false);

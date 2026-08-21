@@ -41,6 +41,10 @@ async function runGit(cwd: string, ...args: string[]): Promise<string> {
   return result.stdout;
 }
 
+function toPortablePath(filePath: string): string {
+  return filePath.replaceAll("\\", "/");
+}
+
 const safeViteFacts: BuildProjectFacts = {
   frameworkType: "vite",
   buildScript: "vite build",
@@ -63,6 +67,12 @@ describe("run_build", () => {
           force: true,
         }),
       ),
+    );
+  });
+
+  it("normalizes Git paths before comparing them with filesystem paths", () => {
+    expect(toPortablePath("C:\\worktree\\packages\\app")).toBe(
+      "C:/worktree/packages/app",
     );
   });
 
@@ -224,8 +234,10 @@ describe("run_build", () => {
       );
       expect(snapshot.sourceAppPath).toBe(await fs.realpath(appPath));
       expect(
-        (await runGit(snapshot.path, "rev-parse", "--show-toplevel")).trim(),
-      ).toBe(await fs.realpath(snapshot.worktreePath));
+        toPortablePath(
+          (await runGit(snapshot.path, "rev-parse", "--show-toplevel")).trim(),
+        ),
+      ).toBe(toPortablePath(await fs.realpath(snapshot.worktreePath)));
       await expect(
         fs.readFile(path.join(snapshot.path, "src", "changed.ts"), "utf8"),
       ).resolves.toBe("after\n");

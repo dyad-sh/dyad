@@ -203,9 +203,11 @@ export function FirstPromptProvider({
       // Acceptance may arrive after the user has started another draft. Clear
       // each submitted field only while it still matches that exact snapshot.
       if (store.get(homeChatInputValueAtom) === payload.prompt) {
+        // Clear submitted prompt text from the home composer.
         store.set(homeChatInputValueAtom, "");
       }
       const currentAttachments = store.get(attachmentsAtom);
+      // Clear submitted attachments from the home composer.
       store.set(
         attachmentsAtom,
         removeSubmittedFirstPromptAttachments(
@@ -214,10 +216,12 @@ export function FirstPromptProvider({
         ),
       );
       if (store.get(homeSelectedAppAtom)?.id === payload.selectedApp?.id) {
+        // Clear the submitted app selection from the home composer.
         store.set(homeSelectedAppAtom, null);
       }
     },
     preserveRejectedPrompt(chatId, payload) {
+      // Preserve a rejected first prompt in the destination chat composer.
       store.set(chatInputValuesByIdAtom, (current) =>
         mergeRejectedPromptIntoChatDraft(current, chatId, payload.prompt),
       );

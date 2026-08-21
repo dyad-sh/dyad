@@ -71,8 +71,17 @@ const PERMANENT_UI_WRITE_ALLOWLIST = [
   {
     atom: "attachmentsAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
-    marker: "store.set(attachmentsAtom, [])",
+    marker:
+      "store.set(\n        attachmentsAtom,\n        removeSubmittedFirstPromptAttachments(\n          currentAttachments,\n          payload.attachments,\n        ),\n      )",
     rationale: "Clear submitted attachments from the home composer.",
+  },
+  {
+    atom: "chatInputValuesByIdAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker:
+      "store.set(chatInputValuesByIdAtom, (current) =>\n        mergeRejectedPromptIntoChatDraft(current, chatId, payload.prompt),\n      )",
+    rationale:
+      "Preserve a rejected first prompt in the destination chat composer.",
   },
   {
     atom: "homeSelectedAppAtom",

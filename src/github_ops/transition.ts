@@ -238,7 +238,14 @@ function operationFailed(
   return {
     kind: "applied",
     state: { type: "idle", banner },
-    commands: [],
+    commands: [
+      "create-branch",
+      "rename-branch",
+      "merge",
+      "delete-branch",
+    ].includes(op.type)
+      ? [{ type: "notify", kind: "error", message: failure.message }]
+      : [],
   };
 }
 

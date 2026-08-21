@@ -891,4 +891,25 @@ describe("github_ops transition", () => {
     });
     expect(commandsOf(failed)).toEqual([]);
   });
+
+  it.each([
+    { type: "create-branch", name: "feature", thenSwitch: false } as const,
+    { type: "rename-branch", oldBranch: "old", newBranch: "new" } as const,
+    { type: "merge", branch: "feature" } as const,
+    { type: "delete-branch", branch: "old" } as const,
+  ])("keeps modal branch-operation failures visible for $type", (op) => {
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op,
+    }).state;
+    const failed = transition(running, {
+      type: "OP_FAILED",
+      op,
+      failure: { kind: "unknown", message: "branch operation failed" },
+    });
+
+    expect(commandsOf(failed)).toEqual([
+      { type: "notify", kind: "error", message: "branch operation failed" },
+    ]);
+  });
 });

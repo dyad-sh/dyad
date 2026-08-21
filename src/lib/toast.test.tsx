@@ -82,4 +82,19 @@ describe("showError", () => {
 
     expect(toast.dismiss).toHaveBeenCalledWith("github-ops-7");
   });
+
+  it("does not resurrect a copied toast after producer dismissal", () => {
+    vi.useFakeTimers();
+    showError("Recovered probe error", { toastId: "github-ops-7-git-state" });
+    const toastRenderer = vi.mocked(toast.custom).mock.calls[0][0];
+    const renderedToast = toastRenderer("github-ops-7-git-state") as {
+      props: { onCopy: () => void };
+    };
+    renderedToast.props.onCopy();
+
+    dismissToast("github-ops-7-git-state");
+    vi.advanceTimersByTime(2_000);
+
+    expect(toast.custom).toHaveBeenCalledTimes(2);
+  });
 });

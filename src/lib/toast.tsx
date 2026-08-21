@@ -104,6 +104,7 @@ export const showError = (
 };
 
 export const dismissToast = (toastId: string | number) => {
+  toastGenerations.set(toastId, (toastGenerations.get(toastId) ?? 0) + 1);
   toast.dismiss(toastId);
 };
 

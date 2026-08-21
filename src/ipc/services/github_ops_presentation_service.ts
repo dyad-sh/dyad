@@ -7,6 +7,7 @@ import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
 
 export class GithubOpsPresentationService {
   private readonly initiatorByOperationId = new Map<string, WindowSessionId>();
+  private readonly toastTargetById = new Map<string, WindowSessionId>();
 
   constructor(private readonly windows: WindowRegistry = windowRegistry) {}
 
@@ -30,6 +31,7 @@ export class GithubOpsPresentationService {
     appId: number,
     operationId: string | undefined,
     message: string,
+    toastScope: "operation" | "git-state" | "conflicts" = "operation",
   ): void {
     const initiator = operationId
       ? this.initiatorByOperationId.get(operationId)
@@ -48,22 +50,23 @@ export class GithubOpsPresentationService {
     if (!target) return;
     const persist =
       operationId === undefined && isDetailedGithubOpsErrorMessage(message);
+    const toastId = `github-ops-${appId}-${toastScope}`;
+    this.toastTargetById.set(toastId, target);
     this.windows.endpointForSession(target)?.send("toast:error", {
       message,
-      toastId: `github-ops-${appId}`,
+      toastId,
       ...(persist ? { persist: true } : {}),
     });
   }
 
-  dismissError(appId: number): void {
-    const target = this.windows.routePresentation({
-      effect: "ordinary",
-      entity: { kind: "app", id: appId },
-    });
+  dismissError(appId: number, toastScope: "git-state" | "conflicts"): void {
+    const toastId = `github-ops-${appId}-${toastScope}`;
+    const target = this.toastTargetById.get(toastId);
     if (!target) return;
     this.windows.endpointForSession(target)?.send("toast:dismiss", {
-      toastId: `github-ops-${appId}`,
+      toastId,
     });
+    this.toastTargetById.delete(toastId);
   }
 
   forget(operationId: string | undefined): void {

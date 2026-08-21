@@ -25,7 +25,7 @@ describe("GithubOpsPresentationService", () => {
 
     expect(first.send).toHaveBeenCalledWith("toast:error", {
       message: "Push failed",
-      toastId: "github-ops-7",
+      toastId: "github-ops-7-operation",
     });
     expect(second.send).not.toHaveBeenCalled();
   });
@@ -41,19 +41,19 @@ describe("GithubOpsPresentationService", () => {
     const service = new GithubOpsPresentationService(windows);
     const message = `Git probe failed:\n${"detail ".repeat(40)}`;
 
-    service.showError(7, undefined, message);
-    service.showError(7, undefined, message);
+    service.showError(7, undefined, message, "git-state");
+    service.showError(7, undefined, message, "git-state");
 
     expect(target.send).toHaveBeenCalledTimes(2);
     expect(target.send).toHaveBeenNthCalledWith(1, "toast:error", {
       message,
       persist: true,
-      toastId: "github-ops-7",
+      toastId: "github-ops-7-git-state",
     });
     expect(target.send).toHaveBeenNthCalledWith(2, "toast:error", {
       message,
       persist: true,
-      toastId: "github-ops-7",
+      toastId: "github-ops-7-git-state",
     });
   });
 
@@ -73,24 +73,33 @@ describe("GithubOpsPresentationService", () => {
 
     expect(target.send).toHaveBeenCalledWith("toast:error", {
       message,
-      toastId: "github-ops-7",
+      toastId: "github-ops-7-operation",
     });
   });
 
-  it("dismisses a recovered probe error for the visible app", () => {
+  it("dismisses a recovered probe error in the window that received it", () => {
     const windows = new WindowRegistry();
-    const target = { id: 1, isDestroyed: () => false, send: vi.fn() };
-    const session = WindowSessionIdSchema.parse(
+    const first = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const second = { id: 2, isDestroyed: () => false, send: vi.fn() };
+    const firstSession = WindowSessionIdSchema.parse(
       "00000000-0000-4000-8000-000000000001",
     );
-    windows.register(target, session);
-    windows.setVisibleEntities(session, [{ kind: "app", id: 7 }]);
+    const secondSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    windows.register(first, firstSession);
+    windows.register(second, secondSession);
+    windows.setVisibleEntities(firstSession, [{ kind: "app", id: 7 }]);
     const service = new GithubOpsPresentationService(windows);
+    service.showError(7, undefined, "Probe failed\nDetails", "git-state");
+    windows.setVisibleEntities(firstSession, []);
+    windows.setVisibleEntities(secondSession, [{ kind: "app", id: 7 }]);
 
-    service.dismissError(7);
+    service.dismissError(7, "git-state");
 
-    expect(target.send).toHaveBeenCalledWith("toast:dismiss", {
-      toastId: "github-ops-7",
+    expect(first.send).toHaveBeenCalledWith("toast:dismiss", {
+      toastId: "github-ops-7-git-state",
     });
+    expect(second.send).not.toHaveBeenCalled();
   });
 });

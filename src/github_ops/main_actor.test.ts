@@ -147,6 +147,7 @@ describe("main-hosted github_ops actor", () => {
     service.assertAcceptingOperations.mockReset();
     database.findFirst.mockReset();
     invalidations.publish.mockReset();
+    presentation.dismissError.mockReset();
     presentation.forget.mockReset();
     presentation.recordInitiator.mockReset();
     presentation.showError.mockReset();
@@ -686,6 +687,7 @@ describe("main-hosted github_ops actor", () => {
       7,
       undefined,
       "temporary repository refresh failure",
+      "git-state",
     );
   });
 
@@ -708,6 +710,7 @@ describe("main-hosted github_ops actor", () => {
       7,
       undefined,
       detailedMessage,
+      "git-state",
     );
   });
 

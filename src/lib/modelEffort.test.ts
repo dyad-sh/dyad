@@ -3,6 +3,7 @@ import { EffortSettingsSchema } from "@/ipc/types/language-model";
 import {
   createModelSelection,
   formatEffortLevel,
+  getEffortSettings,
   getModelPreferenceKey,
   resolveEffortLevel,
 } from "./modelEffort";
@@ -19,6 +20,17 @@ describe("model effort", () => {
       provider: "ollama",
       name: "local-model",
       effortLevel: "high",
+    });
+  });
+
+  it("offers none as an Ollama-specific effort level", () => {
+    expect(getEffortSettings(undefined, "ollama")).toEqual({
+      defaultEffortLevel: "medium",
+      possibleEffortLevels: ["none", "low", "medium", "high"],
+    });
+    expect(getEffortSettings(undefined, "lmstudio")).toEqual({
+      defaultEffortLevel: "medium",
+      possibleEffortLevels: ["low", "medium", "high"],
     });
   });
 

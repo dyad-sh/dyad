@@ -30,6 +30,11 @@ const mocks = vi.hoisted(() => ({
   pathname: "/",
   search: {} as { id?: number },
   envVars: {} as Record<string, string | undefined>,
+  ollamaModels: [] as Array<{
+    provider: "ollama";
+    modelName: string;
+    displayName: string;
+  }>,
   freeModelQuota: {
     quotaStatus: {
       messagesUsed: 3,
@@ -296,7 +301,7 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
 
 vi.mock("@/hooks/useLocalModels", () => ({
   useLocalModels: () => ({
-    models: [],
+    models: mocks.ollamaModels,
     loading: false,
     error: null,
     loadModels: vi.fn(),
@@ -422,6 +427,7 @@ describe("ModelPicker", () => {
     mocks.pathname = "/";
     mocks.search = {};
     mocks.envVars = {};
+    mocks.ollamaModels = [];
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
     mocks.settings.providerSettings.openrouter.apiKey.value = "";
@@ -532,6 +538,35 @@ describe("ModelPicker", () => {
         selectedModel: { name: "gpt-5", provider: "openai" },
         modelEffortPreferences: {
           '["openai","gpt-5",null]': "xhigh",
+        },
+      });
+    });
+  });
+
+  it("offers and persists None effort for Ollama models", async () => {
+    mocks.ollamaModels = [
+      {
+        provider: "ollama",
+        modelName: "qwen3-coder:30b",
+        displayName: "Qwen3 Coder 30B",
+      },
+    ];
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+
+    const qwenRow = screen.getByText("Qwen3 Coder 30B").closest("button")!;
+    expect(qwenRow.getAttribute("aria-label")).toContain("Effort: Medium");
+    fireEvent.click(screen.getByText("None"));
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedModel: {
+          name: "qwen3-coder:30b",
+          provider: "ollama",
+        },
+        modelEffortPreferences: {
+          '["ollama","qwen3-coder:30b",null]': "none",
         },
       });
     });

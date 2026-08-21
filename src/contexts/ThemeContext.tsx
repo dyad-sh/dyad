@@ -21,6 +21,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const savedTheme = localStorage.getItem("theme") as Theme;
     return savedTheme || "system";
   });
+  const [systemThemeFallback] = useState(
+    () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
+  );
 
   const nativeThemeQuery = useQuery({
     queryKey: queryKeys.system.nativeTheme,
@@ -58,7 +61,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const isDarkMode =
     theme === "dark" ||
-    (theme === "system" && nativeThemeQuery.data?.shouldUseDarkColors === true);
+    (theme === "system" &&
+      (nativeThemeQuery.data?.shouldUseDarkColors ?? systemThemeFallback));
 
   useEffect(() => {
     // Save theme preference to localStorage

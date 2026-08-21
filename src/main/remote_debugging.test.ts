@@ -236,6 +236,20 @@ describe("resolveRemoteDebuggingEndpoint", () => {
     await expect(pending).resolves.toBeNull();
   });
 
+  it("ignores a stale port file left by an earlier launch", async () => {
+    const portFile = path.join(h.paths.sessionData, "DevToolsActivePort");
+    fs.writeFileSync(portFile, "51234\n/devtools/browser/stale\n");
+    const oldTime = new Date(Date.now() - 60_000);
+    fs.utimesSync(portFile, oldTime, oldTime);
+    enable();
+    vi.useFakeTimers();
+
+    const pending = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    await expect(pending).resolves.toBeNull();
+  });
+
   it("ignores a port outside the valid range", async () => {
     // A truncated or stale file can parse as a number that no socket can bind,
     // which would report CDP ready behind an unusable endpoint.

@@ -68,7 +68,7 @@ afterEach(() => {
 
 describe("ThemeProvider", () => {
   it("uses Electron's native theme for System and follows update events", async () => {
-    const matchMedia = vi.fn();
+    const matchMedia = vi.fn(() => ({ matches: false }));
     vi.stubGlobal("matchMedia", matchMedia);
     h.getNativeThemeState.mockResolvedValue({ shouldUseDarkColors: true });
 
@@ -78,7 +78,7 @@ describe("ThemeProvider", () => {
       expect(document.documentElement.classList.contains("dark")).toBe(true);
       expect(screen.getByTestId("theme-state").textContent).toBe("system:true");
     });
-    expect(matchMedia).not.toHaveBeenCalled();
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-color-scheme: dark)");
 
     act(() => h.listener?.({ shouldUseDarkColors: false }));
 
@@ -87,6 +87,18 @@ describe("ThemeProvider", () => {
       expect(screen.getByTestId("theme-state").textContent).toBe(
         "system:false",
       );
+    });
+  });
+
+  it("falls back to the browser preference when native theme bootstrap fails", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    h.getNativeThemeState.mockRejectedValue(new Error("IPC unavailable"));
+
+    renderTheme();
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+      expect(screen.getByTestId("theme-state").textContent).toBe("system:true");
     });
   });
 

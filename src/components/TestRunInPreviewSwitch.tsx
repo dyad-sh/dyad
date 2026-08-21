@@ -37,7 +37,7 @@ export function TestRunInPreviewSwitch() {
         While enabled, Dyad opens a debugging port on 127.0.0.1 for the whole
         session — not just while tests run — and any program on this machine
         that finds it can control the app. Only enable this on a machine you
-        trust, and turn it off when you're done.
+        trust. Turn it off and restart Dyad when you're done.
       </p>
     </div>
   );

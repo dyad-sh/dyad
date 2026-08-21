@@ -307,6 +307,34 @@ describe("run", () => {
     );
   });
 
+  it("leaves the one-at-a-time refusal unmarked", async () => {
+    // That refusal comes from the machine declining to start, not from a run
+    // it took on — so it has nothing on screen of its own, and the panel has
+    // to say it. What keeps it unmarked is where start() sits.
+    let release!: () => void;
+    h.setupResult = new Promise((resolve) => {
+      release = () => resolve(RESULT);
+    });
+    const first = checkThenRun();
+
+    await expect(checkThenRun()).rejects.not.toMatchObject({
+      code: SETUP_MACHINE_REPORTED,
+    });
+
+    release();
+    await first;
+  });
+
+  it("leaves an error that carries its own code alone", async () => {
+    // A system error names itself — ENOTFOUND and the like — and overwriting
+    // that loses what went wrong. Said twice is better than said wrongly.
+    h.setupError = Object.assign(new Error("getaddrinfo ENOTFOUND"), {
+      code: "ENOTFOUND",
+    });
+
+    await expect(checkThenRun()).rejects.toMatchObject({ code: "ENOTFOUND" });
+  });
+
   it("marks a failure the machine already put on screen", async () => {
     // The panel suppresses what carries this and shows everything else, so
     // the mark is what stops one failure being reported twice.

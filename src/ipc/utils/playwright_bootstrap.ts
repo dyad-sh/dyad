@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import log from "electron-log/main";
+import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
 import {
   PNPM_INSTALL_POLICY_ARGS,
@@ -13,7 +14,7 @@ import {
   getNodeModuleEntryPath,
   resolveNodeModulePackageJsonPathSync,
 } from "../../../shared/node_module_resolution";
-import { E2E_TEST_DIR } from "../types/tests";
+import { E2E_TEST_DIR, TEST_SPEC_GLOB } from "../types/tests";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -227,6 +228,86 @@ function mapsToShim(tsconfig: string, shimPath: string): boolean {
   return targets.some(
     (target) => typeof target === "string" && shimPathStem(target) === stem,
   );
+}
+
+function resolvedPlaywrightTargets(
+  configPath: string,
+  visited = new Set<string>(),
+): string[] | null {
+  if (visited.has(configPath) || visited.size >= MAX_TSCONFIG_FILES) return [];
+  visited.add(configPath);
+
+  const raw = readFileOrNull(configPath);
+  const parsed = raw === null ? null : parseTsconfigJson(raw);
+  if (!parsed) return [];
+
+  const paths = parsed.compilerOptions?.paths;
+  if (paths && typeof paths === "object") {
+    const targets = (paths as Record<string, unknown>)["@playwright/test"];
+    if (!Array.isArray(targets)) return [];
+    const configDir = path.dirname(configPath);
+    const baseUrl = parsed.compilerOptions?.baseUrl;
+    const baseDir =
+      typeof baseUrl === "string"
+        ? path.resolve(configDir, baseUrl)
+        : configDir;
+    return targets
+      .filter((target): target is string => typeof target === "string")
+      .map((target) => path.resolve(baseDir, target));
+  }
+
+  const parents = Array.isArray(parsed.extends)
+    ? parsed.extends
+    : [parsed.extends];
+  // TypeScript applies later bases after earlier ones. Search in reverse so
+  // the first mapping found is the one that survives into this config.
+  for (const parent of parents.reverse()) {
+    if (typeof parent !== "string" || !parent.startsWith(".")) continue;
+    const targets = resolvedPlaywrightTargets(
+      resolveTsconfigRef(configPath, parent, "extends"),
+      visited,
+    );
+    if (targets !== null) return targets;
+  }
+  return null;
+}
+
+function tsconfigRoutesToShim(configPath: string, shimPath: string): boolean {
+  const shimStem = shimPathStem(path.resolve(shimPath));
+  return (resolvedPlaywrightTargets(configPath) ?? []).some(
+    (target) => shimPathStem(path.normalize(target)) === shimStem,
+  );
+}
+
+function findUnroutedCloserTsconfig(
+  appPath: string,
+  shimPath: string,
+): string | null {
+  const e2eRoot = path.join(appPath, E2E_TEST_DIR);
+  const specs = globSync(TEST_SPEC_GLOB, {
+    cwd: appPath,
+    absolute: true,
+    nodir: true,
+  }).sort();
+
+  for (const spec of specs) {
+    let directory = path.dirname(spec);
+    while (directory !== e2eRoot) {
+      const relative = path.relative(e2eRoot, directory);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) break;
+      const candidate = path.join(directory, "tsconfig.json");
+      if (fs.existsSync(candidate)) {
+        if (!tsconfigRoutesToShim(candidate, shimPath)) {
+          return path.relative(appPath, candidate).split(path.sep).join("/");
+        }
+        break;
+      }
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+  }
+  return null;
 }
 
 /** A browser channel that drives a system-installed browser, or bundled. */
@@ -896,16 +977,24 @@ export function ensurePreviewShim(appPath: string): { warning?: string } {
     fs.rmSync(legacyShimPath, { force: true });
   }
 
+  const rootRoutesToShim =
+    appOwnedTsconfig === null ||
+    legacyStillMapped ||
+    mapsToShim(appOwnedTsconfig, SHIM_PATH_FROM_E2E_TSCONFIG);
+
   if (appOwnedTsconfig === null) {
     fs.writeFileSync(tsconfigPath, buildE2eTsconfigSource(appPath));
-    return {};
   }
 
-  if (
-    legacyStillMapped ||
-    mapsToShim(appOwnedTsconfig, SHIM_PATH_FROM_E2E_TSCONFIG)
-  ) {
-    // The app kept its own tsconfig but still routes to a shim Dyad maintains.
+  if (rootRoutesToShim) {
+    const closerTsconfig = findUnroutedCloserTsconfig(appPath, shimPath);
+    if (closerTsconfig) {
+      return {
+        warning: `${closerTsconfig} takes precedence for at least one test and doesn't route "@playwright/test" through Dyad's preview shim. The run will use a separate browser instead. Extend ${E2E_TSCONFIG_RELATIVE_PATH} or add a mapping to the generated shim to enable preview runs.\n`,
+      };
+    }
+    // The app kept its own root tsconfig, or every closer config, routing to a
+    // shim Dyad maintains.
     return {};
   }
 

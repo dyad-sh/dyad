@@ -3,6 +3,7 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
   getInitialLoadTelemetryProperties,
+  getPostHogTelemetryStorage,
   getSettingsPersonTelemetryProperties,
   isPostHogCrashTelemetryEvent,
   isPostHogErrorTelemetryEvent,
@@ -40,6 +41,8 @@ const HOUR_MS = 60 * 60 * 1000;
 function exceptionEvent(
   message = "Failed to load app 123456",
   filename = "file:///Users/alice/dyad/src/example.ts",
+  lineno = 42,
+  colno = 7,
 ) {
   return {
     event: "$exception",
@@ -54,8 +57,8 @@ function exceptionEvent(
               {
                 filename,
                 function: "loadApp",
-                lineno: 42,
-                colno: 7,
+                lineno,
+                colno,
               },
             ],
           },
@@ -144,6 +147,18 @@ describe("PostHogErrorDeduper", () => {
         2,
       ),
     ).toBeTruthy();
+    expect(
+      deduper.process(
+        exceptionEvent(
+          "Request failed: 400",
+          "file:///app/src/example.ts",
+          43,
+          7,
+        ),
+        false,
+        3,
+      ),
+    ).toBeTruthy();
   });
 
   it("deduplicates custom error-shaped events", () => {
@@ -214,6 +229,30 @@ describe("PostHogErrorDeduper", () => {
     const inMemoryDeduper = new PostHogErrorDeduper(throwingStorage);
     expect(inMemoryDeduper.process(event, false, 0)).toBe(event);
     expect(inMemoryDeduper.process(event, false, 1)).toBeNull();
+  });
+
+  it("keeps memory authoritative after a storage write failure", () => {
+    const readOnlyStorage = {
+      getItem: () => "{}",
+      setItem: () => {
+        throw new Error("storage is read-only");
+      },
+    };
+    const deduper = new PostHogErrorDeduper(readOnlyStorage);
+    const event = exceptionEvent();
+
+    expect(deduper.process(event, false, 0)).toBe(event);
+    expect(deduper.process(event, false, 1)).toBeNull();
+  });
+
+  it("guards access to the localStorage property itself", () => {
+    const owner = Object.defineProperty({}, "localStorage", {
+      get: () => {
+        throw new Error("storage access denied");
+      },
+    });
+
+    expect(getPostHogTelemetryStorage(owner as Window)).toBeUndefined();
   });
 
   it("bounds persisted fingerprint records", () => {

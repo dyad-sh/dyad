@@ -10,6 +10,7 @@ const MAX_ERROR_DEDUPE_ENTRIES = 500;
 const MAX_STORED_ENTRIES_TO_PARSE = MAX_ERROR_DEDUPE_ENTRIES * 2;
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
+type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
 
 type ErrorDedupeRecord = {
   lastSentAt: number;
@@ -66,8 +67,11 @@ export type PostHogTelemetryEvent = {
  */
 export class PostHogErrorDeduper {
   private memoryState: ErrorDedupeState = {};
+  private storageAvailable: boolean;
 
-  constructor(private readonly storage?: TelemetryStorage) {}
+  constructor(private readonly storage?: TelemetryStorage) {
+    this.storageAvailable = Boolean(storage);
+  }
 
   process<T extends PostHogTelemetryEvent | null | undefined>(
     event: T,
@@ -128,7 +132,7 @@ export class PostHogErrorDeduper {
   private readState(now: number): ErrorDedupeState {
     let candidate = this.memoryState;
 
-    if (this.storage) {
+    if (this.storage && this.storageAvailable) {
       try {
         const raw = this.storage.getItem(POSTHOG_ERROR_DEDUPE_STORAGE_KEY);
         if (raw) {
@@ -156,7 +160,7 @@ export class PostHogErrorDeduper {
     );
     this.memoryState = boundedState;
 
-    if (this.storage) {
+    if (this.storage && this.storageAvailable) {
       try {
         this.storage.setItem(
           POSTHOG_ERROR_DEDUPE_STORAGE_KEY,
@@ -164,8 +168,19 @@ export class PostHogErrorDeduper {
         );
       } catch {
         // Continue deduplicating in memory when persistence is unavailable.
+        this.storageAvailable = false;
       }
     }
+  }
+}
+
+export function getPostHogTelemetryStorage(
+  owner: TelemetryStorageOwner,
+): TelemetryStorage | undefined {
+  try {
+    return owner.localStorage;
+  } catch {
+    return undefined;
   }
 }
 
@@ -287,6 +302,8 @@ function normalizeException(exception: unknown): string {
         normalizeStackFilename(frame.filename),
         normalizeTelemetryValue(frame.function),
         normalizeTelemetryValue(frame.module),
+        normalizeStackCoordinate(frame.lineno),
+        normalizeStackCoordinate(frame.colno),
       ]
         .filter(Boolean)
         .join(":");
@@ -301,6 +318,12 @@ function normalizeException(exception: unknown): string {
   ]
     .filter(Boolean)
     .join("|");
+}
+
+function normalizeStackCoordinate(value: unknown): string {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? String(value)
+    : "";
 }
 
 function normalizeStackFilename(value: unknown): string {

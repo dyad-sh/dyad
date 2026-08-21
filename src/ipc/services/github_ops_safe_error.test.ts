@@ -80,7 +80,7 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       String.raw`hook: path="/tmp/Client\" Secret/repo/file" failed`,
-      'hook: path="[redacted path]" failed',
+      "GitHub operation failed",
     ],
     [
       String.raw`hook: path="/tmp/Client\"@corp/repo/file" failed`,
@@ -88,7 +88,15 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
-      'fatal: cannot open "[redacted path]" because setting "core.longpaths" is disabled',
+      "GitHub operation failed",
+    ],
+    [
+      String.raw`hook: path="/tmp/Client\" Secret.txt" failed`,
+      "GitHub operation failed",
+    ],
+    [
+      String.raw`fatal: cannot open "C:\Repos\proj\" in /usr/local/git, see "core.longpaths"`,
+      "GitHub operation failed",
     ],
     [
       "remote: error: File '/tmp/build/a.bin' is 124 MB; see 'https://gh.io/lfs'",

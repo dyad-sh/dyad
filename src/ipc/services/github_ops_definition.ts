@@ -317,7 +317,6 @@ function createCommandRunner(
                 verificationAttempt: command.verificationAttempt,
               });
             }
-            forgetIfInactive(invocationRef?.operationId);
           },
           (error) => {
             if (generation !== gitStateProbeGeneration) {
@@ -330,7 +329,6 @@ function createCommandRunner(
               command.verificationAttempt,
               "git-state",
             );
-            forgetIfInactive(invocationRef?.operationId);
           },
         );
         return;
@@ -471,20 +469,28 @@ export const githubOpsDefinition: GithubOpsDefinition = {
       if ("operationId" in event) {
         githubOpsPresentationService.confirm(event.operationId);
       }
-      const previousOperationId =
-        previous.activeInvocationRef?.operationId ?? null;
+      const previousOperationId = previous.activeInvocationRef?.operationId;
       const activeOperationId = state.activeInvocationRef?.operationId ?? null;
-      if (
-        previousOperationId !== null &&
-        previousOperationId !== activeOperationId &&
-        !commands.some(
-          (actorCommand) =>
-            actorCommand.type === "domain" &&
-            actorCommand.invocationRef?.operationId === previousOperationId &&
-            commandRetainsPresentationRoute(actorCommand.command),
-        )
-      ) {
-        githubOpsPresentationService.forget(previousOperationId);
+      const recoveryOperationId =
+        "recoveryInvocationRef" in event
+          ? event.recoveryInvocationRef?.operationId
+          : undefined;
+      for (const operationId of new Set([
+        previousOperationId,
+        recoveryOperationId,
+      ])) {
+        if (
+          operationId &&
+          operationId !== activeOperationId &&
+          !commands.some(
+            (actorCommand) =>
+              actorCommand.type === "domain" &&
+              actorCommand.invocationRef?.operationId === operationId &&
+              commandRetainsPresentationRoute(actorCommand.command),
+          )
+        ) {
+          githubOpsPresentationService.forget(operationId);
+        }
       }
     },
     onEventIgnored: ({ state, event }) => {

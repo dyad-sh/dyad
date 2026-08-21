@@ -30,9 +30,8 @@ export class GithubOpsPresentationService {
       const oldestTentative = [...this.initiatorByOperationId].find(
         ([, entry]) => !entry.confirmed,
       )?.[0];
-      const oldest =
-        oldestTentative ?? this.initiatorByOperationId.keys().next().value;
-      if (oldest) this.forget(oldest);
+      if (!oldestTentative) return;
+      this.forget(oldestTentative);
     }
     const entry = {
       windowSessionId: windowSessionId as WindowSessionId,

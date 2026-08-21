@@ -147,6 +147,10 @@ function setupController(): CoolifySetupController {
                   ? {
                       instanceUrl: result.dashboardUrl,
                       accessToken: { value: result.token },
+                      // Cleared alongside, as saving a token by hand does: one
+                      // from an instance Dyad has moved off is not a way back
+                      // into the one it is on now.
+                      previousAccessToken: undefined,
                     }
                   : {}),
               },

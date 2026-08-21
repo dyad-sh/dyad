@@ -103,12 +103,16 @@ describe("mintApiToken", () => {
     expect(session.scripts[0]).toContain("session(['currentTeam' => $team])");
   });
 
-  it("asks for root abilities", async () => {
+  it("asks for what the deploy path uses and nothing more", async () => {
     // Narrower tokens hide a server's private key id, which the deploy path
     // reads to tell a stale key from one it simply cannot see.
     const session = fakeSession([REAL_TOKEN]);
     await mintApiToken(session, "admin@gmail.com");
-    expect(session.scripts[0]).toContain("['root']");
+    // Not root, which Coolify treats as a bypass of the ability check, and
+    // not read:sensitive, which would let this token read private keys.
+    expect(session.scripts[0]).toContain("['read', 'write', 'deploy']");
+    expect(session.scripts[0]).not.toContain("root");
+    expect(session.scripts[0]).not.toContain("read:sensitive");
   });
 
   it("keeps the address out of the script", async () => {

@@ -130,6 +130,18 @@ export async function enableApi(
 }
 
 /**
+ * What Dyad's token may do, written as the PHP array the script below needs.
+ *
+ * `read` and `write` cover servers, projects, keys and applications, and
+ * `deploy` starts one. Not `root`: Coolify treats that as a bypass of the
+ * ability check rather than as a set of abilities, and no route asks for it.
+ * Not `read:sensitive` either — the only thing it unlocks is private key
+ * material, which nothing here reads, and a token Coolify never expires
+ * should not be able to fetch the user's SSH keys.
+ */
+const TOKEN_ABILITIES = "['read', 'write', 'deploy']";
+
+/**
  * Creates an API token for Dyad.
  *
  * WORKAROUND, in two parts.
@@ -140,14 +152,10 @@ export async function enableApi(
  * the insert fails on a not-null constraint against team_id. The session line
  * is doing real work, not defensive coding.
  *
- * `root` is the honest ability to ask for: reading a server's private key id —
- * which the deploy path needs to tell a stale key from a hidden one — requires
- * read:sensitive, and a narrower token silently returns nothing there instead
- * of failing.
- *
  * TODO: replace both halves if Coolify gains a token-minting command or an
  * endpoint that does not need a browser session.
  */
+
 export async function mintApiToken(
   session: SshSession,
   adminEmail: string,
@@ -175,7 +183,7 @@ export async function mintApiToken(
       // reads the team from a session tinker does not otherwise have, and the
       // insert fails on team_id without it.
       `if ($team) { session(['currentTeam' => $team]); }`,
-      `echo !$u ? 'no-user' : (!$team ? 'no-team' : $u->createToken('${tokenName}', ['root'], null)->plainTextToken);`,
+      `echo !$u ? 'no-user' : (!$team ? 'no-team' : $u->createToken('${tokenName}', ${TOKEN_ABILITIES}, null)->plainTextToken);`,
     ].join("\n"),
     {
       env: { DYAD_ADMIN_EMAIL: adminEmail },

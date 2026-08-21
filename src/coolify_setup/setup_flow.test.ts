@@ -329,7 +329,7 @@ describe("runServerSetup", () => {
         onAccountKnown: ({ credentials }) => seen.push(credentials.password),
         waitForDashboardImpl: async () => false,
       }).promise,
-    ).rejects.toThrow(/dashboard did not start/);
+    ).rejects.toThrow(/nothing answered on port 8000/);
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBeTruthy();

@@ -251,6 +251,45 @@ describe("domainPointsAtServer", () => {
 describe("tryEnableHttps", () => {
   const FAST = { timeoutMs: 40, intervalMs: 5 };
 
+  it("does not wait for a certificate a private name can never get", async () => {
+    // The certificate poll is two minutes, and a LAN name pays all of it for
+    // an answer no certificate authority can give.
+    const { session, scripts } = fakeSession();
+    const outcome = await tryEnableHttps(session, "box.homelab.lan", {
+      ...FAST,
+      resolve: async () => ({ addresses: ["192.168.1.50"], failed: false }),
+      check: async () => true,
+    });
+
+    expect(outcome.secure).toBe(false);
+    expect(outcome.reason).toMatch(/cannot reach/);
+    // Nothing was applied, so nothing has to be taken back off.
+    expect(scripts).toHaveLength(0);
+  });
+
+  it("still tries when the name resolves somewhere public", async () => {
+    const { session } = fakeSession();
+    const outcome = await tryEnableHttps(session, "box.example.com", {
+      ...FAST,
+      resolve: async () => ({ addresses: ["203.0.113.5"], failed: false }),
+      check: async () => true,
+    });
+
+    expect(outcome.secure).toBe(true);
+  });
+
+  it("still tries when the name cannot be resolved at all", async () => {
+    // Not knowing where a server is is not the same as knowing it is private.
+    const { session } = fakeSession();
+    const outcome = await tryEnableHttps(session, "box.internal", {
+      ...FAST,
+      resolve: async () => ({ addresses: [], failed: true }),
+      check: async () => true,
+    });
+
+    expect(outcome.secure).toBe(true);
+  });
+
   it("takes the domain back off when the cancel lands while it is being set", async () => {
     // The script sets the fqdn before it rebuilds the proxy, so a cancel here
     // has almost certainly already been written to the instance.

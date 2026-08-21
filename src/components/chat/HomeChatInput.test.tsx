@@ -21,7 +21,6 @@ vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     settings: {
       enableDyadPro: true,
-      enableSelectAppFromHomeChatInput: true,
     },
   }),
 }));

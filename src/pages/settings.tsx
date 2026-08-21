@@ -327,31 +327,6 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            <div
-              id={SETTING_IDS.enableSelectAppFromHomeChatInput}
-              className="space-y-1.5"
-            >
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="enable-select-app-from-home-chat-input"
-                  aria-label="Enable Select App from Home Chat Input"
-                  checked={!!settings?.enableSelectAppFromHomeChatInput}
-                  onCheckedChange={(checked) => {
-                    updateSettings({
-                      enableSelectAppFromHomeChatInput: checked,
-                    });
-                  }}
-                />
-                <Label htmlFor="enable-select-app-from-home-chat-input">
-                  Enable Select App from Home Chat Input
-                </Label>
-              </div>
-              <p className={hint}>
-                Show an app selector in the home chat input to start a chat
-                referencing an existing app.
-              </p>
-            </div>
-
             <div id={SETTING_IDS.enableCodeExplorer} className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <Switch

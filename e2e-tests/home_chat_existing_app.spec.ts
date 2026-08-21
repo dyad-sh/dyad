@@ -4,7 +4,6 @@ import { expect } from "@playwright/test";
 test("home chat - start new chat in existing app", async ({ po }) => {
   await po.setUp({
     autoApprove: true,
-    enableSelectAppFromHomeChatInput: true,
   });
 
   // Create an app first
@@ -53,7 +52,6 @@ test("home chat - start new chat in existing app", async ({ po }) => {
 test("home chat - clear selected app", async ({ po }) => {
   await po.setUp({
     autoApprove: true,
-    enableSelectAppFromHomeChatInput: true,
   });
 
   // Create an app first

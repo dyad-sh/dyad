@@ -783,4 +783,26 @@ describe("main-hosted github_ops actor", () => {
       }),
     );
   });
+
+  it("retains branch-failure routing until its notification is presented", async () => {
+    service.run.mockRejectedValue(new Error("branch operation failed"));
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "create-branch-failure",
+      op: { type: "create-branch", name: "feature", thenSwitch: false },
+    });
+    await vi.waitFor(() => expect(presentation.showError).toHaveBeenCalled());
+
+    expect(presentation.showError).toHaveBeenCalledWith(
+      7,
+      "create-branch-failure",
+      "branch operation failed",
+    );
+    expect(presentation.showError.mock.invocationCallOrder[0]).toBeLessThan(
+      presentation.forget.mock.invocationCallOrder[0],
+    );
+  });
 });

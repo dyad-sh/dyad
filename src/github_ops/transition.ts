@@ -238,15 +238,24 @@ function operationFailed(
   return {
     kind: "applied",
     state: { type: "idle", banner },
-    commands: [
-      "create-branch",
-      "rename-branch",
-      "merge",
-      "delete-branch",
-    ].includes(op.type)
+    commands: shouldNotifyOperationFailure(op, failure)
       ? [{ type: "notify", kind: "error", message: failure.message }]
       : [],
   };
+}
+
+export function shouldNotifyOperationFailure(
+  op: GithubOperation,
+  failure: GithubOperationFailure,
+): boolean {
+  return (
+    ["create-branch", "rename-branch", "merge", "delete-branch"].includes(
+      op.type,
+    ) &&
+    failure.code !== "REBASE_IN_PROGRESS" &&
+    failure.code !== "MERGE_IN_PROGRESS" &&
+    failure.code !== "MERGE_CONFLICT"
+  );
 }
 
 function awaitConflicts(

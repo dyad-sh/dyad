@@ -16,7 +16,10 @@ import {
 } from "@/github_ops/error_message";
 import type { GithubOpsCommand } from "@/github_ops/state";
 import { INITIAL_GITHUB_OPS_STATE } from "@/github_ops/state";
-import { transition } from "@/github_ops/transition";
+import {
+  shouldNotifyOperationFailure,
+  transition,
+} from "@/github_ops/transition";
 import {
   GITHUB_OPS_INVOCATION_KIND,
   GITHUB_OPS_MACHINE_ID,
@@ -253,22 +256,26 @@ function createCommandRunner(
               op: command.op,
               invocationRef,
             });
+            githubOpsPresentationService.forget(invocationRef.operationId);
           },
           (error) => {
+            const failure = {
+              ...((error as { code?: unknown })?.code &&
+              typeof (error as { code?: unknown }).code === "string"
+                ? { code: (error as { code: string }).code }
+                : {}),
+              kind: githubOpsFailureKind(error),
+              message: errorMessage(error, "GitHub operation failed"),
+            };
             emit({
               type: "OP_FAILED",
               op: command.op,
               invocationRef,
-              failure: {
-                ...((error as { code?: unknown })?.code &&
-                typeof (error as { code?: unknown }).code === "string"
-                  ? { code: (error as { code: string }).code }
-                  : {}),
-                kind: githubOpsFailureKind(error),
-                message: errorMessage(error, "GitHub operation failed"),
-              },
+              failure,
             });
-            githubOpsPresentationService.forget(invocationRef.operationId);
+            if (!shouldNotifyOperationFailure(command.op, failure)) {
+              githubOpsPresentationService.forget(invocationRef.operationId);
+            }
           },
         );
         return;

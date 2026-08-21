@@ -9,6 +9,27 @@ const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
 const UNSAFE_GITHUB_ERROR_RESIDUAL =
   /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|(?:^|[:#>|])\/[^/\s]+\/[^/\s]+|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bglpat-[A-Za-z0-9_-]{10,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
 
+function findUnescapedQuote(
+  line: string,
+  quote: string,
+  fromIndex: number,
+): number {
+  let index = line.indexOf(quote, fromIndex);
+  while (index !== -1) {
+    let precedingBackslashes = 0;
+    for (
+      let cursor = index - 1;
+      cursor >= 0 && line[cursor] === "\\";
+      cursor--
+    ) {
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 2 === 0) return index;
+    index = line.indexOf(quote, index + 1);
+  }
+  return -1;
+}
+
 function redactQuotedAbsolutePaths(message: string): string {
   return message
     .split("\n")
@@ -27,9 +48,9 @@ function redactQuotedAbsolutePaths(message: string): string {
 
         const start = match.index;
         const quote = match[1];
-        let closing = line.indexOf(quote, start + match[0].length);
+        let closing = findUnescapedQuote(line, quote, start + match[0].length);
         while (closing !== -1 && quote === "'") {
-          const nextQuote = line.indexOf(quote, closing + 1);
+          const nextQuote = findUnescapedQuote(line, quote, closing + 1);
           const nextCharacter = line[closing + 1] ?? "";
           const isEmbeddedApostrophe =
             /[A-Za-z0-9]/.test(nextCharacter) ||

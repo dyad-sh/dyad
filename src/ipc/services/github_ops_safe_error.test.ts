@@ -75,6 +75,10 @@ describe("safeGithubOpsErrorMessage", () => {
       "fatal: Unable to create '[redacted path]'",
     ],
     [
+      String.raw`hook: path="/tmp/Client\"Secret/repo/file" failed`,
+      'hook: path="[redacted path]" failed',
+    ],
+    [
       "remote: error: File '/tmp/build/a.bin' is 124 MB; see 'https://gh.io/lfs'",
       "remote: error: File '[redacted path]' is 124 MB; see 'https://gh.io/lfs'",
     ],

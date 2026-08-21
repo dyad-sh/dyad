@@ -52,8 +52,6 @@ export const SETTING_IDS = {
   enableAdvancedSubagents: "setting-enable-advanced-subagents",
   autoFixReviewIssues: "setting-auto-fix-review-issues",
   enableOwnServerDeployment: "setting-enable-own-server-deployment",
-  enableSelectAppFromHomeChatInput:
-    "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
 } as const;
 
@@ -609,16 +607,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "publish",
       "experiment",
     ],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
-  },
-
-  {
-    id: SETTING_IDS.enableSelectAppFromHomeChatInput,
-    label: "Enable Select App from Home Chat Input",
-    description:
-      "Show an app selector in the home chat input to start a chat referencing an existing app",
-    keywords: ["app", "select", "home", "chat", "experiment", "input"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

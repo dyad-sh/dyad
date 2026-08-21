@@ -347,19 +347,14 @@ export class PageObject {
   async setUp({
     autoApprove = false,
     enableBasicAgent = false,
-    enableSelectAppFromHomeChatInput = false,
   }: {
     autoApprove?: boolean;
     enableBasicAgent?: boolean;
-    enableSelectAppFromHomeChatInput?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.navigation.goToSettingsTab();
     if (autoApprove) {
       await this.settings.toggleAutoApprove();
-    }
-    if (enableSelectAppFromHomeChatInput) {
-      await this.settings.toggleEnableSelectAppFromHomeChatInput();
     }
     await this.settings.setUpTestProvider();
     await this.settings.setUpTestModel();

@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
   previewNativeViewAppIdAtom: Symbol("previewNativeViewAppIdAtom"),
   selectedAppIdAtom: Symbol("selectedAppIdAtom"),
   testRunStateAtom: Symbol("testRunStateAtom"),
+  testRunPhase: "running" as "idle" | "setup" | "running",
+  setTestSetupOverlayActive: vi.fn(),
   onScreenshotUpdated: vi.fn(),
   screenshotHandler: null as ((payload: { dataUrl: string }) => void) | null,
 }));
@@ -16,7 +18,7 @@ vi.mock("jotai", () => ({
   useAtomValue: (atom: symbol) => {
     if (atom === h.overlayActiveAtom) return true;
     if (atom === h.selectedAppIdAtom) return 1;
-    if (atom === h.testRunStateAtom) return { phase: "running" };
+    if (atom === h.testRunStateAtom) return { phase: h.testRunPhase };
     return false;
   },
   useSetAtom: () => vi.fn(),
@@ -101,6 +103,9 @@ vi.mock("@/ipc/types", () => ({
 }));
 
 vi.mock("@/lib/toast", () => ({ showError: vi.fn() }));
+vi.mock("./usePreviewNativeOverlay", () => ({
+  usePreviewNativeOverlay: () => h.setTestSetupOverlayActive,
+}));
 vi.mock("./PreviewLoadingScreen", () => ({
   PreviewLoadingScreen: () => null,
 }));
@@ -108,6 +113,8 @@ vi.mock("./PreviewLoadingScreen", () => ({
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
 
 beforeEach(() => {
+  h.testRunPhase = "running";
+  h.setTestSetupOverlayActive.mockReset();
   h.screenshotHandler = null;
   h.onScreenshotUpdated.mockReset().mockImplementation((handler) => {
     h.screenshotHandler = handler;
@@ -144,5 +151,40 @@ describe("PreviewWebContentsView screenshot fallback", () => {
     expect(
       screen.getByTestId("preview-native-screenshot").getAttribute("src"),
     ).toBe("data:image/png;base64,second");
+  });
+
+  it("shows setup feedback over the preview screenshot", () => {
+    h.testRunPhase = "setup";
+    render(<PreviewWebContentsView loading={false} />);
+
+    expect(h.setTestSetupOverlayActive).toHaveBeenCalledWith(true);
+    expect(
+      screen.getByTestId("preview-native-test-setup-banner").textContent,
+    ).toContain("Setting up tests");
+
+    act(() => {
+      h.screenshotHandler?.({
+        dataUrl: "data:image/png;base64,setup",
+      });
+    });
+
+    expect(
+      screen
+        .getByTestId("preview-native-screenshot")
+        .classList.contains("opacity-50"),
+    ).toBe(true);
+    expect(
+      screen.getByTestId("preview-native-test-setup-overlay").textContent,
+    ).toContain("Tests will start automatically");
+  });
+
+  it("does not cover the preview once tests are running", () => {
+    render(<PreviewWebContentsView loading={false} />);
+
+    expect(h.setTestSetupOverlayActive).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId("preview-native-test-setup-banner")).toBeNull();
+    expect(
+      screen.queryByTestId("preview-native-test-setup-overlay"),
+    ).toBeNull();
   });
 });

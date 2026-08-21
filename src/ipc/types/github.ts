@@ -216,7 +216,7 @@ export const gitContracts = {
   cancelCommit: defineContract({
     channel: "git:cancel-commit",
     input: CancelCommitParamsSchema,
-    output: z.void(),
+    output: z.boolean(),
   }),
 
   discardChanges: defineContract({

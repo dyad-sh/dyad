@@ -154,6 +154,32 @@ describe("gitCommit", () => {
       "validated message",
     );
   });
+
+  it("does not run hooks from a repository-relative suppression path", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-repo-hook-suppression-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const maliciousHooksDir = path.join(repoDir, ".dyad-no-git-hooks");
+    const markerPath = path.join(repoDir, "malicious-hook-ran");
+    await fs.promises.mkdir(maliciousHooksDir);
+    await fs.promises.writeFile(
+      path.join(maliciousHooksDir, "prepare-commit-msg"),
+      `#!/bin/sh\ntouch ${JSON.stringify(markerPath)}\n`,
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(
+        path.join(maliciousHooksDir, "prepare-commit-msg"),
+        0o755,
+      );
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+
+    await gitCommit({ path: repoDir, message: "safe checkpoint" });
+
+    expect(fs.existsSync(markerPath)).toBe(false);
+  });
 });
 
 describe("GitService explicit commit hooks", () => {
@@ -193,6 +219,35 @@ describe("GitService explicit commit hooks", () => {
 
     expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%s"])).toBe(
       "validated: manual message",
+    );
+  });
+
+  it("runs hooks with the same author identity used by the commit", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-hook-author-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hookPath = path.join(repoDir, ".git", "hooks", "pre-commit");
+    const authorPath = path.join(repoDir, ".git", "hook-author");
+    await fs.promises.writeFile(
+      hookPath,
+      `#!/bin/sh\ngit var GIT_AUTHOR_IDENT > ${JSON.stringify(authorPath)}\n`,
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(hookPath, 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+
+    await new GitService().stageAllAndCommitWithPreCommit({
+      path: repoDir,
+      message: "manual message",
+    });
+
+    const hookAuthor = (await fs.promises.readFile(authorPath, "utf8"))
+      .trim()
+      .replace(/ \d+ [+-]\d{4}$/, "");
+    expect(hookAuthor).toBe(
+      await runGitOutput(repoDir, ["log", "-1", "--format=%an <%ae>"]),
     );
   });
 

@@ -70,8 +70,9 @@ function installManualCommitPreCommitHook(appPath: string) {
       "const runLogPath = " + JSON.stringify(runLogPath) + ";",
       'const mode = fs.readFileSync(modePath, "utf8").trim();',
       'fs.appendFileSync(runLogPath, mode + "\\n");',
-      // Keep the hook observable long enough to assert the progress phase.
-      "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);",
+      // Keep the hook observable long enough to assert progress and cancellation.
+      'const delayMs = mode === "slow" ? 10_000 : 500;',
+      "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);",
       'if (mode === "fail") {',
       '  console.error("manual pre-commit hook intentionally failed");',
       "  process.exit(1);",
@@ -371,4 +372,35 @@ test("manual commits run pre-commit hooks and surface failures", async ({
     }).trim(),
   ).toBe("A  pre-commit-fail.txt");
   expect(fs.readFileSync(runLogPath, "utf-8")).toBe("pass\nfail\n");
+
+  fs.writeFileSync(modePath, "slow\n");
+  const cancelledFile = path.join(appPath, "pre-commit-cancelled.txt");
+  fs.writeFileSync(cancelledFile, "left staged after cancellation\n");
+  const cancelledMessage = "E2E manual commit cancelled during pre-commit";
+  await messageInput.clear();
+  await messageInput.fill(cancelledMessage);
+  await commitButton.click();
+
+  const cancelCommitButton = po.page.getByTestId("cancel-commit-button");
+  await expect(cancelCommitButton).toHaveText("Stop checks", {
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(cancelCommitButton).toBeEnabled();
+  await cancelCommitButton.click();
+  await expect(commitButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+
+  expect(
+    execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: appPath,
+      encoding: "utf-8",
+    }).trim(),
+  ).toBe(headBeforeFailure);
+  expect(
+    execFileSync(
+      "git",
+      ["status", "--short", "--", "pre-commit-cancelled.txt"],
+      { cwd: appPath, encoding: "utf-8" },
+    ).trim(),
+  ).toBe("A  pre-commit-cancelled.txt");
+  expect(fs.readFileSync(runLogPath, "utf-8")).toBe("pass\nfail\nslow\n");
 });

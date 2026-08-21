@@ -10,7 +10,7 @@ import {
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import pathModule from "node:path";
-import { platform } from "node:os";
+import { platform, tmpdir } from "node:os";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
 import { safeJoin } from "./path_utils";
@@ -863,19 +863,6 @@ export async function hasStagedChanges({
   return result.exitCode === 1;
 }
 
-/**
- * A hooks directory that is never created, pointed at so Git finds no hooks.
- *
- * `--no-verify` only suppresses `pre-commit` and `commit-msg`; Git still runs
- * `prepare-commit-msg` (and `post-commit`) regardless. A `prepare-commit-msg`
- * hook that appends to the message would therefore rewrite it *after* an
- * explicit `commit-msg` run already validated it, committing text the hook
- * would have rejected. Overriding `core.hooksPath` is the only way to make the
- * low-level commit genuinely hook-free. Relative paths resolve against the
- * working tree root, so this stays repo-local and works on every platform.
- */
-const NO_HOOKS_PATH = ".dyad-no-git-hooks";
-
 export async function gitCommit({
   path,
   message,
@@ -885,33 +872,45 @@ export async function gitCommit({
   // Perform the commit using dugite with -c user.name/email config
   // Hook execution is owned by workflows that require explicit verification;
   // the low-level commit operation must never invoke hooks implicitly.
-  const commitArgs = [
-    "-c",
-    `core.hooksPath=${NO_HOOKS_PATH}`,
-    "commit",
-    "-m",
-    message,
-    "--no-verify",
-  ];
-  if (amend) {
-    commitArgs.push("--amend");
+  // `--no-verify` only suppresses pre-commit and commit-msg. Git still runs
+  // prepare-commit-msg and post-commit, so point hooksPath at a fresh empty
+  // directory outside the imported repository for the lifetime of this one
+  // commit. A repository-relative path would let the repository supply hooks
+  // at that path and execute code during an automatic checkpoint.
+  const noHooksPath = await fsPromises.mkdtemp(
+    pathModule.join(tmpdir(), "dyad-no-git-hooks-"),
+  );
+  try {
+    const commitArgs = [
+      "-c",
+      `core.hooksPath=${normalizePath(noHooksPath)}`,
+      "commit",
+      "-m",
+      message,
+      "--no-verify",
+    ];
+    if (amend) {
+      commitArgs.push("--amend");
+    }
+    if (paths?.length) {
+      // `--` scopes the commit to these paths, so unrelated staged changes stay
+      // in the index instead of being swept into this commit.
+      commitArgs.push("--", ...paths.map(normalizePath));
+    }
+    const args = await withGitAuthor(commitArgs);
+    await execOrThrow(args, path, "Failed to create commit");
+    // Get the new commit hash
+    const result = await execGit(["rev-parse", "HEAD"], path);
+    if (result.exitCode !== 0) {
+      throw new DyadError(
+        `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
+      );
+    }
+    return result.stdout.trim();
+  } finally {
+    await fsPromises.rm(noHooksPath, { recursive: true, force: true });
   }
-  if (paths?.length) {
-    // `--` scopes the commit to these paths, so unrelated staged changes stay
-    // in the index instead of being swept into this commit.
-    commitArgs.push("--", ...paths.map(normalizePath));
-  }
-  const args = await withGitAuthor(commitArgs);
-  await execOrThrow(args, path, "Failed to create commit");
-  // Get the new commit hash
-  const result = await execGit(["rev-parse", "HEAD"], path);
-  if (result.exitCode !== 0) {
-    throw new DyadError(
-      `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
-      DyadErrorKind.Conflict,
-    );
-  }
-  return result.stdout.trim();
 }
 
 export async function gitCheckout({

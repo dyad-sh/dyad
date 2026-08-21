@@ -11,6 +11,7 @@ import {
   AssertionPlanItemSchema,
   MAX_PLAN_ITEMS,
 } from "../../lib/test_recorder/assertion_proposal";
+import { WindowSessionIdSchema } from "../../window_infrastructure/types";
 
 /** A UUID today; sized so a different id scheme doesn't have to revisit this. */
 const MAX_PROPOSAL_ID_LENGTH = 128;
@@ -459,6 +460,11 @@ export const TestsRunStatePayloadSchema = z.object({
   grep: z.string().optional(),
   /** Whether this run drives the native preview view. Present on "started". */
   preview: z.boolean().optional(),
+  /**
+   * Window allowed to activate its native preview for this run. Run state is
+   * broadcast, but preview automation remains owned by the invoking window.
+   */
+  previewOwnerWindowSessionId: WindowSessionIdSchema.optional(),
   /** Present only on "finished". */
   results: z.array(TestResultSchema).optional(),
   infraError: z.object({ message: z.string() }).optional(),

@@ -42,6 +42,7 @@ const presentation = vi.hoisted(() => ({
   confirm: vi.fn(),
   dismissError: vi.fn(),
   forget: vi.fn(),
+  forgetApp: vi.fn(),
   recordInitiator: vi.fn(),
   showError: vi.fn(),
 }));
@@ -151,6 +152,7 @@ describe("main-hosted github_ops actor", () => {
     presentation.confirm.mockReset();
     presentation.dismissError.mockReset();
     presentation.forget.mockReset();
+    presentation.forgetApp.mockReset();
     presentation.recordInitiator.mockReset();
     presentation.showError.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
@@ -710,6 +712,41 @@ describe("main-hosted github_ops actor", () => {
     );
   });
 
+  it("releases an inactive route when its successful probe is superseded", async () => {
+    let resolveGitState!: (state: {
+      mergeInProgress: boolean;
+      rebaseInProgress: boolean;
+    }) => void;
+    service.run
+      .mockRejectedValueOnce(new Error("generic rebase failure"))
+      .mockResolvedValueOnce(undefined);
+    service.getGitState.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveGitState = resolve;
+      }),
+    );
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "superseded-successful-probe",
+      op: { type: "rebase" },
+    });
+    await vi.waitFor(() => expect(service.getGitState).toHaveBeenCalled());
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "replacement-operation",
+      op: { type: "pull" },
+    });
+    resolveGitState({ mergeInProgress: false, rebaseInProgress: false });
+    await flush();
+
+    expect(presentation.forget).toHaveBeenCalledWith(
+      "superseded-successful-probe",
+    );
+  });
+
   it("shows a toast for a generic probe failure without emitting verification recovery", async () => {
     service.getGitState.mockRejectedValueOnce(
       new Error("temporary repository refresh failure"),
@@ -796,6 +833,7 @@ describe("main-hosted github_ops actor", () => {
     settlement.resolve();
     await disposal;
     expect(disposed).toBe(true);
+    expect(presentation.forgetApp).toHaveBeenCalledWith(7);
   });
 
   it("redacts repository paths while preserving Git failure details", async () => {

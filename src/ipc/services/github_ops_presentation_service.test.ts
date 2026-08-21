@@ -19,7 +19,7 @@ describe("GithubOpsPresentationService", () => {
     windows.setVisibleEntities(firstSession, [{ kind: "app", id: 7 }]);
     windows.setVisibleEntities(secondSession, [{ kind: "app", id: 7 }]);
     const service = new GithubOpsPresentationService(windows);
-    service.recordInitiator("operation-1", firstSession);
+    service.recordInitiator(7, "operation-1", firstSession);
 
     service.showError(7, "operation-1", "Push failed");
 
@@ -44,8 +44,8 @@ describe("GithubOpsPresentationService", () => {
     windows.register(second, secondSession);
     const service = new GithubOpsPresentationService(windows);
 
-    service.recordInitiator("shared-operation", firstSession);
-    service.recordInitiator("shared-operation", secondSession);
+    service.recordInitiator(7, "shared-operation", firstSession);
+    service.recordInitiator(7, "shared-operation", secondSession);
     service.showError(7, "shared-operation", "Push failed");
 
     expect(first.send).toHaveBeenCalledWith("toast:error", {
@@ -71,16 +71,16 @@ describe("GithubOpsPresentationService", () => {
       windows.register(second, secondSession);
       const service = new GithubOpsPresentationService(windows);
 
-      service.recordInitiator("rejected", firstSession);
+      service.recordInitiator(7, "rejected", firstSession);
       vi.runAllTimers();
-      service.recordInitiator("rejected", secondSession);
+      service.recordInitiator(7, "rejected", secondSession);
       service.showError(7, "rejected", "Rejected retry failed");
       expect(second.send).toHaveBeenCalled();
 
-      service.recordInitiator("admitted", firstSession);
+      service.recordInitiator(7, "admitted", firstSession);
       service.confirm("admitted");
       vi.runAllTimers();
-      service.recordInitiator("admitted", secondSession);
+      service.recordInitiator(7, "admitted", secondSession);
       service.showError(7, "admitted", "Admitted operation failed");
       expect(first.send).toHaveBeenCalledWith("toast:error", {
         message: "Admitted operation failed",
@@ -102,13 +102,13 @@ describe("GithubOpsPresentationService", () => {
       windows.register(target, session);
       const service = new GithubOpsPresentationService(windows);
 
-      service.recordInitiator("confirmed", session);
+      service.recordInitiator(7, "confirmed", session);
       service.confirm("confirmed");
       for (let index = 0; index < 255; index += 1) {
-        service.recordInitiator(`tentative-${index}`, session);
+        service.recordInitiator(7, `tentative-${index}`, session);
       }
       expect(() =>
-        service.recordInitiator("operation-overflow", session),
+        service.recordInitiator(7, "operation-overflow", session),
       ).not.toThrow();
 
       service.showError(7, "confirmed", "Confirmed operation failed");
@@ -139,10 +139,10 @@ describe("GithubOpsPresentationService", () => {
       const service = new GithubOpsPresentationService(windows);
 
       for (let index = 0; index < 256; index += 1) {
-        service.recordInitiator(`confirmed-${index}`, firstSession);
+        service.recordInitiator(7, `confirmed-${index}`, firstSession);
         service.confirm(`confirmed-${index}`);
       }
-      service.recordInitiator("operation-overflow", firstSession);
+      service.recordInitiator(7, "operation-overflow", firstSession);
 
       service.showError(7, "confirmed-0", "Confirmed operation failed");
       service.showError(7, "operation-overflow", "Overflow operation failed");
@@ -157,6 +157,40 @@ describe("GithubOpsPresentationService", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("forgets only routes owned by a disposed app", () => {
+    const windows = new WindowRegistry();
+    const first = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const second = { id: 2, isDestroyed: () => false, send: vi.fn() };
+    const firstSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    const secondSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    windows.register(first, firstSession);
+    windows.register(second, secondSession);
+    windows.setVisibleEntities(firstSession, [{ kind: "app", id: 8 }]);
+    windows.setVisibleEntities(secondSession, [{ kind: "app", id: 7 }]);
+    const service = new GithubOpsPresentationService(windows);
+    service.recordInitiator(7, "disposed-app-operation", firstSession);
+    service.recordInitiator(8, "retained-app-operation", firstSession);
+    service.confirm("disposed-app-operation");
+    service.confirm("retained-app-operation");
+
+    service.forgetApp(7);
+    service.showError(7, "disposed-app-operation", "Disposed app failure");
+    service.showError(8, "retained-app-operation", "Retained app failure");
+
+    expect(second.send).toHaveBeenCalledWith("toast:error", {
+      message: "Disposed app failure",
+      toastId: "github-ops-7-operation",
+    });
+    expect(first.send).toHaveBeenCalledWith("toast:error", {
+      message: "Retained app failure",
+      toastId: "github-ops-8-operation",
+    });
   });
 
   it("deduplicates persistent detailed probe errors by app", () => {
@@ -195,7 +229,7 @@ describe("GithubOpsPresentationService", () => {
     windows.register(target, session);
     windows.setVisibleEntities(session, [{ kind: "app", id: 7 }]);
     const service = new GithubOpsPresentationService(windows);
-    service.recordInitiator("operation-1", session);
+    service.recordInitiator(7, "operation-1", session);
     const message = `Git push failed:\n${"detail ".repeat(40)}`;
 
     service.showError(7, "operation-1", message);

@@ -308,15 +308,17 @@ function createCommandRunner(
           );
         void githubOpsService.getGitState(appId).then(
           (state) => {
-            if (generation === gitStateProbeGeneration) {
-              githubOpsPresentationService.dismissError(appId, "git-state");
-              emit({
-                type: "GIT_STATE",
-                ...state,
-                recoveryInvocationRef,
-                verificationAttempt: command.verificationAttempt,
-              });
+            if (generation !== gitStateProbeGeneration) {
+              forgetIfInactive(invocationRef?.operationId);
+              return;
             }
+            githubOpsPresentationService.dismissError(appId, "git-state");
+            emit({
+              type: "GIT_STATE",
+              ...state,
+              recoveryInvocationRef,
+              verificationAttempt: command.verificationAttempt,
+            });
           },
           (error) => {
             if (generation !== gitStateProbeGeneration) {
@@ -329,6 +331,7 @@ function createCommandRunner(
               command.verificationAttempt,
               "git-state",
             );
+            forgetIfInactive(invocationRef?.operationId);
           },
         );
         return;
@@ -389,14 +392,17 @@ function createCommandRunner(
         ]);
         return;
       case "notify":
-        if (command.kind === "error") {
-          githubOpsPresentationService.showError(
-            appId,
-            invocationRef?.operationId,
-            command.message,
-          );
+        try {
+          if (command.kind === "error") {
+            githubOpsPresentationService.showError(
+              appId,
+              invocationRef?.operationId,
+              command.message,
+            );
+          }
+        } finally {
+          forgetIfInactive(invocationRef?.operationId);
         }
-        forgetIfInactive(invocationRef?.operationId);
         return;
       case "start-conflict-resolution":
         // Renderer presentation starts only after the applied dispatch receipt.
@@ -516,6 +522,9 @@ export const githubOpsDefinition: GithubOpsDefinition = {
     restartPersistence: "ephemeral",
     flushOnShutdown: true,
     flush: ({ key }) => githubOpsService.settle(key.appId),
+    onDisposed: ({ key }) => {
+      githubOpsPresentationService.forgetApp(key.appId);
+    },
   },
   remote: {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
@@ -556,6 +565,7 @@ export const githubOpsDefinition: GithubOpsDefinition = {
         event.type === "ABORT_AND_SWITCH_CONFIRMED"
       ) {
         githubOpsPresentationService.recordInitiator(
+          key.appId,
           event.operationId,
           sender.windowSessionId,
         );

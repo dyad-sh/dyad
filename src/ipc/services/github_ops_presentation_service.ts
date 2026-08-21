@@ -11,6 +11,7 @@ export class GithubOpsPresentationService {
   private readonly initiatorByOperationId = new Map<
     string,
     {
+      readonly appId: number;
       readonly windowSessionId: WindowSessionId;
       confirmed: boolean;
       expiry: ReturnType<typeof setTimeout> | null;
@@ -21,6 +22,7 @@ export class GithubOpsPresentationService {
   constructor(private readonly windows: WindowRegistry = windowRegistry) {}
 
   recordInitiator(
+    appId: number,
     operationId: string,
     windowSessionId: string | undefined,
   ): void {
@@ -34,6 +36,7 @@ export class GithubOpsPresentationService {
       this.forget(oldestTentative);
     }
     const entry = {
+      appId,
       windowSessionId: windowSessionId as WindowSessionId,
       confirmed: false,
       expiry: null as ReturnType<typeof setTimeout> | null,
@@ -104,6 +107,12 @@ export class GithubOpsPresentationService {
     const entry = this.initiatorByOperationId.get(operationId);
     if (entry?.expiry) clearTimeout(entry.expiry);
     this.initiatorByOperationId.delete(operationId);
+  }
+
+  forgetApp(appId: number): void {
+    for (const [operationId, entry] of this.initiatorByOperationId) {
+      if (entry.appId === appId) this.forget(operationId);
+    }
   }
 }
 

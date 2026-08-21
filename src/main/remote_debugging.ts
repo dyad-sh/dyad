@@ -23,6 +23,7 @@ export interface RemoteDebuggingEndpoint {
 }
 
 let switchApplied = false;
+let switchAppliedAt = 0;
 let cachedEndpoint: RemoteDebuggingEndpoint | null = null;
 /**
  * When the poll below last gave up. Chromium writes its port file during
@@ -65,6 +66,7 @@ export function maybeEnableRemoteDebugging(): void {
     return;
   }
 
+  switchAppliedAt = Date.now();
   app.commandLine.appendSwitch("remote-debugging-port", "0");
   switchApplied = true;
   logger.info(
@@ -92,6 +94,12 @@ function candidatePortFilePaths(): string[] {
 
 function readPortFile(filePath: string): number | null {
   try {
+    // Chromium can leave this file behind after an unclean shutdown. Only
+    // accept a file written for the current launch; otherwise a recycled port
+    // could point Playwright at an unrelated local debugging service.
+    if (fs.statSync(filePath).mtimeMs < switchAppliedAt) {
+      return null;
+    }
     const firstLine = fs.readFileSync(filePath, "utf-8").split("\n")[0]?.trim();
     const port = Number(firstLine);
     // A truncated or stale file can hold something that parses as a number but
@@ -146,6 +154,7 @@ export async function resolveRemoteDebuggingEndpoint(): Promise<RemoteDebuggingE
 /** Test-only: clears module state between cases. */
 export function resetRemoteDebuggingForTesting(): void {
   switchApplied = false;
+  switchAppliedAt = 0;
   cachedEndpoint = null;
   failedAt = null;
 }

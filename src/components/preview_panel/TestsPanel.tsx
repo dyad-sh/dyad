@@ -1578,7 +1578,8 @@ export function TestsPanel() {
           <ShieldAlert size={12} className="mt-0.5 shrink-0" />
           <span>
             Debugging port open on 127.0.0.1 for this whole session. Turn off
-            "Run tests in preview panel" in Settings → Experiments to close it.
+            "Run tests in preview panel" in Settings → Experiments and restart
+            Dyad to close it.
           </span>
         </div>
       )}

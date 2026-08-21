@@ -489,6 +489,22 @@ export function CoolifyServerSetup({
         </div>
       )}
 
+      {snapshot.isError && (
+        <p
+          className="text-sm text-amber-600 dark:text-amber-400"
+          data-testid="coolify-setup-snapshot-error"
+        >
+          Could not read what Dyad is doing with servers right now.{" "}
+          <button
+            type="button"
+            className="underline underline-offset-4"
+            onClick={() => void snapshot.refetch()}
+          >
+            Try again
+          </button>
+        </p>
+      )}
+
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -501,21 +517,6 @@ export function CoolifyServerSetup({
           )}
           Check server
         </Button>
-        {snapshot.isError && (
-          <div
-            className="text-sm text-amber-600 dark:text-amber-400"
-            data-testid="coolify-setup-snapshot-error"
-          >
-            Could not read what Dyad is doing with servers right now.{" "}
-            <button
-              type="button"
-              className="underline underline-offset-4"
-              onClick={() => void snapshot.refetch()}
-            >
-              Try again
-            </button>
-          </div>
-        )}
         <Button
           disabled={
             // Until the broadcast lands this window still shows the form, and

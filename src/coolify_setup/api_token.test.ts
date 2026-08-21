@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  COOLIFY_REQUIRED_SCOPES,
+  COOLIFY_SCOPES_PHP_ARRAY,
+} from "@/shared/coolify_scopes";
+import {
   compareVersions,
   enableApi,
   mintApiToken,
@@ -103,16 +107,29 @@ describe("mintApiToken", () => {
     expect(session.scripts[0]).toContain("session(['currentTeam' => $team])");
   });
 
-  it("asks for what the deploy path uses and nothing more", async () => {
+  it("mints exactly what the instructions and the 403 message name", async () => {
+    // A token Dyad makes and one a user makes by following the panel have to
+    // behave the same. They differed once: the mint dropped read:sensitive,
+    // which is what Coolify hides a deployment's log behind, so an automatic
+    // setup lost the build output on every failed deploy.
+    const fromInstructions = COOLIFY_REQUIRED_SCOPES.split(", ");
+    const fromMint = COOLIFY_SCOPES_PHP_ARRAY.replace(/[[\]']/g, "").split(
+      ", ",
+    );
+
+    expect(fromMint).toEqual(fromInstructions);
+  });
+
+  it("asks for the scopes Dyad tells users to tick", async () => {
     // Narrower tokens hide a server's private key id, which the deploy path
     // reads to tell a stale key from one it simply cannot see.
     const session = fakeSession([REAL_TOKEN]);
     await mintApiToken(session, "admin@gmail.com");
-    // Not root, which Coolify treats as a bypass of the ability check, and
-    // not read:sensitive, which would let this token read private keys.
-    expect(session.scripts[0]).toContain("['read', 'write', 'deploy']");
+    // The same list the panel tells a user to tick and the 403 message names,
+    // so a token Dyad mints and one made by hand behave alike. Not root, which
+    // Coolify treats as a bypass of the ability check rather than a scope.
+    expect(session.scripts[0]).toContain(COOLIFY_SCOPES_PHP_ARRAY);
     expect(session.scripts[0]).not.toContain("root");
-    expect(session.scripts[0]).not.toContain("read:sensitive");
   });
 
   it("keeps the address out of the script", async () => {

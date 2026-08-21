@@ -1,4 +1,5 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { COOLIFY_SCOPES_PHP_ARRAY } from "@/shared/coolify_scopes";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 import { runTinker } from "./tinker";
 
@@ -130,18 +131,6 @@ export async function enableApi(
 }
 
 /**
- * What Dyad's token may do, written as the PHP array the script below needs.
- *
- * `read` and `write` cover servers, projects, keys and applications, and
- * `deploy` starts one. Not `root`: Coolify treats that as a bypass of the
- * ability check rather than as a set of abilities, and no route asks for it.
- * Not `read:sensitive` either — the only thing it unlocks is private key
- * material, which nothing here reads, and a token Coolify never expires
- * should not be able to fetch the user's SSH keys.
- */
-const TOKEN_ABILITIES = "['read', 'write', 'deploy']";
-
-/**
  * Creates an API token for Dyad.
  *
  * WORKAROUND, in two parts.
@@ -183,7 +172,7 @@ export async function mintApiToken(
       // reads the team from a session tinker does not otherwise have, and the
       // insert fails on team_id without it.
       `if ($team) { session(['currentTeam' => $team]); }`,
-      `echo !$u ? 'no-user' : (!$team ? 'no-team' : $u->createToken('${tokenName}', ${TOKEN_ABILITIES}, null)->plainTextToken);`,
+      `echo !$u ? 'no-user' : (!$team ? 'no-team' : $u->createToken('${tokenName}', ${COOLIFY_SCOPES_PHP_ARRAY}, null)->plainTextToken);`,
     ].join("\n"),
     {
       env: { DYAD_ADMIN_EMAIL: adminEmail },

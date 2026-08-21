@@ -1,0 +1,16 @@
+<<<<<<< SEARCH
+      {/* ── Activity feed ─────────────────────────────────── */}
+      {showActivity && (
+        <section className="activity-feed">
+          <h2 className="activity-feed__title">Recent Activity</h2>
+          {activityState.loading && activityState.items.length === 0 ? (
+            <div className="activity-loading">
+              <div className="spinner spinner--small" />
+              <p>Loading activity…</p>
+            </div>
+
+=======
+      {/* ── Activity feed ─────────────────────────────────── */}
+      {showActivity && <ActivityFeed userId={resolvedUserId} />}
+
+>>>>>>> REPLACE

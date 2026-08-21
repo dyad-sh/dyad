@@ -1,0 +1,125 @@
+<<<<<<< SEARCH
+  // ── Activity feed state and logic ───────────────────────────
+  const [activityState, setActivityState] = useState<ActivityState>({
+    items: [],
+    loading: true,
+    error: null,
+    page: 1,
+    hasMore: true,
+  });
+
+  const loadActivity = useCallback(
+    async (page: number, append = false) => {
+      setActivityState((prev) => ({ ...prev, loading: true, error: null }));
+      try {
+        const items = await fetchUserActivity(resolvedUserId, page);
+        setActivityState((prev) => ({
+          items: append ? [...prev.items, ...items] : items,
+          loading: false,
+          error: null,
+          page,
+          hasMore: items.length >= 20,
+        }));
+      } catch (err) {
+        setActivityState((prev) => ({
+          ...prev,
+          loading: false,
+          error: err instanceof Error ? err.message : "Failed to load activity",
+        }));
+      }
+    },
+    [resolvedUserId],
+  );
+
+  useEffect(() => {
+    if (showActivity && resolvedUserId) {
+      loadActivity(1);
+    }
+  }, [showActivity, resolvedUserId, loadActivity]);
+
+  const handleLoadMore = useCallback(() => {
+    loadActivity(activityState.page + 1, true);
+  }, [loadActivity, activityState.page]);
+
+  const groupedActivity = useMemo(() => {
+    const groups: Record<string, ActivityItem[]> = {};
+    for (const item of activityState.items) {
+      const dateKey = new Date(item.timestamp).toLocaleDateString();
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(item);
+    }
+    return groups;
+  }, [activityState.items]);
+
+  const renderActivityItem = useCallback(
+    (item: ActivityItem) => {
+      return (
+        <div key={item.id} className="activity-item">
+          <span className="activity-item__icon">
+            {getActivityIcon(item.type)}
+          </span>
+          <div className="activity-item__content">
+            <p className="activity-item__description">{item.description}</p>
+            <span className="activity-item__time">
+              {formatActivityDate(item.timestamp)}
+            </span>
+            {item.metadata?.pr && (
+              <a
+                className="activity-item__link"
+                href={`/pr/${item.metadata.pr}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/pr/${item.metadata!.pr}`);
+                }}
+              >
+                PR #{item.metadata.pr}
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    },
+    [navigate],
+  );
+
+  const renderActivityGroup = useCallback(
+    (dateKey: string, items: ActivityItem[]) => {
+      return (
+        <div key={dateKey} className="activity-group">
+          <h3 className="activity-group__date">{dateKey}</h3>
+          <div className="activity-group__items">
+            {items.map((item) => renderActivityItem(item))}
+          </div>
+        </div>
+      );
+    },
+    [renderActivityItem],
+  );
+
+  const renderActivityEmpty = useCallback(() => {
+    return (
+      <div className="activity-empty">
+        <p>No recent activity to show.</p>
+      </div>
+    );
+  }, []);
+
+  const renderActivityError = useCallback(() => {
+    return (
+      <div className="activity-error">
+        <p>{activityState.error}</p>
+        <button onClick={() => loadActivity(1)}>Retry</button>
+      </div>
+    );
+  }, [activityState.error, loadActivity]);
+
+  // ── Loading / error states ──────────────────────────────────
+
+  if (loading) {
+
+=======
+  // ── Loading / error states ──────────────────────────────────
+
+  if (loading) {
+
+>>>>>>> REPLACE

@@ -1,0 +1,61 @@
+<<<<<<< SEARCH
+    } finally {
+      setSaving(false);
+    }
+  }, [resolvedUserId, draft]);
+
+  // ── Activity feed state and logic ───────────────────────────
+  const [activityState, setActivityState] = useState<ActivityState>({
+    items: [],
+    loading: true,
+    error: null,
+    page: 1,
+    hasMore: true,
+  });
+
+  const loadActivity = useCallback(
+    async (page: number, append = false) => {
+      setActivityState((prev) => ({ ...prev, loading: true, error: null }));
+      try {
+        const items = await fetchUserActivity(resolvedUserId, page);
+        setActivityState((prev) => ({
+          items: append ? [...prev.items, ...items] : items,
+          loading: false,
+          error: null,
+          page,
+          hasMore: items.length >= 20,
+        }));
+      } catch (err) {
+        setActivityState((prev) => ({
+          ...prev,
+          loading: false,
+          error: err instanceof Error ? err.message : "Failed to load activity",
+        }));
+      }
+    },
+    [resolvedUserId],
+  );
+
+  useEffect(() => {
+    if (showActivity && resolvedUserId) {
+      loadActivity(1);
+    }
+  }, [showActivity, resolvedUserId, loadActivity]);
+
+  const handleLoadMore = useCallback(() => {
+    loadActivity(activityState.page + 1, true);
+  }, [loadActivity, activityState.page]);
+
+  const groupedActivity = useMemo(() => {
+    const groups: Record<string, ActivityItem[]> = {};
+
+=======
+    } finally {
+      setSaving(false);
+    }
+  }, [resolvedUserId, draft]);
+
+  const groupedActivity = useMemo(() => {
+    const groups: Record<string, ActivityItem[]> = {};
+
+>>>>>>> REPLACE

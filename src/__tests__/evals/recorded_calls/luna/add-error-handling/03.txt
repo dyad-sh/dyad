@@ -1,0 +1,41 @@
+<<<<<<< SEARCH
+export async function patchResource<T>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const data = await serviceRequest<T>(path, { method: "PATCH", body });
+  return data;
+}
+
+export async function deleteResource(path: string): Promise<void> {
+  const data = await serviceRequest<void>(path, { method: "DELETE" });
+  return data;
+}
+
+// ── User resources ─────────────────────────────────────────────────────────
+=======
+export async function patchResource<T>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  try {
+    const data = await serviceRequest<T>(path, { method: "PATCH", body });
+    return data;
+  } catch (err) {
+    logger.error(`PATCH ${path} failed`, err);
+    throw err;
+  }
+}
+
+export async function deleteResource(path: string): Promise<void> {
+  try {
+    const data = await serviceRequest<void>(path, { method: "DELETE" });
+    return data;
+  } catch (err) {
+    logger.error(`DELETE ${path} failed`, err);
+    throw err;
+  }
+}
+
+// ── User resources ─────────────────────────────────────────────────────────
+>>>>>>> REPLACE

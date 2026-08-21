@@ -1,0 +1,63 @@
+{
+  "sol": {
+    "label": "GPT 5.6 Sol",
+    "cases": [
+      {
+        "case": "extract-a-helper-function",
+        "fixture": "order_processor.ts",
+        "calls": [
+          "01.txt"
+        ]
+      },
+      {
+        "case": "add-zod-validation",
+        "fixture": "user_handler.ts",
+        "calls": [
+          "01.txt",
+          "02.txt",
+          "03.txt"
+        ]
+      },
+      {
+        "case": "refactor-giant-component",
+        "fixture": "UserProfileFull.tsx",
+        "calls": [
+          "01.txt",
+          "02.txt",
+          "03.txt",
+          "04.txt",
+          "05.txt",
+          "06.txt",
+          "07.txt",
+          "08.txt",
+          "09.txt",
+          "10.txt",
+          "11.txt",
+          "12.txt"
+        ]
+      }
+    ]
+  },
+  "luna": {
+    "label": "GPT 5.6 Luna",
+    "cases": [
+      {
+        "case": "add-error-handling",
+        "fixture": "fetch_client.ts",
+        "calls": [
+          "01.txt",
+          "02.txt",
+          "03.txt"
+        ]
+      },
+      {
+        "case": "add-zod-validation",
+        "fixture": "user_handler.ts",
+        "calls": [
+          "01.txt",
+          "02.txt"
+        ]
+      }
+    ]
+  }
+}

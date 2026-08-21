@@ -1,0 +1,158 @@
+<<<<<<< SEARCH
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateUser(resolvedUserId, draft);
+      setUser(updated);
+      setEditing(false);
+      setDraft({});
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }, [resolvedUserId, draft]);
+
+  // ── Stats state and logic ───────────────────────────────────
+  const INITIAL_STATS_PERIOD: "week" | "month" | "year" = "month";
+  const [stats, setStats] = useState<StatsState>({
+    cards: [],
+    loading: true,
+    error: null,
+    period: INITIAL_STATS_PERIOD,
+  });
+
+  const loadStats = useCallback(async (period: "week" | "month" | "year") => {
+    setStats((prev) => ({ ...prev, loading: true, error: null, period }));
+    try {
+      // Simulate loading stats — in production this hits the analytics API
+      await new Promise((r) => setTimeout(r, 100));
+      const mockCards: StatCard[] = [
+        {
+          label: "Commits",
+          value: period === "week" ? 23 : period === "month" ? 87 : 1042,
+          change: 12.5,
+        },
+        {
+          label: "PRs Merged",
+          value: period === "week" ? 5 : period === "month" ? 18 : 203,
+          change: -3.2,
+        },
+        {
+          label: "Reviews",
+          value: period === "week" ? 11 : period === "month" ? 42 : 498,
+          change: 8.1,
+        },
+        {
+          label: "Lines Changed",
+          value: period === "week" ? 1250 : period === "month" ? 4800 : 58000,
+          unit: "lines",
+          change: 15.7,
+        },
+        {
+          label: "Issues Closed",
+          value: period === "week" ? 7 : period === "month" ? 25 : 312,
+          change: 0,
+        },
+        { label: "Build Success", value: "98.2%", change: 1.1 },
+      ];
+      setStats({ cards: mockCards, loading: false, error: null, period });
+    } catch (err) {
+      setStats((prev) => ({
+        ...prev,
+        loading: false,
+        error: err instanceof Error ? err.message : "Failed to load stats",
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showStats && resolvedUserId) {
+      loadStats(INITIAL_STATS_PERIOD);
+    }
+  }, [showStats, resolvedUserId, loadStats]);
+
+  const handlePeriodChange = useCallback(
+    (period: "week" | "month" | "year") => {
+      loadStats(period);
+    },
+    [loadStats],
+  );
+
+  const statsGridColumns = useMemo(() => {
+    return stats.cards.length <= 3 ? "stats-grid--2col" : "stats-grid--3col";
+  }, [stats.cards.length]);
+
+  const totalCommits = useMemo(() => {
+    const commitCard = stats.cards.find((c) => c.label === "Commits");
+    return typeof commitCard?.value === "number" ? commitCard.value : 0;
+  }, [stats.cards]);
+
+  const renderStatCard = useCallback((card: StatCard, index: number) => {
+    return (
+      <div key={index} className="stat-card">
+        <div className="stat-card__label">{card.label}</div>
+        <div className="stat-card__value">
+          {formatStatValue(card.value, card.unit)}
+        </div>
+        <div className={`stat-card__change ${getChangeClass(card.change)}`}>
+          {formatChangePercent(card.change)}
+        </div>
+      </div>
+    );
+  }, []);
+
+  const renderStatsHeader = useCallback(() => {
+    const periods: Array<"week" | "month" | "year"> = ["week", "month", "year"];
+    return (
+      <div className="stats-header">
+        <h2 className="stats-header__title">Performance Stats</h2>
+        <div className="stats-header__periods">
+          {periods.map((p) => (
+            <button
+              key={p}
+              className={`period-btn ${stats.period === p ? "period-btn--active" : ""}`}
+              onClick={() => handlePeriodChange(p)}
+            >
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }, [stats.period, handlePeriodChange]);
+
+  const renderStatsSummary = useCallback(() => {
+    if (totalCommits === 0) return null;
+    return (
+      <div className="stats-summary">
+        <p>
+          Total activity: <strong>{totalCommits}</strong> commits this{" "}
+          {stats.period}.
+        </p>
+      </div>
+    );
+  }, [totalCommits, stats.period]);
+
+  // ── Activity feed state and logic ───────────────────────────
+
+=======
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateUser(resolvedUserId, draft);
+      setUser(updated);
+      setEditing(false);
+      setDraft({});
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }, [resolvedUserId, draft]);
+
+  // ── Activity feed state and logic ───────────────────────────
+
+>>>>>>> REPLACE

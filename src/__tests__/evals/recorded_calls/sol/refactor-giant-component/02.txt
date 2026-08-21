@@ -1,0 +1,109 @@
+<<<<<<< SEARCH
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ── Avatar state and logic ──────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatar, setAvatar] = useState<AvatarState>({
+    url: null,
+    uploading: false,
+    error: null,
+    previewUrl: null,
+  });
+
+  const handleAvatarClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleAvatarSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        setAvatar((prev) => ({
+          ...prev,
+          error: "Please select an image file",
+        }));
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        setAvatar((prev) => ({ ...prev, error: "Image must be under 5MB" }));
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      setAvatar((prev) => ({
+        ...prev,
+        previewUrl,
+        uploading: true,
+        error: null,
+      }));
+
+      try {
+        const result = await uploadAvatar(resolvedUserId, file);
+        setAvatar({
+          url: result.url,
+          uploading: false,
+          error: null,
+          previewUrl: null,
+        });
+        URL.revokeObjectURL(previewUrl);
+      } catch (err) {
+        setAvatar((prev) => ({
+          ...prev,
+          uploading: false,
+          error: err instanceof Error ? err.message : "Upload failed",
+        }));
+        URL.revokeObjectURL(previewUrl);
+      }
+    },
+    [resolvedUserId],
+  );
+
+  const handleAvatarRemove = useCallback(() => {
+    setAvatar({ url: null, uploading: false, error: null, previewUrl: null });
+  }, []);
+
+  const avatarDisplayUrl =
+    avatar.previewUrl ?? avatar.url ?? "/default-avatar.png";
+
+  const renderAvatarBadge = useCallback(() => {
+    if (avatar.uploading) {
+      return <span className="avatar-badge avatar-badge--uploading">⏳</span>;
+    }
+    if (avatar.error) {
+      return <span className="avatar-badge avatar-badge--error">⚠️</span>;
+    }
+    return null;
+  }, [avatar.uploading, avatar.error]);
+
+  // ── Load user data ──────────────────────────────────────────
+
+  const loadUser = useCallback(async () => {
+    if (!resolvedUserId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const userData = await fetchUser(resolvedUserId);
+      setUser(userData);
+      setAvatar((prev) => ({ ...prev, url: userData.avatarUrl ?? null }));
+    } catch (err) {
+
+=======
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ── Load user data ──────────────────────────────────────────
+
+  const loadUser = useCallback(async () => {
+    if (!resolvedUserId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const userData = await fetchUser(resolvedUserId);
+      setUser(userData);
+    } catch (err) {
+
+>>>>>>> REPLACE

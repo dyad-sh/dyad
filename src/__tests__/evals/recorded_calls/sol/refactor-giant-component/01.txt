@@ -1,0 +1,393 @@
+<<<<<<< SEARCH
+function getActivityIcon(type: string): string {
+  switch (type) {
+    case "commit":
+      return "📝";
+    case "review":
+      return "👀";
+    case "merge":
+      return "🔀";
+    case "comment":
+      return "💬";
+    case "deploy":
+      return "🚀";
+    default:
+      return "📌";
+  }
+}
+
+// ── Main component ────────────────────────────────────────────
+
+=======
+function getActivityIcon(type: string): string {
+  switch (type) {
+    case "commit":
+      return "📝";
+    case "review":
+      return "👀";
+    case "merge":
+      return "🔀";
+    case "comment":
+      return "💬";
+    case "deploy":
+      return "🚀";
+    default:
+      return "📌";
+  }
+}
+
+interface AvatarSectionProps {
+  user: User;
+  userId: string;
+}
+
+function AvatarSection({ user, userId }: AvatarSectionProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatar, setAvatar] = useState<AvatarState>({
+    url: user.avatarUrl ?? null,
+    uploading: false,
+    error: null,
+    previewUrl: null,
+  });
+
+  useEffect(() => {
+    setAvatar((prev) => ({ ...prev, url: user.avatarUrl ?? null }));
+  }, [user.avatarUrl]);
+
+  const handleAvatarClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleAvatarSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        setAvatar((prev) => ({
+          ...prev,
+          error: "Please select an image file",
+        }));
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        setAvatar((prev) => ({ ...prev, error: "Image must be under 5MB" }));
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      setAvatar((prev) => ({
+        ...prev,
+        previewUrl,
+        uploading: true,
+        error: null,
+      }));
+
+      try {
+        const result = await uploadAvatar(userId, file);
+        setAvatar({
+          url: result.url,
+          uploading: false,
+          error: null,
+          previewUrl: null,
+        });
+        URL.revokeObjectURL(previewUrl);
+      } catch (err) {
+        setAvatar((prev) => ({
+          ...prev,
+          uploading: false,
+          error: err instanceof Error ? err.message : "Upload failed",
+        }));
+        URL.revokeObjectURL(previewUrl);
+      }
+    },
+    [userId],
+  );
+
+  const handleAvatarRemove = useCallback(() => {
+    setAvatar({ url: null, uploading: false, error: null, previewUrl: null });
+  }, []);
+
+  const avatarDisplayUrl =
+    avatar.previewUrl ?? avatar.url ?? "/default-avatar.png";
+
+  const renderAvatarBadge = () => {
+    if (avatar.uploading) {
+      return <span className="avatar-badge avatar-badge--uploading">⏳</span>;
+    }
+    if (avatar.error) {
+      return <span className="avatar-badge avatar-badge--error">⚠️</span>;
+    }
+    return null;
+  };
+
+  return (
+    <section className="avatar-section">
+      <div className="avatar-container" onClick={handleAvatarClick}>
+        <img
+          src={avatarDisplayUrl}
+          alt={`${user.name}'s avatar`}
+          className={`avatar-image ${avatar.uploading ? "avatar-image--uploading" : ""}`}
+        />
+        {renderAvatarBadge()}
+        <div className="avatar-overlay">
+          <span>Change Photo</span>
+        </div>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="avatar-input"
+        onChange={handleAvatarSelect}
+      />
+      {avatar.url && (
+        <button className="avatar-remove-btn" onClick={handleAvatarRemove}>
+          Remove Photo
+        </button>
+      )}
+      {avatar.error && <p className="avatar-error">{avatar.error}</p>}
+      <div className="avatar-info">
+        <h2>{user.name}</h2>
+        <p className="avatar-info__role">{user.role}</p>
+        <p className="avatar-info__email">{user.email}</p>
+        <p className="avatar-info__joined">
+          Member since {new Date(user.createdAt).toLocaleDateString()}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+interface StatsPanelProps {
+  userId: string;
+}
+
+function StatsPanel({ userId }: StatsPanelProps) {
+  const initialPeriod: "week" | "month" | "year" = "month";
+  const [stats, setStats] = useState<StatsState>({
+    cards: [],
+    loading: true,
+    error: null,
+    period: initialPeriod,
+  });
+
+  const loadStats = useCallback(async (period: "week" | "month" | "year") => {
+    setStats((prev) => ({ ...prev, loading: true, error: null, period }));
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const mockCards: StatCard[] = [
+        { label: "Commits", value: period === "week" ? 23 : period === "month" ? 87 : 1042, change: 12.5 },
+        { label: "PRs Merged", value: period === "week" ? 5 : period === "month" ? 18 : 203, change: -3.2 },
+        { label: "Reviews", value: period === "week" ? 11 : period === "month" ? 42 : 498, change: 8.1 },
+        { label: "Lines Changed", value: period === "week" ? 1250 : period === "month" ? 4800 : 58000, unit: "lines", change: 15.7 },
+        { label: "Issues Closed", value: period === "week" ? 7 : period === "month" ? 25 : 312, change: 0 },
+        { label: "Build Success", value: "98.2%", change: 1.1 },
+      ];
+      setStats({ cards: mockCards, loading: false, error: null, period });
+    } catch (err) {
+      setStats((prev) => ({
+        ...prev,
+        loading: false,
+        error: err instanceof Error ? err.message : "Failed to load stats",
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (userId) loadStats(initialPeriod);
+  }, [userId, loadStats]);
+
+  const statsGridColumns = useMemo(
+    () => (stats.cards.length <= 3 ? "stats-grid--2col" : "stats-grid--3col"),
+    [stats.cards.length],
+  );
+  const totalCommits = useMemo(() => {
+    const commitCard = stats.cards.find((card) => card.label === "Commits");
+    return typeof commitCard?.value === "number" ? commitCard.value : 0;
+  }, [stats.cards]);
+  const periods: Array<"week" | "month" | "year"> = ["week", "month", "year"];
+
+  return (
+    <section className="stats-panel">
+      <div className="stats-header">
+        <h2 className="stats-header__title">Performance Stats</h2>
+        <div className="stats-header__periods">
+          {periods.map((period) => (
+            <button
+              key={period}
+              className={`period-btn ${stats.period === period ? "period-btn--active" : ""}`}
+              onClick={() => loadStats(period)}
+            >
+              {period.charAt(0).toUpperCase() + period.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      {stats.loading ? (
+        <div className="stats-loading">
+          <div className="spinner spinner--small" />
+          <p>Loading stats…</p>
+        </div>
+      ) : stats.error ? (
+        <div className="stats-error">
+          <p>{stats.error}</p>
+          <button onClick={() => loadStats(stats.period)}>Retry</button>
+        </div>
+      ) : (
+        <>
+          <div className={`stats-grid ${statsGridColumns}`}>
+            {stats.cards.map((card, index) => (
+              <div key={index} className="stat-card">
+                <div className="stat-card__label">{card.label}</div>
+                <div className="stat-card__value">
+                  {formatStatValue(card.value, card.unit)}
+                </div>
+                <div className={`stat-card__change ${getChangeClass(card.change)}`}>
+                  {formatChangePercent(card.change)}
+                </div>
+              </div>
+            ))}
+          </div>
+          {totalCommits !== 0 && (
+            <div className="stats-summary">
+              <p>
+                Total activity: <strong>{totalCommits}</strong> commits this{" "}
+                {stats.period}.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+interface ActivityFeedProps {
+  userId: string;
+}
+
+function ActivityFeed({ userId }: ActivityFeedProps) {
+  const navigate = useNavigate();
+  const [activityState, setActivityState] = useState<ActivityState>({
+    items: [],
+    loading: true,
+    error: null,
+    page: 1,
+    hasMore: true,
+  });
+
+  const loadActivity = useCallback(
+    async (page: number, append = false) => {
+      setActivityState((prev) => ({ ...prev, loading: true, error: null }));
+      try {
+        const items = await fetchUserActivity(userId, page);
+        setActivityState((prev) => ({
+          items: append ? [...prev.items, ...items] : items,
+          loading: false,
+          error: null,
+          page,
+          hasMore: items.length >= 20,
+        }));
+      } catch (err) {
+        setActivityState((prev) => ({
+          ...prev,
+          loading: false,
+          error: err instanceof Error ? err.message : "Failed to load activity",
+        }));
+      }
+    },
+    [userId],
+  );
+
+  useEffect(() => {
+    if (userId) loadActivity(1);
+  }, [userId, loadActivity]);
+
+  const groupedActivity = useMemo(() => {
+    const groups: Record<string, ActivityItem[]> = {};
+    for (const item of activityState.items) {
+      const dateKey = new Date(item.timestamp).toLocaleDateString();
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(item);
+    }
+    return groups;
+  }, [activityState.items]);
+
+  const renderActivityItem = (item: ActivityItem) => (
+    <div key={item.id} className="activity-item">
+      <span className="activity-item__icon">{getActivityIcon(item.type)}</span>
+      <div className="activity-item__content">
+        <p className="activity-item__description">{item.description}</p>
+        <span className="activity-item__time">
+          {formatActivityDate(item.timestamp)}
+        </span>
+        {item.metadata?.pr && (
+          <a
+            className="activity-item__link"
+            href={`/pr/${item.metadata.pr}`}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(`/pr/${item.metadata!.pr}`);
+            }}
+          >
+            PR #{item.metadata.pr}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="activity-feed">
+      <h2 className="activity-feed__title">Recent Activity</h2>
+      {activityState.loading && activityState.items.length === 0 ? (
+        <div className="activity-loading">
+          <div className="spinner spinner--small" />
+          <p>Loading activity…</p>
+        </div>
+      ) : activityState.error && activityState.items.length === 0 ? (
+        <div className="activity-error">
+          <p>{activityState.error}</p>
+          <button onClick={() => loadActivity(1)}>Retry</button>
+        </div>
+      ) : activityState.items.length === 0 ? (
+        <div className="activity-empty">
+          <p>No recent activity to show.</p>
+        </div>
+      ) : (
+        <>
+          {Object.entries(groupedActivity).map(([dateKey, items]) => (
+            <div key={dateKey} className="activity-group">
+              <h3 className="activity-group__date">{dateKey}</h3>
+              <div className="activity-group__items">
+                {items.map(renderActivityItem)}
+              </div>
+            </div>
+          ))}
+          {activityState.hasMore && (
+            <div className="activity-load-more">
+              <button
+                onClick={() => loadActivity(activityState.page + 1, true)}
+                disabled={activityState.loading}
+                className="btn btn--secondary"
+              >
+                {activityState.loading ? "Loading…" : "Load More"}
+              </button>
+            </div>
+          )}
+          {activityState.error && (
+            <div className="activity-inline-error">
+              <p>Failed to load more: {activityState.error}</p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────
+
+>>>>>>> REPLACE

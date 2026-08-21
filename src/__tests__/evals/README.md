@@ -1,8 +1,8 @@
 # Evals
 
-LLM eval suite for tool-use quality. Five suites run the same 16 cases and
-the same three models (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash) but with
-different tool sets and system prompts:
+LLM eval suite for tool-use quality. Five suites run the same 16 cases across
+the model matrix (Claude Sonnet 4.6, GPT 5.4, Gemini 3 Flash, GPT 5.6 Sol,
+GPT 5.6 Luna) but with different tool sets and system prompts:
 
 | Suite name               | Tools available                | System prompt                                |
 | ------------------------ | ------------------------------ | -------------------------------------------- |
@@ -11,6 +11,10 @@ different tool sets and system prompts:
 | `basic_agent`            | `search_replace`, `write_file` | Production `LOCAL_AGENT_BASIC_SYSTEM_PROMPT` |
 | `pro_agent`              | `search_replace`, `write_file` | Production `LOCAL_AGENT_SYSTEM_PROMPT` (Pro) |
 | `pro_agent_experimental` | `search_replace`, `write_file` | Editable copy of the Pro prompt for tweaking |
+
+The `newline_probe` suite is separate: it runs its own four cases (not the
+shared 16), skips the LLM judge, and measures `search_replace` serialization
+mechanics rather than edit quality. See [Newline probe](#newline-probe).
 
 Each case gives the model a real source file plus an editing instruction,
 runs the model with the suite's tools wired up, applies the produced edits,
@@ -60,7 +64,7 @@ EVAL_SUITE=all EVAL_MODEL=all DYAD_PRO_API_KEY="..." npm run eval
 
 **Heads up — this is expensive.** A full `all`/`all` run issues one
 generation per (suite × model × case) triple plus one judge call per case,
-across 5 suites, 3 models, and 16 cases. Expect dozens of LLM requests,
+across 5 suites, 5 models, and 16 cases. Expect dozens of LLM requests,
 some of which run reasoning models on 300+ line fixtures. Use sparingly;
 prefer narrow filters during development.
 
@@ -246,3 +250,129 @@ call. The split view contains the raw pieces as standalone files:
   JSON blobs. So a `search_replace` call produces `old_string.ts` and
   `new_string.ts`; a `write_file` call produces `content.ts` and
   `description.ts`.
+
+## Newline probe
+
+`search_replace` builds its operations string by joining the model's raw args
+with newline delimiters:
+
+```
+<<<<<<< SEARCH\n${old_string}\n=======\n${new_string}\n>>>>>>> REPLACE
+```
+
+A newline that merely _terminates_ an arg therefore becomes a trailing empty
+line in the parsed block. On the search side that empty line matches nothing,
+the processor's `trimEmptyLines` fallback rescues the match, and — before the
+fix — nothing trimmed the replace side, so the phantom line was written into
+the file as a stray blank line.
+
+This suite measures how often real models send the triggering arg shape.
+Every `search_replace` call is applied twice: once with the current
+serialization and once with a counterfactual that trims the terminator.
+Divergence marks a call the defect fires on.
+
+```bash
+DYAD_PRO_API_KEY="..." EVAL_SUITE=newline_probe EVAL_MODEL="GPT 5.6 Sol" npm run eval
+```
+
+`EVAL_SKIP_JUDGE=1` skips the judge round-trip on any suite, which halves the
+spend when you only care about serialization mechanics.
+
+### What the first run found
+
+Across 82 applied `search_replace` calls from GPT 5.6 Sol (the shared 16-case
+`search_replace` suite):
+
+|                                           | count        |
+| ----------------------------------------- | ------------ |
+| applied calls                             | 82           |
+| both args newline-terminated (symmetric)  | 18           |
+| `new_string`-only terminated (asymmetric) | 0            |
+| `trimEmptyLines` fallback fired           | 7            |
+| **corrupted**                             | **7 (8.5%)** |
+
+All 7 were the symmetric shape. The model terminates both args because it
+copies a contiguous region of the file — in 18 of 18 symmetric calls the
+replace block ended on the same line the search block ended on, i.e. copied
+context rather than an authored blank line. Corruption followed in exactly the
+7 cases where the file had no real blank line at that boundary.
+
+Reading a report:
+
+- **Non-zero divergence** — the defect reproduced. The summary prints a
+  `current` vs `fixed` unified diff per affected call, and the offending args
+  sit in that run's `tool_calls/NN/` folder as ready-made fixtures.
+- **Zero divergence** — the defect did not fire for that model on those cases.
+
+### Known gap
+
+The processor fix covers the symmetric shape only, because it lives inside the
+`trimEmptyLines` fallback and an unterminated `old_string` matches as-is, so
+the fallback never fires. The asymmetric shape (`new_string` terminated,
+`old_string` not) still writes a stray blank line. It was not observed once in
+82 calls, so it is unfixed by choice rather than oversight — the probe stays
+live for it, and `helpers/newline_probe.spec.ts` pins the behavior.
+
+Output goes to `eval-results/newline_probe/` (`samples.json` plus
+`summary.txt`), accumulated across runs, in addition to the per-case records.
+
+The probe's own detector is unit-tested in `helpers/newline_probe.spec.ts`,
+which runs in the normal `vitest` suite with no API key. That test matters: the
+first version of this probe compared against an asymmetric-only counterfactual,
+which by construction leaves symmetric calls untouched — so it reported "0
+corrupted" while 7 real corruptions sat in the data. The spec now pins that
+blind spot explicitly.
+
+## Recorded calls
+
+`recorded_calls/<model>/` holds real `search_replace` tool calls captured from
+eval runs, stored as the operations strings the tool builds from the model's
+arguments. `recorded_calls.spec.ts` replays them against the current processor.
+
+Each case starts from a fixture already in `fixtures/`, so replaying the calls
+in order reconstructs the edit session. That keeps the evidence behind the
+newline findings reviewable without an API key and without `eval-results/`,
+which is gitignored and gets wiped.
+
+The assertion is that an applied call produces exactly what replacing the first
+verbatim occurrence of `old_string` with `new_string` produces — the tool's
+whole contract, and the thing a trailing newline in the arguments breaks.
+
+To add cases, copy `old_string` / `new_string` out of a run's `tool_calls/NN/`
+folder into `<model>/<case>/NN.txt` in the marker format, and list the case
+under that model in `manifest.json` with the fixture it starts from.
+
+### Replaying against the pre-fix processor
+
+The current processor no longer writes stray blank lines, so replaying these
+calls against it shows none. `helpers/legacy_search_replace.ts` is a frozen
+copy of the processor as it stood at `67c9ee7c`, the commit before
+[#4338](https://github.com/dyad-sh/dyad/pull/4338), kept so the recordings can
+still be replayed against the behavior they were captured from.
+
+The spec replays both by default and asserts each model's totals, so the
+measurement is pinned in CI rather than described in prose:
+
+| model        | processor    | applied | did not match | stray blank lines |
+| ------------ | ------------ | ------- | ------------- | ----------------- |
+| GPT 5.6 Sol  | before #4338 | 9       | 7             | 7                 |
+| GPT 5.6 Sol  | current      | 11      | 5             | 0                 |
+| GPT 5.6 Luna | before #4338 | 5       | 0             | 2                 |
+| GPT 5.6 Luna | current      | 5       | 0             | 0                 |
+
+Sol's applied count goes up because two calls that could not match were being
+blocked by a stray blank line an earlier call had introduced.
+
+Both models produce the defect, at different rates. Over the full runs these
+recordings were drawn from, Sol corrupted 7 of 82 applied calls and Luna 2 of
+116, so the recorded set is the corrupting subset rather than a sample.
+
+To replay only one implementation:
+
+```bash
+SEARCH_REPLACE_IMPL=legacy npx vitest run src/__tests__/evals/recorded_calls.spec.ts
+SEARCH_REPLACE_IMPL=current npx vitest run src/__tests__/evals/recorded_calls.spec.ts
+```
+
+`legacy_search_replace.ts` is a historical snapshot. It should not be updated
+to track the real processor - its only job is to keep producing the old output.

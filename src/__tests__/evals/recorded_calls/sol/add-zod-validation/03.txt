@@ -1,0 +1,39 @@
+<<<<<<< SEARCH
+export async function createUserHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const email = req.body.email as string;
+  const name = req.body.name as string;
+  const age = req.body.age as number;
+  const role = req.body.role as "admin" | "member" | "guest";
+
+  const existing = await db.query("SELECT id FROM users WHERE email = ?", [
+    email,
+  ]);
+  if (existing.length > 0) {
+
+=======
+export async function createUserHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  let body: z.infer<typeof createUserBodySchema>;
+  try {
+    body = createUserBodySchema.parse(req.body);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: "invalid body", details: err.issues });
+      return;
+    }
+    throw err;
+  }
+
+  const { email, name, age, role } = body;
+
+  const existing = await db.query("SELECT id FROM users WHERE email = ?", [
+    email,
+  ]);
+  if (existing.length > 0) {
+
+>>>>>>> REPLACE

@@ -1,0 +1,34 @@
+<<<<<<< SEARCH
+interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function parseIntParam(value: string | undefined, defaultVal: number): number {
+
+=======
+interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+const createUserBodySchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  age: z.number().int().nonnegative(),
+  role: z.enum(["admin", "member", "guest"]),
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function parseIntParam(value: string | undefined, defaultVal: number): number {
+
+>>>>>>> REPLACE

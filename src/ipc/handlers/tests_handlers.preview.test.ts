@@ -171,7 +171,11 @@ describe("preview runs", () => {
   });
 
   it("discovers and runs each test in its own fresh preview", async () => {
-    const rotatePreviewView = vi.fn(async () => {});
+    const rotatePreviewView = vi
+      .fn<(timeoutMs?: number) => Promise<string>>()
+      .mockResolvedValueOnce("preview-target-1")
+      .mockResolvedValueOnce("preview-target-2")
+      .mockResolvedValueOnce("preview-target-3");
     const percentTitle = "shows 100% progress\non completion";
     h.spawnStreaming.mockImplementation(async (options) => {
       const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
@@ -290,6 +294,8 @@ describe("preview runs", () => {
     expect(testSpawns[0].env.PLAYWRIGHT_JSON_OUTPUT_NAME).not.toBe(
       testSpawns[1].env.PLAYWRIGHT_JSON_OUTPUT_NAME,
     );
+    expect(testSpawns[0].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-2");
+    expect(testSpawns[1].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-3");
     expect(testSpawns[0].args).toContain("--workers=1");
     expect(
       testSpawns[0].args.some((arg: string) =>

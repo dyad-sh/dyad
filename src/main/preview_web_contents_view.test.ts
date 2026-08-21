@@ -77,6 +77,8 @@ const h = vi.hoisted(() => {
     isDestroyed = () => this.destroyed;
     isLoading = () => this.loading;
     getURL = () => this.url;
+    getUserAgent = () => "FakeBrowser/1.0";
+    setUserAgent = vi.fn();
   }
 
   const createdViews: FakeWebContentsView[] = [];
@@ -899,6 +901,23 @@ describe("automation reservations", () => {
     expect(view.webContents.close).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps overlapping reservations until the final owner releases", () => {
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const view = latestView();
+
+    const releaseFirst = reservePreviewViewForAutomation(asBrowserWindow);
+    const releaseSecond = reservePreviewViewForAutomation(asBrowserWindow);
+    hidePreviewView(asBrowserWindow);
+
+    releaseFirst();
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(getPreviewViewStatus(asBrowserWindow).exists).toBe(true);
+
+    releaseSecond();
+    expect(view.webContents.close).toHaveBeenCalledTimes(1);
+  });
+
   it("is a no-op for a view the renderer still wants", () => {
     const { asBrowserWindow } = createWindow();
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
@@ -961,5 +980,18 @@ describe("view security", () => {
 
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(h.shell.openExternal).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("allows off-origin navigation while automation is active", () => {
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    const contents = latestView().webContents;
+    const event = { preventDefault: vi.fn() };
+
+    beginPreviewAutomation(asBrowserWindow);
+    contents.emit("will-redirect", event, "https://example.com", false, true);
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(h.shell.openExternal).not.toHaveBeenCalled();
   });
 });

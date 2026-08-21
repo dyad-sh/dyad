@@ -55,6 +55,42 @@ describe("GithubOpsPresentationService", () => {
     expect(second.send).not.toHaveBeenCalled();
   });
 
+  it("expires unadmitted initiators but retains confirmed ownership", () => {
+    vi.useFakeTimers();
+    try {
+      const windows = new WindowRegistry();
+      const first = { id: 1, isDestroyed: () => false, send: vi.fn() };
+      const second = { id: 2, isDestroyed: () => false, send: vi.fn() };
+      const firstSession = WindowSessionIdSchema.parse(
+        "00000000-0000-4000-8000-000000000001",
+      );
+      const secondSession = WindowSessionIdSchema.parse(
+        "00000000-0000-4000-8000-000000000002",
+      );
+      windows.register(first, firstSession);
+      windows.register(second, secondSession);
+      const service = new GithubOpsPresentationService(windows);
+
+      service.recordInitiator("rejected", firstSession);
+      vi.runAllTimers();
+      service.recordInitiator("rejected", secondSession);
+      service.showError(7, "rejected", "Rejected retry failed");
+      expect(second.send).toHaveBeenCalled();
+
+      service.recordInitiator("admitted", firstSession);
+      service.confirm("admitted");
+      vi.runAllTimers();
+      service.recordInitiator("admitted", secondSession);
+      service.showError(7, "admitted", "Admitted operation failed");
+      expect(first.send).toHaveBeenCalledWith("toast:error", {
+        message: "Admitted operation failed",
+        toastId: "github-ops-7-operation",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("deduplicates persistent detailed probe errors by app", () => {
     const windows = new WindowRegistry();
     const target = { id: 1, isDestroyed: () => false, send: vi.fn() };

@@ -39,6 +39,7 @@ const database = vi.hoisted(() => ({
 }));
 const invalidations = vi.hoisted(() => ({ publish: vi.fn() }));
 const presentation = vi.hoisted(() => ({
+  confirm: vi.fn(),
   dismissError: vi.fn(),
   forget: vi.fn(),
   recordInitiator: vi.fn(),
@@ -147,6 +148,7 @@ describe("main-hosted github_ops actor", () => {
     service.assertAcceptingOperations.mockReset();
     database.findFirst.mockReset();
     invalidations.publish.mockReset();
+    presentation.confirm.mockReset();
     presentation.dismissError.mockReset();
     presentation.forget.mockReset();
     presentation.recordInitiator.mockReset();

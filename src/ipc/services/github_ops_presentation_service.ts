@@ -4,9 +4,17 @@ import {
 } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export class GithubOpsPresentationService {
-  private readonly initiatorByOperationId = new Map<string, WindowSessionId>();
+  private readonly initiatorByOperationId = new Map<
+    string,
+    {
+      readonly windowSessionId: WindowSessionId;
+      confirmed: boolean;
+      expiry: ReturnType<typeof setTimeout> | null;
+    }
+  >();
   private readonly toastTargetById = new Map<string, WindowSessionId>();
 
   constructor(private readonly windows: WindowRegistry = windowRegistry) {}
@@ -15,16 +23,36 @@ export class GithubOpsPresentationService {
     operationId: string,
     windowSessionId: string | undefined,
   ): void {
-    if (windowSessionId && !this.initiatorByOperationId.has(operationId)) {
-      if (this.initiatorByOperationId.size >= 256) {
-        const oldest = this.initiatorByOperationId.keys().next().value;
-        if (oldest) this.initiatorByOperationId.delete(oldest);
-      }
-      this.initiatorByOperationId.set(
-        operationId,
-        windowSessionId as WindowSessionId,
+    if (!windowSessionId || this.initiatorByOperationId.has(operationId))
+      return;
+    if (this.initiatorByOperationId.size >= 256) {
+      throw new DyadError(
+        "Too many GitHub operations are still settling. Please try again.",
+        DyadErrorKind.Auth,
       );
     }
+    const entry = {
+      windowSessionId: windowSessionId as WindowSessionId,
+      confirmed: false,
+      expiry: null as ReturnType<typeof setTimeout> | null,
+    };
+    entry.expiry = setTimeout(() => {
+      if (
+        this.initiatorByOperationId.get(operationId) === entry &&
+        !entry.confirmed
+      ) {
+        this.initiatorByOperationId.delete(operationId);
+      }
+    }, 0);
+    this.initiatorByOperationId.set(operationId, entry);
+  }
+
+  confirm(operationId: string): void {
+    const entry = this.initiatorByOperationId.get(operationId);
+    if (!entry) return;
+    entry.confirmed = true;
+    if (entry.expiry) clearTimeout(entry.expiry);
+    entry.expiry = null;
   }
 
   showError(
@@ -34,7 +62,7 @@ export class GithubOpsPresentationService {
     toastScope: "operation" | "git-state" | "conflicts" = "operation",
   ): void {
     const initiator = operationId
-      ? this.initiatorByOperationId.get(operationId)
+      ? this.initiatorByOperationId.get(operationId)?.windowSessionId
       : undefined;
     const target =
       this.windows.routePresentation({
@@ -70,7 +98,10 @@ export class GithubOpsPresentationService {
   }
 
   forget(operationId: string | undefined): void {
-    if (operationId) this.initiatorByOperationId.delete(operationId);
+    if (!operationId) return;
+    const entry = this.initiatorByOperationId.get(operationId);
+    if (entry?.expiry) clearTimeout(entry.expiry);
+    this.initiatorByOperationId.delete(operationId);
   }
 }
 

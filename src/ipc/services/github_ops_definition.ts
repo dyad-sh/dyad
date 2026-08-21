@@ -184,6 +184,24 @@ function errorMessage(error: unknown, fallback: string): string {
   return safeGithubOpsErrorMessage(error, fallback);
 }
 
+function commandRetainsPresentationRoute(command: GithubOpsCommand): boolean {
+  switch (command.type) {
+    case "notify":
+    case "probe-git-state":
+    case "probe-conflicts":
+      return true;
+    case "run-op":
+    case "invalidate-branches":
+    case "refresh-app":
+    case "start-conflict-resolution":
+      return false;
+    default: {
+      const exhaustive: never = command;
+      return exhaustive;
+    }
+  }
+}
+
 function createCommandRunner(
   context: MachineHostContext<
     GithubOpsKey,
@@ -298,6 +316,7 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
+              forgetIfInactive(invocationRef?.operationId);
             }
           },
           (error) => {
@@ -331,6 +350,7 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
+              forgetIfInactive(invocationRef?.operationId);
             }
           },
           (error) => {
@@ -441,7 +461,10 @@ export const githubOpsDefinition: GithubOpsDefinition = {
     }
   },
   createObserver: () => ({
-    onTransitionApplied: ({ previous, state, commands }) => {
+    onTransitionApplied: ({ previous, state, event, commands }) => {
+      if ("operationId" in event) {
+        githubOpsPresentationService.confirm(event.operationId);
+      }
       const previousOperationId =
         previous.activeInvocationRef?.operationId ?? null;
       const activeOperationId = state.activeInvocationRef?.operationId ?? null;
@@ -452,9 +475,7 @@ export const githubOpsDefinition: GithubOpsDefinition = {
           (actorCommand) =>
             actorCommand.type === "domain" &&
             actorCommand.invocationRef?.operationId === previousOperationId &&
-            (actorCommand.command.type === "notify" ||
-              actorCommand.command.type === "probe-git-state" ||
-              actorCommand.command.type === "probe-conflicts"),
+            commandRetainsPresentationRoute(actorCommand.command),
         )
       ) {
         githubOpsPresentationService.forget(previousOperationId);

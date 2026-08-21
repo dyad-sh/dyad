@@ -126,6 +126,36 @@ function CoolifyConnector(props: { appId: number | null }) {
   );
 }
 
+describe("an install that is going on", () => {
+  it("is shown even when this app's own status cannot be read", async () => {
+    // The install belongs to the machine, not to the app being looked at. Put
+    // behind that read, a multi-minute run is replaced by an error about
+    // something else, with its Cancel button out of reach.
+    deploy.value = {
+      status: undefined,
+      statusError: new Error("could not read the app"),
+    };
+    setup.state = {
+      type: "running",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      step: "installing",
+      log: "",
+      stopping: false,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-server-setup-stub")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("coolify-status-error")).toBeNull();
+  });
+});
+
 describe("before the status query has answered", () => {
   it("waits rather than claiming a failure when it is merely paused", () => {
     // Offline: pending, no data, no error. Nothing has gone wrong.

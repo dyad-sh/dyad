@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { SETUP_NOT_STARTED } from "@/ipc/types/coolify_setup";
 
 const toastMock = vi.hoisted(() => ({
   warning: vi.fn(),
@@ -151,6 +152,9 @@ describe("the admin address", () => {
       screen.getByTestId("coolify-setup-email"),
       "admin@dyad.test",
     );
+    // Checked, so what refuses below is the address rather than the check the
+    // button is otherwise waiting for.
+    await checkServer(user);
 
     expect(
       screen.getByTestId("coolify-setup-install").hasAttribute("disabled"),
@@ -458,7 +462,11 @@ describe("pressing Install", () => {
     renderPanel();
     await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
     await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
     await user.click(screen.getByTestId("coolify-setup-install"));
+    // The press has to have landed, or what is disabled below is the button
+    // waiting for a check rather than the run it started.
+    expect(h.run).toHaveBeenCalledTimes(1);
 
     await waitFor(() =>
       expect(
@@ -476,6 +484,9 @@ describe("pressing Install", () => {
     renderPanel();
     await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
     await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    // Checked, so what is disabled below is the missing key rather than the
+    // check the button is otherwise waiting for.
+    await checkServer(user);
 
     await waitFor(() =>
       expect(
@@ -571,11 +582,15 @@ describe("when the user stops it", () => {
   });
 
   it("still reports a refusal to start", async () => {
-    // The shape the controller actually refuses with.
+    // The shape the handler actually refuses with: a refusal that never
+    // reached the machine says so on the error.
     h.run.mockRejectedValue(
-      new DyadError(
-        "A server is already being set up.",
-        DyadErrorKind.Precondition,
+      Object.assign(
+        new DyadError(
+          "A server is already being set up.",
+          DyadErrorKind.Precondition,
+        ),
+        { code: SETUP_NOT_STARTED },
       ),
     );
     const user = userEvent.setup();

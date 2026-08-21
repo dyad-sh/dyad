@@ -28,6 +28,74 @@ export interface GetProviderOptionsParams {
 }
 
 /**
+ * The provider-FAMILY slice of {@link getProviderOptions}: the options a model
+ * needs because of what it is — thinking/reasoning configuration — independent
+ * of the request (dyad ids, files, codebase context).
+ *
+ * Exists for the auto-mode fallback chain: call options are computed once for
+ * the primary selection, so a mid-stream failover to another provider's model
+ * previously ran with the PRIMARY's family options — an Anthropic fallback
+ * received no `providerOptions.anthropic` at all (no adaptive thinking), and
+ * the primary's temperature on top of that is a hard 400. Each chain entry gets
+ * the family options it would have received as the primary selection.
+ *
+ * Kept in lockstep with the family branches of getProviderOptions below —
+ * update both when a provider's thinking config changes.
+ */
+export function getModelScopedProviderOptions({
+  providerId,
+  modelName,
+  modelSelection,
+}: {
+  providerId: string;
+  modelName: string;
+  modelSelection: ModelSelection;
+}): Record<string, any> {
+  if (providerId === "openai") {
+    return {
+      openai: {
+        reasoningSummary: "auto",
+        reasoningEffort: getModelEffort(
+          modelSelection,
+        ) as OpenAIResponsesProviderOptions["reasoningEffort"],
+      } satisfies OpenAIResponsesProviderOptions,
+    };
+  }
+  if (providerId === "anthropic") {
+    return { anthropic: getAnthropicProviderOptions(modelSelection) };
+  }
+  if (providerId === "google" || providerId === "vertex") {
+    const isGeminiModel = modelName.startsWith("gemini");
+    const isFlashLite = modelName.includes("flash-lite");
+    const isPartnerModel = modelName.includes("/");
+    if (!isGeminiModel || isFlashLite || isPartnerModel) return {};
+    const effortLevel = getModelEffort(modelSelection);
+    const isKnownGeminiEffort = ["minimal", "low", "medium", "high"].includes(
+      effortLevel,
+    );
+    return {
+      google: {
+        thinkingConfig: {
+          includeThoughts: true,
+          ...(modelName.startsWith("gemini-3") && isKnownGeminiEffort
+            ? {
+                thinkingLevel: effortLevel as
+                  | "minimal"
+                  | "low"
+                  | "medium"
+                  | "high",
+              }
+            : isKnownGeminiEffort
+              ? { thinkingBudget: getGeminiThinkingBudgetTokens(effortLevel) }
+              : {}),
+        },
+      } satisfies GoogleGenerativeAIProviderOptions,
+    };
+  }
+  return {};
+}
+
+/**
  * Builds provider options for the AI SDK streamText call.
  * Handles provider-specific configuration including thinking configs for Google/Vertex/Anthropic.
  */

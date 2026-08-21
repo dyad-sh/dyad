@@ -16,6 +16,8 @@ import type {
   AzureProviderSetting,
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
+import { getModelScopedProviderOptions } from "./provider_options";
+import { getMaxTokens, getTemperature } from "./token_utils";
 import log from "electron-log";
 import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
@@ -312,7 +314,7 @@ async function getProModelClient({
     model.name === "auto"
   ) {
     const providers = await getLanguageModelProviders();
-    const fallbackModels = await Promise.all(
+    const fallbackEntries = await Promise.all(
       AUTO_DYAD_PRO_MODEL_ALIASES.map(async (aliasId) => {
         const resolvedModel = await resolveBuiltinModelAlias(aliasId);
         if (!resolvedModel || resolvedModel.apiName.endsWith(":free")) {
@@ -326,28 +328,51 @@ async function getProModelClient({
           resolvedProvider?.gatewayPrefix || ""
         }${resolvedModel.apiName}`;
 
-        if (resolvedModel.providerId === "openai") {
-          return provider.responses(resolvedModel.apiName, {
-            providerId: resolvedModel.providerId,
-          });
-        }
+        const instance =
+          resolvedModel.providerId === "openai"
+            ? provider.responses(resolvedModel.apiName, {
+                providerId: resolvedModel.providerId,
+              })
+            : resolvedModel.providerId === "anthropic"
+              ? provider.anthropic(resolvedModelId, {
+                  providerId: resolvedModel.providerId,
+                })
+              : provider(resolvedModelId, {
+                  providerId: resolvedModel.providerId,
+                });
 
-        if (resolvedModel.providerId === "anthropic") {
-          return provider.anthropic(resolvedModelId, {
-            providerId: resolvedModel.providerId,
-          });
-        }
-
-        return provider(resolvedModelId, {
-          providerId: resolvedModel.providerId,
-        });
+        // The stream's call options are computed for the PRIMARY selection, so
+        // give each chain entry the options it would have received had IT been
+        // selected: its own temperature and output cap from the catalog, and
+        // its provider family's thinking/reasoning options at the user's
+        // chosen effort. Without this, a cross-provider failover ran with the
+        // primary's options — an Anthropic fallback got no adaptive-thinking
+        // config plus a temperature that is invalid without it (hard 400).
+        const chainModelSelection = {
+          provider: resolvedModel.providerId,
+          name: resolvedModel.apiName,
+        };
+        const [temperature, maxOutputTokens] = await Promise.all([
+          getTemperature(chainModelSelection),
+          getMaxTokens(chainModelSelection),
+        ]);
+        return {
+          model: instance,
+          callOptions: {
+            temperature,
+            maxOutputTokens,
+            providerOptions: getModelScopedProviderOptions({
+              providerId: resolvedModel.providerId,
+              modelName: resolvedModel.apiName,
+              modelSelection: model,
+            }),
+          },
+        };
       }),
     );
 
-    const validModels = fallbackModels.filter(
-      (candidate) => candidate !== null,
-    );
-    if (validModels.length === 0) {
+    const validEntries = fallbackEntries.filter((entry) => entry !== null);
+    if (validEntries.length === 0) {
       throw new DyadError(
         "No auto-mode models could be resolved from the catalog",
         DyadErrorKind.External,
@@ -359,7 +384,8 @@ async function getProModelClient({
       // because GPT-5* models need to use responses API to get
       // full functionality (e.g. thinking summaries).
       model: createFallback({
-        models: validModels,
+        models: validEntries.map((entry) => entry.model),
+        modelCallOptions: validEntries.map((entry) => entry.callOptions),
       }),
       // Using openAI as the default provider.
       // TODO: we should remove this and rely on the provider id passed into the provider().

@@ -10,8 +10,29 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("fallback_model");
 
 // Types
+
+/**
+ * The model-derived subset of call options — what a model should receive
+ * because of what it is, as opposed to what the request is. Everything else
+ * (prompt, tools, headers, request metadata) passes through unchanged.
+ */
+export interface FallbackModelCallOptions {
+  temperature?: number;
+  maxOutputTokens?: number;
+  providerOptions?: Record<string, unknown>;
+}
+
 interface FallbackSettings {
   models: Array<LanguageModel>;
+  /**
+   * Per-model call-option overrides, parallel to `models`. The caller's
+   * options are computed for the PRIMARY selection and encode that model's
+   * constraints; an entry here expresses what the model at the same index
+   * would have received had it been selected as primary. Models without an
+   * entry get the conservative default on failover: `temperature` stripped
+   * (valid on every provider), everything else forwarded.
+   */
+  modelCallOptions?: Array<FallbackModelCallOptions | undefined>;
 }
 
 interface RetryState {
@@ -177,6 +198,59 @@ class FallbackModel implements LanguageModelV3 {
     return model;
   }
 
+  /**
+   * Call options are resolved for the PRIMARY model before the request is made
+   * (e.g. `getTemperature(settings.selectedModel)`), so they encode that
+   * model's constraints, not the fallback's. Forwarding them verbatim across a
+   * provider switch produces hard 400s — observed: a gpt-5.6 stream error
+   * failed over to an Anthropic thinking model, which rejected the forwarded
+   * `temperature` ("`temperature` may only be set to 1 when thinking is
+   * enabled"), converting a recoverable blip into a fatal stream error.
+   *
+   * When calling any model other than the primary, apply that model's
+   * `modelCallOptions` entry — the options it would have received as the
+   * primary selection, computed at chain-build time where catalog access
+   * exists. Without an entry, fall back to stripping `temperature` (an absent
+   * temperature is valid on every provider). Applies to sticky-index first
+   * attempts too — after a failover, `currentModelIndex` stays non-zero for
+   * `modelResetInterval`, so a fresh request's first call can already target a
+   * fallback model.
+   */
+  private optionsForCurrentModel(
+    options: LanguageModelV3CallOptions,
+  ): LanguageModelV3CallOptions {
+    if (this.currentModelIndex === 0) return options;
+    const overrides = this.settings.modelCallOptions?.[this.currentModelIndex];
+    if (!overrides) {
+      // No per-model knowledge: strip temperature (an absent temperature is
+      // valid on every provider) and forward the rest.
+      if (options.temperature === undefined) return options;
+      const { temperature: _dropped, ...rest } = options;
+      return rest;
+    }
+    // Rebuild the model-derived subset as if this model had been primary.
+    // temperature is REPLACED (undefined in the overrides means "unset", not
+    // "keep the primary's"); maxOutputTokens falls back to the caller's when
+    // the catalog had none; providerOptions merge at the provider-family key —
+    // request-scoped keys (e.g. dyad-engine) pass through, the fallback's
+    // family entry is added, and a stale foreign family key is inert because
+    // providers only read their own key.
+    const { temperature: _replaced, ...rest } = options;
+    return {
+      ...rest,
+      ...(overrides.temperature !== undefined
+        ? { temperature: overrides.temperature }
+        : {}),
+      ...(overrides.maxOutputTokens !== undefined
+        ? { maxOutputTokens: overrides.maxOutputTokens }
+        : {}),
+      providerOptions: {
+        ...options.providerOptions,
+        ...(overrides.providerOptions ?? {}),
+      } as LanguageModelV3CallOptions["providerOptions"],
+    };
+  }
+
   private checkAndResetModel(): void {
     // Only reset if we're not currently in a retry cycle
     if (this.isRetrying) return;
@@ -269,7 +343,9 @@ class FallbackModel implements LanguageModelV3 {
     this.checkAndResetModel();
 
     return this.retry(async (retryState) => {
-      const result = await this.getUnderlyingModel().doStream(options);
+      const result = await this.getUnderlyingModel().doStream(
+        this.optionsForCurrentModel(options),
+      );
 
       // Create a wrapped stream that handles errors gracefully
       const wrappedStream = this.createWrappedStream(
@@ -380,7 +456,7 @@ class FallbackModel implements LanguageModelV3 {
             try {
               const nextResult = await fallbackModel
                 .getUnderlyingModel()
-                .doStream(options);
+                .doStream(fallbackModel.optionsForCurrentModel(options));
               await processStream(nextResult.stream);
             } catch (nextError) {
               controller.error(nextError);

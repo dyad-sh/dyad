@@ -1043,3 +1043,87 @@ step4
 <output_file>
 step4
 </output_file>
+
+--- Test case name: spurious trailing blank line in both blocks does not add a blank line ---
+<original_file>
+function f() {
+  if (!ok) {
+    rollback();
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+  if (!ok) {
+
+=======
+  if (!found) {
+
+>>>>>>> REPLACE
+<output_file>
+function f() {
+  if (!found) {
+    rollback();
+  }
+}
+</output_file>
+
+--- Test case name: real trailing blank line in both blocks is preserved ---
+<original_file>
+const a = 1;
+const b = 2;
+
+const c = 3;
+</original_file>
+<<<<<<< SEARCH
+const b = 2;
+
+=======
+const b = 22;
+
+>>>>>>> REPLACE
+<output_file>
+const a = 1;
+const b = 22;
+
+const c = 3;
+</output_file>
+
+--- Test case name: spurious leading blank line in both blocks does not add a blank line ---
+<original_file>
+const a = 1;
+const b = 2;
+const c = 3;
+</original_file>
+<<<<<<< SEARCH
+
+const b = 2;
+=======
+
+const b = 22;
+>>>>>>> REPLACE
+<output_file>
+const a = 1;
+const b = 22;
+const c = 3;
+</output_file>
+
+--- Test case name: replace block keeps its own blank lines when search has none to trim ---
+<original_file>
+const a = 1;
+const b = 2;
+const c = 3;
+</original_file>
+<<<<<<< SEARCH
+const b = 2;
+=======
+const b = 22;
+
+const b2 = 3;
+>>>>>>> REPLACE
+<output_file>
+const a = 1;
+const b = 22;
+
+const b2 = 3;
+const c = 3;
+</output_file>

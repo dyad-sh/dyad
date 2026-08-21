@@ -90,6 +90,43 @@ function trimEmptyLines(lines: string[]): string[] {
 }
 
 /**
+ * Mirror onto the replace block whatever edge empty lines the fallback had to
+ * strip from the search block, capped at the replace block's own edge empty
+ * lines. Never removes a non-empty line.
+ */
+function trimReplaceEdgesLike(
+  replaceLines: string[],
+  originalSearchLines: string[],
+  trimmedSearchLines: string[],
+): string[] {
+  let leadingTrimmed = 0;
+  while (
+    leadingTrimmed < originalSearchLines.length &&
+    originalSearchLines[leadingTrimmed] === ""
+  ) {
+    leadingTrimmed++;
+  }
+  const trailingTrimmed =
+    originalSearchLines.length - trimmedSearchLines.length - leadingTrimmed;
+
+  const result = [...replaceLines];
+  for (let i = 0; i < trailingTrimmed; i++) {
+    if (result.length === 0 || result[result.length - 1] !== "") break;
+    result.pop();
+  }
+  // Unreachable through the current parser: parseSearchReplaceBlocks consumes
+  // leading blank lines in the `\s*\n` after the SEARCH marker, so a search
+  // block never arrives with one and leadingTrimmed is always 0. Kept for
+  // symmetry with the trailing case, and because leadingTrimmed itself stays
+  // load-bearing above - trailingTrimmed is derived from it.
+  for (let i = 0; i < leadingTrimmed; i++) {
+    if (result.length === 0 || result[0] !== "") break;
+    result.shift();
+  }
+  return result;
+}
+
+/**
  * Find all positions where searchLines match against resultLines using the given comparator
  */
 function findMatchPositions(
@@ -324,6 +361,15 @@ export function applySearchReplace(
         const trimmedResult = cascadingMatch(resultLines, trimmedSearchLines);
         if (!trimmedResult.error) {
           matchResult = trimmedResult;
+          // The search block's edge empty lines were spurious - they matched
+          // nothing in the file. The replace block's edge empty lines came from
+          // the same off-by-one, so drop them too or they land in the file as
+          // stray blank lines.
+          replaceLines = trimReplaceEdgesLike(
+            replaceLines,
+            searchLines,
+            trimmedSearchLines,
+          );
           searchLines = trimmedSearchLines;
           logger.debug(
             "Matched after trimming leading/trailing empty lines from search content",

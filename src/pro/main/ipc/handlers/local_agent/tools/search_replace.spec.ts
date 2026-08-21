@@ -341,9 +341,12 @@ describe("searchReplaceTool", () => {
       );
 
       expect(result).toContain("Successfully");
+      // Asserted exactly, not with stringContaining: the point of these cases
+      // is what the stray newline does to the OUTPUT, and a substring check
+      // passes just as happily on a file with extra blank lines in it.
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
         "/test/app/test.ts",
-        expect.stringContaining("const y = 2"),
+        "function test() {\n  const y = 2;\n  return y;\n}",
       );
     });
 
@@ -371,7 +374,7 @@ describe("searchReplaceTool", () => {
       expect(result).toContain("Successfully");
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
         "/test/app/test.ts",
-        expect.stringContaining("const y = 2"),
+        "function test() {\n  const y = 2;\n  return y;\n}",
       );
     });
 
@@ -399,7 +402,64 @@ describe("searchReplaceTool", () => {
       expect(result).toContain("Successfully");
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
         "/test/app/test.ts",
-        expect.stringContaining("const y = 2"),
+        "function test() {\n  const y = 2;\n  return y;\n}",
+      );
+    });
+
+    // The shape observed in production traffic: GPT 5.6 Sol terminates both
+    // args together because it copies a contiguous region of the file, and the
+    // trailing empty line matches nothing when the boundary has no blank line.
+    it("does not add a blank line when both args are newline-terminated and the file has none", async () => {
+      const originalContent = [
+        "function test() {",
+        "  if (!ok) {",
+        "    rollback();",
+        "  }",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "  if (!ok) {\n",
+          new_string: "  if (!found) {\n",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        "function test() {\n  if (!found) {\n    rollback();\n  }\n}",
+      );
+    });
+
+    it("preserves a blank line the terminated args genuinely matched", async () => {
+      const originalContent = [
+        "const a = 1;",
+        "const b = 2;",
+        "",
+        "const c = 3;",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "const b = 2;\n",
+          new_string: "const b = 22;\n",
+        },
+        mockContext,
+      );
+
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        "const a = 1;\nconst b = 22;\n\nconst c = 3;",
       );
     });
   });

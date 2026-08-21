@@ -843,7 +843,7 @@ export function ModelPicker() {
     const isSelected =
       selectedModel.provider === providerId &&
       selectedModel.name === model.modelName;
-    const effortSettings = getEffortSettings();
+    const effortSettings = getEffortSettings(undefined, providerId);
     const currentEffort = isSelected
       ? selectedEffortLevel
       : createModelSelection({

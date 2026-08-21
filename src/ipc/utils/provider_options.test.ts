@@ -72,6 +72,13 @@ describe("getProviderOptions model effort", () => {
   it("passes effort to OpenAI-compatible local and custom providers", () => {
     expect(
       optionsFor(
+        settingsFor("ollama", "qwen3-coder:30b", "none"),
+        "ollama",
+        "ollama",
+      ).ollama,
+    ).toEqual({ reasoningEffort: "none" });
+    expect(
+      optionsFor(
         settingsFor("lmstudio", "local-model", "high"),
         "lmstudio",
         "lmstudio",

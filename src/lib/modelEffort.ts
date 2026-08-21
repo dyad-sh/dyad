@@ -7,6 +7,11 @@ export const FALLBACK_EFFORT_SETTINGS = {
   possibleEffortLevels: ["low", "medium", "high"],
 } as const;
 
+export const OLLAMA_EFFORT_SETTINGS = {
+  defaultEffortLevel: "medium",
+  possibleEffortLevels: ["none", "low", "medium", "high"],
+} as const;
+
 export function getModelPreferenceKey(model: LargeLanguageModel): string {
   const preferenceModel = getAutoSidekickRuntimeModel(model);
   return JSON.stringify([
@@ -16,10 +21,16 @@ export function getModelPreferenceKey(model: LargeLanguageModel): string {
   ]);
 }
 
-export function getEffortSettings(model?: LanguageModel | null): {
+export function getEffortSettings(
+  model?: LanguageModel | null,
+  providerId?: string,
+): {
   defaultEffortLevel: string;
   possibleEffortLevels: readonly string[];
 } {
+  if (providerId === "ollama") {
+    return OLLAMA_EFFORT_SETTINGS;
+  }
   return model?.effortSettings ?? FALLBACK_EFFORT_SETTINGS;
 }
 

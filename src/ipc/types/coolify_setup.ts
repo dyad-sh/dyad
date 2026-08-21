@@ -34,6 +34,16 @@ export const ServerKeySchema = z.object({
  * server does not need one — demanding it there rejected a check the panel
  * was offering before the email had been typed.
  */
+/**
+ * Marks a refusal that happened before the machine took the run on.
+ *
+ * The panel shows anything the machine recorded, with the installer's output
+ * under it. What never got that far — a rejected address, a server nobody
+ * checked, a setup already going — has nowhere to appear but a toast, and
+ * this is how the two are told apart.
+ */
+export const SETUP_NOT_STARTED = "coolify-setup-not-started";
+
 export const SetupServerSchema = z.object({
   host: z.string().min(1),
   /** Coolify's installer needs root, and says so in its own documentation. */

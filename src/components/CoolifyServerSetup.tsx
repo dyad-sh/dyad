@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
+import { SETUP_NOT_STARTED } from "@/ipc/types/coolify_setup";
 import type {
   SetupPreflight,
   SetupResult,
@@ -12,7 +13,7 @@ import type {
   SetupStep,
 } from "@/ipc/types";
 import { showError } from "@/lib/toast";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError } from "@/errors/dyad_error";
 import { queryKeys } from "@/lib/queryKeys";
 import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
@@ -158,19 +159,17 @@ export function CoolifyServerSetup({
     // one still watching by the time it arrives. Only a refusal to start —
     // one setup at a time — belongs to the caller.
     onError: (error) => {
-      // A cancel comes back here too, because the flow rethrows it. Reported
-      // as a red panel it says something went wrong, while the screen behind
-      // it correctly says nothing did.
-      // Anything the machine took on is on screen already, with the
-      // installer's own words under it, so saying it again in a toast reports
-      // one failure twice. What never reached the machine — a refusal to
-      // start, a rejected address, a call that did not arrive — has nowhere
-      // else to appear.
-      const theMachineHasIt =
-        error instanceof DyadError &&
-        error.kind !== DyadErrorKind.Validation &&
-        error.kind !== DyadErrorKind.Precondition;
-      if (theMachineHasIt) return;
+      // Anything the machine took on is on screen already — a failure with the
+      // installer's own words under it, or a cancel that correctly says
+      // nothing went wrong. Saying it again in a toast reports one event
+      // twice. What never reached the machine says so on the error, which the
+      // kind cannot: the flow raises Precondition as well, when its own look
+      // at the server refuses at install time.
+      const neverStarted =
+        (error as { code?: string }).code === SETUP_NOT_STARTED;
+      // Anything that is not one of ours did not come from the flow either, so
+      // it has nowhere else to appear.
+      if (!neverStarted && error instanceof DyadError) return;
       showError(error);
     },
   });

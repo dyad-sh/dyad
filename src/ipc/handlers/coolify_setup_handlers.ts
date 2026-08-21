@@ -3,6 +3,7 @@ import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createTypedHandler } from "./base";
 import {
+  SETUP_NOT_STARTED,
   coolifySetupContracts,
   coolifySetupEvents,
 } from "../types/coolify_setup";
@@ -55,6 +56,15 @@ let controller: CoolifySetupController | null = null;
  * would make it something the caller could choose.
  */
 const inspectedFingerprints = new Map<string, string>();
+
+/**
+ * The servers a check got through and liked.
+ *
+ * Separate from the pin above, which is written during the handshake: a
+ * connection that opened is not a server that answered, and a server that
+ * answered "Coolify is already here" is not one to install onto.
+ */
+const readyHosts = new Set<string>();
 
 function broadcastState(state: SetupSnapshot) {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -246,6 +256,7 @@ function targetFrom(input: SetupServer, privateKey: string) {
 /** Test-only: the pin map and the controller both outlive a single case. */
 export function resetCoolifySetupStateForTests(): void {
   inspectedFingerprints.clear();
+  readyHosts.clear();
   // Cancelled before disposed: disposing stops the controller talking, it does
   // not stop what it started, and a run left going would go on writing
   // settings while the next case is watching them.
@@ -293,6 +304,10 @@ export function registerCoolifySetupHandlers() {
           );
         }),
       ]);
+      // Kept only while the answer stands: a server that was ready and has
+      // since had Coolify put on it must not keep an old pass.
+      if (checks.ready) readyHosts.add(hostIdentity(input.host));
+      else readyHosts.delete(hostIdentity(input.host));
       return {
         ready: checks.ready,
         reason: checks.reason ?? null,
@@ -308,35 +323,46 @@ export function registerCoolifySetupHandlers() {
 
   // DO NOT LOG this handler: its result carries the generated admin password.
   createTypedHandler(coolifySetupContracts.run, async (_, input) => {
-    // Checked before anything is done, because Coolify resolves the domain when
-    // it seeds its admin and a rejected address leaves an install with no
-    // account on it — minutes later, with nothing to show for them.
-    if (!isPlausibleAdminEmail(input.adminEmail)) {
-      throw new DyadError(
-        "Enter an email address whose domain resolves. Coolify checks this " +
-          "when it creates the admin account, and rejects addresses like " +
-          "admin@example.test.",
-        DyadErrorKind.Validation,
-      );
+    try {
+      // Checked before anything is done, because Coolify resolves the domain when
+      // it seeds its admin and a rejected address leaves an install with no
+      // account on it — minutes later, with nothing to show for them.
+      if (!isPlausibleAdminEmail(input.adminEmail)) {
+        throw new DyadError(
+          "Enter an email address whose domain resolves. Coolify checks this " +
+            "when it creates the admin account, and rejects addresses like " +
+            "admin@example.test.",
+          DyadErrorKind.Validation,
+        );
+      }
+      if (
+        input.customDomain &&
+        !isPlausibleInstanceDomain(input.customDomain)
+      ) {
+        throw new DyadError(
+          "Enter the domain on its own, with no port or path — for example " +
+            "coolify.yourdomain.com.",
+          DyadErrorKind.Validation,
+        );
+      }
+      if (!readyHosts.has(hostIdentity(input.host))) {
+        throw new DyadError(
+          "Check the server before installing. Dyad shows you its fingerprint " +
+            "first, so the install goes to the machine that answered rather " +
+            "than to whatever holds the address by then.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      // One at a time is the machine's rule, not a check here; it refuses by
+      // throwing, and the panel shows that. Returned rather than awaited, so
+      // a run that fails later is the machine's to report.
+      return setupController().start(input).result;
+    } catch (error) {
+      if (error instanceof DyadError) {
+        Object.assign(error, { code: SETUP_NOT_STARTED });
+      }
+      throw error;
     }
-    if (input.customDomain && !isPlausibleInstanceDomain(input.customDomain)) {
-      throw new DyadError(
-        "Enter the domain on its own, with no port or path — for example " +
-          "coolify.yourdomain.com.",
-        DyadErrorKind.Validation,
-      );
-    }
-    if (!inspectedFingerprints.has(hostIdentity(input.host))) {
-      throw new DyadError(
-        "Check the server before installing. Dyad shows you its fingerprint " +
-          "first, so the install goes to the machine that answered rather " +
-          "than to whatever holds the address by then.",
-        DyadErrorKind.Precondition,
-      );
-    }
-    // One at a time is the machine's rule, not a check here; it refuses by
-    // throwing, and the panel shows that.
-    return setupController().start(input).result;
   });
 
   createTypedHandler(coolifySetupContracts.snapshot, async () =>

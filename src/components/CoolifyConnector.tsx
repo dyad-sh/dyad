@@ -153,6 +153,54 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     setIsEditingConnection(false);
   }, [appId, status?.hasToken]);
 
+  // On both screens below. Signing out is exactly when someone needs the
+  // password back, and it is the state that leaves them here.
+  const previousConnection = <CoolifyCredentials showTitle />;
+
+  // One element, not one per branch: rendering a second copy elsewhere in the
+  // tree would remount the panel and lose the result it is being kept for.
+  const setupState: SetupSnapshot = setupSnapshot ?? { type: "idle" };
+
+  const serverSetup = (
+    <CoolifyServerSetup
+      onUseExisting={(url) => {
+        if (url) setInstanceUrl(url);
+        setIsEnteringToken(true);
+      }}
+    >
+      {previousConnection}
+
+      {/* Last, under anything Dyad already knows about a Coolify: this is the
+          exit for the people the installer does not apply to, not another
+          control on it. */}
+      <div className="border-t pt-3">
+        <button
+          type="button"
+          className="text-sm font-medium underline underline-offset-4 hover:no-underline"
+          onClick={() => setIsEnteringToken(true)}
+          data-testid="coolify-setup-use-existing"
+        >
+          I already have Coolify installed
+        </button>
+      </div>
+    </CoolifyServerSetup>
+  );
+
+  // Before the token check: an install that is going on, or has something to
+  // say about how it went, outranks anything else this panel could show. Read
+  // from the main process rather than remembered here, so leaving the screen
+  // and coming back finds it again.
+  // A failure is not one of them: it leaves the form on screen with the
+  // installer's output under it, which is the panel the user would land on
+  // anyway, and holding the view there puts the token form out of reach.
+  if (setupState.type === "running" || setupState.type === "done") {
+    return (
+      <div className="space-y-3" data-testid="coolify-connector">
+        {serverSetup}
+      </div>
+    );
+  }
+
   // A query react-query has paused — the renderer is offline — is pending
   // with no data and no error, which is not a failure and must not read as
   // one. It is waiting, so it shows as waiting.
@@ -276,54 +324,6 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       )}
     </div>
   );
-
-  // On both screens below. Signing out is exactly when someone needs the
-  // password back, and it is the state that leaves them here.
-  const previousConnection = <CoolifyCredentials showTitle />;
-
-  // One element, not one per branch: rendering a second copy elsewhere in the
-  // tree would remount the panel and lose the result it is being kept for.
-  const setupState: SetupSnapshot = setupSnapshot ?? { type: "idle" };
-
-  const serverSetup = (
-    <CoolifyServerSetup
-      onUseExisting={(url) => {
-        if (url) setInstanceUrl(url);
-        setIsEnteringToken(true);
-      }}
-    >
-      {previousConnection}
-
-      {/* Last, under anything Dyad already knows about a Coolify: this is the
-          exit for the people the installer does not apply to, not another
-          control on it. */}
-      <div className="border-t pt-3">
-        <button
-          type="button"
-          className="text-sm font-medium underline underline-offset-4 hover:no-underline"
-          onClick={() => setIsEnteringToken(true)}
-          data-testid="coolify-setup-use-existing"
-        >
-          I already have Coolify installed
-        </button>
-      </div>
-    </CoolifyServerSetup>
-  );
-
-  // Before the token check: an install that is going on, or has something to
-  // say about how it went, outranks anything else this panel could show. Read
-  // from the main process rather than remembered here, so leaving the screen
-  // and coming back finds it again.
-  // A failure is not one of them: it leaves the form on screen with the
-  // installer's output under it, which is the panel the user would land on
-  // anyway, and holding the view there puts the token form out of reach.
-  if (setupState.type === "running" || setupState.type === "done") {
-    return (
-      <div className="space-y-3" data-testid="coolify-connector">
-        {serverSetup}
-      </div>
-    );
-  }
 
   // --- Step 1: get a Coolify, or connect to one ---
   if (!status.hasToken) {

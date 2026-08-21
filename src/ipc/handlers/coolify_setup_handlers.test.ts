@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   runCalls: 0,
   verifiedAgainst: [] as string[],
   writeThrows: false,
+  preflightThrows: false,
+  preflightReady: true,
 }));
 
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
@@ -76,11 +78,15 @@ vi.mock("../utils/ssh_client", () => ({
 }));
 
 vi.mock("@/coolify_setup/install", () => ({
-  preflight: vi.fn(async () => ({
-    ready: true,
-    alreadyInstalled: false,
-    memoryMb: 1967,
-  })),
+  preflight: vi.fn(async () => {
+    if (h.preflightThrows) throw new Error("docker never answered");
+    return {
+      ready: h.preflightReady,
+      reason: h.preflightReady ? undefined : "It already has Coolify on it.",
+      alreadyInstalled: !h.preflightReady,
+      memoryMb: 1967,
+    };
+  }),
 }));
 
 vi.mock("@/coolify_setup/setup_flow", () => ({
@@ -149,6 +155,8 @@ beforeEach(() => {
   h.runCalls = 0;
   h.verifiedAgainst.length = 0;
   h.writeThrows = false;
+  h.preflightThrows = false;
+  h.preflightReady = true;
   resetCoolifySetupStateForTests();
   registerCoolifySetupHandlers();
 });
@@ -264,6 +272,40 @@ describe("run", () => {
     );
   });
 
+  it("refuses a server whose check never finished", async () => {
+    // The fingerprint is recorded during the handshake, before preflight has
+    // said anything — so a connection that opened is not a check that passed.
+    h.preflightThrows = true;
+    await expect(call("coolify-setup:inspect", TARGET)).rejects.toThrow();
+
+    await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
+      /Check the server/,
+    );
+    expect(h.runCalls).toBe(0);
+  });
+
+  it("refuses a server the check turned down", async () => {
+    h.preflightReady = false;
+    await call("coolify-setup:inspect", TARGET);
+
+    await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
+      /Check the server/,
+    );
+    expect(h.runCalls).toBe(0);
+  });
+
+  it("drops a pass the next check takes back", async () => {
+    // A server that was ready and has since had Coolify put on it is not one
+    // to install onto, and the second answer is the true one.
+    await call("coolify-setup:inspect", TARGET);
+    h.preflightReady = false;
+    await call("coolify-setup:inspect", TARGET);
+
+    await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
+      /Check the server/,
+    );
+  });
+
   it("stores the token it minted", async () => {
     await checkThenRun();
     const saved = h.written.at(-1) as {
@@ -360,9 +402,12 @@ describe("run", () => {
       release = () => resolve(RESULT);
     });
     const first = checkThenRun();
+    // Checked, so the refusal below is the one-at-a-time rule rather than the
+    // gate that asks for a check — both refuse the same way.
+    await call("coolify-setup:inspect", { ...TARGET, host: "198.51.100.7" });
     await expect(
       call("coolify-setup:run", { ...TARGET, host: "198.51.100.7" }),
-    ).rejects.toMatchObject({ kind: "precondition" });
+    ).rejects.toThrow(/already being set up/);
     release();
     await first;
   });

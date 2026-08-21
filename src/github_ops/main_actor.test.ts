@@ -39,6 +39,7 @@ const database = vi.hoisted(() => ({
 }));
 const invalidations = vi.hoisted(() => ({ publish: vi.fn() }));
 const presentation = vi.hoisted(() => ({
+  dismissError: vi.fn(),
   forget: vi.fn(),
   recordInitiator: vi.fn(),
   showError: vi.fn(),

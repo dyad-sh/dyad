@@ -11,7 +11,8 @@ const VITE_NITRO_TAGS = /^<\/?vite-nitro-only>$\n?/gm;
 // Non-global twins for existence checks — reusing the /g variants would mutate
 // `lastIndex` between calls and produce inconsistent results.
 const HAS_NEXTJS_BLOCK = /^<nextjs-only>$[\s\S]*?^<\/nextjs-only>$/m;
-const HAS_VITE_NITRO_BLOCK = /^<vite-nitro-only>$[\s\S]*?^<\/vite-nitro-only>$/m;
+const HAS_VITE_NITRO_BLOCK =
+  /^<vite-nitro-only>$[\s\S]*?^<\/vite-nitro-only>$/m;
 
 /**
  * Strip the framework section that doesn't apply to the current runtime from

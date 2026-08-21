@@ -76,4 +76,21 @@ describe("GithubOpsPresentationService", () => {
       toastId: "github-ops-7",
     });
   });
+
+  it("dismisses a recovered probe error for the visible app", () => {
+    const windows = new WindowRegistry();
+    const target = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const session = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    windows.register(target, session);
+    windows.setVisibleEntities(session, [{ kind: "app", id: 7 }]);
+    const service = new GithubOpsPresentationService(windows);
+
+    service.dismissError(7);
+
+    expect(target.send).toHaveBeenCalledWith("toast:dismiss", {
+      toastId: "github-ops-7",
+    });
+  });
 });

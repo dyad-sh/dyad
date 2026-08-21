@@ -1,7 +1,8 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "Create an app blueprint that renames the current app on approval",
+  description:
+    "Create an app blueprint that renames the current app on approval",
   turns: [
     {
       text: "I drafted an app blueprint for this app.",

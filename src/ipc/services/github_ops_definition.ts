@@ -279,6 +279,7 @@ function createCommandRunner(
         void githubOpsService.getGitState(appId).then(
           (state) => {
             if (generation === gitStateProbeGeneration) {
+              githubOpsPresentationService.dismissError(appId);
               emit({
                 type: "GIT_STATE",
                 ...state,
@@ -309,6 +310,7 @@ function createCommandRunner(
         void githubOpsService.getConflicts(appId).then(
           (files) => {
             if (generation === conflictProbeGeneration) {
+              githubOpsPresentationService.dismissError(appId);
               emit({
                 type: "CONFLICTS",
                 files,

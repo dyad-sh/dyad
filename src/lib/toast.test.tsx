@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { showError } from "./toast";
+import { dismissToast, showError } from "./toast";
 import { toast } from "sonner";
 
 vi.mock("sonner", () => ({
   toast: {
     custom: vi.fn(() => "toast-id"),
+    dismiss: vi.fn(),
     success: vi.fn(),
     warning: vi.fn(),
     info: vi.fn(),
@@ -74,5 +75,11 @@ describe("showError", () => {
     vi.advanceTimersByTime(2_000);
 
     expect(toast.custom).toHaveBeenCalledTimes(3);
+  });
+
+  it("dismisses a producer-scoped toast by id", () => {
+    dismissToast("github-ops-7");
+
+    expect(toast.dismiss).toHaveBeenCalledWith("github-ops-7");
   });
 });

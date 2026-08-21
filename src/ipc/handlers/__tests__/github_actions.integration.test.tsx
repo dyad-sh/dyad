@@ -232,9 +232,11 @@ describe("GitHub connector actions (integration)", () => {
     fireEvent.click(
       within(connectedRepo).getByRole("button", { name: "Sync to GitHub" }),
     );
-    await within(connectedRepo).findByText("Not authenticated with GitHub.", {
-      exact: false,
-    });
+    const authMessages = await within(connectedRepo).findAllByText(
+      "Not authenticated with GitHub.",
+      { exact: false },
+    );
+    expect(authMessages.length).toBeGreaterThan(0);
     expect(
       within(connectedRepo).queryByRole("region", {
         name: "GitHub error details",

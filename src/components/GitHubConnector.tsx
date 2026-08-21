@@ -306,6 +306,10 @@ function ConnectedGitHubConnector({
       </div>
       {showErrorBanner && (
         <div className="mt-2 space-y-2">
+          <p role="status" aria-live="polite" className="sr-only">
+            GitHub operation failed:{" "}
+            {banner.message.split("\n", 1)[0].slice(0, 240)}
+          </p>
           <GitHubOperationError message={banner.message} />
           {showRebaseRecoveryOptions && (
             <div className="space-y-2 rounded-md border border-orange-200 p-3 dark:border-orange-800 dark:bg-orange-900/20">

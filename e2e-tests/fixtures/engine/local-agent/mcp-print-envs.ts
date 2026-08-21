@@ -3,7 +3,8 @@ import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/loca
 // print_envs is the tool the fake classifier deliberately answers slowly for, so
 // the consent spinner is observable and the user can decide before the AI does.
 export const fixture: LocalAgentFixture = {
-  description: "Call an MCP tool (print_envs) that the classifier reviews slowly",
+  description:
+    "Call an MCP tool (print_envs) that the classifier reviews slowly",
   turns: [
     {
       text: "I'll read the server's environment variables.",

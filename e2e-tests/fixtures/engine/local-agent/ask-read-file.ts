@@ -9,8 +9,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "execute_sandbox_script",
           args: {
-            script:
-              'const text = await read_file("src/App.tsx"); text.length;',
+            script: 'const text = await read_file("src/App.tsx"); text.length;',
             description: "Check App.tsx length",
           },
         },

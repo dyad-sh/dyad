@@ -55,6 +55,17 @@ export class GithubOpsPresentationService {
     });
   }
 
+  dismissError(appId: number): void {
+    const target = this.windows.routePresentation({
+      effect: "ordinary",
+      entity: { kind: "app", id: appId },
+    });
+    if (!target) return;
+    this.windows.endpointForSession(target)?.send("toast:dismiss", {
+      toastId: `github-ops-${appId}`,
+    });
+  }
+
   forget(operationId: string | undefined): void {
     if (operationId) this.initiatorByOperationId.delete(operationId);
   }

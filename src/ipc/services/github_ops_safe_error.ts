@@ -108,7 +108,7 @@ function redactSensitiveGitOutput(message: string): string {
     redactQuotedAbsolutePaths(protectedMessage),
   )
     .replaceAll(
-      /\b(?:authorization|private-token|access-token)\s*[:=][^\r\n]*/gi,
+      /\b(?:authorization|private-token|access-token|cookie|set-cookie)\s*[:=][^\r\n]*/gi,
       "[redacted credential]",
     )
     .replaceAll(
@@ -171,6 +171,10 @@ function redactSensitiveGitOutput(message: string): string {
     )
     .replaceAll(
       /(\bConnected to\s+)[^\s(]+(?:\s+\([A-F0-9:.]+\))?/gi,
+      "$1[redacted host]",
+    )
+    .replaceAll(
+      /(\bConnection (?:closed|reset) by\s+)[^\s]+/gi,
       "$1[redacted host]",
     )
     .replaceAll(/(\bresolve hostname\s+)[^:\s]+/gi, "$1[redacted host]")

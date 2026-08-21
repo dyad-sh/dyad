@@ -59,6 +59,8 @@ describe("safeGithubOpsErrorMessage", () => {
     ["hook: AKIAABCDEFGHIJKLMNOP", "hook: [redacted token]"],
     ["hook: sk-ant-abcdefghijklmnop", "hook: [redacted token]"],
     ["Authorization: Basic dXNlcjpwYXNz", "GitHub operation failed"],
+    ["Cookie: sessionid=private-value", "GitHub operation failed"],
+    ["Set-Cookie: sessionid=private-value", "GitHub operation failed"],
     ["Private-Token=Custom abc secret", "GitHub operation failed"],
     [
       "fatal: Unable to create '/Users/alice/My Projects/secret/.git/index.lock'",
@@ -208,6 +210,14 @@ describe("safeGithubOpsErrorMessage", () => {
     [
       "curl: Connected to buildbox (10.0.0.5) port 443",
       "curl: Connected to [redacted host] port 443",
+    ],
+    [
+      "Connection closed by 10.0.0.5 port 22",
+      "Connection closed by [redacted host] port 22",
+    ],
+    [
+      "Connection reset by buildbox port 22",
+      "Connection reset by [redacted host] port 22",
     ],
     [
       "ssh: Could not resolve hostname buildbox: Name or service not known",

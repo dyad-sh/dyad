@@ -14,7 +14,8 @@ import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/loca
  * 3. Runs another pass to allow the agent to complete remaining work
  */
 export const fixture: LocalAgentFixture = {
-  description: "Test outer loop todo follow-up when todos are partially complete",
+  description:
+    "Test outer loop todo follow-up when todos are partially complete",
   passes: [
     {
       // First pass: Create todos and partially complete them

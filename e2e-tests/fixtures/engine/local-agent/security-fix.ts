@@ -11,8 +11,7 @@ export const fixture: LocalAgentFixture = {
           args: {
             path: "src/App.tsx",
             search: "const App = () => <div>Minimal imported app</div>;",
-            replace:
-              "const App = () => <div>Secure app with env vars</div>;",
+            replace: "const App = () => <div>Secure app with env vars</div>;",
             description: "Fix security vulnerability",
           },
         },
@@ -23,4 +22,3 @@ export const fixture: LocalAgentFixture = {
     },
   ],
 };
-

@@ -4,16 +4,16 @@ Creating a React app that makes network requests to test network logging.
 import { useEffect } from 'react';
 
 function App() {
-  useEffect(() => {
-    // Make a GET request
-    fetch('https://jsonplaceholder.typicode.com/posts/1')
-      .then(response => response.json())
-      .then(data => {
-        console.log('Fetched data:', data);
-      })
-      .catch(error => {
-        console.error('Fetch error:', error);
-      });
+useEffect(() => {
+// Make a GET request
+fetch('https://jsonplaceholder.typicode.com/posts/1')
+.then(response => response.json())
+.then(data => {
+console.log('Fetched data:', data);
+})
+.catch(error => {
+console.error('Fetch error:', error);
+});
 
     // Make a POST request
     fetch('https://jsonplaceholder.typicode.com/posts', {
@@ -31,16 +31,16 @@ function App() {
       .then(data => {
         console.log('Posted data:', data);
       });
-  }, []);
 
-  return (
-    <div>
-      <h1>Network Requests Test App</h1>
-      <p>Check the System Messages console for network logs.</p>
-    </div>
-  );
+}, []);
+
+return (
+<div>
+<h1>Network Requests Test App</h1>
+<p>Check the System Messages console for network logs.</p>
+</div>
+);
 }
 
 export default App;
 </dyad-write>
-

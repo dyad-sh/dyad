@@ -103,6 +103,10 @@ export const showError = (
   return toastId;
 };
 
+export const dismissToast = (toastId: string | number) => {
+  toast.dismiss(toastId);
+};
+
 /**
  * Show a warning toast
  * @param message The warning message to display

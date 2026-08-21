@@ -1,7 +1,8 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "Call a destructive MCP tool (delete_record) from local-agent mode",
+  description:
+    "Call a destructive MCP tool (delete_record) from local-agent mode",
   turns: [
     {
       text: "I'll delete the record using the MCP tool.",

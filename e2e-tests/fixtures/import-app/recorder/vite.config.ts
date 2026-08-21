@@ -6,15 +6,10 @@ const fakeAuth = (): Plugin => ({
   name: "recorder-fake-auth",
   configureServer(server) {
     server.middlewares.use((request, response, next) => {
-      const pathname = new URL(
-        request.url ?? "/",
-        "http://recorder.test",
-      ).pathname;
+      const pathname = new URL(request.url ?? "/", "http://recorder.test")
+        .pathname;
 
-      if (
-        pathname === "/api/auth/sign-in/email" &&
-        request.method === "POST"
-      ) {
+      if (pathname === "/api/auth/sign-in/email" && request.method === "POST") {
         request.resume();
         response.statusCode = 200;
         response.setHeader("Content-Type", "application/json");
@@ -33,9 +28,7 @@ const fakeAuth = (): Plugin => ({
           "recorder-session=authenticated",
         );
         response.end(
-          JSON.stringify(
-            authenticated ? { user: { id: "test-user" } } : null,
-          ),
+          JSON.stringify(authenticated ? { user: { id: "test-user" } } : null),
         );
         return;
       }

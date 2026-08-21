@@ -568,6 +568,11 @@ export const miscEvents = {
         .optional(),
     }),
   }),
+
+  dismissToast: defineEvent({
+    channel: "toast:dismiss",
+    payload: z.object({ toastId: z.string() }),
+  }),
 } as const;
 
 // =============================================================================

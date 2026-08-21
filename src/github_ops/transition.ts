@@ -285,15 +285,7 @@ function conflictsReceived(
         return {
           kind: "applied",
           state: { type: "idle", banner: state.banner },
-          commands: state.banner
-            ? [
-                {
-                  type: "notify",
-                  kind: "error",
-                  message: state.banner.message,
-                },
-              ]
-            : [],
+          commands: [],
         };
       }
       return enterConflicted(files, state.op, true);

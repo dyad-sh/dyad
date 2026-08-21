@@ -4,20 +4,20 @@ Creating a multi-page app with navigation.
 import { Link } from "react-router-dom";
 
 const Index = () => {
-return (
-<div className="min-h-screen flex items-center justify-center bg-gray-100">
-<div className="text-center">
-<h1 className="text-4xl font-bold mb-4">Home Page</h1>
-<Link
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Home Page</h1>
+        <Link
           to="/about"
           className="text-blue-500 hover:text-blue-700 underline"
           data-testid="nav-to-about"
         >
-Go to About Page
-</Link>
-</div>
-</div>
-);
+          Go to About Page
+        </Link>
+      </div>
+    </div>
+  );
 };
 
 export default Index;
@@ -27,20 +27,20 @@ export default Index;
 import { Link } from "react-router-dom";
 
 const About = () => {
-return (
-<div className="min-h-screen flex items-center justify-center bg-gray-100">
-<div className="text-center">
-<h1 className="text-4xl font-bold mb-4">About Page</h1>
-<Link
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">About Page</h1>
+        <Link
           to="/"
           className="text-blue-500 hover:text-blue-700 underline"
           data-testid="nav-to-home"
         >
-Go to Home Page
-</Link>
-</div>
-</div>
-);
+          Go to Home Page
+        </Link>
+      </div>
+    </div>
+  );
 };
 
 export default About;
@@ -58,18 +58,18 @@ import About from "./pages/About";
 const queryClient = new QueryClient();
 
 const App = () => (
-<QueryClientProvider client={queryClient}>
-<TooltipProvider>
-<Toaster />
-<Sonner />
-<BrowserRouter>
-<Routes>
-<Route path="/" element={<Index />} />
-<Route path="/about" element={<About />} />
-</Routes>
-</BrowserRouter>
-</TooltipProvider>
-</QueryClientProvider>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/about" element={<About />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;

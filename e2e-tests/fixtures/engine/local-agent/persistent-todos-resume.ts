@@ -40,7 +40,7 @@ export const fixture: LocalAgentFixture = {
           args: {
             path: "src/lib/utils.ts",
             content:
-              "export function formatDate(d: Date): string {\n  return d.toISOString();\n}\n\nexport function safeParseJSON(str: string): unknown {\n  try {\n    return JSON.parse(str);\n  } catch {\n    return null;\n  }\n}\n",
+              'export function formatDate(d: Date): string {\n  return d.toISOString();\n}\n\nexport function safeParseJSON(str: string): unknown {\n  try {\n    return JSON.parse(str);\n  } catch {\n    return null;\n  }\n}\n',
             description: "Add error handling utility",
           },
         },

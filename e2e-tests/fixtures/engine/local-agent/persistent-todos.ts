@@ -56,7 +56,7 @@ export const fixture: LocalAgentFixture = {
               args: {
                 path: "src/lib/utils.ts",
                 content:
-                  "export function formatDate(d: Date): string {\n  return d.toISOString();\n}\n",
+                  'export function formatDate(d: Date): string {\n  return d.toISOString();\n}\n',
                 description: "Create utility module",
               },
             },

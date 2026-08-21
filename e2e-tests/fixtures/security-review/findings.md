@@ -11,8 +11,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: An attacker could upload malicious files (e.g., .exe, .php) that might be executed if the server is misconfigured, or upload extremely large files to consume storage space
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Implement a whitelist of allowed file extensions (e.g., `.jpg`, `.png`, `.pdf`)
 2. Validate file content type using magic numbers, not just the extension
 3. Store uploaded files outside the web root with random filenames
@@ -27,8 +26,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: An attacker could trick authenticated users into unknowingly performing actions like changing their email, making purchases, or deleting data by visiting a malicious website
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Implement CSRF tokens using a library like `csurf` for Express
 2. Set `SameSite=Strict` or `SameSite=Lax` on session cookies
 3. Verify the `Origin` or `Referer` header for sensitive operations
@@ -45,8 +43,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: An attacker could steal all customer data, delete your entire database, or take over admin accounts by manipulating the URL
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Use parameterized queries: `db.query('SELECT * FROM users WHERE id = ?', [userId])`
 2. Add input validation to ensure `userId` is a number
 3. Implement an ORM like Prisma or TypeORM that prevents SQL injection by default
@@ -60,8 +57,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: Anyone with repository access (including former employees or compromised accounts) could spin up expensive resources, access S3 buckets with customer data, or destroy production infrastructure
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Immediately rotate the exposed credentials in AWS IAM
 2. Use environment variables and add `.env` to `.gitignore`
 3. Implement AWS Secrets Manager or similar vault solution
@@ -78,8 +74,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: An attacker who discovers these endpoints could modify user permissions, access sensitive reports, or change system configurations without credentials
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Add authentication middleware to all `/admin/*` routes
 2. Implement role-based access control (RBAC) to verify admin permissions
 3. Add audit logging for all administrative actions
@@ -94,8 +89,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: Attackers can forge valid JWT tokens to impersonate any user, including administrators, granting them unauthorized access to user accounts and sensitive data
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Generate a strong random secret: `openssl rand -base64 32`
 2. Store the secret in environment variables
 3. Rotate the JWT secret, which will invalidate all existing sessions
@@ -112,8 +106,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: Attackers can use this information to map your application structure, identify frameworks and versions, and find potential attack vectors more easily
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Configure different error handlers for production vs development
 2. Log detailed errors server-side but send generic messages to clients
 3. Use an error handling middleware: `if (process.env.NODE_ENV === 'production') { /* hide details */ }`
@@ -128,8 +121,7 @@ Purposefully putting medium on top to make sure the severity levels are sorted c
 
 **Risk**: Users may be vulnerable to clickjacking attacks, MIME-type sniffing, or man-in-the-middle attacks, though exploitation requires specific conditions
 
-**Potential Solutions**:
-
+**Potential Solutions**: 
 1. Use Helmet.js middleware: `app.use(helmet())`
 2. Configure headers manually in your web server (nginx/Apache) or application
 3. Set `Content-Security-Policy` to prevent XSS attacks

@@ -40,22 +40,22 @@ import ManualOnly from "./pages/ManualOnly";
 const queryClient = new QueryClient();
 
 const routeConfig = [
-{ path: "/", element: <Index /> },
-{ path: "/manual-only", element: <ManualOnly /> },
+  { path: "/", element: <Index /> },
+  { path: "/manual-only", element: <ManualOnly /> },
 ];
 
 const AppRoutes = () => useRoutes(routeConfig);
 
 const App = () => (
-<QueryClientProvider client={queryClient}>
-<TooltipProvider>
-<Toaster />
-<Sonner />
-<BrowserRouter>
-<AppRoutes />
-</BrowserRouter>
-</TooltipProvider>
-</QueryClientProvider>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;

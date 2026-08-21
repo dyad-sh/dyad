@@ -1,8 +1,7 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description:
-    "Create an app blueprint whose template is edited before approval",
+  description: "Create an app blueprint whose template is edited before approval",
   turns: [
     {
       text: "I drafted an app blueprint for this app.",
@@ -29,9 +28,10 @@ export const fixture: LocalAgentFixture = {
       ],
     },
     {
-      text: "Please review the app blueprint and approve it to continue. ".repeat(
-        100,
-      ),
+      text:
+        "Please review the app blueprint and approve it to continue. ".repeat(
+          100,
+        ),
     },
   ],
 };

@@ -161,9 +161,8 @@ children,
 children: React.ReactNode;
 }) {
 return (
-{/_ Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching _/}
+{/* Set defaultTheme to match the app's theme: "light", "dark", or "system" if the app uses system-based switching */}
 <NeonAuthUIProvider authClient={authClient} defaultTheme="light">
-
 <header>
 <UserButton />
 </header>
@@ -258,7 +257,6 @@ The handler must:
     forwardedHeaders.set(headerName, value);
   }
   ```
-
 - Read the body via `readRawBody(event, false)` (returns `Buffer`) for everything except `GET` and `HEAD`; pass it to `fetch` as `BodyInit`.
 - `fetch` the upstream with `method`, `forwardedHeaders`, `body`, and `redirect: 'manual'`.
 - Build the response `Headers` by copying every upstream header **except** `set-cookie`. For `set-cookie`, call `upstream.headers.getSetCookie?.() ?? []` to get the array (the standard `forEach` collapses duplicates).
@@ -267,7 +265,7 @@ The handler must:
   2. `c = c.replaceAll('; Secure', '').replaceAll(';Secure', '').replaceAll('; Partitioned', '').replaceAll(';Partitioned', '')` — fixed strings, **no regex**.
   3. `c = c.replace(/;[ ]*Domain=[^;]*/gi, '')` — the **only** required regex. Use the literal-space character class `[ ]*` (NOT `\s*`, which has been mangled to bare `s` by past LLM emissions) and no slashes inside the pattern.
   4. `c = c.replaceAll('; SameSite=None', '; SameSite=Lax').replaceAll(';SameSite=None', ';SameSite=Lax')` — fixed strings, **no regex**.
-     Append each rewritten cookie to the response headers via `responseHeaders.append('set-cookie', c)`.
+  Append each rewritten cookie to the response headers via `responseHeaders.append('set-cookie', c)`.
 - Return `new Response(upstream.body, { status, statusText, headers: responseHeaders })` — stream the body through, do not buffer it.
 
 ### Server: shared session helper

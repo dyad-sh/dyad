@@ -194,6 +194,13 @@ function createCommandRunner(
   let gitStateProbeGeneration = 0;
   let conflictProbeGeneration = 0;
   const emit = (event: GithubOpsProducerEvent) => context.send(event);
+  const forgetIfInactive = (operationId: string | undefined) => {
+    if (
+      operationId !== context.getSnapshot().activeInvocationRef?.operationId
+    ) {
+      githubOpsPresentationService.forget(operationId);
+    }
+  };
   const reportProbeFailure = (
     message: string,
     operationId: string | undefined,
@@ -301,7 +308,7 @@ function createCommandRunner(
               command.verificationAttempt,
               "git-state",
             );
-            githubOpsPresentationService.forget(invocationRef?.operationId);
+            forgetIfInactive(invocationRef?.operationId);
           },
         );
         return;
@@ -340,7 +347,7 @@ function createCommandRunner(
             if (command.settleOnError) {
               emit({ type: "CONFLICTS", files: [] });
             }
-            githubOpsPresentationService.forget(invocationRef?.operationId);
+            forgetIfInactive(invocationRef?.operationId);
           },
         );
         return;
@@ -365,12 +372,7 @@ function createCommandRunner(
             command.message,
           );
         }
-        if (
-          invocationRef?.operationId !==
-          context.getSnapshot().activeInvocationRef?.operationId
-        ) {
-          githubOpsPresentationService.forget(invocationRef?.operationId);
-        }
+        forgetIfInactive(invocationRef?.operationId);
         return;
       case "start-conflict-resolution":
         // Renderer presentation starts only after the applied dispatch receipt.

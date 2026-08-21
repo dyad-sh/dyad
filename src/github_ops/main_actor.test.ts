@@ -886,9 +886,7 @@ describe("main-hosted github_ops actor", () => {
       ),
     );
 
-    expect(presentation.showError.mock.invocationCallOrder[0]).toBeLessThan(
-      presentation.forget.mock.invocationCallOrder[0],
-    );
+    expect(presentation.forget).not.toHaveBeenCalledWith("blocked-switch");
   });
 
   it("does not release the active route for an ignored duplicate", async () => {
@@ -931,5 +929,39 @@ describe("main-hosted github_ops actor", () => {
     );
 
     expect(presentation.forget).not.toHaveBeenCalledWith("active-conflict");
+  });
+
+  it("retains active routing after a conflict-state probe failure", async () => {
+    service.run.mockRejectedValue(
+      Object.assign(new Error("merge conflict"), { code: "MERGE_CONFLICT" }),
+    );
+    service.getConflicts
+      .mockResolvedValueOnce(["src/conflicted.ts"])
+      .mockRejectedValueOnce(new Error("conflict refresh failed"));
+    const { actorA } = createHarness();
+    await actorA.resync();
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "active-conflict-refresh",
+      op: { type: "merge", branch: "feature" },
+    });
+    await vi.waitFor(() =>
+      expect(actorA.getSnapshot().state.type).toBe("conflicted"),
+    );
+    presentation.forget.mockClear();
+
+    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await vi.waitFor(() =>
+      expect(presentation.showError).toHaveBeenCalledWith(
+        7,
+        "active-conflict-refresh",
+        "conflict refresh failed",
+        "conflicts",
+      ),
+    );
+
+    expect(presentation.forget).not.toHaveBeenCalledWith(
+      "active-conflict-refresh",
+    );
   });
 });

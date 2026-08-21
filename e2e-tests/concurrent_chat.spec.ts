@@ -6,10 +6,8 @@ test("concurrent chat", async ({ po }) => {
   await po.sendPrompt("tc=chat1 [sleep=medium]", {
     skipWaitForCompletion: true,
   });
-  // Need a short wait otherwise the click on Apps tab is ignored.
-  await po.sleep(2_000);
 
-  await po.navigation.goToAppsTab();
+  await po.chatActions.clickNewChat();
   await po.sendPrompt("tc=chat2");
   await po.snapshotMessages();
 

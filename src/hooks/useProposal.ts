@@ -3,7 +3,10 @@ import { ipc } from "@/ipc/types";
 import type { ProposalResult } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 
-export function useProposal(chatId?: number | undefined) {
+export function useProposal(
+  chatId?: number | undefined,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
   const {
     data: proposalResult,
     isLoading,
@@ -17,7 +20,7 @@ export function useProposal(chatId?: number | undefined) {
       }
       return ipc.proposal.getProposal({ chatId });
     },
-    enabled: chatId !== undefined,
+    enabled: chatId !== undefined && enabled,
     meta: { showErrorToast: true },
   });
 

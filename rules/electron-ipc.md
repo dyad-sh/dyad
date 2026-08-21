@@ -63,6 +63,10 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 - Terminal stream callbacks may synchronously start a replacement stream with the same key. Cleanup after `onEnd`/`onError` (including invoke rejection) must delete the entry only when the map still points to the generation that ended; an unconditional keyed delete can orphan the replacement stream.
 - By default the entry is removed when the end/error event arrives (`autoRelease: true`). Pass `{ autoRelease: false }` to keep receiving events after a terminal event, and call `release(key, { invocationRef })` when done — the chat stream machine uses this to keep entry ownership with its controller until finalization side effects complete (a stale release is a no-op).
 - Chat streams: do NOT call `ipc.chatStream.start` or guard against duplicate streams from renderer code. The main-owned `chat_stream` actor is the single lifecycle and queue authority; submit through `useStreamChat().streamMessage` or `ChatStreamRemoteManager.ensure(chatId).send({ type: "submit", ... })`.
+- Gate renderer queries that derive actions from the latest persisted assistant
+  message while that chat is streaming. Main may persist an intermediate message,
+  and caching a fallback result before the terminal invalidation can hide the
+  completed proposal; disable the query during streaming and re-enable it on end.
 - A null chat mode means the automatic default is still implicit. Renderer
   submissions must preserve that distinction with the existing null
   `requestedChatMode` sentinel instead of sending the computed display mode as

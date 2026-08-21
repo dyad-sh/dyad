@@ -337,6 +337,23 @@ describe("an answer about a server the user has moved on from", () => {
   });
 });
 
+describe("when the panel cannot tell what is going on", () => {
+  it("says so and offers a way to ask again", async () => {
+    // Install is disabled while this is unknown. Disabled with no reason is a
+    // dead control; the key field beside it explains itself.
+    h.snapshot.mockRejectedValue(new Error("no answer"));
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-snapshot-error")).toBeTruthy(),
+    );
+    expect(screen.getByTestId("coolify-setup-install")).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+});
+
 describe("a failure with nothing to show for it", () => {
   it("can still be dismissed", async () => {
     // Connection and preflight refusals never reach the installer, so they

@@ -32,6 +32,13 @@ import {
 
 /** Long enough for the proxy to be rebuilt, short enough to give up on. */
 const APPLY_DOMAIN_TIMEOUT_MS = 60_000;
+/**
+ * Shorter, because this one runs while the user is waiting to be let go.
+ *
+ * The revert deliberately ignores the abort signal — it is undoing what the
+ * cancel interrupted — so its own bound is how long "Stopping…" can last.
+ */
+const REVERT_DOMAIN_TIMEOUT_MS = 10_000;
 
 /** It answered in about fifteen seconds on a new server; this is slack. */
 const CERTIFICATE_TIMEOUT_MS = 120_000;
@@ -114,7 +121,10 @@ export function plainUrlFor(host: string): string {
 export async function applyInstanceDomain(
   session: SshSession,
   domain: string | null,
-  { signal }: { signal?: AbortSignal } = {},
+  {
+    signal,
+    timeoutMs = APPLY_DOMAIN_TIMEOUT_MS,
+  }: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<void> {
   if (domain !== null && !isPlausibleInstanceDomain(domain)) {
     throw new DyadError(
@@ -140,7 +150,7 @@ export async function applyInstanceDomain(
       signal,
       // Bounded: the proxy rebuild is the slow part, and a server that never
       // answers leaves "Setting up HTTPS" on screen with nothing behind it.
-      timeoutMs: APPLY_DOMAIN_TIMEOUT_MS,
+      timeoutMs,
     },
   );
   // Checked, because a Coolify that refused still prints and still ends. Left
@@ -228,6 +238,24 @@ export interface HttpsOutcome {
  * with an error, and a working server nobody can open is worse than one that is
  * merely unencrypted.
  */
+/**
+ * Whether a name stands for something a certificate authority could reach.
+ *
+ * Only a definite private answer says no. A resolver that cannot answer, or a
+ * name with no records yet, leaves this true — refusing there would decline
+ * HTTPS for a server that could have had it.
+ */
+async function resolvesPublicly(
+  host: string,
+  resolve: typeof resolveBoth,
+): Promise<boolean> {
+  const { addresses } = await resolve(host);
+  if (addresses.length === 0) return true;
+  return addresses.some(
+    (address) => !isLoopbackAddress(address) && !isNonRoutableAddress(address),
+  );
+}
+
 export async function tryEnableHttps(
   session: SshSession,
   host: string,
@@ -257,6 +285,18 @@ export async function tryEnableHttps(
       instanceUrl: plainUrlFor(host),
       secure: false,
       reason: "This address cannot be given a certificate.",
+    };
+  }
+
+  // A name is only as reachable as what it stands for. Asked before the
+  // domain is applied, because a server on a LAN address would otherwise
+  // apply it, rebuild the proxy, wait out the whole certificate poll for an
+  // answer that cannot come, and take it all back off again.
+  if (isIP(host) === 0 && !(await resolvesPublicly(host, resolve))) {
+    return {
+      instanceUrl: plainUrlFor(host),
+      secure: false,
+      reason: `${host} resolves to an address the public internet cannot reach, so no certificate can be issued for it.`,
     };
   }
 
@@ -315,7 +355,9 @@ export async function tryEnableHttps(
     // Bounded by the tinker call's own timeout, so a wedged server cannot
     // hold the cancel open.
     if (!keepDomain) {
-      await applyInstanceDomain(session, null).catch(() => {});
+      await applyInstanceDomain(session, null, {
+        timeoutMs: REVERT_DOMAIN_TIMEOUT_MS,
+      }).catch(() => {});
     }
   }
 }

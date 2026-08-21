@@ -236,6 +236,21 @@ describe("run", () => {
     });
   });
 
+  it("clears a token kept from an instance it has moved off", async () => {
+    // Saving a token by hand clears it; a setup that stores its own has the
+    // same reason to.
+    h.settings = {
+      coolify: { previousAccessToken: { value: "1|old" } },
+    } as Record<string, unknown>;
+
+    await call("coolify-setup:run", TARGET);
+
+    const saved = h.written.at(-1) as {
+      coolify: { previousAccessToken?: unknown };
+    };
+    expect(saved.coolify.previousAccessToken).toBeUndefined();
+  });
+
   it("stores the token it minted", async () => {
     await call("coolify-setup:run", TARGET);
     const saved = h.written.at(-1) as {

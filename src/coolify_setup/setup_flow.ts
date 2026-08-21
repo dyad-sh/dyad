@@ -187,8 +187,11 @@ export async function runServerSetup({
     const answered = await waitForDashboardImpl(target.host, { signal });
     if (!answered) {
       throw new DyadError(
-        "Coolify was installed but its dashboard did not start. Check the " +
-          "server and try again.",
+        "Coolify was installed, but nothing answered on port 8000. That is " +
+          "usually a firewall or security group blocking the port rather than " +
+          "Coolify itself. Open it, then sign in at " +
+          `${plainUrlFor(target.host)} — Coolify is already on the server, so ` +
+          "starting over would be refused.",
         DyadErrorKind.External,
       );
     }

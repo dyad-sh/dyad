@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import type { ReactNode } from "react";
@@ -179,10 +180,7 @@ describe("TestsPanel", () => {
       });
     });
 
-    it("leaves the parallel decision to the runner", async () => {
-      // The runner drops --fully-parallel while a preview endpoint is live AND
-      // knows when a run has fallen back to its own browser. Deciding it here
-      // would leave that fallback running serially for no reason.
+    it("disables parallel runs in the preview WebContentsView", async () => {
       mocks.settings = {
         ...experimentOn,
         testHeaded: true,
@@ -191,6 +189,18 @@ describe("TestsPanel", () => {
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
       renderPanel();
 
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open test options" }),
+      );
+      const parallelToggle = await screen.findByRole("switch", {
+        name: "Switch to parallel mode",
+      });
+      expect(parallelToggle.hasAttribute("data-disabled")).toBe(true);
+      expect(
+        screen.getByText("Unavailable while tests run in the preview panel."),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
       const button = await screen.findByText("Run all");
       await act(async () => {
         fireEvent.click(button);
@@ -198,7 +208,7 @@ describe("TestsPanel", () => {
 
       await waitFor(() => {
         expect(mocks.runAppTests).toHaveBeenCalledWith(
-          expect.objectContaining({ preview: true, parallel: true }),
+          expect.objectContaining({ preview: true, parallel: false }),
         );
       });
     });
@@ -282,7 +292,10 @@ describe("TestsPanel", () => {
 
       // Persisted rather than local state, so the agent's run_tests tool runs
       // at the pace the user picked here too.
-      const toggle = await screen.findByRole("button", {
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open test options" }),
+      );
+      const toggle = await screen.findByRole("switch", {
         name: "Switch to slow motion",
       });
       fireEvent.click(toggle);
@@ -295,6 +308,14 @@ describe("TestsPanel", () => {
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
       renderPanel();
 
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open test options" }),
+      );
+      expect(
+        screen.getByRole("switch", { name: "Switch to normal speed" }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
       const runAll = await screen.findByText("Run all");
       await act(async () => {
         fireEvent.click(runAll);
@@ -305,10 +326,58 @@ describe("TestsPanel", () => {
           expect.objectContaining({ slowMo: true }),
         );
       });
-      expect(
-        screen.getByRole("button", { name: "Switch to normal speed" }),
-      ).toBeTruthy();
     });
+  });
+
+  it("keeps only the primary actions in the header", async () => {
+    renderPanel();
+
+    await screen.findByRole("button", { name: "Run all tests" });
+    const header = await screen.findByTestId("tests-panel-header");
+    const headerButtons = within(header).getAllByRole("button");
+
+    expect(headerButtons).toHaveLength(3);
+    expect(
+      headerButtons.map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Open test options",
+      "Record a test in the preview",
+      "Run all tests",
+    ]);
+    expect(
+      within(header).getByRole("button", {
+        name: "Record a test in the preview",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(header).getByRole("button", { name: "Open test options" }),
+    ).toBeTruthy();
+    expect(
+      within(header).getByRole("button", { name: "Run all tests" }),
+    ).toBeTruthy();
+  });
+
+  it("moves secondary controls into the options dialog", async () => {
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open test options" }),
+    );
+
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("Test options")).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "Switch to parallel mode" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "Switch to headed mode" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "Switch to slow motion" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Disable testing for this app" }),
+    ).toBeTruthy();
   });
 
   it("opens a spec file in the code editor", async () => {

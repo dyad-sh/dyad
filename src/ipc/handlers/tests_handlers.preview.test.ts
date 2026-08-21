@@ -294,8 +294,8 @@ describe("preview runs", () => {
     expect(testSpawns[0].env.PLAYWRIGHT_JSON_OUTPUT_NAME).not.toBe(
       testSpawns[1].env.PLAYWRIGHT_JSON_OUTPUT_NAME,
     );
-    expect(testSpawns[0].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-2");
-    expect(testSpawns[1].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-3");
+    expect(testSpawns[0].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-1");
+    expect(testSpawns[1].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-2");
     expect(testSpawns[0].args).toContain("--workers=1");
     expect(
       testSpawns[0].args.some((arg: string) =>

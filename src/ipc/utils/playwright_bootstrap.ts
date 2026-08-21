@@ -322,6 +322,16 @@ async function isPreviewPage(candidatePage: pw.Page, targetId: string) {
   }
 }
 
+async function isAnyPreviewPage(candidatePage: pw.Page) {
+  try {
+    return await candidatePage.evaluate(() =>
+      navigator.userAgent.includes("DyadPreviewTarget/"),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function findPreviewContext(browser: pw.Browser, targetId: string) {
   for (const candidateContext of browser.contexts()) {
     for (const candidatePage of candidateContext.pages()) {
@@ -357,14 +367,18 @@ async function clearMediaEmulation(page: pw.Page): Promise<void> {
 async function protectNonPreviewContexts(
   browser: pw.Browser,
 ): Promise<() => Promise<void>> {
-  const targetId = process.env.${PREVIEW_TARGET_ID_ENV};
-  if (!targetId) {
-    throw new Error("Dyad preview: ${PREVIEW_TARGET_ID_ENV} is not set.");
+  const previewContexts = new Set<pw.BrowserContext>();
+  for (const candidateContext of browser.contexts()) {
+    for (const candidatePage of candidateContext.pages()) {
+      if (await isAnyPreviewPage(candidatePage)) {
+        previewContexts.add(candidateContext);
+        break;
+      }
+    }
   }
-  const previewContext = await findPreviewContext(browser, targetId);
   const protectedContexts = browser
     .contexts()
-    .filter((context) => context !== previewContext);
+    .filter((context) => !previewContexts.has(context));
   const onPage = (page: pw.Page) => {
     void clearMediaEmulation(page);
   };
@@ -720,8 +734,14 @@ export function buildE2eTsconfigSource(appPath: string): string {
       ...(extendsApp ? { extends: "../tsconfig.json" } : {}),
       // `extends` also carries `files`, which a solution-style root sets to []:
       // without this the specs would belong to no project at all.
-      ...(extendsApp ? { include: ["**/*.ts", "**/*.tsx"] } : {}),
+      ...(extendsApp
+        ? { include: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"] }
+        : {}),
       compilerOptions: {
+        // Playwright deliberately skips tsconfig path mappings for JavaScript
+        // unless allowJs is enabled. Without this, supported .js/.jsx specs
+        // import the real runner and silently open a separate browser.
+        allowJs: true,
         baseUrl: ".",
         // `paths` is the one option `extends` can't merge — a child replaces
         // the parent's outright — so the app's own aliases are copied in.

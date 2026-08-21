@@ -90,6 +90,32 @@ describe("ThemeProvider", () => {
     });
   });
 
+  it("does not let an older bootstrap response overwrite a native update", async () => {
+    let resolveBootstrap!: (state: { shouldUseDarkColors: boolean }) => void;
+    h.getNativeThemeState.mockReturnValue(
+      new Promise((resolve) => {
+        resolveBootstrap = resolve;
+      }),
+    );
+
+    renderTheme();
+    expect(h.listener).toBeDefined();
+
+    act(() => h.listener?.({ shouldUseDarkColors: false }));
+    await waitFor(() => {
+      expect(screen.getByTestId("theme-state").textContent).toBe(
+        "system:false",
+      );
+    });
+
+    await act(async () => {
+      resolveBootstrap({ shouldUseDarkColors: true });
+    });
+
+    expect(screen.getByTestId("theme-state").textContent).toBe("system:false");
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+  });
+
   it("keeps an explicit Dark preference independent of native updates", async () => {
     localStorage.setItem("theme", "dark");
     h.getNativeThemeState.mockResolvedValue({ shouldUseDarkColors: false });

@@ -677,7 +677,10 @@ describe("automation (preview test runs)", () => {
       view.options as { webPreferences: { partition: string } }
     ).webPreferences.partition;
 
-    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
+    expect(automation!.rotate({ url: APP_URL })).toEqual({
+      ok: true,
+      targetId: expect.any(String),
+    });
 
     const replacement = latestView();
     const replacementPartition = (
@@ -704,7 +707,10 @@ describe("automation (preview test runs)", () => {
     const { asBrowserWindow, automation } = showAndAutomate();
     hidePreviewView(asBrowserWindow);
 
-    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
+    expect(automation!.rotate({ url: APP_URL })).toEqual({
+      ok: true,
+      targetId: expect.any(String),
+    });
     const replacement = latestView();
     expect(replacement.setVisible).toHaveBeenCalledWith(false);
 
@@ -734,13 +740,13 @@ describe("automation (preview test runs)", () => {
     expect(view.webContents.close).toHaveBeenCalledTimes(1);
   });
 
-  it("stops spraying the system browser while a test drives the page", () => {
+  it("keeps automated navigation inside the view", () => {
     const { view } = showAndAutomate();
     const contents = view.webContents;
     const event = { preventDefault: vi.fn() };
 
     contents.emit("will-navigate", event, "https://example.com", false, true);
-    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).not.toHaveBeenCalled();
     expect(h.shell.openExternal).not.toHaveBeenCalled();
 
     expect(

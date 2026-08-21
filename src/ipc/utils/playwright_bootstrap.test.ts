@@ -503,6 +503,41 @@ describe("ensurePreviewShim", () => {
     ).toBe(true);
   });
 
+  it("falls back when a closer tsconfig shadows the preview mapping", () => {
+    const appPath = makeApp();
+    const nestedDir = path.join(appPath, "e2e-tests", "nested");
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(nestedDir, "auth.spec.ts"),
+      'import { test } from "@playwright/test";\n',
+    );
+    fs.writeFileSync(
+      path.join(nestedDir, "tsconfig.json"),
+      '{ "compilerOptions": {} }',
+    );
+
+    const { warning } = ensurePreviewShim(appPath);
+
+    expect(warning).toContain("e2e-tests/nested/tsconfig.json");
+    expect(warning).toContain("separate browser");
+  });
+
+  it("allows a closer tsconfig that inherits the preview mapping", () => {
+    const appPath = makeApp();
+    const nestedDir = path.join(appPath, "e2e-tests", "nested");
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(nestedDir, "auth.spec.ts"),
+      'import { test } from "@playwright/test";\n',
+    );
+    fs.writeFileSync(
+      path.join(nestedDir, "tsconfig.json"),
+      '{ "extends": "../tsconfig.json" }',
+    );
+
+    expect(ensurePreviewShim(appPath)).toEqual({});
+  });
+
   it("refreshes a generated tsconfig whose snapshot has gone stale", () => {
     const appPath = makeApp();
     const rootTsconfig = path.join(appPath, "tsconfig.json");

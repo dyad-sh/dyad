@@ -290,6 +290,15 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
 
   const contents = view.webContents;
 
+  // Electron otherwise grants some permissions by default. The preview runs
+  // untrusted app code in its own session, so deny both synchronous checks and
+  // asynchronous permission prompts unless a future test-specific policy
+  // explicitly opts a permission in.
+  entry.session.setPermissionCheckHandler(() => false);
+  entry.session.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => callback(false),
+  );
+
   // The remote-debugging endpoint exposes every window in this Electron
   // process. Tag the exact native preview so Playwright never selects another
   // same-origin preview from a different Dyad window.

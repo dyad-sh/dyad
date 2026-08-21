@@ -45,6 +45,8 @@ const h = vi.hoisted(() => {
     windowOpenHandler: ((details: { url: string }) => unknown) | null = null;
     session = {
       clearStorageData: vi.fn(async () => {}),
+      setPermissionCheckHandler: vi.fn(),
+      setPermissionRequestHandler: vi.fn(),
     };
 
     loadURL = vi.fn(async (url: string) => {
@@ -217,6 +219,25 @@ describe("showPreviewView", () => {
         ),
       },
     });
+    expect(
+      view.webContents.session.setPermissionCheckHandler,
+    ).toHaveBeenCalledWith(expect.any(Function));
+    expect(
+      view.webContents.session.setPermissionRequestHandler,
+    ).toHaveBeenCalledWith(expect.any(Function));
+
+    const checkPermission = view.webContents.session.setPermissionCheckHandler
+      .mock.calls[0][0] as () => boolean;
+    const requestPermission = view.webContents.session
+      .setPermissionRequestHandler.mock.calls[0][0] as (
+      webContents: unknown,
+      permission: string,
+      callback: (allowed: boolean) => void,
+    ) => void;
+    expect(checkPermission()).toBe(false);
+    const callback = vi.fn();
+    requestPermission(view.webContents, "media", callback);
+    expect(callback).toHaveBeenCalledWith(false);
     expect(window.contentView.addChildView).toHaveBeenCalledWith(view);
     expect(view.setBounds).toHaveBeenCalledWith(BOUNDS);
     expect(view.webContents.loadURL).toHaveBeenCalledWith(APP_URL);

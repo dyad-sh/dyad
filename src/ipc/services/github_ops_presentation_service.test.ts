@@ -91,6 +91,36 @@ describe("GithubOpsPresentationService", () => {
     }
   });
 
+  it("evicts a tentative route before confirmed ownership at capacity", () => {
+    vi.useFakeTimers();
+    try {
+      const windows = new WindowRegistry();
+      const target = { id: 1, isDestroyed: () => false, send: vi.fn() };
+      const session = WindowSessionIdSchema.parse(
+        "00000000-0000-4000-8000-000000000001",
+      );
+      windows.register(target, session);
+      const service = new GithubOpsPresentationService(windows);
+
+      service.recordInitiator("confirmed", session);
+      service.confirm("confirmed");
+      for (let index = 0; index < 255; index += 1) {
+        service.recordInitiator(`tentative-${index}`, session);
+      }
+      expect(() =>
+        service.recordInitiator("operation-overflow", session),
+      ).not.toThrow();
+
+      service.showError(7, "confirmed", "Confirmed operation failed");
+      expect(target.send).toHaveBeenCalledWith("toast:error", {
+        message: "Confirmed operation failed",
+        toastId: "github-ops-7-operation",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("deduplicates persistent detailed probe errors by app", () => {
     const windows = new WindowRegistry();
     const target = { id: 1, isDestroyed: () => false, send: vi.fn() };

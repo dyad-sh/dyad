@@ -674,6 +674,42 @@ describe("main-hosted github_ops actor", () => {
     expect(presentation.showError).not.toHaveBeenCalled();
   });
 
+  it("releases an inactive route when its probe is superseded", async () => {
+    let rejectGitState!: (error: Error) => void;
+    service.run
+      .mockRejectedValueOnce(new Error("generic rebase failure"))
+      .mockResolvedValueOnce(undefined);
+    service.getGitState.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectGitState = reject;
+      }),
+    );
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "superseded-probe",
+      op: { type: "rebase" },
+    });
+    await vi.waitFor(() => expect(service.getGitState).toHaveBeenCalled());
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "replacement-operation",
+      op: { type: "pull" },
+    });
+    rejectGitState(new Error("stale probe failure"));
+    await flush();
+
+    expect(presentation.forget).toHaveBeenCalledWith("superseded-probe");
+    expect(presentation.showError).not.toHaveBeenCalledWith(
+      7,
+      "superseded-probe",
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it("shows a toast for a generic probe failure without emitting verification recovery", async () => {
     service.getGitState.mockRejectedValueOnce(
       new Error("temporary repository refresh failure"),

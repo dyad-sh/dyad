@@ -316,11 +316,14 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
-              forgetIfInactive(invocationRef?.operationId);
             }
+            forgetIfInactive(invocationRef?.operationId);
           },
           (error) => {
-            if (generation !== gitStateProbeGeneration) return;
+            if (generation !== gitStateProbeGeneration) {
+              forgetIfInactive(invocationRef?.operationId);
+              return;
+            }
             reportProbeFailure(
               errorMessage(error, "Could not refresh the repository state"),
               invocationRef?.operationId,
@@ -350,11 +353,14 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
-              forgetIfInactive(invocationRef?.operationId);
             }
+            forgetIfInactive(invocationRef?.operationId);
           },
           (error) => {
-            if (generation !== conflictProbeGeneration) return;
+            if (generation !== conflictProbeGeneration) {
+              forgetIfInactive(invocationRef?.operationId);
+              return;
+            }
             reportProbeFailure(
               errorMessage(
                 error,

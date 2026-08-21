@@ -46,6 +46,47 @@ function commitRuntimeBaselineChanges(appPath: string) {
   );
 }
 
+function installManualCommitPreCommitHook(appPath: string) {
+  const hookPath = execFileSync(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit"],
+    { cwd: appPath, encoding: "utf-8" },
+  ).trim();
+  const gitDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+    cwd: appPath,
+    encoding: "utf-8",
+  }).trim();
+  const modePath = path.join(gitDir, "manual-commit-pre-commit-mode");
+  const runLogPath = path.join(gitDir, "manual-commit-pre-commit-runs");
+
+  fs.mkdirSync(path.dirname(hookPath), { recursive: true });
+  fs.writeFileSync(modePath, "pass\n");
+  fs.writeFileSync(
+    hookPath,
+    [
+      "#!/usr/bin/env node",
+      'import fs from "node:fs";',
+      "const modePath = " + JSON.stringify(modePath) + ";",
+      "const runLogPath = " + JSON.stringify(runLogPath) + ";",
+      'const mode = fs.readFileSync(modePath, "utf8").trim();',
+      'fs.appendFileSync(runLogPath, mode + "\\n");',
+      // Keep the hook observable long enough to assert the progress phase.
+      "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);",
+      'if (mode === "fail") {',
+      '  console.error("manual pre-commit hook intentionally failed");',
+      "  process.exit(1);",
+      "}",
+      'console.log("manual pre-commit hook passed");',
+      "",
+    ].join("\n"),
+  );
+  if (process.platform !== "win32") {
+    fs.chmodSync(hookPath, 0o755);
+  }
+
+  return { modePath, runLogPath };
+}
+
 const APP_START_TIMEOUT = process.env.CI ? 180_000 : Timeout.EXTRA_LONG;
 
 const runDiscardChangesTest = async (po: PageObject) => {
@@ -236,4 +277,98 @@ test("uncommitted files banner", async ({ po }, testInfo) => {
 test("discard all uncommitted changes", async ({ po }, testInfo) => {
   testInfo.setTimeout(APP_START_TIMEOUT + 120_000);
   await runDiscardChangesTest(po);
+});
+
+test("manual commits run pre-commit hooks and surface failures", async ({
+  po,
+}, testInfo) => {
+  testInfo.setTimeout(APP_START_TIMEOUT + 120_000);
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+  await po.previewPanel.expectPreviewIframeIsVisible(APP_START_TIMEOUT);
+
+  const appPath = await po.appManagement.getCurrentAppPath();
+  if (!appPath) {
+    throw new Error("No app path found");
+  }
+  commitRuntimeBaselineChanges(appPath);
+  configureGitForE2eCommit(appPath);
+  const { modePath, runLogPath } = installManualCommitPreCommitHook(appPath);
+
+  const banner = po.page.getByTestId("uncommitted-files-banner");
+  await expect(banner).not.toBeVisible({ timeout: Timeout.MEDIUM });
+
+  const passingFile = path.join(appPath, "pre-commit-pass.txt");
+  fs.writeFileSync(passingFile, "accepted by the hook\n");
+  await expect(banner).toBeVisible({ timeout: Timeout.MEDIUM });
+  await po.page.getByTestId("review-commit-button").click();
+
+  const dialog = po.page.getByTestId("commit-dialog");
+  const messageInput = po.page.getByTestId("commit-message-input");
+  const commitButton = po.page.getByTestId("commit-button");
+  const passingMessage = "E2E manual commit accepted by pre-commit";
+  await messageInput.clear();
+  await messageInput.fill(passingMessage);
+  await commitButton.click();
+  await expect(commitButton).toContainText("Running pre-commit checks...", {
+    timeout: Timeout.MEDIUM,
+  });
+  await po.toastNotifications.waitForToast("success", Timeout.MEDIUM);
+  await expect(dialog).not.toBeVisible();
+  expect(
+    execFileSync("git", ["log", "-1", "--format=%s"], {
+      cwd: appPath,
+      encoding: "utf-8",
+    }).trim(),
+  ).toBe(passingMessage);
+  expect(
+    execFileSync("git", ["show", "HEAD:pre-commit-pass.txt"], {
+      cwd: appPath,
+      encoding: "utf-8",
+    }),
+  ).toBe("accepted by the hook\n");
+
+  fs.writeFileSync(modePath, "fail\n");
+  const failingFile = path.join(appPath, "pre-commit-fail.txt");
+  fs.writeFileSync(failingFile, "rejected by the hook\n");
+  await expect(banner).toBeVisible({ timeout: Timeout.MEDIUM });
+  await po.page.getByTestId("review-commit-button").click();
+
+  const failingMessage = "E2E manual commit rejected by pre-commit";
+  await messageInput.clear();
+  await messageInput.fill(failingMessage);
+  const headBeforeFailure = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: appPath,
+    encoding: "utf-8",
+  }).trim();
+  await commitButton.click();
+  await expect(commitButton).toContainText("Running pre-commit checks...", {
+    timeout: Timeout.MEDIUM,
+  });
+
+  const failureAlert = po.page.getByTestId("pre-commit-failure-alert");
+  await expect(failureAlert).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(failureAlert).toContainText("Pre-commit checks failed");
+  await failureAlert.getByText("View check output").click();
+  await expect(failureAlert).toContainText(
+    "manual pre-commit hook intentionally failed",
+  );
+  await expect(
+    failureAlert.getByTestId("fix-pre-commit-with-ai-button"),
+  ).toBeEnabled();
+  await expect(messageInput).toHaveValue(failingMessage);
+
+  expect(
+    execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: appPath,
+      encoding: "utf-8",
+    }).trim(),
+  ).toBe(headBeforeFailure);
+  expect(
+    execFileSync("git", ["status", "--short", "--", "pre-commit-fail.txt"], {
+      cwd: appPath,
+      encoding: "utf-8",
+    }).trim(),
+  ).toBe("A  pre-commit-fail.txt");
+  expect(fs.readFileSync(runLogPath, "utf-8")).toBe("pass\nfail\n");
 });

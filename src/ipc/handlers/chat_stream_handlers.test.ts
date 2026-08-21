@@ -17,6 +17,10 @@ import {
   processStreamChunks,
   takePartialResponseForStream,
 } from "@/ipc/handlers/chat_stream_handlers";
+import {
+  combineStreamSafety,
+  createInitialStreamSafety,
+} from "@/ipc/utils/stream_execution_guard";
 import type { AsyncIterableStream, TextStreamPart, ToolSet } from "ai";
 import fs from "node:fs";
 import path from "node:path";
@@ -1456,6 +1460,186 @@ describe("processFullResponse", () => {
         streamResult.streamSafety.confirmedSafe
       ) {
         await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+  });
+
+  // fullResponse is cumulative across the initial stream and any
+  // search-replace-fix / continuation retry streams (see the three
+  // processStreamChunks call sites in chat_stream_handlers.ts, which all
+  // fold their result into the same accumulatedStreamSafety via
+  // combineStreamSafety). These tests drive that exact real sequence —
+  // two real processStreamChunks calls threaded through the real
+  // combineStreamSafety accumulator, the same way the real handler
+  // threads accumulatedStreamSafety across its retry loops — to prove a
+  // later stream can never launder content a prior unsafe stream
+  // contributed to the same turn's fullResponse.
+  describe("multi-stream safety accumulation (real production path)", () => {
+    async function* unsafeThenText(path: string) {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="${path}">launder me</dyad-write>`,
+      };
+      yield { type: "finish" as const, finishReason: "length" as const };
+    }
+
+    async function* safeThenText(path: string) {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="${path}">fine</dyad-write>`,
+      };
+      yield { type: "finish" as const, finishReason: "stop" as const };
+    }
+
+    async function runTwoStreamTurn(
+      streamA: AsyncGenerator<unknown>,
+      streamB: AsyncGenerator<unknown>,
+    ) {
+      let fullResponse = "";
+      let accumulatedStreamSafety = createInitialStreamSafety();
+
+      const resultA = await processStreamChunks({
+        fullStream: streamA as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse,
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+      fullResponse = resultA.fullResponse;
+      accumulatedStreamSafety = combineStreamSafety(
+        accumulatedStreamSafety,
+        resultA.streamSafety,
+      );
+
+      const resultB = await processStreamChunks({
+        fullStream: streamB as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse,
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+      fullResponse = resultB.fullResponse;
+      accumulatedStreamSafety = combineStreamSafety(
+        accumulatedStreamSafety,
+        resultB.streamSafety,
+      );
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        accumulatedStreamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      return { fullResponse, accumulatedStreamSafety };
+    }
+
+    beforeEach(() => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+    });
+
+    // A. Unsafe then safe: a length cutoff followed by a clean continuation
+    // must not launder the first stream's content into an executable turn.
+    it("A: unsafe stream followed by a safe stream stays unsafe — zero executions", async () => {
+      const { accumulatedStreamSafety } = await runTwoStreamTurn(
+        unsafeThenText("src/a.ts"),
+        safeThenText("src/b.ts"),
+      );
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(false);
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    // B. Safe then unsafe: a clean first stream followed by a cutoff must
+    // also withhold execution — the whole accumulated response is tainted.
+    it("B: safe stream followed by an unsafe stream becomes unsafe — zero executions", async () => {
+      const { accumulatedStreamSafety } = await runTwoStreamTurn(
+        safeThenText("src/a.ts"),
+        unsafeThenText("src/b.ts"),
+      );
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(false);
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    // C. Safe then safe: normal auto-apply behavior must be preserved —
+    // this accumulator must not become overly conservative and block
+    // legitimate multi-stream turns.
+    it("C: safe stream followed by a safe stream stays safe — executes exactly once with the full accumulated response", async () => {
+      const { accumulatedStreamSafety, fullResponse } = await runTwoStreamTurn(
+        safeThenText("src/a.ts"),
+        safeThenText("src/b.ts"),
+      );
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(true);
+      // Both streams' tags are present in the cumulative response, and both
+      // get applied — proving this isn't a "only the last stream's writes
+      // happen" false pass.
+      expect(fullResponse).toContain("src/a.ts");
+      expect(fullResponse).toContain("src/b.ts");
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(2);
+      expect(fs.writeFileSync).toHaveBeenCalledWith(appPath("src/a.ts"), "fine");
+      expect(fs.writeFileSync).toHaveBeenCalledWith(appPath("src/b.ts"), "fine");
+    });
+
+    // D. Three streams: unsafe stays sticky even across an additional safe
+    // stream on top of the safe-then-unsafe case (B), proving this isn't a
+    // "only looks at the immediately preceding stream" bug.
+    it("D: safe, then unsafe, then safe again — unsafe remains sticky across three streams", async () => {
+      let fullResponse = "";
+      let accumulatedStreamSafety = createInitialStreamSafety();
+
+      for (const [path, gen] of [
+        ["src/a.ts", safeThenText("src/a.ts")],
+        ["src/b.ts", unsafeThenText("src/b.ts")],
+        ["src/c.ts", safeThenText("src/c.ts")],
+      ] as const) {
+        const result = await processStreamChunks({
+          fullStream: gen as unknown as AsyncIterableStream<
+            TextStreamPart<ToolSet>
+          >,
+          fullResponse,
+          abortController: new AbortController(),
+          chatId: 1,
+          processResponseChunkUpdate: async ({ fullResponse }) =>
+            fullResponse,
+        });
+        fullResponse = result.fullResponse;
+        accumulatedStreamSafety = combineStreamSafety(
+          accumulatedStreamSafety,
+          result.streamSafety,
+        );
+        void path;
+      }
+
+      expect(accumulatedStreamSafety.confirmedSafe).toBe(false);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        accumulatedStreamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(fullResponse, 1, {
           chatSummary: undefined,
           messageId: 1,
         });

@@ -96,3 +96,68 @@ export function resolveStreamSafety(
   }
   return { confirmedSafe: false, reason: decision.reason };
 }
+
+/**
+ * Marker reason used only by `createInitialStreamSafety()`. Lets
+ * `combineStreamSafety` tell "no stream has contributed yet" apart from a
+ * real unsafe verdict a stream actually produced — the former must defer to
+ * whatever the first real stream reports, the latter must never be
+ * overridden by a later one.
+ */
+const NOT_YET_OBSERVED_REASON = "not_yet_observed";
+
+/**
+ * The accumulator's starting value, before any `processStreamChunks`
+ * invocation has contributed a stream to the turn's `fullResponse`. Fails
+ * closed like every other unconfirmed state, but is distinguished from a
+ * real unsafe verdict so `combineStreamSafety` knows to simply adopt the
+ * first real stream's own result rather than treating it as "already
+ * unsafe, stays unsafe".
+ */
+export function createInitialStreamSafety(): StreamSafetyResult {
+  return { confirmedSafe: false, reason: NOT_YET_OBSERVED_REASON };
+}
+
+/**
+ * Folds one more stream's safety verdict into the accumulated verdict for
+ * everything that has contributed to `fullResponse` so far this turn.
+ *
+ * `fullResponse` is cumulative across `processStreamChunks` calls — the
+ * initial generation, any Turbo Edits/search-replace repair streams, and
+ * any "continue where you left off" streams for an unclosed `<dyad-write>`
+ * tag all append to the same string that eventually reaches
+ * `processFullResponseActions`. Each of those streams gets its own fresh
+ * `StreamSafetyTracker` (see the concurrency note above), so on its own a
+ * later stream's `stop` finish has no idea an earlier stream in the same
+ * turn was cut off by `finishReason: "length"` — resolving trackers
+ * independently and simply overwriting the turn's verdict with the latest
+ * one would let a clean continuation "launder" content that was appended
+ * to `fullResponse` while a previous stream was unsafe.
+ *
+ * Semantics are deliberately conservative and sticky: once any contributing
+ * stream is unsafe, the accumulated verdict for the whole turn stays unsafe
+ * no matter how safely a later stream in the same turn completes. Only "all
+ * contributing streams safe" yields a safe accumulated verdict. A
+ * successful continuation can still make the visible response text useful
+ * to read — this only withholds the real filesystem/SQL/dependency side
+ * effect, never the response itself (see the persisted-message write in
+ * chat_stream_handlers.ts, which is unconditional).
+ */
+export function combineStreamSafety(
+  accumulated: StreamSafetyResult,
+  next: StreamSafetyResult,
+): StreamSafetyResult {
+  // Nothing has contributed yet: the first real stream's verdict *is* the
+  // accumulated verdict so far, whether safe or not.
+  if (accumulated.reason === NOT_YET_OBSERVED_REASON) {
+    return next;
+  }
+  // Sticky-unsafe: a real (non-initial) unsafe verdict already recorded for
+  // this turn can never be overridden by a later stream, safe or not.
+  if (!accumulated.confirmedSafe) {
+    return accumulated;
+  }
+  // Every stream so far has been safe — the latest stream's own verdict
+  // decides whether that streak continues.
+  return next;
+}

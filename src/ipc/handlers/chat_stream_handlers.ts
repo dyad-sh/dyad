@@ -6,6 +6,8 @@ import {
   fastTextOutput,
 } from "../utils/stream_text_utils";
 import {
+  combineStreamSafety,
+  createInitialStreamSafety,
   createStreamSafetyTracker,
   observeStreamPart,
   resolveStreamSafety,
@@ -1680,17 +1682,18 @@ ${componentSnippet}
 
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
-      // Tracks the most recently observed stream-safety outcome across
-      // this turn's initial stream and any search-replace-fix /
-      // continuation retries below — whichever stream's output ultimately
-      // becomes `fullResponse` is the one whose safety decides whether
-      // processFullResponseActions may run on it. Declared here (not inside
-      // the non-test-prompt branch below) so it stays in scope for the
-      // shouldAutoApply gate after that branch closes.
-      let lastStreamSafety: StreamSafetyResult = {
-        confirmedSafe: false,
-        reason: "not_yet_observed",
-      };
+      // Accumulates the stream-safety verdict across every stream that
+      // contributes to this turn's `fullResponse` — the initial generation
+      // and any search-replace-fix / continuation retries below.
+      // `fullResponse` is cumulative across all of those streams, so a
+      // later stream finishing safely must not override an earlier one's
+      // unsafe verdict (see combineStreamSafety's doc comment for why: a
+      // clean continuation could otherwise "launder" content a previous,
+      // truncated/errored/aborted stream already appended). Declared here
+      // (not inside the non-test-prompt branch below) so it stays in scope
+      // for the shouldAutoApply gate after that branch closes.
+      let accumulatedStreamSafety: StreamSafetyResult =
+        createInitialStreamSafety();
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -2507,7 +2510,10 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
-          lastStreamSafety = result.streamSafety;
+          accumulatedStreamSafety = combineStreamSafety(
+            accumulatedStreamSafety,
+            result.streamSafety,
+          );
           if (result.modelRefused) {
             modelRefused = true;
           }
@@ -2584,7 +2590,10 @@ This conversation includes one or more image attachments. When the user uploads 
                 processResponseChunkUpdate,
               });
               fullResponse = result.fullResponse;
-              lastStreamSafety = result.streamSafety;
+              accumulatedStreamSafety = combineStreamSafety(
+                accumulatedStreamSafety,
+                result.streamSafety,
+              );
               if (result.modelRefused) {
                 modelRefused = true;
                 break;
@@ -2654,7 +2663,10 @@ This conversation includes one or more image attachments. When the user uploads 
                 includeReasoning: false,
               });
               fullResponse = result.fullResponse;
-              lastStreamSafety = result.streamSafety;
+              accumulatedStreamSafety = combineStreamSafety(
+                accumulatedStreamSafety,
+                result.streamSafety,
+              );
               if (result.modelRefused) {
                 modelRefused = true;
                 break;
@@ -2748,16 +2760,29 @@ This conversation includes one or more image attachments. When the user uploads 
         // surrounding generation actually finished safely — the same
         // response can contain complete tags while the underlying provider
         // stream was cut off by a token limit, content filter, or error
-        // (see stream_execution_guard.ts). Applying real file/SQL changes
-        // from an unconfirmed response is treated the same as any other
-        // reason auto-apply is withheld: the response stays visible,
-        // unapplied, for manual review.
-        if (shouldAutoApply && !hasDestructiveSql && !lastStreamSafety.confirmedSafe) {
+        // (see stream_execution_guard.ts). `accumulatedStreamSafety` is
+        // sticky-unsafe across every stream that contributed to
+        // `fullResponse` this turn (initial generation, search-replace-fix
+        // retries, unclosed-tag continuations) — a clean continuation
+        // cannot launder content appended while an earlier stream in the
+        // same turn was unsafe. Applying real file/SQL changes from an
+        // unconfirmed response is treated the same as any other reason
+        // auto-apply is withheld: the response stays visible, unapplied,
+        // for manual review.
+        if (
+          shouldAutoApply &&
+          !hasDestructiveSql &&
+          !accumulatedStreamSafety.confirmedSafe
+        ) {
           logger.warn(
-            `Withholding auto-apply for chat ${req.chatId}: stream was not confirmed to complete safely (${lastStreamSafety.reason ?? "unknown"})`,
+            `Withholding auto-apply for chat ${req.chatId}: stream was not confirmed to complete safely (${accumulatedStreamSafety.reason ?? "unknown"})`,
           );
         }
-        if (shouldAutoApply && !hasDestructiveSql && lastStreamSafety.confirmedSafe) {
+        if (
+          shouldAutoApply &&
+          !hasDestructiveSql &&
+          accumulatedStreamSafety.confirmedSafe
+        ) {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,

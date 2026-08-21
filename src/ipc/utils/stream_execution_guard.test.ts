@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  combineStreamSafety,
+  createInitialStreamSafety,
   createStreamSafetyTracker,
   observeStreamPart,
   resolveStreamSafety,
+  type StreamSafetyResult,
 } from "./stream_execution_guard";
 
 describe("stream_execution_guard", () => {
@@ -232,5 +235,65 @@ describe("stream_execution_guard", () => {
     const result = resolveStreamSafety(tracker);
 
     expect(result.confirmedSafe).toBe(false);
+  });
+});
+
+describe("combineStreamSafety", () => {
+  const safe: StreamSafetyResult = { confirmedSafe: true };
+  const unsafeA: StreamSafetyResult = {
+    confirmedSafe: false,
+    reason: "truncated",
+  };
+  const unsafeB: StreamSafetyResult = {
+    confirmedSafe: false,
+    reason: "provider_error",
+  };
+
+  it("adopts the first real stream's verdict from the initial state (safe case)", () => {
+    const result = combineStreamSafety(createInitialStreamSafety(), safe);
+    expect(result).toEqual(safe);
+  });
+
+  it("adopts the first real stream's verdict from the initial state (unsafe case)", () => {
+    const result = combineStreamSafety(createInitialStreamSafety(), unsafeA);
+    expect(result).toEqual(unsafeA);
+  });
+
+  it("safe followed by safe stays safe", () => {
+    const result = combineStreamSafety(safe, safe);
+    expect(result.confirmedSafe).toBe(true);
+  });
+
+  it("safe followed by unsafe becomes unsafe", () => {
+    const result = combineStreamSafety(safe, unsafeA);
+    expect(result).toEqual(unsafeA);
+  });
+
+  it("unsafe followed by safe stays unsafe (sticky) — the exact laundering scenario", () => {
+    const result = combineStreamSafety(unsafeA, safe);
+    expect(result.confirmedSafe).toBe(false);
+    expect(result).toEqual(unsafeA);
+  });
+
+  it("unsafe followed by a different unsafe reason stays the original unsafe verdict", () => {
+    const result = combineStreamSafety(unsafeA, unsafeB);
+    expect(result.confirmedSafe).toBe(false);
+    expect(result).toEqual(unsafeA);
+  });
+
+  it("three-stream fold: safe, unsafe, safe again stays unsafe", () => {
+    let acc = createInitialStreamSafety();
+    acc = combineStreamSafety(acc, safe);
+    acc = combineStreamSafety(acc, unsafeA);
+    acc = combineStreamSafety(acc, safe);
+    expect(acc.confirmedSafe).toBe(false);
+  });
+
+  it("three-stream fold: safe, safe, safe stays safe", () => {
+    let acc = createInitialStreamSafety();
+    acc = combineStreamSafety(acc, safe);
+    acc = combineStreamSafety(acc, safe);
+    acc = combineStreamSafety(acc, safe);
+    expect(acc.confirmedSafe).toBe(true);
   });
 });

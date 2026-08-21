@@ -3,6 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import * as esbuild from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({
+  spawnStreaming: vi.fn(),
+}));
+
+vi.mock("./spawn_streaming", () => ({
+  spawnStreaming: h.spawnStreaming,
+}));
+
 import {
   buildPlaywrightConfig,
   buildPreviewShimSource,
@@ -64,6 +73,7 @@ function makeAppWithBrowserMarker({
 }
 
 afterEach(() => {
+  h.spawnStreaming.mockReset();
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1046,6 +1056,47 @@ describe("ensurePlaywrightBootstrap", () => {
     expect(
       await ensurePlaywrightBootstrap({ appPath: routed.appPath }),
     ).toMatchObject({ previewRouted: false });
+  });
+
+  it("skips the browser download when the preview shim is routed", async () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: false,
+    });
+    fs.writeFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      'export default { testDir: "./e2e-tests" };\n',
+    );
+
+    await expect(
+      ensurePlaywrightBootstrap({ appPath, ensurePreviewShim: true }),
+    ).resolves.toMatchObject({ installed: false, previewRouted: true });
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
+  });
+
+  it("still downloads a browser when preview routing falls back", async () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: false,
+    });
+    fs.writeFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      'export default { testDir: "./e2e-tests" };\n',
+    );
+    const e2eTsconfigPath = path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
+    fs.mkdirSync(path.dirname(e2eTsconfigPath), { recursive: true });
+    fs.writeFileSync(e2eTsconfigPath, '{ "compilerOptions": {} }');
+    h.spawnStreaming.mockResolvedValue({ code: 0, aborted: false });
+
+    await expect(
+      ensurePlaywrightBootstrap({ appPath, ensurePreviewShim: true }),
+    ).resolves.toMatchObject({ installed: true, previewRouted: false });
+    expect(h.spawnStreaming).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "npx",
+        args: ["playwright", "install", "chromium"],
+      }),
+    );
   });
 
   it("leaves a config without the Dyad sentinel untouched", async () => {

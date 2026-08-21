@@ -1340,11 +1340,33 @@ export async function ensurePlaywrightBootstrap({
   migrateConfigTestDir(appPath);
   migrateConfigSlowMo(appPath);
 
+  let previewRouted = false;
+  if (writePreviewShim) {
+    try {
+      const { warning } = ensurePreviewShim(appPath);
+      if (warning) {
+        onOutput?.(warning);
+      }
+      previewRouted = !warning;
+    } catch (err) {
+      // Losing the preview routing is not worth failing an otherwise fine run.
+      logger.warn(`Failed to write the preview test shim: ${err}`);
+      onOutput?.(
+        "Couldn't set up the preview test shim; running in a separate browser instead.\n",
+      );
+    }
+  }
+
   // The bundled Chromium binary is downloaded separately from the npm package,
   // so we track it apart (a present package does NOT mean the browser is
-  // there). Only needed when we're NOT driving a system browser.
+  // there). Only needed when we're NOT driving a system browser or Dyad's
+  // already-running Electron preview.
   let downloadedBrowser = false;
-  if (!usesChannel && !isPlaywrightBrowserInstalled(appPath)) {
+  if (
+    !previewRouted &&
+    !usesChannel &&
+    !isPlaywrightBrowserInstalled(appPath)
+  ) {
     onOutput?.("\nDownloading the Chromium test browser...\n");
     const installBrowser = await spawnStreaming({
       command: "npx",
@@ -1374,27 +1396,10 @@ export async function ensurePlaywrightBootstrap({
   // Idempotent app configuration — cheap, runs every time.
   appendGitignoreEntries(appPath);
   ensureTestScript(appPath);
-  // Before the preview branch below, which rewrites the same file anyway: this
-  // is the path that keeps a snapshot from an earlier preview run in step with
-  // the app for every OTHER kind of run.
+  // The preview setup above rewrites this file when it owns it. This path keeps
+  // a snapshot from an earlier preview run in step with the app for every
+  // OTHER kind of run.
   refreshGeneratedE2eTsconfig(appPath);
-
-  let previewRouted = false;
-  if (writePreviewShim) {
-    try {
-      const { warning } = ensurePreviewShim(appPath);
-      if (warning) {
-        onOutput?.(warning);
-      }
-      previewRouted = !warning;
-    } catch (err) {
-      // Losing the preview routing is not worth failing an otherwise fine run.
-      logger.warn(`Failed to write the preview test shim: ${err}`);
-      onOutput?.(
-        "Couldn't set up the preview test shim; running in a separate browser instead.\n",
-      );
-    }
-  }
 
   return { installed: !packageInstalled || downloadedBrowser, previewRouted };
 }

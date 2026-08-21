@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import { E2E_TEST_DIR } from "../types/tests";
+
 interface PlaywrightDiscoveryTest {
   expectedStatus?: string;
 }
@@ -106,5 +108,9 @@ export function exactDiscoveredTitleGrep(
 ): string {
   const escape = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `(?:^|\\s)${escape(file)}\\s+${escape(fullTitle)}$`;
+  const testDirPrefix = `${E2E_TEST_DIR}/`;
+  const titlePath = file.startsWith(testDirPrefix)
+    ? file.slice(testDirPrefix.length)
+    : file;
+  return `(?:^|\\s)${escape(titlePath)}\\s+${escape(fullTitle)}$`;
 }

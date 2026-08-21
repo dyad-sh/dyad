@@ -24,7 +24,10 @@ function findUnescapedQuote(
     ) {
       precedingBackslashes += 1;
     }
-    if (precedingBackslashes % 2 === 0) return index;
+    const nextCharacter = line[index + 1] ?? "";
+    const escapedQuoteContinuesPath =
+      precedingBackslashes % 2 === 1 && /[A-Za-z0-9_./\\-]/.test(nextCharacter);
+    if (!escapedQuoteContinuesPath) return index;
     index = line.indexOf(quote, index + 1);
   }
   return -1;

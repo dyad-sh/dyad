@@ -805,4 +805,31 @@ describe("main-hosted github_ops actor", () => {
       presentation.forget.mock.invocationCallOrder[0],
     );
   });
+
+  it("retains failure routing until a follow-up conflict probe settles", async () => {
+    service.run.mockRejectedValue(
+      Object.assign(new Error("merge conflict"), { code: "MERGE_CONFLICT" }),
+    );
+    service.getConflicts.mockRejectedValue(new Error("conflict probe failed"));
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "merge-conflict-probe",
+      op: { type: "merge", branch: "feature" },
+    });
+    await vi.waitFor(() =>
+      expect(presentation.showError).toHaveBeenCalledWith(
+        7,
+        "merge-conflict-probe",
+        "conflict probe failed",
+        "conflicts",
+      ),
+    );
+
+    expect(presentation.showError.mock.invocationCallOrder[0]).toBeLessThan(
+      presentation.forget.mock.invocationCallOrder[0],
+    );
+  });
 });

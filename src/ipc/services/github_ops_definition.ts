@@ -17,7 +17,7 @@ import {
 import type { GithubOpsCommand } from "@/github_ops/state";
 import { INITIAL_GITHUB_OPS_STATE } from "@/github_ops/state";
 import {
-  shouldNotifyOperationFailure,
+  shouldDeferOperationPresentationCleanup,
   transition,
 } from "@/github_ops/transition";
 import {
@@ -273,7 +273,7 @@ function createCommandRunner(
               invocationRef,
               failure,
             });
-            if (!shouldNotifyOperationFailure(command.op, failure)) {
+            if (!shouldDeferOperationPresentationCleanup(command.op, failure)) {
               githubOpsPresentationService.forget(invocationRef.operationId);
             }
           },
@@ -298,6 +298,7 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
+              githubOpsPresentationService.forget(invocationRef?.operationId);
             }
           },
           (error) => {
@@ -308,6 +309,7 @@ function createCommandRunner(
               command.verificationAttempt,
               "git-state",
             );
+            githubOpsPresentationService.forget(invocationRef?.operationId);
           },
         );
         return;
@@ -330,6 +332,7 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
+              githubOpsPresentationService.forget(invocationRef?.operationId);
             }
           },
           (error) => {
@@ -346,6 +349,7 @@ function createCommandRunner(
             if (command.settleOnError) {
               emit({ type: "CONFLICTS", files: [] });
             }
+            githubOpsPresentationService.forget(invocationRef?.operationId);
           },
         );
         return;

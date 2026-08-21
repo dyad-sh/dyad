@@ -258,6 +258,19 @@ export function shouldNotifyOperationFailure(
   );
 }
 
+export function shouldDeferOperationPresentationCleanup(
+  op: GithubOperation,
+  failure: GithubOperationFailure,
+): boolean {
+  return (
+    shouldNotifyOperationFailure(op, failure) ||
+    (!failure.code && isRebaseOperation(op)) ||
+    (op.type !== "switch" &&
+      (failure.code === "MERGE_IN_PROGRESS" ||
+        failure.code === "MERGE_CONFLICT"))
+  );
+}
+
 function awaitConflicts(
   state: Extract<GithubOpsState, { type: "running" }>,
   op: GithubOperation,

@@ -79,6 +79,10 @@ describe("safeGithubOpsErrorMessage", () => {
       'hook: path="[redacted path]" failed',
     ],
     [
+      String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
+      'fatal: cannot open "[redacted path]" because setting "core.longpaths" is disabled',
+    ],
+    [
       "remote: error: File '/tmp/build/a.bin' is 124 MB; see 'https://gh.io/lfs'",
       "remote: error: File '[redacted path]' is 124 MB; see 'https://gh.io/lfs'",
     ],

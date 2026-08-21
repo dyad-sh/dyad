@@ -7,8 +7,11 @@ import {
   beginAppFinalization,
   describeMutationBlock,
   endAppFinalization,
+  quarantineActiveMutationTool,
   releaseMutationLease,
+  waitForMutationToolDrain,
   withMutationAdmission,
+  withMutationAdmissionUntil,
   withMutationToolAdmission,
 } from "./mutation_lease";
 
@@ -174,6 +177,115 @@ describe("sub-agent mutation lease", () => {
     finishMutation();
     await mutation;
     expect(beginAppFinalization(7)).toBe(true);
+  });
+
+  it("serializes ordinary parallel mutation tools", async () => {
+    let finishFirst!: () => void;
+    const order: string[] = [];
+    const first = withMutationToolAdmission(
+      { appId: 7 } as AgentContext,
+      () =>
+        new Promise<void>((resolve) => {
+          order.push("first-started");
+          finishFirst = () => {
+            order.push("first-finished");
+            resolve();
+          };
+        }),
+    );
+    const second = withMutationToolAdmission(
+      { appId: 7 } as AgentContext,
+      async () => {
+        order.push("second-started");
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(order).toEqual(["first-started"]);
+    finishFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual([
+      "first-started",
+      "first-finished",
+      "second-started",
+    ]);
+  });
+
+  it("rejects queued admission when an active mutation is quarantined", async () => {
+    let finishMutation!: () => void;
+    const mutation = withMutationToolAdmission(
+      { appId: 7 } as AgentContext,
+      () =>
+        new Promise<void>((resolve) => {
+          finishMutation = resolve;
+        }),
+    );
+    await Promise.resolve();
+
+    let admitted = false;
+    const waiting = withMutationAdmissionUntil({
+      appId: 7,
+      deadlineAt: Date.now() + 10_000,
+      operation: async () => {
+        admitted = true;
+      },
+    });
+    expect(quarantineActiveMutationTool(7)).toBe(true);
+
+    await expect(waiting).rejects.toThrow(/cancelled mutation tool/);
+    expect(admitted).toBe(false);
+    finishMutation();
+    await mutation;
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+  });
+
+  it("does not run an admission callback after its wait is cancelled", async () => {
+    let finishMutation!: () => void;
+    const mutation = withMutationToolAdmission(
+      { appId: 7 } as AgentContext,
+      () =>
+        new Promise<void>((resolve) => {
+          finishMutation = resolve;
+        }),
+    );
+    await Promise.resolve();
+
+    const controller = new AbortController();
+    let admitted = false;
+    const waiting = withMutationAdmissionUntil({
+      appId: 7,
+      abortSignal: controller.signal,
+      deadlineAt: Date.now() + 10_000,
+      operation: async () => {
+        admitted = true;
+      },
+    });
+    controller.abort();
+
+    await expect(waiting).rejects.toMatchObject({ kind: "user_cancelled" });
+    finishMutation();
+    await mutation;
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+  });
+
+  it("times out a drain without leaving a polling loop", async () => {
+    let finishMutation!: () => void;
+    const mutation = withMutationToolAdmission(
+      { appId: 7 } as AgentContext,
+      () =>
+        new Promise<void>((resolve) => {
+          finishMutation = resolve;
+        }),
+    );
+    await Promise.resolve();
+
+    await expect(waitForMutationToolDrain(7, 1)).resolves.toBe(false);
+    finishMutation();
+    await mutation;
+    await expect(waitForMutationToolDrain(7, 1)).resolves.toBe(true);
   });
 
   it("names the blocking holder so a stuck finalization is attributable", () => {

@@ -154,7 +154,6 @@ const SUBAGENT_ALLOWED_TOOLS = new Set<AgentToolName>([
   "get_database_table_schema",
   "read_logs",
   "run_type_checks",
-  "run_pre_commit",
   "run_build",
   "run_tests",
   "restart_app",

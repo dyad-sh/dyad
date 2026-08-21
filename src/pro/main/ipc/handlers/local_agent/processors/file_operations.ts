@@ -31,6 +31,22 @@ export interface FileOperationResult {
   warning?: string;
 }
 
+export async function supabaseFunctionEntryExists(
+  appPath: string,
+  functionName: string,
+): Promise<boolean> {
+  try {
+    await fs.access(
+      path.join(appPath, "supabase", "functions", functionName, "index.ts"),
+    );
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
+}
+
 export async function reconcileDeferredFunctionOperations(params: {
   pendingDeploys: string[];
   pendingDeletes: string[];
@@ -109,16 +125,8 @@ export async function deployAllFunctionsIfNeeded(
     const deferred = await reconcileDeferredFunctionOperations({
       pendingDeploys: ctx.pendingFunctionDeploys,
       pendingDeletes: ctx.pendingFunctionDeletes ?? [],
-      functionExists: async (functionName) => {
-        try {
-          await fs.access(
-            path.join(ctx.appPath, "supabase", "functions", functionName),
-          );
-          return true;
-        } catch {
-          return false;
-        }
-      },
+      functionExists: (functionName) =>
+        supabaseFunctionEntryExists(ctx.appPath, functionName),
     });
     const deleteErrors: string[] = [];
     for (const functionName of deferred.deletes) {

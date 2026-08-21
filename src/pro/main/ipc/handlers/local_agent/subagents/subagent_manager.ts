@@ -43,9 +43,11 @@ import {
   endAppFinalization,
   hasActiveMutationTool,
   hasMutationLease,
+  quarantineActiveMutationTool,
   releaseMutationLease,
   waitForMutationToolDrain,
   withMutationAdmission,
+  withMutationAdmissionUntil,
 } from "./mutation_lease";
 import {
   parseReviewResult,
@@ -74,6 +76,7 @@ const AUTO_REVIEW_BARRIER_MAX_WAIT_MS = 10 * 60 * 1000;
 const ROOT_FINALIZATION_MAX_WAIT_MS = 20 * 60 * 1000;
 const REVIEW_WRITER_MAX_WAIT_MS = 10 * 60 * 1000;
 const SAFE_ABORT_DRAIN_MAX_WAIT_MS = 30 * 1000;
+const SAFE_ABORT_BARRIER_MAX_WAIT_MS = 31 * 1000;
 const SUBAGENT_MAX_STEPS = 50;
 /**
  * The Implementer is the only persona that both writes code and verifies it —
@@ -94,12 +97,20 @@ async function waitForSafeAbortDrain(
     await Promise.race([
       waitForSafeAbort(),
       new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, SAFE_ABORT_DRAIN_MAX_WAIT_MS);
+        timeout = setTimeout(resolve, SAFE_ABORT_BARRIER_MAX_WAIT_MS);
       }),
     ]);
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+async function drainActiveMutationOrQuarantine(appId: number): Promise<void> {
+  const didDrain = await waitForMutationToolDrain(
+    appId,
+    SAFE_ABORT_DRAIN_MAX_WAIT_MS,
+  );
+  if (!didDrain) quarantineActiveMutationTool(appId);
 }
 
 function maxStepsFor(persona: SubagentPersona): number {
@@ -452,13 +463,17 @@ export async function spawnModelSubagent(params: {
     async () => {
       const reserved =
         params.persona !== "implementer" ||
-        (await withMutationAdmission(params.ctx.appId, async () =>
-          acquireMutationLease({
-            appId: params.ctx.appId,
-            threadId,
-            scope: params.scope,
-          }),
-        ));
+        (await withMutationAdmissionUntil({
+          appId: params.ctx.appId,
+          abortSignal: params.ctx.abortSignal,
+          deadlineAt: Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS,
+          operation: async () =>
+            acquireMutationLease({
+              appId: params.ctx.appId,
+              threadId,
+              scope: params.scope,
+            }),
+        }));
       if (!reserved) {
         throw new DyadError(
           "Another Implementer is already editing this app.",
@@ -658,14 +673,11 @@ export async function cancelSubagent(
       with: { app: true },
     });
     if (chat?.app) {
-      // Cancellation is not terminal until an already-entered atomic mutation
-      // leaves admission. The wrapper's abort check prevents queued mutations
-      // from entering after this drain.
-      //
-      // Bound the user-facing drain. If a tool ignores cancellation, its
-      // mutation reservation remains as a quarantine that blocks new writers
-      // and root finalization until the underlying operation really settles.
-      await waitForSafeAbortDrain(() => waitForMutationToolDrain(chat.app.id));
+      // Give an already-entered mutation a bounded opportunity to leave
+      // admission before making cancellation terminal. If it ignores the
+      // signal, quarantine its reservation so queued/new writers and root
+      // finalization remain blocked until the operation really settles.
+      await drainActiveMutationOrQuarantine(chat.app.id);
       releaseMutationLease(chat.app.id, threadId);
     }
   }
@@ -1228,7 +1240,12 @@ async function followupSubagentAdmitted(
     }
   };
   if (thread.persona === "implementer") {
-    await withMutationAdmission(currentTurn!.ctx.appId, appendAndSchedule);
+    await withMutationAdmissionUntil({
+      appId: currentTurn!.ctx.appId,
+      abortSignal: currentTurn!.ctx.abortSignal,
+      deadlineAt: Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS,
+      operation: appendAndSchedule,
+    });
   } else {
     await appendAndSchedule();
   }
@@ -1683,16 +1700,16 @@ async function runModel(params: {
   // signal to the model request, but a tool execute that ignores it leaves
   // these promises pending forever — and runThread's finally (lease release,
   // entitlement-watcher cleanup) never runs. The rejection is swallowed by
-  // runThread's aborted-signal check; the zombie chain cannot mutate the app
-  // afterwards because assertMutationLease rejects a thread without the lease.
+  // runThread's aborted-signal check. An already-entered mutation that ignores
+  // cancellation remains quarantined from other writers and finalization until
+  // it actually settles.
   const [text, usage, steps] = await raceWithAbort(
     Promise.all([result.text, result.totalUsage, result.steps]),
     params.abortSignal,
-    // Do not let cancellation abandon an Implementer while one of its tools
-    // still owns mutation admission. Draining the shared boundary keeps the
-    // writer lease and root finalization tied to the real operation lifetime,
-    // even when that operation does not itself observe AbortSignal.
-    () => waitForMutationToolDrain(params.appId),
+    // Give an entered mutation a bounded opportunity to drain. If it ignores
+    // cancellation, quarantine it so other writers and finalization remain tied
+    // to the real operation lifetime even after this model chain unwinds.
+    () => drainActiveMutationOrQuarantine(params.appId),
   );
   if (streamError) throw streamError;
   if (claimedRootMessageIds.size > 0) {

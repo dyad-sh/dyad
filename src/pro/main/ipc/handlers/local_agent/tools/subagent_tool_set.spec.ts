@@ -47,6 +47,7 @@ describe("sub-agent tool set", () => {
     expect(names.has("write_file")).toBe(true);
     expect(names.has("search_replace")).toBe(true);
     expect(names.has("run_type_checks")).toBe(true);
+    expect(names.has("run_pre_commit")).toBe(false);
   });
 
   it("withholds session state the orchestrator owns", () => {

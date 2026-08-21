@@ -9,9 +9,16 @@ interface MutationLease {
   scope: string[];
 }
 
+interface ActiveMutationTool {
+  token: symbol;
+  quarantined: boolean;
+  drainWaiters: Set<() => void>;
+}
+
 const leases = new Map<number, MutationLease>();
 const finalizingApps = new Set<number>();
-const activeMutationTools = new Map<number, symbol>();
+const activeMutationTools = new Map<number, ActiveMutationTool>();
+const quarantineListeners = new Map<number, Set<() => void>>();
 const TOOL_FINALIZATION_WAIT_MS = 10 * 60 * 1000;
 
 export function withMutationAdmission<T>(
@@ -21,58 +28,181 @@ export function withMutationAdmission<T>(
   return withLock(`subagent-finalization:${appId}`, operation);
 }
 
+export function withMutationAdmissionUntil<T>(params: {
+  appId: number;
+  abortSignal?: AbortSignal;
+  deadlineAt: number;
+  operation: () => Promise<T>;
+}): Promise<T> {
+  if (isMutationQuarantined(params.appId)) {
+    return Promise.reject(quarantinedMutationError());
+  }
+  if (params.abortSignal?.aborted) {
+    return Promise.reject(cancelledAdmissionError());
+  }
+  if (Date.now() >= params.deadlineAt) {
+    return Promise.reject(timedOutAdmissionError());
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let waiting = true;
+    const listeners = quarantineListeners.get(params.appId) ?? new Set();
+    quarantineListeners.set(params.appId, listeners);
+
+    const cleanup = () => {
+      params.abortSignal?.removeEventListener("abort", onAbort);
+      clearTimeout(timeout);
+      listeners.delete(onQuarantine);
+      if (listeners.size === 0) quarantineListeners.delete(params.appId);
+    };
+    const stopWaiting = (error: DyadError) => {
+      if (!waiting) return;
+      waiting = false;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => stopWaiting(cancelledAdmissionError());
+    const onQuarantine = () => stopWaiting(quarantinedMutationError());
+    const timeout = setTimeout(
+      () => stopWaiting(timedOutAdmissionError()),
+      Math.max(0, params.deadlineAt - Date.now()),
+    );
+    params.abortSignal?.addEventListener("abort", onAbort, { once: true });
+    listeners.add(onQuarantine);
+
+    void withMutationAdmission(params.appId, async () => {
+      if (!waiting) return;
+      waiting = false;
+      cleanup();
+      try {
+        resolve(await params.operation());
+      } catch (error) {
+        reject(error);
+      }
+    }).catch((error) => {
+      if (!waiting) return;
+      waiting = false;
+      cleanup();
+      reject(error);
+    });
+  });
+}
+
 export async function withMutationToolAdmission<T>(
   ctx: AgentContext,
   operation: () => Promise<T>,
 ): Promise<T> {
-  if (activeMutationTools.has(ctx.appId)) {
-    throw new DyadError(
-      "Another mutation tool is still active for this app.",
-      DyadErrorKind.Conflict,
-    );
-  }
-  const reservation = Symbol("mutation-tool");
-  activeMutationTools.set(ctx.appId, reservation);
-  try {
-    const deadlineAt = Date.now() + TOOL_FINALIZATION_WAIT_MS;
-    while (true) {
-      const result = await withMutationAdmission(ctx.appId, async () => {
+  const deadlineAt = Date.now() + TOOL_FINALIZATION_WAIT_MS;
+  while (true) {
+    const result = await withMutationAdmissionUntil({
+      appId: ctx.appId,
+      abortSignal: ctx.abortSignal,
+      deadlineAt,
+      operation: async () => {
         if (finalizingApps.has(ctx.appId)) {
           return { waiting: true as const };
         }
         assertMutationLease(ctx);
-        return { waiting: false as const, value: await operation() };
-      });
-      if (!result.waiting) return result.value;
-      if (ctx.abortSignal?.aborted) {
-        throw new DyadError(
-          "Waiting to modify the app was cancelled.",
-          DyadErrorKind.UserCancelled,
-        );
-      }
-      if (Date.now() >= deadlineAt) {
-        throw new DyadError(
-          "Timed out waiting for the app to finish finalizing.",
-          DyadErrorKind.Conflict,
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  } finally {
-    if (activeMutationTools.get(ctx.appId) === reservation) {
-      activeMutationTools.delete(ctx.appId);
-    }
+        const active = beginActiveMutationTool(ctx.appId);
+        try {
+          return { waiting: false as const, value: await operation() };
+        } finally {
+          finishActiveMutationTool(ctx.appId, active);
+        }
+      },
+    });
+    if (!result.waiting) return result.value;
+    if (ctx.abortSignal?.aborted) throw cancelledAdmissionError();
+    if (Date.now() >= deadlineAt) throw timedOutAdmissionError();
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
+}
+
+function beginActiveMutationTool(appId: number): ActiveMutationTool {
+  if (activeMutationTools.has(appId)) {
+    throw new DyadError(
+      "Another mutation tool unexpectedly entered app admission.",
+      DyadErrorKind.Conflict,
+    );
+  }
+  const active: ActiveMutationTool = {
+    token: Symbol("mutation-tool"),
+    quarantined: false,
+    drainWaiters: new Set(),
+  };
+  activeMutationTools.set(appId, active);
+  return active;
+}
+
+function finishActiveMutationTool(
+  appId: number,
+  active: ActiveMutationTool,
+): void {
+  if (activeMutationTools.get(appId)?.token !== active.token) return;
+  activeMutationTools.delete(appId);
+  for (const waiter of active.drainWaiters) waiter();
+  active.drainWaiters.clear();
+}
+
+export function quarantineActiveMutationTool(appId: number): boolean {
+  const active = activeMutationTools.get(appId);
+  if (!active) return false;
+  if (!active.quarantined) {
+    active.quarantined = true;
+    for (const listener of quarantineListeners.get(appId) ?? []) listener();
+  }
+  return true;
+}
+
+export function isMutationQuarantined(appId: number): boolean {
+  return activeMutationTools.get(appId)?.quarantined === true;
 }
 
 export function hasActiveMutationTool(appId: number): boolean {
   return activeMutationTools.has(appId);
 }
 
-export async function waitForMutationToolDrain(appId: number): Promise<void> {
-  while (activeMutationTools.has(appId)) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+export function waitForMutationToolDrain(
+  appId: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const active = activeMutationTools.get(appId);
+  if (!active) return Promise.resolve(true);
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (didDrain: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      active.drainWaiters.delete(onDrain);
+      resolve(didDrain);
+    };
+    const onDrain = () => finish(true);
+    const timeout = setTimeout(() => finish(false), timeoutMs);
+    active.drainWaiters.add(onDrain);
+    if (activeMutationTools.get(appId)?.token !== active.token) finish(true);
+  });
+}
+
+function quarantinedMutationError(): DyadError {
+  return new DyadError(
+    "A cancelled mutation tool is still active for this app.",
+    DyadErrorKind.Conflict,
+  );
+}
+
+function cancelledAdmissionError(): DyadError {
+  return new DyadError(
+    "Waiting to modify the app was cancelled.",
+    DyadErrorKind.UserCancelled,
+  );
+}
+
+function timedOutAdmissionError(): DyadError {
+  return new DyadError(
+    "Timed out waiting to modify the app.",
+    DyadErrorKind.Conflict,
+  );
 }
 
 export function acquireMutationLease(params: {
@@ -80,7 +210,9 @@ export function acquireMutationLease(params: {
   threadId: string;
   scope: string[];
 }): boolean {
-  if (finalizingApps.has(params.appId)) return false;
+  if (finalizingApps.has(params.appId) || isMutationQuarantined(params.appId)) {
+    return false;
+  }
   const normalizedScope = params.scope.map(normalizeMutationScope);
   if (
     normalizedScope.some(
@@ -125,15 +257,13 @@ export function releaseMutationLease(appId: number, threadId: string): void {
   if (leases.get(appId)?.threadId === threadId) leases.delete(appId);
 }
 
-/**
- * Human-readable account of what is blocking finalization for this app, or
- * null when nothing is. Diagnostic only — a held lease is otherwise invisible,
- * and "Another app operation may still be active" once cost a full forensic
- * pass to attribute to a hung Implementer's orphaned lease.
- */
+/** Human-readable account of what is blocking finalization for this app. */
 export function describeMutationBlock(appId: number): string | null {
-  if (activeMutationTools.has(appId)) {
-    return "A mutation tool is still active for this app.";
+  const activeMutation = activeMutationTools.get(appId);
+  if (activeMutation) {
+    return activeMutation.quarantined
+      ? "A cancelled mutation tool is still active for this app."
+      : "A mutation tool is still active for this app.";
   }
   const lease = leases.get(appId);
   if (lease) {

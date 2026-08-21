@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const mocks = vi.hoisted(() => ({
   getGitUncommittedFiles: vi.fn(),
@@ -46,6 +49,7 @@ import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
   reconcileDeferredFunctionOperations,
+  supabaseFunctionEntryExists,
 } from "./file_operations";
 
 describe("commitAllChanges", () => {
@@ -153,6 +157,32 @@ describe("deployAllFunctionsIfNeeded", () => {
     });
     expect(mocks.deployAffectedSupabaseFunctions).not.toHaveBeenCalled();
   });
+
+  it("does not delete remotely when local function inspection is uncertain", async () => {
+    const access = vi.spyOn(fs, "access").mockRejectedValueOnce(
+      Object.assign(new Error("permission denied"), {
+        code: "EACCES",
+      }),
+    );
+    const result = await deployAllFunctionsIfNeeded({
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
+      pendingFunctionDeletes: ["uncertain"],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: expect.stringContaining("permission denied"),
+    });
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+    access.mockRestore();
+  });
 });
 
 describe("reconcileDeferredFunctionOperations", () => {
@@ -174,5 +204,25 @@ describe("reconcileDeferredFunctionOperations", () => {
         functionExists: () => false,
       }),
     ).resolves.toEqual({ deploys: [], deletes: ["removed"] });
+  });
+});
+
+describe("supabaseFunctionEntryExists", () => {
+  it("requires the concrete index.ts entry point", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-functions-"));
+    const functionPath = path.join(appPath, "supabase", "functions", "hello");
+    try {
+      await fs.mkdir(functionPath, { recursive: true });
+      await expect(supabaseFunctionEntryExists(appPath, "hello")).resolves.toBe(
+        false,
+      );
+
+      await fs.writeFile(path.join(functionPath, "index.ts"), "export {};");
+      await expect(supabaseFunctionEntryExists(appPath, "hello")).resolves.toBe(
+        true,
+      );
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
   });
 });

@@ -5,6 +5,12 @@ import {
   computeStreamingPatch,
   fastTextOutput,
 } from "../utils/stream_text_utils";
+import {
+  createStreamSafetyTracker,
+  observeStreamPart,
+  resolveStreamSafety,
+  type StreamSafetyResult,
+} from "../utils/stream_execution_guard";
 import { chatContracts, ChatStreamParamsSchema } from "../types/chat";
 import {
   ModelMessage,
@@ -783,13 +789,21 @@ export async function processStreamChunks({
   fullResponse: string;
   incrementalResponse: string;
   modelRefused: boolean;
+  streamSafety: StreamSafetyResult;
 }> {
   const responseBeforeStream = fullResponse;
   let incrementalResponse = "";
   let inThinkingBlock = false;
   let modelRefused = false;
+  // Tracks whether the underlying provider stream itself positively
+  // confirmed a safe, complete termination — independent of whether any
+  // individual dyad-write/dyad-* tag inside fullResponse looks well-formed.
+  // See stream_execution_guard.ts for why a well-formed tag is not proof
+  // the surrounding generation actually finished safely.
+  const safetyTracker = createStreamSafetyTracker();
 
   for await (const part of fullStream) {
+    observeStreamPart(safetyTracker, part);
     let chunk = "";
     if (
       inThinkingBlock &&
@@ -859,7 +873,8 @@ export async function processStreamChunks({
     }
   }
 
-  return { fullResponse, incrementalResponse, modelRefused };
+  const streamSafety = resolveStreamSafety(safetyTracker);
+  return { fullResponse, incrementalResponse, modelRefused, streamSafety };
 }
 
 export function registerChatStreamHandlers() {
@@ -1665,6 +1680,17 @@ ${componentSnippet}
 
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
+      // Tracks the most recently observed stream-safety outcome across
+      // this turn's initial stream and any search-replace-fix /
+      // continuation retries below — whichever stream's output ultimately
+      // becomes `fullResponse` is the one whose safety decides whether
+      // processFullResponseActions may run on it. Declared here (not inside
+      // the non-test-prompt branch below) so it stays in scope for the
+      // shouldAutoApply gate after that branch closes.
+      let lastStreamSafety: StreamSafetyResult = {
+        confirmedSafe: false,
+        reason: "not_yet_observed",
+      };
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -2481,6 +2507,7 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+          lastStreamSafety = result.streamSafety;
           if (result.modelRefused) {
             modelRefused = true;
           }
@@ -2557,6 +2584,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 processResponseChunkUpdate,
               });
               fullResponse = result.fullResponse;
+              lastStreamSafety = result.streamSafety;
               if (result.modelRefused) {
                 modelRefused = true;
                 break;
@@ -2626,6 +2654,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 includeReasoning: false,
               });
               fullResponse = result.fullResponse;
+              lastStreamSafety = result.streamSafety;
               if (result.modelRefused) {
                 modelRefused = true;
                 break;
@@ -2715,7 +2744,20 @@ This conversation includes one or more image attachments. When the user uploads 
           getDyadExecuteSqlTags(fullResponse).some((query) =>
             doesSqlDeleteData(query.content),
           );
-        if (shouldAutoApply && !hasDestructiveSql) {
+        // A well-formed <dyad-write>/<dyad-delete>/etc. tag is not proof the
+        // surrounding generation actually finished safely — the same
+        // response can contain complete tags while the underlying provider
+        // stream was cut off by a token limit, content filter, or error
+        // (see stream_execution_guard.ts). Applying real file/SQL changes
+        // from an unconfirmed response is treated the same as any other
+        // reason auto-apply is withheld: the response stays visible,
+        // unapplied, for manual review.
+        if (shouldAutoApply && !hasDestructiveSql && !lastStreamSafety.confirmedSafe) {
+          logger.warn(
+            `Withholding auto-apply for chat ${req.chatId}: stream was not confirmed to complete safely (${lastStreamSafety.reason ?? "unknown"})`,
+          );
+        }
+        if (shouldAutoApply && !hasDestructiveSql && lastStreamSafety.confirmedSafe) {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,

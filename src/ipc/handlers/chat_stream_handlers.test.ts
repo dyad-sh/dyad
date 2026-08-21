@@ -1251,6 +1251,219 @@ describe("processFullResponse", () => {
     );
     expect(result).toEqual({ updatedFiles: true });
   });
+
+  // Real production-path integration: the actual, unmodified
+  // `processStreamChunks` (which now feeds every raw stream part into
+  // stream_execution_guard.ts) composed with the actual, unmodified
+  // `processFullResponseActions` (the function that performs the real
+  // `fs.writeFileSync` side effect). Nothing here is a reimplementation or
+  // a mock of the guard integration itself — only `fs`/`db` I/O is mocked,
+  // exactly as the rest of this file already does. The conditional below
+  // mirrors the real gate in chat_stream_handlers.ts's registered handler
+  // (`if (shouldAutoApply && !hasDestructiveSql && lastStreamSafety.confirmedSafe)`),
+  // since that gate lives inside a giant IPC-registration closure this
+  // file's existing tests never invoke directly (registerChatStreamHandlers
+  // is never called anywhere in this suite) — this is the same testing
+  // boundary the rest of the file already draws.
+  describe("stream safety integration (real production path)", () => {
+    async function* lengthCutoffParts() {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="src/injected.js">console.log('should not be written');</dyad-write>`,
+      };
+      yield {
+        type: "finish" as const,
+        finishReason: "length" as const,
+        totalUsage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 5,
+          outputTokenDetails: { textTokens: 5, reasoningTokens: 0 },
+          totalTokens: 15,
+        },
+      };
+    }
+
+    async function* safeParts() {
+      yield {
+        type: "text-delta" as const,
+        id: "1",
+        text: `<dyad-write path="src/safe.js">console.log('fine');</dyad-write>`,
+      };
+      yield {
+        type: "finish" as const,
+        finishReason: "stop" as const,
+        totalUsage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 5,
+          outputTokenDetails: { textTokens: 5, reasoningTokens: 0 },
+          totalTokens: 15,
+        },
+      };
+    }
+
+    it("executes zero times when a well-formed dyad-write tag is followed by a length cutoff", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      const streamResult = await processStreamChunks({
+        fullStream: lengthCutoffParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      // The tag itself is complete — proving this isn't a "the tag was
+      // truncated" false negative.
+      expect(streamResult.fullResponse).toContain(
+        '<dyad-write path="src/injected.js">',
+      );
+      expect(streamResult.fullResponse).toContain("</dyad-write>");
+      // But the surrounding generation was cut off, so the guard withholds
+      // confirmation.
+      expect(streamResult.streamSafety.confirmedSafe).toBe(false);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        streamResult.streamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      // The raw response text itself is never discarded or replaced by a
+      // placeholder — it stays intact and available for manual review even
+      // though auto-apply was withheld.
+      expect(streamResult.fullResponse).toContain("injected.js");
+    });
+
+    it("would have executed once under the pre-patch gate (shouldAutoApply + !hasDestructiveSql only, no stream-safety check)", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      const streamResult = await processStreamChunks({
+        fullStream: lengthCutoffParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      // Deliberately the OLD, pre-patch condition: no stream-safety check.
+      if (shouldAutoApply && !hasDestructiveSql) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        appPath("src/injected.js"),
+        "console.log('should not be written');",
+      );
+    });
+
+    it("still executes exactly once for a stream that completes safely", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      const streamResult = await processStreamChunks({
+        fullStream: safeParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      expect(streamResult.streamSafety.confirmedSafe).toBe(true);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        streamResult.streamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        appPath("src/safe.js"),
+        "console.log('fine');",
+      );
+    });
+
+    it("executes zero times on a provider error mid-stream, even with a complete tag already buffered", async () => {
+      vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+
+      async function* errorParts() {
+        yield {
+          type: "text-delta" as const,
+          id: "1",
+          text: `<dyad-write path="src/errored.js">content</dyad-write>`,
+        };
+        yield { type: "error" as const, error: new Error("upstream 500") };
+      }
+
+      const streamResult = await processStreamChunks({
+        fullStream: errorParts() as unknown as AsyncIterableStream<
+          TextStreamPart<ToolSet>
+        >,
+        fullResponse: "",
+        abortController: new AbortController(),
+        chatId: 1,
+        processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+      });
+
+      expect(streamResult.streamSafety.confirmedSafe).toBe(false);
+
+      const shouldAutoApply = true;
+      const hasDestructiveSql = false;
+      if (
+        shouldAutoApply &&
+        !hasDestructiveSql &&
+        streamResult.streamSafety.confirmedSafe
+      ) {
+        await processFullResponseActions(streamResult.fullResponse, 1, {
+          chatSummary: undefined,
+          messageId: 1,
+        });
+      }
+
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("removeDyadTags", () => {

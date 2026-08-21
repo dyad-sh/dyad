@@ -1,5 +1,6 @@
 name: Apply PR review fixes
 
+# One-shot branch-local review fix.
 on:
   push:
     branches:

@@ -150,5 +150,6 @@ describe("deployAllFunctionsIfNeeded", () => {
       functionName: "old-function",
       organizationSlug: "org",
     });
+    expect(mocks.deployAffectedSupabaseFunctions).not.toHaveBeenCalled();
   });
 });

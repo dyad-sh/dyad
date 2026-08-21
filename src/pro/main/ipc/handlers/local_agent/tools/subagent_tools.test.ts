@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const subagentManagerMocks = vi.hoisted(() => ({
   cancelSubagent: vi.fn(async () => {}),
-  followupSubagent: vi.fn(async () => "explorer" as const),
+  followupSubagent: vi.fn(async () => "explorer" as "explorer" | "implementer"),
   listSubagents: vi.fn(async () => []),
   sendSubagentMessage: vi.fn(async () => {}),
   spawnModelSubagent: vi.fn(async () => "explorer-1"),
@@ -228,6 +228,7 @@ describe("spawn_agent schema", () => {
     // make waitForSubagentsAndBeginFinalization fail the entire turn at the end,
     // even though the model was told about the failure and could recover.
     expect(ctx.spawnedImplementerThreadIds).toEqual([]);
+    expect(ctx.spawnedSubagentThreadIds).toEqual([]);
   });
 
   it("hides advanced tools by default and when explicitly disabled", () => {
@@ -350,6 +351,23 @@ describe("spawn_agent schema", () => {
         assignment: "Make the bounded authentication edit",
         scope: ["src/auth.ts"],
       },
+      ctx,
+    );
+
+    expect(ctx.partialImplementerVerificationRequired).toBe(true);
+  });
+
+  it("re-arms root verification when an Implementer follow-up is queued", async () => {
+    subagentManagerMocks.followupSubagent.mockResolvedValueOnce("implementer");
+    const ctx = {
+      chatId: 7,
+      partialImplementerVerificationRequired: false,
+      spawnedSubagentThreadIds: ["implementer-1"],
+      spawnedImplementerThreadIds: ["implementer-1"],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "implementer-1", message: "Finish verification" },
       ctx,
     );
 

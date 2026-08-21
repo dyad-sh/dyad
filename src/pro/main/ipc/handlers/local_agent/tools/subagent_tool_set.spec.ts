@@ -47,17 +47,39 @@ describe("sub-agent tool set", () => {
       partialImplementerVerificationRequired: true,
     } as AgentContext;
 
-    recordRootImplementerVerification(ctx, "write_file");
+    recordRootImplementerVerification(ctx, "write_file", "wrote file");
     expect(ctx.partialImplementerVerificationRequired).toBe(true);
 
-    recordRootImplementerVerification(ctx, "git_diff");
+    recordRootImplementerVerification(
+      ctx,
+      "run_type_checks",
+      "Found 2 type errors:\n...",
+    );
+    expect(ctx.partialImplementerVerificationRequired).toBe(true);
+
+    recordRootImplementerVerification(
+      ctx,
+      "git_diff",
+      "diff --git a/src/app.ts b/src/app.ts",
+    );
+    expect(ctx.partialImplementerVerificationRequired).toBe(true);
+
+    recordRootImplementerVerification(
+      ctx,
+      "run_type_checks",
+      "No type errors found.",
+    );
     expect(ctx.partialImplementerVerificationRequired).toBe(false);
 
     const childCtx = {
       partialImplementerVerificationRequired: true,
       subagentThreadId: "child-1",
     } as AgentContext;
-    recordRootImplementerVerification(childCtx, "run_type_checks");
+    recordRootImplementerVerification(
+      childCtx,
+      "run_type_checks",
+      "No type errors found.",
+    );
     expect(childCtx.partialImplementerVerificationRequired).toBe(true);
   });
 
@@ -85,6 +107,8 @@ describe("sub-agent tool set", () => {
     expect(names.has("generate_image")).toBe(false);
     expect(names.has("generate_test_assertions")).toBe(false);
     expect(names.has("reinstall_and_restart_app")).toBe(false);
+    expect(names.has("execute_sandbox_script")).toBe(false);
+    expect(names.has("planning_questionnaire")).toBe(false);
   });
 
   it("blocks recursion without relying on the denylist", () => {

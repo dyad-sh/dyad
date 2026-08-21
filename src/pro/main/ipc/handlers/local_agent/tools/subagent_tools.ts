@@ -131,7 +131,10 @@ export function buildSubagentContext(
  * sub-agent tools already gate on `!ctx.subagentThreadId`, and the child
  * context sets it, so a sub-agent cannot spawn regardless of this list.
  * Explorer needs no entries either: it is built with `readOnly: true`, which
- * `shouldIncludeTool` uses to strip every state-modifying tool.
+ * `shouldIncludeTool` uses to strip every state-modifying tool. Implementers
+ * retain direct, scoped file/Git operations and bounded verification tools;
+ * arbitrary sandbox-hosted MCP capabilities and user-questionnaire control
+ * stay with the root orchestrator.
  */
 const SUBAGENT_DENYLIST = new Set<AgentToolName>([
   "update_todos",
@@ -144,6 +147,8 @@ const SUBAGENT_DENYLIST = new Set<AgentToolName>([
   "generate_image",
   "generate_test_assertions",
   "reinstall_and_restart_app",
+  "execute_sandbox_script",
+  "planning_questionnaire",
 ]);
 
 export function buildSubagentToolSet(
@@ -251,6 +256,11 @@ export const spawnAgentTool: ToolDefinition<
       if (implementers) {
         const at = implementers.indexOf(threadId);
         if (at >= 0) implementers.splice(at, 1);
+      }
+      const spawned = ctx.spawnedSubagentThreadIds;
+      if (spawned) {
+        const at = spawned.indexOf(threadId);
+        if (at >= 0) spawned.splice(at, 1);
       }
       throw error;
     }
@@ -393,6 +403,10 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       if (!ctx.spawnedImplementerThreadIds.includes(args.thread_id)) {
         ctx.spawnedImplementerThreadIds.push(args.thread_id);
       }
+      // A new Implementer turn can independently reach its step budget. Re-arm
+      // the gate now so verification from an earlier run cannot authorize a
+      // later partial follow-up during finalization.
+      ctx.partialImplementerVerificationRequired = true;
     }
     return "Follow-up queued durably.";
   },

@@ -87,37 +87,57 @@ function maxStepsFor(persona: SubagentPersona): number {
 }
 
 /**
- * Resolve with `promise`, or reject as soon as `signal` aborts — whichever
- * comes first. Exists because an awaited chain can contain steps that never
- * observe the signal (a tool execute doing un-abortable I/O); callers that
- * MUST reach their finally on cancellation race through this instead of
- * awaiting directly. The listener is removed on settle so the signal does not
- * retain the promise.
+ * Resolve with `promise`, or reject after `signal` aborts and the optional
+ * safety barrier settles. The barrier lets a writable caller drain an atomic
+ * mutation before cancellation unwinds its lease. The listener is removed on
+ * settle so the signal does not retain the promise.
  */
 export function raceWithAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal | undefined,
+  waitForSafeAbort?: () => Promise<void>,
 ): Promise<T> {
   if (!signal) return promise;
   if (signal.aborted) {
-    return Promise.reject(
-      new DyadError("Sub-agent run aborted.", DyadErrorKind.UserCancelled),
-    );
+    return (waitForSafeAbort?.() ?? Promise.resolve()).then(() => {
+      throw new DyadError(
+        "Sub-agent run aborted.",
+        DyadErrorKind.UserCancelled,
+      );
+    });
   }
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () =>
-      reject(
-        new DyadError("Sub-agent run aborted.", DyadErrorKind.UserCancelled),
+    let aborted = false;
+    let settled = false;
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      complete();
+    };
+    const onAbort = () => {
+      aborted = true;
+      void (waitForSafeAbort?.() ?? Promise.resolve()).then(
+        () => {
+          finish(() =>
+            reject(
+              new DyadError(
+                "Sub-agent run aborted.",
+                DyadErrorKind.UserCancelled,
+              ),
+            ),
+          );
+        },
+        (error) => finish(() => reject(error)),
       );
+    };
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
       (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
+        if (!aborted) finish(() => resolve(value));
       },
       (error) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
+        if (!aborted) finish(() => reject(error));
       },
     );
   });
@@ -1642,6 +1662,11 @@ async function runModel(params: {
   const [text, usage, steps] = await raceWithAbort(
     Promise.all([result.text, result.totalUsage, result.steps]),
     params.abortSignal,
+    // Do not let cancellation abandon an Implementer while one of its tools
+    // still owns mutation admission. Draining the shared boundary keeps the
+    // writer lease and root finalization tied to the real operation lifetime,
+    // even when that operation does not itself observe AbortSignal.
+    () => withMutationAdmission(params.appId, async () => {}),
   );
   if (streamError) throw streamError;
   if (claimedRootMessageIds.size > 0) {

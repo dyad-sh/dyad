@@ -168,6 +168,30 @@ describe("sub-agent manager status policy", () => {
     await expect(raceWithAbort(Promise.resolve(7), undefined)).resolves.toBe(7);
   });
 
+  it("waits for the active mutation boundary before rejecting on abort", async () => {
+    const controller = new AbortController();
+    let finishDrain!: () => void;
+    const drain = new Promise<void>((resolve) => {
+      finishDrain = resolve;
+    });
+    const raced = raceWithAbort(
+      new Promise<string>(() => {}),
+      controller.signal,
+      () => drain,
+    );
+
+    controller.abort();
+    let settled = false;
+    void raced.catch(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    finishDrain();
+    await expect(raced).rejects.toThrow("aborted");
+  });
+
   it("blocks root finalization on Implementer failure but not on a step budget", () => {
     expect(isAcceptableImplementerJoinStatus("completed")).toBe(true);
     // "partial" = ran out of model steps, with its report already persisted.

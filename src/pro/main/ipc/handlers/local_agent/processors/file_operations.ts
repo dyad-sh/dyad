@@ -96,24 +96,27 @@ export async function deployAllFunctionsIfNeeded(
         deleteErrors.push(`${functionName}: ${error}`);
       }
     }
-    const settings = readSettings();
-    const deployErrors = await deployAffectedSupabaseFunctions({
-      appPath: ctx.appPath,
-      supabaseProjectId: ctx.supabaseProjectId,
-      supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
-      skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-      sharedModulesChanged: ctx.isSharedModulesChanged,
-      changedSharedModulePaths: ctx.sharedServerModulePaths,
-      pendingFunctionDeploys: ctx.pendingFunctionDeploys,
-      onProgress: (progress: SupabaseDeployProgress) => {
-        const statusXml = renderSupabaseDeployStatus(progress);
-        if (progress.phase === "finished" || progress.phase === "failed") {
-          ctx.onXmlComplete(statusXml);
-        } else {
-          ctx.onXmlStream(statusXml);
-        }
-      },
-    });
+    let deployErrors: string[] = [];
+    if (ctx.isSharedModulesChanged || ctx.pendingFunctionDeploys.length > 0) {
+      const settings = readSettings();
+      deployErrors = await deployAffectedSupabaseFunctions({
+        appPath: ctx.appPath,
+        supabaseProjectId: ctx.supabaseProjectId,
+        supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+        sharedModulesChanged: ctx.isSharedModulesChanged,
+        changedSharedModulePaths: ctx.sharedServerModulePaths,
+        pendingFunctionDeploys: ctx.pendingFunctionDeploys,
+        onProgress: (progress: SupabaseDeployProgress) => {
+          const statusXml = renderSupabaseDeployStatus(progress);
+          if (progress.phase === "finished" || progress.phase === "failed") {
+            ctx.onXmlComplete(statusXml);
+          } else {
+            ctx.onXmlStream(statusXml);
+          }
+        },
+      });
+    }
 
     if (deleteErrors.length > 0 || deployErrors.length > 0) {
       const warning =

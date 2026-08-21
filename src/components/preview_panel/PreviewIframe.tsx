@@ -17,11 +17,7 @@ import {
   ExternalLink,
   Cloud,
   Cog,
-  X,
-  Sparkles,
-  Lightbulb,
   ChevronDown,
-  ChevronRight,
   MousePointerClick,
   Power,
   MonitorSmartphone,
@@ -35,7 +31,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { ipc } from "@/ipc/types";
 
 import { useParseRouter } from "@/hooks/useParseRouter";
@@ -94,6 +89,7 @@ import { RecordingBannerHost } from "./RecordingBannerHost";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
+import { PreviewErrorBanner } from "./PreviewErrorBanner";
 import { useTranslation } from "react-i18next";
 import {
   formatPreviewAddressPath,
@@ -112,110 +108,6 @@ import {
   type ScreenshotAdapterEvent,
 } from "@/screenshot/useScreenshot";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
-
-interface ErrorBannerProps {
-  error:
-    | {
-        message: string;
-        source: "preview-app" | "dyad-app" | "dyad-sync";
-      }
-    | undefined;
-  onDismiss: () => void;
-  onAIFix: () => void;
-}
-
-const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
-  const [isCollapsed, setIsCollapsed] = useState(true);
-  const { isStreaming } = useStreamChat();
-  if (!error) return null;
-  const isDockerError = error.message.includes("Cannot connect to the Docker");
-  const isInternalDyadError = error.source === "dyad-app";
-  const isSyncError = error.source === "dyad-sync";
-
-  const getTruncatedError = () => {
-    const firstLine = error.message.split("\n")[0];
-    const snippetLength = 250;
-    const snippet = error.message.substring(0, snippetLength);
-    return firstLine.length < snippet.length
-      ? firstLine
-      : snippet + (snippet.length === snippetLength ? "..." : "");
-  };
-
-  return (
-    <div
-      className="absolute top-2 left-2 right-2 z-10 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md shadow-sm p-2"
-      data-testid="preview-error-banner"
-    >
-      {/* Close button in top left */}
-      <button
-        onClick={onDismiss}
-        className="absolute top-1 left-1 p-1 hover:bg-red-100 dark:hover:bg-red-900 rounded"
-      >
-        <X size={14} className="text-red-500 dark:text-red-400" />
-      </button>
-
-      {(isInternalDyadError || isSyncError) && (
-        <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
-        </div>
-      )}
-
-      {/* Error message in the middle */}
-      <div
-        className={cn(
-          "px-6 py-1 text-sm",
-          (isInternalDyadError || isSyncError) && "pt-6",
-        )}
-      >
-        <div
-          className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-        >
-          <ChevronRight
-            size={14}
-            className={`mt-0.5 transform transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-          />
-
-          {isCollapsed ? getTruncatedError() : error.message}
-        </div>
-      </div>
-
-      {/* Tip message */}
-      <div className="mt-2 px-6">
-        <div className="relative p-2 bg-red-100 dark:bg-red-900 rounded-sm flex gap-1 items-center">
-          <div>
-            <Lightbulb size={16} className=" text-red-800 dark:text-red-300" />
-          </div>
-          <span className="text-sm text-red-700 dark:text-red-200">
-            <span className="font-medium">Tip: </span>
-            {isDockerError
-              ? "Make sure Docker Desktop is running and try restarting the app."
-              : isSyncError
-                ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
-                : isInternalDyadError
-                  ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
-                  : "Check if restarting the app fixes the error."}
-          </span>
-        </div>
-      </div>
-
-      {/* Action buttons at the bottom */}
-      {!isDockerError && error.source === "preview-app" && (
-        <div className="mt-3 px-6 flex justify-end gap-2">
-          <CopyErrorMessage errorMessage={error.message} />
-          <button
-            disabled={isStreaming}
-            onClick={onAIFix}
-            className="cursor-pointer flex items-center space-x-1 px-2 py-1 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles size={14} />
-            <span>Fix error with AI</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
 
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
@@ -1698,7 +1590,7 @@ export const PreviewIframe = ({
 
       <div className="relative flex-grow overflow-hidden">
         {!loading && (
-          <ErrorBanner
+          <PreviewErrorBanner
             error={errorMessage}
             onDismiss={() => sendIframeEvent({ type: "DISMISS" })}
             onAIFix={() => {

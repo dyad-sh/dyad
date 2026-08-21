@@ -316,6 +316,18 @@ export class PreviewPanel {
     await this.page.getByRole("button", { name: "Fix error with AI" }).click();
   }
 
+  async collapsePreviewErrorBanner() {
+    await this.page
+      .getByRole("button", { name: "Collapse error banner" })
+      .click();
+  }
+
+  async expandPreviewErrorBanner() {
+    await this.page
+      .getByRole("button", { name: "Expand error banner" })
+      .click();
+  }
+
   async clickCopyErrorMessage() {
     await this.page
       .getByTestId("preview-error-banner")

@@ -30,6 +30,31 @@ describe("GithubOpsPresentationService", () => {
     expect(second.send).not.toHaveBeenCalled();
   });
 
+  it("keeps the first initiating window for duplicate operation ids", () => {
+    const windows = new WindowRegistry();
+    const first = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const second = { id: 2, isDestroyed: () => false, send: vi.fn() };
+    const firstSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    const secondSession = WindowSessionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    windows.register(first, firstSession);
+    windows.register(second, secondSession);
+    const service = new GithubOpsPresentationService(windows);
+
+    service.recordInitiator("shared-operation", firstSession);
+    service.recordInitiator("shared-operation", secondSession);
+    service.showError(7, "shared-operation", "Push failed");
+
+    expect(first.send).toHaveBeenCalledWith("toast:error", {
+      message: "Push failed",
+      toastId: "github-ops-7-operation",
+    });
+    expect(second.send).not.toHaveBeenCalled();
+  });
+
   it("deduplicates persistent detailed probe errors by app", () => {
     const windows = new WindowRegistry();
     const target = { id: 1, isDestroyed: () => false, send: vi.fn() };

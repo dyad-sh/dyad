@@ -890,4 +890,46 @@ describe("main-hosted github_ops actor", () => {
       presentation.forget.mock.invocationCallOrder[0],
     );
   });
+
+  it("does not release the active route for an ignored duplicate", async () => {
+    const pending = deferred();
+    service.run.mockReturnValue(pending.promise);
+    const { actorA, actorB } = createHarness();
+    await actorA.resync();
+    await actorB.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "shared-operation",
+      op: { type: "merge", branch: "feature" },
+    });
+    await actorB.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "shared-operation",
+      op: { type: "merge", branch: "feature" },
+    });
+
+    expect(presentation.forget).not.toHaveBeenCalledWith("shared-operation");
+    pending.resolve();
+  });
+
+  it("retains routing when a successful probe enters conflict resolution", async () => {
+    service.run.mockRejectedValue(
+      Object.assign(new Error("merge conflict"), { code: "MERGE_CONFLICT" }),
+    );
+    service.getConflicts.mockResolvedValue(["src/conflicted.ts"]);
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "active-conflict",
+      op: { type: "merge", branch: "feature" },
+    });
+    await vi.waitFor(() =>
+      expect(actorA.getSnapshot().state.type).toBe("conflicted"),
+    );
+
+    expect(presentation.forget).not.toHaveBeenCalledWith("active-conflict");
+  });
 });

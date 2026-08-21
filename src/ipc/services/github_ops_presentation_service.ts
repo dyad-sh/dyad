@@ -15,7 +15,7 @@ export class GithubOpsPresentationService {
     operationId: string,
     windowSessionId: string | undefined,
   ): void {
-    if (windowSessionId) {
+    if (windowSessionId && !this.initiatorByOperationId.has(operationId)) {
       if (this.initiatorByOperationId.size >= 256) {
         const oldest = this.initiatorByOperationId.keys().next().value;
         if (oldest) this.initiatorByOperationId.delete(oldest);

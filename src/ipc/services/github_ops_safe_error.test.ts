@@ -79,6 +79,10 @@ describe("safeGithubOpsErrorMessage", () => {
       'hook: path="[redacted path]" failed',
     ],
     [
+      String.raw`hook: path="/tmp/Client\" Secret/repo/file" failed`,
+      'hook: path="[redacted path]" failed',
+    ],
+    [
       String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
       'fatal: cannot open "[redacted path]" because setting "core.longpaths" is disabled',
     ],

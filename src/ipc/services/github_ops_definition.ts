@@ -291,7 +291,6 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
-              githubOpsPresentationService.forget(invocationRef?.operationId);
             }
           },
           (error) => {
@@ -325,7 +324,6 @@ function createCommandRunner(
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
-              githubOpsPresentationService.forget(invocationRef?.operationId);
             }
           },
           (error) => {
@@ -367,7 +365,12 @@ function createCommandRunner(
             command.message,
           );
         }
-        githubOpsPresentationService.forget(invocationRef?.operationId);
+        if (
+          invocationRef?.operationId !==
+          context.getSnapshot().activeInvocationRef?.operationId
+        ) {
+          githubOpsPresentationService.forget(invocationRef?.operationId);
+        }
         return;
       case "start-conflict-resolution":
         // Renderer presentation starts only after the applied dispatch receipt.
@@ -455,14 +458,16 @@ export const githubOpsDefinition: GithubOpsDefinition = {
         githubOpsPresentationService.forget(previousOperationId);
       }
     },
-    onEventIgnored: ({ event }) => {
+    onEventIgnored: ({ state, event }) => {
       const operationId =
         "operationId" in event
           ? event.operationId
           : "invocationRef" in event
             ? event.invocationRef.operationId
             : undefined;
-      githubOpsPresentationService.forget(operationId);
+      if (operationId !== state.activeInvocationRef?.operationId) {
+        githubOpsPresentationService.forget(operationId);
+      }
     },
   }),
   lifecycle: {

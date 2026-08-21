@@ -1,0 +1,84 @@
+name: Apply PR review fixes
+
+on:
+  push:
+    branches:
+      - fix/stream-safety-gate-before-apply
+    paths:
+      - .github/workflows/apply-pr-4341-review-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.repository == 'canblmz1/dyad'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stream-safety-gate-before-apply
+          fetch-depth: 0
+
+      - name: Apply review fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          handler_path = Path("src/ipc/handlers/chat_stream_handlers.ts")
+          handler = handler_path.read_text()
+          old_handler = '''        fullResponse = await streamTestResponse(
+          event,
+          req.chatId,
+          req.invocationRef,
+          req.streamId,
+          testResponse,
+          abortController,
+          placeholderAssistantMessage.id,
+        );
+      } else {'''
+          new_handler = '''        fullResponse = await streamTestResponse(
+          event,
+          req.chatId,
+          req.invocationRef,
+          req.streamId,
+          testResponse,
+          abortController,
+          placeholderAssistantMessage.id,
+        );
+        if (!abortController.signal.aborted) {
+          // Canned QA responses are deterministic local fixtures and do not
+          // have a provider finish reason to observe. Successful completion
+          // therefore explicitly preserves their existing auto-apply behavior;
+          // aborted fixtures remain blocked by the outer abort gate below.
+          accumulatedStreamSafety = { confirmedSafe: true };
+        }
+      } else {'''
+          if handler.count(old_handler) != 1:
+              raise SystemExit("expected canned-response handler context exactly once")
+          handler_path.write_text(handler.replace(old_handler, new_handler, 1))
+
+          test_path = Path("src/ipc/handlers/chat_stream_handlers.test.ts")
+          test = test_path.read_text()
+          old_comment = "(`if (shouldAutoApply && !hasDestructiveSql && lastStreamSafety.confirmedSafe)`),"
+          new_comment = "(`if (shouldAutoApply && !hasDestructiveSql && accumulatedStreamSafety.confirmedSafe)`),"
+          if test.count(old_comment) != 1:
+              raise SystemExit("expected stale stream-safety comment exactly once")
+          test_path.write_text(test.replace(old_comment, new_comment, 1))
+
+      - name: Check patch
+        run: |
+          git diff --check
+          git diff -- src/ipc/handlers/chat_stream_handlers.ts src/ipc/handlers/chat_stream_handlers.test.ts
+
+      - name: Remove one-shot workflow
+        run: git rm .github/workflows/apply-pr-4341-review-fixes.yml
+
+      - name: Commit review fixes
+        run: |
+          git config user.name "canblmz1"
+          git config user.email "116688414+canblmz1@users.noreply.github.com"
+          git add -- src/ipc/handlers/chat_stream_handlers.ts src/ipc/handlers/chat_stream_handlers.test.ts
+          git status --short
+          git commit -m "fix: preserve canned QA auto-apply"
+          git push origin HEAD:fix/stream-safety-gate-before-apply

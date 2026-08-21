@@ -48,11 +48,12 @@ import {
 } from "@/lib/settingsSearchIndex";
 import {
   getCommandPaletteSnippet,
+  getSelectedChatId,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
   scoreCommandPaletteItem,
 } from "@/lib/commandPalette";
-import { isDyadProEnabled, type ChatSearchResult } from "@/lib/schemas";
+import { type ChatSearchResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
 type CommandPaletteProps = {
@@ -166,7 +167,7 @@ export function CommandPalette({
       ? []
       : chats;
   const availableSettings = useMemo(
-    () => getAvailableSettings(Boolean(settings && isDyadProEnabled(settings))),
+    () => getAvailableSettings(settings),
     [settings],
   );
   const settingsScoreById = useMemo(() => {
@@ -177,8 +178,7 @@ export function CommandPalette({
       ),
     );
   }, [availableSettings, parsedQuery.term]);
-  const targetChat =
-    chats.find((chat) => chat.id === selectedChatId) ?? chats[0] ?? null;
+  const targetChatId = getSelectedChatId(chats, selectedChatId);
 
   const closeAndRun = (action: () => void | Promise<void>) => {
     onOpenChange(false);
@@ -201,8 +201,16 @@ export function CommandPalette({
   };
 
   const openConfigureTarget = async (targetId: string) => {
-    if (!targetChat || !selectedAppId) return;
-    await selectChat({ chatId: targetChat.id, appId: selectedAppId });
+    if (!selectedAppId) return;
+    const chatId =
+      targetChatId !== null
+        ? targetChatId
+        : await ipc.chat.createChat({ appId: selectedAppId });
+    if (targetChatId === null) {
+      await invalidateChats();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+    }
+    await selectChat({ chatId, appId: selectedAppId });
     setIsPreviewOpen(true);
     setPreviewMode("configure");
     const revealed = await revealCommandPaletteTarget(targetId);
@@ -373,29 +381,29 @@ export function CommandPalette({
                     </CommandItem>
                   );
                 })}
-                {targetChat &&
-                  CONFIGURE_TARGETS.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <CommandItem
-                        key={item.id}
-                        value={`${item.label} ${item.description}`}
-                        keywords={[...item.keywords]}
-                        data-testid={`command-palette-app-setting-${item.id}`}
-                        onSelect={() =>
-                          closeAndRun(() => openConfigureTarget(item.targetId))
-                        }
-                      >
-                        <Icon />
-                        <div className="min-w-0 flex-1">
-                          <div>{item.label}</div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {item.description}
-                          </div>
+                {CONFIGURE_TARGETS.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <CommandItem
+                      key={item.id}
+                      value={`${item.label} ${item.description}`}
+                      keywords={[...item.keywords]}
+                      data-testid={`command-palette-app-setting-${item.id}`}
+                      onSelect={() =>
+                        closeAndRun(() => openConfigureTarget(item.targetId))
+                      }
+                    >
+                      <Icon />
+                      <div className="min-w-0 flex-1">
+                        <div>{item.label}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {item.description}
+                          {!targetChatId && " · Opens in a new chat"}
                         </div>
-                      </CommandItem>
-                    );
-                  })}
+                      </div>
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             )}
 

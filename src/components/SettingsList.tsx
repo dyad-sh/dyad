@@ -11,7 +11,6 @@ import {
 } from "@/lib/settingsSearchIndex";
 import { SearchIcon, XIcon } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
 
 type SettingsSection = {
   id: string;
@@ -37,7 +36,7 @@ export function SettingsList({ show }: { show: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { settings } = useSettings();
   const availableSettings = useMemo(
-    () => getAvailableSettings(Boolean(settings && isDyadProEnabled(settings))),
+    () => getAvailableSettings(settings),
     [settings],
   );
 

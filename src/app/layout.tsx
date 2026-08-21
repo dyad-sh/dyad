@@ -60,7 +60,7 @@ import {
   announceCommandPaletteOpening,
   CHAT_SCOPE_PREFIX,
   hasBlockingCommandPaletteDialogOpen,
-  isTerminalShortcutTarget,
+  shouldPreserveCommandPaletteShortcut,
 } from "@/lib/commandPalette";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -152,9 +152,10 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
       }
 
       if (
-        event.ctrlKey &&
-        !event.metaKey &&
-        isTerminalShortcutTarget(event.target)
+        shouldPreserveCommandPaletteShortcut(event.target, {
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+        })
       ) {
         return;
       }

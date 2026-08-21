@@ -21,6 +21,10 @@ test("command palette supports scoped chat and unfiltered configuration search",
 
   await po.page.keyboard.press("Control+p");
   await expect(input).toHaveValue("");
+  await input.fill("GitHub Integration");
+  await expect(
+    po.page.getByTestId("command-palette-setting-setting-github"),
+  ).toHaveCount(0);
   await input.fill("Theme");
   await po.page.getByTestId("command-palette-setting-setting-theme").click();
   await expect(po.page).toHaveURL(/\/settings/);

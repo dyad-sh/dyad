@@ -55,6 +55,11 @@ as search pickers. Suppress the new modal while input-bearing dialogs or any
 Legacy confirmation overlays must expose the same blocking marker as the shared
 `AlertDialog` until they are migrated.
 
+Before claiming a capture-phase shortcut, check whether an embedded editor owns
+the chord. Monaco should retain both Cmd and Ctrl chords; terminal exemptions
+may be modifier-specific. Opt-in dialog coordination should only attach its
+imperative ref and global listener for dialogs that actually opt in.
+
 ## TooltipTrigger render prop
 
 `TooltipTrigger` from `@base-ui/react/tooltip` (wrapped in `src/components/ui/tooltip.tsx`) renders a `<button>` by default. Wrapping another button-like element (`<button>`, `<Button>`, `<DropdownMenuTrigger>`, `<PopoverTrigger>`, `<MiniSelectTrigger>`, `<ToggleGroupItem>`) inside it creates invalid nested `<button>` HTML. Use the `render` prop instead:

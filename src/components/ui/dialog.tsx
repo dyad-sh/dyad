@@ -15,11 +15,14 @@ function Dialog({
   closeOnCommandPaletteOpen?: boolean;
 }) {
   const internalActionsRef = React.useRef<DialogPrimitive.Root.Actions>(null);
-  const dialogActionsRef = actionsRef ?? internalActionsRef;
+  const dialogActionsRef =
+    actionsRef ?? (closeOnCommandPaletteOpen ? internalActionsRef : undefined);
 
   React.useEffect(() => {
+    if (!closeOnCommandPaletteOpen) return;
+
     const closeForCommandPalette = () => {
-      if (closeOnCommandPaletteOpen) dialogActionsRef.current?.close();
+      dialogActionsRef?.current?.close();
     };
     window.addEventListener(
       COMMAND_PALETTE_OPENING_EVENT,

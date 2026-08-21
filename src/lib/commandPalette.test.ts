@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   getCommandPaletteSnippet,
+  getSelectedChatId,
   hasBlockingCommandPaletteDialogOpen,
+  isMonacoShortcutTarget,
   isTerminalShortcutTarget,
   parseCommandPaletteQuery,
   revealCommandPaletteTarget,
   scoreCommandPaletteItem,
+  shouldPreserveCommandPaletteShortcut,
 } from "./commandPalette";
 
 describe("parseCommandPaletteQuery", () => {
@@ -46,6 +49,14 @@ describe("getCommandPaletteSnippet", () => {
   });
 });
 
+describe("getSelectedChatId", () => {
+  it("does not fall back to an arbitrary chat", () => {
+    expect(getSelectedChatId([{ id: 1 }, { id: 2 }], null)).toBeNull();
+    expect(getSelectedChatId([{ id: 1 }, { id: 2 }], 2)).toBe(2);
+    expect(getSelectedChatId([{ id: 1 }, { id: 2 }], 3)).toBeNull();
+  });
+});
+
 describe("hasBlockingCommandPaletteDialogOpen", () => {
   it("protects open confirmations and dialogs with pending input", () => {
     const alert = document.createElement("div");
@@ -68,15 +79,40 @@ describe("hasBlockingCommandPaletteDialogOpen", () => {
   });
 });
 
-describe("isTerminalShortcutTarget", () => {
-  it("recognizes descendants of the xterm surface", () => {
+describe("editor shortcut targets", () => {
+  it("recognizes descendants of terminal and Monaco editor surfaces", () => {
     const terminal = document.createElement("div");
     terminal.dataset.testid = "terminal-xterm";
     const child = document.createElement("textarea");
     terminal.append(child);
 
+    const monaco = document.createElement("div");
+    monaco.className = "monaco-editor";
+    const monacoInput = document.createElement("textarea");
+    monaco.append(monacoInput);
+
     expect(isTerminalShortcutTarget(child)).toBe(true);
+    expect(isMonacoShortcutTarget(monacoInput)).toBe(true);
+    expect(
+      shouldPreserveCommandPaletteShortcut(monacoInput, {
+        ctrlKey: false,
+        metaKey: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPreserveCommandPaletteShortcut(child, {
+        ctrlKey: true,
+        metaKey: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPreserveCommandPaletteShortcut(child, {
+        ctrlKey: false,
+        metaKey: true,
+      }),
+    ).toBe(false);
     expect(isTerminalShortcutTarget(document.body)).toBe(false);
+    expect(isMonacoShortcutTarget(document.body)).toBe(false);
   });
 });
 

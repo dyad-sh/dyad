@@ -12,7 +12,10 @@ When adding a new toggle/setting to the Settings page:
 Every settings search-index entry must point to an element that renders with the
 same ID. If the control is conditional (for example, Pro-only), encode that
 availability in the index and filter search surfaces with the same condition so
-they never offer a destination that cannot render.
+they never offer a destination that cannot render. This includes connection-
+gated integrations, not only entitlement flags. When a shared fuzzy index is
+searched on each keystroke, cache the index by the stable filtered-items array
+instead of rebuilding it inside the search function.
 
 If the setting adds a built-in default, update the inline snapshots in
 `src/main/settings.test.ts`; otherwise `npm test` will fail with

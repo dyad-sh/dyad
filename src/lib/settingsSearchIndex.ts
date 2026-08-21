@@ -1,4 +1,9 @@
 import Fuse from "fuse.js";
+import {
+  isDyadProEnabled,
+  isSupabaseConnected,
+  type UserSettings,
+} from "./schemas";
 
 export const SECTION_IDS = {
   general: "general-settings",
@@ -66,6 +71,7 @@ export type SearchableSettingItem = {
   sectionId: string;
   sectionLabel: string;
   requiresPro?: boolean;
+  requiresConnection?: "github" | "vercel" | "supabase" | "neon";
 };
 
 export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
@@ -312,6 +318,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["github", "git", "integration", "connect", "account"],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "github",
   },
   {
     id: SETTING_IDS.vercel,
@@ -320,6 +327,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["vercel", "deploy", "integration", "hosting", "connect"],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "vercel",
   },
   {
     id: SETTING_IDS.supabase,
@@ -335,6 +343,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "supabase",
   },
   {
     id: SETTING_IDS.neon,
@@ -350,6 +359,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "neon",
   },
 
   // Agent Permissions
@@ -635,10 +645,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 ];
 
-export function getAvailableSettings(isProEnabled: boolean) {
-  return SETTINGS_SEARCH_INDEX.filter(
-    (setting) => !setting.requiresPro || isProEnabled,
-  );
+export function getAvailableSettings(settings: UserSettings | null) {
+  const connectedIntegrations = {
+    github: Boolean(settings?.githubAccessToken),
+    vercel: Boolean(settings?.vercelAccessToken),
+    supabase: isSupabaseConnected(settings),
+    neon: Boolean(settings?.neon?.accessToken),
+  };
+
+  return SETTINGS_SEARCH_INDEX.filter((setting) => {
+    if (setting.requiresPro && (!settings || !isDyadProEnabled(settings))) {
+      return false;
+    }
+    return (
+      !setting.requiresConnection ||
+      connectedIntegrations[setting.requiresConnection]
+    );
+  });
 }
 
 const SETTINGS_SEARCH_OPTIONS = {
@@ -653,15 +676,23 @@ const SETTINGS_SEARCH_OPTIONS = {
   ignoreLocation: true,
 };
 
-const settingsSearch = new Fuse(SETTINGS_SEARCH_INDEX, SETTINGS_SEARCH_OPTIONS);
+const settingsSearchCache = new WeakMap<
+  SearchableSettingItem[],
+  Fuse<SearchableSettingItem>
+>();
+settingsSearchCache.set(
+  SETTINGS_SEARCH_INDEX,
+  new Fuse(SETTINGS_SEARCH_INDEX, SETTINGS_SEARCH_OPTIONS),
+);
 
 export function searchSettings(
   query: string,
   items: SearchableSettingItem[] = SETTINGS_SEARCH_INDEX,
 ) {
-  const fuse =
-    items === SETTINGS_SEARCH_INDEX
-      ? settingsSearch
-      : new Fuse(items, SETTINGS_SEARCH_OPTIONS);
+  let fuse = settingsSearchCache.get(items);
+  if (!fuse) {
+    fuse = new Fuse(items, SETTINGS_SEARCH_OPTIONS);
+    settingsSearchCache.set(items, fuse);
+  }
   return fuse.search(query.trim());
 }

@@ -1,4 +1,3 @@
-import Fuse from "fuse.js";
 import { scrollAndHighlightElement } from "./scrollAndHighlight";
 
 export const CHAT_SCOPE_PREFIX = "chat: ";
@@ -7,6 +6,13 @@ export const COMMAND_PALETTE_OPENING_EVENT = "dyad:command-palette-opening";
 export type CommandPaletteQuery =
   | { scope: "all"; term: string }
   | { scope: "chat"; term: string };
+
+export function getSelectedChatId(
+  chats: readonly { id: number }[],
+  selectedChatId: number | null,
+): number | null {
+  return chats.find((chat) => chat.id === selectedChatId)?.id ?? null;
+}
 
 export function parseCommandPaletteQuery(query: string): CommandPaletteQuery {
   const match = query.match(/^\s*chat\s*:\s*/i);
@@ -34,17 +40,29 @@ export function scoreCommandPaletteItem(
     return 100 - Math.min(valueIndex, 90);
   }
 
-  const fuzzyMatch = new Fuse([{ value, keywords }], {
-    keys: [
-      { name: "value", weight: 2 },
-      { name: "keywords", weight: 1.5 },
-    ],
-    threshold: 0.4,
-    includeScore: true,
-    ignoreLocation: true,
-  }).search(normalizedTerm)[0];
-  if (!fuzzyMatch) return 0;
-  return Math.max(1, Math.round((1 - (fuzzyMatch.score ?? 1)) * 50));
+  const searchableText = [value, ...keywords].join(" ").toLowerCase();
+  const queryTokens = normalizedTerm.split(/\s+/);
+  const searchableTokens = searchableText.split(/\s+/);
+  if (
+    queryTokens.every((queryToken) =>
+      searchableTokens.some(
+        (candidate) =>
+          candidate.startsWith(queryToken) || candidate.includes(queryToken),
+      ),
+    )
+  ) {
+    return 50;
+  }
+
+  const compactQuery = normalizedTerm.replace(/\s+/g, "");
+  const compactText = searchableText.replace(/\s+/g, "");
+  let cursor = 0;
+  for (const character of compactQuery) {
+    cursor = compactText.indexOf(character, cursor);
+    if (cursor === -1) return 0;
+    cursor += 1;
+  }
+  return 25;
 }
 
 export function getCommandPaletteSnippet(
@@ -82,6 +100,22 @@ export function isTerminalShortcutTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
     Boolean(target.closest('[data-testid="terminal-xterm"], .xterm'))
+  );
+}
+
+export function isMonacoShortcutTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(".monaco-editor"));
+}
+
+export function shouldPreserveCommandPaletteShortcut(
+  target: EventTarget | null,
+  modifiers: { ctrlKey: boolean; metaKey: boolean },
+): boolean {
+  return (
+    isMonacoShortcutTarget(target) ||
+    (modifiers.ctrlKey &&
+      !modifiers.metaKey &&
+      isTerminalShortcutTarget(target))
   );
 }
 

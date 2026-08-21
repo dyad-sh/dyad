@@ -30,8 +30,13 @@ import {
   useFirstPromptSaga,
 } from "@/first_prompt/FirstPromptProvider";
 import type { UserSettings } from "@/lib/schemas";
+import { Search } from "lucide-react";
 
-export const TitleBar = () => {
+export const TitleBar = ({
+  onOpenCommandPalette,
+}: {
+  onOpenCommandPalette?: () => void;
+}) => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { hasArmedPayload } = useFirstPromptSaga();
@@ -129,6 +134,21 @@ export const TitleBar = () => {
             <TooltipContent>{displayText}</TooltipContent>
           </Tooltip>
           {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="no-app-region-drag ml-2 flex h-7 gap-1.5 px-2 text-xs"
+            onClick={onOpenCommandPalette}
+            aria-label="Open command palette"
+            data-testid="command-palette-trigger"
+          >
+            <Search className="size-3.5" />
+            <span className="hidden @3xl:inline">Commands</span>
+            <kbd className="hidden text-[10px] text-muted-foreground @xl:inline">
+              {platform === "darwin" ? "⌘P" : "Ctrl P"}
+            </kbd>
+          </Button>
         </div>
 
         <div className="flex-1 min-w-0 overflow-hidden self-end">

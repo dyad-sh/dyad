@@ -44,6 +44,22 @@ a control and focus must follow it while persistence is pending, keep it
 focusable with `aria-disabled`, guard repeat activation synchronously, and
 restore focus with `{ preventScroll: true }`.
 
+## Global shortcuts that open dialogs
+
+Register truly global shortcuts in the capture phase so focused editors or
+dialog content that stops keydown propagation cannot swallow them. When the
+shortcut opens a modal, make dismissal opt-in in the shared Dialog wrapper and
+use Base UI's imperative `actionsRef.close()` only for disposable dialogs such
+as search pickers. Suppress the new modal while input-bearing dialogs or any
+`AlertDialog` are open so a mistyped shortcut cannot discard pending work.
+Legacy confirmation overlays must expose the same blocking marker as the shared
+`AlertDialog` until they are migrated.
+
+Before claiming a capture-phase shortcut, check whether an embedded editor owns
+the chord. Monaco should retain both Cmd and Ctrl chords; terminal exemptions
+may be modifier-specific. Opt-in dialog coordination should only attach its
+imperative ref and global listener for dialogs that actually opt in.
+
 ## TooltipTrigger render prop
 
 `TooltipTrigger` from `@base-ui/react/tooltip` (wrapped in `src/components/ui/tooltip.tsx`) renders a `<button>` by default. Wrapping another button-like element (`<button>`, `<Button>`, `<DropdownMenuTrigger>`, `<PopoverTrigger>`, `<MiniSelectTrigger>`, `<ToggleGroupItem>`) inside it creates invalid nested `<button>` HTML. Use the `render` prop instead:

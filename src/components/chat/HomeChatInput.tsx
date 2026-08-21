@@ -351,7 +351,6 @@ export function HomeChatInput({
           open={appSearchOpen}
           onOpenChange={setAppSearchOpen}
           onSelectApp={handleSelectApp}
-          disableShortcut
           allApps={apps.map((a) => ({
             id: a.id,
             name: a.name,

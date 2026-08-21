@@ -1,3 +1,10 @@
+import Fuse from "fuse.js";
+import {
+  isDyadProEnabled,
+  isSupabaseConnected,
+  type UserSettings,
+} from "./schemas";
+
 export const SECTION_IDS = {
   general: "general-settings",
   workflow: "workflow-settings",
@@ -17,7 +24,6 @@ export const SETTING_IDS = {
   autoUpdate: "setting-auto-update",
   releaseChannel: "setting-release-channel",
   runtimeMode: "setting-runtime-mode",
-  nodeRuntime: "setting-node-runtime",
   nodePath: "setting-node-path",
   customAppsFolder: "setting-custom-apps-folder",
   defaultChatMode: "setting-default-chat-mode",
@@ -57,13 +63,15 @@ export const SETTING_IDS = {
   reset: "setting-reset",
 } as const;
 
-type SearchableSettingItem = {
+export type SearchableSettingItem = {
   id: string;
   label: string;
   description: string;
   keywords: string[];
   sectionId: string;
   sectionLabel: string;
+  requiresPro?: boolean;
+  requiresConnection?: "github" | "vercel" | "supabase" | "neon";
 };
 
 export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
@@ -113,14 +121,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Node Path",
     description: "Set a custom Node.js installation path",
     keywords: ["node", "path", "nodejs", "binary", "executable"],
-    sectionId: SECTION_IDS.general,
-    sectionLabel: "General",
-  },
-  {
-    id: SETTING_IDS.nodeRuntime,
-    label: "Node Runtime",
-    description: "Choose between system Node.js and Dyad-managed Node.js",
-    keywords: ["node", "nodejs", "runtime", "managed", "system"],
     sectionId: SECTION_IDS.general,
     sectionLabel: "General",
   },
@@ -318,6 +318,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["github", "git", "integration", "connect", "account"],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "github",
   },
   {
     id: SETTING_IDS.vercel,
@@ -326,6 +327,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["vercel", "deploy", "integration", "hosting", "connect"],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "vercel",
   },
   {
     id: SETTING_IDS.supabase,
@@ -341,6 +343,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "supabase",
   },
   {
     id: SETTING_IDS.neon,
@@ -356,6 +359,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",
+    requiresConnection: "neon",
   },
 
   // Agent Permissions
@@ -541,6 +545,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "explorer", "agent", "research", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableAutoReview,
@@ -549,6 +554,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "review", "automatic", "agent", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableReviewButton,
@@ -557,6 +563,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "review", "manual", "button", "agent", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableImplementerSubagent,
@@ -565,6 +572,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "implementer", "write", "agent", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.enableAdvancedSubagents,
@@ -583,6 +591,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
   {
     id: SETTING_IDS.autoFixReviewIssues,
@@ -591,6 +600,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["sub-agent", "review", "fix", "automatic", "pro"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+    requiresPro: true,
   },
 
   {
@@ -634,3 +644,55 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Danger Zone",
   },
 ];
+
+export function getAvailableSettings(settings: UserSettings | null) {
+  const connectedIntegrations = {
+    github: Boolean(settings?.githubAccessToken),
+    vercel: Boolean(settings?.vercelAccessToken),
+    supabase: isSupabaseConnected(settings),
+    neon: Boolean(settings?.neon?.accessToken),
+  };
+
+  return SETTINGS_SEARCH_INDEX.filter((setting) => {
+    if (setting.requiresPro && (!settings || !isDyadProEnabled(settings))) {
+      return false;
+    }
+    return (
+      !setting.requiresConnection ||
+      connectedIntegrations[setting.requiresConnection]
+    );
+  });
+}
+
+const SETTINGS_SEARCH_OPTIONS = {
+  keys: [
+    { name: "label", weight: 2 },
+    { name: "description", weight: 1 },
+    { name: "keywords", weight: 1.5 },
+    { name: "sectionLabel", weight: 0.5 },
+  ],
+  threshold: 0.4,
+  includeScore: true,
+  ignoreLocation: true,
+};
+
+const settingsSearchCache = new WeakMap<
+  SearchableSettingItem[],
+  Fuse<SearchableSettingItem>
+>();
+settingsSearchCache.set(
+  SETTINGS_SEARCH_INDEX,
+  new Fuse(SETTINGS_SEARCH_INDEX, SETTINGS_SEARCH_OPTIONS),
+);
+
+export function searchSettings(
+  query: string,
+  items: SearchableSettingItem[] = SETTINGS_SEARCH_INDEX,
+) {
+  let fuse = settingsSearchCache.get(items);
+  if (!fuse) {
+    fuse = new Fuse(items, SETTINGS_SEARCH_OPTIONS);
+    settingsSearchCache.set(items, fuse);
+  }
+  return fuse.search(query.trim());
+}

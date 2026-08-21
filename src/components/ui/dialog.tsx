@@ -3,9 +3,49 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { COMMAND_PALETTE_OPENING_EVENT } from "@/lib/commandPalette";
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+const CommandPaletteDismissibleContext = React.createContext(false);
+
+function Dialog({
+  actionsRef,
+  closeOnCommandPaletteOpen = false,
+  ...props
+}: DialogPrimitive.Root.Props & {
+  closeOnCommandPaletteOpen?: boolean;
+}) {
+  const internalActionsRef = React.useRef<DialogPrimitive.Root.Actions>(null);
+  const dialogActionsRef =
+    actionsRef ?? (closeOnCommandPaletteOpen ? internalActionsRef : undefined);
+
+  React.useEffect(() => {
+    if (!closeOnCommandPaletteOpen) return;
+
+    const closeForCommandPalette = () => {
+      dialogActionsRef?.current?.close();
+    };
+    window.addEventListener(
+      COMMAND_PALETTE_OPENING_EVENT,
+      closeForCommandPalette,
+    );
+    return () =>
+      window.removeEventListener(
+        COMMAND_PALETTE_OPENING_EVENT,
+        closeForCommandPalette,
+      );
+  }, [closeOnCommandPaletteOpen, dialogActionsRef]);
+
+  return (
+    <CommandPaletteDismissibleContext.Provider
+      value={closeOnCommandPaletteOpen}
+    >
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        actionsRef={dialogActionsRef}
+        {...props}
+      />
+    </CommandPaletteDismissibleContext.Provider>
+  );
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
@@ -44,11 +84,18 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
 }) {
+  const isCommandPaletteDismissible = React.useContext(
+    CommandPaletteDismissibleContext,
+  );
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        data-command-palette-dismissible={
+          isCommandPaletteDismissible ? "true" : undefined
+        }
         className={cn(
           "bg-background data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-closed:fill-mode-forwards data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg outline-none",
           className,

@@ -35,12 +35,12 @@ test("app search - basic search dialog functionality", async ({ po }) => {
   const dialog = po.page.getByTestId("app-search-dialog");
   await dialog.waitFor({ state: "visible", timeout: 10000 });
 
-  // Test 2: Close dialog with Ctrl+K (shortcut toggles)
-  await po.page.keyboard.press("Control+k");
+  // Test 2: Close the dedicated dialog with Escape
+  await po.page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden", timeout: 5000 });
 
-  // Test 3: Open dialog again with Ctrl+K (shortcut toggles)
-  await po.page.keyboard.press("Control+k");
+  // Test 3: Open the dedicated dialog again from its button
+  await searchButton.click();
   await dialog.waitFor({ state: "visible", timeout: 10000 });
 
   // Test 4: Search for specific term
@@ -103,28 +103,26 @@ test("app search - search functionality with different terms", async ({
   await po.page.keyboard.press("Escape");
 });
 
-test("app search - keyboard shortcut functionality", async ({ po }) => {
+test("app search - command shortcut is owned by the global palette", async ({
+  po,
+}) => {
   await po.setUp({ autoApprove: true });
 
   // Create an app first
   await po.sendPrompt("create sample application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  // Test keyboard shortcut (Ctrl+K) to open dialog
+  // Ctrl+K opens the chat-scoped global palette, not the app search dialog.
   await po.page.keyboard.press("Control+k");
-  await po.page.getByTestId("app-search-dialog").waitFor();
+  await po.page.getByTestId("command-palette").waitFor();
+  await po.page
+    .getByTestId("command-palette-input")
+    .waitFor({ state: "visible" });
+  await po.page.getByTestId("app-search-dialog").waitFor({ state: "hidden" });
 
   // Close with escape
   await po.page.keyboard.press("Escape");
-  await po.page.getByTestId("app-search-dialog").waitFor({ state: "hidden" });
-
-  // Test keyboard shortcut again
-  await po.page.keyboard.press("Control+k");
-  await po.page.getByTestId("app-search-dialog").waitFor();
-
-  // Close with Ctrl+K (toggle)
-  await po.page.keyboard.press("Control+k");
-  await po.page.getByTestId("app-search-dialog").waitFor({ state: "hidden" });
+  await po.page.getByTestId("command-palette").waitFor({ state: "hidden" });
 });
 
 test("app search - navigation and selection", async ({ po }) => {

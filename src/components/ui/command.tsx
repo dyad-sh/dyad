@@ -35,6 +35,7 @@ function CommandDialog({
   children,
   className,
   showCloseButton = true,
+  closeOnCommandPaletteOpen = false,
   filter,
   open,
   onOpenChange,
@@ -44,6 +45,7 @@ function CommandDialog({
   description?: string;
   className?: string;
   showCloseButton?: boolean;
+  closeOnCommandPaletteOpen?: boolean;
   filter?: (value: string, search: string, keywords?: string[]) => number;
   "data-testid"?: string;
   open?: boolean;
@@ -51,7 +53,11 @@ function CommandDialog({
   children?: React.ReactNode;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      closeOnCommandPaletteOpen={closeOnCommandPaletteOpen}
+    >
       <DialogContent
         className={cn("overflow-hidden p-0", className)}
         showCloseButton={showCloseButton}

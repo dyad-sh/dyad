@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAvailableSettings,
   SECTION_IDS,
   SETTING_IDS,
   SETTINGS_SEARCH_INDEX,
+  searchSettings,
 } from "./settingsSearchIndex";
+import type { UserSettings } from "./schemas";
 
 describe("SETTINGS_SEARCH_INDEX", () => {
   it("includes the cloud sandbox experiment", () => {
@@ -154,6 +157,46 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       ],
       sectionId: SECTION_IDS.experiments,
       sectionLabel: "Experiments",
+      requiresPro: true,
     });
+  });
+
+  it("exposes the shared fuzzy settings ranking", () => {
+    expect(searchSettings("theme")[0]?.item.label).toBe("Theme");
+  });
+
+  it("hides Pro-only destinations when Pro is unavailable", () => {
+    expect(getAvailableSettings(null).some((item) => item.requiresPro)).toBe(
+      false,
+    );
+    expect(
+      getAvailableSettings({
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings).some((item) => item.requiresPro),
+    ).toBe(true);
+  });
+
+  it("hides disconnected integration destinations", () => {
+    const disconnectedIds = new Set(
+      getAvailableSettings(null).map((item) => item.id),
+    );
+    expect(disconnectedIds.has(SETTING_IDS.github)).toBe(false);
+    expect(disconnectedIds.has(SETTING_IDS.vercel)).toBe(false);
+    expect(disconnectedIds.has(SETTING_IDS.supabase)).toBe(false);
+    expect(disconnectedIds.has(SETTING_IDS.neon)).toBe(false);
+
+    const connectedIds = new Set(
+      getAvailableSettings({
+        githubAccessToken: "github-token",
+        vercelAccessToken: "vercel-token",
+        supabase: { accessToken: "supabase-token" },
+        neon: { accessToken: "neon-token" },
+      } as unknown as UserSettings).map((item) => item.id),
+    );
+    expect(connectedIds.has(SETTING_IDS.github)).toBe(true);
+    expect(connectedIds.has(SETTING_IDS.vercel)).toBe(true);
+    expect(connectedIds.has(SETTING_IDS.supabase)).toBe(true);
+    expect(connectedIds.has(SETTING_IDS.neon)).toBe(true);
   });
 });

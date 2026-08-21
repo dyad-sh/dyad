@@ -45,6 +45,10 @@ function toPortablePath(filePath: string): string {
   return filePath.replaceAll("\\", "/");
 }
 
+function normalizeNewlines(content: string): string {
+  return content.replace(/\r\n?/g, "\n");
+}
+
 const safeViteFacts: BuildProjectFacts = {
   frameworkType: "vite",
   buildScript: "vite build",
@@ -73,6 +77,12 @@ describe("run_build", () => {
   it("normalizes Git paths before comparing them with filesystem paths", () => {
     expect(toPortablePath("C:\\worktree\\packages\\app")).toBe(
       "C:/worktree/packages/app",
+    );
+  });
+
+  it("normalizes checked-out repository text across platforms", () => {
+    expect(normalizeNewlines("tracked build input\r\n")).toBe(
+      normalizeNewlines("tracked build input\n"),
     );
   });
 
@@ -285,12 +295,14 @@ describe("run_build", () => {
       await expect(
         fs.lstat(path.join(snapshot.path, "dist")),
       ).rejects.toMatchObject({ code: "ENOENT" });
-      await expect(
-        fs.readFile(
-          path.join(snapshot.path, "out", "committed-input.ts"),
-          "utf8",
+      expect(
+        normalizeNewlines(
+          await fs.readFile(
+            path.join(snapshot.path, "out", "committed-input.ts"),
+            "utf8",
+          ),
         ),
-      ).resolves.toBe("tracked build input\n");
+      ).toBe("tracked build input\n");
       await expect(
         fs.lstat(path.join(snapshot.path, "new", "node_modules")),
       ).rejects.toMatchObject({ code: "ENOENT" });

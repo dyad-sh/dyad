@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { INITIAL_GITHUB_OPS_STATE } from "./state";
 import { projectGithubOps } from "./projection";
 import { useGithubOps } from "./useGithubOps";
@@ -88,6 +89,31 @@ describe("useGithubOps remote readiness", () => {
 
     expect(receipt).toBeUndefined();
     expect(mocks.showError).toHaveBeenCalledOnce();
+  });
+
+  it("shows the actionable message for GitHub operation backpressure", async () => {
+    mocks.connection = "ready";
+    mocks.remote = { ...mocks.remote, connection: "ready" };
+    mocks.dispatch.mockRejectedValue(
+      new DyadError(
+        "Too many GitHub operations are still settling. Please try again.",
+        DyadErrorKind.RateLimited,
+      ),
+    );
+    const { result } = renderHook(() =>
+      useGithubOps(7, { reconcileOnMount: false }),
+    );
+
+    await act(async () => {
+      await result.current.dispatchWithErrorFeedback({
+        type: "OP_REQUESTED",
+        op: { type: "push", mode: "normal" },
+      });
+    });
+
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Too many GitHub operations are still settling. Please try again.",
+    );
   });
 
   it("clears the local claim when cancellation dispatch rejects", async () => {

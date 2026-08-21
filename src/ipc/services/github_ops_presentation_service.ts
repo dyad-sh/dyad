@@ -49,7 +49,7 @@ export class GithubOpsPresentationService {
       if (!oldestTentative) {
         throw new DyadError(
           "Too many GitHub operations are still settling. Please try again.",
-          DyadErrorKind.Auth,
+          DyadErrorKind.RateLimited,
         );
       }
       this.forgetTentative(oldestTentative);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDistributedMachine } from "@/distributed_machines/react";
+import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { showError } from "@/lib/toast";
 import { githubOpsClientDefinition } from "./client_definition";
 import { projectGithubOps } from "./projection";
@@ -110,9 +111,11 @@ export function useGithubOps(
     async (event: GithubOpsEvent) => {
       try {
         return await dispatch(event);
-      } catch {
+      } catch (error) {
         showError(
-          "GitHub controls are temporarily unavailable. Please try again.",
+          isDyadError(error) && error.kind === DyadErrorKind.RateLimited
+            ? error.message
+            : "GitHub controls are temporarily unavailable. Please try again.",
         );
         return undefined;
       }

@@ -41,7 +41,7 @@ describe("safeGithubOpsErrorMessage", () => {
     expect(
       safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
     ).toBe(
-      "[redacted ambiguous path line]\nhint: enable core.longpaths and retry",
+      "[redacted ambiguous path line] Check your Git configuration and retry.\nhint: enable core.longpaths and retry",
     );
   });
 
@@ -93,7 +93,7 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       String.raw`hook: path="/tmp/Client\" Secret/repo/file" failed`,
-      "GitHub operation failed",
+      "[redacted ambiguous path line] Check your Git configuration and retry.",
     ],
     [
       String.raw`hook: path="/tmp/Client\"@corp/repo/file" failed`,
@@ -101,15 +101,19 @@ describe("safeGithubOpsErrorMessage", () => {
     ],
     [
       String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
-      'fatal: cannot open "[redacted path]" because setting "core.longpaths" is disabled',
+      "[redacted ambiguous path line] Check your Git configuration and retry.",
     ],
     [
       String.raw`hook: path="/tmp/Client\" Secret.txt" failed`,
-      "GitHub operation failed",
+      "[redacted ambiguous path line] Check your Git configuration and retry.",
+    ],
+    [
+      String.raw`hook: path="/tmp/Client\" because secret.txt" failed`,
+      "[redacted ambiguous path line] Check your Git configuration and retry.",
     ],
     [
       String.raw`fatal: cannot open "C:\Repos\proj\" in /usr/local/git, see "core.longpaths"`,
-      "GitHub operation failed",
+      "[redacted ambiguous path line] Check your Git configuration and retry.",
     ],
     [
       "remote: error: File '/tmp/build/a.bin' is 124 MB; see 'https://gh.io/lfs'",

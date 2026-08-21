@@ -244,7 +244,7 @@ function operationFailed(
   };
 }
 
-export function shouldNotifyOperationFailure(
+function shouldNotifyOperationFailure(
   op: GithubOperation,
   failure: GithubOperationFailure,
 ): boolean {
@@ -255,19 +255,6 @@ export function shouldNotifyOperationFailure(
     failure.code !== "REBASE_IN_PROGRESS" &&
     failure.code !== "MERGE_IN_PROGRESS" &&
     failure.code !== "MERGE_CONFLICT"
-  );
-}
-
-export function shouldDeferOperationPresentationCleanup(
-  op: GithubOperation,
-  failure: GithubOperationFailure,
-): boolean {
-  return (
-    shouldNotifyOperationFailure(op, failure) ||
-    (!failure.code && isRebaseOperation(op)) ||
-    (op.type !== "switch" &&
-      (failure.code === "MERGE_IN_PROGRESS" ||
-        failure.code === "MERGE_CONFLICT"))
   );
 }
 

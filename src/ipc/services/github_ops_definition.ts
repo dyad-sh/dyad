@@ -16,10 +16,7 @@ import {
 } from "@/github_ops/error_message";
 import type { GithubOpsCommand } from "@/github_ops/state";
 import { INITIAL_GITHUB_OPS_STATE } from "@/github_ops/state";
-import {
-  shouldDeferOperationPresentationCleanup,
-  transition,
-} from "@/github_ops/transition";
+import { transition } from "@/github_ops/transition";
 import {
   GITHUB_OPS_INVOCATION_KIND,
   GITHUB_OPS_MACHINE_ID,
@@ -256,7 +253,6 @@ function createCommandRunner(
               op: command.op,
               invocationRef,
             });
-            githubOpsPresentationService.forget(invocationRef.operationId);
           },
           (error) => {
             const failure = {
@@ -273,9 +269,6 @@ function createCommandRunner(
               invocationRef,
               failure,
             });
-            if (!shouldDeferOperationPresentationCleanup(command.op, failure)) {
-              githubOpsPresentationService.forget(invocationRef.operationId);
-            }
           },
         );
         return;
@@ -442,6 +435,36 @@ export const githubOpsDefinition: GithubOpsDefinition = {
       context.timers.remove(CONFLICT_RESOLUTION_CLAIM_TIMER);
     }
   },
+  createObserver: () => ({
+    onTransitionApplied: ({ previous, state, commands }) => {
+      const previousOperationId =
+        previous.activeInvocationRef?.operationId ?? null;
+      const activeOperationId = state.activeInvocationRef?.operationId ?? null;
+      if (
+        previousOperationId !== null &&
+        previousOperationId !== activeOperationId &&
+        !commands.some(
+          (actorCommand) =>
+            actorCommand.type === "domain" &&
+            actorCommand.invocationRef?.operationId === previousOperationId &&
+            (actorCommand.command.type === "notify" ||
+              actorCommand.command.type === "probe-git-state" ||
+              actorCommand.command.type === "probe-conflicts"),
+        )
+      ) {
+        githubOpsPresentationService.forget(previousOperationId);
+      }
+    },
+    onEventIgnored: ({ event }) => {
+      const operationId =
+        "operationId" in event
+          ? event.operationId
+          : "invocationRef" in event
+            ? event.invocationRef.operationId
+            : undefined;
+      githubOpsPresentationService.forget(operationId);
+    },
+  }),
   lifecycle: {
     subscriptionCreates: true,
     dispatchCreates: false,

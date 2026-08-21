@@ -832,4 +832,62 @@ describe("main-hosted github_ops actor", () => {
       presentation.forget.mock.invocationCallOrder[0],
     );
   });
+
+  it("retains routing through a composite operation's follow-up leg", async () => {
+    service.run
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        Object.assign(new Error("push conflict"), { code: "MERGE_CONFLICT" }),
+      );
+    service.getConflicts.mockRejectedValue(new Error("conflict probe failed"));
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "rebase-then-push",
+      op: { type: "rebase" },
+    });
+    await vi.waitFor(() =>
+      expect(presentation.showError).toHaveBeenCalledWith(
+        7,
+        "rebase-then-push",
+        "conflict probe failed",
+        "conflicts",
+      ),
+    );
+
+    expect(presentation.showError.mock.invocationCallOrder[0]).toBeLessThan(
+      presentation.forget.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("retains routing through a blocked-switch conflict probe", async () => {
+    service.run.mockRejectedValue(
+      Object.assign(new Error("merge in progress"), {
+        code: "MERGE_IN_PROGRESS",
+      }),
+    );
+    service.getConflicts.mockRejectedValue(new Error("conflict probe failed"));
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "blocked-switch",
+      op: { type: "switch", branch: "feature" },
+    });
+    await vi.waitFor(() =>
+      expect(presentation.showError).toHaveBeenCalledWith(
+        7,
+        "blocked-switch",
+        "conflict probe failed",
+        "conflicts",
+      ),
+    );
+
+    expect(presentation.showError.mock.invocationCallOrder[0]).toBeLessThan(
+      presentation.forget.mock.invocationCallOrder[0],
+    );
+  });
 });

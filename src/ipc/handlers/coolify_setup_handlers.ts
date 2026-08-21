@@ -350,7 +350,9 @@ export function registerCoolifySetupHandlers() {
       );
     }
     // One at a time is the machine's rule, not a check here; it refuses by
-    // throwing, and the panel shows that.
+    // throwing, and the panel shows that. Outside the try on purpose: that
+    // refusal is the machine declining to start, so it must not be marked as
+    // something the machine is already showing.
     const run = setupController().start(input);
     try {
       return await run.result;
@@ -359,7 +361,12 @@ export function registerCoolifySetupHandlers() {
       // so the panel is already showing it and a toast would be the same news
       // twice. Everything above never got that far and stays unmarked, which
       // is what makes it speak.
-      if (typeof error === "object" && error !== null) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        Object.isExtensible(error) &&
+        !("code" in error)
+      ) {
         Object.assign(error, { code: SETUP_MACHINE_REPORTED });
       }
       throw error;

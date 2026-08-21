@@ -6,9 +6,8 @@ import {
 const PUBLIC_GIT_DOCUMENTATION_URL =
   /\b(?:https:\/\/gh\.io\/lfs|https:\/\/git-lfs\.github\.com\/?)(?=$|[\s"'.,;:!?)}\]])/gi;
 const MAX_GITHUB_OPS_ERROR_LINE_LENGTH = 4096;
-const AMBIGUOUS_QUOTED_PATH_MARKER = "DYAD_AMBIGUOUS_QUOTED_PATH";
 const UNSAFE_GITHUB_ERROR_RESIDUAL =
-  /(?:DYAD_AMBIGUOUS_QUOTED_PATH|~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|(?:^|[:#>|])\/[^/\s]+\/[^/\s]+|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bglpat-[A-Za-z0-9_-]{10,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
+  /(?:~[\\/]|(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/(?:Users|home|Volumes|srv|root|tmp|var|opt|private|mnt|workspace)\/|(?:^|[:#>|])\/[^/\s]+\/[^/\s]+|\\\\[^\s]+|\bgh[pousr]_[A-Za-z0-9_]+\b|\bgithub_pat_[A-Za-z0-9_]+\b|\bglpat-[A-Za-z0-9_-]{10,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b|\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/i;
 
 function findUnescapedQuote(
   line: string,
@@ -56,10 +55,10 @@ function redactQuotedAbsolutePaths(message: string): string {
         const start = match.index;
         const quote = match[1];
         let closing = findUnescapedQuote(line, quote, start + match[0].length);
-        if (closing === -2) return AMBIGUOUS_QUOTED_PATH_MARKER;
+        if (closing === -2) return "[redacted ambiguous path line]";
         while (closing !== -1 && quote === "'") {
           const nextQuote = findUnescapedQuote(line, quote, closing + 1);
-          if (nextQuote === -2) return AMBIGUOUS_QUOTED_PATH_MARKER;
+          if (nextQuote === -2) return "[redacted ambiguous path line]";
           const nextCharacter = line[closing + 1] ?? "";
           const isEmbeddedApostrophe =
             /[A-Za-z0-9]/.test(nextCharacter) ||

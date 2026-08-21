@@ -121,7 +121,7 @@ describe("GithubOpsPresentationService", () => {
     }
   });
 
-  it("rejects a new route rather than evicting confirmed ownership at capacity", () => {
+  it("reports capacity exhaustion rather than evicting confirmed ownership", () => {
     vi.useFakeTimers();
     try {
       const windows = new WindowRegistry();
@@ -142,18 +142,18 @@ describe("GithubOpsPresentationService", () => {
         service.recordInitiator(7, `confirmed-${index}`, firstSession);
         service.confirm(`confirmed-${index}`);
       }
-      service.recordInitiator(7, "operation-overflow", firstSession);
+      expect(() =>
+        service.recordInitiator(7, "operation-overflow", firstSession),
+      ).toThrowError(
+        "Too many GitHub operations are still settling. Please try again.",
+      );
 
       service.showError(7, "confirmed-0", "Confirmed operation failed");
-      service.showError(7, "operation-overflow", "Overflow operation failed");
       expect(first.send).toHaveBeenCalledWith("toast:error", {
         message: "Confirmed operation failed",
         toastId: "github-ops-7-operation",
       });
-      expect(second.send).toHaveBeenCalledWith("toast:error", {
-        message: "Overflow operation failed",
-        toastId: "github-ops-7-operation",
-      });
+      expect(second.send).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

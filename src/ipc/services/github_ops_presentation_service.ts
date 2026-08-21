@@ -4,6 +4,7 @@ import {
 } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const TENTATIVE_ROUTE_TTL_MS = 30_000;
 
@@ -32,7 +33,12 @@ export class GithubOpsPresentationService {
       const oldestTentative = [...this.initiatorByOperationId].find(
         ([, entry]) => !entry.confirmed,
       )?.[0];
-      if (!oldestTentative) return;
+      if (!oldestTentative) {
+        throw new DyadError(
+          "Too many GitHub operations are still settling. Please try again.",
+          DyadErrorKind.Auth,
+        );
+      }
       this.forget(oldestTentative);
     }
     const entry = {

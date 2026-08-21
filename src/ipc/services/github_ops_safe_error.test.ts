@@ -32,6 +32,19 @@ describe("safeGithubOpsErrorMessage", () => {
     );
   });
 
+  it("redacts only an ambiguous path line from multiline Git output", () => {
+    const message = [
+      String.raw`fatal: cannot open "C:\Users\alice\Client Work\" because setting "core.longpaths" is disabled`,
+      "hint: enable core.longpaths and retry",
+    ].join("\n");
+
+    expect(
+      safeGithubOpsErrorMessage(new Error(message), "GitHub operation failed"),
+    ).toBe(
+      "[redacted ambiguous path line]\nhint: enable core.longpaths and retry",
+    );
+  });
+
   it.each([
     [
       "fatal: could not read from https://github.com/acme/private.git",

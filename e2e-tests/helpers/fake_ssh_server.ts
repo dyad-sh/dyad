@@ -238,7 +238,9 @@ export async function startFakeSshServer(): Promise<FakeSshServer> {
               // closes the channel on EOF loses the status, and against a real
               // sshd would kill a command that was still running. Sent through
               // the protocol because ssh2's own exit() refuses once the write
-              // side is done, which is not a restriction sshd has.
+              // side is done, which is not a restriction sshd has. Private
+              // API, written against ssh2 1.17.0: an upgrade that breaks this
+              // is this line rather than the product.
               stream.eof();
               setTimeout(() => {
                 const inner = stream as unknown as {

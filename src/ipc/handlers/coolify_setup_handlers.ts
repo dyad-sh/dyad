@@ -246,6 +246,10 @@ function targetFrom(input: SetupServer, privateKey: string) {
 /** Test-only: the pin map and the controller both outlive a single case. */
 export function resetCoolifySetupStateForTests(): void {
   inspectedFingerprints.clear();
+  // Cancelled before disposed: disposing stops the controller talking, it does
+  // not stop what it started, and a run left going would go on writing
+  // settings while the next case is watching them.
+  controller?.cancel();
   controller?.dispose();
   controller = null;
 }
@@ -320,6 +324,14 @@ export function registerCoolifySetupHandlers() {
         "Enter the domain on its own, with no port or path — for example " +
           "coolify.yourdomain.com.",
         DyadErrorKind.Validation,
+      );
+    }
+    if (!inspectedFingerprints.has(hostIdentity(input.host))) {
+      throw new DyadError(
+        "Check the server before installing. Dyad shows you its fingerprint " +
+          "first, so the install goes to the machine that answered rather " +
+          "than to whatever holds the address by then.",
+        DyadErrorKind.Precondition,
       );
     }
     // One at a time is the machine's rule, not a check here; it refuses by

@@ -310,6 +310,7 @@ export async function connectSsh(
         let cancelled = false;
         const onAbort = () => {
           cancelled = true;
+          stopListening();
           openStream?.close();
           reject(new DyadError("Cancelled.", DyadErrorKind.UserCancelled));
         };

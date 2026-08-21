@@ -108,6 +108,12 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
 const { registerCoolifySetupHandlers, resetCoolifySetupStateForTests } =
   await import("./coolify_setup_handlers");
 
+/** Install requires a check first, so this is what "run it" means now. */
+async function checkThenRun(input: Record<string, unknown> = TARGET) {
+  await call("coolify-setup:inspect", input);
+  return call("coolify-setup:run", input);
+}
+
 function call(channel: string, input?: unknown) {
   const handler = handlers.get(channel);
   if (!handler) throw new Error(`No handler for ${channel}`);
@@ -189,8 +195,7 @@ describe("run", () => {
     // The panel shows that fingerprint and asks the user to commit minutes to
     // it. Without the pin, the install accepts whatever answers the address by
     // the time it starts.
-    await call("coolify-setup:inspect", TARGET);
-    await call("coolify-setup:run", TARGET);
+    await checkThenRun();
 
     expect(h.verifiedAgainst).toContain("SHA256:fingerprint");
   });
@@ -200,9 +205,10 @@ describe("run", () => {
     // like fe80::1 parses as a scheme with no hostname and shares one entry,
     // so a second server would be refused for the first one's key.
     await call("coolify-setup:inspect", { ...TARGET, host: "fe80::1" });
-    await call("coolify-setup:run", { ...TARGET, host: "fe80::2" });
 
-    expect(h.verifiedAgainst).toEqual([]);
+    await expect(
+      call("coolify-setup:run", { ...TARGET, host: "fe80::2" }),
+    ).rejects.toThrow(/Check the server/);
   });
 
   it("says the identity changed rather than reporting a cancellation", async () => {
@@ -216,9 +222,7 @@ describe("run", () => {
       DyadErrorKind.UserCancelled,
     );
 
-    await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
-      /identity has changed/,
-    );
+    await expect(checkThenRun()).rejects.toThrow(/identity has changed/);
   });
 
   it("finishes when the account cannot be written down", async () => {
@@ -227,7 +231,7 @@ describe("run", () => {
     // copy of a password Dyad invented.
     h.writeThrows = true;
 
-    await expect(call("coolify-setup:run", TARGET)).resolves.toMatchObject({
+    await expect(checkThenRun()).resolves.toMatchObject({
       adminPassword: "Abc123@xyz",
       // Nothing was written, so the next screen has no token to use — saying
       // otherwise sends the user to a panel that cannot work.
@@ -243,7 +247,8 @@ describe("run", () => {
       coolify: { previousAccessToken: { value: "1|old" } },
     } as Record<string, unknown>;
 
-    await call("coolify-setup:run", TARGET);
+    await call("coolify-setup:inspect", TARGET);
+    await checkThenRun();
 
     const saved = h.written.at(-1) as {
       coolify: { previousAccessToken?: unknown };
@@ -251,8 +256,16 @@ describe("run", () => {
     expect(saved.coolify.previousAccessToken).toBeUndefined();
   });
 
+  it("refuses a server it has not looked at", async () => {
+    // The form disables Install until the check has run, but this is the call
+    // that sends the credentials, so it says no on its own account.
+    await expect(call("coolify-setup:run", TARGET)).rejects.toThrow(
+      /Check the server/,
+    );
+  });
+
   it("stores the token it minted", async () => {
-    await call("coolify-setup:run", TARGET);
+    await checkThenRun();
     const saved = h.written.at(-1) as {
       coolify: { accessToken: { value: string }; instanceUrl: string };
     };
@@ -263,7 +276,7 @@ describe("run", () => {
   it("stores the admin password, so the user is not locked out later", async () => {
     // Dyad invented this password for a machine the user owns. Storing the
     // token but not this leaves them unable to sign in to their own server.
-    await call("coolify-setup:run", TARGET);
+    await checkThenRun();
     const saved = h.written.at(-1) as {
       coolify: { adminPassword?: { value: string }; adminEmail?: string };
     };
@@ -274,7 +287,7 @@ describe("run", () => {
   it("records which instance the account is on", async () => {
     // Connecting Dyad to a different Coolify later has to know this account
     // does not come along.
-    await call("coolify-setup:run", TARGET);
+    await checkThenRun();
     const saved = h.written.at(-1) as {
       coolify: { adminInstanceUrl?: string };
     };
@@ -282,10 +295,7 @@ describe("run", () => {
   });
 
   it("returns the password so it can be shown once", async () => {
-    const result = (await call("coolify-setup:run", TARGET)) as Record<
-      string,
-      unknown
-    >;
+    const result = (await checkThenRun()) as Record<string, unknown>;
     expect(result.adminPassword).toBe("Abc123@xyz");
     expect(result.tokenStored).toBe(true);
   });
@@ -296,10 +306,7 @@ describe("run", () => {
       token: null,
       tokenUnavailableReason: "too old",
     };
-    const result = (await call("coolify-setup:run", TARGET)) as Record<
-      string,
-      unknown
-    >;
+    const result = (await checkThenRun()) as Record<string, unknown>;
 
     expect(result.tokenStored).toBe(false);
     expect(result.tokenUnavailableReason).toBe("too old");
@@ -328,7 +335,7 @@ describe("run", () => {
     h.setupError = new Error(
       "Coolify was installed but its dashboard did not start.",
     );
-    await call("coolify-setup:run", TARGET).catch(() => {});
+    await checkThenRun().catch(() => {});
 
     const saved = h.written.at(-1) as {
       coolify: { adminPassword?: { value: string }; adminInstanceUrl?: string };
@@ -340,7 +347,7 @@ describe("run", () => {
   it("writes nothing when the failure came before any account", async () => {
     h.reportsAccount = false;
     h.setupError = new Error("This server cannot be set up automatically.");
-    await call("coolify-setup:run", TARGET).catch(() => {});
+    await checkThenRun().catch(() => {});
 
     expect(h.written).toHaveLength(0);
   });
@@ -352,7 +359,7 @@ describe("run", () => {
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
     });
-    const first = call("coolify-setup:run", TARGET);
+    const first = checkThenRun();
     await expect(
       call("coolify-setup:run", { ...TARGET, host: "198.51.100.7" }),
     ).rejects.toMatchObject({ kind: "precondition" });
@@ -368,8 +375,8 @@ describe("run", () => {
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
     });
-    const first = call("coolify-setup:run", TARGET);
-    await expect(call("coolify-setup:run", TARGET)).rejects.toMatchObject({
+    const first = checkThenRun();
+    await expect(checkThenRun()).rejects.toMatchObject({
       kind: "precondition",
     });
     release();
@@ -381,6 +388,7 @@ describe("run", () => {
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
     });
+    await call("coolify-setup:inspect", TARGET);
     const running = call("coolify-setup:run", TARGET);
 
     const snapshot = (await call("coolify-setup:snapshot")) as {
@@ -398,7 +406,7 @@ describe("run", () => {
   });
 
   it("puts the finished screen away when the user moves on", async () => {
-    await call("coolify-setup:run", TARGET);
+    await checkThenRun();
     await call("coolify-setup:dismiss");
 
     expect(
@@ -408,9 +416,9 @@ describe("run", () => {
 
   it("frees the slot even when setup failed", async () => {
     h.setupError = new Error("boom");
-    await call("coolify-setup:run", TARGET).catch(() => {});
+    await checkThenRun().catch(() => {});
     h.setupError = null;
-    await expect(call("coolify-setup:run", TARGET)).resolves.toBeTruthy();
+    await expect(checkThenRun()).resolves.toBeTruthy();
   });
 });
 
@@ -617,6 +625,7 @@ describe("cancel", () => {
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
     });
+    await call("coolify-setup:inspect", TARGET);
     const running = call("coolify-setup:run", TARGET);
     // The flow is handed a signal; cancelling is what trips it.
     const signal = h.lastSetupOptions?.signal as AbortSignal;

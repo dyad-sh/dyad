@@ -297,8 +297,8 @@ export async function tryEnableHttps(
   // apply it, rebuild the proxy, wait out the whole certificate poll for an
   // answer that cannot come, and take it all back off again.
   const hostAddresses =
-    isIP(host) === 0 ? (await resolve(host)).addresses : undefined;
-  if (hostAddresses && !resolvesPublicly(hostAddresses)) {
+    isIP(host) === 0 ? (await resolve(host)).addresses : [host];
+  if (!resolvesPublicly(hostAddresses)) {
     return {
       instanceUrl: plainUrlFor(host),
       secure: false,

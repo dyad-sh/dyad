@@ -102,6 +102,14 @@ beforeEach(() => {
   });
 });
 
+/** Install is offered only for a server Dyad has looked at. */
+async function checkServer(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByTestId("coolify-setup-inspect"));
+  await waitFor(() =>
+    expect(screen.getByTestId("coolify-setup-inspection")).toBeTruthy(),
+  );
+}
+
 describe("the key the user has to install", () => {
   it("shows it first, because nothing else can happen until it is added", async () => {
     renderPanel();
@@ -283,6 +291,28 @@ describe("what it refuses before starting", () => {
     ).toBe(true);
   });
 
+  it("will not install onto a server it has not looked at", async () => {
+    // The check is what puts the fingerprint in front of the user. Installing
+    // without it means trusting whatever answers the address with the admin
+    // password and a token, and never showing them what they trusted.
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+
+    expect(
+      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    await checkServer(user);
+
+    expect(
+      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
   it("accepts an ordinary domain", async () => {
     const user = userEvent.setup();
     renderPanel();
@@ -292,6 +322,7 @@ describe("what it refuses before starting", () => {
       screen.getByTestId("coolify-setup-domain"),
       "coolify.example.com",
     );
+    await checkServer(user);
 
     expect(
       (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
@@ -329,19 +360,18 @@ describe("an answer about a server the user has moved on from", () => {
     });
 
     await waitFor(() => expect(h.inspect).toHaveBeenCalled());
+    // The verdict belonged to the address it was asked about. Shown here it
+    // would say this machine already has Coolify on it, which nobody checked.
     expect(screen.queryByTestId("coolify-setup-inspection")).toBeNull();
-    expect(
-      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
   });
 });
 
 describe("when the panel cannot tell what is going on", () => {
-  it("says so and offers a way to ask again", async () => {
-    // Install is disabled while this is unknown. Disabled with no reason is a
-    // dead control; the key field beside it explains itself.
+  it("says so, and asking again clears it", async () => {
+    // Install is disabled while this is unknown, and a disabled control with
+    // no explanation reads as broken.
     h.snapshot.mockRejectedValue(new Error("no answer"));
+    const user = userEvent.setup();
     renderPanel();
 
     await waitFor(() =>
@@ -350,6 +380,14 @@ describe("when the panel cannot tell what is going on", () => {
     expect(screen.getByTestId("coolify-setup-install")).toHaveProperty(
       "disabled",
       true,
+    );
+
+    // The way out has to work, not just be on screen.
+    h.snapshot.mockResolvedValue({ type: "idle" });
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("coolify-setup-snapshot-error")).toBeNull(),
     );
   });
 });
@@ -525,6 +563,7 @@ describe("when the user stops it", () => {
     renderPanel();
     await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
     await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
     await user.click(screen.getByTestId("coolify-setup-install"));
 
     await waitFor(() => expect(h.run).toHaveBeenCalled());
@@ -532,14 +571,41 @@ describe("when the user stops it", () => {
   });
 
   it("still reports a refusal to start", async () => {
-    h.run.mockRejectedValue(new Error("A server is already being set up."));
+    // The shape the controller actually refuses with.
+    h.run.mockRejectedValue(
+      new DyadError(
+        "A server is already being set up.",
+        DyadErrorKind.Precondition,
+      ),
+    );
     const user = userEvent.setup();
     renderPanel();
     await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
     await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
     await user.click(screen.getByTestId("coolify-setup-install"));
 
     await waitFor(() => expect(h.showError).toHaveBeenCalled());
+  });
+
+  it("leaves a failed install to the panel rather than saying it twice", async () => {
+    // The failure block carries the installer's own output; a toast beside it
+    // repeats the same event with less to show.
+    h.run.mockRejectedValue(
+      new DyadError(
+        "Installing Coolify failed (exit 1).",
+        DyadErrorKind.External,
+      ),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
+    await user.click(screen.getByTestId("coolify-setup-install"));
+
+    await waitFor(() => expect(h.run).toHaveBeenCalled());
+    expect(h.showError).not.toHaveBeenCalled();
   });
 
   it("still shows what the server said about a real failure", async () => {

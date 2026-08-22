@@ -455,6 +455,32 @@ describe("PostHogErrorDeduper", () => {
     }
   });
 
+  it("carries a throttled boundary delta into a newer shared epoch", () => {
+    const storage = new MemoryStorage();
+    const event = exceptionEvent();
+    const firstWindow = new PostHogErrorDeduper(storage, "window-a");
+    const secondWindow = new PostHogErrorDeduper(storage, "window-b");
+    const freeWindowMs = 24 * HOUR_MS;
+
+    firstWindow.process(event, false, 0);
+    firstWindow.process(event, false, freeWindowMs - 5_000);
+    firstWindow.process(event, false, freeWindowMs - 4_999);
+    expect(secondWindow.process(event, false, freeWindowMs)).toMatchObject({
+      properties: { dyad_error_suppressed_count: 1 },
+    });
+
+    firstWindow.flush(freeWindowMs + 1);
+    expect(
+      new PostHogErrorDeduper(storage, "window-c").process(
+        event,
+        false,
+        2 * freeWindowMs,
+      ),
+    ).toMatchObject({
+      properties: { dyad_error_suppressed_count: 1 },
+    });
+  });
+
   it("resets future records after the system clock moves backward", () => {
     const storage = new MemoryStorage();
     const event = exceptionEvent();

@@ -32,6 +32,11 @@ type ErrorDedupeRecord = {
 };
 
 type ErrorDedupeState = Record<string, ErrorDedupeRecord>;
+type PendingSuppressionDelta = {
+  count: number;
+  epochLastSentAt: number;
+  lastSeenAt: number;
+};
 
 export type InitialLoadTelemetryInput = {
   settings: UserSettings;
@@ -83,6 +88,8 @@ export class PostHogErrorDeduper {
   private memoryState: ErrorDedupeState = {};
   private storageAvailable: boolean;
   private hasUnpersistedChanges = false;
+  private pendingSuppressionDeltas: Record<string, PendingSuppressionDelta> =
+    {};
   private pendingStorageWrite: ReturnType<typeof setTimeout> | undefined;
   private lastStorageReadAt = Number.NEGATIVE_INFINITY;
   private lastStorageWriteAt = Number.NEGATIVE_INFINITY;
@@ -144,6 +151,15 @@ export class PostHogErrorDeduper {
       };
       this.memoryState = state;
       this.hasUnpersistedChanges = true;
+      const pendingDelta = this.pendingSuppressionDeltas[fingerprintHash];
+      this.pendingSuppressionDeltas[fingerprintHash] = {
+        count:
+          pendingDelta?.epochLastSentAt === existing.lastSentAt
+            ? Math.min(Number.MAX_SAFE_INTEGER, pendingDelta.count + 1)
+            : 1,
+        epochLastSentAt: existing.lastSentAt,
+        lastSeenAt: now,
+      };
       const remainingDedupeWindow = dedupeWindow - (now - existing.lastSentAt);
       this.persistState(
         now,
@@ -236,6 +252,7 @@ export class PostHogErrorDeduper {
             );
           }
           this.lastStorageReadAt = now;
+          this.carryPendingSuppressionDeltasAcrossEpochs();
         }
         this.storage.setItem(
           POSTHOG_ERROR_DEDUPE_STORAGE_KEY,
@@ -244,6 +261,7 @@ export class PostHogErrorDeduper {
         this.lastStorageWriteAt = now;
         this.lastStorageReadAt = now;
         this.hasUnpersistedChanges = false;
+        this.pendingSuppressionDeltas = {};
         this.clearPendingStorageWrite();
       } catch {
         // Continue deduplicating in memory when persistence is unavailable.
@@ -267,6 +285,32 @@ export class PostHogErrorDeduper {
       this.pendingStorageWrite = undefined;
       this.flush();
     }, delay);
+  }
+
+  private carryPendingSuppressionDeltasAcrossEpochs(): void {
+    for (const [fingerprintHash, pending] of Object.entries(
+      this.pendingSuppressionDeltas,
+    )) {
+      const current = this.memoryState[fingerprintHash];
+      if (!current || current.lastSentAt <= pending.epochLastSentAt) {
+        continue;
+      }
+      const existingContribution = current.suppressionBySource[this.sourceId];
+      this.memoryState[fingerprintHash] = {
+        ...current,
+        lastSeenAt: Math.max(current.lastSeenAt, pending.lastSeenAt),
+        suppressionBySource: boundSuppressionSources({
+          ...current.suppressionBySource,
+          [this.sourceId]: {
+            count: Math.min(
+              Number.MAX_SAFE_INTEGER,
+              (existingContribution?.count ?? 0) + pending.count,
+            ),
+            lastSeenAt: Math.max(current.lastSentAt, pending.lastSeenAt),
+          },
+        }),
+      };
+    }
   }
 
   private clearPendingStorageWrite(): void {

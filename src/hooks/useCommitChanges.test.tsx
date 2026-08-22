@@ -96,6 +96,28 @@ describe("useCommitChanges", () => {
     expect(mocks.showError).not.toHaveBeenCalled();
   });
 
+  it("distinguishes prepare-commit-msg failures from message validation", async () => {
+    const error = Object.assign(new Error("could not resolve the ticket id"), {
+      code: GIT_ERROR_CODES.PREPARE_COMMIT_MSG_FAILED,
+    });
+    mocks.commitChanges.mockRejectedValueOnce(error);
+    const { result } = renderHook(() => useCommitChanges(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.commitChanges({ appId: 7, message: "Save work" }),
+      ).rejects.toBe(error);
+    });
+
+    await waitFor(() =>
+      expect(result.current.prepareCommitMsgError).toBe(error),
+    );
+    expect(result.current.commitMsgError).toBeNull();
+    expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
   it("refetches the file list when a hook fails after rewriting the tree", async () => {
     // lint-staged and friends reformat and re-stage files before exiting
     // non-zero, so the still-open dialog would otherwise keep rendering the

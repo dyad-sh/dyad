@@ -909,7 +909,14 @@ export async function gitCommit({
     }
     return result.stdout.trim();
   } finally {
-    await fsPromises.rm(noHooksPath, { recursive: true, force: true });
+    try {
+      await fsPromises.rm(noHooksPath, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn("Failed to clean up temporary Git hooks directory", {
+        noHooksPath,
+        error,
+      });
+    }
   }
 }
 

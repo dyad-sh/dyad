@@ -23,6 +23,14 @@ function isCommitMsgFailure(error: Error | null): boolean {
   );
 }
 
+function isPrepareCommitMsgFailure(error: Error | null): boolean {
+  return (
+    error !== null &&
+    (error as Error & { code?: string }).code ===
+      GIT_ERROR_CODES.PREPARE_COMMIT_MSG_FAILED
+  );
+}
+
 function isCommitCancelled(error: Error): boolean {
   return (
     (error as Error & { code?: string }).code ===
@@ -98,6 +106,7 @@ export function useCommitChanges() {
       });
       if (
         !isPreCommitFailure(error) &&
+        !isPrepareCommitMsgFailure(error) &&
         !isCommitMsgFailure(error) &&
         !isCommitCancelled(error)
       ) {
@@ -167,6 +176,9 @@ export function useCommitChanges() {
     isCancellingCommit,
     commitProgress,
     preCommitError: isPreCommitFailure(commitError) ? commitError : null,
+    prepareCommitMsgError: isPrepareCommitMsgFailure(commitError)
+      ? commitError
+      : null,
     commitMsgError: isCommitMsgFailure(commitError) ? commitError : null,
     resetCommitError,
   };

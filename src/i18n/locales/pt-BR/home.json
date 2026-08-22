@@ -265,6 +265,8 @@
     "fixWithAi": "Corrigir com IA",
     "startingAiFix": "Abrindo o chat...",
     "fixWithAiDescription": "O Dyad tentará corrigir os problemas relatados, executar as verificações novamente e commitar o resultado como um checkpoint.",
+    "prepareCommitMsgFailed": "Falha ao preparar a mensagem do commit",
+    "prepareCommitMsgFailedDescription": "Suas alterações não foram commitadas. Revise a saída do hook, corrija sua configuração ou ambiente e faça o commit novamente.",
     "commitMsgFailed": "A verificação da mensagem do commit falhou",
     "commitMsgFailedDescription": "Suas alterações não foram commitadas. Atualize a mensagem do commit e faça o commit novamente.",
     "sendToChat": "Enviar para o chat",

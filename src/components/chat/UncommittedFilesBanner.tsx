@@ -48,6 +48,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     isCancellingCommit,
     commitProgress,
     preCommitError,
+    prepareCommitMsgError,
     commitMsgError,
     resetCommitError,
     dismissDialog,
@@ -209,6 +210,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
 
             <CommitRecoveryAlerts
               preCommitError={preCommitError}
+              prepareCommitMsgError={prepareCommitMsgError}
               commitMsgError={commitMsgError}
               isStartingAiFix={isStartingAiFix}
               canFixPreCommitWithAI={canFixPreCommitWithAI}

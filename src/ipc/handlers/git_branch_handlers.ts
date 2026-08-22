@@ -56,6 +56,7 @@ const logger = log.scope("git_branch_handlers");
 interface ActiveCommitOperation {
   appId: number;
   controller: AbortController;
+  cancellable: boolean;
   senderId: number;
 }
 
@@ -447,17 +448,29 @@ async function handleCommitChanges(
   activeCommitOperations.set(operationId, {
     appId,
     controller,
+    cancellable: true,
     senderId: event.sender.id,
   });
   try {
     return await withAppGitOp(appId, "commit", async (appPath) => {
-      controller.signal.throwIfAborted();
+      if (controller.signal.aborted) {
+        throw GitStateError(
+          "The commit was cancelled.",
+          GIT_ERROR_CODES.COMMIT_CANCELLED,
+        );
+      }
       await ensureDyadGitignored(appPath);
       return gitService.stageAllAndCommitWithPreCommit({
         path: appPath,
         message,
         signal: controller.signal,
         onProgress: (phase) => {
+          if (phase === "committing") {
+            const active = activeCommitOperations.get(operationId);
+            if (active?.controller === controller) {
+              active.cancellable = false;
+            }
+          }
           safeSend(event.sender, "git:commit-progress", {
             appId,
             operationId,
@@ -480,7 +493,11 @@ async function handleCancelCommit(
   { appId, operationId }: CancelCommitParams,
 ): Promise<boolean> {
   const active = activeCommitOperations.get(operationId);
-  if (active?.appId !== appId || active.senderId !== event.sender.id) {
+  if (
+    active?.appId !== appId ||
+    active.senderId !== event.sender.id ||
+    !active.cancellable
+  ) {
     return false;
   }
   active.controller.abort();

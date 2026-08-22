@@ -13,6 +13,9 @@ vi.mock("react-i18next", () => ({
         "preview.commitMsgFailed": "Commit message check failed",
         "preview.commitMsgFailedDescription":
           "Your changes were not committed. Update the commit message and commit again.",
+        "preview.prepareCommitMsgFailed": "Commit message preparation failed",
+        "preview.prepareCommitMsgFailedDescription":
+          "Review the hook output and fix its setup or environment.",
         "preview.viewPreCommitOutput": "View check output",
         "preview.fixWithAi": "Fix with AI",
         "preview.fixWithAiDescription":
@@ -94,5 +97,22 @@ describe("CommitCheckFailureAlert", () => {
       screen.getByText("subject may not be empty [subject-empty]"),
     ).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("does not tell users to edit the message when preparation fails", () => {
+    render(
+      <CommitCheckFailureAlert
+        kind="prepare-commit-msg"
+        error={new Error("could not resolve the ticket id")}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert.getAttribute("data-testid")).toBe(
+      "prepare-commit-msg-failure-alert",
+    );
+    expect(alert.textContent).toContain("Commit message preparation failed");
+    expect(alert.textContent).toContain("fix its setup or environment");
+    expect(alert.textContent).not.toContain("Update the commit message");
   });
 });

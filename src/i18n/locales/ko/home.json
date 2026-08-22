@@ -267,6 +267,8 @@
     "fixWithAi": "AI로 수정",
     "startingAiFix": "채팅 여는 중...",
     "fixWithAiDescription": "Dyad가 보고된 문제 수정, 검사 재실행, 결과를 체크포인트로 커밋하는 작업을 시도합니다.",
+    "prepareCommitMsgFailed": "커밋 메시지 준비 실패",
+    "prepareCommitMsgFailedDescription": "변경 사항이 커밋되지 않았습니다. 훅 출력을 검토하고 설정 또는 환경을 수정한 뒤 다시 커밋하세요.",
     "commitMsgFailed": "커밋 메시지 검사 실패",
     "commitMsgFailedDescription": "변경 사항이 커밋되지 않았습니다. 커밋 메시지를 수정한 뒤 다시 커밋하세요.",
     "sendToChat": "채팅으로 보내기",

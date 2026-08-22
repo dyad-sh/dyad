@@ -46,9 +46,9 @@ function throwIfCommitCancelled(signal?: AbortSignal): void {
 /**
  * Runs one commit-message hook and returns the message it left behind.
  *
- * Failures carry `COMMIT_MSG_FAILED` so the renderer can show the hook output
- * in the same inline, scrollable panel the pre-commit failure uses instead of
- * dumping thousands of characters of hook output into a toast.
+ * Failures carry the caller's hook-specific error code so the renderer can
+ * show accurate guidance with the hook output in an inline, scrollable panel
+ * instead of dumping thousands of characters into a toast.
  */
 async function runMessageHookPhase({
   path,
@@ -56,6 +56,7 @@ async function runMessageHookPhase({
   signal,
   run,
   label,
+  failureCode,
 }: {
   path: string;
   message: string;
@@ -66,6 +67,9 @@ async function runMessageHookPhase({
     signal?: AbortSignal;
   }) => Promise<BufferedProcessResult & { message: string }>;
   label: string;
+  failureCode:
+    | typeof GIT_ERROR_CODES.PREPARE_COMMIT_MSG_FAILED
+    | typeof GIT_ERROR_CODES.COMMIT_MSG_FAILED;
 }): Promise<string> {
   let result;
   try {
@@ -83,7 +87,7 @@ async function runMessageHookPhase({
   if (result.timedOut) {
     throw GitStateError(
       `${label} exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
-      GIT_ERROR_CODES.COMMIT_MSG_FAILED,
+      failureCode,
     );
   }
   if (result.aborted) {
@@ -95,7 +99,7 @@ async function runMessageHookPhase({
   if (result.code !== 0) {
     throw GitStateError(
       `${label} failed with exit code ${result.code ?? "unknown"}.\n\n${output}`,
-      GIT_ERROR_CODES.COMMIT_MSG_FAILED,
+      failureCode,
     );
   }
   return result.message;
@@ -241,6 +245,7 @@ export class GitService {
           signal,
           run: runPrepareCommitMsgHook,
           label: "Commit-message preparation",
+          failureCode: GIT_ERROR_CODES.PREPARE_COMMIT_MSG_FAILED,
         });
         throwIfCommitCancelled(signal);
       }
@@ -252,6 +257,7 @@ export class GitService {
           signal,
           run: runCommitMsgHook,
           label: "Commit-message checks",
+          failureCode: GIT_ERROR_CODES.COMMIT_MSG_FAILED,
         });
       }
     }

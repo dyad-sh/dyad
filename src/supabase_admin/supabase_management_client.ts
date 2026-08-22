@@ -73,12 +73,53 @@ export interface DeployedFunctionResponse {
 export interface SupabaseProjectLog {
   timestamp: number;
   event_message: string;
-  metadata: any;
+  level: "info" | "warn" | "error";
 }
 
 export interface SupabaseProjectLogsResponse {
   result: SupabaseProjectLog[];
-  error?: any;
+  error?: unknown;
+}
+
+const SupabaseProjectLogApiSchema = z.object({
+  timestamp: z.union([z.string(), z.number()]),
+  event_message: z.string(),
+  severity_text: z.string().nullish(),
+});
+
+const SupabaseProjectLogsApiResponseSchema = z.object({
+  result: z.array(SupabaseProjectLogApiSchema).optional(),
+  error: z.unknown().optional(),
+});
+
+function parseSupabaseLogTimestamp(timestamp: string | number): number {
+  if (typeof timestamp === "number") {
+    return timestamp;
+  }
+
+  // ClickHouse returns UTC DateTime64 values without always including a zone.
+  // Date.parse treats a zone-less timestamp as local time, so make UTC explicit.
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp);
+  return Date.parse(hasTimeZone ? timestamp : `${timestamp}Z`);
+}
+
+function normalizeSupabaseLogLevel(
+  severityText: string | null | undefined,
+): SupabaseProjectLog["level"] {
+  switch (severityText?.toLowerCase()) {
+    case "warn":
+    case "warning":
+      return "warn";
+    case "alert":
+    case "critical":
+    case "emergency":
+    case "error":
+    case "fatal":
+    case "panic":
+      return "error";
+    default:
+      return "info";
+  }
 }
 
 export interface SupabaseProjectBranch {
@@ -665,20 +706,17 @@ export async function getSupabaseProjectLogs(
 ): Promise<SupabaseProjectLogsResponse> {
   const supabase = await getSupabaseClient({ organizationSlug });
 
-  // Build SQL query with optional timestamp filter
-  let sqlQuery = `
+  // The unified endpoint is ClickHouse-backed. The time range is applied by
+  // the API parameters below, while the SQL scopes the unified stream to Edge
+  // Function runtime logs.
+  const sqlQuery = `
 SELECT 
   timestamp,
   event_message,
-  metadata
-FROM function_logs`;
-
-  if (timestampStart) {
-    // Convert milliseconds to microseconds and wrap in TIMESTAMP_MICROS for BigQuery
-    sqlQuery += `\nWHERE timestamp > TIMESTAMP_MICROS(${timestampStart * 1000})`;
-  }
-
-  sqlQuery += `\nORDER BY timestamp ASC
+  severity_text
+FROM logs
+WHERE source = 'function_logs'
+ORDER BY timestamp ASC
 LIMIT 1000`;
 
   // Calculate time range for API parameters
@@ -692,7 +730,7 @@ LIMIT 1000`;
   // Encode SQL query for URL
   const encodedSql = encodeURIComponent(sqlQuery);
 
-  const url = `https://api.supabase.com/v1/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
+  const url = `https://api.supabase.com/v1/projects/${projectId}/analytics/endpoints/logs?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
 
   logger.info(`Fetching logs from: ${url}`);
 
@@ -716,10 +754,35 @@ LIMIT 1000`;
     );
   }
 
-  const jsonResponse: SupabaseProjectLogsResponse = await response.json();
-  logger.info(`Received ${jsonResponse.result?.length || 0} logs`);
+  const parsed = SupabaseProjectLogsApiResponseSchema.safeParse(
+    await response.json(),
+  );
+  if (!parsed.success) {
+    throw new DyadError(
+      `Supabase returned an unexpected logs response for project ${projectId}: ${parsed.error.message}`,
+      DyadErrorKind.External,
+    );
+  }
 
-  return jsonResponse;
+  const result = (parsed.data.result ?? []).map((logEntry) => {
+    const timestamp = parseSupabaseLogTimestamp(logEntry.timestamp);
+    if (!Number.isFinite(timestamp)) {
+      throw new DyadError(
+        `Supabase returned an invalid log timestamp for project ${projectId}`,
+        DyadErrorKind.External,
+      );
+    }
+
+    return {
+      timestamp,
+      event_message: logEntry.event_message,
+      level: normalizeSupabaseLogLevel(logEntry.severity_text),
+    };
+  });
+
+  logger.info(`Received ${result.length} logs`);
+
+  return { result, error: parsed.data.error };
 }
 
 export async function executeSupabaseSql({

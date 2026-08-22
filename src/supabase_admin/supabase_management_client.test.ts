@@ -3,6 +3,7 @@ import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import {
   classifyManagementApiError,
   getProjectApiKeys,
+  getSupabaseProjectLogs,
   listSupabaseOrganizations,
   refreshSupabaseToken,
 } from "./supabase_management_client";
@@ -237,6 +238,77 @@ describe("getProjectApiKeys", () => {
     ).resolves.toEqual([
       { name: "default", type: "something-new", api_key: "sb_x" },
     ]);
+  });
+});
+
+describe("getSupabaseProjectLogs", () => {
+  beforeEach(() => {
+    vi.mocked(readSettings).mockReturnValue({
+      supabase: {
+        organizations: {
+          "org-1": {
+            accessToken: { value: "org-token" },
+            expiresIn: 3600,
+            tokenTimestamp: Math.floor(Date.now() / 1000),
+          },
+        },
+      },
+    } as unknown as ReturnType<typeof readSettings>);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("queries and maps the unified ClickHouse logs endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              result: [
+                {
+                  timestamp: "2026-08-22T00:01:02.345000",
+                  event_message: "warning from function",
+                  severity_text: "warning",
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    const timestampStart = Date.UTC(2026, 7, 22, 0, 0, 0);
+    const response = await getSupabaseProjectLogs(
+      "proj-1",
+      timestampStart,
+      "org-1",
+    );
+
+    const requestUrl = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
+    expect(requestUrl.pathname).toBe(
+      "/v1/projects/proj-1/analytics/endpoints/logs",
+    );
+    const sql = requestUrl.searchParams.get("sql");
+    expect(sql).toContain("FROM logs");
+    expect(sql).toContain("WHERE source = 'function_logs'");
+    expect(sql).not.toContain("FROM function_logs");
+    expect(sql).not.toContain("metadata");
+    expect(sql).not.toContain("TIMESTAMP_MICROS");
+    expect(requestUrl.searchParams.get("iso_timestamp_start")).toBe(
+      "2026-08-22T00:00:00.000Z",
+    );
+    expect(requestUrl.searchParams.has("iso_timestamp_end")).toBe(true);
+    expect(response).toEqual({
+      result: [
+        {
+          timestamp: Date.UTC(2026, 7, 22, 0, 1, 2, 345),
+          event_message: "warning from function",
+          level: "warn",
+        },
+      ],
+      error: undefined,
+    });
   });
 });
 

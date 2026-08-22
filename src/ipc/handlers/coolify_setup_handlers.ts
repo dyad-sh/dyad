@@ -60,9 +60,10 @@ const inspectedFingerprints = new Map<string, string>();
 /**
  * The servers a check got through and liked.
  *
- * Separate from the pin above, which is written during the handshake: a
- * connection that opened is not a server that answered, and a server that
- * answered "Coolify is already here" is not one to install onto.
+ * Separate from the pin above because the two do not come and go together: a
+ * server that was ready and has since had Coolify put on it loses its pass
+ * while the key it showed still stands. Both are written once a check has
+ * finished, so a pass here always belongs to the key recorded there.
  */
 const readyHosts = new Set<string>();
 

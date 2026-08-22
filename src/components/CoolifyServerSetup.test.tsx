@@ -335,6 +335,34 @@ describe("what it refuses before starting", () => {
   });
 });
 
+describe("a re-check that does not finish", () => {
+  it("leaves no verdict behind, and no install to press", async () => {
+    // The main process keeps the last finished check's pass on purpose, so
+    // this is the only thing between a check that never came back and an
+    // install that sends the admin password to whatever answered.
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
+    expect(
+      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    h.inspect.mockRejectedValueOnce(new Error("connection reset"));
+    await user.click(screen.getByTestId("coolify-setup-inspect"));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("coolify-setup-inspection")).toBeNull(),
+    );
+    expect(
+      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+});
+
 describe("an answer about a server the user has moved on from", () => {
   it("does not show one machine's check against another's address", async () => {
     // The answer arrives after a round trip. By then the address in the field

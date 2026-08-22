@@ -330,15 +330,16 @@ describe("PostHogErrorDeduper", () => {
     const event = exceptionEvent();
 
     deduper.process(event, false, 0);
+    const readsAfterAdmission = storage.getItem.mock.calls.length;
     deduper.process(event, false, 1);
     deduper.process(event, false, 2);
     deduper.process(event, false, 3);
 
-    expect(storage.getItem).toHaveBeenCalledTimes(1);
+    expect(storage.getItem).toHaveBeenCalledTimes(readsAfterAdmission);
     expect(storage.setItem).toHaveBeenCalledTimes(1);
 
     deduper.process(event, false, 5_000);
-    expect(storage.getItem).toHaveBeenCalledTimes(2);
+    expect(storage.getItem).toHaveBeenCalledTimes(readsAfterAdmission + 1);
     expect(storage.setItem).toHaveBeenCalledTimes(2);
   });
 
@@ -386,6 +387,17 @@ describe("PostHogErrorDeduper", () => {
     firstWindow.process(event, true, proWindowMs - 1);
     expect(secondWindow.process(event, true, proWindowMs)).toBeTruthy();
     expect(firstWindow.process(event, true, proWindowMs + 1)).toBeNull();
+  });
+
+  it("honors forced shared reads within the same millisecond", () => {
+    const storage = new MemoryStorage();
+    const firstWindow = new PostHogErrorDeduper(storage, "window-a");
+    const secondWindow = new PostHogErrorDeduper(storage, "window-b");
+
+    firstWindow.process(exceptionEvent("Error X"), false, 0);
+    secondWindow.process(exceptionEvent("Error Y"), false, 0);
+
+    expect(firstWindow.process(exceptionEvent("Error Y"), false, 0)).toBeNull();
   });
 });
 

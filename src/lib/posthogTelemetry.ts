@@ -176,9 +176,10 @@ export class PostHogErrorDeduper {
     if (
       this.storage &&
       this.storageAvailable &&
-      this.lastStorageReadAt !== now &&
       (force ||
-        now - this.lastStorageReadAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS)
+        (this.lastStorageReadAt !== now &&
+          now - this.lastStorageReadAt >=
+            ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS))
     ) {
       try {
         const raw = this.storage.getItem(POSTHOG_ERROR_DEDUPE_STORAGE_KEY);
@@ -205,7 +206,7 @@ export class PostHogErrorDeduper {
         now - this.lastStorageWriteAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS)
     ) {
       try {
-        if (force && this.lastStorageReadAt !== now) {
+        if (force) {
           const raw = this.storage.getItem(POSTHOG_ERROR_DEDUPE_STORAGE_KEY);
           if (raw) {
             this.memoryState = mergeErrorDedupeStates(

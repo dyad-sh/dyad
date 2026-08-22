@@ -37,19 +37,18 @@ import type { AgentContext } from "../tools/types";
 import { runExploreCodeSubagent } from "../tools/explore_code_subagent";
 import { buildReviewTarget, type ReviewTarget } from "./review_target";
 import {
-  acquireMutationLease,
-  beginAppFinalization,
-  describeMutationBlock,
-  endAppFinalization,
-  hasActiveMutationTool,
-  hasMutationLease,
+  closeAndDisposeTurnsForChat,
+  closeMutationActor,
+  createMutationActivityOwner,
+  describeTurnActivity,
   normalizeMutationScope,
-  quarantineActiveMutationTool,
-  releaseMutationLease,
-  waitForMutationToolDrain,
-  withMutationAdmission,
-  withMutationAdmissionUntil,
-} from "./mutation_lease";
+  reserveSubagentRun,
+  tryBeginTurnFinalization,
+  validateMutationScope,
+  waitForMutationActorDrain,
+  type ActivityHandle,
+  type MutationActivityOwner,
+} from "./mutation_activity_tracker";
 import {
   parseReviewResult,
   STRUCTURED_REVIEW_INSTRUCTIONS,
@@ -75,7 +74,6 @@ const MAX_ACTIVITY_OUTPUT_CHARS = 200_000;
 const MAX_MODEL_HISTORY_CHARS = 100_000;
 const AUTO_REVIEW_BARRIER_MAX_WAIT_MS = 10 * 60 * 1000;
 const ROOT_FINALIZATION_MAX_WAIT_MS = 20 * 60 * 1000;
-const REVIEW_WRITER_MAX_WAIT_MS = ROOT_FINALIZATION_MAX_WAIT_MS;
 const SAFE_ABORT_DRAIN_MAX_WAIT_MS = 30 * 1000;
 const SAFE_ABORT_BARRIER_MAX_WAIT_MS = 31 * 1000;
 const SUBAGENT_MAX_STEPS = 50;
@@ -106,32 +104,13 @@ async function waitForSafeAbortDrain(
   }
 }
 
-async function drainActiveMutationOrQuarantine(appId: number): Promise<void> {
-  const didDrain = await waitForMutationToolDrain(
-    appId,
-    SAFE_ABORT_DRAIN_MAX_WAIT_MS,
-  );
-  if (!didDrain) quarantineActiveMutationTool(appId);
-}
-
 export async function withFinalizationAdmission<T>(params: {
-  appId: number;
   abortSignal?: AbortSignal;
   deadlineAt: number;
   operation: () => Promise<T>;
 }): Promise<T> {
-  try {
-    return await withMutationAdmissionUntil(params);
-  } catch (error) {
-    // Preserve finalization-specific cancellation/timeout diagnostics while
-    // still allowing quarantine and other admission failures through.
-    assertFinalizationWaitActive(
-      params.abortSignal,
-      params.deadlineAt,
-      params.appId,
-    );
-    throw error;
-  }
+  assertFinalizationWaitActive(params.abortSignal, params.deadlineAt);
+  return params.operation();
 }
 
 function maxStepsFor(persona: SubagentPersona): number {
@@ -201,7 +180,10 @@ export function raceWithAbort<T>(
 
 const logger = log.scope("subagent_manager");
 
-const abortControllers = new Map<string, AbortController>();
+const abortControllers = new Map<
+  string,
+  { controller: AbortController; actorRunId?: string }
+>();
 const cancelledThreadIds = new Set<string>();
 const autoFixOwnerByThread = new Map<string, number>();
 const followupRunners = new Map<string, (assignment: string) => void>();
@@ -213,6 +195,7 @@ const pendingRuns: Array<{
   chatId: number;
   source: "model" | "review_button" | "auto_review" | "followup";
   run: () => Promise<void>;
+  activity?: ActivityHandle;
 }> = [];
 const eventTargets = new Set<WebContents>();
 
@@ -243,10 +226,6 @@ export async function settleSubagentsForChatDeletion(
   const disposal = subagentDisposalRegistry.beginDisposal(chatId);
   try {
     await disposal.drainAdmissions();
-    const chat = await db.query.chats.findFirst({
-      columns: { appId: true },
-      where: eq(chats.id, chatId),
-    });
     const threads = await db.query.agentThreads.findMany({
       columns: { id: true, persona: true },
       where: eq(agentThreads.chatId, chatId),
@@ -254,10 +233,12 @@ export async function settleSubagentsForChatDeletion(
     const threadIds = new Set(threads.map(({ id }) => id));
 
     for (let index = pendingRuns.length - 1; index >= 0; index--) {
-      if (pendingRuns[index].chatId === chatId) pendingRuns.splice(index, 1);
+      if (pendingRuns[index].chatId === chatId) {
+        pendingRuns.splice(index, 1)[0].activity?.settle();
+      }
     }
     for (const { id } of threads) {
-      abortControllers.get(id)?.abort();
+      abortControllers.get(id)?.controller.abort();
       followupRunners.delete(id);
       followupStarts.delete(id);
       const cleanupTimer = followupCleanupTimers.get(id);
@@ -272,16 +253,7 @@ export async function settleSubagentsForChatDeletion(
         finishThread(id, "cancelled", null, "The owning chat was deleted."),
       ),
     );
-    if (chat) {
-      for (const thread of threads) {
-        if (
-          thread.persona === "implementer" &&
-          !abortControllers.has(thread.id)
-        ) {
-          releaseMutationLease(chat.appId, thread.id);
-        }
-      }
-    }
+    const actorRunIds = closeAndDisposeTurnsForChat(chatId);
 
     await disposal.waitForActiveRuns();
     activeRunsByChat.delete(chatId);
@@ -291,13 +263,11 @@ export async function settleSubagentsForChatDeletion(
       if (cleanupTimer) clearTimeout(cleanupTimer);
       followupCleanupTimers.delete(id);
     }
-    if (chat) {
-      for (const thread of threads) {
-        if (thread.persona === "implementer") {
-          releaseMutationLease(chat.appId, thread.id);
-        }
-      }
-    }
+    await Promise.all(
+      actorRunIds.map((actorRunId) =>
+        waitForMutationActorDrain(actorRunId, SAFE_ABORT_DRAIN_MAX_WAIT_MS),
+      ),
+    );
     return () => disposal.release();
   } catch (error) {
     disposal.release();
@@ -463,6 +433,7 @@ export async function spawnModelSubagent(params: {
     taskName: string;
     scope: string[];
     abortSignal: AbortSignal;
+    mutationActivityOwner?: MutationActivityOwner;
   }) => ToolSet;
 }): Promise<string> {
   assertPro(params.persona);
@@ -478,7 +449,10 @@ export async function spawnModelSubagent(params: {
   }
   await preflightPersonaModel(params.persona);
 
-  const normalizedScope = params.scope.map(normalizeMutationScope);
+  const normalizedScope =
+    params.persona === "implementer"
+      ? validateMutationScope(params.scope)
+      : params.scope.map(normalizeMutationScope);
   const initialAssignment = buildSubagentAssignment(
     params.persona,
     params.assignment,
@@ -488,71 +462,74 @@ export async function spawnModelSubagent(params: {
   const thread = await subagentDisposalRegistry.withAdmission(
     params.ctx.chatId,
     async () => {
-      const reserved =
-        params.persona !== "implementer" ||
-        (await withMutationAdmissionUntil({
-          appId: params.ctx.appId,
-          abortSignal: params.ctx.abortSignal,
-          deadlineAt: Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS,
-          operation: async () =>
-            acquireMutationLease({
-              appId: params.ctx.appId,
-              threadId,
-              scope: normalizedScope,
-            }),
-        }));
-      if (!reserved) {
+      if (
+        params.persona === "implementer" &&
+        !params.ctx.mutationActivityOwner
+      ) {
         throw new DyadError(
-          "Another Implementer is already editing this app.",
-          DyadErrorKind.Conflict,
+          "Writable sub-agent is missing its owning root turn.",
+          DyadErrorKind.Precondition,
         );
       }
-      try {
-        const thread = await createThread({
-          id: threadId,
-          chatId: params.ctx.chatId,
-          persona: params.persona,
-          taskName: params.taskName,
-          assignment: initialAssignment,
-          invocationSource: "model",
-          contextJson: {
-            scope: normalizedScope,
-            sourceMessageId: params.ctx.messageId,
-          },
-        });
-        const run = (assignment: string) =>
-          enqueueRun({
+      const thread = await createThread({
+        id: threadId,
+        chatId: params.ctx.chatId,
+        persona: params.persona,
+        taskName: params.taskName,
+        assignment: initialAssignment,
+        invocationSource: "model",
+        contextJson: {
+          scope: normalizedScope,
+          sourceMessageId: params.ctx.messageId,
+        },
+      });
+      const run = (assignment: string) => {
+        let owner: MutationActivityOwner | undefined;
+        let activity: ActivityHandle | undefined;
+        if (params.persona === "implementer") {
+          const rootOwner = params.ctx.mutationActivityOwner!;
+          owner = createMutationActivityOwner({
+            appId: rootOwner.appId,
+            turnId: rootOwner.turnId,
+            chatId: rootOwner.chatId,
             threadId: thread.id,
-            chatId: params.ctx.chatId,
-            source: "model",
-            run: () =>
-              runThread(
-                thread.id,
-                params.ctx.appId,
-                buildSubagentAssignment(
-                  params.persona,
-                  assignment,
-                  normalizedScope,
-                ),
-                params.ctx,
-                (abortSignal) =>
-                  params.buildTools({
-                    threadId: thread.id,
-                    persona: params.persona,
-                    taskName: params.taskName,
-                    scope: normalizedScope,
-                    abortSignal,
-                  }),
+            persona: "implementer",
+          });
+          activity = reserveSubagentRun(owner);
+        }
+        enqueueRun({
+          threadId: thread.id,
+          chatId: params.ctx.chatId,
+          source: "model",
+          activity,
+          run: () =>
+            runThread(
+              thread.id,
+              params.ctx.appId,
+              buildSubagentAssignment(
+                params.persona,
+                assignment,
                 normalizedScope,
               ),
-          });
-        followupRunners.set(thread.id, run);
-        run(params.assignment);
-        return thread;
-      } catch (error) {
-        releaseMutationLease(params.ctx.appId, threadId);
-        throw error;
-      }
+              params.ctx,
+              (abortSignal) =>
+                params.buildTools({
+                  threadId: thread.id,
+                  persona: params.persona,
+                  taskName: params.taskName,
+                  scope: normalizedScope,
+                  abortSignal,
+                  mutationActivityOwner: owner,
+                }),
+              normalizedScope,
+              owner,
+              activity,
+            ),
+        });
+      };
+      followupRunners.set(thread.id, run);
+      run(params.assignment);
+      return thread;
     },
   );
   return thread.id;
@@ -680,40 +657,27 @@ export async function cancelSubagent(
     return;
   }
   cancelledThreadIds.add(threadId);
-  const controller = abortControllers.get(threadId);
-  controller?.abort();
+  const activeRun = abortControllers.get(threadId);
+  activeRun?.controller.abort();
   const pendingIndex = pendingRuns.findIndex(
     (run) => run.threadId === threadId,
   );
   const schedulerStillOwnsRun =
     activeRunsByChat.get(chatId)?.has(threadId) === true;
-  if (pendingIndex >= 0) pendingRuns.splice(pendingIndex, 1);
-  // An active writer keeps its lease until its current atomic tool invocation
-  // has unwound through runThread.finally. Pending and not-yet-registered runs
-  // are safe to release because the cancellation tombstone prevents startup.
-  if (thread.persona === "implementer" && !controller) {
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      with: { app: true },
-    });
-    if (chat?.app) releaseMutationLease(chat.app.id, threadId);
-  }
-  if (thread.persona === "implementer" && controller) {
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      with: { app: true },
-    });
-    if (chat?.app) {
-      // Give an already-entered mutation a bounded opportunity to leave
-      // admission before making cancellation terminal. If it ignores the
-      // signal, quarantine its reservation so queued/new writers and root
-      // finalization remain blocked until the operation really settles.
-      await drainActiveMutationOrQuarantine(chat.app.id);
-      releaseMutationLease(chat.app.id, threadId);
-    }
+  if (pendingIndex >= 0)
+    pendingRuns.splice(pendingIndex, 1)[0].activity?.settle();
+  // An active writer keeps its exact activity tokens until its current tool
+  // invocation unwinds. Pending runs are safe to settle because the
+  // cancellation tombstone prevents startup.
+  if (thread.persona === "implementer" && activeRun?.actorRunId) {
+    closeMutationActor(activeRun.actorRunId);
+    await waitForMutationActorDrain(
+      activeRun.actorRunId,
+      SAFE_ABORT_DRAIN_MAX_WAIT_MS,
+    );
   }
   await finishThread(threadId, "cancelled", null, "Cancelled by user.");
-  if (pendingIndex >= 0 || (!controller && !schedulerStillOwnsRun)) {
+  if (pendingIndex >= 0 || (!activeRun && !schedulerStillOwnsRun)) {
     cancelledThreadIds.delete(threadId);
   }
 }
@@ -1110,7 +1074,6 @@ async function sendSubagentMessageAdmitted(
   content: string,
   abortSignal?: AbortSignal,
 ): Promise<void> {
-  const thread = await getOwnedThread(chatId, threadId);
   const append = async () => {
     const current = await getOwnedThread(chatId, threadId);
     if (!isSubagentAcceptingMessages(current.status)) {
@@ -1122,17 +1085,13 @@ async function sendSubagentMessageAdmitted(
     await appendThreadMessage({ threadId, role: "root", content });
     emit(current.chatId, threadId);
   };
-  if (thread.persona === "implementer") {
-    const appId = await getThreadAppId(thread.chatId);
-    await withMutationAdmissionUntil({
-      appId,
-      abortSignal,
-      deadlineAt: Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS,
-      operation: append,
-    });
-  } else {
-    await append();
+  if (abortSignal?.aborted) {
+    throw new DyadError(
+      "Sending the sub-agent message was cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
   }
+  await append();
 }
 
 export async function followupSubagent(
@@ -1147,6 +1106,7 @@ export async function followupSubagent(
       taskName: string;
       scope: string[];
       abortSignal: AbortSignal;
+      mutationActivityOwner?: MutationActivityOwner;
     }) => ToolSet;
   },
 ): Promise<SubagentPersona> {
@@ -1168,6 +1128,7 @@ async function followupSubagentAdmitted(
       taskName: string;
       scope: string[];
       abortSignal: AbortSignal;
+      mutationActivityOwner?: MutationActivityOwner;
     }) => ToolSet;
   },
 ): Promise<SubagentPersona> {
@@ -1196,11 +1157,31 @@ async function followupSubagentAdmitted(
           (value): value is string => typeof value === "string",
         )
       : [];
-    run = (nextAssignment: string) =>
+    run = (nextAssignment: string) => {
+      let owner: MutationActivityOwner | undefined;
+      let activity: ActivityHandle | undefined;
+      if (persona === "implementer") {
+        const rootOwner = currentTurn.ctx.mutationActivityOwner;
+        if (!rootOwner) {
+          throw new DyadError(
+            "Writable follow-up is missing its owning root turn.",
+            DyadErrorKind.Precondition,
+          );
+        }
+        owner = createMutationActivityOwner({
+          appId: rootOwner.appId,
+          turnId: rootOwner.turnId,
+          chatId: rootOwner.chatId,
+          threadId: thread.id,
+          persona: "implementer",
+        });
+        activity = reserveSubagentRun(owner);
+      }
       enqueueRun({
         threadId: thread.id,
         chatId,
         source: "followup",
+        activity,
         run: () =>
           runThread(
             thread.id,
@@ -1214,10 +1195,14 @@ async function followupSubagentAdmitted(
                 taskName: thread.taskName,
                 scope,
                 abortSignal,
+                mutationActivityOwner: owner,
               }),
             scope,
+            owner,
+            activity,
           ),
       });
+    };
     followupRunners.set(thread.id, run);
   }
   if (!run && thread.persona === "reviewer") {
@@ -1233,60 +1218,17 @@ async function followupSubagentAdmitted(
   const appendAndSchedule = async () => {
     const current = await getOwnedThread(chatId, threadId);
     const isActive = isSubagentActive(current.status);
-    let reservedImplementer = false;
-    if (current.persona === "implementer" && !isActive) {
-      const scope = Array.isArray(current.contextJson?.scope)
-        ? current.contextJson.scope.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : [];
-      if (
-        !acquireMutationLease({
-          appId: currentTurn!.ctx.appId,
-          threadId,
-          scope,
-        })
-      ) {
-        throw new DyadError(
-          "This app is already being edited or finalized.",
-          DyadErrorKind.Conflict,
-        );
-      }
-      reservedImplementer = true;
-    }
-    try {
-      await appendThreadMessage({
-        threadId,
-        role: "root",
-        content: assignment,
-      });
-      emit(current.chatId, threadId);
-      if (!isActive) {
-        await startPendingFollowup(
-          threadId,
-          selectedRun,
-          true,
-          current.persona === "implementer",
-        );
-        reservedImplementer = false;
-      }
-    } catch (error) {
-      if (reservedImplementer) {
-        releaseMutationLease(currentTurn!.ctx.appId, threadId);
-      }
-      throw error;
+    await appendThreadMessage({
+      threadId,
+      role: "root",
+      content: assignment,
+    });
+    emit(current.chatId, threadId);
+    if (!isActive) {
+      await startPendingFollowup(threadId, selectedRun, true);
     }
   };
-  if (thread.persona === "implementer") {
-    await withMutationAdmissionUntil({
-      appId: currentTurn!.ctx.appId,
-      abortSignal: currentTurn!.ctx.abortSignal,
-      deadlineAt: Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS,
-      operation: appendAndSchedule,
-    });
-  } else {
-    await appendAndSchedule();
-  }
+  await appendAndSchedule();
   return thread.persona;
 }
 
@@ -1351,15 +1293,15 @@ export async function waitForSubagents(
   }
 }
 
-export async function waitForSubagentsAndBeginFinalization(
+export async function waitForOwnedSubagentsAndSealTurn(
   chatId: number,
   threadIds: string[],
-  appId: number,
+  turnId: string,
   abortSignal?: AbortSignal,
 ): Promise<SubagentThreadSummary[]> {
   const deadlineAt = Date.now() + ROOT_FINALIZATION_MAX_WAIT_MS;
   while (true) {
-    assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
+    assertFinalizationWaitActive(abortSignal, deadlineAt, turnId);
     const summaries =
       threadIds.length > 0
         ? await waitForSubagents(
@@ -1369,16 +1311,11 @@ export async function waitForSubagentsAndBeginFinalization(
             Math.max(1, deadlineAt - Date.now()),
           )
         : [];
-    if (hasActiveMutationTool(appId)) {
-      await waitForAbortableDelay(250, abortSignal);
-      continue;
-    }
     const finalized = await withFinalizationAdmission({
-      appId,
       abortSignal,
       deadlineAt,
       operation: async () => {
-        assertFinalizationWaitActive(abortSignal, deadlineAt, appId);
+        assertFinalizationWaitActive(abortSignal, deadlineAt, turnId);
         const pending =
           threadIds.length === 0
             ? []
@@ -1404,7 +1341,7 @@ export async function waitForSubagentsAndBeginFinalization(
         ) {
           return false;
         }
-        return beginAppFinalization(appId);
+        return tryBeginTurnFinalization(turnId);
       },
     });
     if (finalized) return summaries;
@@ -1415,7 +1352,7 @@ export async function waitForSubagentsAndBeginFinalization(
 function assertFinalizationWaitActive(
   abortSignal: AbortSignal | undefined,
   deadlineAt: number,
-  appId?: number,
+  turnId?: string,
 ): void {
   if (abortSignal?.aborted) {
     throw new DyadError(
@@ -1424,21 +1361,16 @@ function assertFinalizationWaitActive(
     );
   }
   if (Date.now() >= deadlineAt) {
-    // Name the blocker: a held lease was previously indistinguishable from a
-    // concurrent finalization, which cost a full forensic investigation the
-    // one time it happened. describeMutationBlock reads module state only.
-    const blocker = appId != null ? describeMutationBlock(appId) : null;
+    // Name only this turn's blocking actor/activity; unrelated chats continue.
+    const blocker = turnId ? describeTurnActivity(turnId) : null;
     throw new DyadError(
-      `Timed out waiting to finalize the app. ${
-        blocker ?? "Another app operation may still be active."
+      `Timed out waiting to finalize this turn's app changes. ${
+        blocker ??
+        "Owned agent work may still be active; other chats can continue."
       }`,
       DyadErrorKind.Conflict,
     );
   }
-}
-
-export async function endRootFinalization(appId: number): Promise<void> {
-  endAppFinalization(appId);
 }
 
 /**
@@ -1465,12 +1397,17 @@ async function runThread(
   rootCtx: AgentContext,
   buildTools: (abortSignal: AbortSignal) => ToolSet,
   scope: string[],
+  mutationOwner?: MutationActivityOwner,
+  runActivity?: ActivityHandle,
 ): Promise<void> {
   const thread = await getThread(threadId);
   if (cancelledThreadIds.delete(threadId)) return;
   const controller = new AbortController();
   let shouldContinue = false;
-  abortControllers.set(threadId, controller);
+  abortControllers.set(threadId, {
+    controller,
+    actorRunId: mutationOwner?.actorRunId,
+  });
   const entitlementWatcher = watchEntitlement(threadId, controller);
   const claimedExplorerMessageIds = new Set<number>();
   try {
@@ -1478,15 +1415,6 @@ async function runThread(
       thread.persona,
       rootCtx.canUseImplementerSubagent === true,
     );
-    if (
-      thread.persona === "implementer" &&
-      !acquireMutationLease({ appId, threadId, scope })
-    ) {
-      throw new DyadError(
-        "Implementer lost its reserved writer lease before starting.",
-        DyadErrorKind.Conflict,
-      );
-    }
     if (controller.signal.aborted || cancelledThreadIds.has(threadId)) return;
     if (!(await updateStatus(threadId, "running"))) return;
     const tools = buildTools(controller.signal);
@@ -1520,6 +1448,7 @@ async function runThread(
               args: { query: explorerAssignment, intent: "explain" },
               ctx: {
                 ...rootCtx,
+                mutationActivityOwner: mutationOwner,
                 subagentThreadId: threadId,
                 subagentPersona: "explorer",
                 abortSignal: controller.signal,
@@ -1551,9 +1480,6 @@ async function runThread(
         .where(inArray(agentMessages.id, [...claimedExplorerMessageIds]));
     }
     await appendAssistantMessage(threadId, durableResult);
-    if (thread.persona === "implementer") {
-      releaseMutationLease(appId, threadId);
-    }
     await finishThread(
       threadId,
       result.hitStepLimit || usedExplorerFallback ? "partial" : "completed",
@@ -1575,10 +1501,14 @@ async function runThread(
     );
   } finally {
     clearInterval(entitlementWatcher);
-    releaseMutationLease(appId, threadId);
     abortControllers.delete(threadId);
     cancelledThreadIds.delete(threadId);
-    if (shouldContinue) await schedulePendingFollowup(threadId);
+    try {
+      if (shouldContinue) await schedulePendingFollowup(threadId);
+    } finally {
+      if (mutationOwner) closeMutationActor(mutationOwner.actorRunId);
+      runActivity?.settle();
+    }
   }
 }
 
@@ -1612,21 +1542,9 @@ async function runReview(
   const thread = await getThread(threadId);
   const controller = new AbortController();
   let shouldContinue = false;
-  abortControllers.set(threadId, controller);
+  abortControllers.set(threadId, { controller });
   const entitlementWatcher = watchEntitlement(threadId, controller);
-  const writerDeadlineAt = Date.now() + REVIEW_WRITER_MAX_WAIT_MS;
   try {
-    while (hasMutationLease(appId) || hasActiveMutationTool(appId)) {
-      if (Date.now() >= writerDeadlineAt) {
-        throw new DyadError(
-          "Timed out waiting for the app writer before starting review.",
-          DyadErrorKind.Conflict,
-        );
-      }
-      await setWaitingForWriter(threadId);
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      if (controller.signal.aborted) return;
-    }
     if (!(await updateStatus(threadId, "running"))) return;
     const reviewResult = await runModel({
       threadId,
@@ -1739,22 +1657,12 @@ async function runModel(params: {
     stopWhen: stepCountIs(maxStepsFor(params.persona)),
     abortSignal: params.abortSignal,
   });
-  // Race the aggregation against the abort signal. streamText forwards the
-  // signal to the model request, but a tool execute that ignores it leaves
-  // these promises pending forever — and runThread's finally (lease release,
-  // entitlement-watcher cleanup) never runs. The rejection is swallowed by
-  // runThread's aborted-signal check. An already-entered mutation that ignores
-  // cancellation remains quarantined from other writers and finalization until
-  // it actually settles.
+  // Race aggregation against the abort signal. Actor-scoped cancellation in
+  // cancelSubagent closes the exact generation and waits for its tracked
+  // mutation tokens without blocking unrelated turns.
   const [text, usage, steps] = await raceWithAbort(
     Promise.all([result.text, result.totalUsage, result.steps]),
     params.abortSignal,
-    // Give an entered mutation a bounded opportunity to drain. If it ignores
-    // cancellation, quarantine it so other writers and finalization remain tied
-    // to the real operation lifetime even after this model chain unwinds.
-    shouldDrainMutationOnAbort(params.persona)
-      ? () => drainActiveMutationOrQuarantine(params.appId)
-      : undefined,
   );
   if (streamError) throw streamError;
   if (claimedRootMessageIds.size > 0) {
@@ -2007,11 +1915,6 @@ async function updateStatus(
   return result === "applied";
 }
 
-async function setWaitingForWriter(threadId: string): Promise<void> {
-  const thread = await getThread(threadId);
-  await applyThreadLifecycle(thread, { type: "WAIT_FOR_WRITER" });
-}
-
 async function finishThread(
   threadId: string,
   status:
@@ -2080,17 +1983,6 @@ async function getOwnedThread(chatId: number, threadId: string) {
   if (!thread)
     throw new DyadError("Sub-agent thread not found.", DyadErrorKind.NotFound);
   return thread;
-}
-
-async function getThreadAppId(chatId: number): Promise<number> {
-  const chat = await db.query.chats.findFirst({
-    where: eq(chats.id, chatId),
-    with: { app: true },
-  });
-  if (!chat?.app) {
-    throw new DyadError("Chat app not found.", DyadErrorKind.NotFound);
-  }
-  return chat.app.id;
 }
 
 async function reconstructReviewerRunner(
@@ -2432,7 +2324,6 @@ async function startPendingFollowup(
   threadId: string,
   runner?: (assignment: string) => void,
   disposalAdmissionOwned = false,
-  mutationAdmissionOwned = false,
 ): Promise<void> {
   if (!disposalAdmissionOwned) {
     const thread = await getThread(threadId);
@@ -2455,68 +2346,19 @@ async function startPendingFollowup(
     if (!pending) return;
     const thread = await getThread(threadId);
     if (isSubagentActive(thread.status)) return;
-    const queueFollowup = async (acquiredAppId: number | null) => {
+    const queueFollowup = async () => {
       followupStarts.add(threadId);
       try {
         const lifecycle = await applyThreadLifecycle(thread, {
           type: "QUEUE_FOLLOWUP",
         });
-        if (lifecycle !== "applied") {
-          // Latent leak fixed: this return previously kept the acquired lease
-          // — release lived only in the catch, and run() (whose runThread
-          // finally would release) was never started. Unreachable without the
-          // advanced sub-agent tools, but a silent forever-lease when hit.
-          if (acquiredAppId !== null) {
-            releaseMutationLease(acquiredAppId, threadId);
-          }
-          return;
-        }
+        if (lifecycle !== "applied") return;
         run("Continue by addressing the queued root messages in order.");
-        acquiredAppId = null;
-      } catch (error) {
-        if (acquiredAppId !== null) {
-          releaseMutationLease(acquiredAppId, threadId);
-        }
-        throw error;
       } finally {
         followupStarts.delete(threadId);
       }
     };
-
-    if (thread.persona !== "implementer") {
-      await queueFollowup(null);
-      return;
-    }
-
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, thread.chatId),
-      with: { app: true },
-    });
-    if (!chat?.app) {
-      throw new DyadError(
-        "The Implementer's app no longer exists.",
-        DyadErrorKind.NotFound,
-      );
-    }
-    const scope = Array.isArray(thread.contextJson?.scope)
-      ? thread.contextJson.scope.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
-    const queueImplementerFollowup = async () => {
-      if (!acquireMutationLease({ appId: chat.app.id, threadId, scope })) {
-        throw new DyadError(
-          "Another Implementer is already editing this app.",
-          DyadErrorKind.Conflict,
-        );
-      }
-      await queueFollowup(chat.app.id);
-    };
-    if (mutationAdmissionOwned) {
-      await queueImplementerFollowup();
-    } else {
-      await withMutationAdmission(chat.app.id, queueImplementerFollowup);
-    }
+    await queueFollowup();
   });
 }
 
@@ -2537,6 +2379,7 @@ async function schedulePendingFollowup(threadId: string): Promise<void> {
 
 function enqueueRun(item: (typeof pendingRuns)[number]): void {
   if (subagentDisposalRegistry.isAdmissionClosed(item.chatId)) {
+    item.activity?.settle();
     followupRunners.delete(item.threadId);
     void finishThread(
       item.threadId,
@@ -2550,7 +2393,7 @@ function enqueueRun(item: (typeof pendingRuns)[number]): void {
     for (let index = pendingRuns.length - 1; index >= 0; index--) {
       const pending = pendingRuns[index];
       if (pending.chatId === item.chatId && pending.source === "auto_review") {
-        pendingRuns.splice(index, 1);
+        pendingRuns.splice(index, 1)[0].activity?.settle();
         void finishThread(
           pending.threadId,
           "cancelled",
@@ -2588,6 +2431,7 @@ function drainRuns(chatId: number): void {
         logger.error(`Sub-agent run ${item.threadId} rejected`, error),
       )
       .finally(() => {
+        item.activity?.settle();
         active.delete(item.threadId);
         if (
           active.size === 0 &&

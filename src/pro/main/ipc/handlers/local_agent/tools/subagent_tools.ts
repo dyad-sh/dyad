@@ -14,7 +14,7 @@ import {
   updateSubagentActivity,
   waitForSubagents,
 } from "../subagents/subagent_manager";
-import { normalizeMutationScope } from "../subagents/mutation_lease";
+import { normalizeMutationScope } from "../subagents/mutation_activity_tracker";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -65,17 +65,27 @@ interface SubagentToolContextParams {
   taskName: string;
   scope: string[];
   abortSignal: AbortSignal;
+  mutationActivityOwner?: AgentContext["mutationActivityOwner"];
 }
 
 export function buildSubagentContext(
   params: SubagentToolContextParams,
 ): AgentContext {
-  const { ctx, threadId, persona, taskName, scope, abortSignal } = params;
+  const {
+    ctx,
+    threadId,
+    persona,
+    taskName,
+    scope,
+    abortSignal,
+    mutationActivityOwner,
+  } = params;
   return {
     ...ctx,
     subagentThreadId: threadId,
     subagentPersona: persona,
     subagentPathScope: scope.map(normalizeMutationScope),
+    mutationActivityOwner,
     abortSignal,
     onWorkspaceMutation: (didMutateFile) => {
       ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
@@ -234,7 +244,7 @@ export const spawnAgentTool: ToolDefinition<
   // orchestration record when the turn-scoped schema excludes Implementer.
   allowInReadOnlyModes: (ctx) => ctx.canUseImplementerSubagent !== true,
   subagentOnly: true,
-  requiresMutationLease: false,
+  mutationTracking: "none",
   requiresBlueprintApproval: false,
   usesEngineEndpoint: true,
   isEnabled: (ctx) =>
@@ -359,7 +369,7 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
   defaultConsent: "always",
   modifiesState: true,
   subagentOnly: true,
-  requiresMutationLease: false,
+  mutationTracking: "none",
   requiresBlueprintApproval: false,
   isEnabled: canUseAdvancedSubagentTools,
   execute: async (args, ctx) => {
@@ -379,7 +389,7 @@ export const cancelAgentTool: ToolDefinition<{ thread_id: string }> = {
   defaultConsent: "always",
   modifiesState: true,
   subagentOnly: true,
-  requiresMutationLease: false,
+  mutationTracking: "none",
   requiresBlueprintApproval: false,
   isEnabled: canUseAdvancedSubagentTools,
   execute: async (args, ctx) => {
@@ -400,7 +410,7 @@ export const sendMessageTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   defaultConsent: "always",
   modifiesState: true,
   subagentOnly: true,
-  requiresMutationLease: false,
+  mutationTracking: "none",
   requiresBlueprintApproval: false,
   isEnabled: canUseAdvancedSubagentTools,
   execute: async (args, ctx) => {
@@ -420,7 +430,7 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   description:
     "Queue a durable follow-up assignment on an existing child thread. An idle child will consume it on its next turn.",
   subagentOnly: true,
-  requiresMutationLease: false,
+  mutationTracking: "none",
   requiresBlueprintApproval: false,
   usesEngineEndpoint: true,
   execute: async (args, ctx) => {

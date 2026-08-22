@@ -16,7 +16,7 @@ import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
 import { buildMcpAutoApprove } from "../mcp_auto_consent";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
-import { withMutationToolAdmission } from "../subagents/mutation_lease";
+import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
 
 const MCP_RESULT_TYPE = `type McpResult = {
   content: Array<
@@ -196,7 +196,7 @@ export function buildMcpCapabilityMap(params: {
 
       try {
         params.ctx.mcpToolRan = true;
-        const res = await withMutationToolAdmission(params.ctx, async () => {
+        const res = await withTrackedMutation(params.ctx, async () => {
           return mcpTool.execute(args, {
             toolCallId: `mcp-sandbox-${def.toolKey}`,
             messages: [],

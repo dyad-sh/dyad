@@ -11,6 +11,7 @@ import type { SubagentPersona } from "@/ipc/types";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { McpToolDef } from "./mcp_type_defs";
+import type { MutationActivityOwner } from "../subagents/mutation_activity_tracker";
 
 // ============================================================================
 // XML Escape Helpers
@@ -65,6 +66,8 @@ export const APP_MUTATING_TOOL_NAMES = [
 export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 
 export interface AgentContext {
+  /** Owner-scoped identity used to join only this root turn's mutations. */
+  mutationActivityOwner?: MutationActivityOwner;
   event: IpcMainInvokeEvent;
   appId: number;
   appPath: string;
@@ -392,12 +395,8 @@ export interface ToolDefinition<T = any> {
   readonly allowInReadOnlyModes?: boolean | ((ctx: AgentContext) => boolean);
   /** Sub-agent capability; hidden and runtime-rejected for non-Pro users. */
   readonly subagentOnly?: boolean;
-  /**
-   * Whether a state-modifying tool must own the app mutation lease. Set false
-   * for orchestration controls whose state is durable metadata, not workspace
-   * mutation; writable children acquire their own lease in the manager.
-   */
-  readonly requiresMutationLease?: boolean;
+  /** How finalization tracks this tool's workspace mutation activity. */
+  readonly mutationTracking?: "automatic" | "internal" | "none";
   /**
    * Whether this state-modifying tool must wait for app-blueprint approval.
    * Set false for durable orchestration metadata that cannot change the app.

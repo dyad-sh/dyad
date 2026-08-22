@@ -63,6 +63,7 @@ describe("commitAllChanges", () => {
   it("uses the file-count fallback for a whitespace-only chat summary", async () => {
     const result = await commitAllChanges(
       {
+        appId: 1,
         appPath: "/mock/app",
         supabaseProjectId: null,
       },
@@ -76,6 +77,36 @@ describe("commitAllChanges", () => {
       noVerify: true,
     });
     expect(result).toEqual({ commitHash: "commit-hash" });
+  });
+
+  it("serializes the complete same-app checkpoint and rechecks status", async () => {
+    let releaseFirst!: () => void;
+    const firstCommit = new Promise<string>((resolve) => {
+      releaseFirst = () => resolve("first-hash");
+    });
+    mocks.getGitUncommittedFiles
+      .mockResolvedValueOnce(["first.ts"])
+      .mockResolvedValueOnce([]);
+    mocks.gitCommit.mockReturnValueOnce(firstCommit);
+
+    const first = commitAllChanges({
+      appId: 9,
+      appPath: "/mock/app",
+      supabaseProjectId: null,
+    });
+    const second = commitAllChanges({
+      appId: 9,
+      appPath: "/mock/app",
+      supabaseProjectId: null,
+    });
+    await vi.waitFor(() => expect(mocks.gitCommit).toHaveBeenCalledOnce());
+    expect(mocks.getGitUncommittedFiles).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await expect(first).resolves.toEqual({ commitHash: "first-hash" });
+    await expect(second).resolves.toEqual({ commitHash: undefined });
+    expect(mocks.getGitUncommittedFiles).toHaveBeenCalledTimes(2);
+    expect(mocks.gitAddAll).toHaveBeenCalledOnce();
   });
 });
 
@@ -91,6 +122,7 @@ describe("deployAllFunctionsIfNeeded", () => {
     const access = vi.spyOn(fs, "access").mockResolvedValueOnce(undefined);
     try {
       const result = await deployAllFunctionsIfNeeded({
+        appId: 1,
         appPath: "/apps/test",
         supabaseProjectId: "project-id",
         supabaseOrganizationSlug: null,
@@ -119,11 +151,51 @@ describe("deployAllFunctionsIfNeeded", () => {
     }
   });
 
+  it("serializes same-app reconciliation and rechecks after admission", async () => {
+    const access = vi.spyOn(fs, "access").mockResolvedValue(undefined);
+    let releaseFirst!: () => void;
+    mocks.deployAffectedSupabaseFunctions.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          releaseFirst = () => resolve([]);
+        }),
+    );
+    const context = {
+      appId: 12,
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: ["alpha"],
+      pendingFunctionDeletes: [],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    };
+    try {
+      const first = deployAllFunctionsIfNeeded(context);
+      const second = deployAllFunctionsIfNeeded(context);
+      await vi.waitFor(() =>
+        expect(mocks.deployAffectedSupabaseFunctions).toHaveBeenCalledOnce(),
+      );
+      expect(access).toHaveBeenCalledTimes(1);
+
+      releaseFirst();
+      await expect(first).resolves.toEqual({ success: true });
+      await expect(second).resolves.toEqual({ success: true });
+      expect(access).toHaveBeenCalledTimes(2);
+      expect(mocks.deployAffectedSupabaseFunctions).toHaveBeenCalledTimes(2);
+    } finally {
+      access.mockRestore();
+    }
+  });
+
   it("returns deploy warnings from the shared helper", async () => {
     mocks.deployAffectedSupabaseFunctions.mockResolvedValueOnce([
       "Failed to bundle alpha",
     ]);
     const result = await deployAllFunctionsIfNeeded({
+      appId: 1,
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: null,
@@ -143,6 +215,7 @@ describe("deployAllFunctionsIfNeeded", () => {
 
   it("runs deferred child function deletions during root finalization", async () => {
     const result = await deployAllFunctionsIfNeeded({
+      appId: 1,
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: "org",
@@ -170,6 +243,7 @@ describe("deployAllFunctionsIfNeeded", () => {
     });
 
     const result = await deployAllFunctionsIfNeeded({
+      appId: 1,
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: null,
@@ -191,6 +265,7 @@ describe("deployAllFunctionsIfNeeded", () => {
     mocks.readSettings.mockReturnValueOnce({ skipPruneEdgeFunctions: true });
 
     const result = await deployAllFunctionsIfNeeded({
+      appId: 1,
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: null,
@@ -217,6 +292,7 @@ describe("deployAllFunctionsIfNeeded", () => {
       }),
     );
     const result = await deployAllFunctionsIfNeeded({
+      appId: 1,
       appPath: "/apps/test",
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: null,

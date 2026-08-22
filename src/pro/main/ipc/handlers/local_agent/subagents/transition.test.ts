@@ -23,7 +23,6 @@ const STATUSES: readonly SubagentStatus[] = [
 
 const EVENTS: readonly SubagentLifecycleEvent[] = [
   { type: "START" },
-  { type: "WAIT_FOR_WRITER" },
   {
     type: "FINISH",
     status: "completed",

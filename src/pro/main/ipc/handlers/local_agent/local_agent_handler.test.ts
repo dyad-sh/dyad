@@ -341,10 +341,9 @@ vi.mock(
 
 const mockSubagentManager = vi.hoisted(() => ({
   cancelSubagent: vi.fn(async () => {}),
-  endRootFinalization: vi.fn(async () => {}),
   isAcceptableImplementerJoinStatus: vi.fn(() => true),
   waitForSubagents: vi.fn(async () => []),
-  waitForSubagentsAndBeginFinalization: vi.fn(async () => []),
+  waitForOwnedSubagentsAndSealTurn: vi.fn(async () => []),
 }));
 
 vi.mock(
@@ -3443,7 +3442,7 @@ describe("handleLocalAgentStream", () => {
         { type: "text-delta", text: "Finishing" },
       ]);
       const abortController = new AbortController();
-      mockSubagentManager.waitForSubagentsAndBeginFinalization.mockImplementationOnce(
+      mockSubagentManager.waitForOwnedSubagentsAndSealTurn.mockImplementationOnce(
         async () => {
           abortController.abort();
           return [];
@@ -3461,9 +3460,9 @@ describe("handleLocalAgentStream", () => {
         },
       );
 
-      expect(mockSubagentManager.endRootFinalization).toHaveBeenCalledWith(
-        mockChatData.app.id,
-      );
+      expect(
+        mockSubagentManager.waitForOwnedSubagentsAndSealTurn,
+      ).toHaveBeenCalledOnce();
     });
 
     it("cancels spawned sub-agents when the root stream fails", async () => {

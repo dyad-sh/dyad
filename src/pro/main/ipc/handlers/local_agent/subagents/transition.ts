@@ -9,7 +9,6 @@ export type RemediationSource = Exclude<
 
 export type SubagentLifecycleEvent =
   | { readonly type: "START" }
-  | { readonly type: "WAIT_FOR_WRITER" }
   | {
       readonly type: "FINISH";
       readonly status: Exclude<
@@ -78,16 +77,6 @@ export function transitionSubagentLifecycle(
       }
       if (state.status === "running") return ignore(state, "already-active");
       return changed(state, { ...state, status: "running" });
-
-    case "WAIT_FOR_WRITER":
-      if (!isNonterminalSubagentStatus(state.status)) {
-        return ignore(state, "already-terminal");
-      }
-      if (state.status === "running") return ignore(state, "already-active");
-      if (state.status === "waiting_for_writer") {
-        return ignore(state, "already-active");
-      }
-      return changed(state, { ...state, status: "waiting_for_writer" });
 
     case "FINISH":
       if (!isNonterminalSubagentStatus(state.status)) {

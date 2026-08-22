@@ -15,7 +15,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { readSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
-import { withMutationToolAdmission } from "../subagents/mutation_lease";
+import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
 import { writeFileTool } from "./write_file";
 import {
   AgentContext,
@@ -339,7 +339,7 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
     // The sandbox delegates mutations to capability functions. Each capability
     // owns admission so a script can mix read-only work with writes and MCP
     // calls without trying to re-enter the non-reentrant app mutation lock.
-    requiresMutationLease: false,
+    mutationTracking: "internal",
 
     isEnabled: () =>
       isSandboxSupportedPlatform() &&
@@ -487,7 +487,7 @@ function buildWriteFileCapability(ctx: AgentContext) {
     });
     await requireToolConsentOrThrow(writeFileTool, args, ctx);
 
-    return withMutationToolAdmission(ctx, async () => {
+    return withTrackedMutation(ctx, async () => {
       trackFileEditTool(ctx, writeFileTool.name, args);
       const result = await writeFileTool.execute(args, ctx);
       // Honor the tool's mutation predicate exactly like the main

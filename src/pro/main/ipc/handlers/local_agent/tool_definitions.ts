@@ -93,7 +93,7 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
-import { withMutationToolAdmission } from "./subagents/mutation_lease";
+import { withTrackedMutation } from "./subagents/mutation_activity_tracker";
 
 const logger = log.scope("local_agent_tools");
 
@@ -613,9 +613,9 @@ export function buildAgentToolSet(
               }
             : ctx;
         try {
-          const mutationRequiresAdmission =
+          const mutationRequiresTracking =
             toolModifiesState(tool, ctx) &&
-            tool.requiresMutationLease !== false;
+            (tool.mutationTracking ?? "automatic") === "automatic";
           const processedArgs = await processArgPlaceholders(
             args,
             invocationCtx,
@@ -650,8 +650,8 @@ export function buildAgentToolSet(
           }
 
           // Consent can wait indefinitely for the user. Resolve it before
-          // entering app-wide mutation admission so cancellation/finalization
-          // and other actors are not parked behind a UI prompt.
+          // registering mutation activity so cancellation cannot let delayed
+          // consent enter a closed actor generation.
           await requireToolConsentOrThrow(tool, processedArgs, invocationCtx);
           const invoke = async () => {
             if (invocationCtx.abortSignal?.aborted) {
@@ -701,8 +701,8 @@ export function buildAgentToolSet(
             return convertToolResultForAiSdk(result);
           };
 
-          return mutationRequiresAdmission
-            ? await withMutationToolAdmission(invocationCtx, invoke)
+          return mutationRequiresTracking
+            ? await withTrackedMutation(invocationCtx, invoke)
             : await invoke();
         } catch (error) {
           const errorMessage = getToolErrorSummary(error);

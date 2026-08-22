@@ -74,12 +74,17 @@ import {
 } from "@/ipc/utils/model_effort";
 import {
   cancelSubagent,
-  endRootFinalization,
   isAcceptableImplementerJoinStatus,
   waitForSubagents,
-  waitForSubagentsAndBeginFinalization,
+  waitForOwnedSubagentsAndSealTurn,
 } from "./subagents/subagent_manager";
-import { withMutationToolAdmission } from "./subagents/mutation_lease";
+import {
+  closeMutationActor,
+  createMutationActivityOwner,
+  endTurnFinalization,
+  withTrackedMutation,
+  type MutationActivityOwner,
+} from "./subagents/mutation_activity_tracker";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 
 import type {
@@ -770,7 +775,8 @@ export async function handleLocalAgentStream(
   const cancelledImplementerNames: string[] = [];
   const deliveredExplorerThreadIds: string[] = [];
   const synthesizedExplorerThreadIds = new Set<string>();
-  let rootFinalizationActive = false;
+  const mutationTurnId = `local-agent-turn:${placeholderMessageId}`;
+  let rootMutationOwner: MutationActivityOwner | undefined;
 
   try {
     // Get model client
@@ -805,6 +811,12 @@ export async function handleLocalAgentStream(
     const effectiveFreeModelMode =
       freeModelMode ?? isFreeProModel(settings.selectedModel);
     const ctx: AgentContext = {
+      mutationActivityOwner: (rootMutationOwner = createMutationActivityOwner({
+        appId: chat.app.id,
+        turnId: mutationTurnId,
+        chatId: chat.id,
+        actorRunId: `root:${placeholderMessageId}`,
+      })),
       event,
       appId: chat.app.id,
       appPath,
@@ -1878,13 +1890,12 @@ export async function handleLocalAgentStream(
         ),
       );
     } else if (!readOnly && !planModeOnly) {
-      const implementers = await waitForSubagentsAndBeginFinalization(
+      const implementers = await waitForOwnedSubagentsAndSealTurn(
         ctx.chatId,
         implementerThreadIds,
-        ctx.appId,
+        mutationTurnId,
         abortController.signal,
       );
-      rootFinalizationActive = true;
       const unsuccessful = implementers.filter(
         (thread) => !isAcceptableImplementerJoinStatus(thread.status),
       );
@@ -1905,6 +1916,7 @@ export async function handleLocalAgentStream(
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
+      if (rootMutationOwner) closeMutationActor(rootMutationOwner.actorRunId);
       await db
         .update(messages)
         .set({
@@ -2099,6 +2111,7 @@ export async function handleLocalAgentStream(
 
     return true; // Success
   } catch (error) {
+    if (rootMutationOwner) closeMutationActor(rootMutationOwner.actorRunId);
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingLocalAgentInputsForChat(req.chatId);
@@ -2111,7 +2124,7 @@ export async function handleLocalAgentStream(
 
     // A terminal root failure must not leave child work running after the UI
     // reports that the owning turn has ended. This is especially important for
-    // Implementers, which may still hold the mutation lease and edit files.
+    // Implementers, which may still have tracked mutation activity and edit files.
     await Promise.allSettled(
       spawnedSubagentThreadIds.map((threadId) =>
         cancelSubagent(req.chatId, threadId),
@@ -2141,10 +2154,7 @@ export async function handleLocalAgentStream(
     });
     return false; // Error - don't consume quota
   } finally {
-    if (rootFinalizationActive) {
-      await endRootFinalization(chat.app.id);
-      rootFinalizationActive = false;
-    }
+    endTurnFinalization(mutationTurnId);
     // If an in-progress tool's XML preview was overlaid in the renderer
     // and the stream tore down before onXmlComplete could commit and
     // clear it (cancel, error, abort), explicitly clear the overlay so
@@ -2620,7 +2630,7 @@ async function getMcpTools(
               );
               callEmitted = true;
 
-              const res = await withMutationToolAdmission(ctx, async () => {
+              const res = await withTrackedMutation(ctx, async () => {
                 return mcpTool.execute(args, execCtx);
               });
               ctx.mcpToolRan = true;

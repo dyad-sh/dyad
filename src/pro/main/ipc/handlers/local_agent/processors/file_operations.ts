@@ -21,6 +21,10 @@ import {
 } from "../tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "@/ipc/services/app_operation_coordinator";
 
 const logger = log.scope("file_operations");
 
@@ -98,6 +102,7 @@ function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
 export async function deployAllFunctionsIfNeeded(
   ctx: Pick<
     AgentContext,
+    | "appId"
     | "appPath"
     | "supabaseProjectId"
     | "supabaseOrganizationSlug"
@@ -117,137 +122,161 @@ export async function deployAllFunctionsIfNeeded(
   ) {
     return { success: true };
   }
+  const supabaseProjectId = ctx.supabaseProjectId;
 
-  try {
-    const deferred = await reconcileDeferredFunctionOperations({
-      pendingDeploys: ctx.pendingFunctionDeploys,
-      pendingDeletes: ctx.pendingFunctionDeletes ?? [],
-      functionExists: (functionName) =>
-        supabaseFunctionEntryExists(ctx.appPath, functionName),
-    });
-    const settings = readSettings();
-    const preservedDeletes = settings.skipPruneEdgeFunctions
-      ? deferred.deletes
-      : [];
-    const deleteErrors: string[] = [];
-    for (const functionName of settings.skipPruneEdgeFunctions
-      ? []
-      : deferred.deletes) {
+  return appOperationCoordinator.run(
+    {
+      appId: ctx.appId,
+      operation: "reconcile Local Agent Supabase functions",
+      resources: [readAppResource("app-path"), "provider"],
+      refuseWhenRecording: "deploy Supabase functions",
+    },
+    async () => {
       try {
-        await deleteSupabaseFunction({
-          supabaseProjectId: ctx.supabaseProjectId,
-          functionName,
-          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        const deferred = await reconcileDeferredFunctionOperations({
+          pendingDeploys: ctx.pendingFunctionDeploys,
+          pendingDeletes: ctx.pendingFunctionDeletes ?? [],
+          functionExists: (functionName) =>
+            supabaseFunctionEntryExists(ctx.appPath, functionName),
         });
-      } catch (error) {
-        // Deferred queues can contain a function that was created and removed
-        // before root finalization, or one another path already removed.
-        if (isSupabaseFunctionNotFoundError(error)) continue;
-        deleteErrors.push(`${functionName}: ${error}`);
-      }
-    }
-    let deployErrors: string[] = [];
-    if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
-      deployErrors = await deployAffectedSupabaseFunctions({
-        appPath: ctx.appPath,
-        supabaseProjectId: ctx.supabaseProjectId,
-        supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
-        skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-        sharedModulesChanged: ctx.isSharedModulesChanged,
-        changedSharedModulePaths: ctx.sharedServerModulePaths,
-        pendingFunctionDeploys: deferred.deploys,
-        onProgress: (progress: SupabaseDeployProgress) => {
-          const statusXml = renderSupabaseDeployStatus(progress);
-          if (progress.phase === "finished" || progress.phase === "failed") {
-            ctx.onXmlComplete(statusXml);
-          } else {
-            ctx.onXmlStream(statusXml);
+        const settings = readSettings();
+        const preservedDeletes = settings.skipPruneEdgeFunctions
+          ? deferred.deletes
+          : [];
+        const deleteErrors: string[] = [];
+        for (const functionName of settings.skipPruneEdgeFunctions
+          ? []
+          : deferred.deletes) {
+          try {
+            await deleteSupabaseFunction({
+              supabaseProjectId,
+              functionName,
+              organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            });
+          } catch (error) {
+            // Deferred queues can contain a function that was created and removed
+            // before root finalization, or one another path already removed.
+            if (isSupabaseFunctionNotFoundError(error)) continue;
+            deleteErrors.push(`${functionName}: ${error}`);
           }
-        },
-      });
-    }
+        }
+        let deployErrors: string[] = [];
+        if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
+          deployErrors = await deployAffectedSupabaseFunctions({
+            appPath: ctx.appPath,
+            supabaseProjectId,
+            supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+            sharedModulesChanged: ctx.isSharedModulesChanged,
+            changedSharedModulePaths: ctx.sharedServerModulePaths,
+            pendingFunctionDeploys: deferred.deploys,
+            onProgress: (progress: SupabaseDeployProgress) => {
+              const statusXml = renderSupabaseDeployStatus(progress);
+              if (
+                progress.phase === "finished" ||
+                progress.phase === "failed"
+              ) {
+                ctx.onXmlComplete(statusXml);
+              } else {
+                ctx.onXmlStream(statusXml);
+              }
+            },
+          });
+        }
 
-    if (
-      preservedDeletes.length > 0 ||
-      deleteErrors.length > 0 ||
-      deployErrors.length > 0
-    ) {
-      const warnings: string[] = [];
-      if (preservedDeletes.length > 0) {
-        warnings.push(
-          `Kept remote Supabase function(s) ${preservedDeletes.join(", ")} because "Keep extra Supabase edge functions" is enabled.`,
-        );
-      }
-      if (deleteErrors.length > 0 || deployErrors.length > 0) {
-        warnings.push(
-          deleteErrors.length === 0
-            ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
-            : `Some Supabase function operations failed: ${[
-                ...deleteErrors.map((error) => `delete ${error}`),
-                ...deployErrors,
-              ].join(", ")}`,
-        );
-      }
-      return {
-        success: true,
-        warning: warnings.join(" "),
-      };
-    }
+        if (
+          preservedDeletes.length > 0 ||
+          deleteErrors.length > 0 ||
+          deployErrors.length > 0
+        ) {
+          const warnings: string[] = [];
+          if (preservedDeletes.length > 0) {
+            warnings.push(
+              `Kept remote Supabase function(s) ${preservedDeletes.join(", ")} because "Keep extra Supabase edge functions" is enabled.`,
+            );
+          }
+          if (deleteErrors.length > 0 || deployErrors.length > 0) {
+            warnings.push(
+              deleteErrors.length === 0
+                ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
+                : `Some Supabase function operations failed: ${[
+                    ...deleteErrors.map((error) => `delete ${error}`),
+                    ...deployErrors,
+                  ].join(", ")}`,
+            );
+          }
+          return {
+            success: true,
+            warning: warnings.join(" "),
+          };
+        }
 
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to redeploy Supabase functions: ${error}`,
-    };
-  }
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to redeploy Supabase functions: ${error}`,
+        };
+      }
+    },
+  );
 }
 
 /**
  * Commit all changes
  */
 export async function commitAllChanges(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<AgentContext, "appId" | "appPath" | "supabaseProjectId">,
   chatSummary?: string,
 ): Promise<{
   commitHash?: string;
 }> {
-  try {
-    // Check for uncommitted changes
-    const uncommittedFiles = await getGitUncommittedFiles({
-      path: ctx.appPath,
-    });
-    const trimmedChatSummary = chatSummary?.trim();
-    const message =
-      trimmedChatSummary || `(${uncommittedFiles.length} files changed)`;
-    let commitHash: string | undefined;
-
-    if (uncommittedFiles.length > 0) {
-      await gitAddAll({ path: ctx.appPath });
+  return appOperationCoordinator.run(
+    {
+      appId: ctx.appId,
+      operation: "commit current Local Agent app changes",
+      resources: [readAppResource("app-path"), "repository"],
+      refuseWhenRecording: "create a Local Agent checkpoint",
+    },
+    async () => {
       try {
-        commitHash = await gitCommit({
+        // Check for uncommitted changes
+        const uncommittedFiles = await getGitUncommittedFiles({
           path: ctx.appPath,
-          message: message,
-          // Local Agent commits are internal turn checkpoints. Verification is
-          // owned by run_pre_commit so a failing hook cannot prevent versioning.
-          noVerify: true,
         });
+        const trimmedChatSummary = chatSummary?.trim();
+        const message =
+          trimmedChatSummary || `(${uncommittedFiles.length} files changed)`;
+        let commitHash: string | undefined;
+
+        if (uncommittedFiles.length > 0) {
+          await gitAddAll({ path: ctx.appPath });
+          try {
+            commitHash = await gitCommit({
+              path: ctx.appPath,
+              message: message,
+              // Local Agent commits are internal turn checkpoints. Verification is
+              // owned by run_pre_commit so a failing hook cannot prevent versioning.
+              noVerify: true,
+            });
+          } catch (error) {
+            logger.error(
+              `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,
+              error,
+            );
+          }
+        }
+
+        return {
+          commitHash,
+        };
       } catch (error) {
-        logger.error(
-          `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,
-          error,
+        logger.error(`Failed to commit changes: ${error}`);
+        throw new DyadError(
+          `Failed to commit changes: ${error}`,
+          DyadErrorKind.External,
         );
       }
-    }
-
-    return {
-      commitHash,
-    };
-  } catch (error) {
-    logger.error(`Failed to commit changes: ${error}`);
-    throw new DyadError(
-      `Failed to commit changes: ${error}`,
-      DyadErrorKind.External,
-    );
-  }
+    },
+  );
 }

@@ -453,7 +453,7 @@ describe("spawn_agent schema", () => {
     ).toBe(true);
     expect(cancelAgentTool.modifiesState).toBe(true);
     expect(waitAgentsTool.modifiesState).toBe(true);
-    expect(waitAgentsTool.requiresMutationLease).toBe(false);
+    expect(waitAgentsTool.mutationTracking).toBe("none");
     expect(waitAgentsTool.requiresBlueprintApproval).toBe(false);
     expect(sendMessageTool.modifiesState).toBe(true);
     expect(followupTaskTool.modifiesState).toBe(true);
@@ -471,14 +471,14 @@ describe("spawn_agent schema", () => {
         exploreCodeTool,
       ].every((tool) => tool.subagentOnly),
     ).toBe(true);
-    expect(spawnAgentTool.requiresMutationLease).toBe(false);
+    expect(spawnAgentTool.mutationTracking).toBe("none");
     expect(spawnAgentTool.requiresBlueprintApproval).toBe(false);
     expect(spawnAgentTool.usesEngineEndpoint).toBe(true);
-    expect(cancelAgentTool.requiresMutationLease).toBe(false);
+    expect(cancelAgentTool.mutationTracking).toBe("none");
     expect(cancelAgentTool.requiresBlueprintApproval).toBe(false);
-    expect(sendMessageTool.requiresMutationLease).toBe(false);
+    expect(sendMessageTool.mutationTracking).toBe("none");
     expect(sendMessageTool.requiresBlueprintApproval).toBe(false);
-    expect(followupTaskTool.requiresMutationLease).toBe(false);
+    expect(followupTaskTool.mutationTracking).toBe("none");
     expect(followupTaskTool.requiresBlueprintApproval).toBe(false);
     expect(followupTaskTool.usesEngineEndpoint).toBe(true);
   });

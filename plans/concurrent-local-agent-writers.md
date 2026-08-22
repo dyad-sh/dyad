@@ -131,7 +131,7 @@ Every check-and-register operation must be synchronous before the next async gap
 Keep `modifiesState` as the source of truth for Ask/Plan filtering. Replace `requiresMutationLease` with an explicit policy:
 
 ```ts
-mutationTracking: "automatic" | "internal" | "none"
+mutationTracking: "automatic" | "internal" | "none";
 ```
 
 - `automatic` is the default for ordinary state-changing tools.
@@ -294,18 +294,18 @@ Keep the legacy `waiting_for_writer` enum value for backward-compatible hydratio
 
 ## Risks & Mitigations
 
-| Risk | Likelihood | Impact | Mitigation |
-| --- | --- | --- | --- |
-| Same-file edits overwrite or invalidate each other | High | High | Accepted shared-tree behavior; keep diffs/tool output visible and Git history recoverable. |
-| Late follow-up escapes finalization | Medium | High | Reserve before queueing and atomically seal the owning turn. |
-| Old cancellation/cleanup closes a successor run | Medium | High | Fresh actor-run IDs and token-checked opaque handles. |
-| Abort-ignoring mutation continues writing | Medium | High | Close only its actor, retain tokens until settlement, fail only its owning finalization on timeout. |
-| Concurrent Git operations corrupt index/refs | High | High | Serialize the entire status/add/commit checkpoint under the repository coordinator. |
-| Concurrent deploys overwrite provider state | Medium | Medium | Coordinate only unsafe provider batches and accept transparent last-completer-wins semantics. |
-| Commit includes another turn's changes | High | Medium | Accepted contract; neutral copy and truthful diff/commit metadata. |
-| Reviewer report becomes stale | High | Medium | Review captured targets, retain existing hash-based `review_outdated` detection, and provide manual rerun without blocking writers. |
-| Tracker record leaks | Low | Medium | Idempotent handles, handler `finally` disposal, teardown tests, and diagnostics. |
-| “Remove locks” accidentally weakens destructive safety | Medium | High | Explicitly preserve app-operation and resource-specific coordinators; cover deletion/rename/reset in tests. |
+| Risk                                                   | Likelihood | Impact | Mitigation                                                                                                                          |
+| ------------------------------------------------------ | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Same-file edits overwrite or invalidate each other     | High       | High   | Accepted shared-tree behavior; keep diffs/tool output visible and Git history recoverable.                                          |
+| Late follow-up escapes finalization                    | Medium     | High   | Reserve before queueing and atomically seal the owning turn.                                                                        |
+| Old cancellation/cleanup closes a successor run        | Medium     | High   | Fresh actor-run IDs and token-checked opaque handles.                                                                               |
+| Abort-ignoring mutation continues writing              | Medium     | High   | Close only its actor, retain tokens until settlement, fail only its owning finalization on timeout.                                 |
+| Concurrent Git operations corrupt index/refs           | High       | High   | Serialize the entire status/add/commit checkpoint under the repository coordinator.                                                 |
+| Concurrent deploys overwrite provider state            | Medium     | Medium | Coordinate only unsafe provider batches and accept transparent last-completer-wins semantics.                                       |
+| Commit includes another turn's changes                 | High       | Medium | Accepted contract; neutral copy and truthful diff/commit metadata.                                                                  |
+| Reviewer report becomes stale                          | High       | Medium | Review captured targets, retain existing hash-based `review_outdated` detection, and provide manual rerun without blocking writers. |
+| Tracker record leaks                                   | Low        | Medium | Idempotent handles, handler `finally` disposal, teardown tests, and diagnostics.                                                    |
+| “Remove locks” accidentally weakens destructive safety | Medium     | High   | Explicitly preserve app-operation and resource-specific coordinators; cover deletion/rename/reset in tests.                         |
 
 ## Success Criteria
 

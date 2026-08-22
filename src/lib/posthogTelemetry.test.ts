@@ -360,6 +360,26 @@ describe("PostHogErrorDeduper", () => {
     expect(storage.setItem).toHaveBeenCalledTimes(2);
   });
 
+  it("flushes throttled suppression counters before shutdown", () => {
+    const storage = new MemoryStorage();
+    const event = exceptionEvent();
+    const deduper = new PostHogErrorDeduper(storage, "window-a");
+
+    deduper.process(event, false, 0);
+    deduper.process(event, false, 1);
+    deduper.flush(2);
+
+    expect(
+      new PostHogErrorDeduper(storage, "window-b").process(
+        event,
+        false,
+        24 * HOUR_MS,
+      ),
+    ).toMatchObject({
+      properties: { dyad_error_suppressed_count: 1 },
+    });
+  });
+
   it("merges suppression counts from multiple renderer windows", () => {
     const storage = new MemoryStorage();
     const firstWindow = new PostHogErrorDeduper(storage, "window-a");

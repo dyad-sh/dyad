@@ -103,6 +103,7 @@ const queryClient = new QueryClient({
 const postHogErrorDeduper = new PostHogErrorDeduper(
   getPostHogTelemetryStorage(window),
 );
+window.addEventListener("pagehide", () => postHogErrorDeduper.flush());
 
 const posthogClient = posthog.init(
   "phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab",

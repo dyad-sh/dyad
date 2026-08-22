@@ -81,6 +81,7 @@ export type PostHogTelemetryEvent = {
 export class PostHogErrorDeduper {
   private memoryState: ErrorDedupeState = {};
   private storageAvailable: boolean;
+  private hasUnpersistedChanges = false;
   private lastStorageReadAt = Number.NEGATIVE_INFINITY;
   private lastStorageWriteAt = Number.NEGATIVE_INFINITY;
 
@@ -140,6 +141,7 @@ export class PostHogErrorDeduper {
         }),
       };
       this.memoryState = state;
+      this.hasUnpersistedChanges = true;
       this.persistState(now, false);
       return null;
     }
@@ -150,6 +152,7 @@ export class PostHogErrorDeduper {
       suppressionBySource: {},
     };
     this.memoryState = boundErrorDedupeState(state);
+    this.hasUnpersistedChanges = true;
     this.persistState(now, true);
 
     const suppressedCount = existing
@@ -170,6 +173,13 @@ export class PostHogErrorDeduper {
         ),
       },
     } as T;
+  }
+
+  /** Persist throttled counters before the renderer is discarded. */
+  flush(now = Date.now()): void {
+    if (this.hasUnpersistedChanges) {
+      this.persistState(now, true);
+    }
   }
 
   private readState(now: number, force = false): ErrorDedupeState {
@@ -222,6 +232,7 @@ export class PostHogErrorDeduper {
         );
         this.lastStorageWriteAt = now;
         this.lastStorageReadAt = now;
+        this.hasUnpersistedChanges = false;
       } catch {
         // Continue deduplicating in memory when persistence is unavailable.
         this.storageAvailable = false;

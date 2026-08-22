@@ -311,7 +311,9 @@ function totalSuppressedCount(
 
 function createErrorDedupeSourceId(): string {
   try {
-    return globalThis.crypto.randomUUID();
+    // Keep per-window contributions mergeable without storing full UUIDs for
+    // every renderer that observed a fingerprint.
+    return hashTelemetryFingerprint(globalThis.crypto.randomUUID());
   } catch {
     return hashTelemetryFingerprint(`${Date.now()}|${Math.random()}`);
   }
@@ -348,29 +350,13 @@ function parseErrorDedupeState(raw: string): ErrorDedupeState {
           (typeof record.lastSeenAt !== "number" ||
             !Number.isFinite(record.lastSeenAt))) ||
         (record.suppressionBySource !== undefined &&
-          !isRecord(record.suppressionBySource)) ||
-        (record.suppressedCount !== undefined &&
-          (typeof record.suppressedCount !== "number" ||
-            !Number.isSafeInteger(record.suppressedCount) ||
-            record.suppressedCount < 0))
+          !isRecord(record.suppressionBySource))
       ) {
         continue;
       }
       const suppressionBySource = parseSuppressionSources(
         record.suppressionBySource,
       );
-      if (
-        typeof record.suppressedCount === "number" &&
-        record.suppressedCount > 0
-      ) {
-        suppressionBySource.legacy = {
-          count: record.suppressedCount,
-          lastSeenAt:
-            typeof record.lastSeenAt === "number"
-              ? record.lastSeenAt
-              : record.lastSentAt,
-        };
-      }
       validEntries.push([
         fingerprintHash,
         {
@@ -600,6 +586,10 @@ function normalizeVolatileText(value: string): string {
       "<uuid>",
     )
     .replace(/\b[0-9a-f]{16,}\b/gi, "<hex>")
+    .replace(
+      /\b((?:app|chat|project|message|user|workspace|session)(?:[\s_-]*id|\s+(?:not\s+found|missing))?\s*[:=#-]?\s*)\d{1,5}\b/gi,
+      "$1<id>",
+    )
     .replace(/\b\d{6,}\b/g, "<number>")
     .replace(/\s+/g, " ")
     .trim()

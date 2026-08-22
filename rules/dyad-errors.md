@@ -32,6 +32,8 @@ The renderer PostHog `before_send` (in `src/renderer.tsx`) drops ~90% of events 
 
 Keep cross-source error throttling in renderer `before_send`: PostHog's internal exception rate limiter does not uniformly cover manually captured IPC exceptions or custom error-shaped events. `PostHogErrorDeduper` applies the shared tier-aware policy there and persists only bounded fingerprint hashes and counters, never raw error payloads.
 
+Sampling exemptions and error deduplication serve different purposes. An error-shaped event such as `sandbox.script.failed` can bypass the non-Pro random sampler and still be deduplicated; use `dyad_error_suppressed_count` on the next admitted event when reconstructing its volume.
+
 When changing crash exemptions, inventory `sendTelemetryEvent` emitters instead of relying only on a naming suffix. Most process crashes use `:crash_detected`, but the code-explorer host uses the deliberate `code_explorer:host_crash` crash-loop signal.
 
 ## IPC handlers

@@ -131,6 +131,23 @@ describe("PostHogErrorDeduper", () => {
     expect(deduper.process(repeat, false, 1)).toBeNull();
   });
 
+  it("normalizes realistic small entity identifiers", () => {
+    const deduper = new PostHogErrorDeduper();
+
+    expect(
+      deduper.process(exceptionEvent("App 7 not found"), false, 0),
+    ).toBeTruthy();
+    expect(
+      deduper.process(exceptionEvent("App 42 not found"), false, 1),
+    ).toBeNull();
+    expect(
+      deduper.process(exceptionEvent("Chat not found: 3"), false, 2),
+    ).toBeTruthy();
+    expect(
+      deduper.process(exceptionEvent("Chat not found: 18"), false, 3),
+    ).toBeNull();
+  });
+
   it("keeps meaningful error codes and throw sites distinct", () => {
     const deduper = new PostHogErrorDeduper();
 

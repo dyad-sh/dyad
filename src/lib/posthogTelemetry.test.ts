@@ -326,6 +326,19 @@ describe("PostHogErrorDeduper", () => {
       },
     });
   });
+
+  it("merges shared fingerprints before forced writes", () => {
+    const storage = new MemoryStorage();
+    const firstWindow = new PostHogErrorDeduper(storage, "window-a");
+    const secondWindow = new PostHogErrorDeduper(storage, "window-b");
+
+    firstWindow.process(exceptionEvent("Error X"), false, 0);
+    secondWindow.process(exceptionEvent("Error Y"), false, 1);
+    firstWindow.process(exceptionEvent("Error Z"), false, 2);
+
+    const nextWindow = new PostHogErrorDeduper(storage, "window-c");
+    expect(nextWindow.process(exceptionEvent("Error Y"), false, 3)).toBeNull();
+  });
 });
 
 describe("PostHog error telemetry classification", () => {

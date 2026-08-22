@@ -185,6 +185,16 @@ export class PostHogErrorDeduper {
         now - this.lastStorageWriteAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS)
     ) {
       try {
+        if (force && this.lastStorageReadAt !== now) {
+          const raw = this.storage.getItem(POSTHOG_ERROR_DEDUPE_STORAGE_KEY);
+          if (raw) {
+            this.memoryState = mergeErrorDedupeStates(
+              this.memoryState,
+              parseErrorDedupeState(raw),
+            );
+          }
+          this.lastStorageReadAt = now;
+        }
         this.storage.setItem(
           POSTHOG_ERROR_DEDUPE_STORAGE_KEY,
           JSON.stringify(this.memoryState),

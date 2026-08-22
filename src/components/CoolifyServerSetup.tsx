@@ -135,6 +135,10 @@ export function CoolifyServerSetup({
   const inspect = useMutation<SetupPreflight, Error, void>({
     mutationFn: async () => {
       const asked = host.trim();
+      // Cleared before asking, so a check that fails leaves no verdict behind.
+      // The screen's premise is that Dyad installs onto the machine that just
+      // answered, and a pass from a previous answer contradicts it.
+      setInspection(null);
       const checks = await ipc.coolifySetup.inspect({
         host: asked,
         username: "root",

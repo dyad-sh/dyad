@@ -16,8 +16,12 @@ const h = vi.hoisted(() => ({
   runCalls: 0,
   verifiedAgainst: [] as string[],
   writeThrows: false,
+  /** How many writes fail before the store comes back. */
+  writeFailures: 0,
+  reportsAccountTwice: false,
   preflightThrows: false,
   preflightReady: true,
+  fingerprint: "SHA256:fingerprint",
 }));
 
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
@@ -33,6 +37,10 @@ vi.mock("./base", () => ({
 vi.mock("@/main/settings", () => ({
   readSettings: () => h.settings,
   writeSettings: (value: Record<string, unknown>) => {
+    if (h.writeFailures > 0) {
+      h.writeFailures -= 1;
+      throw new Error("keychain is unavailable");
+    }
     if (h.writeThrows) throw new Error("keychain is unavailable");
     h.written.push(value);
     Object.assign(h.settings, value);
@@ -49,7 +57,7 @@ vi.mock("../utils/ssh_client", () => ({
   // looking correct while reporting nothing.
   connectSsh: vi.fn(
     async (_target: unknown, verify: (fp: string) => boolean) => {
-      verify("SHA256:fingerprint");
+      verify(h.fingerprint);
       return {
         run: vi.fn(),
         end: () => {
@@ -106,6 +114,18 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
         credentials: { email: "me@gmail.com", password: "Abc123@xyz" },
         dashboardUrl: "http://203.0.113.5:8000",
       });
+      // And again once HTTPS has settled the address it is reachable at.
+      if (h.reportsAccountTwice) {
+        (
+          options.onAccountKnown as (a: {
+            credentials: { email: string; password: string };
+            dashboardUrl: string;
+          }) => void
+        )({
+          credentials: { email: "me@gmail.com", password: "Abc123@xyz" },
+          dashboardUrl: "https://203.0.113.5.sslip.io",
+        });
+      }
     }
     if (h.setupError) throw h.setupError;
     return h.setupResult;
@@ -156,8 +176,11 @@ beforeEach(() => {
   h.runCalls = 0;
   h.verifiedAgainst.length = 0;
   h.writeThrows = false;
+  h.writeFailures = 0;
+  h.reportsAccountTwice = false;
   h.preflightThrows = false;
   h.preflightReady = true;
+  h.fingerprint = "SHA256:fingerprint";
   resetCoolifySetupStateForTests();
   registerCoolifySetupHandlers();
 });
@@ -266,7 +289,6 @@ describe("run", () => {
       coolify: { previousAccessToken: { value: "1|old" } },
     } as Record<string, unknown>;
 
-    await call("coolify-setup:inspect", TARGET);
     await checkThenRun();
 
     const saved = h.written.at(-1) as {
@@ -303,6 +325,24 @@ describe("run", () => {
       /Check the server/,
     );
     expect(h.runCalls).toBe(0);
+  });
+
+  it("keeps the answer that stands when a re-check does not finish", async () => {
+    // The handshake happens before preflight, so recording the key there left
+    // the new machine's key beside the old machine's pass — an install onto a
+    // server whose check never came back.
+    await call("coolify-setup:inspect", TARGET);
+
+    // A different machine answers the address, and its check does not finish.
+    h.fingerprint = "SHA256:someone-else";
+    h.preflightThrows = true;
+    await expect(call("coolify-setup:inspect", TARGET)).rejects.toThrow();
+    h.preflightThrows = false;
+
+    // The pass from the finished check still stands, and it is still paired
+    // with the key that check saw — not with the one nobody approved.
+    await call("coolify-setup:run", TARGET);
+    expect(h.verifiedAgainst).toEqual(["SHA256:fingerprint"]);
   });
 
   it("drops a pass the next check takes back", async () => {
@@ -343,6 +383,49 @@ describe("run", () => {
     });
 
     await expect(checkThenRun()).rejects.toMatchObject({ code: "ENOTFOUND" });
+  });
+
+  it("stores the account on the way out when the first attempt failed", async () => {
+    // Coolify has the account either way, and preflight refuses to install
+    // over it — so a password stored nowhere is a server nobody can sign into.
+    // The store is busy for the first write and free by the second.
+    h.writeFailures = 1;
+    h.reportsAccount = true;
+    h.setupError = new DyadError("exit 1", DyadErrorKind.External);
+
+    await expect(checkThenRun()).rejects.toThrow("exit 1");
+
+    const saved = h.written.at(-1) as {
+      coolify: { adminPassword: { value: string } };
+    };
+    expect(saved.coolify.adminPassword.value).toBe("Abc123@xyz");
+  });
+
+  it("does not put back an address a later write replaced", async () => {
+    // The account is reported twice — once when it exists, and again once
+    // HTTPS has settled where it answers. A copy kept from the first would
+    // write the earlier address back over the later one on the way out.
+    h.writeFailures = 1;
+    h.reportsAccount = true;
+    h.reportsAccountTwice = true;
+    h.setupError = new DyadError("exit 1", DyadErrorKind.External);
+
+    await expect(checkThenRun()).rejects.toThrow("exit 1");
+
+    const saved = h.written.at(-1) as {
+      coolify: { adminInstanceUrl: string };
+    };
+    expect(saved.coolify.adminInstanceUrl).toBe("https://203.0.113.5.sslip.io");
+  });
+
+  it("reports what went wrong, not what the retry did", async () => {
+    // A write that fails again must not become the failure the user is told
+    // about — the install is what they were watching.
+    h.writeThrows = true;
+    h.reportsAccount = true;
+    h.setupError = new DyadError("exit 1", DyadErrorKind.External);
+
+    await expect(checkThenRun()).rejects.toThrow("exit 1");
   });
 
   it("marks a failure the machine already put on screen", async () => {

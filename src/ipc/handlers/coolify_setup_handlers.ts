@@ -83,6 +83,19 @@ function setupController(): CoolifySetupController {
       // Trust on first use only when there has been no first use. A server
       // that was looked at is held to what it showed then.
       const pinned = inspectedFingerprints.get(serverKeyFor(target));
+      /**
+       * What the account write could not store, if it could not store it.
+       *
+       * A run that then fails takes the only copy of the password with it:
+       * the failed screen carries a message and a log, and the call never
+       * returns the result that shows it. So it is tried once more where it
+       * starts to matter, which turns a keychain that was briefly busy into
+       * nothing at all.
+       */
+      let unsavedAccount: {
+        credentials: { email: string; password: string };
+        dashboardUrl: string;
+      } | null = null;
       return runServerSetup({
         target: targetFrom(target, key.privateKey),
         adminEmail: target.adminEmail,
@@ -109,16 +122,37 @@ function setupController(): CoolifySetupController {
                 adminInstanceUrl: dashboardUrl,
               },
             });
+            unsavedAccount = null;
           } catch (error) {
             // The account exists on the server whatever happened here, and a
             // second attempt is refused because Coolify is now installed. The
             // finished screen still shows the password, so ending the run
             // over this would throw away the only copy of it.
+            unsavedAccount = { credentials, dashboardUrl };
             logger.error("Could not store the admin account", error);
           }
         },
       })
         .catch((error: unknown) => {
+          // The run is ending badly, so this is the last chance to keep a
+          // password nothing else holds. Guarded, because a write that fails
+          // again must not become the failure the user is told about.
+          if (unsavedAccount) {
+            try {
+              writeSettings({
+                coolify: {
+                  ...readSettings().coolify,
+                  adminEmail: unsavedAccount.credentials.email,
+                  adminPassword: {
+                    value: unsavedAccount.credentials.password,
+                  },
+                  adminInstanceUrl: unsavedAccount.dashboardUrl,
+                },
+              });
+            } catch (retryError) {
+              logger.error("Could not store the admin account", retryError);
+            }
+          }
           // A key that does not match is not the user declining, and reporting
           // it as one would file it as a cancellation and say nothing.
           if (
@@ -153,6 +187,14 @@ function setupController(): CoolifySetupController {
                 adminInstanceUrl: result.dashboardUrl,
                 // The address and token go together: an address stored without a
                 // token would read as an instance Dyad can talk to and cannot.
+                // Stored without the acknowledgement `coolify:save-token`
+                // demands for an unencrypted address. Not an oversight and
+                // not a decision this path can make honestly: whether HTTPS
+                // was possible is only known once the install has run, so
+                // asking here is asking after the fact. The finished screen
+                // says the server is not encrypted, and asking beforehand —
+                // for the addresses that can never have a certificate — is a
+                // change of its own rather than a line here.
                 ...(result.token
                   ? {
                       instanceUrl: result.dashboardUrl,
@@ -282,9 +324,10 @@ export function registerCoolifySetupHandlers() {
     let fingerprint: string | null = null;
     const session = await connectSsh(
       targetFrom(input, key.privateKey),
+      // Only remembered here. What is recorded is decided once the check has
+      // finished, so the key and the verdict cannot disagree.
       trustOnFirstUse((fp) => {
         fingerprint = fp;
-        inspectedFingerprints.set(serverKeyFor(input), fp);
       }),
     );
     try {
@@ -307,6 +350,14 @@ export function registerCoolifySetupHandlers() {
           );
         }),
       ]);
+      // Both together, and only now. Recording the key during the handshake
+      // left a check that then failed with the new machine's key beside the
+      // old machine's pass, which is an install onto a server nobody looked
+      // at. A check that does not finish changes neither, so what stands is
+      // whatever the last finished check said.
+      if (fingerprint) {
+        inspectedFingerprints.set(serverKeyFor(input), fingerprint);
+      }
       // Kept only while the answer stands: a server that was ready and has
       // since had Coolify put on it must not keep an old pass.
       if (checks.ready) readyHosts.add(serverKeyFor(input));

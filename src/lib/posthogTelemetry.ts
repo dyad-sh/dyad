@@ -8,6 +8,7 @@ const FREE_ERROR_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PRO_ERROR_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_ERROR_DEDUPE_ENTRIES = 500;
 const MAX_STORED_ENTRIES_TO_PARSE = MAX_ERROR_DEDUPE_ENTRIES * 2;
+const ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS = 5_000;
 const POSTHOG_CRASH_EVENT_NAMES = new Set(["code_explorer:host_crash"]);
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
@@ -15,6 +16,7 @@ type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
 
 type ErrorDedupeRecord = {
   lastSentAt: number;
+  lastSeenAt: number;
   suppressedCount: number;
 };
 
@@ -69,6 +71,8 @@ export type PostHogTelemetryEvent = {
 export class PostHogErrorDeduper {
   private memoryState: ErrorDedupeState = {};
   private storageAvailable: boolean;
+  private lastStorageReadAt = Number.NEGATIVE_INFINITY;
+  private lastStorageWriteAt = Number.NEGATIVE_INFINITY;
 
   constructor(private readonly storage?: TelemetryStorage) {
     this.storageAvailable = Boolean(storage);
@@ -101,17 +105,24 @@ export class PostHogErrorDeduper {
     ) {
       state[fingerprintHash] = {
         ...existing,
+        lastSeenAt: now,
         suppressedCount: Math.min(
           Number.MAX_SAFE_INTEGER,
           existing.suppressedCount + 1,
         ),
       };
-      this.writeState(state);
+      this.memoryState = state;
+      this.persistState(now, false);
       return null;
     }
 
-    state[fingerprintHash] = { lastSentAt: now, suppressedCount: 0 };
-    this.writeState(state);
+    state[fingerprintHash] = {
+      lastSentAt: now,
+      lastSeenAt: now,
+      suppressedCount: 0,
+    };
+    this.memoryState = boundErrorDedupeState(state);
+    this.persistState(now, true);
 
     if (!existing?.suppressedCount) {
       return event;
@@ -131,48 +142,89 @@ export class PostHogErrorDeduper {
   }
 
   private readState(now: number): ErrorDedupeState {
-    let candidate = this.memoryState;
-
-    if (this.storage && this.storageAvailable) {
+    if (
+      this.storage &&
+      this.storageAvailable &&
+      now - this.lastStorageReadAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS
+    ) {
       try {
         const raw = this.storage.getItem(POSTHOG_ERROR_DEDUPE_STORAGE_KEY);
         if (raw) {
-          candidate = parseErrorDedupeState(raw);
+          this.memoryState = mergeErrorDedupeStates(
+            this.memoryState,
+            parseErrorDedupeState(raw),
+          );
         }
+        this.lastStorageReadAt = now;
       } catch {
-        // localStorage can be unavailable in hardened/private environments.
+        // Continue deduplicating in memory when persistence is unavailable.
+        this.storageAvailable = false;
       }
     }
-
-    const entries = Object.entries(candidate)
-      .filter(([, record]) => record.lastSentAt <= now)
-      .sort(([, left], [, right]) => right.lastSentAt - left.lastSentAt)
-      .slice(0, MAX_ERROR_DEDUPE_ENTRIES);
-
-    this.memoryState = Object.fromEntries(entries);
-    return { ...this.memoryState };
+    return this.memoryState;
   }
 
-  private writeState(state: ErrorDedupeState): void {
-    const boundedState = Object.fromEntries(
-      Object.entries(state)
-        .sort(([, left], [, right]) => right.lastSentAt - left.lastSentAt)
-        .slice(0, MAX_ERROR_DEDUPE_ENTRIES),
-    );
-    this.memoryState = boundedState;
-
-    if (this.storage && this.storageAvailable) {
+  private persistState(now: number, force: boolean): void {
+    if (
+      this.storage &&
+      this.storageAvailable &&
+      (force ||
+        now - this.lastStorageWriteAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS)
+    ) {
       try {
         this.storage.setItem(
           POSTHOG_ERROR_DEDUPE_STORAGE_KEY,
-          JSON.stringify(boundedState),
+          JSON.stringify(this.memoryState),
         );
+        this.lastStorageWriteAt = now;
+        this.lastStorageReadAt = now;
       } catch {
         // Continue deduplicating in memory when persistence is unavailable.
         this.storageAvailable = false;
       }
     }
   }
+}
+
+function boundErrorDedupeState(
+  state: ErrorDedupeState,
+  now = Number.POSITIVE_INFINITY,
+): ErrorDedupeState {
+  return Object.fromEntries(
+    Object.entries(state)
+      .filter(([, record]) => record.lastSentAt <= now)
+      .sort(([, left], [, right]) => right.lastSeenAt - left.lastSeenAt)
+      .slice(0, MAX_ERROR_DEDUPE_ENTRIES),
+  );
+}
+
+function mergeErrorDedupeStates(
+  memory: ErrorDedupeState,
+  persisted: ErrorDedupeState,
+): ErrorDedupeState {
+  const merged = { ...persisted };
+  for (const [fingerprintHash, memoryRecord] of Object.entries(memory)) {
+    const persistedRecord = merged[fingerprintHash];
+    if (
+      !persistedRecord ||
+      memoryRecord.lastSeenAt > persistedRecord.lastSeenAt
+    ) {
+      merged[fingerprintHash] = memoryRecord;
+    } else if (memoryRecord.lastSeenAt === persistedRecord.lastSeenAt) {
+      merged[fingerprintHash] = {
+        lastSentAt: Math.max(
+          memoryRecord.lastSentAt,
+          persistedRecord.lastSentAt,
+        ),
+        lastSeenAt: memoryRecord.lastSeenAt,
+        suppressedCount: Math.max(
+          memoryRecord.suppressedCount,
+          persistedRecord.suppressedCount,
+        ),
+      };
+    }
+  }
+  return boundErrorDedupeState(merged);
 }
 
 export function getPostHogTelemetryStorage(
@@ -202,6 +254,9 @@ function parseErrorDedupeState(raw: string): ErrorDedupeState {
         !isRecord(record) ||
         typeof record.lastSentAt !== "number" ||
         !Number.isFinite(record.lastSentAt) ||
+        (record.lastSeenAt !== undefined &&
+          (typeof record.lastSeenAt !== "number" ||
+            !Number.isFinite(record.lastSeenAt))) ||
         typeof record.suppressedCount !== "number" ||
         !Number.isSafeInteger(record.suppressedCount) ||
         record.suppressedCount < 0
@@ -212,6 +267,10 @@ function parseErrorDedupeState(raw: string): ErrorDedupeState {
         fingerprintHash,
         {
           lastSentAt: record.lastSentAt,
+          lastSeenAt:
+            typeof record.lastSeenAt === "number"
+              ? record.lastSeenAt
+              : record.lastSentAt,
           suppressedCount: record.suppressedCount,
         },
       ]);

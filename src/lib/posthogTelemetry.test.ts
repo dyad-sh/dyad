@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
@@ -265,6 +265,46 @@ describe("PostHogErrorDeduper", () => {
 
     const persisted = [...storage.values.values()][0];
     expect(Object.keys(JSON.parse(persisted))).toHaveLength(500);
+  });
+
+  it("retains a hot suppressed fingerprint when bounding storage", () => {
+    const storage = new MemoryStorage();
+    const deduper = new PostHogErrorDeduper(storage);
+    const hotError = exceptionEvent("Hot recurring error");
+
+    deduper.process(hotError, false, 0);
+    for (let index = 1; index < 500; index += 1) {
+      deduper.process(exceptionEvent(`Distinct error ${index}`), false, index);
+    }
+    expect(deduper.process(hotError, false, 500)).toBeNull();
+    deduper.process(exceptionEvent("Overflow error one"), false, 501);
+    deduper.process(exceptionEvent("Overflow error two"), false, 502);
+
+    expect(deduper.process(hotError, false, 503)).toBeNull();
+  });
+
+  it("throttles persistence work for a hot suppressed fingerprint", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      }),
+    };
+    const deduper = new PostHogErrorDeduper(storage);
+    const event = exceptionEvent();
+
+    deduper.process(event, false, 0);
+    deduper.process(event, false, 1);
+    deduper.process(event, false, 2);
+    deduper.process(event, false, 3);
+
+    expect(storage.getItem).toHaveBeenCalledTimes(1);
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+
+    deduper.process(event, false, 5_000);
+    expect(storage.getItem).toHaveBeenCalledTimes(2);
+    expect(storage.setItem).toHaveBeenCalledTimes(2);
   });
 });
 

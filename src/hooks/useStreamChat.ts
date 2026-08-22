@@ -3,7 +3,10 @@ import type { ComponentSelection, FileAttachment } from "@/ipc/types";
 import type { QueuedMessageItem } from "@/atoms/chatAtoms";
 import type { Chat } from "@/ipc/types";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
-import type { StreamSettledResult } from "@/chat_stream/renderer_facade";
+import type {
+  StreamSettledResult,
+  StreamRequest,
+} from "@/chat_stream/renderer_facade";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import { isStreamActive } from "@/chat_stream/transition";
 import { showError } from "@/lib/toast";
@@ -67,6 +70,7 @@ export function useStreamChat({
       requestedChatMode,
       planAcceptInNewChat,
       onAccepted,
+      onAcceptanceError,
       onAcceptanceRejected,
       onSettled,
     }: {
@@ -78,21 +82,22 @@ export function useStreamChat({
       selectedComponents?: ComponentSelection[];
       requestedChatMode?: Chat["chatMode"] | null;
       planAcceptInNewChat?: boolean;
-      onAccepted?: () => void;
-      onAcceptanceRejected?: (reason: string) => void | Promise<void>;
+      onAccepted?: StreamRequest["onAccepted"];
+      onAcceptanceError?: StreamRequest["onAcceptanceError"];
+      onAcceptanceRejected?: StreamRequest["onAcceptanceRejected"];
       onSettled?: (result: StreamSettledResult) => void;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
         !chatId
       ) {
-        return;
+        return false;
       }
 
       if (prompt.length > MAX_CHAT_PROMPT_CHARS) {
         showError(CHAT_PROMPT_LENGTH_LIMIT_MESSAGE);
         onSettled?.({ success: false });
-        return;
+        return false;
       }
 
       const attachmentValidation = validateChatAttachmentFiles(
@@ -101,7 +106,7 @@ export function useStreamChat({
       if (!attachmentValidation.ok) {
         showError(attachmentValidation.message);
         onSettled?.({ success: false });
-        return;
+        return false;
       }
 
       // The machine decides what happens next: idle/errored chats start a
@@ -120,10 +125,12 @@ export function useStreamChat({
           requestedChatMode,
           planAcceptInNewChat,
           onAccepted,
+          onAcceptanceError,
           onAcceptanceRejected,
           onSettled,
         },
       });
+      return true;
     },
     [chatStreamManager],
   );

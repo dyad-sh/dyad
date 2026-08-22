@@ -179,7 +179,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "add") {
           return processResult();
         }
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           return hookResults.shift() ?? processResult();
         }
@@ -293,17 +293,18 @@ describe("runPreCommitTool", () => {
   it("waits for staging and hook processes to close after force-kill", async () => {
     await runPreCommitTool.execute({}, context(repo));
 
-    for (const args of [
-      ["add", "--", "."],
-      ["hook", "run", "pre-commit"],
-    ]) {
-      expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
-        expect.objectContaining({
-          args,
-          waitForCloseAfterForceKill: true,
-        }),
-      );
-    }
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ["add", "--", "."],
+        waitForCloseAfterForceKill: true,
+      }),
+    );
+    expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining(["hook", "run", "pre-commit"]),
+        waitForCloseAfterForceKill: true,
+      }),
+    );
   });
 
   it("uses Dyad's package-manager environment for hooks", async () => {
@@ -313,7 +314,7 @@ describe("runPreCommitTool", () => {
 
       expect(mocks.runBufferedProcess).toHaveBeenCalledWith(
         expect.objectContaining({
-          args: ["hook", "run", "pre-commit"],
+          args: expect.arrayContaining(["hook", "run", "pre-commit"]),
           env: expect.objectContaining({
             COREPACK_ENABLE_PROJECT_SPEC: "0",
             COREPACK_ENABLE_STRICT: "0",
@@ -330,7 +331,7 @@ describe("runPreCommitTool", () => {
   it("allows a follow-up run when Git fingerprinting fails", async () => {
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           return processResult();
         }
@@ -411,7 +412,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "add") {
           return processResult();
         }
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           return processResult();
         }
@@ -459,7 +460,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "add") {
           return processResult();
         }
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           await rm(removedEntryPoint);
           return processResult();
@@ -507,7 +508,7 @@ describe("runPreCommitTool", () => {
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
         if (options.args?.[0] === "add") return processResult();
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           await rm(removedEntryPoint);
           return processResult();
@@ -552,7 +553,7 @@ describe("runPreCommitTool", () => {
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
         if (options.args?.[0] === "add") return processResult();
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           await rm(reservedEntryPoint);
           return processResult();
@@ -593,7 +594,7 @@ describe("runPreCommitTool", () => {
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
         if (options.args?.[0] === "add") return processResult();
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           await rm(removedEntryPoint);
           return processResult({ code: 124, timedOut: true });
@@ -621,7 +622,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "add") {
           return processResult();
         }
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           return processResult();
         }
@@ -654,7 +655,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "add") {
           return processResult();
         }
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
           return processResult();
         }
@@ -701,7 +702,7 @@ describe("runPreCommitTool", () => {
   it("does not consume a run when the hook process cannot start", async () => {
     mocks.runBufferedProcess.mockImplementation(
       async (options: BufferedProcessOptions) => {
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           throw new Error("spawn failed");
         }
         if (options.args?.includes("--quiet")) {
@@ -726,7 +727,7 @@ describe("runPreCommitTool", () => {
         if (options.args?.[0] === "add") {
           return processResult({ code: 124, timedOut: true });
         }
-        if (options.args?.[0] === "hook") {
+        if (options.args?.includes("hook")) {
           hookRuns++;
         }
         return processResult();

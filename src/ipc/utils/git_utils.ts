@@ -10,7 +10,7 @@ import {
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import pathModule from "node:path";
-import { platform } from "node:os";
+import { platform, tmpdir } from "node:os";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
 import { safeJoin } from "./path_utils";
@@ -18,12 +18,16 @@ import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
 import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { GIT_ERROR_CODES, type GitErrorCode } from "@/shared/git_error_codes";
 import {
   isDotenvFilePath,
   redactDotenvValues,
   selectTextLineRange,
 } from "@/utils/dotenv_redaction";
 import { runBufferedProcess } from "./buffered_process";
+
+export { GIT_ERROR_CODES } from "@/shared/git_error_codes";
+
 const logger = log.scope("git_utils");
 
 const GIT_STATE_FINGERPRINT_TIMEOUT_MS = 30_000;
@@ -863,33 +867,57 @@ export async function gitCommit({
   path,
   message,
   amend,
-  noVerify = false,
   paths,
 }: GitCommitParams): Promise<string> {
   // Perform the commit using dugite with -c user.name/email config
-  const commitArgs = ["commit", "-m", message];
-  if (amend) {
-    commitArgs.push("--amend");
+  // Hook execution is owned by workflows that require explicit verification;
+  // the low-level commit operation must never invoke hooks implicitly.
+  // `--no-verify` only suppresses pre-commit and commit-msg. Git still runs
+  // prepare-commit-msg and post-commit, so point hooksPath at a fresh empty
+  // directory outside the imported repository for the lifetime of this one
+  // commit. A repository-relative path would let the repository supply hooks
+  // at that path and execute code during an automatic checkpoint.
+  const noHooksPath = await fsPromises.mkdtemp(
+    pathModule.join(tmpdir(), "dyad-no-git-hooks-"),
+  );
+  try {
+    const commitArgs = [
+      "-c",
+      `core.hooksPath=${normalizePath(noHooksPath)}`,
+      "commit",
+      "-m",
+      message,
+      "--no-verify",
+    ];
+    if (amend) {
+      commitArgs.push("--amend");
+    }
+    if (paths?.length) {
+      // `--` scopes the commit to these paths, so unrelated staged changes stay
+      // in the index instead of being swept into this commit.
+      commitArgs.push("--", ...paths.map(normalizePath));
+    }
+    const args = await withGitAuthor(commitArgs);
+    await execOrThrow(args, path, "Failed to create commit");
+    // Get the new commit hash
+    const result = await execGit(["rev-parse", "HEAD"], path);
+    if (result.exitCode !== 0) {
+      throw new DyadError(
+        `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
+      );
+    }
+    return result.stdout.trim();
+  } finally {
+    try {
+      await fsPromises.rm(noHooksPath, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn("Failed to clean up temporary Git hooks directory", {
+        noHooksPath,
+        error,
+      });
+    }
   }
-  if (noVerify) {
-    commitArgs.push("--no-verify");
-  }
-  if (paths?.length) {
-    // `--` scopes the commit to these paths, so unrelated staged changes stay
-    // in the index instead of being swept into this commit.
-    commitArgs.push("--", ...paths.map(normalizePath));
-  }
-  const args = await withGitAuthor(commitArgs);
-  await execOrThrow(args, path, "Failed to create commit");
-  // Get the new commit hash
-  const result = await execGit(["rev-parse", "HEAD"], path);
-  if (result.exitCode !== 0) {
-    throw new DyadError(
-      `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
-      DyadErrorKind.Conflict,
-    );
-  }
-  return result.stdout.trim();
 }
 
 export async function gitCheckout({
@@ -2822,17 +2850,6 @@ export async function gitFetch({
     { env: getGitNetworkEnv(accessToken) },
   );
 }
-
-export const GIT_ERROR_CODES = {
-  MERGE_IN_PROGRESS: "MERGE_IN_PROGRESS",
-  REBASE_IN_PROGRESS: "REBASE_IN_PROGRESS",
-  MERGE_CONFLICT: "MERGE_CONFLICT",
-  NON_FAST_FORWARD: "NON_FAST_FORWARD",
-  DIVERGENT_BRANCHES: "DIVERGENT_BRANCHES",
-  UNCOMMITTED_CHANGES: "UNCOMMITTED_CHANGES",
-} as const;
-
-type GitErrorCode = (typeof GIT_ERROR_CODES)[keyof typeof GIT_ERROR_CODES];
 
 class CodedGitError extends DyadError {
   readonly code: GitErrorCode;

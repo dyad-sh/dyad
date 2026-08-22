@@ -21,14 +21,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  clearStagedDiffAtom,
   closeCommitDialogAtom,
   openCommitDialogAtom,
   openStagedDiffAtom,
   type CommitDialogOwner,
 } from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
-import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { useCommitMessage } from "@/hooks/useCommitMessage";
 import { cn } from "@/lib/utils";
 import {
@@ -37,6 +35,11 @@ import {
 } from "@/components/chat/uncommittedFileStatus";
 import { CommitFileList } from "@/components/chat/CommitFileList";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { useCommitDialogRecovery } from "@/hooks/useCommitDialogRecovery";
+import {
+  CommitDialogFooter,
+  CommitRecoveryAlerts,
+} from "@/components/chat/CommitDialogActions";
 
 interface CommitMenuProps {
   appId: number;
@@ -50,10 +53,8 @@ interface CommitMenuProps {
 export function CommitMenu({ appId }: CommitMenuProps) {
   const { t } = useTranslation("home");
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(appId);
-  const { commitChanges, isCommitting } = useCommitChanges();
   const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
-  const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   const closeCommitDialog = useSetAtom(closeCommitDialogAtom);
   const { send: sendPreviewEvent } = useVersionPreview(appId);
   const { isDialogOpen, commitMessage, setCommitMessage } = useCommitMessage(
@@ -61,6 +62,25 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     appId,
     uncommittedFiles,
   );
+  const {
+    cancelCommit,
+    isCommitting,
+    isCancellingCommit,
+    commitProgress,
+    preCommitError,
+    prepareCommitMsgError,
+    commitMsgError,
+    resetCommitError,
+    dismissDialog,
+    handleCommit,
+    handleFixPreCommitWithAI,
+    isStartingAiFix,
+    canFixPreCommitWithAI,
+  } = useCommitDialogRecovery({
+    appId,
+    source: "editor",
+    commitMessage,
+  });
 
   // CodeView unmounts whenever previewMode leaves "code", and background
   // subscriptions change it on their own - usePlanEvents switches to plan mode
@@ -90,26 +110,6 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   // staged diff's back arrow cannot resurrect the dialog just dismissed. The
   // round trip out to a diff closes the dialog through openStagedDiffAtom
   // instead, so the draft survives that.
-  const dismissDialog = () => {
-    closeCommitDialog({ source: "editor", appId });
-  };
-
-  const handleCommit = async () => {
-    if (!commitMessage.trim()) return;
-    try {
-      await commitChanges({ appId, message: commitMessage.trim() });
-    } catch {
-      // useCommitChanges surfaces the error via a toast. Keep the dialog open
-      // and preserve the message so the user can retry without retyping it.
-      return;
-    }
-    closeCommitDialog({ source: "editor", appId });
-    // Nothing is staged anymore, so leave the diff view if it was open. This
-    // must not reopen the dialog, hence clear rather than exit. Both calls name
-    // the app committed, so neither touches another one if this lands late.
-    clearStagedDiff(appId);
-  };
-
   return (
     <div className="flex items-center" data-testid="commit-menu">
       <Button
@@ -117,7 +117,10 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         size="sm"
         className="rounded-r-none border-r-0"
         disabled={!hasUncommittedFiles}
-        onClick={() => setOpenCommitDialog({ source: "editor", appId })}
+        onClick={() => {
+          resetCommitError();
+          setOpenCommitDialog({ source: "editor", appId });
+        }}
         data-testid="editor-commit-button"
       >
         <GitCommitVertical size={14} />
@@ -185,7 +188,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
             setOpenCommitDialog({ source: "editor", appId });
             return;
           }
-          if (isCommitting) return;
+          if (isCommitting || isStartingAiFix) return;
           dismissDialog();
         }}
       >
@@ -228,31 +231,35 @@ export function CommitMenu({ appId }: CommitMenuProps) {
                 onSelectFile={(path) =>
                   openStagedDiff(path, { source: "editor", appId })
                 }
-                disabled={isCommitting}
+                disabled={isCommitting || isStartingAiFix}
                 testId="editor-commit-files-list"
               />
             </div>
+
+            <CommitRecoveryAlerts
+              preCommitError={preCommitError}
+              prepareCommitMsgError={prepareCommitMsgError}
+              commitMsgError={commitMsgError}
+              isStartingAiFix={isStartingAiFix}
+              canFixPreCommitWithAI={canFixPreCommitWithAI}
+              onFixPreCommitWithAI={() => void handleFixPreCommitWithAI()}
+            />
           </div>
 
           <DialogFooter className="px-6 pb-6 pt-2">
-            <Button
-              variant="outline"
-              onClick={dismissDialog}
-              disabled={isCommitting}
-            >
-              {t("preview.cancel")}
-            </Button>
-            <Button
-              onClick={handleCommit}
-              disabled={
-                !commitMessage.trim() ||
-                isCommitting ||
-                uncommittedFiles.length === 0
+            <CommitDialogFooter
+              isCommitting={isCommitting}
+              isCancellingCommit={isCancellingCommit}
+              phase={commitProgress?.phase ?? null}
+              isBusy={isStartingAiFix}
+              commitDisabled={
+                !commitMessage.trim() || uncommittedFiles.length === 0
               }
-              data-testid="editor-commit-confirm-button"
-            >
-              {isCommitting ? t("preview.committing") : t("preview.commit")}
-            </Button>
+              commitButtonTestId="editor-commit-confirm-button"
+              onDismiss={dismissDialog}
+              onCancelCommit={() => void cancelCommit()}
+              onCommit={() => void handleCommit()}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

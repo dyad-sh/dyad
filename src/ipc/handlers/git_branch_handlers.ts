@@ -38,7 +38,10 @@ import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
+import { safeSend } from "../utils/safe_sender";
 import type {
+  CancelCommitParams,
+  CommitChangesParams,
   GitBranchAppIdParams,
   CreateGitBranchParams,
   GitBranchParams,
@@ -49,6 +52,15 @@ import type {
 } from "../types/github";
 
 const logger = log.scope("git_branch_handlers");
+
+interface ActiveCommitOperation {
+  appId: number;
+  controller: AbortController;
+  cancellable: boolean;
+  senderId: number;
+}
+
+const activeCommitOperations = new Map<string, ActiveCommitOperation>();
 
 export async function handleAbortMerge(
   event: IpcMainInvokeEvent,
@@ -417,13 +429,79 @@ async function withAppGitOp<T>(
 }
 
 async function handleCommitChanges(
-  _event: IpcMainInvokeEvent,
-  { appId, message }: { appId: number; message: string },
+  event: IpcMainInvokeEvent,
+  { appId, message, operationId }: CommitChangesParams,
 ): Promise<string> {
-  return withAppGitOp(appId, "commit", async (appPath) => {
-    await ensureDyadGitignored(appPath);
-    return gitService.stageAllAndCommit({ path: appPath, message });
+  if (activeCommitOperations.has(operationId)) {
+    throw new DyadError(
+      "A commit operation with this identifier is already active.",
+      DyadErrorKind.Conflict,
+    );
+  }
+
+  const controller = new AbortController();
+  const abortWhenSenderIsDestroyed = () => controller.abort();
+  event.sender.once?.("destroyed", abortWhenSenderIsDestroyed);
+  if (event.sender.isDestroyed?.()) {
+    controller.abort();
+  }
+  activeCommitOperations.set(operationId, {
+    appId,
+    controller,
+    cancellable: true,
+    senderId: event.sender.id,
   });
+  try {
+    return await withAppGitOp(appId, "commit", async (appPath) => {
+      if (controller.signal.aborted) {
+        throw GitStateError(
+          "The commit was cancelled.",
+          GIT_ERROR_CODES.COMMIT_CANCELLED,
+        );
+      }
+      await ensureDyadGitignored(appPath);
+      return gitService.stageAllAndCommitWithPreCommit({
+        path: appPath,
+        message,
+        signal: controller.signal,
+        onProgress: (phase) => {
+          if (phase === "committing") {
+            const active = activeCommitOperations.get(operationId);
+            if (active?.controller === controller) {
+              active.cancellable = false;
+            }
+          }
+          safeSend(event.sender, "git:commit-progress", {
+            appId,
+            operationId,
+            phase,
+          });
+        },
+      });
+    });
+  } finally {
+    event.sender.removeListener?.("destroyed", abortWhenSenderIsDestroyed);
+    const active = activeCommitOperations.get(operationId);
+    if (active?.controller === controller) {
+      activeCommitOperations.delete(operationId);
+    }
+  }
+}
+
+async function handleCancelCommit(
+  event: IpcMainInvokeEvent,
+  { appId, operationId }: CancelCommitParams,
+): Promise<boolean> {
+  const active = activeCommitOperations.get(operationId);
+  if (
+    active?.appId !== appId ||
+    active.senderId !== event.sender.id ||
+    !active.cancellable
+  ) {
+    return false;
+  }
+  active.controller.abort();
+  return true;
 }
 
 async function handleDiscardChanges(
@@ -499,5 +577,6 @@ export function registerGithubBranchHandlers() {
     handleGetUncommittedFileDiff,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
+  createTypedHandler(gitContracts.cancelCommit, handleCancelCommit);
   createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);
 }

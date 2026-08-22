@@ -226,7 +226,6 @@ export async function prepareLocalBranch({
           path: appPath,
           message:
             "chore: auto-commit local changes before connecting to GitHub",
-          noVerify: true,
         });
         logger.info(
           `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,

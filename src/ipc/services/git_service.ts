@@ -1,16 +1,109 @@
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 import {
   ensureGitLineEndingPolicy,
+  GIT_ERROR_CODES,
   gitAdd,
   gitAddAll,
   gitCommit,
   gitInit,
   gitRemove,
   hasStagedChanges,
+  GitStateError,
 } from "../utils/git_utils";
+import {
+  formatPreCommitOutput,
+  isCommitMsgHookAvailable,
+  isPreCommitHookAvailable,
+  isPrepareCommitMsgHookAvailable,
+  PRE_COMMIT_TIMEOUT_MS,
+  runCommitMsgHook,
+  runPreCommitHook,
+  runPrepareCommitMsgHook,
+} from "./pre_commit_service";
+import type { BufferedProcessResult } from "../utils/buffered_process";
+import type { CommitProgressPhase } from "../types/github";
 
 const logger = log.scope("git_service");
+
+/**
+ * Aborts the commit with a code the renderer recognizes as a cancellation.
+ *
+ * `signal.throwIfAborted()` raises a bare `AbortError`, which the renderer
+ * cannot tell apart from a real Git failure and would surface as an error
+ * toast even though the user asked to stop.
+ */
+function throwIfCommitCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw GitStateError(
+      "The commit was cancelled.",
+      GIT_ERROR_CODES.COMMIT_CANCELLED,
+    );
+  }
+}
+
+/**
+ * Runs one commit-message hook and returns the message it left behind.
+ *
+ * Failures carry the caller's hook-specific error code so the renderer can
+ * show accurate guidance with the hook output in an inline, scrollable panel
+ * instead of dumping thousands of characters into a toast.
+ */
+async function runMessageHookPhase({
+  path,
+  message,
+  signal,
+  run,
+  label,
+  failureCode,
+}: {
+  path: string;
+  message: string;
+  signal?: AbortSignal;
+  run: (args: {
+    path: string;
+    message: string;
+    signal?: AbortSignal;
+  }) => Promise<BufferedProcessResult & { message: string }>;
+  label: string;
+  failureCode:
+    | typeof GIT_ERROR_CODES.PREPARE_COMMIT_MSG_FAILED
+    | typeof GIT_ERROR_CODES.COMMIT_MSG_FAILED;
+}): Promise<string> {
+  let result;
+  try {
+    result = await run({ path, message, signal });
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new DyadError(
+      `${label} could not start. ${details}`,
+      DyadErrorKind.External,
+      { cause: error },
+    );
+  }
+
+  const output = formatPreCommitOutput(result.stdout, result.stderr);
+  if (result.timedOut) {
+    throw GitStateError(
+      `${label} exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
+      failureCode,
+    );
+  }
+  if (result.aborted) {
+    throw GitStateError(
+      `${label} were cancelled.`,
+      GIT_ERROR_CODES.COMMIT_CANCELLED,
+    );
+  }
+  if (result.code !== 0) {
+    throw GitStateError(
+      `${label} failed with exit code ${result.code ?? "unknown"}.\n\n${output}`,
+      failureCode,
+    );
+  }
+  return result.message;
+}
 
 /** Why a removal couldn't be committed, or null when it was. */
 export type RemoveFileUncommittedReason = "untracked" | "commit-failed";
@@ -53,7 +146,7 @@ export class GitService {
     await gitInit({ path, ref });
     await ensureGitLineEndingPolicy({ path, writeGitattributes: true });
     await gitAddAll({ path });
-    return gitCommit({ path, message, noVerify: true });
+    return gitCommit({ path, message });
   }
 
   /**
@@ -63,14 +156,115 @@ export class GitService {
   async stageAllAndCommit({
     path,
     message,
-    noVerify = false,
   }: {
     path: string;
     message: string;
-    noVerify?: boolean;
   }): Promise<string> {
     await gitAddAll({ path });
-    return gitCommit({ path, message, noVerify });
+    return gitCommit({ path, message });
+  }
+
+  /**
+   * Stages all changes, runs the repository's installed commit hooks as
+   * explicit verification phases, then commits without invoking them a second
+   * time.
+   *
+   * The hooks run in Git's own order — `pre-commit`, `prepare-commit-msg`,
+   * `commit-msg` — so a `prepare-commit-msg` hook that rewrites the message
+   * does so before `commit-msg` validates it, and the validated text is what
+   * `gitCommit` actually records. Hook failures use stable error codes so the
+   * renderer can offer recovery without mistaking unrelated Git failures for
+   * hook failures.
+   */
+  async stageAllAndCommitWithPreCommit({
+    path,
+    message,
+    onProgress,
+    signal,
+  }: {
+    path: string;
+    message: string;
+    onProgress?: (phase: CommitProgressPhase) => void;
+    signal?: AbortSignal;
+  }): Promise<string> {
+    throwIfCommitCancelled(signal);
+    onProgress?.("staging");
+    await gitAddAll({ path });
+    throwIfCommitCancelled(signal);
+
+    if (await isPreCommitHookAvailable(path)) {
+      onProgress?.("pre-commit");
+      let result;
+      try {
+        result = await runPreCommitHook({ path, signal });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        throw new DyadError(
+          `Pre-commit checks could not start. ${details}`,
+          DyadErrorKind.External,
+          { cause: error },
+        );
+      }
+
+      const output = formatPreCommitOutput(result.stdout, result.stderr);
+      if (result.timedOut) {
+        throw GitStateError(
+          `Pre-commit checks exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
+          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+        );
+      }
+      if (result.aborted) {
+        throw GitStateError(
+          "Pre-commit checks were cancelled.",
+          GIT_ERROR_CODES.COMMIT_CANCELLED,
+        );
+      }
+      if (result.code !== 0) {
+        throw GitStateError(
+          `Pre-commit checks failed with exit code ${result.code ?? "unknown"}.\n\n${output}`,
+          GIT_ERROR_CODES.PRE_COMMIT_FAILED,
+        );
+      }
+    }
+
+    throwIfCommitCancelled(signal);
+
+    const [hasPrepareCommitMsgHook, hasCommitMsgHook] = await Promise.all([
+      isPrepareCommitMsgHookAvailable(path),
+      isCommitMsgHookAvailable(path),
+    ]);
+    let validatedMessage = message;
+    if (hasPrepareCommitMsgHook || hasCommitMsgHook) {
+      throwIfCommitCancelled(signal);
+      onProgress?.("commit-msg");
+
+      if (hasPrepareCommitMsgHook) {
+        validatedMessage = await runMessageHookPhase({
+          path,
+          message: validatedMessage,
+          signal,
+          run: runPrepareCommitMsgHook,
+          label: "Commit-message preparation",
+          failureCode: GIT_ERROR_CODES.PREPARE_COMMIT_MSG_FAILED,
+        });
+        throwIfCommitCancelled(signal);
+      }
+
+      if (hasCommitMsgHook) {
+        validatedMessage = await runMessageHookPhase({
+          path,
+          message: validatedMessage,
+          signal,
+          run: runCommitMsgHook,
+          label: "Commit-message checks",
+          failureCode: GIT_ERROR_CODES.COMMIT_MSG_FAILED,
+        });
+      }
+    }
+
+    throwIfCommitCancelled(signal);
+    onProgress?.("committing");
+    return gitCommit({ path, message: validatedMessage });
   }
 
   /**
@@ -80,17 +274,15 @@ export class GitService {
   async stageAllAndCommitIfChanged({
     path,
     message,
-    noVerify = false,
   }: {
     path: string;
     message: string;
-    noVerify?: boolean;
   }): Promise<string | null> {
     await gitAddAll({ path });
     if (!(await hasStagedChanges({ path }))) {
       return null;
     }
-    return gitCommit({ path, message, noVerify });
+    return gitCommit({ path, message });
   }
 
   /**
@@ -178,7 +370,6 @@ export class GitService {
       const commitHash = await gitCommit({
         path,
         message,
-        noVerify: true,
         paths: [filepath],
       });
       return { commitHash, uncommittedReason: null };

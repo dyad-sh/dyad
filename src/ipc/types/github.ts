@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { defineContract, createClient } from "../contracts/core";
+import {
+  defineContract,
+  defineEvent,
+  createClient,
+  createEventClient,
+} from "../contracts/core";
 import { AppSchema } from "./app";
 
 // =============================================================================
@@ -54,7 +59,19 @@ export const ListRemoteGitBranchesParamsSchema = z.object({
 export const CommitChangesParamsSchema = z.object({
   appId: z.number(),
   message: z.string(),
+  operationId: z.string().min(1).max(256),
   filesToStage: z.array(z.string()).optional(),
+});
+
+export const CancelCommitParamsSchema = CommitChangesParamsSchema.pick({
+  appId: true,
+  operationId: true,
+});
+
+export const CommitProgressSchema = z.object({
+  appId: z.number(),
+  operationId: z.string().min(1).max(256),
+  phase: z.enum(["staging", "pre-commit", "commit-msg", "committing"]),
 });
 
 export const UncommittedFileSchema = z.object({
@@ -196,11 +213,24 @@ export const gitContracts = {
     invalidates: (input) => [{ family: "versions", appId: input.appId }],
   }),
 
+  cancelCommit: defineContract({
+    channel: "git:cancel-commit",
+    input: CancelCommitParamsSchema,
+    output: z.boolean(),
+  }),
+
   discardChanges: defineContract({
     channel: "git:discard-changes",
     input: GitBranchAppIdParamsSchema,
     output: z.void(),
     invalidates: (input) => [{ family: "versions", appId: input.appId }],
+  }),
+} as const;
+
+export const gitEvents = {
+  commitProgress: defineEvent({
+    channel: "git:commit-progress",
+    payload: CommitProgressSchema,
   }),
 } as const;
 
@@ -210,6 +240,7 @@ export const gitContracts = {
 
 export const githubClient = createClient(githubContracts);
 export const gitClient = createClient(gitContracts);
+export const gitEventClient = createEventClient(gitEvents);
 
 // =============================================================================
 // Type Exports
@@ -223,6 +254,9 @@ export type ListRemoteGitBranchesParams = z.infer<
   typeof ListRemoteGitBranchesParamsSchema
 >;
 export type CommitChangesParams = z.infer<typeof CommitChangesParamsSchema>;
+export type CancelCommitParams = z.infer<typeof CancelCommitParamsSchema>;
+export type CommitProgress = z.infer<typeof CommitProgressSchema>;
+export type CommitProgressPhase = CommitProgress["phase"];
 export type UncommittedFile = z.infer<typeof UncommittedFileSchema>;
 export type UncommittedFileStatus = UncommittedFile["status"];
 export type GetUncommittedFileDiffParams = z.infer<

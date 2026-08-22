@@ -188,7 +188,6 @@ export function registerVisualEditingHandlers() {
             await gitCommit({
               path: appPath,
               message: `Updated ${normalizedRelativePath}`,
-              noVerify: true,
             });
           }
         }

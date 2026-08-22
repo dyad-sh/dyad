@@ -36,6 +36,7 @@ import {
   gitCommit,
   getGitStateFingerprint,
 } from "@/ipc/utils/git_utils";
+import { GitService } from "@/ipc/services/git_service";
 
 const execFileAsync = promisify(execFile);
 
@@ -107,7 +108,7 @@ describe("gitCommit", () => {
     }
   });
 
-  it("can create an internal checkpoint while bypassing a failing pre-commit hook", async () => {
+  it("always bypasses pre-commit hooks", async () => {
     repoDir = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "git-no-verify-"),
     );
@@ -122,29 +123,182 @@ describe("gitCommit", () => {
 
     const commitHash = await gitCommit({
       path: repoDir,
-      message: "internal checkpoint",
-      noVerify: true,
+      message: "checkpoint",
     });
 
     expect(commitHash).toMatch(/^[0-9a-f]{40,64}$/);
   });
 
-  it("runs pre-commit hooks by default for explicit user commits", async () => {
+  it("does not let prepare-commit-msg rewrite the message", async () => {
+    // `--no-verify` bypasses only pre-commit and commit-msg; Git still runs
+    // prepare-commit-msg, which would rewrite the message after an explicit
+    // commit-msg run had already validated it.
     repoDir = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), "git-verify-default-"),
+      path.join(os.tmpdir(), "git-prepare-msg-"),
     );
     await runGit(repoDir, ["init"]);
-    const hookPath = path.join(repoDir, ".git", "hooks", "pre-commit");
-    await fs.promises.writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    const hookPath = path.join(repoDir, ".git", "hooks", "prepare-commit-msg");
+    await fs.promises.writeFile(
+      hookPath,
+      '#!/bin/sh\necho "appended-by-hook" >> "$1"\n',
+    );
     if (process.platform !== "win32") {
       await fs.promises.chmod(hookPath, 0o755);
     }
     await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
     await gitAddAll({ path: repoDir });
 
+    await gitCommit({ path: repoDir, message: "validated message" });
+
+    expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%B"])).toBe(
+      "validated message",
+    );
+  });
+
+  it("does not run hooks from a repository-relative suppression path", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-repo-hook-suppression-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const maliciousHooksDir = path.join(repoDir, ".dyad-no-git-hooks");
+    const markerPath = path.join(repoDir, "malicious-hook-ran");
+    await fs.promises.mkdir(maliciousHooksDir);
+    await fs.promises.writeFile(
+      path.join(maliciousHooksDir, "prepare-commit-msg"),
+      `#!/bin/sh\ntouch ${JSON.stringify(markerPath)}\n`,
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(
+        path.join(maliciousHooksDir, "prepare-commit-msg"),
+        0o755,
+      );
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+
+    await gitCommit({ path: repoDir, message: "safe checkpoint" });
+
+    expect(fs.existsSync(markerPath)).toBe(false);
+  });
+
+  it("does not report failure when temporary hook cleanup fails after commit", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-hook-cleanup-"),
+    );
+    await runGit(repoDir, ["init"]);
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+    vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(
+      new Error("temporary directory is locked"),
+    );
+
     await expect(
-      gitCommit({ path: repoDir, message: "explicit user commit" }),
-    ).rejects.toThrow();
+      gitCommit({ path: repoDir, message: "checkpoint" }),
+    ).resolves.toMatch(/^[0-9a-f]{40,64}$/);
+  });
+});
+
+describe("GitService explicit commit hooks", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      repoDir = undefined;
+    }
+  });
+
+  it("runs commit-msg and commits the message updated by the hook", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-commit-msg-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hookPath = path.join(repoDir, ".git", "hooks", "commit-msg");
+    await fs.promises.writeFile(
+      hookPath,
+      '#!/bin/sh\nprintf "validated: %s\\n" "$(cat "$1")" > "$1"\n',
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(hookPath, 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+
+    await new GitService().stageAllAndCommitWithPreCommit({
+      path: repoDir,
+      message: "manual message",
+    });
+
+    expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%s"])).toBe(
+      "validated: manual message",
+    );
+  });
+
+  it("runs hooks with the same author identity used by the commit", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-hook-author-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hookPath = path.join(repoDir, ".git", "hooks", "pre-commit");
+    const authorPath = path.join(repoDir, ".git", "hook-author");
+    await fs.promises.writeFile(
+      hookPath,
+      `#!/bin/sh\ngit var GIT_AUTHOR_IDENT > ${JSON.stringify(authorPath)}\n`,
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(hookPath, 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+
+    await new GitService().stageAllAndCommitWithPreCommit({
+      path: repoDir,
+      message: "manual message",
+    });
+
+    const hookAuthor = (await fs.promises.readFile(authorPath, "utf8"))
+      .trim()
+      .replace(/ \d+ [+-]\d{4}$/, "");
+    expect(hookAuthor).toBe(
+      await runGitOutput(repoDir, ["log", "-1", "--format=%an <%ae>"]),
+    );
+  });
+
+  it("runs prepare-commit-msg before commit-msg and commits exactly what was validated", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-msg-hook-order-"),
+    );
+    await runGit(repoDir, ["init"]);
+    const hooksDir = path.join(repoDir, ".git", "hooks");
+    // Mirrors the common pairing: prepare-commit-msg appends a trailer, and
+    // commit-msg rejects any message that is missing it.
+    await fs.promises.writeFile(
+      path.join(hooksDir, "prepare-commit-msg"),
+      '#!/bin/sh\nprintf "\\nChange-Id: I1234\\n" >> "$1"\n',
+    );
+    await fs.promises.writeFile(
+      path.join(hooksDir, "commit-msg"),
+      '#!/bin/sh\ngrep -q "^Change-Id: " "$1" || { echo "missing Change-Id"; exit 1; }\n',
+    );
+    if (process.platform !== "win32") {
+      await fs.promises.chmod(path.join(hooksDir, "prepare-commit-msg"), 0o755);
+      await fs.promises.chmod(path.join(hooksDir, "commit-msg"), 0o755);
+    }
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+
+    await new GitService().stageAllAndCommitWithPreCommit({
+      path: repoDir,
+      message: "manual message",
+    });
+
+    // The trailer appears exactly once: prepare-commit-msg ran here rather
+    // than again inside `gitCommit`, which would have duplicated it.
+    expect(await runGitOutput(repoDir, ["log", "-1", "--pretty=%B"])).toBe(
+      "manual message\n\nChange-Id: I1234",
+    );
   });
 });
 

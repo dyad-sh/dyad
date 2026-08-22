@@ -299,7 +299,6 @@ describe("applyPnpmVersionMigration", () => {
       expect(gitCommitMock).toHaveBeenCalledWith({
         path: appPath,
         message: `migrate to pnpm ${getManagedPnpmMajorVersion()}`,
-        noVerify: true,
       });
       expect(sendTelemetryEventMock).toHaveBeenCalledWith(
         "pnpm:version-migration-applied",

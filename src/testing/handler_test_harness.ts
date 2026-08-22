@@ -8,6 +8,7 @@ import type {
   GitService,
   RemoveFileAndCommitResult,
 } from "@/ipc/services/git_service";
+import type { CommitProgressPhase } from "@/ipc/types/github";
 import { DEFAULT_SETTINGS } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
 import { createInMemoryTestDb, type TestDb } from "./test_db";
@@ -42,6 +43,14 @@ export class FakeGitService implements GitService {
     message: string;
   }): Promise<string> {
     return this.record("stageAllAndCommit", args);
+  }
+
+  async stageAllAndCommitWithPreCommit(args: {
+    path: string;
+    message: string;
+    onProgress?: (phase: CommitProgressPhase) => void;
+  }): Promise<string> {
+    return this.record("stageAllAndCommitWithPreCommit", args);
   }
 
   async stageAllAndCommitIfChanged(args: {

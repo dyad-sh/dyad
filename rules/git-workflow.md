@@ -171,6 +171,12 @@ commit the corresponding tracked `.claude/skills/...` path instead.
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+## Runtime commit hook policy
+
+Dyad's low-level `gitCommit` helper is hook-free and does not expose a caller option. `--no-verify` alone is not enough: it bypasses only `pre-commit` and `commit-msg`, while Git still runs `prepare-commit-msg` (and `post-commit`), so a hook that appends to the message would rewrite it _after_ an explicit `commit-msg` run had already validated it. `gitCommit` therefore creates a fresh empty hooks directory under the OS temporary directory, passes its absolute path through `-c core.hooksPath=...`, and removes it after the commit. Never use a repository-relative suppression path: an imported repository could populate that path with executable hooks.
+
+Workflows that create user-requested commits must explicitly run every hook they promise to preserve, **in Git's own order**, before calling `gitCommit`. The manual UI flow runs `pre-commit`, then `prepare-commit-msg`, then `commit-msg` against `COMMIT_EDITMSG`, and commits whatever message those hooks left behind. Keep hook execution separate so failures can be surfaced and recovered from before committing, and never reorder the two message hooks — `commit-msg` must be the last thing to see the message that gets committed.
+
 When native Git commands accept a revision followed by optional paths, append
 `--` after the revision even when no paths are supplied. A branch name can also
 name a project file or directory (for example `src`), and omitting the separator

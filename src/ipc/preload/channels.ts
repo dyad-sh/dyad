@@ -19,7 +19,7 @@ import { settingsContracts } from "../types/settings";
 import { appContracts } from "../types/app";
 import { chatContracts, chatStreamContract } from "../types/chat";
 import { agentContracts, agentEvents } from "../types/agent";
-import { githubContracts, gitContracts } from "../types/github";
+import { githubContracts, gitContracts, gitEvents } from "../types/github";
 import {
   connectionFlowContracts,
   connectionFlowEvents,
@@ -175,6 +175,7 @@ export const VALID_RECEIVE_CHANNELS = [
 
   // Event channels
   ...getReceiveChannels(agentEvents),
+  ...getReceiveChannels(gitEvents),
   ...getReceiveChannels(coolifyEvents),
   ...getReceiveChannels(connectionFlowEvents),
   ...getReceiveChannels(supabaseEvents),

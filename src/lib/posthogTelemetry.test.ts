@@ -427,6 +427,34 @@ describe("PostHogErrorDeduper", () => {
     });
   });
 
+  it("throttles forced persistence near the dedupe boundary", () => {
+    vi.useFakeTimers();
+    try {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: vi.fn((key: string) => values.get(key) ?? null),
+        setItem: vi.fn((key: string, value: string) => {
+          values.set(key, value);
+        }),
+      };
+      const event = exceptionEvent();
+      const deduper = new PostHogErrorDeduper(storage, "window-a");
+      const freeWindowMs = 24 * HOUR_MS;
+
+      deduper.process(event, false, 0);
+      deduper.process(event, false, freeWindowMs - 5_000);
+      for (let offset = 4_999; offset > 4_750; offset -= 1) {
+        deduper.process(event, false, freeWindowMs - offset);
+      }
+
+      expect(storage.setItem).toHaveBeenCalledTimes(2);
+      deduper.process(event, false, freeWindowMs - 4_750);
+      expect(storage.setItem).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resets future records after the system clock moves backward", () => {
     const storage = new MemoryStorage();
     const event = exceptionEvent();

@@ -9,6 +9,7 @@ const PRO_ERROR_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_ERROR_DEDUPE_ENTRIES = 500;
 const MAX_STORED_ENTRIES_TO_PARSE = MAX_ERROR_DEDUPE_ENTRIES * 2;
 const ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS = 5_000;
+const ERROR_DEDUPE_BOUNDARY_WRITE_INTERVAL_MS = 250;
 const MAX_SUPPRESSION_SOURCES_PER_FINGERPRINT = 20;
 const POSTHOG_CRASH_EVENT_NAMES = new Set(["code_explorer:host_crash"]);
 const ERROR_FINGERPRINT_CONTEXT_KEYS = [
@@ -146,7 +147,9 @@ export class PostHogErrorDeduper {
       const remainingDedupeWindow = dedupeWindow - (now - existing.lastSentAt);
       this.persistState(
         now,
-        remainingDedupeWindow <= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS,
+        remainingDedupeWindow <= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS &&
+          now - this.lastStorageWriteAt >=
+            ERROR_DEDUPE_BOUNDARY_WRITE_INTERVAL_MS,
       );
       return null;
     }

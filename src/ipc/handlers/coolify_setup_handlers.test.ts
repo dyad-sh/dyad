@@ -306,8 +306,8 @@ describe("run", () => {
   });
 
   it("refuses a server whose check never finished", async () => {
-    // The fingerprint is recorded during the handshake, before preflight has
-    // said anything — so a connection that opened is not a check that passed.
+    // Neither the key nor the pass is recorded until a check has finished, so
+    // a connection that opened leaves nothing for an install to go on.
     h.preflightThrows = true;
     await expect(call("coolify-setup:inspect", TARGET)).rejects.toThrow();
 

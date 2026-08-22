@@ -170,6 +170,9 @@ export class PostHogErrorDeduper {
       return null;
     }
 
+    // This renderer is about to report the prior epoch's aggregate itself, so
+    // its pending delta must not be carried into the new epoch as well.
+    delete this.pendingSuppressionDeltas[fingerprintHash];
     state[fingerprintHash] = {
       lastSentAt: now,
       lastSeenAt: now,

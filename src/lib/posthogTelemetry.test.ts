@@ -481,6 +481,23 @@ describe("PostHogErrorDeduper", () => {
     });
   });
 
+  it("does not carry a delta already reported by a local epoch rollover", () => {
+    const storage = new MemoryStorage();
+    const event = exceptionEvent();
+    const deduper = new PostHogErrorDeduper(storage, "window-a");
+    const freeWindowMs = 24 * HOUR_MS;
+
+    deduper.process(event, false, 0);
+    deduper.process(event, false, freeWindowMs - 5_000);
+    deduper.process(event, false, freeWindowMs - 4_999);
+    expect(deduper.process(event, false, freeWindowMs)).toMatchObject({
+      properties: { dyad_error_suppressed_count: 2 },
+    });
+    expect(deduper.process(event, false, 2 * freeWindowMs)).not.toHaveProperty(
+      "properties.dyad_error_suppressed_count",
+    );
+  });
+
   it("resets future records after the system clock moves backward", () => {
     const storage = new MemoryStorage();
     const event = exceptionEvent();

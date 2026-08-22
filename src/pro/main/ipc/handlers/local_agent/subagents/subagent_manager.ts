@@ -1177,6 +1177,7 @@ async function followupSubagentAdmitted(
   },
 ): Promise<SubagentPersona> {
   const thread = await getOwnedThread(chatId, threadId);
+  assertSubagentFollowupAllowed(thread.status);
   assertPersonaEnabled(
     thread.persona,
     currentTurn?.ctx.canUseImplementerSubagent === true,
@@ -1274,6 +1275,16 @@ async function followupSubagentAdmitted(
   };
   await appendAndSchedule();
   return thread.persona;
+}
+
+export function assertSubagentFollowupAllowed(
+  status: SubagentThreadSummary["status"],
+): void {
+  if (status !== "stopping") return;
+  throw new DyadError(
+    "This sub-agent is still stopping. Wait for its current tool to finish before sending a follow-up.",
+    DyadErrorKind.Precondition,
+  );
 }
 
 export async function waitForSubagents(

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildAllExcludedReviewResult,
+  assertSubagentFollowupAllowed,
   buildRemediationPrompt,
   buildReboundReviewState,
   buildBoundedModelHistory,
@@ -46,6 +47,13 @@ describe("sub-agent manager status policy", () => {
       "auto_fix_countdown",
       "fixing_findings",
     ]);
+  });
+
+  it("rejects follow-ups while cancellation is still draining", () => {
+    expect(() => assertSubagentFollowupAllowed("stopping")).toThrow(
+      /still stopping/,
+    );
+    expect(() => assertSubagentFollowupAllowed("cancelled")).not.toThrow();
   });
 
   it("only reuses active or successfully completed same-hash reviews", () => {

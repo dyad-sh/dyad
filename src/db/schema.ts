@@ -295,6 +295,7 @@ export const agentThreads = sqliteTable(
       enum: [
         "queued",
         "running",
+        "stopping",
         "waiting_for_writer",
         "auto_fix_countdown",
         "fixing_findings",

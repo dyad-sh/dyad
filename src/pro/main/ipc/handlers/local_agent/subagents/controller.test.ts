@@ -25,6 +25,22 @@ describe("applySubagentLifecycleTransition", () => {
     expect(result).toEqual({ kind: "conflict" });
   });
 
+  it("persists a stop request without pretending the run completed", async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    const state = subagentLifecycleState({ status: "running" });
+    await applySubagentLifecycleTransition({
+      state,
+      event: { type: "REQUEST_STOP" },
+      now: new Date(123),
+      persist,
+    });
+    expect(persist).toHaveBeenCalledWith(state, {
+      status: "stopping",
+      error: null,
+      updatedAt: new Date(123),
+    });
+  });
+
   it("projects transition metadata only after an accepted transition", async () => {
     const persist = vi.fn().mockResolvedValue(true);
     const state = subagentLifecycleState({ status: "completed" });

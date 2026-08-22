@@ -41,6 +41,7 @@ describe("sub-agent manager status policy", () => {
     expect(SUBAGENT_NONTERMINAL_STATUSES).toEqual([
       "queued",
       "running",
+      "stopping",
       "waiting_for_writer",
       "auto_fix_countdown",
       "fixing_findings",

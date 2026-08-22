@@ -572,6 +572,9 @@ export function SubagentTeamCard({
 }
 
 function statusLabel(thread: SubagentThreadSummary): string {
+  if (thread.status === "stopping") {
+    return "Stop requested · tool still finishing";
+  }
   if (thread.status === "completed" && thread.persona === "reviewer") {
     const count = Number(thread.result?.findingCount ?? 0);
     return count === 0
@@ -584,5 +587,5 @@ function statusLabel(thread: SubagentThreadSummary): string {
 function isSubagentCancellable(
   status: SubagentThreadSummary["status"],
 ): boolean {
-  return isSubagentActive(status);
+  return isSubagentActive(status) && status !== "stopping";
 }

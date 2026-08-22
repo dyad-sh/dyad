@@ -75,6 +75,19 @@ describe("mutation activity tracker", () => {
     second.settle();
   });
 
+  it("can continue waiting after a bounded drain attempt times out", async () => {
+    const activityOwner = trackedOwner("turn", "run-1");
+    const activity = reserveMutationActivity(activityOwner);
+    closeMutationActor(activityOwner.actorRunId);
+
+    expect(await waitForMutationActorDrain(activityOwner.actorRunId, 0)).toBe(
+      false,
+    );
+    const eventualDrain = waitForMutationActorDrain(activityOwner.actorRunId);
+    activity.settle();
+    expect(await eventualDrain).toBe(true);
+  });
+
   it("makes stale and repeated handle settlement harmless", () => {
     const firstOwner = trackedOwner("turn", "run-1");
     const first = reserveMutationActivity(firstOwner);

@@ -165,22 +165,25 @@ export function closeMutationActor(actorRunId: string): void {
 
 export function waitForMutationActorDrain(
   actorRunId: string,
-  timeoutMs: number,
+  timeoutMs?: number,
 ): Promise<boolean> {
   const turnId = actorToTurn.get(actorRunId);
   const actor = turnId ? turns.get(turnId)?.actors.get(actorRunId) : undefined;
   if (!actor || actor.tokens.size === 0) return Promise.resolve(true);
   return new Promise((resolve) => {
     let finished = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     const finish = (drained: boolean) => {
       if (finished) return;
       finished = true;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       actor.drainWaiters.delete(onDrain);
       resolve(drained);
     };
     const onDrain = () => finish(true);
-    const timeout = setTimeout(() => finish(false), timeoutMs);
+    if (timeoutMs !== undefined) {
+      timeout = setTimeout(() => finish(false), timeoutMs);
+    }
     actor.drainWaiters.add(onDrain);
     if (actor.tokens.size === 0) finish(true);
   });

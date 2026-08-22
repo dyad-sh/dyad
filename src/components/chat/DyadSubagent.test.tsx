@@ -168,4 +168,25 @@ describe("DyadSubagent", () => {
       expect(container.querySelector("svg.text-destructive")).toBeNull();
     },
   );
+
+  it("shows a nonterminal stopping state without offering another stop", async () => {
+    mocks.listSubagents.mockResolvedValue([makeThread("stopping")]);
+    mocks.getSubagentActivities.mockResolvedValue([]);
+
+    render(
+      <DyadSubagent
+        chatId={7}
+        threadId="explorer-1"
+        persona="explorer"
+        taskName="Trace authentication"
+        renderActivity={() => null}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    expect(
+      await screen.findByText(/Stop requested · tool still finishing/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Stop explorer/ })).toBeNull();
+  });
 });

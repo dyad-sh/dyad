@@ -246,13 +246,10 @@ export async function settleSubagentsForChatDeletion(
       followupCleanupTimers.delete(id);
       autoFixOwnerByThread.delete(id);
       cancelledThreadIds.add(id);
+      const current = await getThread(id);
+      await applyThreadLifecycle(current, { type: "REQUEST_STOP" });
     }
 
-    await Promise.all(
-      threads.map(({ id }) =>
-        finishThread(id, "cancelled", null, "The owning chat was deleted."),
-      ),
-    );
     const actorRunIds = closeAndDisposeTurnsForChat(chatId);
 
     await disposal.waitForActiveRuns();
@@ -263,9 +260,41 @@ export async function settleSubagentsForChatDeletion(
       if (cleanupTimer) clearTimeout(cleanupTimer);
       followupCleanupTimers.delete(id);
     }
-    await Promise.all(
+    const drainResults = await Promise.all(
       actorRunIds.map((actorRunId) =>
         waitForMutationActorDrain(actorRunId, SAFE_ABORT_DRAIN_MAX_WAIT_MS),
+      ),
+    );
+    if (drainResults.some((drained) => !drained)) {
+      void Promise.all(
+        actorRunIds.map((actorRunId) => waitForMutationActorDrain(actorRunId)),
+      )
+        .then(() =>
+          Promise.all(
+            threads.map(({ id }) =>
+              finishThread(
+                id,
+                "cancelled",
+                null,
+                "The owning chat deletion was retried after its tool finished.",
+              ),
+            ),
+          ),
+        )
+        .catch((error) =>
+          logger.error(
+            "Failed to settle delayed sub-agent cancellation",
+            error,
+          ),
+        );
+      throw new DyadError(
+        "A sub-agent tool is still finishing. Try deleting again shortly.",
+        DyadErrorKind.Conflict,
+      );
+    }
+    await Promise.all(
+      threads.map(({ id }) =>
+        finishThread(id, "cancelled", null, "The owning chat was deleted."),
       ),
     );
     return () => disposal.release();
@@ -656,6 +685,7 @@ export async function cancelSubagent(
   ) {
     return;
   }
+  if (thread.status === "stopping") return;
   cancelledThreadIds.add(threadId);
   const activeRun = abortControllers.get(threadId);
   activeRun?.controller.abort();
@@ -666,15 +696,29 @@ export async function cancelSubagent(
     activeRunsByChat.get(chatId)?.has(threadId) === true;
   if (pendingIndex >= 0)
     pendingRuns.splice(pendingIndex, 1)[0].activity?.settle();
+  await applyThreadLifecycle(thread, { type: "REQUEST_STOP" });
   // An active writer keeps its exact activity tokens until its current tool
   // invocation unwinds. Pending runs are safe to settle because the
   // cancellation tombstone prevents startup.
   if (thread.persona === "implementer" && activeRun?.actorRunId) {
     closeMutationActor(activeRun.actorRunId);
-    await waitForMutationActorDrain(
+    const drained = await waitForMutationActorDrain(
       activeRun.actorRunId,
       SAFE_ABORT_DRAIN_MAX_WAIT_MS,
     );
+    if (!drained) {
+      void waitForMutationActorDrain(activeRun.actorRunId)
+        .then(() =>
+          finishThread(threadId, "cancelled", null, "Cancelled by user."),
+        )
+        .catch((error) =>
+          logger.error(
+            "Failed to settle delayed sub-agent cancellation",
+            error,
+          ),
+        );
+      return;
+    }
   }
   await finishThread(threadId, "cancelled", null, "Cancelled by user.");
   if (pendingIndex >= 0 || (!activeRun && !schedulerStillOwnsRun)) {

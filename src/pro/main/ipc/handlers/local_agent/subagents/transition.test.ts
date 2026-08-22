@@ -9,6 +9,7 @@ import {
 const STATUSES: readonly SubagentStatus[] = [
   "queued",
   "running",
+  "stopping",
   "waiting_for_writer",
   "auto_fix_countdown",
   "fixing_findings",
@@ -23,6 +24,7 @@ const STATUSES: readonly SubagentStatus[] = [
 
 const EVENTS: readonly SubagentLifecycleEvent[] = [
   { type: "START" },
+  { type: "REQUEST_STOP" },
   {
     type: "FINISH",
     status: "completed",
@@ -59,6 +61,24 @@ describe("transitionSubagentLifecycle", () => {
         if (result.kind === "ignored") expect(result.state).toBe(state);
       }
     }
+  });
+
+  it("keeps a stop request nonterminal until the runner physically settles", () => {
+    const running = subagentLifecycleState({ status: "running" });
+    expect(
+      transitionSubagentLifecycle(running, { type: "REQUEST_STOP" }),
+    ).toMatchObject({ kind: "applied", state: { status: "stopping" } });
+    expect(
+      transitionSubagentLifecycle(
+        subagentLifecycleState({ status: "stopping" }),
+        {
+          type: "FINISH",
+          status: "cancelled",
+          resultJson: null,
+          error: "Cancelled by user.",
+        },
+      ),
+    ).toMatchObject({ kind: "applied", state: { status: "cancelled" } });
   });
 
   it("creates a distinct, non-value-equal state for every applied transition", () => {

@@ -104,6 +104,7 @@ export type SubagentPersona = z.infer<typeof SubagentPersonaSchema>;
 export const SubagentStatusSchema = z.enum([
   "queued",
   "running",
+  "stopping",
   "waiting_for_writer",
   "auto_fix_countdown",
   "fixing_findings",
@@ -136,6 +137,7 @@ void _subagentStatusMutualAssignability;
 export const SUBAGENT_ACTIVE_STATUSES = [
   "queued",
   "running",
+  "stopping",
   "waiting_for_writer",
 ] as const satisfies readonly SubagentStatus[];
 
@@ -145,7 +147,9 @@ export function isSubagentActive(status: SubagentStatus): boolean {
   );
 }
 
-export const isSubagentAcceptingMessages = isSubagentActive;
+export function isSubagentAcceptingMessages(status: SubagentStatus): boolean {
+  return status !== "stopping" && isSubagentActive(status);
+}
 
 export const SubagentThreadSummarySchema = z.object({
   id: z.string(),

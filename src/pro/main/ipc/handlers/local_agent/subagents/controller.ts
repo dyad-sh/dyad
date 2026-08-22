@@ -54,6 +54,11 @@ function lifecyclePatch(
   switch (event.type) {
     case "START":
       return { ...base, startedAt: now };
+    case "REQUEST_STOP":
+      return {
+        ...base,
+        error: null,
+      };
     case "FINISH":
       return {
         ...base,

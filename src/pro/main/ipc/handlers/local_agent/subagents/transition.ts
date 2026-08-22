@@ -9,6 +9,7 @@ export type RemediationSource = Exclude<
 
 export type SubagentLifecycleEvent =
   | { readonly type: "START" }
+  | { readonly type: "REQUEST_STOP" }
   | {
       readonly type: "FINISH";
       readonly status: Exclude<
@@ -77,6 +78,13 @@ export function transitionSubagentLifecycle(
       }
       if (state.status === "running") return ignore(state, "already-active");
       return changed(state, { ...state, status: "running" });
+
+    case "REQUEST_STOP":
+      if (!isNonterminalSubagentStatus(state.status)) {
+        return ignore(state, "already-terminal");
+      }
+      if (state.status === "stopping") return ignore(state, "already-active");
+      return changed(state, { ...state, status: "stopping" });
 
     case "FINISH":
       if (!isNonterminalSubagentStatus(state.status)) {

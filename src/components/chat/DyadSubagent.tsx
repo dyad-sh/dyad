@@ -131,7 +131,7 @@ export function DyadSubagent({
         ) : thread ? (
           <CircleX size={15} className="shrink-0 text-destructive" />
         ) : null}
-        {isActive && (
+        {isActive && thread?.status !== "stopping" && (
           <Button
             size="sm"
             variant="ghost"
@@ -226,6 +226,7 @@ function getStatusText(
   if (!status) return "Starting";
   if (status === "completed") return "Completed";
   if (status === "partial") return "Partial findings";
+  if (status === "stopping") return "Stop requested · tool still finishing";
   return status.replaceAll("_", " ");
 }
 

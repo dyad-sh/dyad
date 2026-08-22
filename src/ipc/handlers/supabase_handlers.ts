@@ -197,20 +197,14 @@ export function registerSupabaseHandlers() {
 
     // Transform to ConsoleEntry format
     return rawLogs.map((logEntry: SupabaseProjectLog) => {
-      const metadata = logEntry.metadata?.[0] || {};
-      const level = metadata.level || "info";
       const eventMessage = logEntry.event_message || "";
       const functionName = extractFunctionName(eventMessage);
 
       return {
-        level: (level === "error"
-          ? "error"
-          : level === "warn"
-            ? "warn"
-            : "info") as "info" | "warn" | "error",
+        level: logEntry.level,
         type: "edge-function" as const,
         message: eventMessage,
-        timestamp: logEntry.timestamp / 1000, // Convert from microseconds to milliseconds
+        timestamp: logEntry.timestamp,
         sourceName: functionName,
         appId,
       };

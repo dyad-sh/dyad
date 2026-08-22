@@ -19,6 +19,11 @@ import { writeFileTool } from "./write_file";
 import type { AgentContext } from "./types";
 import type { McpToolDef } from "./mcp_type_defs";
 import { buildAgentToolSet, shouldIncludeTool } from "../tool_definitions";
+import {
+  createMutationActivityOwner,
+  endTurnFinalization,
+  tryBeginTurnFinalization,
+} from "../subagents/mutation_activity_tracker";
 
 vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
@@ -553,6 +558,13 @@ describe("executeSandboxScriptTool", () => {
       executionMs: 3,
     });
     const ctx = createWritableSandboxContext();
+    const turnId = "sandbox-write-test";
+    ctx.mutationActivityOwner = createMutationActivityOwner({
+      appId: ctx.appId,
+      chatId: ctx.chatId,
+      turnId,
+      actorRunId: "sandbox-writer",
+    });
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("out/a.txt", "hello");',
@@ -563,11 +575,19 @@ describe("executeSandboxScriptTool", () => {
     const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
       .calls[0][0].capabilities;
     const writeFile = capabilities?.write_file;
-    const execute = vi
-      .spyOn(writeFileTool, "execute")
-      .mockResolvedValueOnce("wrote file");
-    await expect(writeFile?.("out/a.txt", "hello")).resolves.toBe("wrote file");
-    expect(execute).toHaveBeenCalledOnce();
+    let finishWrite!: (value: string) => void;
+    const execute = vi.spyOn(writeFileTool, "execute").mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishWrite = resolve;
+      }),
+    );
+    const writing = writeFile?.("out/a.txt", "hello");
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    expect(tryBeginTurnFinalization(turnId)).toBe(false);
+    finishWrite("wrote file");
+    await expect(writing).resolves.toBe("wrote file");
+    expect(tryBeginTurnFinalization(turnId)).toBe(true);
+    endTurnFinalization(turnId);
   });
 
   it("with execution_thread: 'worker', invokes runSandboxScript and does not inject MCP capabilities", async () => {

@@ -69,6 +69,7 @@ describe("addDependencyTool", () => {
       }),
     );
     const ctx = {
+      appId: 1,
       messageId: 1,
       appPath: "/tmp/app",
     } as AgentContext;
@@ -79,5 +80,32 @@ describe("addDependencyTool", () => {
 
     expect(ctx.mutationCount).toBe(1);
     expect(ctx.fileMutationCount).toBe(1);
+  });
+
+  it("serializes package-manager installs for the same app", async () => {
+    let finishFirst!: () => void;
+    executeAddDependencyMock
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishFirst = () => resolve({ warningMessages: [] });
+        }),
+      )
+      .mockResolvedValueOnce({ warningMessages: [] });
+    const ctx = {
+      appId: 7,
+      messageId: 1,
+      appPath: "/tmp/app",
+    } as AgentContext;
+
+    const first = addDependencyTool.execute({ packages: ["react"] }, ctx);
+    const second = addDependencyTool.execute({ packages: ["zod"] }, ctx);
+    await vi.waitFor(() =>
+      expect(executeAddDependencyMock).toHaveBeenCalledOnce(),
+    );
+    finishFirst();
+
+    await expect(first).resolves.toContain("react");
+    await expect(second).resolves.toContain("zod");
+    expect(executeAddDependencyMock).toHaveBeenCalledTimes(2);
   });
 });

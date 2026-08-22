@@ -263,7 +263,9 @@ export function validateMutationScope(scope: string[]): string[] {
         value === "" ||
         value === ".." ||
         value.startsWith("../") ||
-        path.posix.isAbsolute(value),
+        path.posix.isAbsolute(value) ||
+        path.win32.isAbsolute(value) ||
+        /^[A-Za-z]:/.test(value),
     )
   ) {
     throw new DyadError(

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   closeMutationActor,
@@ -7,7 +7,9 @@ import {
   endTurnFinalization,
   reserveMutationActivity,
   tryBeginTurnFinalization,
+  validateMutationScope,
   waitForMutationActorDrain,
+  withTrackedMutation,
 } from "./mutation_activity_tracker";
 
 function owner(turnId: string, actorRunId: string, chatId = 1) {
@@ -26,6 +28,7 @@ function trackedOwner(turnId: string, actorRunId: string, chatId = 1) {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const turnId of turnIds) endTurnFinalization(turnId);
   turnIds.clear();
 });
@@ -99,5 +102,21 @@ describe("mutation activity tracker", () => {
     expect(tryBeginTurnFinalization("turn")).toBe(false);
     successor.settle();
     expect(tryBeginTurnFinalization("turn")).toBe(true);
+  });
+
+  it.each(["C:\\outside", "C:outside", "D:/outside"])(
+    "rejects Windows drive scope %s on every host OS",
+    (scope) => {
+      expect(() => validateMutationScope([scope])).toThrow(/relative paths/);
+    },
+  );
+
+  it("rejects a missing writable owner outside the legacy test-fixture path", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    await expect(
+      withTrackedMutation({ mutationActivityOwner: undefined }, async () =>
+        Promise.resolve("unexpected"),
+      ),
+    ).rejects.toThrow(/missing its mutation owner/);
   });
 });

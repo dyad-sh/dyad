@@ -5,6 +5,7 @@ import path from "node:path";
 
 const mocks = vi.hoisted(() => ({
   getGitUncommittedFiles: vi.fn(),
+  getCurrentCommitHash: vi.fn(),
   gitAddAll: vi.fn(),
   gitCommit: vi.fn(),
   deployAffectedSupabaseFunctions: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("electron-log", () => ({
 
 vi.mock("@/ipc/utils/git_utils", () => ({
   getGitUncommittedFiles: mocks.getGitUncommittedFiles,
+  getCurrentCommitHash: mocks.getCurrentCommitHash,
   gitAddAll: mocks.gitAddAll,
   gitCommit: mocks.gitCommit,
 }));
@@ -57,6 +59,7 @@ describe("commitAllChanges", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getGitUncommittedFiles.mockResolvedValue(["src/App.tsx"]);
+    mocks.getCurrentCommitHash.mockResolvedValue("current-head");
     mocks.gitCommit.mockResolvedValue("commit-hash");
   });
 
@@ -104,7 +107,7 @@ describe("commitAllChanges", () => {
 
     releaseFirst();
     await expect(first).resolves.toEqual({ commitHash: "first-hash" });
-    await expect(second).resolves.toEqual({ commitHash: undefined });
+    await expect(second).resolves.toEqual({ commitHash: "current-head" });
     expect(mocks.getGitUncommittedFiles).toHaveBeenCalledTimes(2);
     expect(mocks.gitAddAll).toHaveBeenCalledOnce();
   });
@@ -187,6 +190,34 @@ describe("deployAllFunctionsIfNeeded", () => {
       expect(mocks.deployAffectedSupabaseFunctions).toHaveBeenCalledTimes(2);
     } finally {
       access.mockRestore();
+    }
+  });
+
+  it("returns coordinator admission failures as deploy results", async () => {
+    const { appOperationCoordinator } =
+      await import("@/ipc/services/app_operation_coordinator");
+    const run = vi
+      .spyOn(appOperationCoordinator, "run")
+      .mockRejectedValueOnce(new Error("recording active"));
+    try {
+      await expect(
+        deployAllFunctionsIfNeeded({
+          appId: 1,
+          appPath: "/apps/test",
+          supabaseProjectId: "project-id",
+          supabaseOrganizationSlug: null,
+          isSharedModulesChanged: true,
+          sharedServerModulePaths: [],
+          pendingFunctionDeploys: [],
+          onXmlStream: vi.fn(),
+          onXmlComplete: vi.fn(),
+        }),
+      ).resolves.toEqual({
+        success: false,
+        error: expect.stringContaining("recording active"),
+      });
+    } finally {
+      run.mockRestore();
     }
   });
 

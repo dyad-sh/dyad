@@ -351,6 +351,19 @@ vi.mock(
   () => mockSubagentManager,
 );
 
+const mockEndTurnFinalization = vi.hoisted(() => vi.fn());
+vi.mock(
+  "@/pro/main/ipc/handlers/local_agent/subagents/mutation_activity_tracker",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/pro/main/ipc/handlers/local_agent/subagents/mutation_activity_tracker")
+      >();
+    mockEndTurnFinalization.mockImplementation(actual.endTurnFinalization);
+    return { ...actual, endTurnFinalization: mockEndTurnFinalization };
+  },
+);
+
 const {
   mockIsChatPendingCompaction,
   mockPerformCompaction,
@@ -3463,6 +3476,9 @@ describe("handleLocalAgentStream", () => {
       expect(
         mockSubagentManager.waitForOwnedSubagentsAndSealTurn,
       ).toHaveBeenCalledOnce();
+      expect(mockEndTurnFinalization).toHaveBeenCalledWith(
+        "local-agent-turn:10",
+      );
     });
 
     it("cancels spawned sub-agents when the root stream fails", async () => {

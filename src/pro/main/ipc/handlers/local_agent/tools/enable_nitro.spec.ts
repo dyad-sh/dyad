@@ -26,6 +26,7 @@ describe("enableNitroTool", () => {
       }),
     );
     const ctx = {
+      appId: 1,
       appPath: "/tmp/app",
       frameworkType: "vite",
     } as AgentContext;

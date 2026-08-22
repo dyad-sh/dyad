@@ -14,6 +14,11 @@ import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
 import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
+import {
+  createMutationActivityOwner,
+  endTurnFinalization,
+  tryBeginTurnFinalization,
+} from "../subagents/mutation_activity_tracker";
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
@@ -338,6 +343,39 @@ describe("buildMcpCapabilityMap", () => {
     const xmls = vi.mocked(ctx.onXmlComplete).mock.calls.map((c) => c[0]);
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-call"))).toBe(true);
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-result"))).toBe(true);
+  });
+
+  it("tracks direct MCP execution until the host call settles", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
+    let finishExecute!: (value: { content: never[] }) => void;
+    const execute = vi.fn().mockReturnValue(
+      new Promise((resolve) => {
+        finishExecute = resolve;
+      }),
+    );
+    vi.mocked(mcpManager.getClient).mockResolvedValue({
+      tools: async () => ({ hello: { execute } }),
+    } as any);
+    const ctx = createCtx();
+    const turnId = "direct-mcp-test";
+    ctx.mutationActivityOwner = createMutationActivityOwner({
+      appId: ctx.appId,
+      chatId: ctx.chatId,
+      turnId,
+      actorRunId: "root",
+    });
+    const call = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    }).srv__hello({});
+
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    expect(tryBeginTurnFinalization(turnId)).toBe(false);
+    finishExecute({ content: [] });
+    await call;
+    expect(tryBeginTurnFinalization(turnId)).toBe(true);
+    endTurnFinalization(turnId);
   });
 
   it("wraps a plain-string MCP result into the declared McpResult shape", async () => {

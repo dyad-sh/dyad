@@ -9,6 +9,10 @@ import {
 } from "@/ipc/processors/executeAddDependency";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { trackAppMutation } from "./tool_invocation";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "@/ipc/services/app_operation_coordinator";
 
 const addDependencySchema = z.object({
   packages: z
@@ -54,11 +58,20 @@ export const addDependencyTool: ToolDefinition<
     }
 
     try {
-      const result = await executeAddDependency({
-        packages: args.packages,
-        message,
-        appPath: ctx.appPath,
-      });
+      const result = await appOperationCoordinator.run(
+        {
+          appId: ctx.appId,
+          operation: "install Local Agent dependencies",
+          resources: [readAppResource("app-path"), "repository-worktree"],
+          refuseWhenRecording: "install dependencies",
+        },
+        () =>
+          executeAddDependency({
+            packages: args.packages,
+            message,
+            appPath: ctx.appPath,
+          }),
+      );
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }

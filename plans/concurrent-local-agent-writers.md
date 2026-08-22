@@ -6,7 +6,7 @@
 
 Allow root Local Agents and Implementer/Sidekick sub-agents to edit the same app concurrently, across different chats and within one chat, using the existing shared working tree. Replace the app-wide exclusive writer lease with owner-scoped lifecycle tracking so cancellation and finalization remain correct without blocking unrelated work.
 
-The governing invariant is: **concurrent agent mutation, serialized unsafe primitives**. Ordinary file and tool mutations do not exclude other agents; only intrinsically unsafe Git, provider, runtime, and destructive app operations retain their existing narrow coordination.
+The governing invariant is: **concurrent agent mutation, serialized unsafe primitives**. Ordinary file and tool mutations do not exclude other agents; only intrinsically unsafe Git, package-manager, provider, runtime, and destructive app operations retain their existing narrow coordination.
 
 ## Problem Statement
 
@@ -165,11 +165,10 @@ Other actors remain admitted. A late token settlement removes only itself. An ow
 #### Turn-scoped finalization
 
 1. Wait for only Implementer executions reserved by the root turn.
-2. Wait for that turn's direct-root, MCP, sandbox, and child mutation activities.
-3. Atomically seal the `turnId` so no new owned child or mutation can enter.
-4. Re-read owned thread status and pending messages after sealing.
-5. If the join predicate changed, reopen/retry; otherwise deploy and commit.
-6. Dispose the turn record in the root handler's `finally` block.
+2. Under finalization admission, re-read owned thread status and pending messages.
+3. Atomically check that the turn has no activity tokens and seal the `turnId`; if either the join predicate or activity changed, retry from step 1.
+4. Deploy and commit only after the atomic zero-activity seal succeeds.
+5. Dispose the turn record in the root handler's `finally` block.
 
 Finalization must never inspect app-wide writer activity. A late same-turn spawn/follow-up receives a targeted “This turn is already finalizing” protocol error; another turn remains open.
 
@@ -178,11 +177,14 @@ Finalization must never inspect app-wide writer activity. A late same-turn spawn
 - In `commitAllChanges`, wrap the complete Local Agent `getGitUncommittedFiles` → `gitAddAll` → `gitCommit` checkpoint in one `appOperationCoordinator` operation with read access to `app-path` and write access to `repository`.
 - Acquire coordination before checking status so a queued finalizer re-evaluates the repository instead of acting on a stale pre-wait result.
 - Ordinary file writes remain concurrent while that Git transaction runs.
-- Treat a second finalizer's “nothing to commit” result as successful completion.
+- Treat a second finalizer's “nothing to commit” result as successful completion and persist the current `HEAD` as that turn's immutable `commitHash`.
 - In `deployAllFunctionsIfNeeded`, wrap the complete same-app Supabase reconciliation → delete → deploy batch in one `provider` resource claim. Reconciliation must happen after the claim is acquired so it uses the latest filesystem.
 - A second same-app deployment waits for the first batch, then reconciles and deploys from the current shared tree. Ordinary file edits remain concurrent.
 - Accept last-completer-wins deployment semantics for the shared tree. Cross-app coordination when two apps target the same Supabase project is deferred.
 - Preserve existing coordinators for app paths, deletion, rename, runtime lifecycle, provider/environment transitions, and chat/app teardown.
+- Serialize package-manager and Nitro setup operations per app with a read `app-path` plus write `repository-worktree` claim. Refuse these operations while a recording owns the working tree.
+- Git checkpoints and provider deployment batches use `refuseWhenRecording` so bounded root finalization cannot queue behind a user-controlled recording session.
+- `run_pre_commit` intentionally verifies and may format the current shared tree, including edits from concurrent turns. Its existing consent copy says that it stages all changes; failures describe shared-tree state and must not be attributed exclusively to the calling turn.
 
 #### Reviewer
 
@@ -235,6 +237,7 @@ Keep the legacy `waiting_for_writer` enum value for backward-compatible hydratio
 - [ ] Store `{ controller, actorRunId }` together and target cancellation by generation.
 - [ ] Keep delayed consent bound to the child signal and recheck actor admission immediately before mutation registration.
 - [ ] Update chat deletion to drain only that chat and app deletion/reset to enumerate and drain every affected owner.
+- [ ] Close chat/app admission synchronously before teardown enumeration, then drain the owners captured behind that fence before deleting app paths or rows.
 
 ### Phase 3: Migrate Mutation Entry Points
 

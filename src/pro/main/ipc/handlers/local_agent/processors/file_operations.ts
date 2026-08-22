@@ -6,6 +6,7 @@ import log from "electron-log";
 import {
   gitCommit,
   gitAddAll,
+  getCurrentCommitHash,
   getGitUncommittedFiles,
 } from "@/ipc/utils/git_utils";
 import {
@@ -124,102 +125,109 @@ export async function deployAllFunctionsIfNeeded(
   }
   const supabaseProjectId = ctx.supabaseProjectId;
 
-  return appOperationCoordinator.run(
-    {
-      appId: ctx.appId,
-      operation: "reconcile Local Agent Supabase functions",
-      resources: [readAppResource("app-path"), "provider"],
-      refuseWhenRecording: "deploy Supabase functions",
-    },
-    async () => {
-      try {
-        const deferred = await reconcileDeferredFunctionOperations({
-          pendingDeploys: ctx.pendingFunctionDeploys,
-          pendingDeletes: ctx.pendingFunctionDeletes ?? [],
-          functionExists: (functionName) =>
-            supabaseFunctionEntryExists(ctx.appPath, functionName),
-        });
-        const settings = readSettings();
-        const preservedDeletes = settings.skipPruneEdgeFunctions
-          ? deferred.deletes
-          : [];
-        const deleteErrors: string[] = [];
-        for (const functionName of settings.skipPruneEdgeFunctions
-          ? []
-          : deferred.deletes) {
-          try {
-            await deleteSupabaseFunction({
-              supabaseProjectId,
-              functionName,
-              organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-            });
-          } catch (error) {
-            // Deferred queues can contain a function that was created and removed
-            // before root finalization, or one another path already removed.
-            if (isSupabaseFunctionNotFoundError(error)) continue;
-            deleteErrors.push(`${functionName}: ${error}`);
-          }
-        }
-        let deployErrors: string[] = [];
-        if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
-          deployErrors = await deployAffectedSupabaseFunctions({
-            appPath: ctx.appPath,
-            supabaseProjectId,
-            supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
-            skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-            sharedModulesChanged: ctx.isSharedModulesChanged,
-            changedSharedModulePaths: ctx.sharedServerModulePaths,
-            pendingFunctionDeploys: deferred.deploys,
-            onProgress: (progress: SupabaseDeployProgress) => {
-              const statusXml = renderSupabaseDeployStatus(progress);
-              if (
-                progress.phase === "finished" ||
-                progress.phase === "failed"
-              ) {
-                ctx.onXmlComplete(statusXml);
-              } else {
-                ctx.onXmlStream(statusXml);
-              }
-            },
+  try {
+    return await appOperationCoordinator.run(
+      {
+        appId: ctx.appId,
+        operation: "reconcile Local Agent Supabase functions",
+        resources: [readAppResource("app-path"), "provider"],
+        refuseWhenRecording: "deploy Supabase functions",
+      },
+      async () => {
+        try {
+          const deferred = await reconcileDeferredFunctionOperations({
+            pendingDeploys: ctx.pendingFunctionDeploys,
+            pendingDeletes: ctx.pendingFunctionDeletes ?? [],
+            functionExists: (functionName) =>
+              supabaseFunctionEntryExists(ctx.appPath, functionName),
           });
-        }
+          const settings = readSettings();
+          const preservedDeletes = settings.skipPruneEdgeFunctions
+            ? deferred.deletes
+            : [];
+          const deleteErrors: string[] = [];
+          for (const functionName of settings.skipPruneEdgeFunctions
+            ? []
+            : deferred.deletes) {
+            try {
+              await deleteSupabaseFunction({
+                supabaseProjectId,
+                functionName,
+                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+              });
+            } catch (error) {
+              // Deferred queues can contain a function that was created and removed
+              // before root finalization, or one another path already removed.
+              if (isSupabaseFunctionNotFoundError(error)) continue;
+              deleteErrors.push(`${functionName}: ${error}`);
+            }
+          }
+          let deployErrors: string[] = [];
+          if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
+            deployErrors = await deployAffectedSupabaseFunctions({
+              appPath: ctx.appPath,
+              supabaseProjectId,
+              supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+              skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+              sharedModulesChanged: ctx.isSharedModulesChanged,
+              changedSharedModulePaths: ctx.sharedServerModulePaths,
+              pendingFunctionDeploys: deferred.deploys,
+              onProgress: (progress: SupabaseDeployProgress) => {
+                const statusXml = renderSupabaseDeployStatus(progress);
+                if (
+                  progress.phase === "finished" ||
+                  progress.phase === "failed"
+                ) {
+                  ctx.onXmlComplete(statusXml);
+                } else {
+                  ctx.onXmlStream(statusXml);
+                }
+              },
+            });
+          }
 
-        if (
-          preservedDeletes.length > 0 ||
-          deleteErrors.length > 0 ||
-          deployErrors.length > 0
-        ) {
-          const warnings: string[] = [];
-          if (preservedDeletes.length > 0) {
-            warnings.push(
-              `Kept remote Supabase function(s) ${preservedDeletes.join(", ")} because "Keep extra Supabase edge functions" is enabled.`,
-            );
+          if (
+            preservedDeletes.length > 0 ||
+            deleteErrors.length > 0 ||
+            deployErrors.length > 0
+          ) {
+            const warnings: string[] = [];
+            if (preservedDeletes.length > 0) {
+              warnings.push(
+                `Kept remote Supabase function(s) ${preservedDeletes.join(", ")} because "Keep extra Supabase edge functions" is enabled.`,
+              );
+            }
+            if (deleteErrors.length > 0 || deployErrors.length > 0) {
+              warnings.push(
+                deleteErrors.length === 0
+                  ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
+                  : `Some Supabase function operations failed: ${[
+                      ...deleteErrors.map((error) => `delete ${error}`),
+                      ...deployErrors,
+                    ].join(", ")}`,
+              );
+            }
+            return {
+              success: true,
+              warning: warnings.join(" "),
+            };
           }
-          if (deleteErrors.length > 0 || deployErrors.length > 0) {
-            warnings.push(
-              deleteErrors.length === 0
-                ? `Some Supabase functions failed to deploy: ${deployErrors.join(", ")}`
-                : `Some Supabase function operations failed: ${[
-                    ...deleteErrors.map((error) => `delete ${error}`),
-                    ...deployErrors,
-                  ].join(", ")}`,
-            );
-          }
+
+          return { success: true };
+        } catch (error) {
           return {
-            success: true,
-            warning: warnings.join(" "),
+            success: false,
+            error: `Failed to redeploy Supabase functions: ${error}`,
           };
         }
-
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: `Failed to redeploy Supabase functions: ${error}`,
-        };
-      }
-    },
-  );
+      },
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to redeploy Supabase functions: ${error}`,
+    };
+  }
 }
 
 /**
@@ -265,6 +273,11 @@ export async function commitAllChanges(
               error,
             );
           }
+        } else {
+          // Another concurrent finalizer may already have checkpointed this
+          // turn's shared-tree edits. Preserve an immutable review/restore
+          // target instead of treating the clean checkpoint as hashless.
+          commitHash = await getCurrentCommitHash({ path: ctx.appPath });
         }
 
         return {

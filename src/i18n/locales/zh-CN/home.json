@@ -265,6 +265,8 @@
     "fixWithAi": "使用 AI 修复",
     "startingAiFix": "正在打开聊天...",
     "fixWithAiDescription": "Dyad 将尝试修复报告的问题、重新运行检查，并将结果提交为检查点。",
+    "prepareCommitMsgFailed": "提交消息准备失败",
+    "prepareCommitMsgFailedDescription": "更改尚未提交。请查看钩子输出，修复其设置或环境后再重新提交。",
     "commitMsgFailed": "提交消息检查失败",
     "commitMsgFailedDescription": "更改尚未提交。请更新提交消息后重新提交。",
     "sendToChat": "发送到聊天",

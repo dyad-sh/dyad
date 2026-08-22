@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   GIT_ERROR_CODES: {
     COMMIT_CANCELLED: "COMMIT_CANCELLED",
     PRE_COMMIT_FAILED: "PRE_COMMIT_FAILED",
+    PREPARE_COMMIT_MSG_FAILED: "PREPARE_COMMIT_MSG_FAILED",
     COMMIT_MSG_FAILED: "COMMIT_MSG_FAILED",
   },
   GitStateError: vi.fn((message: string, code: string) =>
@@ -422,7 +423,7 @@ describe("GitService", () => {
         message: "msg",
       }),
     ).rejects.toMatchObject({
-      code: "COMMIT_MSG_FAILED",
+      code: "PREPARE_COMMIT_MSG_FAILED",
       message: expect.stringContaining("could not resolve the ticket id"),
     });
     expect(mocks.runCommitMsgHook).not.toHaveBeenCalled();

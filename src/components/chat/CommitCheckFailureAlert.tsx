@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Which commit hook rejected the commit. `pre-commit` failures are about the
- * code, so the agent can attempt a fix; `commit-msg` failures are about the
- * message the user just typed, which they can correct in the field right
- * above this alert — an AI round trip would be the slower path.
+ * code, so the agent can attempt a fix; `prepare-commit-msg` failures point to
+ * hook setup or environment problems; and `commit-msg` failures are about the
+ * message the user just typed, which they can correct in the field above.
  */
-export type CommitCheckKind = "pre-commit" | "commit-msg";
+export type CommitCheckKind =
+  | "pre-commit"
+  | "prepare-commit-msg"
+  | "commit-msg";
 
 export function CommitCheckFailureAlert({
   kind,
@@ -24,13 +27,18 @@ export function CommitCheckFailureAlert({
 }) {
   const { t } = useTranslation("home");
   const isPreCommit = kind === "pre-commit";
+  const isPrepareCommitMsg = kind === "prepare-commit-msg";
 
   return (
     <div
       role="alert"
       className="rounded-md border border-destructive/40 bg-destructive/10 p-3"
       data-testid={
-        isPreCommit ? "pre-commit-failure-alert" : "commit-msg-failure-alert"
+        isPreCommit
+          ? "pre-commit-failure-alert"
+          : isPrepareCommitMsg
+            ? "prepare-commit-msg-failure-alert"
+            : "commit-msg-failure-alert"
       }
     >
       <div className="flex items-start gap-2">
@@ -40,12 +48,16 @@ export function CommitCheckFailureAlert({
             <p className="text-sm font-medium text-foreground">
               {isPreCommit
                 ? t("preview.preCommitFailed")
-                : t("preview.commitMsgFailed")}
+                : isPrepareCommitMsg
+                  ? t("preview.prepareCommitMsgFailed")
+                  : t("preview.commitMsgFailed")}
             </p>
             <p className="text-sm text-muted-foreground">
               {isPreCommit
                 ? t("preview.preCommitFailedDescription")
-                : t("preview.commitMsgFailedDescription")}
+                : isPrepareCommitMsg
+                  ? t("preview.prepareCommitMsgFailedDescription")
+                  : t("preview.commitMsgFailedDescription")}
             </p>
           </div>
           <details className="text-xs text-muted-foreground">

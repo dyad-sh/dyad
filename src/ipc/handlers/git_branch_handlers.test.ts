@@ -29,8 +29,10 @@ vi.mock("@/ipc/utils/git_utils", () => ({
   gitMerge: vi.fn(),
   gitCurrentBranch: vi.fn(),
   gitRenameBranch: vi.fn(),
-  GitStateError: vi.fn(),
-  GIT_ERROR_CODES: {},
+  GitStateError: vi.fn((message: string, code: string) =>
+    Object.assign(new Error(message), { code }),
+  ),
+  GIT_ERROR_CODES: { COMMIT_CANCELLED: "COMMIT_CANCELLED" },
   isGitMergeInProgress: vi.fn(),
   isGitRebaseInProgress: vi.fn(),
   getGitUncommittedFilesWithStatus: vi.fn(),
@@ -287,6 +289,76 @@ describe("commit progress", () => {
     ).resolves.toBe(true);
     expect(receivedSignal?.aborted).toBe(true);
     await expect(commitPromise).rejects.toThrow("aborted");
+  });
+
+  it("classifies cancellation while the commit is queued", async () => {
+    let releaseBlocker!: () => void;
+    const blocker = createAppOperationHandler(
+      "test-blocker",
+      ["repository"],
+      () =>
+        new Promise<void>((resolve) => {
+          releaseBlocker = resolve;
+        }),
+    );
+    const blockerPromise = blocker({}, { appId: 1 });
+    await vi.waitFor(() => expect(releaseBlocker).toBeDefined());
+    const commit = registeredHandlers.at(-3)!;
+    const cancel = registeredHandlers.at(-2)!;
+    const sender = {
+      id: 99,
+      isDestroyed: () => false,
+      isCrashed: () => false,
+      send: vi.fn(),
+    };
+    const commitPromise = commit(
+      { sender },
+      { appId: 1, message: "Save work", operationId: "commit:queued" },
+    );
+
+    await expect(
+      cancel({ sender }, { appId: 1, operationId: "commit:queued" }),
+    ).resolves.toBe(true);
+    releaseBlocker();
+    await blockerPromise;
+    await expect(commitPromise).rejects.toMatchObject({
+      code: "COMMIT_CANCELLED",
+    });
+    expect(
+      gitServiceMocks.stageAllAndCommitWithPreCommit,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects cancellation once the irreversible commit phase begins", async () => {
+    let finishCommit!: () => void;
+    gitServiceMocks.stageAllAndCommitWithPreCommit.mockImplementationOnce(
+      async ({ onProgress }) => {
+        onProgress("committing");
+        await new Promise<void>((resolve) => {
+          finishCommit = resolve;
+        });
+        return "commit-hash";
+      },
+    );
+    const commit = registeredHandlers.at(-3)!;
+    const cancel = registeredHandlers.at(-2)!;
+    const sender = {
+      id: 99,
+      isDestroyed: () => false,
+      isCrashed: () => false,
+      send: vi.fn(),
+    };
+    const commitPromise = commit(
+      { sender },
+      { appId: 1, message: "Save work", operationId: "commit:finishing" },
+    );
+    await vi.waitFor(() => expect(finishCommit).toBeDefined());
+
+    await expect(
+      cancel({ sender }, { appId: 1, operationId: "commit:finishing" }),
+    ).resolves.toBe(false);
+    finishCommit();
+    await expect(commitPromise).resolves.toBe("commit-hash");
   });
 
   it("aborts an operation when its initiating renderer is destroyed", async () => {

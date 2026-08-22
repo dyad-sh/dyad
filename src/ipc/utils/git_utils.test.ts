@@ -180,6 +180,22 @@ describe("gitCommit", () => {
 
     expect(fs.existsSync(markerPath)).toBe(false);
   });
+
+  it("does not report failure when temporary hook cleanup fails after commit", async () => {
+    repoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-hook-cleanup-"),
+    );
+    await runGit(repoDir, ["init"]);
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "content\n");
+    await gitAddAll({ path: repoDir });
+    vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(
+      new Error("temporary directory is locked"),
+    );
+
+    await expect(
+      gitCommit({ path: repoDir, message: "checkpoint" }),
+    ).resolves.toMatch(/^[0-9a-f]{40,64}$/);
+  });
 });
 
 describe("GitService explicit commit hooks", () => {

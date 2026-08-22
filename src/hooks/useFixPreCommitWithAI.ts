@@ -82,10 +82,15 @@ export function useFixPreCommitWithAI() {
           appId,
           initialChatMode: "local-agent",
         });
-        let rejectionReason = "Chat submission rejected";
+        let rejectionReason: string | null = null;
+        let acceptanceSettled = false;
         let settleAcceptance!: (accepted: boolean) => void;
         const acceptance = new Promise<boolean>((resolve) => {
-          settleAcceptance = resolve;
+          settleAcceptance = (accepted) => {
+            if (acceptanceSettled) return;
+            acceptanceSettled = true;
+            resolve(accepted);
+          };
         });
         const passedValidation = await streamMessage({
           prompt: buildPreCommitFixPrompt({
@@ -104,11 +109,19 @@ export function useFixPreCommitWithAI() {
             rejectionReason = reason;
             settleAcceptance(false);
           },
+          onSettled: ({ queued }) => {
+            if (queued) {
+              rejectionReason =
+                "The AI fix request was queued instead of started.";
+              settleAcceptance(false);
+            }
+          },
         });
         if (!passedValidation) {
           await ipc.chat.deleteChat(chatId);
           chatId = null;
           void queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+          if (rejectionReason) showError(rejectionReason);
           return false;
         }
 
@@ -117,7 +130,7 @@ export function useFixPreCommitWithAI() {
           await ipc.chat.deleteChat(chatId);
           chatId = null;
           void queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-          showError(rejectionReason);
+          showError(rejectionReason ?? "Chat submission rejected");
           return false;
         }
 

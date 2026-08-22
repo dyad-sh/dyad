@@ -286,6 +286,8 @@
     "fixWithAi": "Fix with AI",
     "startingAiFix": "Opening chat...",
     "fixWithAiDescription": "Dyad will try to fix the reported issues, rerun the checks, and commit the result as a checkpoint.",
+    "prepareCommitMsgFailed": "Commit message preparation failed",
+    "prepareCommitMsgFailedDescription": "Your changes were not committed. Review the hook output, fix its setup or environment, and commit again.",
     "commitMsgFailed": "Commit message check failed",
     "commitMsgFailedDescription": "Your changes were not committed. Update the commit message and commit again.",
     "sendToChat": "Send to chat",

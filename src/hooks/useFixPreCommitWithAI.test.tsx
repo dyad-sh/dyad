@@ -173,6 +173,54 @@ describe("useFixPreCommitWithAI", () => {
     expect(mocks.showError).toHaveBeenCalledWith("Agent quota was exhausted");
   });
 
+  it("surfaces an acceptance error even when dispatch returns false", async () => {
+    mocks.streamMessage.mockImplementationOnce(
+      async ({ onAcceptanceError }) => {
+        onAcceptanceError?.(new Error("Remote chat startup failed"));
+        return false;
+      },
+    );
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await result.current.fixPreCommitWithAI({
+        appId: 7,
+        commitMessage: "Save checkout fix",
+        failureOutput: "lint failed",
+      });
+    });
+
+    expect(mocks.showError).toHaveBeenCalledWith("Remote chat startup failed");
+    expect(mocks.deleteChat).toHaveBeenCalledWith(44);
+  });
+
+  it("settles startup when the new chat submission is unexpectedly queued", async () => {
+    mocks.streamMessage.mockImplementationOnce(async ({ onSettled }) => {
+      onSettled?.({ success: false, queued: true });
+      return true;
+    });
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    let started = true;
+    await act(async () => {
+      started = await result.current.fixPreCommitWithAI({
+        appId: 7,
+        commitMessage: "Save checkout fix",
+        failureOutput: "lint failed",
+      });
+    });
+
+    expect(started).toBe(false);
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "The AI fix request was queued instead of started.",
+    );
+    expect(mocks.deleteChat).toHaveBeenCalledWith(44);
+  });
+
   it("disables recovery when Agent or run_pre_commit is unavailable", () => {
     mocks.settings.current = {
       enableDyadPro: false,

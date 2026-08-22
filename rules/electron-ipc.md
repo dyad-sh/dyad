@@ -229,6 +229,11 @@ An `invoke` reply and a `safeSend`/`webContents.send` event travel different Ele
 
 Symptom: a flow works, then intermittently "does nothing", as if the successful path never ran. Fix by making the event handler ignore endings the renderer itself requested (e.g. `recording:ended` with `reason === "stopped"` in `useTestRecorder`), rather than relying on the ordering that happens to hold today.
 
+For cancellable operations that cross an irreversible boundary, close
+cancellation in main synchronously immediately before starting that mutation,
+and make later cancel invokes return `false`. A renderer progress event is only
+presentation; it can arrive after a cancel invoke on a separate IPC interface.
+
 When app-scoped lifecycle state explains why another workflow is waiting,
 preserve and check the operation source or correlation identity. An app id plus
 phase is insufficient when a panel-started operation can overlap an unrelated

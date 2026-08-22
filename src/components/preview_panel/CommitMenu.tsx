@@ -68,6 +68,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     isCancellingCommit,
     commitProgress,
     preCommitError,
+    prepareCommitMsgError,
     commitMsgError,
     resetCommitError,
     dismissDialog,
@@ -237,6 +238,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
 
             <CommitRecoveryAlerts
               preCommitError={preCommitError}
+              prepareCommitMsgError={prepareCommitMsgError}
               commitMsgError={commitMsgError}
               isStartingAiFix={isStartingAiFix}
               canFixPreCommitWithAI={canFixPreCommitWithAI}

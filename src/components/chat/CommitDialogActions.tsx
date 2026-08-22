@@ -11,12 +11,14 @@ import type { CommitProgressPhase } from "@/ipc/types/github";
 
 export function CommitRecoveryAlerts({
   preCommitError,
+  prepareCommitMsgError,
   commitMsgError,
   isStartingAiFix,
   canFixPreCommitWithAI,
   onFixPreCommitWithAI,
 }: {
   preCommitError: Error | null;
+  prepareCommitMsgError: Error | null;
   commitMsgError: Error | null;
   isStartingAiFix: boolean;
   canFixPreCommitWithAI: boolean;
@@ -35,6 +37,13 @@ export function CommitRecoveryAlerts({
 
       {commitMsgError && (
         <CommitCheckFailureAlert kind="commit-msg" error={commitMsgError} />
+      )}
+
+      {prepareCommitMsgError && (
+        <CommitCheckFailureAlert
+          kind="prepare-commit-msg"
+          error={prepareCommitMsgError}
+        />
       )}
     </>
   );

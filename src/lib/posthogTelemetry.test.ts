@@ -339,6 +339,19 @@ describe("PostHogErrorDeduper", () => {
     const nextWindow = new PostHogErrorDeduper(storage, "window-c");
     expect(nextWindow.process(exceptionEvent("Error Y"), false, 3)).toBeNull();
   });
+
+  it("refreshes shared state before admitting at the dedupe boundary", () => {
+    const storage = new MemoryStorage();
+    const firstWindow = new PostHogErrorDeduper(storage, "window-a");
+    const secondWindow = new PostHogErrorDeduper(storage, "window-b");
+    const event = exceptionEvent();
+    const proWindowMs = 10 * 60 * 1000;
+
+    firstWindow.process(event, true, 0);
+    firstWindow.process(event, true, proWindowMs - 1);
+    expect(secondWindow.process(event, true, proWindowMs)).toBeTruthy();
+    expect(firstWindow.process(event, true, proWindowMs + 1)).toBeNull();
+  });
 });
 
 describe("PostHog error telemetry classification", () => {

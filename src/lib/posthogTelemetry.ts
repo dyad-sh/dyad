@@ -96,11 +96,20 @@ export class PostHogErrorDeduper {
     }
 
     const fingerprintHash = hashTelemetryFingerprint(fingerprint);
-    const state = this.readState(now);
-    const existing = state[fingerprintHash];
+    let state = this.readState(now);
+    let existing = state[fingerprintHash];
     const dedupeWindow = isPro
       ? PRO_ERROR_DEDUPE_WINDOW_MS
       : FREE_ERROR_DEDUPE_WINDOW_MS;
+
+    if (
+      !existing ||
+      now < existing.lastSentAt ||
+      now - existing.lastSentAt >= dedupeWindow
+    ) {
+      state = this.readState(now, true);
+      existing = state[fingerprintHash];
+    }
 
     if (
       existing &&
@@ -154,11 +163,13 @@ export class PostHogErrorDeduper {
     } as T;
   }
 
-  private readState(now: number): ErrorDedupeState {
+  private readState(now: number, force = false): ErrorDedupeState {
     if (
       this.storage &&
       this.storageAvailable &&
-      now - this.lastStorageReadAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS
+      this.lastStorageReadAt !== now &&
+      (force ||
+        now - this.lastStorageReadAt >= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS)
     ) {
       try {
         const raw = this.storage.getItem(POSTHOG_ERROR_DEDUPE_STORAGE_KEY);

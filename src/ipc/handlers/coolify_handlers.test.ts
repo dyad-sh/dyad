@@ -10,6 +10,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const settings: Record<string, unknown> = {};
+
+/** The settings fixture is untyped, and these assertions are about secrets. */
+function storedCoolify() {
+  return (settings.coolify ?? {}) as {
+    accessToken?: { value: string };
+    previousAccessToken?: { value: string };
+    adminEmail?: string;
+    adminPassword?: { value: string };
+    adminInstanceUrl?: string;
+  };
+}
 const rows: Record<string, unknown>[] = [];
 
 vi.mock("../../main/settings", () => ({
@@ -240,6 +251,36 @@ describe("clearing the token", () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
+  it("keeps the token where it can be read back", async () => {
+    // Dyad minted this one itself. Throwing it away means the way back in is
+    // making another in Coolify, for a token Dyad had a moment ago.
+    await call("coolify:clear-token");
+
+    expect(storedCoolify().accessToken).toBeUndefined();
+    expect(storedCoolify().previousAccessToken?.value).toBe("tok");
+  });
+
+  it("does not lose it when signing out twice", async () => {
+    await call("coolify:clear-token");
+    await call("coolify:clear-token");
+
+    expect(storedCoolify().previousAccessToken?.value).toBe("tok");
+  });
+
+  it("drops the old one once a new token is saved", async () => {
+    // Otherwise the next sign-out puts a token from two connections ago on
+    // screen.
+    await call("coolify:clear-token");
+    await call("coolify:save-token", {
+      instanceUrl: "https://coolify.example.com",
+      token: "tok-2",
+      acknowledgedInsecure: false,
+    });
+
+    expect(storedCoolify().previousAccessToken).toBeUndefined();
+    expect(storedCoolify().accessToken?.value).toBe("tok-2");
+  });
+
   it("still reports the app as disconnected", async () => {
     await call("coolify:clear-token");
 
@@ -303,6 +344,60 @@ describe("clearing the token", () => {
 
     expect(connection?.applicationUuid).toBe("app-1");
     expect(connection?.serverUuid).toBe("srv-1");
+  });
+});
+
+describe("the admin account Dyad created", () => {
+  beforeEach(() => {
+    settings.coolify = {
+      ...(settings.coolify as Record<string, unknown>),
+      adminEmail: "me@gmail.com",
+      adminPassword: { value: "Abc123@xyz" },
+      adminInstanceUrl: "https://coolify.example.com",
+    };
+  });
+
+  it("survives connecting to a different Coolify", async () => {
+    // Dyad invented this password for a machine that is still running, and
+    // this is the only copy. It is kept with the address it belongs to and
+    // shown only beside that address, so nothing here pairs one server's
+    // password with another's — hiding does that job, and hiding a wrong
+    // guess costs a moment where deleting one costs the password.
+    listServers.mockResolvedValueOnce([{ uuid: "srv-elsewhere" }]);
+    await call("coolify:save-token", {
+      instanceUrl: "https://other.example.com",
+      token: "tok-2",
+      acknowledgedInsecure: false,
+    });
+
+    expect(storedCoolify().adminPassword?.value).toBe("Abc123@xyz");
+    expect(storedCoolify().adminInstanceUrl).toBe(
+      "https://coolify.example.com",
+    );
+  });
+
+  it("survives signing back in to the instance it belongs to", async () => {
+    // The reason it is kept at all: Dyad invented this password for a server
+    // the user owns, and signing out must not cost them the way in.
+    await call("coolify:clear-token");
+    await call("coolify:save-token", {
+      instanceUrl: "https://coolify.example.com",
+      token: "tok-2",
+      acknowledgedInsecure: false,
+    });
+
+    expect(storedCoolify().adminEmail).toBe("me@gmail.com");
+    expect(storedCoolify().adminPassword?.value).toBe("Abc123@xyz");
+  });
+
+  it("matches the address however it was typed", async () => {
+    await call("coolify:save-token", {
+      instanceUrl: "https://coolify.example.com/",
+      token: "tok-2",
+      acknowledgedInsecure: false,
+    });
+
+    expect(storedCoolify().adminEmail).toBe("me@gmail.com");
   });
 });
 

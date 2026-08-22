@@ -413,6 +413,20 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         accessToken: encrypt(newSettings.coolify.accessToken.value),
       };
     }
+    if (newSettings.coolify?.previousAccessToken) {
+      newSettings.coolify = {
+        ...newSettings.coolify,
+        previousAccessToken: encrypt(
+          newSettings.coolify.previousAccessToken.value,
+        ),
+      };
+    }
+    if (newSettings.coolify?.adminPassword) {
+      newSettings.coolify = {
+        ...newSettings.coolify,
+        adminPassword: encrypt(newSettings.coolify.adminPassword.value),
+      };
+    }
     if (newSettings.supabase) {
       // Encrypt legacy tokens (kept for backwards compat)
       if (newSettings.supabase.accessToken) {
@@ -682,6 +696,43 @@ function readExistingSettingsFile(
       // The address is not a secret and survives a token that will not
       // decrypt, so the user is not asked to retype what Dyad still knows.
       const { accessToken: _dropped, ...rest } = combinedSettings.coolify;
+      combinedSettings.coolify = rest;
+    }
+  }
+  if (combinedSettings.coolify?.previousAccessToken) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.coolify.previousAccessToken,
+      "Coolify previous access token",
+      ["coolify", "previousAccessToken"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.coolify = {
+        ...combinedSettings.coolify,
+        previousAccessToken: resolved,
+      };
+    } else {
+      const { previousAccessToken: _dropped, ...rest } =
+        combinedSettings.coolify;
+      combinedSettings.coolify = rest;
+    }
+  }
+  if (combinedSettings.coolify?.adminPassword) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.coolify.adminPassword,
+      "Coolify admin password",
+      ["coolify", "adminPassword"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.coolify = {
+        ...combinedSettings.coolify,
+        adminPassword: resolved,
+      };
+    } else {
+      // Dropped rather than kept as ciphertext nobody can read. The password
+      // still exists on the server's own .env, which is the honest fallback.
+      const { adminPassword: _dropped, ...rest } = combinedSettings.coolify;
       combinedSettings.coolify = rest;
     }
   }

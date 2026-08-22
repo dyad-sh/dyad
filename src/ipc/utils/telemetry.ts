@@ -79,11 +79,21 @@ export function sendTelemetryException(
   });
 }
 
-/** Channels that talk to a server the user runs, rather than to Dyad's own. */
+/**
+ * Channels that talk to a server the user runs, rather than to Dyad's own.
+ *
+ * Every prefix a self-hosted surface uses has to be listed. Setting a server up
+ * is the same class as deploying to one and carries more: its failures quote
+ * the installer's own output, the address, and the address the user signs in
+ * with.
+ */
+const SELF_HOSTED_CHANNEL_PREFIXES = ["coolify:", "coolify-setup:"];
+
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
-  return (
-    typeof context?.ipc_channel === "string" &&
-    context.ipc_channel.startsWith("coolify:")
+  const channel = context?.ipc_channel;
+  if (typeof channel !== "string") return false;
+  return SELF_HOSTED_CHANNEL_PREFIXES.some((prefix) =>
+    channel.startsWith(prefix),
   );
 }
 

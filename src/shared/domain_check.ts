@@ -1,5 +1,13 @@
 import { isIP } from "node:net";
 
+/**
+ * Reading DNS answers, for whoever needs to.
+ *
+ * Lives in shared/ rather than beside the deploy machine: the setup flow asks
+ * the same question about a server's own domain, and one machine reaching into
+ * another's directory is what the boundary check exists to stop.
+ */
+
 /** What Coolify reports as the address of the machine it runs on. */
 const DOCKER_HOST_ALIAS = "host.docker.internal";
 

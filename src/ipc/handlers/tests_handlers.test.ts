@@ -74,6 +74,10 @@ vi.mock("../services/git_service", () => ({
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
 const prepareIsolatedTestDatabaseMock = vi.hoisted(() => vi.fn());
+const ensurePlaywrightBootstrapMock = vi.hoisted(() => vi.fn());
+const createE2eTestWorkspaceMock = vi.hoisted(() => vi.fn());
+const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
+const spawnStreamingMock = vi.hoisted(() => vi.fn());
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
@@ -94,6 +98,39 @@ vi.mock("../services/isolated_test_db", async (importOriginal) => {
     prepareIsolatedTestDatabase: prepareIsolatedTestDatabaseMock,
   };
 });
+vi.mock("../utils/playwright_bootstrap", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../utils/playwright_bootstrap")>();
+  return {
+    ...actual,
+    ensurePlaywrightBootstrap: ensurePlaywrightBootstrapMock,
+  };
+});
+vi.mock("../utils/socket_firewall", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../utils/socket_firewall")>();
+  return {
+    ...actual,
+    getPackageManagerCommandEnv: vi.fn(
+      (env: NodeJS.ProcessEnv = process.env) => env,
+    ),
+  };
+});
+vi.mock("../services/e2e_test_workspace", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/e2e_test_workspace")>();
+  return {
+    ...actual,
+    createE2eTestWorkspace: createE2eTestWorkspaceMock,
+    retainE2eTestArtifacts: vi.fn(),
+  };
+});
+vi.mock("../services/e2e_test_runtime", () => ({
+  startE2eTestRuntime: startE2eTestRuntimeMock,
+}));
+vi.mock("../utils/spawn_streaming", () => ({
+  spawnStreaming: spawnStreamingMock,
+}));
 vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/ipc/utils/window_broadcast")>();
@@ -117,6 +154,30 @@ describe("tests handlers", () => {
     removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
     prepareIsolatedTestDatabaseMock.mockReset();
+    ensurePlaywrightBootstrapMock.mockReset();
+    ensurePlaywrightBootstrapMock.mockResolvedValue({ installed: false });
+    createE2eTestWorkspaceMock.mockReset();
+    createE2eTestWorkspaceMock.mockImplementation(
+      async ({ appPath }: { appPath: string }) => ({
+        workspacePath: appPath,
+        artifactPath: path.join(TEMP_BASE, "artifacts"),
+        dispose: vi.fn(),
+      }),
+    );
+    startE2eTestRuntimeMock.mockReset();
+    startE2eTestRuntimeMock.mockResolvedValue({
+      baseUrl: "http://127.0.0.1:49999",
+      process: null,
+      stop: vi.fn(),
+    });
+    spawnStreamingMock.mockReset();
+    spawnStreamingMock.mockResolvedValue({
+      code: 1,
+      stdout: "",
+      stderr: "no report",
+      aborted: false,
+      timedOut: false,
+    });
     broadcastToRegisteredWindowsMock.mockClear();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
@@ -142,7 +203,7 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
-    it("owns the working tree without excluding Git ref snapshots", async () => {
+    it("releases the working tree after snapshotting the sandbox", async () => {
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -180,14 +241,22 @@ describe("tests handlers", () => {
       ).toMatchObject({
         resources: [
           { resource: "app-path", mode: "read" },
-          { resource: "repository-ref", mode: "read" },
-          "repository-worktree",
           "provider",
-          "runtime",
-          "runtime-config",
           "test-files",
         ],
         allowCompatibleQueueBypass: true,
+      });
+      expect(
+        requests.find(
+          ({ operation }) => operation === "prepare-e2e-test-workspace",
+        ),
+      ).toMatchObject({
+        resources: [
+          { resource: "app-path", mode: "read" },
+          { resource: "repository-ref", mode: "read" },
+          "repository-worktree",
+          "test-files",
+        ],
       });
     });
 
@@ -229,7 +298,7 @@ describe("tests handlers", () => {
       }
     });
 
-    it("reports an unrestored test-run environment", async () => {
+    it("reports an unfinished isolated-database cleanup", async () => {
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -250,7 +319,96 @@ describe("tests handlers", () => {
         source: "panel",
       });
 
-      expect(result.infraError?.message).toMatch(/real database settings/i);
+      expect(result.infraError?.message).toMatch(/isolated test database/i);
+      expect(result.infraError?.message).toMatch(/settings were not changed/i);
+    });
+
+    it("authorizes the isolated server origin before Playwright starts", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const events: string[] = [];
+      const authorizeRuntimeOrigin = vi.fn(async () => {
+        events.push("authorize");
+      });
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        authorizeRuntimeOrigin,
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+      startE2eTestRuntimeMock.mockImplementation(async () => {
+        events.push("server");
+        return {
+          baseUrl: "http://127.0.0.1:49999/path",
+          process: null,
+          stop: vi.fn(),
+        };
+      });
+      spawnStreamingMock.mockImplementation(async () => {
+        events.push("playwright");
+        return {
+          code: 1,
+          stdout: "",
+          stderr: "no report",
+          aborted: false,
+          timedOut: false,
+        };
+      });
+
+      await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(authorizeRuntimeOrigin).toHaveBeenCalledWith(
+        "http://127.0.0.1:49999",
+      );
+      expect(events).toEqual(["server", "authorize", "playwright"]);
+    });
+
+    it("stops and cleans up when Neon origin authorization fails", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const stop = vi.fn().mockResolvedValue(undefined);
+      const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      createE2eTestWorkspaceMock.mockResolvedValue({
+        workspacePath: path.join(TEMP_BASE, "app"),
+        artifactPath: path.join(TEMP_BASE, "artifacts"),
+        dispose,
+      });
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        authorizeRuntimeOrigin: vi
+          .fn()
+          .mockRejectedValue(new Error("Neon unavailable")),
+        teardown,
+      });
+      startE2eTestRuntimeMock.mockResolvedValue({
+        baseUrl: "http://127.0.0.1:49999",
+        process: null,
+        stop,
+      });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toMatch(/Neon Auth/i);
+      expect(spawnStreamingMock).not.toHaveBeenCalled();
+      expect(stop).toHaveBeenCalledOnce();
+      expect(teardown).toHaveBeenCalledOnce();
+      expect(dispose).toHaveBeenCalledOnce();
     });
   });
 

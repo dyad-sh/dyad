@@ -44,7 +44,7 @@ export type TestRunPhase =
   | "setup" // first-run Playwright bootstrap streaming
   | "running" // playwright test executing
   | "stopping" // Stop pressed; killing the Playwright process tree
-  | "cleaning-up"; // tests gone; isolation teardown still restoring the app
+  | "cleaning-up"; // tests gone; isolated provider data is still being removed
 
 export interface TestRunState {
   phase: TestRunPhase;

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
+import { getUserDataPath } from "@/paths/paths";
+import { E2E_TEST_ARTIFACT_DIR } from "@/ipc/services/e2e_test_workspace";
 
 const logger = log.scope("test_screenshot");
 
@@ -17,7 +19,8 @@ const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
  * Read a Playwright failure screenshot as a PNG data URL, enforcing the same
  * containment guards as the `tests:screenshot` IPC handler: PNG-only, resolved
  * through symlinks, and inside the app's `test-results/` directory. Returns
- * null if the path is missing, not a PNG, or escapes the app dir.
+ * null if the path is missing, not a PNG, or escapes both the app and Dyad's
+ * retained per-run artifact root.
  *
  * Shared by the IPC handler (renderer thumbnails) and the agent's run_tests
  * tool (attaching a failure screenshot to the model).
@@ -25,6 +28,7 @@ const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 export async function readTestScreenshotDataUrl(
   appPath: string,
   screenshotPath: string,
+  appId?: number,
 ): Promise<string | null> {
   // Playwright reports absolute paths, but resolve relative ones against the
   // app dir just in case.
@@ -42,12 +46,20 @@ export async function readTestScreenshotDataUrl(
   // read escapes. Resolve the app path too so ancestor symlinks (e.g.
   // /var -> /private/var on macOS) don't leave a `..` prefix.
   let realAppPath: string;
+  let realArtifactRoot: string | undefined;
   let realPath: string;
   try {
     [realAppPath, realPath] = await Promise.all([
       fs.promises.realpath(appPath),
       fs.promises.realpath(resolved),
     ]);
+    try {
+      realArtifactRoot = await fs.promises.realpath(
+        path.join(getUserDataPath(), E2E_TEST_ARTIFACT_DIR),
+      );
+    } catch {
+      // No retained sandbox artifacts yet.
+    }
   } catch (error) {
     logger.warn(`Failed to resolve screenshot path ${resolved}: ${error}`);
     return null;
@@ -57,17 +69,33 @@ export async function readTestScreenshotDataUrl(
   if (path.extname(realPath).toLowerCase() !== ".png") {
     return null;
   }
-  const rel = path.relative(realAppPath, realPath);
+  const appRelative = path.relative(realAppPath, realPath);
   const insideApp =
-    rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
-  if (!insideApp) {
+    appRelative !== "" &&
+    !appRelative.startsWith("..") &&
+    !path.isAbsolute(appRelative);
+  const artifactRelative = realArtifactRoot
+    ? path.relative(realArtifactRoot, realPath)
+    : "";
+  const insideArtifacts =
+    artifactRelative !== "" &&
+    !artifactRelative.startsWith("..") &&
+    !path.isAbsolute(artifactRelative);
+  if (!insideApp && !insideArtifacts) {
     return null;
   }
   // Only serve screenshots under `test-results/`, not any PNG in the app. Use
   // split (not a string prefix) so a sibling like `test-results-foo/` can't
   // slip through.
-  const [firstSegment] = rel.split(path.sep);
-  if (firstSegment !== "test-results") {
+  const segments = (insideApp ? appRelative : artifactRelative).split(path.sep);
+  const testResultsSegment = insideApp ? segments[0] : segments[1];
+  if (
+    insideArtifacts &&
+    (appId === undefined || !segments[0].startsWith(`${appId}-`))
+  ) {
+    return null;
+  }
+  if (testResultsSegment !== "test-results") {
     return null;
   }
   let handle: fs.promises.FileHandle | undefined;

@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
+  markTestBranchCleanupOnly: vi.fn().mockResolvedValue(undefined),
   // The mark-then-delete tail lives in `neon_test_branch` and is tested there
   // (`markAndDeleteTempTestBranch`), including the ordering it depends on. What
   // teardown owes it is the branch it actually created — the app row it holds is
   // stale by this point — so that is what these tests pin.
   markAndDeleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
   createNeonTestAccount: vi.fn(),
+  ensureNeonAuthTrustedOrigin: vi.fn().mockResolvedValue(null),
   createTempTestUser: vi.fn(),
   deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
   checkRls: vi.fn().mockResolvedValue({ tablesWithoutRls: [] }),
@@ -44,10 +46,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../utils/neon_test_branch", () => ({
   createTempTestBranch: mocks.createTempTestBranch,
+  markTestBranchCleanupOnly: mocks.markTestBranchCleanupOnly,
   markAndDeleteTempTestBranch: mocks.markAndDeleteTempTestBranch,
 }));
 vi.mock("../utils/neon_test_account", () => ({
   createNeonTestAccount: mocks.createNeonTestAccount,
+}));
+vi.mock("../utils/neon_utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/neon_utils")>()),
+  ensureNeonAuthTrustedOrigin: mocks.ensureNeonAuthTrustedOrigin,
 }));
 vi.mock("../../supabase_admin/supabase_context", () => ({
   getPublishableKey: mocks.getPublishableKey,
@@ -206,6 +213,7 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
       DYAD_TEST_SUPABASE_URL: "https://sb-1.supabase.co",
     });
     expect(prepared.infraError).toBeUndefined();
+    expect(prepared.authorizeRuntimeOrigin).toBeUndefined();
 
     await prepared.teardown();
     expect(mocks.deleteTempTestUser).toHaveBeenCalledWith(
@@ -266,6 +274,7 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
     });
     expect(prepared.isolation).toEqual({ mode: "none" });
     expect(prepared.infraError).toBeUndefined();
+    expect(prepared.authorizeRuntimeOrigin).toBeUndefined();
   });
 
   it("discloses for non-host runtimes on a Neon app (no branch created)", async () => {
@@ -281,6 +290,40 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
 });
 
 describe("prepareIsolatedTestDatabase — Neon happy path", () => {
+  it("targets a sandbox without restarting or marking the real env as swapped", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+    });
+
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({ neonProjectId: "proj-1" }),
+      emit,
+      runtimeMode: "host",
+      appPathOverride: "/sandboxes/run-1",
+      restartApp: false,
+    });
+
+    expect(prepared.infraError).toBeUndefined();
+    expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appPath: "/sandboxes/run-1",
+        connectionUri: "postgres://temp",
+      }),
+    );
+    expect(mocks.markTestBranchCleanupOnly).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      "test-br",
+    );
+    expect(mocks.executeApp).not.toHaveBeenCalled();
+    await prepared.teardown();
+    expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      "test-br",
+    );
+  });
+
   it("checks the direct dev server instead of the HTML-rewriting proxy", async () => {
     mocks.createTempTestBranch.mockResolvedValue({
       branchId: "test-br",
@@ -467,6 +510,12 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
         email: "neon-test@dyad.test",
         password: "neon-pw",
       });
+      await prepared.authorizeRuntimeOrigin?.("http://127.0.0.1:49999");
+      expect(mocks.ensureNeonAuthTrustedOrigin).toHaveBeenCalledWith({
+        projectId: "proj-1",
+        branchId: "test-br",
+        origin: "http://127.0.0.1:49999",
+      });
     } finally {
       fetchSpy.mockRestore();
     }
@@ -514,6 +563,7 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
 
       expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
       expect(prepared.authSetup).toBeUndefined();
+      expect(prepared.authorizeRuntimeOrigin).toBeUndefined();
     } finally {
       fetchSpy.mockRestore();
     }

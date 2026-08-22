@@ -121,10 +121,9 @@ export function buildPlaywrightConfig(channel: BrowserChannel | null): string {
     : `// Uses Playwright's bundled Chromium (downloaded on first run).`;
   return `import { defineConfig } from "@playwright/test";
 
-// ${DYAD_CONFIG_SENTINEL}. The dev server is started separately by Dyad's
-// preview, so we point baseURL at the already-running proxy URL (passed via
-// env) rather than using Playwright's \`webServer\` (which would double-start
-// the app).
+// ${DYAD_CONFIG_SENTINEL}. Dyad starts an isolated test server separately, so
+// we point baseURL at its run-scoped URL (passed via env) rather than using
+// Playwright's \`webServer\` (which would double-start the app).
 // ${browserNote}
 export default defineConfig({
   testDir: "./${E2E_TEST_DIR}",

@@ -397,6 +397,42 @@ export async function ensureNeonAuthTrustedDomain({
   return toAdd;
 }
 
+/**
+ * Registers an exact HTTP(S) origin without applying deployment-domain
+ * normalization. Run-scoped E2E servers use HTTP loopback origins, so changing
+ * their scheme to HTTPS would register a different origin and Better Auth would
+ * continue rejecting sign-in requests.
+ */
+export async function ensureNeonAuthTrustedOrigin({
+  projectId,
+  branchId,
+  origin,
+}: {
+  projectId: string;
+  branchId: string;
+  origin: string;
+}): Promise<string | null> {
+  const trustedOrigin = new URL(origin).origin;
+  const neonClient = await getNeonClient();
+  const existing = await neonClient.listBranchNeonAuthTrustedDomains(
+    projectId,
+    branchId,
+  );
+  const alreadyTrusted = (existing.data?.domains ?? []).some(({ domain }) => {
+    try {
+      return new URL(domain).origin === trustedOrigin;
+    } catch {
+      return domain === trustedOrigin;
+    }
+  });
+  if (alreadyTrusted) return null;
+  await neonClient.addBranchNeonAuthTrustedDomain(projectId, branchId, {
+    domain: trustedOrigin,
+    auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+  });
+  return trustedOrigin;
+}
+
 export interface ResolvedNeonBranchEnvVars {
   databaseUrl: string;
   neonAuthBaseUrl?: string;

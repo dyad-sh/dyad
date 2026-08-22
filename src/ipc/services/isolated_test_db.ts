@@ -5,6 +5,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
 import {
   createTempTestBranch,
+  markTestBranchCleanupOnly,
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
@@ -22,6 +23,7 @@ import {
   updateNeonEnvVars,
 } from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "../utils/framework_utils";
+import { ensureNeonAuthTrustedOrigin } from "../utils/neon_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { cleanUpPort, executeApp } from "./app_runtime_service";
 import { appRunActorService } from "./app_run_actor_service";
@@ -92,6 +94,12 @@ export interface PreparedIsolation {
    * failed. Never contains privileged keys.
    */
   authSetup?: IsolationAuthSetup;
+  /**
+   * Authorize the run-scoped server origin with the isolated auth provider.
+   * Only Neon Auth isolation supplies this; the E2E runner calls it after the
+   * server chooses its port and before Playwright sends any requests.
+   */
+  authorizeRuntimeOrigin?: (origin: string) => Promise<void>;
   teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
 }
 
@@ -123,11 +131,17 @@ export async function prepareIsolatedTestDatabase({
   emit,
   runtimeMode,
   signal,
+  appPathOverride,
+  restartApp = true,
 }: {
   app: AppRow;
   emit: EmitOutput;
   runtimeMode: string;
   signal?: AbortSignal;
+  /** E2E-only sandbox path. The recorder deliberately omits this. */
+  appPathOverride?: string;
+  /** E2E sandboxes start their own runtime after isolation is prepared. */
+  restartApp?: boolean;
 }): Promise<PreparedIsolation> {
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
@@ -135,7 +149,8 @@ export async function prepareIsolatedTestDatabase({
   }
 
   // No Neon project → nothing to isolate.
-  if (!app.neonProjectId) {
+  const neonProjectId = app.neonProjectId;
+  if (!neonProjectId) {
     return { isolation: { mode: "none" }, teardown: NOOP_TEARDOWN };
   }
 
@@ -150,7 +165,7 @@ export async function prepareIsolatedTestDatabase({
     };
   }
 
-  const appPath = getDyadAppPath(app.path);
+  const appPath = appPathOverride ?? getDyadAppPath(app.path);
   let envSnapshot: string | null = null;
   let envModified = false;
   let branchId: string | undefined;
@@ -178,7 +193,7 @@ export async function prepareIsolatedTestDatabase({
           "setup",
         );
       }
-      if (envRestored && !options.skipRestart) {
+      if (envRestored && restartApp && !options.skipRestart) {
         try {
           await restartAppInPlace({ app, appPath });
         } catch (error) {
@@ -222,6 +237,12 @@ export async function prepareIsolatedTestDatabase({
     // 2. Create the throwaway branch (off the preview branch, CoW).
     const branch = await createTempTestBranch(app);
     branchId = branch.branchId;
+    // The E2E sandbox never points the real app env at this branch. Persist the
+    // cleanup-only form immediately so crash/startup reconciliation cannot
+    // mistake this run for the recorder's real-env swap.
+    if (!restartApp) {
+      await markTestBranchCleanupOnly(app, branchId);
+    }
 
     // 3. Point the app at the throwaway branch. Mark the env as modified before
     //    the write so a partial failure still triggers a restore in teardown.
@@ -237,9 +258,11 @@ export async function prepareIsolatedTestDatabase({
 
     // 4. Restart so the dev server reads the throwaway branch, then wait until
     //    it's serving again before Playwright points at it.
-    emit("Starting the app against the isolated test database…\n", "setup");
-    const processId = await restartAppInPlace({ app, appPath });
-    await waitForServerReady(app.id, signal, processId);
+    if (restartApp) {
+      emit("Starting the app against the isolated test database…\n", "setup");
+      const processId = await restartAppInPlace({ app, appPath });
+      await waitForServerReady(app.id, signal, processId);
+    }
 
     // 5. If the app uses Neon Auth, provision a throwaway Better Auth account on
     //    the branch so auth-gated recordings/tests can sign in. Best-effort: on
@@ -285,6 +308,15 @@ export async function prepareIsolatedTestDatabase({
       isolation: { mode: "neon-branch" },
       testCredentials,
       authSetup,
+      authorizeRuntimeOrigin: branch.neonAuthBaseUrl
+        ? async (origin) => {
+            await ensureNeonAuthTrustedOrigin({
+              projectId: neonProjectId,
+              branchId: branch.branchId,
+              origin,
+            });
+          }
+        : undefined,
       teardown,
     };
   } catch (error) {

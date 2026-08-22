@@ -53,10 +53,18 @@ import { parseTestCases } from "../utils/parse_test_cases";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { sendTelemetryEvent } from "../utils/telemetry";
+import type { PreparedIsolation } from "../services/isolated_test_db";
+import { prepareE2eTestDataIsolation } from "../services/e2e_test_data_isolation";
 import {
-  prepareIsolatedTestDatabase,
-  type PreparedIsolation,
-} from "../services/isolated_test_db";
+  createE2eTestWorkspace,
+  retainE2eTestArtifacts,
+  rewriteE2eArtifactPath,
+  type E2eTestWorkspace,
+} from "../services/e2e_test_workspace";
+import {
+  startE2eTestRuntime,
+  type E2eTestRuntime,
+} from "../services/e2e_test_runtime";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
 import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
@@ -93,6 +101,29 @@ function escapeRegExpForSelector(value: string): string {
 
 function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
+}
+
+function rewriteResultArtifactPaths(
+  results: TestResult[],
+  workspacePath: string,
+  artifactPath: string,
+): TestResult[] {
+  return results.map((result) => ({
+    ...result,
+    screenshotPath: rewriteE2eArtifactPath(
+      result.screenshotPath,
+      workspacePath,
+      artifactPath,
+    ),
+    tests: result.tests?.map((test) => ({
+      ...test,
+      screenshotPath: rewriteE2eArtifactPath(
+        test.screenshotPath,
+        workspacePath,
+        artifactPath,
+      ),
+    })),
+  }));
 }
 
 /**
@@ -167,6 +198,20 @@ export function isTestRunActive(appId: number): boolean {
   return testRunControllers.has(appId);
 }
 
+/** Abort every sandbox/test runner during Electron's synchronous quit phase. */
+export function stopAllAppTestsSync(): void {
+  for (const run of testRunControllers.values()) {
+    run.controller.abort();
+  }
+}
+
+export async function endTestsForApp(appId: number): Promise<void> {
+  const run = testRunControllers.get(appId);
+  if (!run) return;
+  run.controller.abort();
+  await run.done;
+}
+
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
     where: eq(apps.id, appId),
@@ -209,6 +254,12 @@ function emitRunState(
 
 export interface RunAppTestsCoreOptions {
   appId: number;
+  /** Explicit execution directory for an isolated test workspace. */
+  appPath?: string;
+  /** Explicit test-server URL. Legacy callers use the normal preview URL. */
+  baseUrl?: string;
+  /** Bootstrap is performed against the real app before sandbox creation. */
+  skipBootstrap?: boolean;
   /** When set, runs a single spec file (relative path); otherwise runs all. */
   testFile?: string;
   /**
@@ -253,12 +304,14 @@ export interface RunAppTestsCoreOptions {
 }
 
 /**
- * Bootstrap Playwright (if needed), run the tests against the running dev
- * server's proxy URL, and parse the JSON report. Backs the `tests:run` IPC
- * handler (the UI "Run" button).
+ * Bootstrap Playwright when requested, run against an explicit sandbox server
+ * (or the legacy preview URL for direct callers), and parse the JSON report.
  */
 export async function runAppTestsCore({
   appId,
+  appPath: explicitAppPath,
+  baseUrl: explicitBaseUrl,
+  skipBootstrap = false,
   testFile,
   testLine,
   grep,
@@ -270,7 +323,7 @@ export async function runAppTestsCore({
   testEnv,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
-  const appPath = getDyadAppPath(app.path);
+  const appPath = explicitAppPath ?? getDyadAppPath(app.path);
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
   const normalizedTestFile =
@@ -287,7 +340,7 @@ export async function runAppTestsCore({
   }
 
   // Gate: the dev server must be running so baseURL resolves.
-  const baseUrl = getRunningTestBaseUrl(appId);
+  const baseUrl = explicitBaseUrl ?? getRunningTestBaseUrl(appId);
   if (!baseUrl) {
     return {
       appId,
@@ -301,17 +354,19 @@ export async function runAppTestsCore({
 
   // 1. Lazy bootstrap (install Playwright + browser, write config), streamed.
   let installed = false;
-  try {
-    const result = await ensurePlaywrightBootstrap({
-      appPath,
-      signal,
-      onOutput: (chunk) => emit(chunk, "setup"),
-    });
-    installed = result.installed;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Playwright bootstrap failed: ${message}`);
-    return { appId, results: [], infraError: { message } };
+  if (!skipBootstrap) {
+    try {
+      const result = await ensurePlaywrightBootstrap({
+        appPath,
+        signal,
+        onOutput: (chunk) => emit(chunk, "setup"),
+      });
+      installed = result.installed;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Playwright bootstrap failed: ${message}`);
+      return { appId, results: [], infraError: { message } };
+    }
   }
 
   if (signal?.aborted) {
@@ -627,9 +682,8 @@ export async function runAppTestsWithIsolation({
       testFile: normalizedTestFile ?? undefined,
       testLine,
       grep,
-      // Only `cleaning-up` carries this, and only so the UI can name the work
-      // accurately: the Neon path restarts the preview, the Supabase path
-      // touches nothing the user can see.
+      // Only `cleaning-up` carries this so the UI can name the remote provider
+      // cleanup accurately. The normal preview is not restarted.
       isolation,
     });
   };
@@ -679,23 +733,20 @@ export async function runAppTestsWithIsolation({
     emitOutput(event, appId, runId, chunk, phase);
 
   let finalResult: RunAppTestsResult = { appId, results: [] };
-  // Set by isolation teardown below when `.env.local` couldn't be put back. The
-  // run may have produced perfectly good results, but the app is still pointed
-  // at the temporary branch, so the caller has to be told rather than left to
-  // relaunch it against isolated data.
-  let envRestoreFailed = false;
+  let workspace: E2eTestWorkspace | undefined;
+  // The real env is never changed. This only reports a sandbox/provider cleanup
+  // failure (for example, a temporary Neon branch left for startup recovery).
+  let isolationCleanupFailed = false;
   /**
-   * Fold a failed `.env.local` restore into a result. Applied on BOTH exits —
-   * an unexpected rejection inside the lock must not swallow it, or the run
-   * reports an ordinary infrastructure error while the app is still pointed at
-   * the temporary branch.
+   * Fold failed provider cleanup into a result. Applied on both exits so an
+   * unexpected rejection cannot hide a temporary branch left for recovery.
    */
-  const withEnvRestoreWarning = (
+  const withIsolationCleanupWarning = (
     result: RunAppTestsResult,
   ): RunAppTestsResult => {
-    if (!envRestoreFailed) return result;
+    if (!isolationCleanupFailed) return result;
     const restoreMessage =
-      "Dyad couldn't restore your app's real database settings after the test run. Restore .env.local before running the app again.";
+      "Dyad couldn't finish cleaning up the isolated test database. Your app settings were not changed; Dyad will retry remote cleanup on next startup.";
     return {
       ...result,
       // Appended rather than substituted: an isolation-setup failure explains
@@ -723,17 +774,45 @@ export async function runAppTestsWithIsolation({
     // so this call exists only for the ordering barrier.)
     await getApp(appId);
 
-    // Own the runtime/test resources across the whole isolation lifecycle
-    // (prepare → run → teardown). Startup reconciliation owns the same
-    // resources, so a rapid Run after launch cannot interleave its env swap
-    // and dev-server restart with reconciliation and use the real database.
+    // Bootstrap and snapshot under the real working-tree claim, then release it
+    // before Playwright runs so ordinary app editing can continue against the
+    // normal preview while this run uses its captured filesystem state.
+    workspace = await appOperationCoordinator.run(
+      {
+        appId,
+        operation: "prepare-e2e-test-workspace",
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("repository-ref"),
+          "repository-worktree",
+          "test-files",
+        ],
+        refuseWhenRecording: "run tests",
+      },
+      async () => {
+        const app = await getApp(appId);
+        const realAppPath = getDyadAppPath(app.path);
+        await ensurePlaywrightBootstrap({
+          appPath: realAppPath,
+          signal: controller.signal,
+          onOutput: (chunk) => emit(chunk, "setup"),
+        });
+        emit("Copying the app into an isolated test workspace…\n", "setup");
+        return createE2eTestWorkspace({
+          appId,
+          appPath: realAppPath,
+          signal: controller.signal,
+          onProgress: (message) => emit(message, "setup"),
+        });
+      },
+    );
+
+    // The live test only owns provider/test inputs. It deliberately does not
+    // claim the normal runtime or runtime-config: its process is run-scoped and
+    // never registered in runningApps.
     const testRunResources = [
       readAppResource("app-path"),
-      readAppResource("repository-ref"),
-      "repository-worktree",
       "provider",
-      "runtime",
-      "runtime-config",
       "test-files",
     ] as const;
     if (appOperationCoordinator.isBusy(appId, testRunResources)) {
@@ -759,6 +838,7 @@ export async function runAppTestsWithIsolation({
       },
       async () => {
         let prepared: PreparedIsolation | undefined;
+        let testRuntime: E2eTestRuntime | undefined;
         try {
           const app = await getApp(appId);
 
@@ -774,14 +854,27 @@ export async function runAppTestsWithIsolation({
           }
 
           const runtimeMode = readSettings().runtimeMode2 ?? "host";
+          if (runtimeMode !== "host") {
+            return {
+              appId,
+              results: [],
+              infraError: {
+                message: `Isolated E2E test servers currently require host runtime. Switch from ${runtimeMode} runtime before running tests.`,
+              },
+              isolation: {
+                mode: "none" as const,
+                reason: `Sandboxed E2E execution is not available in ${runtimeMode} runtime yet.`,
+              },
+            };
+          }
 
           // Set up isolation so the run never mutates the user's real data:
           // Neon apps get a throwaway copy-on-write branch, Supabase apps get
           // a throwaway RLS-scoped test user, and no-DB apps run as-is.
-          prepared = await prepareIsolatedTestDatabase({
+          prepared = await prepareE2eTestDataIsolation({
             app,
+            workspacePath: workspace!.workspacePath,
             emit,
-            runtimeMode,
             signal: controller.signal,
           });
 
@@ -796,8 +889,43 @@ export async function runAppTestsWithIsolation({
             };
           }
 
+          emit("Starting the isolated test server…\n", "setup");
+          testRuntime = await startE2eTestRuntime({
+            workspacePath: workspace!.workspacePath,
+            startCommand: app.startCommand,
+            signal: controller.signal,
+            onOutput: (chunk) => emit(chunk, "setup"),
+          });
+
+          if (prepared.authorizeRuntimeOrigin) {
+            const runtimeOrigin = new URL(testRuntime.baseUrl).origin;
+            emit(
+              "Authorizing the isolated test server for sign-in…\n",
+              "setup",
+            );
+            try {
+              await prepared.authorizeRuntimeOrigin(runtimeOrigin);
+            } catch (error) {
+              logger.error(
+                `Failed to authorize isolated E2E origin ${runtimeOrigin} for app ${appId}: ${error}`,
+              );
+              return {
+                appId,
+                results: [],
+                infraError: {
+                  message:
+                    "Dyad couldn't authorize the isolated test server with Neon Auth, so the tests were not run. Check your Neon connection and try again.",
+                },
+                isolation: prepared.isolation,
+              };
+            }
+          }
+
           const result = await runAppTestsCore({
             appId,
+            appPath: workspace!.workspacePath,
+            baseUrl: testRuntime.baseUrl,
+            skipBootstrap: true,
             testFile: normalizedTestFile ?? undefined,
             testLine,
             grep,
@@ -808,29 +936,37 @@ export async function runAppTestsWithIsolation({
             onOutput: emit,
             testEnv: prepared.testCredentials,
           });
+          await retainE2eTestArtifacts(workspace!);
+          result.results = rewriteResultArtifactPaths(
+            result.results,
+            workspace!.workspacePath,
+            workspace!.artifactPath,
+          );
           return { ...result, isolation: prepared.isolation };
         } finally {
-          // Always restore the app to its real database, even on the
-          // infraError early-return, abort, or throw. `teardown` is safe to
-          // call exactly once; on the infraError path it's a NOOP (isolation
-          // already restored).
+          if (testRuntime) {
+            try {
+              await testRuntime.stop();
+            } catch (error) {
+              logger.error(
+                `Failed to stop isolated test server for app ${appId}: ${error}`,
+              );
+            }
+          }
+          // Always clean up provider isolation, even on an infraError, abort, or
+          // throw. The sandbox env can be discarded, but remote branches/users
+          // still require their guaranteed teardown.
           if (prepared) {
             try {
               // Announce the teardown before it starts. It restores
-              // `.env.local`, restarts the dev server and deletes the temporary
-              // branch/user, takes no AbortSignal, and routinely outlasts the
-              // process kill by a wide margin (the Neon branch delete retries
-              // with backoff). Without this the UI reports "running" for the
-              // whole wait. Skipped for `none`, whose teardown is a NOOP that
-              // would only flash the label.
+              // the temporary branch/user, takes no AbortSignal, and may
+              // outlast the process kill because Neon deletion retries with
+              // backoff. Skipped for `none`, whose teardown is a NOOP.
               if (prepared.isolation.mode !== "none") {
                 emitProgress("cleaning-up", prepared.isolation);
               }
-              // Fail closed across the await: a teardown that throws has said
-              // nothing about whether the env came back, and "unknown" has to
-              // read the same as "no".
-              envRestoreFailed = true;
-              envRestoreFailed = !(await prepared.teardown()).envRestored;
+              isolationCleanupFailed = true;
+              isolationCleanupFailed = !(await prepared.teardown()).envRestored;
             } catch (error) {
               logger.error(
                 `Failed to tear down isolated test environment for app ${appId}: ${error}`,
@@ -840,12 +976,12 @@ export async function runAppTestsWithIsolation({
         }
       },
     );
-    finalResult = withEnvRestoreWarning(finalResult);
+    finalResult = withIsolationCleanupWarning(finalResult);
     return finalResult;
   } catch (error) {
     // Surface an unexpected failure as an infra error on the run-state event so
     // the panel leaves its spinner state, then rethrow for the caller.
-    finalResult = withEnvRestoreWarning({
+    finalResult = withIsolationCleanupWarning({
       appId,
       results: [],
       infraError: {
@@ -861,6 +997,15 @@ export async function runAppTestsWithIsolation({
           cause: error,
         });
   } finally {
+    if (workspace) {
+      try {
+        await workspace.dispose();
+      } catch (error) {
+        logger.error(
+          `Failed to remove isolated test workspace for app ${appId}: ${error}`,
+        );
+      }
+    }
     if (externalSignal) {
       externalSignal.removeEventListener("abort", onExternalAbort);
     }
@@ -939,7 +1084,11 @@ export function registerTestsHandlers() {
       const app = await getApp(params.appId);
       const appPath = getDyadAppPath(app.path);
       return {
-        dataUrl: await readTestScreenshotDataUrl(appPath, params.path),
+        dataUrl: await readTestScreenshotDataUrl(
+          appPath,
+          params.path,
+          params.appId,
+        ),
       };
     },
   );

@@ -146,6 +146,7 @@ import {
   trackedBranchId,
 } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
+import { endTestsForApp } from "./tests_handlers";
 
 import {
   getRgExecutablePath,
@@ -491,6 +492,7 @@ async function deleteAppById(
     const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
       skipRestart: true,
     });
+    await endTestsForApp(appId);
     if (!envRestored) {
       // The app directory is about to be removed, so a stale `.env.local`
       // inside it goes with it — this is diagnosis, not a refusal.

@@ -409,6 +409,7 @@ async function attachFailureArtifacts(
   const dataUrl = await readTestScreenshotDataUrl(
     ctx.appPath,
     shot.screenshotPath,
+    ctx.appId,
   );
   if (dataUrl) {
     ctx.appendUserMessage([

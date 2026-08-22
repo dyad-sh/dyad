@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     where,
     generateCookieSecret: vi.fn(() => "generated".padEnd(64, "0")),
     readEnvVarsOrEmpty: vi.fn(),
+    getNeonClient: vi.fn(),
   };
 });
 
@@ -37,7 +38,7 @@ vi.mock("@/ipc/utils/app_env_var_utils", () => ({
 }));
 
 vi.mock("@/neon_admin/neon_management_client", () => ({
-  getNeonClient: vi.fn(),
+  getNeonClient: mocks.getNeonClient,
 }));
 
 vi.mock("@/neon_admin/neon_context", () => ({
@@ -56,6 +57,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import {
+  ensureNeonAuthTrustedOrigin,
   getOrCreateNeonAuthCookieSecret,
   syncActiveNeonAuthCookieSecretFromEnv,
 } from "@/ipc/utils/neon_utils";
@@ -321,5 +323,67 @@ describe("syncActiveNeonAuthCookieSecretFromEnv", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureNeonAuthTrustedOrigin", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("preserves an HTTP loopback origin exactly", async () => {
+    const listBranchNeonAuthTrustedDomains = vi.fn().mockResolvedValue({
+      data: { domains: [] },
+    });
+    const addBranchNeonAuthTrustedDomain = vi
+      .fn()
+      .mockResolvedValue({ data: undefined });
+    mocks.getNeonClient.mockResolvedValue({
+      listBranchNeonAuthTrustedDomains,
+      addBranchNeonAuthTrustedDomain,
+    });
+
+    const result = await ensureNeonAuthTrustedOrigin({
+      projectId: "proj-1",
+      branchId: "br-test",
+      origin: "http://127.0.0.1:35129/path",
+    });
+
+    expect(result).toBe("http://127.0.0.1:35129");
+    expect(addBranchNeonAuthTrustedDomain).toHaveBeenCalledWith(
+      "proj-1",
+      "br-test",
+      {
+        domain: "http://127.0.0.1:35129",
+        auth_provider: "better_auth",
+      },
+    );
+  });
+
+  it("does not add an origin that is already trusted", async () => {
+    const listBranchNeonAuthTrustedDomains = vi.fn().mockResolvedValue({
+      data: {
+        domains: [
+          {
+            domain: "http://127.0.0.1:35129",
+            auth_provider: "better_auth",
+          },
+        ],
+      },
+    });
+    const addBranchNeonAuthTrustedDomain = vi.fn();
+    mocks.getNeonClient.mockResolvedValue({
+      listBranchNeonAuthTrustedDomains,
+      addBranchNeonAuthTrustedDomain,
+    });
+
+    const result = await ensureNeonAuthTrustedOrigin({
+      projectId: "proj-1",
+      branchId: "br-test",
+      origin: "http://127.0.0.1:35129",
+    });
+
+    expect(result).toBeNull();
+    expect(addBranchNeonAuthTrustedDomain).not.toHaveBeenCalled();
   });
 });

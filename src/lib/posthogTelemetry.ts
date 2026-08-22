@@ -82,6 +82,7 @@ export class PostHogErrorDeduper {
   private memoryState: ErrorDedupeState = {};
   private storageAvailable: boolean;
   private hasUnpersistedChanges = false;
+  private pendingStorageWrite: ReturnType<typeof setTimeout> | undefined;
   private lastStorageReadAt = Number.NEGATIVE_INFINITY;
   private lastStorageWriteAt = Number.NEGATIVE_INFINITY;
 
@@ -142,7 +143,11 @@ export class PostHogErrorDeduper {
       };
       this.memoryState = state;
       this.hasUnpersistedChanges = true;
-      this.persistState(now, false);
+      const remainingDedupeWindow = dedupeWindow - (now - existing.lastSentAt);
+      this.persistState(
+        now,
+        remainingDedupeWindow <= ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS,
+      );
       return null;
     }
 
@@ -177,6 +182,7 @@ export class PostHogErrorDeduper {
 
   /** Persist throttled counters before the renderer is discarded. */
   flush(now = Date.now()): void {
+    this.clearPendingStorageWrite();
     if (this.hasUnpersistedChanges) {
       this.persistState(now, true);
     }
@@ -197,6 +203,7 @@ export class PostHogErrorDeduper {
           this.memoryState = mergeErrorDedupeStates(
             this.memoryState,
             parseErrorDedupeState(raw),
+            now,
           );
         }
         this.lastStorageReadAt = now;
@@ -222,6 +229,7 @@ export class PostHogErrorDeduper {
             this.memoryState = mergeErrorDedupeStates(
               this.memoryState,
               parseErrorDedupeState(raw),
+              now,
             );
           }
           this.lastStorageReadAt = now;
@@ -233,10 +241,35 @@ export class PostHogErrorDeduper {
         this.lastStorageWriteAt = now;
         this.lastStorageReadAt = now;
         this.hasUnpersistedChanges = false;
+        this.clearPendingStorageWrite();
       } catch {
         // Continue deduplicating in memory when persistence is unavailable.
         this.storageAvailable = false;
+        this.clearPendingStorageWrite();
       }
+    } else if (!force && this.hasUnpersistedChanges) {
+      this.schedulePendingStorageWrite(now);
+    }
+  }
+
+  private schedulePendingStorageWrite(now: number): void {
+    if (this.pendingStorageWrite || !this.storageAvailable) {
+      return;
+    }
+    const delay = Math.max(
+      0,
+      ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS - (now - this.lastStorageWriteAt),
+    );
+    this.pendingStorageWrite = setTimeout(() => {
+      this.pendingStorageWrite = undefined;
+      this.flush();
+    }, delay);
+  }
+
+  private clearPendingStorageWrite(): void {
+    if (this.pendingStorageWrite) {
+      clearTimeout(this.pendingStorageWrite);
+      this.pendingStorageWrite = undefined;
     }
   }
 }
@@ -256,9 +289,12 @@ function boundErrorDedupeState(
 function mergeErrorDedupeStates(
   memory: ErrorDedupeState,
   persisted: ErrorDedupeState,
+  now = Number.POSITIVE_INFINITY,
 ): ErrorDedupeState {
-  const merged = { ...persisted };
-  for (const [fingerprintHash, memoryRecord] of Object.entries(memory)) {
+  const merged = { ...boundErrorDedupeState(persisted, now) };
+  for (const [fingerprintHash, memoryRecord] of Object.entries(
+    boundErrorDedupeState(memory, now),
+  )) {
     const persistedRecord = merged[fingerprintHash];
     if (!persistedRecord) {
       merged[fingerprintHash] = memoryRecord;
@@ -278,7 +314,7 @@ function mergeErrorDedupeStates(
       };
     }
   }
-  return boundErrorDedupeState(merged);
+  return boundErrorDedupeState(merged, now);
 }
 
 function mergeSuppressionSources(

@@ -380,6 +380,63 @@ describe("PostHogErrorDeduper", () => {
     });
   });
 
+  it("persists throttled suppression counters after the write interval", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+      const storage = new MemoryStorage();
+      const event = exceptionEvent();
+      const deduper = new PostHogErrorDeduper(storage, "window-a");
+
+      deduper.process(event, false, 0);
+      vi.setSystemTime(1);
+      deduper.process(event, false, 1);
+      vi.advanceTimersByTime(4_999);
+
+      expect(
+        new PostHogErrorDeduper(storage, "window-b").process(
+          event,
+          false,
+          24 * HOUR_MS,
+        ),
+      ).toMatchObject({
+        properties: { dyad_error_suppressed_count: 1 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("persists pending counters before another window reaches the boundary", () => {
+    const storage = new MemoryStorage();
+    const event = exceptionEvent();
+    const firstWindow = new PostHogErrorDeduper(storage, "window-a");
+    const freeWindowMs = 24 * HOUR_MS;
+
+    firstWindow.process(event, false, 0);
+    firstWindow.process(event, false, freeWindowMs - 1);
+
+    expect(
+      new PostHogErrorDeduper(storage, "window-b").process(
+        event,
+        false,
+        freeWindowMs,
+      ),
+    ).toMatchObject({
+      properties: { dyad_error_suppressed_count: 1 },
+    });
+  });
+
+  it("resets future records after the system clock moves backward", () => {
+    const storage = new MemoryStorage();
+    const event = exceptionEvent();
+    const deduper = new PostHogErrorDeduper(storage, "window-a");
+
+    deduper.process(event, false, 10_000);
+    expect(deduper.process(event, false, 1_000)).toBeTruthy();
+    expect(deduper.process(event, false, 1_001)).toBeNull();
+  });
+
   it("merges suppression counts from multiple renderer windows", () => {
     const storage = new MemoryStorage();
     const firstWindow = new PostHogErrorDeduper(storage, "window-a");

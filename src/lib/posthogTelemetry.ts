@@ -8,6 +8,7 @@ const FREE_ERROR_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PRO_ERROR_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_ERROR_DEDUPE_ENTRIES = 500;
 const MAX_STORED_ENTRIES_TO_PARSE = MAX_ERROR_DEDUPE_ENTRIES * 2;
+const POSTHOG_CRASH_EVENT_NAMES = new Set(["code_explorer:host_crash"]);
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
 type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
@@ -244,7 +245,11 @@ export function isPostHogErrorTelemetryEvent(
 export function isPostHogCrashTelemetryEvent(
   event: PostHogTelemetryEvent | null | undefined,
 ): boolean {
-  return event?.event?.endsWith(":crash_detected") === true;
+  const eventName = event?.event;
+  return (
+    eventName?.endsWith(":crash_detected") === true ||
+    (eventName !== undefined && POSTHOG_CRASH_EVENT_NAMES.has(eventName))
+  );
 }
 
 function getErrorTelemetryFingerprint(

@@ -297,6 +297,7 @@ describe("PostHog error telemetry classification", () => {
       "app:crash_detected",
       "renderer:crash_detected",
       "utility_process:crash_detected",
+      "code_explorer:host_crash",
     ]) {
       expect(isPostHogCrashTelemetryEvent({ event })).toBe(true);
     }

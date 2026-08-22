@@ -181,6 +181,41 @@ describe("PostHogErrorDeduper", () => {
     ).toBeNull();
   });
 
+  it("keeps stable custom error context distinct", () => {
+    const deduper = new PostHogErrorDeduper();
+    const iterationError = {
+      event: "local_agent:terminated_stream_retry",
+      properties: {
+        error: "terminated",
+        phase: "stream_iteration",
+        chatId: 1,
+      },
+    };
+    const finalizationError = {
+      event: "local_agent:terminated_stream_retry",
+      properties: {
+        error: "terminated",
+        phase: "response_finalization",
+        chatId: 2,
+      },
+    };
+
+    expect(deduper.process(iterationError, false, 0)).toBe(iterationError);
+    expect(deduper.process(finalizationError, false, 1)).toBe(
+      finalizationError,
+    );
+    expect(
+      deduper.process(
+        {
+          ...iterationError,
+          properties: { ...iterationError.properties, chatId: 3 },
+        },
+        false,
+        2,
+      ),
+    ).toBeNull();
+  });
+
   it("always admits explicit crash telemetry", () => {
     const deduper = new PostHogErrorDeduper();
     const crash = {

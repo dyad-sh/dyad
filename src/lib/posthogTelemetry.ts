@@ -11,6 +11,15 @@ const MAX_STORED_ENTRIES_TO_PARSE = MAX_ERROR_DEDUPE_ENTRIES * 2;
 const ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS = 5_000;
 const MAX_SUPPRESSION_SOURCES_PER_FINGERPRINT = 20;
 const POSTHOG_CRASH_EVENT_NAMES = new Set(["code_explorer:host_crash"]);
+const ERROR_FINGERPRINT_CONTEXT_KEYS = [
+  "ipc_channel",
+  "phase",
+  "executionThread",
+  "reason",
+  "failure_category",
+  "provider",
+  "source",
+] as const;
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
 type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
@@ -469,9 +478,16 @@ function getErrorTelemetryFingerprint(
     .join("|");
 
   const customErrorIdentity = normalizeTelemetryValue(properties?.error);
+  const stableContextIdentity = ERROR_FINGERPRINT_CONTEXT_KEYS.map((key) => {
+    const value = normalizeTelemetryValue(properties?.[key]);
+    return value ? `${key}:${value}` : "";
+  })
+    .filter(Boolean)
+    .join("|");
   return [
     event.event ?? "<unnamed-error-event>",
     exceptionIdentity || legacyIdentity || customErrorIdentity,
+    stableContextIdentity,
   ].join("|");
 }
 

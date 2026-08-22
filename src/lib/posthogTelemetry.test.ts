@@ -306,6 +306,26 @@ describe("PostHogErrorDeduper", () => {
     expect(storage.getItem).toHaveBeenCalledTimes(2);
     expect(storage.setItem).toHaveBeenCalledTimes(2);
   });
+
+  it("merges suppression counts from multiple renderer windows", () => {
+    const storage = new MemoryStorage();
+    const firstWindow = new PostHogErrorDeduper(storage, "window-a");
+    const secondWindow = new PostHogErrorDeduper(storage, "window-b");
+    const event = exceptionEvent();
+
+    firstWindow.process(event, true, 0);
+    secondWindow.process(event, true, 1);
+    firstWindow.process(event, true, 2);
+    firstWindow.process(event, true, 5_000);
+    secondWindow.process(event, true, 5_001);
+
+    const nextWindow = new PostHogErrorDeduper(storage, "window-c");
+    expect(nextWindow.process(event, true, 10 * 60 * 1000)).toMatchObject({
+      properties: {
+        dyad_error_suppressed_count: 4,
+      },
+    });
+  });
 });
 
 describe("PostHog error telemetry classification", () => {

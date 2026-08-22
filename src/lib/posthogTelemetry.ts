@@ -9,6 +9,7 @@ const PRO_ERROR_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_ERROR_DEDUPE_ENTRIES = 500;
 const MAX_STORED_ENTRIES_TO_PARSE = MAX_ERROR_DEDUPE_ENTRIES * 2;
 const ERROR_DEDUPE_STORAGE_SYNC_INTERVAL_MS = 5_000;
+const MAX_SUPPRESSION_SOURCES_PER_FINGERPRINT = 20;
 const POSTHOG_CRASH_EVENT_NAMES = new Set(["code_explorer:host_crash"]);
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
@@ -17,7 +18,7 @@ type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
 type ErrorDedupeRecord = {
   lastSentAt: number;
   lastSeenAt: number;
-  suppressedCount: number;
+  suppressionBySource: Record<string, { count: number; lastSeenAt: number }>;
 };
 
 type ErrorDedupeState = Record<string, ErrorDedupeRecord>;
@@ -74,7 +75,10 @@ export class PostHogErrorDeduper {
   private lastStorageReadAt = Number.NEGATIVE_INFINITY;
   private lastStorageWriteAt = Number.NEGATIVE_INFINITY;
 
-  constructor(private readonly storage?: TelemetryStorage) {
+  constructor(
+    private readonly storage?: TelemetryStorage,
+    private readonly sourceId = createErrorDedupeSourceId(),
+  ) {
     this.storageAvailable = Boolean(storage);
   }
 
@@ -106,10 +110,16 @@ export class PostHogErrorDeduper {
       state[fingerprintHash] = {
         ...existing,
         lastSeenAt: now,
-        suppressedCount: Math.min(
-          Number.MAX_SAFE_INTEGER,
-          existing.suppressedCount + 1,
-        ),
+        suppressionBySource: boundSuppressionSources({
+          ...existing.suppressionBySource,
+          [this.sourceId]: {
+            count: Math.min(
+              Number.MAX_SAFE_INTEGER,
+              (existing.suppressionBySource[this.sourceId]?.count ?? 0) + 1,
+            ),
+            lastSeenAt: now,
+          },
+        }),
       };
       this.memoryState = state;
       this.persistState(now, false);
@@ -119,12 +129,15 @@ export class PostHogErrorDeduper {
     state[fingerprintHash] = {
       lastSentAt: now,
       lastSeenAt: now,
-      suppressedCount: 0,
+      suppressionBySource: {},
     };
     this.memoryState = boundErrorDedupeState(state);
     this.persistState(now, true);
 
-    if (!existing?.suppressedCount) {
+    const suppressedCount = existing
+      ? totalSuppressedCount(existing.suppressionBySource)
+      : 0;
+    if (!suppressedCount) {
       return event;
     }
 
@@ -132,7 +145,7 @@ export class PostHogErrorDeduper {
       ...event,
       properties: {
         ...event.properties,
-        dyad_error_suppressed_count: existing.suppressedCount,
+        dyad_error_suppressed_count: suppressedCount,
         dyad_error_suppression_duration_ms: Math.max(
           0,
           now - existing.lastSentAt,
@@ -205,26 +218,72 @@ function mergeErrorDedupeStates(
   const merged = { ...persisted };
   for (const [fingerprintHash, memoryRecord] of Object.entries(memory)) {
     const persistedRecord = merged[fingerprintHash];
-    if (
-      !persistedRecord ||
-      memoryRecord.lastSeenAt > persistedRecord.lastSeenAt
-    ) {
+    if (!persistedRecord) {
       merged[fingerprintHash] = memoryRecord;
-    } else if (memoryRecord.lastSeenAt === persistedRecord.lastSeenAt) {
+    } else if (memoryRecord.lastSentAt > persistedRecord.lastSentAt) {
+      merged[fingerprintHash] = memoryRecord;
+    } else if (memoryRecord.lastSentAt === persistedRecord.lastSentAt) {
       merged[fingerprintHash] = {
-        lastSentAt: Math.max(
-          memoryRecord.lastSentAt,
-          persistedRecord.lastSentAt,
+        lastSentAt: memoryRecord.lastSentAt,
+        lastSeenAt: Math.max(
+          memoryRecord.lastSeenAt,
+          persistedRecord.lastSeenAt,
         ),
-        lastSeenAt: memoryRecord.lastSeenAt,
-        suppressedCount: Math.max(
-          memoryRecord.suppressedCount,
-          persistedRecord.suppressedCount,
+        suppressionBySource: mergeSuppressionSources(
+          memoryRecord.suppressionBySource,
+          persistedRecord.suppressionBySource,
         ),
       };
     }
   }
   return boundErrorDedupeState(merged);
+}
+
+function mergeSuppressionSources(
+  left: ErrorDedupeRecord["suppressionBySource"],
+  right: ErrorDedupeRecord["suppressionBySource"],
+): ErrorDedupeRecord["suppressionBySource"] {
+  const merged = { ...right };
+  for (const [sourceId, contribution] of Object.entries(left)) {
+    const existing = merged[sourceId];
+    if (
+      !existing ||
+      contribution.count > existing.count ||
+      (contribution.count === existing.count &&
+        contribution.lastSeenAt > existing.lastSeenAt)
+    ) {
+      merged[sourceId] = contribution;
+    }
+  }
+  return boundSuppressionSources(merged);
+}
+
+function boundSuppressionSources(
+  sources: ErrorDedupeRecord["suppressionBySource"],
+): ErrorDedupeRecord["suppressionBySource"] {
+  return Object.fromEntries(
+    Object.entries(sources)
+      .sort(([, left], [, right]) => right.lastSeenAt - left.lastSeenAt)
+      .slice(0, MAX_SUPPRESSION_SOURCES_PER_FINGERPRINT),
+  );
+}
+
+function totalSuppressedCount(
+  sources: ErrorDedupeRecord["suppressionBySource"],
+): number {
+  return Object.values(sources).reduce(
+    (total, contribution) =>
+      Math.min(Number.MAX_SAFE_INTEGER, total + contribution.count),
+    0,
+  );
+}
+
+function createErrorDedupeSourceId(): string {
+  try {
+    return globalThis.crypto.randomUUID();
+  } catch {
+    return hashTelemetryFingerprint(`${Date.now()}|${Math.random()}`);
+  }
 }
 
 export function getPostHogTelemetryStorage(
@@ -257,11 +316,29 @@ function parseErrorDedupeState(raw: string): ErrorDedupeState {
         (record.lastSeenAt !== undefined &&
           (typeof record.lastSeenAt !== "number" ||
             !Number.isFinite(record.lastSeenAt))) ||
-        typeof record.suppressedCount !== "number" ||
-        !Number.isSafeInteger(record.suppressedCount) ||
-        record.suppressedCount < 0
+        (record.suppressionBySource !== undefined &&
+          !isRecord(record.suppressionBySource)) ||
+        (record.suppressedCount !== undefined &&
+          (typeof record.suppressedCount !== "number" ||
+            !Number.isSafeInteger(record.suppressedCount) ||
+            record.suppressedCount < 0))
       ) {
         continue;
+      }
+      const suppressionBySource = parseSuppressionSources(
+        record.suppressionBySource,
+      );
+      if (
+        typeof record.suppressedCount === "number" &&
+        record.suppressedCount > 0
+      ) {
+        suppressionBySource.legacy = {
+          count: record.suppressedCount,
+          lastSeenAt:
+            typeof record.lastSeenAt === "number"
+              ? record.lastSeenAt
+              : record.lastSentAt,
+        };
       }
       validEntries.push([
         fingerprintHash,
@@ -271,7 +348,7 @@ function parseErrorDedupeState(raw: string): ErrorDedupeState {
             typeof record.lastSeenAt === "number"
               ? record.lastSeenAt
               : record.lastSentAt,
-          suppressedCount: record.suppressedCount,
+          suppressionBySource: boundSuppressionSources(suppressionBySource),
         },
       ]);
     }
@@ -279,6 +356,36 @@ function parseErrorDedupeState(raw: string): ErrorDedupeState {
   } catch {
     return {};
   }
+}
+
+function parseSuppressionSources(
+  value: unknown,
+): ErrorDedupeRecord["suppressionBySource"] {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const sources: ErrorDedupeRecord["suppressionBySource"] = {};
+  for (const [sourceId, contribution] of Object.entries(value).slice(
+    0,
+    MAX_SUPPRESSION_SOURCES_PER_FINGERPRINT * 2,
+  )) {
+    if (
+      !/^[\w-]{1,100}$/.test(sourceId) ||
+      !isRecord(contribution) ||
+      typeof contribution.count !== "number" ||
+      !Number.isSafeInteger(contribution.count) ||
+      contribution.count < 0 ||
+      typeof contribution.lastSeenAt !== "number" ||
+      !Number.isFinite(contribution.lastSeenAt)
+    ) {
+      continue;
+    }
+    sources[sourceId] = {
+      count: contribution.count,
+      lastSeenAt: contribution.lastSeenAt,
+    };
+  }
+  return sources;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

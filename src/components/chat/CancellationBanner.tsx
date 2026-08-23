@@ -11,11 +11,11 @@ import {
  * Pinned above the composer while a stopped turn settles.
  *
  * Stopping is not instant. The agent awaits its in-flight tool, and a
- * `run_tests` call first kills the Playwright process tree and then runs an
- * isolation teardown that accepts no AbortSignal — restoring `.env.local`,
- * restarting the dev server and deleting the temporary Neon branch, whose
- * delete retries with backoff. That wait can pass a minute, and the composer
- * stays locked for all of it.
+ * `run_tests` call first kills the Playwright process tree and then runs a
+ * teardown that accepts no AbortSignal — deleting the temporary Neon branch,
+ * whose delete retries with backoff, and removing the run's sandbox copy of the
+ * app. That wait can pass a minute, and the composer stays locked for all of
+ * it. The user's own `.env.local` and preview are never touched.
  *
  * The transcript's inline status card scrolls out of view; this stays fused to
  * the composer the user just clicked Stop in, so the wait is never unexplained.
@@ -38,7 +38,7 @@ export function CancellationBanner({ appId }: { appId?: number | null }) {
       ? null
       : runState.phase === "cleaning-up"
         ? runState.isolation?.mode === "neon-branch"
-          ? t("cancellationRestoringTestApp")
+          ? t("cancellationRemovingTestDatabase")
           : t("cancellationCleaningTestData")
         : runState.phase === "stopping"
           ? t("cancellationEndingTestRun")

@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   appUrl: "http://localhost:32100" as string | null,
   previewUrl: "http://localhost:32100/" as string | null,
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
+  app: { id: 1, testingEnabled: true } as Record<string, unknown>,
+  settings: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -52,11 +54,11 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 vi.mock("@/hooks/useLoadApp", () => ({
-  useLoadApp: () => ({ app: { id: 1, testingEnabled: true } }),
+  useLoadApp: () => ({ app: mocks.app }),
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: {}, updateSettings: vi.fn() }),
+  useSettings: () => ({ settings: mocks.settings, updateSettings: vi.fn() }),
 }));
 
 vi.mock("@/hooks/useRunApp", () => ({
@@ -131,6 +133,8 @@ describe("TestsPanel", () => {
     mocks.appUrl = "http://localhost:32100";
     mocks.previewUrl = "http://localhost:32100/";
     mocks.previewUrlSource = "dyad";
+    mocks.app = { id: 1, testingEnabled: true };
+    mocks.settings = {};
     mocks.listAppTests.mockResolvedValue({
       specs: [
         {
@@ -391,10 +395,32 @@ describe("TestsPanel", () => {
       expect(mocks.showError).toHaveBeenCalledWith(error);
     });
 
-    it("names the Neon teardown, which restarts the preview", () => {
+    it("tells Neon users their preview keeps its real database", async () => {
+      // The pre-sandbox copy promised a double preview restart. Nothing
+      // restarts any more, so that disclosure would now be a lie.
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      renderPanel();
+
+      expect(
+        await screen.findByText(/Your preview keeps running against your real/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/restart the preview/i)).toBeNull();
+    });
+
+    it("drops the sandbox disclosure when the sandbox is turned off", async () => {
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = { disableSandboxedE2eTests: true };
+      renderPanel();
+
+      await screen.findByText("signup.spec.ts");
+      expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
+    });
+
+    it("names the Neon teardown without promising a restore", () => {
       // This is the wait that can pass a minute (the branch delete retries with
-      // backoff), and it visibly reloads the user's preview. Calling it
-      // "Running…" — as the panel used to — reads as a hang.
+      // backoff). Calling it "Running…" — as the panel used to — reads as a
+      // hang, but the run had its own sandbox and its own server, so nothing
+      // of the user's is being put back either.
       const { store } = renderPanel();
       setPhase(store, {
         phase: "cleaning-up",
@@ -402,31 +428,31 @@ describe("TestsPanel", () => {
       });
 
       expect(
-        screen.getByText(/Restoring your database and preview/),
+        screen.getByText(/Removing the temporary test database/),
       ).toBeTruthy();
+      expect(screen.queryByText(/Restoring/i)).toBeNull();
       expect(
-        screen.getByRole("button", { name: "Restoring your app" }).textContent,
-      ).toContain("Restoring…");
+        screen.getByRole("button", {
+          name: "Removing the temporary test database",
+        }).textContent,
+      ).toContain("Cleaning up…");
     });
 
-    it("does not promise a database restore on the Supabase path", () => {
-      // That teardown only deletes the temporary test user. It never swaps
-      // `.env.local` and never restarts the app, so the Neon copy would lie.
+    it("names the sandbox cleanup on the Supabase path", () => {
+      // That teardown only deletes the temporary test user and the run's
+      // sandbox copy. It never swaps `.env.local` and never restarts the app.
       const { store } = renderPanel();
       setPhase(store, {
         phase: "cleaning-up",
         isolation: { mode: "supabase-test-user" },
       });
 
-      expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
-      expect(screen.queryByText(/Restoring your database/)).toBeNull();
+      expect(screen.getByText(/Cleaning up the test sandbox/)).toBeTruthy();
+      expect(screen.queryByText(/Restoring/i)).toBeNull();
       expect(
         screen.getByRole("button", { name: "Cleaning up test data" })
           .textContent,
       ).toContain("Cleaning up…");
-      expect(
-        screen.queryByRole("button", { name: "Restoring your app" }),
-      ).toBeNull();
     });
 
     it("does not carry a completed run's stop latch into the next run", () => {

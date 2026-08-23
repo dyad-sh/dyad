@@ -352,7 +352,7 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
 export async function markAndDeleteTempTestBranch(
   appData: AppRow,
   branchId: string,
-): Promise<void> {
+): Promise<boolean> {
   // `deleteTempTestBranch` reads the marker off the row it is given, and the
   // caller's copy is stale by now, so carry the branch we actually created.
   let cleanupApp: AppRow = { ...appData, neonTestBranchId: branchId };
@@ -364,11 +364,15 @@ export async function markAndDeleteTempTestBranch(
     );
   }
   try {
-    await deleteTempTestBranch(cleanupApp);
+    // Still best-effort — never throws — but the verdict is reported now.
+    // Callers that promise the user "Dyad will retry remote cleanup on next
+    // startup" need to know whether the branch actually leaked.
+    return await deleteTempTestBranch(cleanupApp);
   } catch (error) {
     logger.error(
       `Failed to delete temporary test branch ${trackedBranchId(branchId)} for app ${appData.id}: ${error}`,
     );
+    return false;
   }
 }
 

@@ -76,6 +76,14 @@ export interface TeardownResult {
    * rather than quietly starting the user's app against isolated data.
    */
   envRestored: boolean;
+  /**
+   * False when a remote resource this run created is still out there — today,
+   * a temporary Neon branch whose delete failed and stays tracked for the
+   * startup sweep to retry. The E2E sandbox path never modifies the real env,
+   * so `envRestored` says nothing there; this is the flag that means "the user
+   * has something left over".
+   */
+  remoteCleanupCompleted: boolean;
 }
 
 export interface PreparedIsolation {
@@ -106,8 +114,8 @@ export interface PreparedIsolation {
 type EmitOutput = (chunk: string, phase: "setup" | "running") => void;
 
 const NOOP_TEARDOWN = async () => {
-  // No isolation was set up, so there is nothing to restore.
-  return { envRestored: true };
+  // No isolation was set up, so there is nothing to restore or delete.
+  return { envRestored: true, remoteCleanupCompleted: true };
 };
 
 /**
@@ -211,15 +219,19 @@ export async function prepareIsolatedTestDatabase({
     // it, and the row's id is what the startup sweep reconciles from. App
     // deletion — the one case where that row is about to disappear — handles the
     // branch itself, after the deletion commits.
+    let remoteCleanupCompleted = true;
     if (branchId && envRestored) {
       // Shared with the recovery path in `neon_test_branch`: the cleanup-only
       // marker is written before the fallible remote delete, so a crash in
       // between leaves a row that says the env is real and only the branch is
       // outstanding. Both callers must encode that ordering identically or
       // teardown and recovery drift apart.
-      await markAndDeleteTempTestBranch(app, branchId);
+      remoteCleanupCompleted = await markAndDeleteTempTestBranch(app, branchId);
+    } else if (branchId) {
+      // Deliberately kept, but still outstanding from the user's perspective.
+      remoteCleanupCompleted = false;
     }
-    return { envRestored };
+    return { envRestored, remoteCleanupCompleted };
   };
 
   try {
@@ -330,8 +342,9 @@ export async function prepareIsolatedTestDatabase({
     // `NOOP_TEARDOWN` — a no-op answers "restored" and would let the app be
     // relaunched against the temporary branch.
     let envRestored = false;
+    let remoteCleanupCompleted = false;
     try {
-      envRestored = (await teardown()).envRestored;
+      ({ envRestored, remoteCleanupCompleted } = await teardown());
     } catch (teardownError) {
       logger.error(
         `Teardown failed during error recovery for app ${app.id}: ${teardownError}`,
@@ -340,6 +353,7 @@ export async function prepareIsolatedTestDatabase({
     // Already torn down; this only carries the verdict to whoever asks later.
     const settledTeardown = async (): Promise<TeardownResult> => ({
       envRestored,
+      remoteCleanupCompleted,
     });
     // A user Stop surfaces here too (waitForServerReady & co. throw on abort).
     // That's a deliberate cancellation, not an infra failure — don't show the
@@ -401,6 +415,7 @@ async function prepareSupabaseTestUserIsolation({
   // Nothing here touches `.env.local` — the Supabase path isolates by test user,
   // not by swapping the app's database — so the environment is never at risk.
   const teardown = async (): Promise<TeardownResult> => {
+    let remoteCleanupCompleted = true;
     if (testUser) {
       try {
         await deleteTempTestUser({
@@ -408,12 +423,13 @@ async function prepareSupabaseTestUserIsolation({
           supabaseTestUserId: testUser.userId,
         });
       } catch (error) {
+        remoteCleanupCompleted = false;
         logger.error(
           `Failed to delete isolated Supabase test user ${testUser.userId} for app ${app.id}: ${error}`,
         );
       }
     }
-    return { envRestored: true };
+    return { envRestored: true, remoteCleanupCompleted };
   };
 
   try {

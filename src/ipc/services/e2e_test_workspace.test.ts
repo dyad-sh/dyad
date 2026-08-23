@@ -8,8 +8,10 @@ vi.mock("@/paths/paths", () => ({ getUserDataPath: vi.fn() }));
 import { getUserDataPath } from "@/paths/paths";
 import {
   createE2eTestWorkspace,
+  E2E_TEST_ARTIFACT_DIR,
   E2E_TEST_SANDBOX_DIR,
   reconcileOrphanE2eTestWorkspaces,
+  removeE2eTestArtifactsForApp,
   retainE2eTestArtifacts,
   rewriteE2eArtifactPath,
   shouldCopyE2eWorkspacePath,
@@ -160,6 +162,58 @@ describe("E2E test workspace", () => {
     await live.dispose();
     await reconcileOrphanE2eTestWorkspaces();
     await expect(fs.stat(live.workspacePath)).rejects.toThrow();
+  });
+
+  it("prunes artifacts for apps that no longer exist", async () => {
+    // Nothing else ever removes these: they're replaced only by the next run
+    // of the same app, which never comes once the app is deleted.
+    const root = await tempRoot();
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    const artifactRoot = path.join(userData, E2E_TEST_ARTIFACT_DIR);
+    const kept = path.join(artifactRoot, "3-1-kept");
+    const orphaned = path.join(artifactRoot, "9-1-orphaned");
+    const unparseable = path.join(artifactRoot, "not-a-run");
+    for (const dir of [kept, orphaned, unparseable]) {
+      await fs.mkdir(dir, { recursive: true });
+    }
+
+    await reconcileOrphanE2eTestWorkspaces({ knownAppIds: new Set([3]) });
+
+    expect((await fs.stat(kept)).isDirectory()).toBe(true);
+    await expect(fs.stat(orphaned)).rejects.toThrow();
+    // Not ours to interpret, so it is left alone rather than guessed at.
+    expect((await fs.stat(unparseable)).isDirectory()).toBe(true);
+  });
+
+  it("leaves artifacts alone when the caller can't say which apps exist", async () => {
+    const root = await tempRoot();
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    const artifact = path.join(userData, E2E_TEST_ARTIFACT_DIR, "9-1-run");
+    await fs.mkdir(artifact, { recursive: true });
+
+    await reconcileOrphanE2eTestWorkspaces();
+
+    expect((await fs.stat(artifact)).isDirectory()).toBe(true);
+  });
+
+  it("drops one app's artifacts without touching another's", async () => {
+    const root = await tempRoot();
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    const artifactRoot = path.join(userData, E2E_TEST_ARTIFACT_DIR);
+    const deleted = path.join(artifactRoot, "9-1-run");
+    const other = path.join(artifactRoot, "10-1-run");
+    for (const dir of [deleted, other]) {
+      await fs.mkdir(dir, { recursive: true });
+    }
+
+    await removeE2eTestArtifactsForApp(9);
+
+    await expect(fs.stat(deleted)).rejects.toThrow();
+    // A prefix match, not a substring match: "10-" must survive removing 9.
+    expect((await fs.stat(other)).isDirectory()).toBe(true);
   });
 
   it("uses a root-based exclusion policy", () => {

@@ -715,7 +715,11 @@ export function TestsPanel() {
     (runState.phase === "cleaning-up" && !runState.wasStopped);
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
-  const isRestoringApp =
+  // Nothing about the user's app is restored any more: the run had its own
+  // sandbox copy and its own server, so cleanup is deleting that sandbox and
+  // the temporary database it was pointed at. The real `.env.local` and the
+  // preview were never touched.
+  const isRemovingTestDatabase =
     isCleaningUp && runState.isolation?.mode === "neon-branch";
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
@@ -746,10 +750,15 @@ export function TestsPanel() {
   });
 
   const loadingSpecs = specsQuery.isLoading && specs.length === 0;
-  const showNeonRestartDisclosure =
+  // Host runs get the sandbox: a throwaway copy of the app, its own server, and
+  // a temporary Neon branch that only that copy points at. Worth saying, since
+  // the alternative a user would assume is "my tests hit my real database" —
+  // but it must not promise the preview restart the old env-swap path did.
+  const showNeonSandboxDisclosure =
     specs.length > 0 &&
     !!app?.neonProjectId &&
-    (settings?.runtimeMode2 ?? "host") === "host";
+    (settings?.runtimeMode2 ?? "host") === "host" &&
+    !settings?.disableSandboxedE2eTests;
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it
@@ -1377,8 +1386,8 @@ export function TestsPanel() {
             disabled={showStopping || isCleaningUp}
             aria-label={
               isCleaningUp
-                ? isRestoringApp
-                  ? "Restoring your app"
+                ? isRemovingTestDatabase
+                  ? "Removing the temporary test database"
                   : "Cleaning up test data"
                 : showStopping
                   ? "Stopping tests"
@@ -1397,9 +1406,7 @@ export function TestsPanel() {
               <Square size={14} />
             )}
             {isCleaningUp
-              ? isRestoringApp
-                ? "Restoring…"
-                : "Cleaning up…"
+              ? "Cleaning up…"
               : showStopping
                 ? "Stopping…"
                 : "Stop"}
@@ -1448,12 +1455,13 @@ export function TestsPanel() {
                   )}
                 >
                   {isCleaningUp
-                    ? // The Neon teardown restarts the dev server, so the
-                      // preview visibly reloads and the copy has to account for
-                      // it. The Supabase teardown only deletes the test user.
+                    ? // The Neon teardown deletes the throwaway branch on
+                      // Neon's side, which retries with backoff and is the
+                      // slowest case worth naming. Everything else is the local
+                      // sandbox and, for Supabase, the temporary test user.
                       runState.isolation?.mode === "neon-branch"
-                      ? "Restoring your database and preview… "
-                      : "Cleaning up the test data… "
+                      ? "Removing the temporary test database… "
+                      : "Cleaning up the test sandbox… "
                     : showStopping
                       ? "Stopping the tests… "
                       : runState.phase === "setup"
@@ -1541,12 +1549,12 @@ export function TestsPanel() {
               </div>
             )}
 
-          {!isRunning && showNeonRestartDisclosure && (
+          {!isRunning && showNeonSandboxDisclosure && (
             <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
               <ShieldCheck size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">
-                Neon test runs restart the preview to switch to a temporary
-                database, then restart it again afterward.
+                Neon test runs use a copy of your app and a temporary database.
+                Your preview keeps running against your real one.
               </span>
             </div>
           )}

@@ -435,6 +435,13 @@ const BaseUserSettingsFields = {
   // preference. Default (unset) is headless + serial.
   testHeaded: z.boolean().optional(),
   testParallel: z.boolean().optional(),
+  // Escape hatch for the sandboxed E2E runtime, which snapshots the app plus
+  // its node_modules per run. On filesystems without reflink support (ext4,
+  // Windows) that snapshot is a real copy and can be slow. Off by default —
+  // the sandbox is the intended path — and turning it on runs the tests
+  // against the normal preview with the missing isolation disclosed. Neon apps
+  // are refused rather than run against the real database either way.
+  disableSandboxedE2eTests: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),

@@ -147,6 +147,7 @@ import {
 } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
 import { endTestsForApp } from "./tests_handlers";
+import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
 
 import {
   getRgExecutablePath,
@@ -538,6 +539,15 @@ async function deleteAppById(
   // branch cleanup below: a deletion that failed leaves a live app whose
   // recording the user can still save.
   forgetAppRecordedDrafts(appId);
+
+  // Retained screenshots/traces live outside the app directory, under
+  // <userData>/test-artifacts, and are otherwise only replaced by the next run
+  // of this same app — which will never happen now.
+  await removeE2eTestArtifactsForApp(appId).catch((error) =>
+    logger.warn(
+      `App ${appId} was deleted but its retained test artifacts could not be removed: ${error}`,
+    ),
+  );
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a

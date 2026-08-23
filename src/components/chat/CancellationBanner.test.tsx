@@ -18,10 +18,10 @@ vi.mock("react-i18next", () => ({
       ({
         stoppingGeneration: "Stopping…",
         cancellationEndingTestRun: "Ending the test run.",
-        cancellationRestoringTestApp:
-          "Restoring your app's database and preview. This can take a while.",
+        cancellationRemovingTestDatabase:
+          "Removing the temporary test database. This can take a while.",
         cancellationCleaningTestData:
-          "Cleaning up the test data from this run.",
+          "Cleaning up this run's test sandbox and data.",
       })[key] ?? key,
   }),
 }));
@@ -87,21 +87,26 @@ describe("CancellationBanner", () => {
     });
 
     expect(
-      screen.getByText(/Restoring your app's database and preview/),
+      screen.getByText(/Removing the temporary test database/),
     ).toBeTruthy();
     expect(screen.getByText(/can take a while/)).toBeTruthy();
+    // The run had its own sandbox and its own server; the user's preview and
+    // `.env.local` were never touched, so nothing is being restored.
+    expect(screen.queryByText(/Restoring/i)).toBeNull();
   });
 
   it("does not claim a restore on the Supabase path", () => {
-    // That teardown only deletes the temporary test user — no env swap, no
-    // dev-server restart, nothing the user sees.
+    // That teardown only deletes the temporary test user and the run's sandbox
+    // copy — no env swap, no dev-server restart, nothing the user sees.
     renderBanner({
       phase: "cleaning-up",
       isolationMode: "supabase-test-user",
       source: "agent",
     });
 
-    expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
+    expect(
+      screen.getByText(/Cleaning up this run's test sandbox/),
+    ).toBeTruthy();
     expect(screen.queryByText(/Restoring/)).toBeNull();
   });
 

@@ -110,15 +110,19 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
       reject(new Error("Test run stopped."));
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(new Error("Test run stopped."));
-      },
-      { once: true },
-    );
+    // `{ once: true }` only removes the listener when it FIRES. The readiness
+    // poll calls this up to ~480 times per run, so without an explicit removal
+    // on the normal path every poll leaves a listener (and its timer closure)
+    // on the run's signal, and Node logs MaxListenersExceededWarning past 10.
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("Test run stopped."));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

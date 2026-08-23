@@ -230,7 +230,10 @@ describe("tests handlers", () => {
       prepareIsolatedTestDatabaseMock.mockResolvedValue({
         isolation: { mode: "none" },
         infraError: { message: "setup stopped" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
       const requests: AppOperationRequest[] = [];
       const originalRun = appOperationCoordinator.run.bind(
@@ -315,7 +318,7 @@ describe("tests handlers", () => {
       }
     });
 
-    it("reports an unfinished isolated-database cleanup", async () => {
+    it("reports a leaked test branch, not an unrestored sandbox env", async () => {
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -327,7 +330,10 @@ describe("tests handlers", () => {
         infraError: {
           message: "Isolation setup stopped before running tests.",
         },
-        teardown: vi.fn().mockResolvedValue({ envRestored: false }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: false,
+        }),
       });
 
       const result = await runAppTestsWithIsolation({
@@ -338,6 +344,37 @@ describe("tests handlers", () => {
 
       expect(result.infraError?.message).toMatch(/isolated test database/i);
       expect(result.infraError?.message).toMatch(/settings were not changed/i);
+    });
+
+    it("stays quiet when only the sandbox env was left unrestored", async () => {
+      // The sandbox `.env.local` is deleted with the workspace seconds later,
+      // so `envRestored` says nothing the user needs to hear.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        infraError: {
+          message: "Isolation setup stopped before running tests.",
+        },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: false,
+          remoteCleanupCompleted: true,
+        }),
+      });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toBe(
+        "Isolation setup stopped before running tests.",
+      );
     });
 
     it("authorizes the isolated server origin before Playwright starts", async () => {
@@ -354,7 +391,10 @@ describe("tests handlers", () => {
       prepareIsolatedTestDatabaseMock.mockResolvedValue({
         isolation: { mode: "neon-branch" },
         authorizeRuntimeOrigin,
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
       startE2eTestRuntimeMock.mockImplementation(async () => {
         events.push("server");
@@ -395,7 +435,9 @@ describe("tests handlers", () => {
         .where(eq(apps.id, appId))
         .run();
       const stop = vi.fn().mockResolvedValue(undefined);
-      const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+      const teardown = vi
+        .fn()
+        .mockResolvedValue({ envRestored: true, remoteCleanupCompleted: true });
       const dispose = vi.fn().mockResolvedValue(undefined);
       createE2eTestWorkspaceMock.mockResolvedValue({
         workspacePath: path.join(TEMP_BASE, "app"),
@@ -454,7 +496,10 @@ describe("tests handlers", () => {
       ensurePlaywrightBootstrapMock.mockResolvedValue({ installed: true });
       prepareIsolatedTestDatabaseMock.mockResolvedValue({
         isolation: { mode: "none" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
       spawnStreamingMock.mockImplementation(
         async ({ cwd }: { cwd: string }) => {
@@ -501,6 +546,70 @@ describe("tests handlers", () => {
       );
     });
 
+    it("returns cleanly when Stop lands during the sandbox copy", async () => {
+      // The workspace copy and the test-server start both signal cancellation
+      // by throwing. Letting that escape rejects the IPC call and records an
+      // internal product exception for an ordinary user cancellation.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const stop = new AbortController();
+      createE2eTestWorkspaceMock.mockImplementation(async () => {
+        stop.abort();
+        throw new Error("Test run stopped.");
+      });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+        externalSignal: stop.signal,
+      });
+
+      expect(result.infraError?.message).toBe("Test run stopped.");
+      expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
+    });
+
+    it("routes around the sandbox when the user turned it off", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      readSettingsMock.mockImplementation(() => ({
+        ...structuredClone(DEFAULT_SETTINGS),
+        disableSandboxedE2eTests: true,
+      }));
+      runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+
+      let result;
+      try {
+        result = await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+      } finally {
+        runningApps.clear();
+      }
+
+      expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+      expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
+      expect(spawnStreamingMock).toHaveBeenCalled();
+      expect(result.isolation?.reason).toMatch(/turned off in Settings/i);
+    });
+
     describe("non-host runtime", () => {
       afterEach(() => {
         runningApps.clear();
@@ -525,7 +634,10 @@ describe("tests handlers", () => {
         const appId = seedRunningApp("app");
         prepareIsolatedTestDatabaseMock.mockResolvedValue({
           isolation: { mode: "supabase-test-user" },
-          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
         });
 
         const result = await runAppTestsWithIsolation({
@@ -601,7 +713,7 @@ describe("tests handlers", () => {
         isolation: { mode: "neon-branch" },
         teardown: vi.fn().mockImplementation(async () => {
           statesWhenTeardownRan = runStates();
-          return { envRestored: true };
+          return { envRestored: true, remoteCleanupCompleted: true };
         }),
       });
 
@@ -617,13 +729,17 @@ describe("tests handlers", () => {
       expect(runStates()).toContain("finished");
     });
 
-    it("stays quiet when there is no isolation to tear down", async () => {
-      // `NOOP_TEARDOWN` returns immediately, so a `cleaning-up` label would
-      // flash for a frame and read as a glitch.
+    it("announces the sandbox deletion even with no isolation to tear down", async () => {
+      // `NOOP_TEARDOWN` returns immediately, but removing the cloned
+      // node_modules tree does not, and the panel keeps Run/Record/Delete
+      // disabled for all of it. An unlabelled wait reads as a hang.
       const appId = seedTestableApp("app");
       prepareIsolatedTestDatabaseMock.mockResolvedValue({
         isolation: { mode: "none" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
 
       await runAppTestsWithIsolation({
@@ -632,6 +748,37 @@ describe("tests handlers", () => {
         source: "panel",
       });
 
+      expect(runStates()).toContain("cleaning-up");
+    });
+
+    it("stays quiet when no sandbox was taken and there is nothing to tear down", async () => {
+      // Without a sandbox to delete, `NOOP_TEARDOWN` returns immediately and a
+      // `cleaning-up` label would flash for a frame and read as a glitch.
+      const appId = seedTestableApp("app");
+      readSettingsMock.mockImplementation(() => ({
+        ...structuredClone(DEFAULT_SETTINGS),
+        disableSandboxedE2eTests: true,
+      }));
+      runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+
+      try {
+        await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+      } finally {
+        runningApps.clear();
+      }
+
+      expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
       expect(runStates()).not.toContain("cleaning-up");
     });
 
@@ -641,7 +788,10 @@ describe("tests handlers", () => {
       const appId = seedTestableApp("app");
       prepareIsolatedTestDatabaseMock.mockResolvedValue({
         isolation: { mode: "none" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
 
       await runAppTestsWithIsolation({
@@ -664,7 +814,10 @@ describe("tests handlers", () => {
       let resolveFirstPrepare!: (value: {
         isolation: { mode: "neon-branch" };
         infraError: { message: string };
-        teardown: () => Promise<{ envRestored: boolean }>;
+        teardown: () => Promise<{
+          envRestored: boolean;
+          remoteCleanupCompleted: boolean;
+        }>;
       }) => void;
       prepareIsolatedTestDatabaseMock
         .mockReturnValueOnce(
@@ -675,7 +828,10 @@ describe("tests handlers", () => {
         .mockResolvedValueOnce({
           isolation: { mode: "none" },
           infraError: { message: "second run stopped before execution" },
-          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
         });
 
       const firstRun = runAppTestsWithIsolation({
@@ -695,13 +851,25 @@ describe("tests handlers", () => {
       resolveFirstPrepare({
         isolation: { mode: "neon-branch" },
         infraError: { message: "first run stopped before execution" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
 
       await Promise.all([firstRun, secondRun]);
 
-      expect(runStates()).not.toContain("stopping");
-      expect(runStates()).not.toContain("cleaning-up");
+      // The superseded run must contribute no progress at all. The replacement
+      // legitimately announces its own sandbox deletion, so the assertion is
+      // scoped to the first run's generation rather than to the whole stream.
+      const supersededRunId = Math.min(
+        ...runStatePayloads().map((payload) => payload.runId),
+      );
+      const supersededStates = runStatePayloads()
+        .filter((payload) => payload.runId === supersededRunId)
+        .map((payload) => payload.state);
+      expect(supersededStates).not.toContain("stopping");
+      expect(supersededStates).not.toContain("cleaning-up");
     });
 
     it("attributes a queued run's stop to its own generation", async () => {
@@ -709,7 +877,10 @@ describe("tests handlers", () => {
       let resolveFirstPrepare!: (value: {
         isolation: { mode: "neon-branch" };
         infraError: { message: string };
-        teardown: () => Promise<{ envRestored: boolean }>;
+        teardown: () => Promise<{
+          envRestored: boolean;
+          remoteCleanupCompleted: boolean;
+        }>;
       }) => void;
       prepareIsolatedTestDatabaseMock
         .mockReturnValueOnce(
@@ -720,7 +891,10 @@ describe("tests handlers", () => {
         .mockResolvedValueOnce({
           isolation: { mode: "none" },
           infraError: { message: "queued run stopped before execution" },
-          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
         });
 
       const firstRun = runAppTestsWithIsolation({
@@ -755,7 +929,10 @@ describe("tests handlers", () => {
       resolveFirstPrepare({
         isolation: { mode: "neon-branch" },
         infraError: { message: "first run superseded" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
       });
       await Promise.all([firstRun, secondRun]);
     });

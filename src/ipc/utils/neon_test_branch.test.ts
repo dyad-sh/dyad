@@ -375,7 +375,9 @@ describe("markAndDeleteTempTestBranch", () => {
     expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");
   });
 
-  it("does not throw when the remote delete fails", async () => {
+  it("reports the failure without throwing when the remote delete fails", async () => {
+    // Callers promise the user "Dyad will retry remote cleanup on next
+    // startup", so they need the verdict — but a teardown must never throw.
     mocks.deleteProjectBranch.mockRejectedValueOnce({
       response: { status: 500 },
     });
@@ -384,7 +386,16 @@ describe("markAndDeleteTempTestBranch", () => {
         makeApp({ neonTestBranchId: "test-br" }),
         "test-br",
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
+  });
+
+  it("reports success when the branch is gone", async () => {
+    await expect(
+      markAndDeleteTempTestBranch(
+        makeApp({ neonTestBranchId: "test-br" }),
+        "test-br",
+      ),
+    ).resolves.toBe(true);
   });
 });
 

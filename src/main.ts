@@ -459,7 +459,16 @@ export async function onReady() {
   // must not block startup.
   void reconcileOrphanTestBranches();
   void reconcileOrphanTestUsers();
-  void reconcileOrphanE2eTestWorkspaces();
+  // Also prunes retained test artifacts whose app no longer exists — nothing
+  // else ever removes them, and the user has no surface that shows they exist.
+  void (async () => {
+    const rows = await db.query.apps.findMany({ columns: { id: true } });
+    await reconcileOrphanE2eTestWorkspaces({
+      knownAppIds: new Set(rows.map((row) => row.id)),
+    });
+  })().catch((error) =>
+    logger.error("Failed to reconcile abandoned E2E test workspaces", error),
+  );
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();

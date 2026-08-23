@@ -4,8 +4,16 @@ import { randomUUID } from "node:crypto";
 import log from "electron-log";
 
 import { getUserDataPath } from "@/paths/paths";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 
 const logger = log.scope("e2e_test_workspace");
+
+// COPYFILE_FICLONE only clones on reflink-capable filesystems (APFS, btrfs,
+// XFS); on ext4 and on Windows — where the mode isn't passed at all — this
+// degrades to a full byte-for-byte copy of the app and its dependency tree on
+// every run. Report timings and entry counts (never absolute paths) so the cost
+// on non-reflink filesystems is measurable in the field.
+const REFLINK_REQUESTED = process.platform !== "win32";
 
 const EXCLUDED_ROOTS = new Set([
   ".git",
@@ -61,6 +69,7 @@ async function copyNodeModules(
   appPath: string,
   workspacePath: string,
   signal?: AbortSignal,
+  countEntry?: () => void,
 ) {
   const source = path.join(appPath, "node_modules");
   try {
@@ -83,7 +92,11 @@ async function copyNodeModules(
     ...(process.platform === "win32"
       ? {}
       : { mode: fsConstants.COPYFILE_FICLONE }),
-    filter: () => !signal?.aborted,
+    filter: () => {
+      if (signal?.aborted) return false;
+      countEntry?.();
+      return true;
+    },
   });
   if (signal?.aborted) throw new Error("Test run stopped.");
 }
@@ -135,13 +148,21 @@ export async function createE2eTestWorkspace({
     if (disposed) return;
     disposed = true;
     assertOwnedPath(sandboxRoot, workspacePath);
+    const startedAt = Date.now();
     try {
       await fs.rm(workspacePath, { recursive: true, force: true });
+      sendTelemetryEvent("e2e_test_workspace_disposed", {
+        duration_ms: Date.now() - startedAt,
+        platform: process.platform,
+      });
     } finally {
       activeWorkspaceNames.delete(runName);
     }
   };
 
+  let sourceEntries = 0;
+  let dependencyEntries = 0;
+  const startedAt = Date.now();
   try {
     await fs.cp(appPath, workspacePath, {
       recursive: true,
@@ -151,12 +172,26 @@ export async function createE2eTestWorkspace({
         : { mode: fsConstants.COPYFILE_FICLONE }),
       filter: (candidatePath) => {
         if (signal?.aborted) return false;
-        return shouldCopyE2eWorkspacePath(appPath, candidatePath);
+        if (!shouldCopyE2eWorkspacePath(appPath, candidatePath)) return false;
+        sourceEntries += 1;
+        return true;
       },
     });
     if (signal?.aborted) throw new Error("Test run stopped.");
+    const sourceMs = Date.now() - startedAt;
     onProgress?.("Cloning installed dependencies into the test workspace…\n");
-    await copyNodeModules(appPath, workspacePath, signal);
+    await copyNodeModules(appPath, workspacePath, signal, () => {
+      dependencyEntries += 1;
+    });
+    sendTelemetryEvent("e2e_test_workspace_created", {
+      duration_ms: Date.now() - startedAt,
+      source_ms: sourceMs,
+      dependencies_ms: Date.now() - startedAt - sourceMs,
+      source_entries: sourceEntries,
+      dependency_entries: dependencyEntries,
+      reflink_requested: REFLINK_REQUESTED,
+      platform: process.platform,
+    });
     return { workspacePath, artifactPath, dispose };
   } catch (error) {
     await dispose();
@@ -196,34 +231,82 @@ export function rewriteE2eArtifactPath(
   return path.join(artifactPath, relative);
 }
 
-/**
- * Remove sandboxes left behind by a crash. Deletes run directories one by one
- * and skips any run this process still owns, rather than removing the shared
- * root: the sweep is fire-and-forget from startup and removing a multi-gigabyte
- * tree is not instantaneous, so a Run pressed right after launch would
- * otherwise be deleted mid-copy and surface as an unexplained ENOENT.
- */
-export async function reconcileOrphanE2eTestWorkspaces(): Promise<void> {
-  const sandboxRoot = path.join(getUserDataPath(), E2E_TEST_SANDBOX_DIR);
+/** Run directory names start with `<appId>-`; recover the id from one. */
+function runDirectoryAppId(name: string): number | null {
+  const [prefix] = name.split("-");
+  const appId = Number(prefix);
+  return prefix !== "" && Number.isInteger(appId) ? appId : null;
+}
+
+async function removeRunDirectories(
+  root: string,
+  shouldRemove: (name: string) => boolean,
+  label: string,
+): Promise<void> {
   let entries;
   try {
-    entries = await fs.readdir(sandboxRoot, { withFileTypes: true });
+    entries = await fs.readdir(root, { withFileTypes: true });
   } catch (error: any) {
     if (error?.code !== "ENOENT") {
-      logger.warn(`Failed to list abandoned E2E test workspaces: ${error}`);
+      logger.warn(`Failed to list abandoned E2E ${label}: ${error}`);
     }
     return;
   }
   for (const entry of entries) {
-    if (activeWorkspaceNames.has(entry.name)) continue;
-    const runPath = path.join(sandboxRoot, entry.name);
+    if (!shouldRemove(entry.name)) continue;
+    const runPath = path.join(root, entry.name);
     try {
-      assertOwnedPath(sandboxRoot, runPath);
+      assertOwnedPath(root, runPath);
       await fs.rm(runPath, { recursive: true, force: true });
     } catch (error) {
       logger.warn(
-        `Failed to remove abandoned E2E test workspace ${entry.name}: ${error}`,
+        `Failed to remove abandoned E2E ${label} ${entry.name}: ${error}`,
       );
     }
   }
+}
+
+/** Drop every retained artifact directory belonging to one app. */
+export async function removeE2eTestArtifactsForApp(
+  appId: number,
+): Promise<void> {
+  await removeRunDirectories(
+    path.join(getUserDataPath(), E2E_TEST_ARTIFACT_DIR),
+    (name) => runDirectoryAppId(name) === appId,
+    "test artifacts",
+  );
+}
+
+/**
+ * Remove sandboxes and artifacts left behind by a crash or a deleted app.
+ *
+ * Sandboxes are deleted one run directory at a time, skipping any run this
+ * process still owns, rather than by removing the shared root: the sweep is
+ * fire-and-forget from startup and removing a multi-gigabyte tree is not
+ * instantaneous, so a Run pressed right after launch would otherwise be deleted
+ * mid-copy and surface as an unexplained ENOENT.
+ *
+ * Artifacts are otherwise only replaced by the next run of the same app, so
+ * without `knownAppIds` a deleted app's screenshots and traces would sit in
+ * user data forever with no surface that shows they exist.
+ */
+export async function reconcileOrphanE2eTestWorkspaces({
+  knownAppIds,
+}: { knownAppIds?: ReadonlySet<number> } = {}): Promise<void> {
+  const userDataPath = getUserDataPath();
+  await removeRunDirectories(
+    path.join(userDataPath, E2E_TEST_SANDBOX_DIR),
+    (name) => !activeWorkspaceNames.has(name),
+    "test workspaces",
+  );
+  if (!knownAppIds) return;
+  await removeRunDirectories(
+    path.join(userDataPath, E2E_TEST_ARTIFACT_DIR),
+    (name) => {
+      const appId = runDirectoryAppId(name);
+      // An unparseable name isn't ours to interpret; leave it alone.
+      return appId !== null && !knownAppIds.has(appId);
+    },
+    "test artifacts",
+  );
 }

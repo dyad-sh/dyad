@@ -595,16 +595,18 @@ export async function runAppTestsCore({
 }
 
 /**
- * Docker/cloud fallback. The run-scoped sandbox server is host-only for now, so
- * these runtimes keep the pre-sandbox path — bootstrap and run against the
- * normal preview — with the missing runtime isolation disclosed on the result
- * rather than losing E2E testing entirely. Neon apps are the one exception:
- * without a sandbox there is no throwaway branch to point the app at, so the
- * only way to run would be against the user's real database.
+ * The non-sandboxed path, taken when the sandbox isn't available (Docker/cloud
+ * runtime) or the user opted out of it. Keeps the pre-sandbox behavior —
+ * bootstrap and run against the normal preview — with the missing runtime
+ * isolation disclosed on the result rather than losing E2E testing entirely.
+ * Neon apps are the one exception: without a sandbox there is no throwaway
+ * branch to point the app at, so the only way to run would be against the
+ * user's real database, and this fails closed instead.
  */
 async function runTestsAgainstNormalPreview({
   appId,
-  runtimeMode,
+  disclosure,
+  neonRefusal,
   signal,
   emit,
   emitProgress,
@@ -617,7 +619,10 @@ async function runTestsAgainstNormalPreview({
   timeoutMs,
 }: {
   appId: number;
-  runtimeMode: string;
+  /** Why this run isn't sandboxed, shown on the result's isolation badge. */
+  disclosure: string;
+  /** Why a Neon app can't run at all here, and what to change. */
+  neonRefusal: string;
   signal: AbortSignal;
   emit: (chunk: string, phase: "setup" | "running") => void;
   emitProgress: (
@@ -659,13 +664,8 @@ async function runTestsAgainstNormalPreview({
         return {
           appId,
           results: [],
-          infraError: {
-            message: `Isolated E2E test servers aren't available in ${runtimeMode} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run tests for this app.`,
-          },
-          isolation: {
-            mode: "none" as const,
-            reason: `Sandboxed E2E execution is not available in ${runtimeMode} runtime yet.`,
-          },
+          infraError: { message: neonRefusal },
+          isolation: { mode: "none" as const, reason: disclosure },
         };
       }
 
@@ -674,16 +674,16 @@ async function runTestsAgainstNormalPreview({
         prepared = await prepareIsolatedTestDatabase({
           app,
           emit,
-          runtimeMode,
+          // Nothing here depends on the sandbox, and the Neon branch path —
+          // the only branch that reads this — was refused above.
+          runtimeMode: "host",
           signal,
         });
         // Disclose the missing runtime sandbox, without overwriting a more
         // specific provider reason (e.g. the Supabase publishable-key hint).
         const isolation: TestIsolation = {
           ...prepared.isolation,
-          reason:
-            prepared.isolation.reason ??
-            `Tests run against your normal preview because isolated test servers aren't available in ${runtimeMode} runtime yet.`,
+          reason: prepared.isolation.reason ?? disclosure,
         };
         if (prepared.infraError) {
           return {
@@ -713,7 +713,9 @@ async function runTestsAgainstNormalPreview({
               emitProgress("cleaning-up", prepared.isolation);
             }
             onIsolationCleanupFailed(true);
-            onIsolationCleanupFailed(!(await prepared.teardown()).envRestored);
+            onIsolationCleanupFailed(
+              !(await prepared.teardown()).remoteCleanupCompleted,
+            );
           } catch (error) {
             logger.error(
               `Failed to tear down isolated test environment for app ${appId}: ${error}`,
@@ -945,12 +947,32 @@ export async function runAppTestsWithIsolation({
       return finalResult;
     }
 
-    const runtimeMode = readSettings().runtimeMode2 ?? "host";
-    if (runtimeMode !== "host") {
+    // The sandbox is host-only for now, and snapshotting the app plus its
+    // node_modules is a real copy on filesystems without reflink support — so
+    // the user gets an explicit opt-out. Both routes take the same
+    // non-sandboxed path, and both fail closed for Neon rather than running
+    // against the user's real database.
+    const settings = readSettings();
+    const runtimeMode = settings.runtimeMode2 ?? "host";
+    const sandboxUnavailable =
+      runtimeMode !== "host"
+        ? {
+            disclosure: `Tests run against your normal preview because isolated test servers aren't available in ${runtimeMode} runtime yet.`,
+            neonRefusal: `Isolated E2E test servers aren't available in ${runtimeMode} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run tests for this app.`,
+          }
+        : settings.disableSandboxedE2eTests
+          ? {
+              disclosure:
+                "Tests run against your normal preview because isolated test servers are turned off in Settings.",
+              neonRefusal:
+                "Isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run tests for this app.",
+            }
+          : null;
+    if (sandboxUnavailable) {
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
           appId,
-          runtimeMode,
+          ...sandboxUnavailable,
           signal: controller.signal,
           emit,
           emitProgress,
@@ -1145,15 +1167,21 @@ export async function runAppTestsWithIsolation({
           // still require their guaranteed teardown.
           if (prepared) {
             try {
-              // Announce the teardown before it starts. It restores
-              // the temporary branch/user, takes no AbortSignal, and may
-              // outlast the process kill because Neon deletion retries with
-              // backoff. Skipped for `none`, whose teardown is a NOOP.
+              // Announce the teardown before it starts. It removes the
+              // temporary branch/user, takes no AbortSignal, and may outlast
+              // the process kill because Neon deletion retries with backoff.
+              // Skipped for `none`, whose teardown is a NOOP — the sandbox
+              // disposal below announces that case instead.
               if (prepared.isolation.mode !== "none") {
                 emitProgress("cleaning-up", prepared.isolation);
               }
               isolationCleanupFailed = true;
-              isolationCleanupFailed = !(await prepared.teardown()).envRestored;
+              // NOT `envRestored`: the sandbox path never rewrites the real
+              // `.env.local`, so that flag only reports on a workspace file
+              // that is deleted seconds later. A leaked remote branch is the
+              // thing this warning actually describes.
+              isolationCleanupFailed = !(await prepared.teardown())
+                .remoteCleanupCompleted;
             } catch (error) {
               logger.error(
                 `Failed to tear down isolated test environment for app ${appId}: ${error}`,
@@ -1166,6 +1194,19 @@ export async function runAppTestsWithIsolation({
     finalResult = withIsolationCleanupWarning(finalResult);
     return finalResult;
   } catch (error) {
+    // A Stop pressed during sandbox setup escapes as a throw — the workspace
+    // copy and the test-server start both signal cancellation that way. That's
+    // an ordinary user cancellation, not an infrastructure failure: return the
+    // same structured result the in-run Stop path produces instead of rejecting
+    // the IPC call and recording an internal product exception for it.
+    if (controller.signal.aborted) {
+      finalResult = withIsolationCleanupWarning({
+        appId,
+        results: [],
+        infraError: { message: "Test run stopped." },
+      });
+      return finalResult;
+    }
     // Surface an unexpected failure as an infra error on the run-state event so
     // the panel leaves its spinner state, then rethrow for the caller.
     finalResult = withIsolationCleanupWarning({
@@ -1185,6 +1226,13 @@ export async function runAppTestsWithIsolation({
         });
   } finally {
     if (workspace) {
+      // Deleting a cloned node_modules tree is tens of thousands of unlinks —
+      // slowest on Windows, where the copy was a real one. The results are
+      // already computed but the panel still has Run/Record/Delete disabled
+      // until `finished`, so label the wait for every isolation mode instead of
+      // leaving it unexplained (the provider teardown above only announces
+      // itself when there was provider state to remove).
+      emitProgress("cleaning-up", finalResult.isolation);
       try {
         await workspace.dispose();
       } catch (error) {

@@ -371,5 +371,19 @@
   "guide": "Guía",
   "agentModeActivated": "Modo Agente Activado",
   "agentModeTip": "Consejo: Crea un nuevo chat para darle al agente un contexto limpio para obtener mejores resultados.",
-  "neverShowAgain": "No volver a mostrar"
+  "neverShowAgain": "No volver a mostrar",
+  "annotations": {
+    "commentOnSelection": "Comentar el texto seleccionado",
+    "editComment": "Editar comentario",
+    "addCommentPlaceholder": "Añade tu comentario...",
+    "deleteComment": "Eliminar comentario",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "addComment": "Añadir comentario",
+    "commentCount_one": "{{count}} comentario",
+    "commentCount_other": "{{count}} comentarios",
+    "discard": "Descartar",
+    "sending": "Enviando...",
+    "send": "Enviar {{count}}"
+  }
 }

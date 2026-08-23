@@ -121,6 +121,7 @@ import {
   CHAT_PROMPT_LENGTH_LIMIT_MESSAGE,
   MAX_CHAT_PROMPT_CHARS,
 } from "@/shared/chatAttachmentLimits";
+import { ChatAnnotationsTray } from "./ChatAnnotationsTray";
 
 const showTokenBarAtom = atom(false);
 
@@ -821,6 +822,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         >
           {/* Show active questionnaire if exists */}
           <QuestionnaireInput />
+
+          {chatId && <ChatAnnotationsTray chatId={chatId} />}
 
           {/* Show the recorded-test plan waiting on a review, if any */}
           <TestAssertionsInput />

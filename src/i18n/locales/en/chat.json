@@ -373,5 +373,19 @@
   "guide": "Guide",
   "agentModeActivated": "Agent Mode Activated",
   "agentModeTip": "Tip: Create a new chat to give the agent a clean context for better results.",
-  "neverShowAgain": "Never show again"
+  "neverShowAgain": "Never show again",
+  "annotations": {
+    "commentOnSelection": "Comment on selected text",
+    "editComment": "Edit comment",
+    "addCommentPlaceholder": "Add your comment...",
+    "deleteComment": "Delete comment",
+    "cancel": "Cancel",
+    "save": "Save",
+    "addComment": "Add comment",
+    "commentCount_one": "{{count}} comment",
+    "commentCount_other": "{{count}} comments",
+    "discard": "Discard",
+    "sending": "Sending...",
+    "send": "Send {{count}}"
+  }
 }

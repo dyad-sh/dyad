@@ -370,5 +370,19 @@
   "guide": "指南",
   "agentModeActivated": "Agent 模式已激活",
   "agentModeTip": "提示：创建新聊天以给 Agent 一个干净的上下文，获得更好的结果。",
-  "neverShowAgain": "不再显示"
+  "neverShowAgain": "不再显示",
+  "annotations": {
+    "commentOnSelection": "评论所选文本",
+    "editComment": "编辑评论",
+    "addCommentPlaceholder": "添加评论...",
+    "deleteComment": "删除评论",
+    "cancel": "取消",
+    "save": "保存",
+    "addComment": "添加评论",
+    "commentCount_one": "{{count}} 条评论",
+    "commentCount_other": "{{count}} 条评论",
+    "discard": "丢弃",
+    "sending": "正在发送...",
+    "send": "发送 {{count}} 条"
+  }
 }

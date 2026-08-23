@@ -373,5 +373,19 @@
   "guide": "가이드",
   "agentModeActivated": "에이전트 모드 활성화됨",
   "agentModeTip": "팁: 새 채팅을 만들면 에이전트에게 더 나은 결과를 위한 깨끗한 컨텍스트를 제공할 수 있습니다.",
-  "neverShowAgain": "다시 표시 안 함"
+  "neverShowAgain": "다시 표시 안 함",
+  "annotations": {
+    "commentOnSelection": "선택한 텍스트에 댓글 달기",
+    "editComment": "댓글 수정",
+    "addCommentPlaceholder": "댓글을 추가하세요...",
+    "deleteComment": "댓글 삭제",
+    "cancel": "취소",
+    "save": "저장",
+    "addComment": "댓글 추가",
+    "commentCount_one": "댓글 {{count}}개",
+    "commentCount_other": "댓글 {{count}}개",
+    "discard": "버리기",
+    "sending": "전송 중...",
+    "send": "{{count}}개 전송"
+  }
 }

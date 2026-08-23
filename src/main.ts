@@ -49,6 +49,7 @@ import { apps } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { reconcileOrphanTestBranches } from "./ipc/utils/neon_test_branch";
 import { reconcileOrphanTestUsers } from "./ipc/utils/supabase_test_user";
+import { reconcilePendingTempPreviewDeletions } from "./ipc/services/temp_preview_cleanup_reconciler";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
 import {
@@ -457,6 +458,7 @@ export async function onReady() {
   // must not block startup.
   void reconcileOrphanTestBranches();
   void reconcileOrphanTestUsers();
+  void reconcilePendingTempPreviewDeletions();
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();

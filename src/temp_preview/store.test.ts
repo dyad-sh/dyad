@@ -183,4 +183,33 @@ describe("TempPreviewStore", () => {
     await expect(store.read(7)).resolves.toBeNull();
     await expect(store.read(8)).resolves.toMatchObject({ tempId: "temp-8" });
   });
+
+  it("persists and clears pending app-deletion markers", async () => {
+    const root = await createStoreRoot();
+    const filePath = join(root, "previews.json");
+    const codec = {
+      encode: (token: string) => ({ value: `encrypted:${token}` }),
+      decode: (secret: { value: string }) =>
+        secret.value.replace(/^encrypted:/, ""),
+    };
+    const store = new TempPreviewStore(filePath, codec);
+    await store.write(7, {
+      tempId: "temp-7",
+      canonicalUrl: "https://example.temp.md",
+      updateToken: "update-secret",
+      expiresAt: null,
+      lastPublishedAt: "2026-08-23T00:00:00.000Z",
+      state: "active",
+    });
+
+    await expect(store.markPendingDeletion(7)).resolves.toBe(true);
+    await expect(store.markPendingDeletion(8)).resolves.toBe(false);
+    await expect(
+      new TempPreviewStore(filePath, codec).listPendingDeletionAppIds(),
+    ).resolves.toEqual([7]);
+    await expect(store.read(7)).resolves.toMatchObject({ tempId: "temp-7" });
+
+    await store.clearPendingDeletion(7);
+    await expect(store.listPendingDeletionAppIds()).resolves.toEqual([]);
+  });
 });

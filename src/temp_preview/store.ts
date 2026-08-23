@@ -14,6 +14,7 @@ const StoredRecordSchema = z.object({
   expiresAt: z.string().nullable(),
   lastPublishedAt: z.string(),
   state: z.enum(["active", "revoked"]),
+  pendingDeletion: z.boolean().optional(),
 });
 
 const StoreSchema = z.object({
@@ -75,7 +76,11 @@ export class TempPreviewStore {
         throw new TempPreviewStoreUnreadableError(appId, { cause: error });
       }
       return {
-        ...record,
+        tempId: record.tempId,
+        canonicalUrl: record.canonicalUrl,
+        expiresAt: record.expiresAt,
+        lastPublishedAt: record.lastPublishedAt,
+        state: record.state,
         updateToken,
       };
     });
@@ -101,6 +106,37 @@ export class TempPreviewStore {
       if (!(appIdKey in store.records)) return;
       delete store.records[appIdKey];
       await this.writeStoreFile(store);
+    });
+  }
+
+  async markPendingDeletion(appId: number): Promise<boolean> {
+    return withLock(getFileWriteKey(this.filePath), async () => {
+      const store = await this.readStore();
+      const record = store.records[String(appId)];
+      if (!record) return false;
+      record.pendingDeletion = true;
+      await this.writeStoreFile(store);
+      return true;
+    });
+  }
+
+  async clearPendingDeletion(appId: number): Promise<void> {
+    await withLock(getFileWriteKey(this.filePath), async () => {
+      const store = await this.readStore();
+      const record = store.records[String(appId)];
+      if (!record?.pendingDeletion) return;
+      delete record.pendingDeletion;
+      await this.writeStoreFile(store);
+    });
+  }
+
+  async listPendingDeletionAppIds(): Promise<number[]> {
+    return withLock(getFileWriteKey(this.filePath), async () => {
+      const store = await this.readStore();
+      return Object.entries(store.records)
+        .filter(([, record]) => record.pendingDeletion)
+        .map(([appId]) => Number(appId))
+        .filter((appId) => Number.isSafeInteger(appId) && appId > 0);
     });
   }
 

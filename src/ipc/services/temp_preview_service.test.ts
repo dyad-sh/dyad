@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   simpleSpawn: vi.fn(),
   storeRead: vi.fn(),
   storeRemove: vi.fn(),
+  storeMarkPendingDeletion: vi.fn(),
+  storeClearPendingDeletion: vi.fn(),
+  storeListPendingDeletionAppIds: vi.fn(),
   storeWrite: vi.fn(),
 }));
 
@@ -49,6 +52,9 @@ vi.mock("@/temp_preview/store", async (importOriginal) => {
     TempPreviewStore: class {
       read = mocks.storeRead;
       remove = mocks.storeRemove;
+      markPendingDeletion = mocks.storeMarkPendingDeletion;
+      clearPendingDeletion = mocks.storeClearPendingDeletion;
+      listPendingDeletionAppIds = mocks.storeListPendingDeletionAppIds;
       write = mocks.storeWrite;
     },
   };
@@ -113,6 +119,9 @@ describe("temp preview service", () => {
     mocks.simpleSpawn.mockResolvedValue(undefined);
     mocks.storeRead.mockResolvedValue(null);
     mocks.storeRemove.mockResolvedValue(undefined);
+    mocks.storeMarkPendingDeletion.mockResolvedValue(false);
+    mocks.storeClearPendingDeletion.mockResolvedValue(undefined);
+    mocks.storeListPendingDeletionAppIds.mockResolvedValue([]);
     mocks.storeWrite.mockResolvedValue(undefined);
   });
 

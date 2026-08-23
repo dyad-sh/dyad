@@ -171,6 +171,24 @@ export async function deleteTempPreviewForApp(appId: number): Promise<void> {
   }
 }
 
+export async function markTempPreviewForAppDeletion(
+  appId: number,
+): Promise<boolean> {
+  return createStore().markPendingDeletion(appId);
+}
+
+export async function clearTempPreviewAppDeletionMarker(
+  appId: number,
+): Promise<void> {
+  await createStore().clearPendingDeletion(appId);
+}
+
+export async function listPendingTempPreviewDeletionAppIds(): Promise<
+  number[]
+> {
+  return createStore().listPendingDeletionAppIds();
+}
+
 async function assertBuildScript(appPath: string): Promise<void> {
   let packageJson: unknown;
   try {

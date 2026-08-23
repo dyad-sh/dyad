@@ -176,7 +176,11 @@ import {
 } from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
-import { deleteTempPreviewForApp } from "@/ipc/services/temp_preview_service";
+import {
+  clearTempPreviewAppDeletionMarker,
+  deleteTempPreviewForApp,
+  markTempPreviewForAppDeletion,
+} from "@/ipc/services/temp_preview_service";
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
 
@@ -670,6 +674,7 @@ async function deleteAppByIdExclusive(
 
         if (!app) {
           if (options.allowMissing && options.knownAppPath) {
+            await markTempPreviewForAppDeletion(appId);
             await appRunDeletion.seal();
             appRunDeletion.commit();
             deletionCommitted = true;
@@ -700,6 +705,7 @@ async function deleteAppByIdExclusive(
         const doomedRow = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
+        let previewDeletionMarked = false;
         try {
           // `doomedRow` for the same reason it is re-read above: the test-user
           // id can land on the row after the first read, and deleting from the
@@ -712,6 +718,7 @@ async function deleteAppByIdExclusive(
               DyadErrorKind.External,
             );
           }
+          previewDeletionMarked = await markTempPreviewForAppDeletion(appId);
           await db.delete(apps).where(eq(apps.id, appId));
           appRunDeletion.commit();
           deletionCommitted = true;
@@ -723,6 +730,15 @@ async function deleteAppByIdExclusive(
             entityDisposalBus.publish({ kind: "app", id: appId });
           }
         } catch (error: any) {
+          if (previewDeletionMarked && !deletionCommitted) {
+            await clearTempPreviewAppDeletionMarker(appId).catch(
+              (markerError) =>
+                logger.error(
+                  `Failed to clear the temporary preview deletion marker for app ${appId}; startup reconciliation will repair it.`,
+                  markerError,
+                ),
+            );
+          }
           logger.error(`Error deleting app ${appId} from database:`, error);
           throw new DyadError(
             `Failed to delete app from database: ${error.message}`,

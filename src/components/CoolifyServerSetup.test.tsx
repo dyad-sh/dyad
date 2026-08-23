@@ -398,6 +398,63 @@ describe("an answer about a server the user has moved on from", () => {
   });
 });
 
+describe("catching up with a run this window did not start", () => {
+  it("is listening before it asks what is going on", async () => {
+    // The answer takes a round trip. A run that finishes inside it is only
+    // heard about if the listener was already there when the question left.
+    let listenersWhenAsked = -1;
+    h.snapshot.mockImplementation(async () => {
+      listenersWhenAsked = h.changedListeners.length;
+      return IDLE;
+    });
+    renderPanel();
+
+    await waitFor(() => expect(h.snapshot).toHaveBeenCalled());
+    expect(listenersWhenAsked).toBeGreaterThan(0);
+  });
+
+  it("does not let a late answer undo what it was told meanwhile", async () => {
+    // The read says "installing" because that was true when it was asked. By
+    // the time it lands the run is over, and letting it win would put the
+    // panel back on a step the run has left, under a Cancel button for
+    // something that is no longer going.
+    let answer: (state: unknown) => void = () => {};
+    h.snapshot.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderPanel();
+
+    await waitFor(() => expect(h.changedListeners.length).toBeGreaterThan(0));
+    push({
+      type: "done",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      result: {
+        dashboardUrl: "https://203.0.113.5.sslip.io",
+        secure: true,
+        insecureReason: null,
+        adminEmail: "me@gmail.com",
+        adminPassword: "Abc123@xyz",
+        tokenStored: true,
+        tokenUnavailableReason: null,
+        version: "4.3.2",
+      },
+    });
+    answer(runningState());
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-done")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("coolify-setup-running")).toBeNull();
+  });
+});
+
 describe("when the panel cannot tell what is going on", () => {
   it("says so, and asking again clears it", async () => {
     // Install is disabled while this is unknown, and a disabled control with

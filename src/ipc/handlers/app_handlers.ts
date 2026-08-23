@@ -419,6 +419,20 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
   }
 }
 
+async function cleanupDeletedAppTempPreview(appId: number): Promise<void> {
+  try {
+    await deleteTempPreviewForApp(appId);
+  } catch (error) {
+    // The app deletion is already committed. Keep the stored capability so a
+    // later recovery can retry revocation instead of making the public preview
+    // permanently unreachable.
+    logger.error(
+      `App ${appId} was deleted, but its temporary preview could not be revoked. The stored capability was retained for recovery.`,
+      error,
+    );
+  }
+}
+
 /**
  * Gate a relaunch on the app being back on its real database.
  *
@@ -656,10 +670,10 @@ async function deleteAppByIdExclusive(
 
         if (!app) {
           if (options.allowMissing && options.knownAppPath) {
-            await deleteTempPreviewForApp(appId);
             await appRunDeletion.seal();
             appRunDeletion.commit();
             deletionCommitted = true;
+            await cleanupDeletedAppTempPreview(appId);
             return { appPath: options.knownAppPath, doomedRow: null };
           }
           throw new DyadError("App not found", DyadErrorKind.NotFound);
@@ -686,7 +700,6 @@ async function deleteAppByIdExclusive(
         const doomedRow = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
-        await deleteTempPreviewForApp(appId);
         try {
           // `doomedRow` for the same reason it is re-read above: the test-user
           // id can land on the row after the first read, and deleting from the
@@ -716,6 +729,7 @@ async function deleteAppByIdExclusive(
             DyadErrorKind.External,
           );
         }
+        await cleanupDeletedAppTempPreview(appId);
         return {
           appPath: getDyadAppPath(app.path),
           doomedRow: doomedRow ?? null,

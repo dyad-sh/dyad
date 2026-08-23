@@ -481,7 +481,6 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       <CoolifySignOutDialog
         open={isConfirmingSignOut}
         onOpenChange={setIsConfirmingSignOut}
-        isPending={clearToken.isPending}
         onConfirm={async () => {
           try {
             await clearToken.mutateAsync();

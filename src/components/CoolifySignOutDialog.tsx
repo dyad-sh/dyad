@@ -27,12 +27,10 @@ export function CoolifySignOutDialog({
   open,
   onOpenChange,
   onConfirm,
-  isPending,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  isPending?: boolean;
 }) {
   const [acknowledged, setAcknowledged] = useState(false);
 
@@ -79,10 +77,10 @@ export function CoolifySignOutDialog({
 
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={!acknowledged || isPending}
-            onClick={onConfirm}
-          >
+          {/* Closes as it fires — it is a Close underneath — so there is no
+              pending state to show here. The button that opened this stays on
+              screen and carries that. */}
+          <AlertDialogAction disabled={!acknowledged} onClick={onConfirm}>
             Sign out
           </AlertDialogAction>
         </AlertDialogFooter>

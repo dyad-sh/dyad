@@ -21,7 +21,7 @@ import {
   rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock,
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
-import { UserSettings } from "@/lib/schemas";
+import { FORGOTTEN_COOLIFY, UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
 import {
@@ -1154,6 +1154,24 @@ describe("preserving undecryptable secrets", () => {
       password: { value: "invented-password", encryptionType: "plaintext" },
       instanceUrl: "http://203.0.113.5:8000",
     });
+  });
+
+  it("forgets a Coolify token that will not decrypt when signing out", () => {
+    // The preservation pass puts a secret back whenever the container it
+    // lives in is still there, treating an absent key as a consumer read that
+    // could not decrypt it rather than as a clear. An empty coolify object is
+    // still a container, so the one write whose whole job is to forget the
+    // instance would hand the token straight back.
+    store[mockSettingsPath] = JSON.stringify({
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        accessToken: lockedSecret("coolify"),
+      },
+    });
+
+    writeSettings({ coolify: FORGOTTEN_COOLIFY });
+
+    expect(readStoredFile().coolify).toEqual({});
   });
 
   it("keeps a locked Coolify admin password across an unrelated write", () => {

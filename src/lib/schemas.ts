@@ -260,6 +260,25 @@ export const CoolifySchema = z.object({
 });
 export type Coolify = z.infer<typeof CoolifySchema>;
 
+/**
+ * Every field of a Coolify, named and empty.
+ *
+ * writeSettings reads an absent key as a field some consumer read could not
+ * decrypt and hands the stored ciphertext back, so forgetting an instance by
+ * writing an empty object returns the token instead of clearing it. Only a
+ * key that is present and undefined reads as a deliberate clear.
+ *
+ * Typed so that a field added to CoolifySchema later fails to compile until
+ * it is named here too, which is what an empty object was reaching for.
+ */
+export const FORGOTTEN_COOLIFY: {
+  [K in keyof Required<Coolify>]: undefined;
+} = {
+  instanceUrl: undefined,
+  accessToken: undefined,
+  admin: undefined,
+};
+
 export const SupabaseSchema = z.object({
   // Map keyed by organizationSlug -> organization credentials
   organizations: z

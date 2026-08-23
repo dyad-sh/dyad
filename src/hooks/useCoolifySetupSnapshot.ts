@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -16,22 +16,28 @@ import type { SetupSnapshot } from "@/ipc/types/coolify_setup";
  * picked for the key — so a plain one anywhere is a plain one everywhere,
  * and the guard below would be bypassed by the copy that did not have it.
  */
+/**
+ * How many pushed states have landed, so a read can tell whether it was
+ * overtaken. Counted rather than flagged: the read compares against what it
+ * started with, and a refetch after an earlier event must not read as
+ * overtaken by that old one.
+ *
+ * Shared rather than held per caller. React Query keeps one set of options
+ * per key, taken from whichever observer last fetched — and that caller can
+ * unmount while another still reads the query, leaving a count that has
+ * stopped advancing to decide whether a read was overtaken. Only its changing
+ * matters, so several callers counting the same event is not a problem.
+ */
+let eventCount = 0;
+
 export function useCoolifySetupSnapshot() {
   const queryClient = useQueryClient();
-
-  /**
-   * How many pushed states have landed, so a read can tell whether it was
-   * overtaken. Counted rather than flagged: the read compares against what it
-   * started with, and a refetch after an earlier event must not read as
-   * overtaken by that old one.
-   */
-  const eventCount = useRef(0);
 
   // Pushed rather than polled, so the step and the log keep up with a run
   // this window did not start.
   useEffect(() => {
     return ipc.events.coolifySetup.onChanged((state) => {
-      eventCount.current += 1;
+      eventCount += 1;
       queryClient.setQueryData(queryKeys.coolify.setup, state);
     });
   }, [queryClient]);
@@ -42,12 +48,12 @@ export function useCoolifySetupSnapshot() {
   return useQuery({
     queryKey: queryKeys.coolify.setup,
     queryFn: async () => {
-      const before = eventCount.current;
+      const before = eventCount;
       const read = await ipc.coolifySetup.snapshot();
       // Overtaken while in flight. Answering with the read would put the
       // panel back on a step the run has already left, and leave a Cancel
       // button over a run that has finished until something refetches.
-      if (eventCount.current !== before) {
+      if (eventCount !== before) {
         return (
           queryClient.getQueryData<SetupSnapshot>(queryKeys.coolify.setup) ??
           read

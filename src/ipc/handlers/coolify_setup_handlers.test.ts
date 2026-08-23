@@ -282,21 +282,6 @@ describe("run", () => {
     });
   });
 
-  it("clears a token kept from an instance it has moved off", async () => {
-    // Saving a token by hand clears it; a setup that stores its own has the
-    // same reason to.
-    h.settings = {
-      coolify: { previousAccessToken: { value: "1|old" } },
-    } as Record<string, unknown>;
-
-    await checkThenRun();
-
-    const saved = h.written.at(-1) as {
-      coolify: { previousAccessToken?: unknown };
-    };
-    expect(saved.coolify.previousAccessToken).toBeUndefined();
-  });
-
   it("refuses a server it has not looked at", async () => {
     // The form disables Install until the check has run, but this is the call
     // that sends the credentials, so it says no on its own account.
@@ -627,121 +612,7 @@ describe("revealCredentials", () => {
       adminEmail: "me@gmail.com",
       adminPassword: "Abc123@xyz",
       apiToken: "1|abc",
-      isPreviousConnection: true,
     });
-  });
-
-  it("hands back the token from before signing out", async () => {
-    // Signing back in is then a paste, rather than a trip into Coolify to
-    // mint a token Dyad already had.
-    h.settings = {
-      coolify: {
-        instanceUrl: "http://203.0.113.5:8000",
-        previousAccessToken: { value: "1|old" },
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "http://203.0.113.5:8000",
-      },
-    };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-    expect(result.apiToken).toBe("1|old");
-  });
-
-  it("prefers the live token over the one kept from before", async () => {
-    h.settings = {
-      coolify: {
-        instanceUrl: "http://203.0.113.5:8000",
-        accessToken: { value: "1|current" },
-        previousAccessToken: { value: "1|old" },
-      },
-    };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-    expect(result.apiToken).toBe("1|current");
-  });
-
-  it("recognises one server through its different spellings", async () => {
-    // Dyad asks for a certificate under the sslip.io name, so the address it
-    // stores can differ from the one the user types for the same box. Read as
-    // two servers, the password for the one in front of them is hidden.
-    h.settings = {
-      coolify: {
-        instanceUrl: "http://203.0.113.5:8000",
-        accessToken: { value: "1|abc" },
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "https://203.0.113.5.sslip.io",
-      },
-    };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-    expect(result.adminPassword).toBe("Abc123@xyz");
-  });
-
-  it("still tells two different servers apart", async () => {
-    h.settings = {
-      coolify: {
-        instanceUrl: "https://someone-else.example.com",
-        accessToken: { value: "1|abc" },
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "https://203.0.113.5.sslip.io",
-      },
-    };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-    expect(result.adminPassword).toBeNull();
-  });
-
-  it("does not call a server with no token yet a previous connection", async () => {
-    // Installed a moment ago, with no token minted for it. Calling it
-    // previous reads as something being over.
-    h.settings = {
-      coolify: {
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "http://203.0.113.5:8000",
-      },
-    };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-    expect(result.isPreviousConnection).toBe(false);
-  });
-
-  it("describes one server, not two at once", async () => {
-    // Connected to one Coolify, signed out, then installed another whose
-    // token could not be minted. Showing the first one's address over the
-    // second one's password reads as a way in and is not one.
-    h.settings = {
-      coolify: {
-        instanceUrl: "https://old.example.com",
-        previousAccessToken: { value: "1|for-the-old-one" },
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "PasswordForTheNewOne" },
-        adminInstanceUrl: "http://203.0.113.5:8000",
-      },
-    };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-
-    // The server Dyad installed: its password is what nothing else knows.
-    expect(result.dashboardUrl).toBe("http://203.0.113.5:8000");
-    expect(result.adminPassword).toBe("PasswordForTheNewOne");
-    // The other instance's token would not open this one.
-    expect(result.apiToken).toBeNull();
   });
 
   it("gives the address of a server installed before any token", async () => {
@@ -762,15 +633,16 @@ describe("revealCredentials", () => {
     expect(result.adminPassword).toBe("Abc123@xyz");
   });
 
-  it("keeps the connected instance as the subject while it is connected", async () => {
-    // A live token means Dyad is talking to that one, so it is what the panel
-    // is about — and the account from elsewhere is not shown beside it.
+  it("names the server by the address the token was saved for", async () => {
+    // The two differ when a server installed at its bare address is connected
+    // under the domain it was given afterwards. The address Dyad is talking
+    // to is the one that reaches Coolify, so it is the one shown.
     h.settings = {
       coolify: {
-        instanceUrl: "https://connected.example.com",
-        accessToken: { value: "1|live" },
+        instanceUrl: "https://coolify.example.com",
+        accessToken: { value: "1|abc" },
         adminEmail: "me@gmail.com",
-        adminPassword: { value: "PasswordForElsewhere" },
+        adminPassword: { value: "Abc123@xyz" },
         adminInstanceUrl: "http://203.0.113.5:8000",
       },
     };
@@ -778,11 +650,25 @@ describe("revealCredentials", () => {
       string,
       unknown
     >;
+    expect(result.dashboardUrl).toBe("https://coolify.example.com");
+    // Still the same box, so its account is still what opens it.
+    expect(result.adminPassword).toBe("Abc123@xyz");
+  });
 
-    expect(result.dashboardUrl).toBe("https://connected.example.com");
-    expect(result.apiToken).toBe("1|live");
-    expect(result.adminPassword).toBeNull();
-    expect(result.adminEmail).toBeNull();
+  it("has nothing to hand back once the instance is forgotten", async () => {
+    // Signing out clears all of it, so there is no address or password left
+    // for the panel to put on screen.
+    h.settings = { coolify: {} };
+    const result = (await call("coolify-setup:reveal-credentials")) as Record<
+      string,
+      unknown
+    >;
+    expect(result).toEqual({
+      dashboardUrl: null,
+      adminEmail: null,
+      adminPassword: null,
+      apiToken: null,
+    });
   });
 
   it("answers nulls for an instance Dyad did not set up", async () => {

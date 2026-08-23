@@ -29,6 +29,7 @@ import { ipc } from "@/ipc/types";
 import type { SetupSnapshot } from "@/ipc/types";
 import { CoolifyServerSetup } from "@/components/CoolifyServerSetup";
 import { CoolifyCredentials } from "@/components/CoolifyCredentials";
+import { CoolifySignOutDialog } from "@/components/CoolifySignOutDialog";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
@@ -120,6 +121,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // Installing is where this lands, so the flag is the other way round: it
   // records having said "I already have Coolify".
   const [isEnteringToken, setIsEnteringToken] = useState(false);
+  const [isConfirmingSignOut, setIsConfirmingSignOut] = useState(false);
   const [token, setToken] = useState("");
   const [serverUuid, setServerUuid] = useState("");
   const [projectUuid, setProjectUuid] = useState("");
@@ -153,9 +155,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     setIsEditingConnection(false);
   }, [appId, status?.hasToken]);
 
-  // On both screens below. Signing out is exactly when someone needs the
-  // password back, and it is the state that leaves them here.
-  const previousConnection = <CoolifyCredentials showTitle />;
+  // On both screens below. A server Dyad installed but could not mint a token
+  // for is named by its admin account and nothing else, and these are the two
+  // states that leaves the user in.
+  const newServerCredentials = <CoolifyCredentials showTitle />;
 
   // One element, not one per branch: rendering a second copy elsewhere in the
   // tree would remount the panel and lose the result it is being kept for.
@@ -168,7 +171,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         setIsEnteringToken(true);
       }}
     >
-      {previousConnection}
+      {newServerCredentials}
 
       {/* Last, under anything Dyad already knows about a Coolify: this is the
           exit for the people the installer does not apply to, not another
@@ -445,7 +448,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           Connect
         </Button>
 
-        {previousConnection}
+        {newServerCredentials}
 
         {/* Back to the installer, for someone who came here by mistake. */}
         <div className="border-t pt-3">
@@ -470,29 +473,37 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // to live solely inside the discovery-error card, so rotating a token or
   // moving to another instance meant first breaking discovery on purpose.
   const signOut = (
-    <Button
-      variant="ghost"
-      size="sm"
-      disabled={clearToken.isPending}
-      onClick={async () => {
-        try {
-          await clearToken.mutateAsync();
-          // The component is not remounted when the token goes, so without
-          // this the form comes back holding the credential just revoked —
-          // and pressing Connect would silently store it again, which is
-          // the opposite of what signing out to rotate a token is for.
-          setToken("");
-          setAcknowledgedInsecure(false);
-          toast.success(
-            "Signed out of Coolify. Your apps keep their settings, and the token is still shown under Previous Coolify connection.",
-          );
-        } catch (error) {
-          toast.error(getErrorMessage(error));
-        }
-      }}
-    >
-      Sign out of Coolify
-    </Button>
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={clearToken.isPending}
+        onClick={() => setIsConfirmingSignOut(true)}
+      >
+        Sign out of Coolify
+      </Button>
+      <CoolifySignOutDialog
+        open={isConfirmingSignOut}
+        onOpenChange={setIsConfirmingSignOut}
+        isPending={clearToken.isPending}
+        onConfirm={async () => {
+          try {
+            await clearToken.mutateAsync();
+            // The component is not remounted when the token goes, so without
+            // this the form comes back holding the credential just forgotten —
+            // and pressing Connect would silently store it again, which is
+            // the opposite of what signing out to rotate a token is for.
+            setToken("");
+            setAcknowledgedInsecure(false);
+            toast.success(
+              "Signed out of Coolify. Your server keeps running and your apps keep their settings.",
+            );
+          } catch (error) {
+            toast.error(getErrorMessage(error));
+          }
+        }}
+      />
+    </>
   );
   // Two things are on this screen and they are not the same thing: the
   // Coolify the user connected to, which is theirs and outlives any app, and

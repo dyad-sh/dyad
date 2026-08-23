@@ -116,13 +116,6 @@ export const RevealedCredentialsSchema = z.object({
   adminEmail: z.string().nullable(),
   adminPassword: z.string().nullable(),
   apiToken: z.string().nullable(),
-  /**
-   * Whether these describe a Coolify that was connected and is not now.
-   *
-   * False for a server Dyad has just installed and has no token for yet:
-   * that one is new, and calling it previous reads as something being over.
-   */
-  isPreviousConnection: z.boolean(),
 });
 
 /**

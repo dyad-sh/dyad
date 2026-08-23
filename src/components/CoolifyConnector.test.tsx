@@ -18,9 +18,27 @@ vi.mock("sonner", () => ({ toast: toastMock }));
 vi.mock("@/components/CoolifyCredentials", () => ({
   CoolifyCredentials: ({ showTitle }: { showTitle?: boolean }) => (
     <div data-testid="coolify-credentials-stub">
-      {showTitle ? "Previous Coolify connection" : null}
+      {showTitle ? "Your new Coolify server" : null}
     </div>
   ),
+}));
+
+// Stubbed down to its two edges — that it is open, and the way to confirm —
+// so these cases can check the wiring without the checkbox gating, which is
+// the dialog's own test's job.
+vi.mock("@/components/CoolifySignOutDialog", () => ({
+  CoolifySignOutDialog: ({
+    open,
+    onConfirm,
+  }: {
+    open: boolean;
+    onConfirm: () => void;
+  }) =>
+    open ? (
+      <button data-testid="confirm-sign-out" onClick={onConfirm}>
+        confirm
+      </button>
+    ) : null,
 }));
 
 // The real installer fetches a key and runs mutations of its own, none of
@@ -233,6 +251,44 @@ describe("the instance and the app are separate sections", () => {
     const section = screen.getByTestId("coolify-instance-section");
     expect(section.textContent).toContain("Sign out of Coolify");
   });
+
+  /** The default mock builds a fresh one per render, so nothing can watch it. */
+  function watchClearToken() {
+    const mutateAsync = vi.fn();
+    deploy.value.clearToken = { mutateAsync, isPending: false };
+    return mutateAsync;
+  }
+
+  it("asks before forgetting anything", async () => {
+    // Signing out throws away the password Dyad invented, and pressing the
+    // button is not the same as having read that.
+    connected(null);
+    const clearToken = watchClearToken();
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Sign out of Coolify" }),
+    );
+
+    expect(clearToken).not.toHaveBeenCalled();
+    expect(screen.getByTestId("confirm-sign-out")).toBeTruthy();
+  });
+
+  it("forgets the instance once that is confirmed", async () => {
+    connected(null);
+    const clearToken = watchClearToken();
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Sign out of Coolify" }),
+    );
+    await user.click(screen.getByTestId("confirm-sign-out"));
+
+    expect(clearToken).toHaveBeenCalled();
+    expect(toastMock.success).toHaveBeenCalled();
+  });
 });
 
 /** With no token, installing is the landing screen; this is the other route. */
@@ -281,19 +337,20 @@ describe("where someone with no Coolify lands", () => {
     render(<CoolifyConnector appId={1} />);
 
     const text = screen.getByTestId("coolify-server-setup-stub").textContent;
-    expect(text?.indexOf("Previous Coolify connection")).toBeLessThan(
+    expect(text?.indexOf("Your new Coolify server")).toBeLessThan(
       text?.indexOf("I already have Coolify installed") ?? -1,
     );
   });
 
-  it("still shows what it knows about a Coolify signed out of", async () => {
-    // Signing out is exactly when the password is needed, and it lands here.
+  it("still shows what it knows about a server with no token yet", async () => {
+    // Installing a server whose token could not be minted lands here, and the
+    // account Dyad made is the only way into it.
     deploy.value = NO_TOKEN;
     const user = userEvent.setup();
     render(<CoolifyConnector appId={1} />);
 
     expect(screen.getByTestId("coolify-credentials-stub").textContent).toBe(
-      "Previous Coolify connection",
+      "Your new Coolify server",
     );
     await openTokenForm(user);
     expect(screen.getByTestId("coolify-credentials-stub")).toBeTruthy();

@@ -28,7 +28,6 @@ const FULL = {
   adminEmail: "me@gmail.com",
   adminPassword: "Abc123@xyzAbc123@xyz",
   apiToken: "1|abcdefghijklmnop",
-  isPreviousConnection: true,
 };
 
 beforeEach(() => {
@@ -114,21 +113,10 @@ describe("revealing one value", () => {
 });
 
 describe("naming the section", () => {
-  it("calls a Coolify that was connected a previous one", async () => {
-    render(<CoolifyCredentials showTitle />);
-    await waitFor(() =>
-      expect(screen.getByText("Previous Coolify connection")).toBeTruthy(),
-    );
-  });
-
-  it("does not call a server just installed a previous connection", async () => {
-    // Reached by installing a server whose API token could not be minted:
-    // it is new, and calling it previous reads as something being over.
-    h.revealCredentials.mockResolvedValue({
-      ...FULL,
-      apiToken: null,
-      isPreviousConnection: false,
-    });
+  it("names a server Dyad installed", async () => {
+    // Reached by installing a server whose API token could not be minted, so
+    // the account is all Dyad has for it.
+    h.revealCredentials.mockResolvedValue({ ...FULL, apiToken: null });
     render(<CoolifyCredentials showTitle />);
 
     await waitFor(() =>
@@ -143,12 +131,11 @@ describe("naming the section", () => {
       adminEmail: null,
       adminPassword: null,
       apiToken: null,
-      isPreviousConnection: false,
     });
     render(<CoolifyCredentials showTitle />);
 
     await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
-    expect(screen.queryByText("Previous Coolify connection")).toBeNull();
+    expect(screen.queryByText("Your new Coolify server")).toBeNull();
   });
 });
 
@@ -161,7 +148,6 @@ describe("an instance Dyad did not set up", () => {
       adminEmail: null,
       adminPassword: null,
       apiToken: null,
-      isPreviousConnection: false,
     });
     const { container } = render(<CoolifyCredentials />);
 
@@ -176,7 +162,6 @@ describe("an instance Dyad did not set up", () => {
       adminEmail: null,
       adminPassword: null,
       apiToken: "1|theirs",
-      isPreviousConnection: true,
     });
     await renderAndSettle();
 

@@ -413,14 +413,6 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         accessToken: encrypt(newSettings.coolify.accessToken.value),
       };
     }
-    if (newSettings.coolify?.previousAccessToken) {
-      newSettings.coolify = {
-        ...newSettings.coolify,
-        previousAccessToken: encrypt(
-          newSettings.coolify.previousAccessToken.value,
-        ),
-      };
-    }
     if (newSettings.coolify?.adminPassword) {
       newSettings.coolify = {
         ...newSettings.coolify,
@@ -696,24 +688,6 @@ function readExistingSettingsFile(
       // The address is not a secret and survives a token that will not
       // decrypt, so the user is not asked to retype what Dyad still knows.
       const { accessToken: _dropped, ...rest } = combinedSettings.coolify;
-      combinedSettings.coolify = rest;
-    }
-  }
-  if (combinedSettings.coolify?.previousAccessToken) {
-    const resolved = resolveStoredSecret(
-      combinedSettings.coolify.previousAccessToken,
-      "Coolify previous access token",
-      ["coolify", "previousAccessToken"],
-      ctx,
-    );
-    if (resolved) {
-      combinedSettings.coolify = {
-        ...combinedSettings.coolify,
-        previousAccessToken: resolved,
-      };
-    } else {
-      const { previousAccessToken: _dropped, ...rest } =
-        combinedSettings.coolify;
       combinedSettings.coolify = rest;
     }
   }

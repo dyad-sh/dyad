@@ -200,10 +200,6 @@ function setupController(): CoolifySetupController {
                   ? {
                       instanceUrl: result.dashboardUrl,
                       accessToken: { value: result.token },
-                      // Cleared alongside, as saving a token by hand does: one
-                      // from an instance Dyad has moved off is not a way back
-                      // into the one it is on now.
-                      previousAccessToken: undefined,
                     }
                   : {}),
               },
@@ -235,33 +231,13 @@ function setupController(): CoolifySetupController {
 }
 
 /**
- * The machine an address names, ignoring how it was written.
- *
- * One server has several valid spellings — http://1.2.3.4:8000 and the
- * https://1.2.3.4.sslip.io Dyad asks for a certificate under are the same
- * box — and treating them as different servers hides the credentials for the
- * one the user is looking at. Only ever used to decide what to show, so it
- * can afford to be generous.
- */
-function serverIdentity(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    // sslip.io spells an address as a name; the address is the identity.
-    const derived = /^(.+)\.sslip\.io$/.exec(host);
-    return derived ? derived[1] : host;
-  } catch {
-    return url.trim().toLowerCase();
-  }
-}
-
-/**
  * The key a server's fingerprint and verdict are remembered under.
  *
  * The port is part of it: two services on one address are two servers, and
- * holding the second to the first one's key would refuse a valid one. And
- * serverIdentity is for URLs, which a bare address is not — `fe80::1` parses
- * as the scheme `fe80:` and leaves no hostname at all, so every address
- * shaped that way would share one entry.
+ * holding the second to the first one's key would refuse a valid one. Built
+ * from the address as typed rather than by parsing it as a URL, which a bare
+ * address is not — `fe80::1` parses as the scheme `fe80:` and leaves no
+ * hostname at all, so every address shaped that way would share one entry.
  */
 function serverKeyFor(input: SetupServer): string {
   const host = input.host
@@ -269,11 +245,6 @@ function serverKeyFor(input: SetupServer): string {
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
   return `${host}:${sshPort(input) ?? 22}`;
-}
-
-function sameServer(a: string | null | undefined, b: string | null): boolean {
-  if (!a || b === null) return false;
-  return serverIdentity(a) === serverIdentity(b);
 }
 
 /**
@@ -442,36 +413,17 @@ export function registerCoolifySetupHandlers() {
     // Dyad generated the password on their behalf, so refusing to show it
     // would lock them out of something they own.
     const coolify = readSettings().coolify;
-    // One server, described consistently. Dyad can hold details for two — an
-    // instance connected by pasting a token, and a server it installed whose
-    // token could not be minted — and pairing one's address with the other's
-    // password reads as a way in that is not one.
+    // Everything here describes the same server, because Dyad holds one at a
+    // time and signing out forgets all of it together. So the fields are read
+    // straight out rather than checked against each other for whose they are.
     //
-    // Connected wins when there is a live token, since that is the instance
-    // Dyad is talking to. Otherwise the server Dyad installed does: its
-    // password is the thing nothing else in the world knows.
-    const liveToken = coolify?.accessToken?.value ?? null;
-    const dashboardUrl =
-      (liveToken
-        ? coolify?.instanceUrl
-        : (coolify?.adminInstanceUrl ?? coolify?.instanceUrl)) ?? null;
-    const adminIsHere = sameServer(coolify?.adminInstanceUrl, dashboardUrl);
-    const tokenIsHere = sameServer(coolify?.instanceUrl, dashboardUrl);
+    // adminInstanceUrl covers the window before a token exists: a server just
+    // installed is named by the account Dyad made on it and nothing else.
     return {
-      dashboardUrl,
-      adminEmail: adminIsHere ? (coolify?.adminEmail ?? null) : null,
-      adminPassword: adminIsHere
-        ? (coolify?.adminPassword?.value ?? null)
-        : null,
-      // A server described through its own address, with no token, is one
-      // Dyad has just set up rather than one it used to talk to.
-      isPreviousConnection: dashboardUrl !== null && tokenIsHere,
-      // The one from before signing out, when there is no live one. Signing
-      // back in is then a paste rather than a trip into Coolify to mint
-      // another.
-      apiToken: tokenIsHere
-        ? (liveToken ?? coolify?.previousAccessToken?.value ?? null)
-        : null,
+      dashboardUrl: coolify?.instanceUrl ?? coolify?.adminInstanceUrl ?? null,
+      adminEmail: coolify?.adminEmail ?? null,
+      adminPassword: coolify?.adminPassword?.value ?? null,
+      apiToken: coolify?.accessToken?.value ?? null,
     };
   });
 

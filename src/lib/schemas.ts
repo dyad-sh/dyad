@@ -239,19 +239,10 @@ export const CoolifySchema = z.object({
   /**
    * The address the admin account above belongs to.
    *
-   * An account is only good for the instance Dyad made it on. Without this,
-   * connecting to a second Coolify shows its address beside the first one's
-   * password, which reads as a way in and is not one.
+   * Set before there is a token to talk to the instance with, which is the
+   * window where nothing else here names the machine the account opens.
    */
   adminInstanceUrl: z.string().optional(),
-  /**
-   * The token from the last connection, kept when signing out.
-   *
-   * Dyad minted this one itself, so throwing it away means the only way back
-   * in is making another in Coolify — for a token Dyad still had a moment ago.
-   * Not used to talk to anything: it is shown so it can be pasted back.
-   */
-  previousAccessToken: SecretSchema.optional(),
 });
 export type Coolify = z.infer<typeof CoolifySchema>;
 

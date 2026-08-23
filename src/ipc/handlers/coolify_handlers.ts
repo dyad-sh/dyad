@@ -127,21 +127,14 @@ export function registerCoolifyHandlers() {
       await probe.listServers();
       const normalized = instanceUrl.replace(/\/+$/, "");
       const previous = readSettings().coolify?.instanceUrl;
-      // Spread, as clearToken does: a field added to CoolifySchema later
-      // should not be dropped by whichever of the two happens to run.
+      // Spread: the admin account for a server Dyad just installed is set
+      // before there is any token for it, and this is the call that supplies
+      // the token. Replacing would drop the password on the way in.
       writeSettings({
         coolify: {
           ...readSettings().coolify,
           instanceUrl: normalized,
           accessToken: { value: token },
-          // Superseded. Leaving it would put a token from two connections ago
-          // on screen after the next sign-out.
-          previousAccessToken: undefined,
-          // The admin account is left alone. It is kept with the address it
-          // belongs to and only shown beside that address, so connecting
-          // elsewhere cannot pair one server's password with another's — and
-          // deleting on a mismatched address would throw away the only copy
-          // of a password Dyad invented for a machine still running.
         },
       });
       // Nothing is cleared here. Server, project and application ids are
@@ -168,36 +161,23 @@ export function registerCoolifyHandlers() {
   });
 
   createTypedHandler(coolifyContracts.clearToken, async () => {
-    // Only the token. Every app reads as disconnected without one, so there is
-    // nothing to gain by clearing their rows — and doing so would throw away
-    // each app's Coolify application id, which is the one value that cannot be
-    // re-entered. The next deploy would then build a second application beside
-    // the one already running and lose a fight with it over the domain.
+    // Every field, not just the token. Dyad holds one Coolify at a time, so
+    // an address or an admin account left behind belongs to an instance
+    // nothing is connected to any more — and the next connection would put a
+    // stranger's password under its address. The screen that reaches this
+    // shows all of it one last time and asks the user to confirm, because
+    // Dyad invented the password and is the only thing that has it.
     //
-    // The instance URL stays so that saveToken can still tell whether the next
-    // token points somewhere else. Even then the rows are kept: those ids name
-    // applications still running on the old instance, and nothing in Dyad
-    // could reach them again once they were gone.
+    // Replaced rather than spread: this is the handler that forgets the
+    // instance, so a field added to CoolifySchema later should go too.
+    //
+    // The apps' rows are not touched. They read as disconnected without a
+    // token anyway, and they carry each app's Coolify application id — the
+    // one value that cannot be typed back in. Losing it would make the next
+    // deploy build a second application beside the one already running and
+    // lose a fight with it over the domain.
     coolifyDeployRegistry.cancelAll();
-    // The address survives; only the token goes. Spread rather than replaced,
-    // so a field added to CoolifySchema later is not silently dropped here.
-    const current = readSettings().coolify;
-    const carried = current?.accessToken ?? current?.previousAccessToken;
-    writeSettings({
-      coolify: {
-        ...current,
-        accessToken: undefined,
-        // Kept where it can be read back rather than deleted. Dyad usually
-        // minted this itself, so losing it means making another in Coolify to
-        // get back in. Signing out twice must not overwrite it with nothing.
-        //
-        // Named only when there is something readable to name: a secret this
-        // machine cannot decrypt reads as absent, and writing the key as
-        // undefined would be taken as a deliberate clear and throw away
-        // ciphertext that a repaired keychain could still open.
-        ...(carried ? { previousAccessToken: carried } : {}),
-      },
-    });
+    writeSettings({ coolify: {} });
   });
 
   createTypedHandler(coolifyContracts.createProject, async (_, { name }) => {

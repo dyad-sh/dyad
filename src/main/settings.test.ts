@@ -1120,34 +1120,33 @@ describe("preserving undecryptable secrets", () => {
     });
   });
 
-  it("hides a kept Coolify token that will not decrypt", () => {
-    // Handing the ciphertext through would put it on screen as the token to
-    // paste back, and it would be rejected with no way to tell why.
+  it("hides a Coolify token that will not decrypt", () => {
+    // Handing the ciphertext through would have it sent to Coolify as the
+    // token, and it would be rejected with no way to tell why.
     store[mockSettingsPath] = JSON.stringify({
       coolify: {
         instanceUrl: "http://203.0.113.5:8000",
-        previousAccessToken: lockedSecret("coolify"),
+        accessToken: lockedSecret("coolify"),
       },
     });
 
     const read = readSettings();
-    expect(read.coolify?.previousAccessToken).toBeUndefined();
+    expect(read.coolify?.accessToken).toBeUndefined();
     expect(read.coolify?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
-  it("puts the Coolify token kept for signing back in through encryption", () => {
-    // It is the same token it was a moment ago, and it opens the same server.
-    // Keeping it readable is what makes signing back in a paste; keeping it in
-    // the clear on disk is a different thing.
+  it("puts the Coolify admin password through encryption", () => {
+    // Dyad made this one up and is the only thing holding it, which is a
+    // reason to keep it readable and not a reason to keep it in the clear.
     writeSettings({
       coolify: {
         instanceUrl: "http://203.0.113.5:8000",
-        previousAccessToken: { value: "1|kept-token" },
+        adminPassword: { value: "invented-password" },
       },
     });
 
-    expect(readStoredFile().coolify.previousAccessToken).toEqual({
-      value: "1|kept-token",
+    expect(readStoredFile().coolify.adminPassword).toEqual({
+      value: "invented-password",
       encryptionType: "plaintext",
     });
   });

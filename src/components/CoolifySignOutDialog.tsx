@@ -1,0 +1,92 @@
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CoolifyCredentials } from "@/components/CoolifyCredentials";
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
+
+/**
+ * The last look at credentials Dyad is about to forget.
+ *
+ * Signing out clears the instance outright rather than keeping a copy around
+ * for an instance nothing is connected to. That is only fair if the user gets
+ * to take the details with them first, so they are on screen here with their
+ * copy buttons, behind an acknowledgement rather than a plain confirm.
+ */
+export function CoolifySignOutDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  isPending?: boolean;
+}) {
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  // Ticked once is not ticked forever: every open starts from unticked, so
+  // the acknowledgement is about this sign-out. Keyed to `open` rather than
+  // done on the way out, because closing is not always the user's doing.
+  useEffect(() => {
+    if (!open) setAcknowledged(false);
+  }, [open]);
+
+  // Shares a key with the fields below, so opening this asks once. Only read
+  // here to decide whether the password gets a warning of its own.
+  const { data: credentials } = useQuery({
+    queryKey: queryKeys.coolify.credentials,
+    queryFn: () => ipc.coolifySetup.revealCredentials(),
+    gcTime: 0,
+    enabled: open,
+  });
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent data-testid="coolify-sign-out-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Sign out of Coolify?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Dyad will forget the details below. Your server keeps running and
+            your apps keep their settings.
+            {credentials?.adminPassword
+              ? " Dyad made this password up and is the only thing holding it — Coolify cannot show it to you again."
+              : ""}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <CoolifyCredentials />
+
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={acknowledged}
+            onCheckedChange={(checked) => setAcknowledged(checked === true)}
+            data-testid="coolify-sign-out-acknowledge"
+          />
+          I have saved anything I need from above
+        </label>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={!acknowledged || isPending}
+            onClick={onConfirm}
+          >
+            Sign out
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}

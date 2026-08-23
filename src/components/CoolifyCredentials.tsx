@@ -10,8 +10,8 @@ import { queryKeys } from "@/lib/queryKeys";
  * The way into a server Dyad set up.
  *
  * Dyad invents the admin password and mints the API token, so it is the only
- * thing that knows either. Without somewhere to read them, signing out of
- * Coolify in Dyad locks the user out of a machine they own.
+ * thing that knows either. Without somewhere to read them, a machine the user
+ * owns has no way in they can see.
  *
  * Shown rather than hidden behind a control: these belong to the user, and
  * making them click to discover that Dyad even has them means most people
@@ -105,13 +105,10 @@ export function CoolifyCredentials({
   return (
     <div className="space-y-2 text-sm" data-testid="coolify-credentials">
       {/* Kept inside so a caller cannot leave a heading over nothing when
-          there is nothing to show — and so the wording follows which server
-          these turned out to describe, which only this knows. */}
+          there is nothing to show. */}
       {showTitle && (
         <div className="border-t pt-3 font-semibold">
-          {credentials.isPreviousConnection
-            ? "Previous Coolify connection"
-            : "Your new Coolify server"}
+          Your new Coolify server
         </div>
       )}
       {dashboardUrl && <Field label="Address" value={dashboardUrl} />}

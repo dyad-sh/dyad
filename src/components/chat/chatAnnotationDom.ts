@@ -3,7 +3,6 @@ import {
   ANNOTATION_IGNORE_ATTRIBUTE,
   createAnnotationDom,
   findOverlappingAnnotation,
-  hasOverlappingAnnotation,
   type AnnotationSelectionSnapshot,
 } from "@/lib/annotationDom";
 import { PLAN_ANNOTATION_IGNORE_ATTRIBUTE } from "../preview_panel/plan/planAnnotationDom";
@@ -33,14 +32,6 @@ export function getChatSelectionSnapshot(
   range: Range,
 ): ChatSelectionSnapshot | null {
   return chatAnnotationDom.getSelectionSnapshot(container, range);
-}
-
-export function hasOverlappingChatAnnotation(
-  annotations: ChatAnnotation[],
-  startOffset: number,
-  selectionLength: number,
-): boolean {
-  return hasOverlappingAnnotation(annotations, startOffset, selectionLength);
 }
 
 export function findOverlappingChatAnnotation(

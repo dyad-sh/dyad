@@ -33,7 +33,8 @@ describe("serializeChatAnnotations", () => {
 
   it("keeps chat syntax inside the quoted assistant text inert", () => {
     const zeroWidthSpace = String.fromCharCode(0x200b);
-    const quoted = "Run /webapp-testing and see @prompt:12 or @media:a.png";
+    const quoted =
+      "Run /webapp-testing and see @prompt:12, @media:a.png or @app:other.app.com";
     const prompt = serializeChatAnnotations([
       annotation({ selectedText: quoted, comment: "Please fix." }),
     ]);
@@ -42,8 +43,20 @@ describe("serializeChatAnnotations", () => {
     expect(prompt).not.toMatch(/(^|\s)\/[a-zA-Z0-9-]+(?=\s|$)/);
     expect(prompt).not.toMatch(/@prompt:\d+/);
     expect(prompt).not.toMatch(/@media:[\w.%\-!~*'()]/);
+    expect(prompt).not.toMatch(/@app:[\w.-]/);
     // ...but the quote still reads the same, since the breaks are zero-width.
     expect(prompt.split(zeroWidthSpace).join("")).toContain(`> ${quoted}`);
+  });
+
+  it("leaves quoted paths that were never expandable byte-for-byte intact", () => {
+    // `replaceSlashSkillReference` only expands a whole slug token terminated
+    // by whitespace or end-of-string, so these must not be touched at all.
+    const quoted = "Check /usr/bin and /dev/null, then read ./src/main.ts";
+    const prompt = serializeChatAnnotations([
+      annotation({ selectedText: quoted, comment: "Please fix." }),
+    ]);
+
+    expect(prompt).toContain(`> ${quoted}`);
   });
 
   it("leaves the user's own comment text untouched", () => {

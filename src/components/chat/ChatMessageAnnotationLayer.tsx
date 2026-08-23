@@ -31,8 +31,36 @@ interface FloatingSelection {
   selectionLength: number;
 }
 
-/** Where the popover is pinned, so it can be repositioned as the page moves. */
-type FloatingAnchor = { kind: "mark"; id: string } | { kind: "range" };
+/**
+ * Where the popover is pinned, so it can be repositioned as the page moves.
+ *
+ * The range case holds a cloned Range rather than re-reading the live
+ * selection: focusing the editor collapses the selection, and re-deriving from
+ * it would lose the anchor (and with it whatever the user had typed).
+ */
+type FloatingAnchor =
+  | { kind: "mark"; id: string }
+  | { kind: "range"; range: Range };
+
+/**
+ * The rect the popover hangs off: the last line box, so a multi-line selection
+ * anchors at the end of its final line rather than at the union box's far
+ * right edge.
+ */
+function anchorRect(source: Element | Range): DOMRect | null {
+  const rects = source.getClientRects();
+  const rect = rects.item(rects.length - 1) ?? source.getBoundingClientRect();
+  return rect.width === 0 && rect.height === 0 ? null : rect;
+}
+
+function isOutsideViewport(rect: DOMRect): boolean {
+  return (
+    rect.bottom < 0 ||
+    rect.right < 0 ||
+    rect.top > window.innerHeight ||
+    rect.left > window.innerWidth
+  );
+}
 
 /** First `<mark>` fragment of an annotation, which carries its popover anchor. */
 function findAnnotationMark(container: HTMLElement, annotationId: string) {
@@ -112,6 +140,14 @@ export function ChatMessageAnnotationLayer({
     const container = containerRef.current;
     if (!container) return;
 
+    // Most messages in a transcript carry no comments. Clear once and stop,
+    // rather than installing a subtree observer and walking the whole message
+    // on every render for marks that can never exist.
+    if (annotations.length === 0) {
+      clearChatAnnotationHighlights(container);
+      return;
+    }
+
     let frameId: number | null = null;
     let isApplyingHighlights = false;
 
@@ -166,7 +202,12 @@ export function ChatMessageAnnotationLayer({
     const container = containerRef.current;
     if (!container) return;
 
-    const openAnnotation = (annotation: ChatAnnotation, rect: DOMRect) => {
+    const openAnnotation = (
+      annotation: ChatAnnotation,
+      source: Element | Range,
+    ) => {
+      const rect = anchorRect(source);
+      if (!rect) return;
       anchorRef.current = { kind: "mark", id: annotation.id };
       setFloating({
         ...clampToViewport(rect),
@@ -183,7 +224,7 @@ export function ChatMessageAnnotationLayer({
       const id = mark.getAttribute(CHAT_ANNOTATION_ID_ATTRIBUTE);
       const annotation = annotations.find((item) => item.id === id);
       if (!annotation) return;
-      openAnnotation(annotation, mark.getBoundingClientRect());
+      openAnnotation(annotation, mark);
     };
 
     const markFromEvent = (event: Event) => {
@@ -224,15 +265,13 @@ export function ChatMessageAnnotationLayer({
         // Silently doing nothing here read as "the feature is broken". Open the
         // comment the selection collides with so the overlap is explained by
         // what appears on screen.
-        const mark = findMark(overlapping.id);
-        openAnnotation(overlapping, (mark ?? range).getBoundingClientRect());
+        openAnnotation(overlapping, findMark(overlapping.id) ?? range);
         return;
       }
 
-      const rects = range.getClientRects();
-      const rect =
-        rects.item(rects.length - 1) ?? range.getBoundingClientRect();
-      anchorRef.current = { kind: "range" };
+      const rect = anchorRect(range);
+      if (!rect) return;
+      anchorRef.current = { kind: "range", range: range.cloneRange() };
       setFloating({ ...clampToViewport(rect), ...snapshot });
       setActiveId(null);
       setComment("");
@@ -311,20 +350,17 @@ export function ChatMessageAnnotationLayer({
       const anchor = anchorRef.current;
       if (!anchor || !container) return;
 
-      let rect: DOMRect | null = null;
-      if (anchor.kind === "mark") {
-        rect =
-          findAnnotationMark(container, anchor.id)?.getBoundingClientRect() ??
-          null;
-      } else {
-        const selection = window.getSelection();
-        rect =
-          selection && selection.rangeCount > 0
-            ? selection.getRangeAt(0).getBoundingClientRect()
-            : null;
-      }
+      const source =
+        anchor.kind === "mark"
+          ? findAnnotationMark(container, anchor.id)
+          : anchor.range;
+      const rect = source ? anchorRect(source) : null;
 
-      if (!rect || (rect.width === 0 && rect.height === 0)) {
+      // An anchor with no box left (its node was replaced out from under us)
+      // keeps its current position: dropping the popover here would throw away
+      // a comment the user is still typing.
+      if (!rect) return;
+      if (isOutsideViewport(rect)) {
         dismiss();
         return;
       }
@@ -395,6 +431,9 @@ export function ChatMessageAnnotationLayer({
         aria-label={t("annotations.commentOnSelection")}
         className="fixed z-50 flex size-8 animate-in items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md ring-offset-background transition duration-150 ease-out fade-in-0 zoom-in-95 hover:bg-primary/90 hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:animate-none motion-reduce:transition-none"
         style={{ left: floating.x, top: floating.y }}
+        // Keep the browser from collapsing the selection on mousedown, so the
+        // text stays visibly highlighted while the comment is being written.
+        onMouseDown={(event) => event.preventDefault()}
         onClick={() => setShowEditor(true)}
       >
         <MessageSquare className="size-4" />

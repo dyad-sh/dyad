@@ -95,15 +95,3 @@ export function pruneChatAnnotations(
   else next.set(chatId, remaining);
   return next;
 }
-
-export function hasOverlappingChatAnnotation(
-  annotations: ChatAnnotation[],
-  startOffset: number,
-  selectionLength: number,
-): boolean {
-  const endOffset = startOffset + selectionLength;
-  return annotations.some((annotation) => {
-    const annotationEnd = annotation.startOffset + annotation.selectionLength;
-    return startOffset < annotationEnd && annotation.startOffset < endOffset;
-  });
-}

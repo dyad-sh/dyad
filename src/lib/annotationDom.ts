@@ -54,19 +54,7 @@ export interface ApplyHighlightsOptions {
   label?: (selectedText: string) => string;
 }
 
-export function hasOverlappingAnnotation(
-  annotations: AnnotationRange[],
-  startOffset: number,
-  selectionLength: number,
-): boolean {
-  const endOffset = startOffset + selectionLength;
-
-  return annotations.some((annotation) => {
-    const annotationEnd = annotation.startOffset + annotation.selectionLength;
-    return startOffset < annotationEnd && annotation.startOffset < endOffset;
-  });
-}
-
+/** The single overlap primitive; callers that only need a boolean compare to undefined. */
 export function findOverlappingAnnotation<T extends AnnotationRange>(
   annotations: T[],
   startOffset: number,

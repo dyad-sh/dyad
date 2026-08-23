@@ -2,7 +2,7 @@ import type { PlanAnnotation } from "@/atoms/planAtoms";
 import {
   ANNOTATION_IGNORE_ATTRIBUTE,
   createAnnotationDom,
-  hasOverlappingAnnotation,
+  findOverlappingAnnotation,
   type AnnotationSelectionSnapshot,
 } from "@/lib/annotationDom";
 
@@ -36,7 +36,10 @@ export function hasOverlappingPlanAnnotation(
   startOffset: number,
   selectionLength: number,
 ): boolean {
-  return hasOverlappingAnnotation(annotations, startOffset, selectionLength);
+  return (
+    findOverlappingAnnotation(annotations, startOffset, selectionLength) !==
+    undefined
+  );
 }
 
 export function clearPlanAnnotationHighlights(container: HTMLElement) {

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   addChatAnnotation,
   clearChatAnnotations,
-  hasOverlappingChatAnnotation,
   pruneChatAnnotations,
   removeChatAnnotation,
   updateChatAnnotation,
@@ -52,11 +51,6 @@ describe("chat annotation state", () => {
 
     expect(cleared.has(7)).toBe(false);
     expect(cleared.get(8)).toHaveLength(1);
-  });
-
-  it("detects overlapping ranges but permits adjacent ranges", () => {
-    expect(hasOverlappingChatAnnotation([annotation], 20, 5)).toBe(true);
-    expect(hasOverlappingChatAnnotation([annotation], 23, 5)).toBe(false);
   });
 
   it("normalizes comment whitespace on both the add and update paths", () => {

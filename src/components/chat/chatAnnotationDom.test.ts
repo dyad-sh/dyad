@@ -3,6 +3,7 @@ import type { ChatAnnotation } from "@/atoms/chatAnnotationAtoms";
 import {
   applyChatAnnotationHighlights,
   clearChatAnnotationHighlights,
+  findOverlappingChatAnnotation,
   getChatSelectionSnapshot,
 } from "@/components/chat/chatAnnotationDom";
 
@@ -159,6 +160,17 @@ describe("chatAnnotationDom", () => {
     clearChatAnnotationHighlights(container);
     expect(marks(container)).toHaveLength(0);
     expect(container.textContent).toBe("Hello bold world");
+  });
+
+  it("returns the colliding annotation for an overlapping range, but not an adjacent one", () => {
+    const existing = createAnnotation({
+      selectedText: "selected text",
+      startOffset: 10,
+      selectionLength: 13,
+    });
+
+    expect(findOverlappingChatAnnotation([existing], 20, 5)).toBe(existing);
+    expect(findOverlappingChatAnnotation([existing], 23, 5)).toBeUndefined();
   });
 
   it("skips stale and overlapping annotations instead of corrupting the DOM", () => {

@@ -9,7 +9,10 @@ import {
   removeChatAnnotation,
 } from "@/atoms/chatAnnotationAtoms";
 import { Button } from "@/components/ui/button";
-import { useChatMessages } from "@/hooks/useChatMessages";
+import {
+  useChatMessages,
+  useChatMessagesLoaded,
+} from "@/hooks/useChatMessages";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { serializeChatAnnotations } from "@/lib/serializeChatAnnotations";
 
@@ -21,6 +24,7 @@ export function ChatAnnotationsTray({ chatId }: { chatId: number }) {
   const listId = useId();
   const { streamMessage, isStreaming } = useStreamChat();
   const messages = useChatMessages(chatId);
+  const messagesLoaded = useChatMessagesLoaded(chatId);
   const annotations = useMemo(
     () => allAnnotations.get(chatId) ?? [],
     [allAnnotations, chatId],
@@ -28,14 +32,16 @@ export function ChatAnnotationsTray({ chatId }: { chatId: number }) {
 
   // Retry deletes the trailing assistant message server-side, and so does
   // clearing a chat's history. Reconcile against the loaded messages so the
-  // tray never submits a comment quoting a message that is gone.
+  // tray never submits a comment quoting a message that is gone. Gate on
+  // `messagesLoaded`, not on the list being non-empty: a cleared chat loads as
+  // an empty list, and that is exactly when everything needs pruning.
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (!messagesLoaded) return;
     const messageIds = new Set(messages.map((message) => message.id));
     setAllAnnotations((previous) =>
       pruneChatAnnotations(previous, chatId, messageIds),
     );
-  }, [chatId, messages, setAllAnnotations]);
+  }, [chatId, messages, messagesLoaded, setAllAnnotations]);
 
   if (annotations.length === 0) return null;
 

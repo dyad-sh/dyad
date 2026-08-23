@@ -225,7 +225,13 @@ export type SupabaseOrganizationCredentials = z.infer<
  */
 export const CoolifyAdminSchema = z.object({
   email: z.string(),
-  password: SecretSchema,
+  /**
+   * Optional only because it can become unreadable, never because it was not
+   * written: a keychain that cannot open it leaves the account behind without
+   * it. Required here instead would make the account itself vanish, and the
+   * ciphertext on disk has nowhere to be put back into once it has.
+   */
+  password: SecretSchema.optional(),
   /**
    * The address this account belongs to.
    *
@@ -246,9 +252,9 @@ export const CoolifySchema = z.object({
    * a server they own. Encrypted like the token, and only ever handed to the
    * renderer when it is asked for.
    *
-   * One object rather than three fields, because the three are only ever
+   * One object rather than three fields, because they are only ever
    * meaningful together: an account without the address it opens is a
-   * password for nothing, and all three are written and forgotten at once.
+   * password for nothing, and they are written and forgotten at once.
    */
   admin: CoolifyAdminSchema.optional(),
 });

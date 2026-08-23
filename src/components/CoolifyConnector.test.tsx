@@ -114,6 +114,7 @@ vi.mock("@/ipc/types", () => ({
   ipc: {
     system: { openExternalUrl: vi.fn() },
     coolifySetup: { snapshot: () => Promise.resolve(setup.state) },
+    events: { coolifySetup: { onChanged: () => () => {} } },
   },
 }));
 

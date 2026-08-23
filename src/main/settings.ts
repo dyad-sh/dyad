@@ -413,12 +413,16 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         accessToken: encrypt(newSettings.coolify.accessToken.value),
       };
     }
-    if (newSettings.coolify?.admin) {
+    // Guarded on the password rather than the account, because the two do not
+    // arrive together: the preservation pass above strips a password it means
+    // to write back verbatim, leaving the account here with none.
+    const coolifyAdmin = newSettings.coolify?.admin;
+    if (coolifyAdmin?.password) {
       newSettings.coolify = {
         ...newSettings.coolify,
         admin: {
-          ...newSettings.coolify.admin,
-          password: encrypt(newSettings.coolify.admin.password.value),
+          ...coolifyAdmin,
+          password: encrypt(coolifyAdmin.password.value),
         },
       };
     }
@@ -694,10 +698,11 @@ function readExistingSettingsFile(
       combinedSettings.coolify = rest;
     }
   }
-  if (combinedSettings.coolify?.admin) {
-    const admin = combinedSettings.coolify.admin;
+  const admin = combinedSettings.coolify?.admin;
+  const adminPassword = admin?.password;
+  if (admin && adminPassword) {
     const resolved = resolveStoredSecret(
-      admin.password,
+      adminPassword,
       "Coolify admin password",
       ["coolify", "admin", "password"],
       ctx,
@@ -708,12 +713,12 @@ function readExistingSettingsFile(
         admin: { ...admin, password: resolved },
       };
     } else {
-      // The whole account goes, not just the password. Dyad keeps this to be
-      // the way into a machine the user owns, and an address and an email
-      // with nothing to sign in with is not one. The password still exists in
-      // the server's own .env, which is the honest fallback.
-      const { admin: _dropped, ...rest } = combinedSettings.coolify;
-      combinedSettings.coolify = rest;
+      // Only the password. The account stays so that the ciphertext has a
+      // container to be written back into on the next write — dropping it
+      // whole reads to the write path as the user having deleted the account,
+      // and throws away a password a repaired keychain could still open.
+      const { password: _dropped, ...rest } = admin;
+      combinedSettings.coolify = { ...combinedSettings.coolify, admin: rest };
     }
   }
   for (const provider in combinedSettings.providerSettings) {

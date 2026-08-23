@@ -1156,9 +1156,62 @@ describe("preserving undecryptable secrets", () => {
     });
   });
 
-  it("drops the whole admin account when its password will not decrypt", () => {
-    // An address and an email with nothing to sign in with is not a way into
-    // anything, and this is kept to be one.
+  it("keeps a locked Coolify admin password across an unrelated write", () => {
+    // The preservation path hands the ciphertext back after encryption, having
+    // deleted it from the merged settings first. Reading the account and then
+    // reaching for its password without checking finds nothing there — and
+    // every settings write, Coolify or not, dies on it.
+    const locked = lockedSecret("coolify");
+    store[mockSettingsPath] = JSON.stringify({
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        admin: {
+          email: "me@gmail.com",
+          password: locked,
+          instanceUrl: "http://203.0.113.5:8000",
+        },
+      },
+    });
+
+    writeSettings({ enableAutoUpdate: false });
+
+    expect(readStoredFile().enableAutoUpdate).toBe(false);
+    expect(readStoredFile().coolify.admin.password).toEqual(locked);
+  });
+
+  it("keeps a locked admin password when a Coolify write rebuilds the object without it", () => {
+    // What `coolify:save-token` does: spread what readSettings could decrypt,
+    // then add the token. The account came back without its password, so
+    // without the container still standing there is nowhere to put the
+    // ciphertext back and the only copy of it goes.
+    const locked = lockedSecret("coolify");
+    store[mockSettingsPath] = JSON.stringify({
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        admin: {
+          email: "me@gmail.com",
+          password: locked,
+          instanceUrl: "http://203.0.113.5:8000",
+        },
+      },
+    });
+
+    writeSettings({
+      coolify: {
+        ...readSettings().coolify,
+        instanceUrl: "http://203.0.113.5:8000",
+        accessToken: { value: "1|fresh" },
+      },
+    });
+
+    expect(readStoredFile().coolify.admin.password).toEqual(locked);
+    expect(readStoredFile().coolify.admin.email).toBe("me@gmail.com");
+  });
+
+  it("hides an admin password that will not decrypt, keeping the account", () => {
+    // Handing the ciphertext through would put it on screen as the password,
+    // and it would not open anything. The account it belongs to stays, so a
+    // later write still has somewhere to put the ciphertext back.
     store[mockSettingsPath] = JSON.stringify({
       coolify: {
         instanceUrl: "http://203.0.113.5:8000",
@@ -1171,8 +1224,9 @@ describe("preserving undecryptable secrets", () => {
     });
 
     const read = readSettings();
-    expect(read.coolify?.admin).toBeUndefined();
-    expect(read.coolify?.instanceUrl).toBe("http://203.0.113.5:8000");
+    expect(read.coolify?.admin?.password).toBeUndefined();
+    expect(read.coolify?.admin?.email).toBe("me@gmail.com");
+    expect(read.coolify?.admin?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
   it("preserves a locked provider apiKey when a write rebuilds providerSettings without it", () => {

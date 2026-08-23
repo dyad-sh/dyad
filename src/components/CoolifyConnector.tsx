@@ -1,6 +1,4 @@
 import { useEffect, useId, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queryKeys";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -28,6 +26,7 @@ import {
 import { ipc } from "@/ipc/types";
 import type { SetupSnapshot } from "@/ipc/types";
 import { CoolifyServerSetup } from "@/components/CoolifyServerSetup";
+import { useCoolifySetupSnapshot } from "@/hooks/useCoolifySetupSnapshot";
 import { CoolifyCredentials } from "@/components/CoolifyCredentials";
 import { CoolifySignOutDialog } from "@/components/CoolifySignOutDialog";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -103,10 +102,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // What the main process is doing with a server, if anything. Asked for
   // rather than remembered: an install outlives this panel, and the panel
   // being replaced — by a spinner, by a status error — must not lose it.
-  const { data: setupSnapshot } = useQuery({
-    queryKey: queryKeys.coolify.setup,
-    queryFn: () => ipc.coolifySetup.snapshot(),
-  });
+  const { data: setupSnapshot } = useCoolifySetupSnapshot();
 
   const serverSelectId = useId();
   const projectSelectId = useId();

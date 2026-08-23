@@ -93,16 +93,20 @@ export class TempmdClient {
       if (!file) {
         throw new Error(`The local build no longer contains ${upload.path}.`);
       }
-      const response = await this.fetcher(upload.url, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${session.uploadToken}`,
-          "Content-Type": file.contentType,
-          "Content-Length": String(file.size),
+      const response = await this.request(
+        upload.url,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${session.uploadToken}`,
+            "Content-Type": file.contentType,
+            "Content-Length": String(file.size),
+          },
+          body: new Uint8Array(await readFile(file.absolutePath)),
         },
-        body: new Uint8Array(await readFile(file.absolutePath)),
-        signal: AbortSignal.timeout(120_000),
-      });
+        120_000,
+        `Upload failed for ${file.path}`,
+      );
       if (!response.ok) {
         await throwApiError(response, `Upload failed for ${file.path}`);
       }
@@ -137,23 +141,59 @@ export class TempmdClient {
   }
 
   private async json(path: string, init: RequestInit): Promise<unknown> {
-    let response: Response;
-    try {
-      response = await this.fetcher(`${this.baseUrl}${path}`, {
-        ...init,
-        signal: AbortSignal.timeout(60_000),
-      });
-    } catch (error) {
-      throw new TempmdApiError(
-        error instanceof Error ? error.message : "temp.md request failed",
-        0,
-      );
-    }
+    const response = await this.request(
+      `${this.baseUrl}${path}`,
+      init,
+      60_000,
+      "temp.md request failed",
+    );
     if (!response.ok) {
       await throwApiError(response, "temp.md request failed");
     }
-    return response.json();
+    return readJsonResponse(response, "temp.md returned an invalid response");
   }
+
+  private async request(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+    fallback: string,
+  ): Promise<Response> {
+    try {
+      return await this.fetcher(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      throw transportError(error, fallback);
+    }
+  }
+}
+
+async function readJsonResponse(
+  response: Response,
+  fallback: string,
+): Promise<unknown> {
+  let contents: string;
+  try {
+    contents = await response.text();
+  } catch (error) {
+    throw transportError(error, fallback);
+  }
+  if (contents.trim() === "") return null;
+  try {
+    return JSON.parse(contents);
+  } catch {
+    throw new TempmdApiError(fallback, response.status, "invalid_response");
+  }
+}
+
+function transportError(error: unknown, fallback: string): TempmdApiError {
+  return new TempmdApiError(
+    error instanceof Error ? error.message : fallback,
+    0,
+    "transport_error",
+  );
 }
 
 async function throwApiError(
@@ -196,5 +236,9 @@ async function uploadConcurrently<T>(
       }
     },
   );
-  await Promise.all(runners);
+  const results = await Promise.allSettled(runners);
+  const failure = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failure) throw failure.reason;
 }

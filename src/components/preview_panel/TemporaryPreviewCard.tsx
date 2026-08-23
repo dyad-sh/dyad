@@ -41,11 +41,17 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
   });
 
   const publishMutation = useMutation({
-    mutationFn: () => ipc.tempPreview.publish({ appId }),
-    onSuccess: (status) => {
-      queryClient.setQueryData(queryKey, status);
+    mutationFn: (originAppId: number) =>
+      ipc.tempPreview.publish({ appId: originAppId }),
+    onSuccess: (status, originAppId) => {
+      const originQueryKey = queryKeys.tempPreviews.status({
+        appId: originAppId,
+      });
+      const previousStatus =
+        queryClient.getQueryData<TempPreviewStatus>(originQueryKey);
+      queryClient.setQueryData(originQueryKey, status);
       toast.success(
-        statusQuery.data?.state === "active"
+        previousStatus?.state === "active"
           ? "Temporary preview updated"
           : "Temporary preview is live",
       );
@@ -54,9 +60,13 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: () => ipc.tempPreview.revoke({ appId }),
-    onSuccess: (status) => {
-      queryClient.setQueryData(queryKey, status);
+    mutationFn: (originAppId: number) =>
+      ipc.tempPreview.revoke({ appId: originAppId }),
+    onSuccess: (status, originAppId) => {
+      queryClient.setQueryData(
+        queryKeys.tempPreviews.status({ appId: originAppId }),
+        status,
+      );
       toast.success("Temporary preview revoked");
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -78,6 +88,23 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
       ? { ...status, canonicalUrl: status.canonicalUrl }
       : null;
   const isPublishing = publishMutation.isPending;
+  const statusAnnouncement = statusQuery.isPending
+    ? "Checking preview status"
+    : statusQuery.isError
+      ? `Preview status error: ${getErrorMessage(statusQuery.error)}`
+      : publishMutation.isPending
+        ? activeStatus
+          ? "Building and updating temporary preview"
+          : "Building and publishing temporary preview"
+        : revokeMutation.isPending
+          ? "Revoking temporary preview"
+          : activeStatus
+            ? "Temporary preview is active"
+            : status?.state === "expired"
+              ? "Temporary preview expired"
+              : status?.state === "revoked"
+                ? "Temporary preview revoked"
+                : "Temporary preview is not published";
 
   return (
     <>
@@ -89,6 +116,9 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="sr-only" role="status" aria-live="polite">
+            {statusAnnouncement}
+          </p>
           <div className="space-y-1">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Share a public, static preview without connecting GitHub or a
@@ -126,8 +156,12 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
               isPublishing={isPublishing}
               isRevoking={revokeMutation.isPending}
               onCopy={copyUrl}
-              onOpen={(url) => ipc.system.openExternalUrl(url)}
-              onUpdate={() => publishMutation.mutate()}
+              onOpen={(url) => {
+                void ipc.system
+                  .openExternalUrl(url)
+                  .catch((error) => toast.error(getErrorMessage(error)));
+              }}
+              onUpdate={() => publishMutation.mutate(appId)}
               onRevoke={() => setRevokeOpen(true)}
             />
           ) : (
@@ -144,7 +178,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
                 </p>
               )}
               <Button
-                onClick={() => publishMutation.mutate()}
+                onClick={() => publishMutation.mutate(appId)}
                 disabled={isPublishing}
               >
                 {isPublishing ? (
@@ -175,7 +209,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               disabled={revokeMutation.isPending}
-              onClick={() => revokeMutation.mutate()}
+              onClick={() => revokeMutation.mutate(appId)}
             >
               {revokeMutation.isPending ? (
                 <Loader2 className="animate-spin" />

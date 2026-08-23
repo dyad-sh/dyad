@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { lstat, readdir } from "node:fs/promises";
 import { extname, join, relative, resolve, sep } from "node:path";
 
 export const TEMP_PREVIEW_MAX_FILES = 100;
@@ -19,7 +19,23 @@ export async function discoverTempPreviewBundle(
   sourcePath: string,
 ): Promise<TempPreviewBundleFile[]> {
   const source = resolve(sourcePath);
-  const sourceStat = await stat(source);
+  let sourceStat;
+  try {
+    sourceStat = await lstat(source);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      throw new Error(
+        "The build did not produce a dist directory. Temporary previews currently support static Vite apps only.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error(
+      "The temporary preview build output must not be a symbolic link.",
+    );
+  }
   if (!sourceStat.isDirectory()) {
     throw new Error("The temporary preview build output is not a directory.");
   }
@@ -34,30 +50,37 @@ export async function discoverTempPreviewBundle(
     );
   }
 
-  const files = await Promise.all(
-    paths.map(async (bundlePath) => {
-      const absolutePath = join(source, ...bundlePath.split("/"));
-      const metadata = await stat(absolutePath);
-      if (metadata.size > TEMP_PREVIEW_MAX_FILE_BYTES) {
-        throw new Error(
-          `${bundlePath} exceeds the 10 MB temporary preview file limit.`,
-        );
-      }
-      return {
-        absolutePath,
-        path: bundlePath,
-        size: metadata.size,
-        contentType: contentTypeFor(absolutePath),
-        hash: await hashFile(absolutePath),
-      };
-    }),
-  );
-
-  const totalBytes = files.reduce((total, file) => total + file.size, 0);
-  if (totalBytes > TEMP_PREVIEW_MAX_BUNDLE_BYTES) {
-    throw new Error("The build exceeds the 50 MB temporary preview limit.");
+  const discovered: Omit<TempPreviewBundleFile, "hash">[] = [];
+  let totalBytes = 0;
+  for (const bundlePath of paths) {
+    const absolutePath = join(source, ...bundlePath.split("/"));
+    const metadata = await lstat(absolutePath);
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      throw new Error(
+        `${bundlePath} changed while the temporary preview was being prepared.`,
+      );
+    }
+    if (metadata.size > TEMP_PREVIEW_MAX_FILE_BYTES) {
+      throw new Error(
+        `${bundlePath} exceeds the 10 MB temporary preview file limit.`,
+      );
+    }
+    totalBytes += metadata.size;
+    if (totalBytes > TEMP_PREVIEW_MAX_BUNDLE_BYTES) {
+      throw new Error("The build exceeds the 50 MB temporary preview limit.");
+    }
+    discovered.push({
+      absolutePath,
+      path: bundlePath,
+      size: metadata.size,
+      contentType: contentTypeFor(absolutePath),
+    });
   }
 
+  const files: TempPreviewBundleFile[] = [];
+  for (const file of discovered) {
+    files.push({ ...file, hash: await hashFile(file.absolutePath) });
+  }
   return files;
 }
 
@@ -119,8 +142,18 @@ function contentTypeFor(filePath: string): string {
     ".txt": "text/plain",
     ".xml": "application/xml",
     ".webmanifest": "application/manifest+json",
+    ".wasm": "application/wasm",
   };
   return types[extension] ?? "application/octet-stream";
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 function toPosix(filePath: string): string {

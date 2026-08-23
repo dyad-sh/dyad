@@ -71,17 +71,44 @@ export async function publishTempPreview(input: {
     const store = createStore();
     const previousRecord = await store.read(input.appId);
     const previous = activeConnection(previousRecord);
-    const published = await createClient().publish({
-      files,
-      title: input.appName,
-      ...(previous ? { previous } : {}),
-    });
+    const client = createClient();
+    let published: TempPreviewConnection;
+    let createdNewPreview = !previous;
+    try {
+      published = await client.publish({
+        files,
+        title: input.appName,
+        ...(previous ? { previous } : {}),
+      });
+    } catch (error) {
+      if (!previous || !isStaleConnectionError(error)) throw error;
+      if (previousRecord) {
+        await store.write(input.appId, {
+          ...previousRecord,
+          updateToken: undefined,
+          state: "revoked",
+        });
+      }
+      published = await client.publish({ files, title: input.appName });
+      createdNewPreview = true;
+    }
     const record: TempPreviewRecord = {
       ...published,
       lastPublishedAt: new Date().toISOString(),
       state: "active",
     };
-    await store.write(input.appId, record);
+    try {
+      await store.write(input.appId, record);
+    } catch (error) {
+      if (createdNewPreview) {
+        try {
+          await client.revoke(published);
+        } catch {
+          // Best-effort cleanup: preserve the local persistence failure.
+        }
+      }
+      throw error;
+    }
     return statusFromRecord(record);
   } catch (error) {
     throw classifyTempPreviewError(error);
@@ -101,7 +128,11 @@ export async function revokeTempPreview(
         DyadErrorKind.Precondition,
       );
     }
-    await createClient().revoke(connection);
+    try {
+      await createClient().revoke(connection);
+    } catch (error) {
+      if (!isStaleConnectionError(error)) throw error;
+    }
     const revoked: TempPreviewRecord = {
       ...record,
       updateToken: undefined,
@@ -184,6 +215,13 @@ function statusFromRecord(record: TempPreviewRecord | null): TempPreviewStatus {
 
 function isExpired(expiresAt: string | null): boolean {
   return expiresAt !== null && new Date(expiresAt).getTime() <= Date.now();
+}
+
+function isStaleConnectionError(error: unknown): boolean {
+  return (
+    error instanceof TempmdApiError &&
+    (error.status === 404 || error.status === 410)
+  );
 }
 
 function classifyTempPreviewError(error: unknown): Error {

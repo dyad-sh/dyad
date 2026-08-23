@@ -1,12 +1,28 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TempPreviewStore } from "./store";
 
+const storeRoots: string[] = [];
+
+async function createStoreRoot(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "dyad-temp-preview-store-"));
+  storeRoots.push(root);
+  return root;
+}
+
 describe("TempPreviewStore", () => {
+  afterEach(async () => {
+    await Promise.all(
+      storeRoots
+        .splice(0)
+        .map((root) => rm(root, { recursive: true, force: true })),
+    );
+  });
+
   it("persists an encoded update capability and returns its decoded value", async () => {
-    const root = await mkdtemp(join(tmpdir(), "dyad-temp-preview-store-"));
+    const root = await createStoreRoot();
     const filePath = join(root, "previews.json");
     const store = new TempPreviewStore(filePath, {
       encode: (token) => ({ value: `encrypted:${token}` }),
@@ -28,5 +44,30 @@ describe("TempPreviewStore", () => {
     const contents = await readFile(filePath, "utf8");
     expect(contents).toContain("encrypted:update-secret");
     expect(contents).not.toContain('"value": "update-secret"');
+  });
+
+  it("backs up a malformed store and recovers with an empty store", async () => {
+    const root = await createStoreRoot();
+    const filePath = join(root, "previews.json");
+    await writeFile(filePath, "not-json", "utf8");
+    const store = new TempPreviewStore(filePath, {
+      encode: (token) => ({ value: `encrypted:${token}` }),
+      decode: (secret) => secret.value.replace(/^encrypted:/, ""),
+    });
+
+    await expect(store.read(7)).resolves.toBeNull();
+    expect(await readdir(root)).toEqual([
+      expect.stringMatching(/^previews\.json\.corrupt-/),
+    ]);
+
+    await store.write(7, {
+      tempId: "temp-2",
+      canonicalUrl: "https://recovered.temp.md",
+      updateToken: "update-secret",
+      expiresAt: null,
+      lastPublishedAt: "2026-08-23T00:00:00.000Z",
+      state: "active",
+    });
+    await expect(store.read(7)).resolves.toMatchObject({ tempId: "temp-2" });
   });
 });

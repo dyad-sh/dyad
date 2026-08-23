@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
@@ -39,15 +39,17 @@ export class TempPreviewStore {
   ) {}
 
   async read(appId: number): Promise<TempPreviewRecord | null> {
-    const store = await this.readStore();
-    const record = store.records[String(appId)];
-    if (!record) return null;
-    return {
-      ...record,
-      updateToken: record.updateToken
-        ? this.tokenCodec.decode(record.updateToken)
-        : undefined,
-    };
+    return withLock(getFileWriteKey(this.filePath), async () => {
+      const store = await this.readStore();
+      const record = store.records[String(appId)];
+      if (!record) return null;
+      return {
+        ...record,
+        updateToken: record.updateToken
+          ? this.tokenCodec.decode(record.updateToken)
+          : undefined,
+      };
+    });
   }
 
   async write(appId: number, record: TempPreviewRecord): Promise<void> {
@@ -61,8 +63,12 @@ export class TempPreviewStore {
       };
       const temporaryPath = `${this.filePath}.tmp-${process.pid}-${Date.now()}`;
       await mkdir(dirname(this.filePath), { recursive: true });
-      await writeFile(temporaryPath, JSON.stringify(store, null, 2), "utf8");
-      await rename(temporaryPath, this.filePath);
+      try {
+        await writeFile(temporaryPath, JSON.stringify(store, null, 2), "utf8");
+        await rename(temporaryPath, this.filePath);
+      } finally {
+        await rm(temporaryPath, { force: true }).catch(() => undefined);
+      }
     });
   }
 
@@ -78,6 +84,27 @@ export class TempPreviewStore {
         error.code === "ENOENT"
       ) {
         return { version: 1, records: {} };
+      }
+      if (error instanceof SyntaxError || error instanceof z.ZodError) {
+        await this.backUpCorruptedStore();
+        return { version: 1, records: {} };
+      }
+      throw error;
+    }
+  }
+
+  private async backUpCorruptedStore(): Promise<void> {
+    const backupPath = `${this.filePath}.corrupt-${process.pid}-${Date.now()}`;
+    try {
+      await rename(this.filePath, backupPath);
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return;
       }
       throw error;
     }

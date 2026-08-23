@@ -70,6 +70,7 @@ describe("TempmdClient", () => {
       }),
     );
     const uploadBody = fetcher.mock.calls[1][1]?.body;
+    expect(uploadBody).toBe(file.contents);
     expect(new TextDecoder().decode(uploadBody as Uint8Array)).toBe("hello");
   });
 

@@ -15,6 +15,15 @@ describe("queryInvalidationScopeKey", () => {
     );
     expect(queryInvalidationScopeKey({ family: "coolify" })).toBe("coolify:*");
   });
+
+  it("tells two apps' temporary-preview scopes apart", () => {
+    expect(
+      queryInvalidationScopeKey({ family: "temp-preview", appId: 1 }),
+    ).not.toBe(queryInvalidationScopeKey({ family: "temp-preview", appId: 2 }));
+    expect(queryInvalidationScopeKey({ family: "temp-preview" })).toBe(
+      "temp-preview:*",
+    );
+  });
 });
 
 describe("RendererQueryInvalidationConsumer", () => {

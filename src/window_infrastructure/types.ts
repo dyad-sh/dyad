@@ -268,6 +268,7 @@ export function queryInvalidationScopeKey(
   scope: QueryInvalidationScope,
 ): string {
   switch (scope.family) {
+    case "temp-preview":
     case "app":
     case "versions":
     case "branches":

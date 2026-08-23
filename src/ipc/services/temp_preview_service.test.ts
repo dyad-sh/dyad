@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   revoke: vi.fn(),
   simpleSpawn: vi.fn(),
   storeRead: vi.fn(),
+  storeRemove: vi.fn(),
   storeWrite: vi.fn(),
 }));
 
@@ -44,6 +45,7 @@ vi.mock("@/temp_preview/bundle", () => ({
 vi.mock("@/temp_preview/store", () => ({
   TempPreviewStore: class {
     read = mocks.storeRead;
+    remove = mocks.storeRemove;
     write = mocks.storeWrite;
   },
 }));
@@ -59,7 +61,11 @@ vi.mock("@/temp_preview/client", async (importOriginal) => {
   };
 });
 
-import { publishTempPreview, revokeTempPreview } from "./temp_preview_service";
+import {
+  deleteTempPreviewForApp,
+  publishTempPreview,
+  revokeTempPreview,
+} from "./temp_preview_service";
 import { TempmdApiError } from "@/temp_preview/client";
 
 const roots: string[] = [];
@@ -100,6 +106,7 @@ describe("temp preview service", () => {
     mocks.revoke.mockResolvedValue(undefined);
     mocks.simpleSpawn.mockResolvedValue(undefined);
     mocks.storeRead.mockResolvedValue(null);
+    mocks.storeRemove.mockResolvedValue(undefined);
     mocks.storeWrite.mockResolvedValue(undefined);
   });
 
@@ -195,5 +202,39 @@ describe("temp preview service", () => {
       7,
       expect.objectContaining({ state: "revoked", updateToken: undefined }),
     );
+  });
+
+  it("revokes and removes an active preview before app deletion", async () => {
+    mocks.storeRead.mockResolvedValue(previousRecord);
+
+    await expect(deleteTempPreviewForApp(7)).resolves.toBeUndefined();
+
+    expect(mocks.revoke).toHaveBeenCalledWith(
+      expect.objectContaining({ tempId: previousRecord.tempId }),
+    );
+    expect(mocks.storeRemove).toHaveBeenCalledWith(7);
+    expect(mocks.storeRemove.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.revoke.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("does not remove deletion state when remote revocation fails", async () => {
+    mocks.storeRead.mockResolvedValue(previousRecord);
+    mocks.revoke.mockRejectedValue(
+      new TempmdApiError("unavailable", 503, undefined, "revoke"),
+    );
+
+    await expect(deleteTempPreviewForApp(7)).rejects.toThrow("unavailable");
+    expect(mocks.storeRemove).not.toHaveBeenCalled();
+  });
+
+  it("removes deletion state when the remote preview is already gone", async () => {
+    mocks.storeRead.mockResolvedValue(previousRecord);
+    mocks.revoke.mockRejectedValue(
+      new TempmdApiError("gone", 410, undefined, "revoke"),
+    );
+
+    await expect(deleteTempPreviewForApp(7)).resolves.toBeUndefined();
+    expect(mocks.storeRemove).toHaveBeenCalledWith(7);
   });
 });

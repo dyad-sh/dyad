@@ -113,7 +113,7 @@ export class TempmdClient {
             "Content-Type": file.contentType,
             "Content-Length": String(file.size),
           },
-          body: new Uint8Array(file.contents),
+          body: file.contents,
         },
         120_000,
         `Upload failed for ${file.path}`,

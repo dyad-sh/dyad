@@ -12,7 +12,7 @@ export interface TempPreviewBundleFile {
   size: number;
   contentType: string;
   hash: string;
-  contents: Uint8Array;
+  contents: Uint8Array<ArrayBuffer>;
 }
 
 interface DiscoveredBundleFile {
@@ -182,7 +182,13 @@ async function snapshotFile(
 }
 
 function isSameFile(first: Stats, second: Stats): boolean {
-  return first.dev === second.dev && first.ino === second.ino;
+  return (
+    first.dev === second.dev &&
+    first.ino === second.ino &&
+    first.size === second.size &&
+    first.mtimeMs === second.mtimeMs &&
+    first.ctimeMs === second.ctimeMs
+  );
 }
 
 function bundleFileChangedError(path: string, cause?: unknown): Error {

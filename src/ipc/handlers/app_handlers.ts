@@ -176,6 +176,7 @@ import {
 } from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
+import { deleteTempPreviewForApp } from "@/ipc/services/temp_preview_service";
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
 
@@ -696,6 +697,7 @@ async function deleteAppByIdExclusive(
               DyadErrorKind.External,
             );
           }
+          await deleteTempPreviewForApp(appId);
           await db.delete(apps).where(eq(apps.id, appId));
           appRunDeletion.commit();
           deletionCommitted = true;

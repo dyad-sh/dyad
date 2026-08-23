@@ -143,6 +143,7 @@ export class QueryInvalidationBus {
       case "problems":
       case "uncommitted-files":
       case "coolify":
+      case "temp-preview":
         return { family: scope.family };
       case "mcp-tools":
         return { family: "mcp-tools" };

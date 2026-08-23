@@ -145,6 +145,24 @@ export async function revokeTempPreview(
   }
 }
 
+export async function deleteTempPreviewForApp(appId: number): Promise<void> {
+  try {
+    const store = createStore();
+    const record = await store.read(appId);
+    const connection = activeConnection(record);
+    if (connection) {
+      try {
+        await createClient().revoke(connection);
+      } catch (error) {
+        if (!isStaleConnectionError(error, "revoke")) throw error;
+      }
+    }
+    await store.remove(appId);
+  } catch (error) {
+    throw classifyTempPreviewError(error);
+  }
+}
+
 async function assertBuildScript(appPath: string): Promise<void> {
   let packageJson: unknown;
   try {

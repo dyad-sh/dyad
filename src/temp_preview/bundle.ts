@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { lstat, readdir } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { lstat, open, readdir } from "node:fs/promises";
 import { extname, join, relative, resolve, sep } from "node:path";
 
 export const TEMP_PREVIEW_MAX_FILES = 100;
@@ -8,11 +8,19 @@ export const TEMP_PREVIEW_MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const TEMP_PREVIEW_MAX_BUNDLE_BYTES = 50 * 1024 * 1024;
 
 export interface TempPreviewBundleFile {
-  absolutePath: string;
   path: string;
   size: number;
   contentType: string;
   hash: string;
+  contents: Uint8Array;
+}
+
+interface DiscoveredBundleFile {
+  absolutePath: string;
+  path: string;
+  size: number;
+  contentType: string;
+  metadata: Stats;
 }
 
 export async function discoverTempPreviewBundle(
@@ -50,7 +58,7 @@ export async function discoverTempPreviewBundle(
     );
   }
 
-  const discovered: Omit<TempPreviewBundleFile, "hash">[] = [];
+  const discovered: DiscoveredBundleFile[] = [];
   let totalBytes = 0;
   for (const bundlePath of paths) {
     const absolutePath = join(source, ...bundlePath.split("/"));
@@ -74,12 +82,13 @@ export async function discoverTempPreviewBundle(
       path: bundlePath,
       size: metadata.size,
       contentType: contentTypeFor(absolutePath),
+      metadata,
     });
   }
 
   const files: TempPreviewBundleFile[] = [];
   for (const file of discovered) {
-    files.push({ ...file, hash: await hashFile(file.absolutePath) });
+    files.push(await snapshotFile(file));
   }
   return files;
 }
@@ -112,12 +121,84 @@ async function walk(
   }
 }
 
-async function hashFile(filePath: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) {
-    hash.update(chunk);
+async function snapshotFile(
+  file: DiscoveredBundleFile,
+): Promise<TempPreviewBundleFile> {
+  const noFollow = constants.O_NOFOLLOW ?? 0;
+  let handle;
+  try {
+    handle = await open(file.absolutePath, constants.O_RDONLY | noFollow);
+    const [openedMetadata, currentPathMetadata] = await Promise.all([
+      handle.stat(),
+      lstat(file.absolutePath),
+    ]);
+    if (
+      !openedMetadata.isFile() ||
+      !currentPathMetadata.isFile() ||
+      currentPathMetadata.isSymbolicLink() ||
+      !isSameFile(file.metadata, openedMetadata) ||
+      !isSameFile(openedMetadata, currentPathMetadata) ||
+      openedMetadata.size !== file.size
+    ) {
+      throw bundleFileChangedError(file.path);
+    }
+
+    const contents = Buffer.alloc(file.size);
+    let offset = 0;
+    while (offset < contents.length) {
+      const { bytesRead } = await handle.read(
+        contents,
+        offset,
+        contents.length - offset,
+        offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const finalMetadata = await handle.stat();
+    if (
+      offset !== file.size ||
+      finalMetadata.size !== file.size ||
+      !isSameFile(openedMetadata, finalMetadata)
+    ) {
+      throw bundleFileChangedError(file.path);
+    }
+
+    return {
+      path: file.path,
+      size: file.size,
+      contentType: file.contentType,
+      hash: createHash("sha256").update(contents).digest("hex"),
+      contents,
+    };
+  } catch (error) {
+    if (isFileReplacementError(error)) {
+      throw bundleFileChangedError(file.path, error);
+    }
+    throw error;
+  } finally {
+    await handle?.close();
   }
-  return hash.digest("hex");
+}
+
+function isSameFile(first: Stats, second: Stats): boolean {
+  return first.dev === second.dev && first.ino === second.ino;
+}
+
+function bundleFileChangedError(path: string, cause?: unknown): Error {
+  return new Error(
+    `${path} changed while the temporary preview was being prepared.`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function isFileReplacementError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "ELOOP" || error.code === "ENOENT")
+  );
 }
 
 function contentTypeFor(filePath: string): string {

@@ -56,9 +56,12 @@ describe("TempPreviewStore", () => {
     });
 
     await expect(store.read(7)).resolves.toBeNull();
-    expect(await readdir(root)).toEqual([
-      expect.stringMatching(/^previews\.json\.corrupt-/),
-    ]);
+    expect(await readdir(root)).toEqual(
+      expect.arrayContaining([
+        "previews.json",
+        expect.stringMatching(/^previews\.json\.corrupt-/),
+      ]),
+    );
 
     await store.write(7, {
       tempId: "temp-2",
@@ -69,5 +72,39 @@ describe("TempPreviewStore", () => {
       state: "active",
     });
     await expect(store.read(7)).resolves.toMatchObject({ tempId: "temp-2" });
+  });
+
+  it("salvages valid app records when one record is malformed", async () => {
+    const root = await createStoreRoot();
+    const filePath = join(root, "previews.json");
+    const store = new TempPreviewStore(filePath, {
+      encode: (token) => ({ value: `encrypted:${token}` }),
+      decode: (secret) => secret.value.replace(/^encrypted:/, ""),
+    });
+    await store.write(7, {
+      tempId: "temp-valid",
+      canonicalUrl: "https://valid.temp.md",
+      updateToken: "update-secret",
+      expiresAt: null,
+      lastPublishedAt: "2026-08-23T00:00:00.000Z",
+      state: "active",
+    });
+    const contents = JSON.parse(await readFile(filePath, "utf8"));
+    contents.records[8] = { invalid: true };
+    await writeFile(filePath, JSON.stringify(contents), "utf8");
+
+    await expect(store.read(7)).resolves.toMatchObject({
+      tempId: "temp-valid",
+      updateToken: "update-secret",
+    });
+    await expect(store.read(8)).resolves.toBeNull();
+    const repaired = JSON.parse(await readFile(filePath, "utf8"));
+    expect(Object.keys(repaired.records)).toEqual(["7"]);
+    expect(await readdir(root)).toEqual(
+      expect.arrayContaining([
+        "previews.json",
+        expect.stringMatching(/^previews\.json\.corrupt-/),
+      ]),
+    );
   });
 });

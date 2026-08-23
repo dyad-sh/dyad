@@ -140,7 +140,9 @@ describe("temp preview service", () => {
     const appPath = await createApp();
     mocks.storeRead.mockResolvedValue(previousRecord);
     mocks.publish
-      .mockRejectedValueOnce(new TempmdApiError("gone", 410))
+      .mockRejectedValueOnce(
+        new TempmdApiError("gone", 410, undefined, "session"),
+      )
       .mockResolvedValueOnce(published);
 
     await expect(
@@ -166,9 +168,25 @@ describe("temp preview service", () => {
     );
   });
 
-  it("reconciles an already-missing remote preview as revoked", async () => {
+  it("does not create a second preview when update finalization fails", async () => {
+    const appPath = await createApp();
     mocks.storeRead.mockResolvedValue(previousRecord);
-    mocks.revoke.mockRejectedValue(new TempmdApiError("not found", 404));
+    mocks.publish.mockRejectedValue(
+      new TempmdApiError("finalize failed", 410, undefined, "finalize"),
+    );
+
+    await expect(
+      publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
+    ).rejects.toThrow("finalize failed");
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.storeWrite).not.toHaveBeenCalled();
+  });
+
+  it("reconciles an already-revoked remote capability locally", async () => {
+    mocks.storeRead.mockResolvedValue(previousRecord);
+    mocks.revoke.mockRejectedValue(
+      new TempmdApiError("revoked", 403, undefined, "revoke"),
+    );
 
     await expect(revokeTempPreview(7)).resolves.toMatchObject({
       state: "revoked",

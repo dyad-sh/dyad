@@ -185,4 +185,18 @@ describe("TemporaryPreviewCard", () => {
       expect(mocks.revoke).toHaveBeenCalledWith({ appId: 42 });
     });
   });
+
+  it("binds revoke confirmation to the app that opened the dialog", async () => {
+    mocks.getStatus.mockResolvedValue(active);
+    const user = userEvent.setup();
+    const { rerender } = renderCard(42);
+
+    await user.click(await screen.findByRole("button", { name: "Revoke" }));
+    rerender(<TemporaryPreviewCard appId={43} />);
+    await user.click(screen.getByRole("button", { name: "Revoke preview" }));
+
+    await waitFor(() => {
+      expect(mocks.revoke).toHaveBeenCalledWith({ appId: 42 });
+    });
+  });
 });

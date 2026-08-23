@@ -22,6 +22,12 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.freeAgentQuota.status];
     case "free-model-quota":
       return [queryKeys.freeModelQuota.status];
+    case "temp-preview":
+      return [
+        scope.appId === undefined
+          ? queryKeys.tempPreviews.all
+          : queryKeys.tempPreviews.status({ appId: scope.appId }),
+      ];
     case "app":
       return [queryKeys.apps.detail({ appId: scope.appId })];
     case "coolify":

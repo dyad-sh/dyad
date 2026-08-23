@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { TempPreviewBundleFile } from "./bundle";
 
@@ -33,11 +32,19 @@ export interface TempPreviewConnection {
   expiresAt: string | null;
 }
 
+export type TempmdRequestPhase =
+  | "session"
+  | "upload"
+  | "finalize"
+  | "revoke"
+  | "request";
+
 export class TempmdApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly code?: string,
+    readonly phase: TempmdRequestPhase = "request",
   ) {
     super(message);
     this.name = "TempmdApiError";
@@ -60,27 +67,31 @@ export class TempmdClient {
     previous?: TempPreviewConnection;
   }): Promise<TempPreviewConnection> {
     const session = SessionSchema.parse(
-      await this.json("/publish-sessions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": randomUUID(),
-          ...(input.previous
-            ? { Authorization: `Bearer ${input.previous.updateToken}` }
-            : {}),
+      await this.json(
+        "/publish-sessions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": randomUUID(),
+            ...(input.previous
+              ? { Authorization: `Bearer ${input.previous.updateToken}` }
+              : {}),
+          },
+          body: JSON.stringify({
+            files: input.files.map((file) => ({
+              path: file.path,
+              size: file.size,
+              contentType: file.contentType,
+              hash: file.hash,
+            })),
+            title: input.title,
+            spaMode: true,
+            ...(input.previous ? { tempId: input.previous.tempId } : {}),
+          }),
         },
-        body: JSON.stringify({
-          files: input.files.map((file) => ({
-            path: file.path,
-            size: file.size,
-            contentType: file.contentType,
-            hash: file.hash,
-          })),
-          title: input.title,
-          spaMode: true,
-          ...(input.previous ? { tempId: input.previous.tempId } : {}),
-        }),
-      }),
+        "session",
+      ),
     );
 
     const outstanding = session.uploads.filter(
@@ -102,13 +113,18 @@ export class TempmdClient {
             "Content-Type": file.contentType,
             "Content-Length": String(file.size),
           },
-          body: new Uint8Array(await readFile(file.absolutePath)),
+          body: new Uint8Array(file.contents),
         },
         120_000,
         `Upload failed for ${file.path}`,
+        "upload",
       );
       if (!response.ok) {
-        await throwApiError(response, `Upload failed for ${file.path}`);
+        await throwApiError(
+          response,
+          `Upload failed for ${file.path}`,
+          "upload",
+        );
       }
     });
 
@@ -119,6 +135,7 @@ export class TempmdClient {
           method: "POST",
           headers: { Authorization: `Bearer ${session.uploadToken}` },
         },
+        "finalize",
       ),
     );
     const updateToken = finalized.updateToken ?? input.previous?.updateToken;
@@ -134,23 +151,36 @@ export class TempmdClient {
   }
 
   async revoke(connection: TempPreviewConnection): Promise<void> {
-    await this.json(`/temps/${encodeURIComponent(connection.tempId)}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${connection.updateToken}` },
-    });
+    await this.json(
+      `/temps/${encodeURIComponent(connection.tempId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${connection.updateToken}` },
+      },
+      "revoke",
+    );
   }
 
-  private async json(path: string, init: RequestInit): Promise<unknown> {
+  private async json(
+    path: string,
+    init: RequestInit,
+    phase: TempmdRequestPhase,
+  ): Promise<unknown> {
     const response = await this.request(
       `${this.baseUrl}${path}`,
       init,
       60_000,
       "temp.md request failed",
+      phase,
     );
     if (!response.ok) {
-      await throwApiError(response, "temp.md request failed");
+      await throwApiError(response, "temp.md request failed", phase);
     }
-    return readJsonResponse(response, "temp.md returned an invalid response");
+    return readJsonResponse(
+      response,
+      "temp.md returned an invalid response",
+      phase,
+    );
   }
 
   private async request(
@@ -158,6 +188,7 @@ export class TempmdClient {
     init: RequestInit,
     timeoutMs: number,
     fallback: string,
+    phase: TempmdRequestPhase,
   ): Promise<Response> {
     try {
       return await this.fetcher(url, {
@@ -165,7 +196,7 @@ export class TempmdClient {
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
-      throw transportError(error, fallback);
+      throw transportError(error, fallback, phase);
     }
   }
 }
@@ -173,32 +204,44 @@ export class TempmdClient {
 async function readJsonResponse(
   response: Response,
   fallback: string,
+  phase: TempmdRequestPhase,
 ): Promise<unknown> {
   let contents: string;
   try {
     contents = await response.text();
   } catch (error) {
-    throw transportError(error, fallback);
+    throw transportError(error, fallback, phase);
   }
   if (contents.trim() === "") return null;
   try {
     return JSON.parse(contents);
   } catch {
-    throw new TempmdApiError(fallback, response.status, "invalid_response");
+    throw new TempmdApiError(
+      fallback,
+      response.status,
+      "invalid_response",
+      phase,
+    );
   }
 }
 
-function transportError(error: unknown, fallback: string): TempmdApiError {
+function transportError(
+  error: unknown,
+  fallback: string,
+  phase: TempmdRequestPhase,
+): TempmdApiError {
   return new TempmdApiError(
     error instanceof Error ? error.message : fallback,
     0,
     "transport_error",
+    phase,
   );
 }
 
 async function throwApiError(
   response: Response,
   fallback: string,
+  phase: TempmdRequestPhase,
 ): Promise<never> {
   let body: unknown;
   try {
@@ -218,6 +261,7 @@ async function throwApiError(
     message,
     response.status,
     typeof record.code === "string" ? record.code : undefined,
+    phase,
   );
 }
 
@@ -227,18 +271,25 @@ async function uploadConcurrently<T>(
   concurrency = 4,
 ): Promise<void> {
   let next = 0;
+  const failure: { occurred: boolean; reason?: unknown } = {
+    occurred: false,
+  };
   const runners = Array.from(
     { length: Math.min(concurrency, values.length) },
     async () => {
-      while (next < values.length) {
+      while (next < values.length && !failure.occurred) {
         const index = next++;
-        await worker(values[index]);
+        try {
+          await worker(values[index]);
+        } catch (error) {
+          if (!failure.occurred) {
+            failure.occurred = true;
+            failure.reason = error;
+          }
+        }
       }
     },
   );
-  const results = await Promise.allSettled(runners);
-  const failure = results.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  if (failure) throw failure.reason;
+  await Promise.all(runners);
+  if (failure.occurred) throw failure.reason;
 }

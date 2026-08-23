@@ -33,7 +33,7 @@ interface TemporaryPreviewCardProps {
 export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const [revokeOpen, setRevokeOpen] = useState(false);
+  const [revokeAppId, setRevokeAppId] = useState<number | null>(null);
   const queryKey = queryKeys.tempPreviews.status({ appId });
   const statusQuery = useQuery({
     queryKey,
@@ -88,23 +88,13 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
       ? { ...status, canonicalUrl: status.canonicalUrl }
       : null;
   const isPublishing = publishMutation.isPending;
-  const statusAnnouncement = statusQuery.isPending
-    ? "Checking preview status"
-    : statusQuery.isError
-      ? `Preview status error: ${getErrorMessage(statusQuery.error)}`
-      : publishMutation.isPending
-        ? activeStatus
-          ? "Building and updating temporary preview"
-          : "Building and publishing temporary preview"
-        : revokeMutation.isPending
-          ? "Revoking temporary preview"
-          : activeStatus
-            ? "Temporary preview is active"
-            : status?.state === "expired"
-              ? "Temporary preview expired"
-              : status?.state === "revoked"
-                ? "Temporary preview revoked"
-                : "Temporary preview is not published";
+  const statusAnnouncement = getStatusAnnouncement({
+    status,
+    error: statusQuery.error,
+    isChecking: statusQuery.isPending,
+    isPublishing: publishMutation.isPending,
+    isRevoking: revokeMutation.isPending,
+  });
 
   return (
     <>
@@ -162,7 +152,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
                   .catch((error) => toast.error(getErrorMessage(error)));
               }}
               onUpdate={() => publishMutation.mutate(appId)}
-              onRevoke={() => setRevokeOpen(true)}
+              onRevoke={() => setRevokeAppId(appId)}
             />
           ) : (
             <div className="space-y-3">
@@ -193,7 +183,12 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
         </CardContent>
       </Card>
 
-      <AlertDialog open={revokeOpen} onOpenChange={setRevokeOpen}>
+      <AlertDialog
+        open={revokeAppId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRevokeAppId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Revoke this temporary preview?</AlertDialogTitle>
@@ -209,7 +204,11 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               disabled={revokeMutation.isPending}
-              onClick={() => revokeMutation.mutate(appId)}
+              onClick={() => {
+                if (revokeAppId !== null) {
+                  revokeMutation.mutate(revokeAppId);
+                }
+              }}
             >
               {revokeMutation.isPending ? (
                 <Loader2 className="animate-spin" />
@@ -223,6 +222,40 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
       </AlertDialog>
     </>
   );
+}
+
+function getStatusAnnouncement({
+  status,
+  error,
+  isChecking,
+  isPublishing,
+  isRevoking,
+}: {
+  status: TempPreviewStatus | undefined;
+  error: Error | null;
+  isChecking: boolean;
+  isPublishing: boolean;
+  isRevoking: boolean;
+}): string {
+  if (isChecking) return "Checking preview status";
+  if (error) return `Preview status error: ${getErrorMessage(error)}`;
+  if (isPublishing) {
+    return status?.state === "active"
+      ? "Building and updating temporary preview"
+      : "Building and publishing temporary preview";
+  }
+  if (isRevoking) return "Revoking temporary preview";
+
+  switch (status?.state) {
+    case "active":
+      return "Temporary preview is active";
+    case "expired":
+      return "Temporary preview expired";
+    case "revoked":
+      return "Temporary preview revoked";
+    default:
+      return "Temporary preview is not published";
+  }
 }
 
 function ActivePreview({

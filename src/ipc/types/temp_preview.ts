@@ -24,11 +24,15 @@ export const tempPreviewContracts = {
     channel: "temp-preview:publish",
     input: TempPreviewAppParamsSchema,
     output: TempPreviewStatusSchema,
+    invalidates: (input) => [{ family: "temp-preview", appId: input.appId }],
+    originHandles: (input) => [{ family: "temp-preview", appId: input.appId }],
   }),
   revoke: defineContract({
     channel: "temp-preview:revoke",
     input: TempPreviewAppParamsSchema,
     output: TempPreviewStatusSchema,
+    invalidates: (input) => [{ family: "temp-preview", appId: input.appId }],
+    originHandles: (input) => [{ family: "temp-preview", appId: input.appId }],
   }),
 } as const;
 

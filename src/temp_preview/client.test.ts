@@ -1,30 +1,21 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { TempPreviewBundleFile } from "./bundle";
 import { TempmdApiError, TempmdClient } from "./client";
 
-const clientRoots: string[] = [];
-
-async function createClientFile(name = "index.html"): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "dyad-tempmd-client-"));
-  clientRoots.push(root);
-  const absolutePath = join(root, name);
-  await writeFile(absolutePath, "hello");
-  return absolutePath;
+function createBundleFile(path = "index.html"): TempPreviewBundleFile {
+  const contents = new TextEncoder().encode("hello");
+  return {
+    path,
+    size: contents.byteLength,
+    contentType: "text/html",
+    hash: `hash-${path}`,
+    contents,
+  };
 }
 
 describe("TempmdClient", () => {
-  afterEach(async () => {
-    await Promise.all(
-      clientRoots
-        .splice(0)
-        .map((root) => rm(root, { recursive: true, force: true })),
-    );
-  });
-
   it("creates, uploads and finalizes a temporary preview without exposing capabilities", async () => {
-    const absolutePath = await createClientFile();
+    const file = createBundleFile();
     const fetcher = vi.fn<typeof fetch>();
     fetcher
       .mockResolvedValueOnce(
@@ -59,15 +50,7 @@ describe("TempmdClient", () => {
       fetcher,
     ).publish({
       title: "Demo",
-      files: [
-        {
-          absolutePath,
-          path: "index.html",
-          size: 5,
-          contentType: "text/html",
-          hash: "hash",
-        },
-      ],
+      files: [file],
     });
 
     expect(result).toEqual({
@@ -86,6 +69,8 @@ describe("TempmdClient", () => {
         }),
       }),
     );
+    const uploadBody = fetcher.mock.calls[1][1]?.body;
+    expect(new TextDecoder().decode(uploadBody as Uint8Array)).toBe("hello");
   });
 
   it("uses the scoped update capability for update and revoke requests", async () => {
@@ -141,7 +126,7 @@ describe("TempmdClient", () => {
   });
 
   it("classifies upload transport failures", async () => {
-    const absolutePath = await createClientFile();
+    const file = createBundleFile();
     const fetcher = vi.fn<typeof fetch>();
     fetcher
       .mockResolvedValueOnce(
@@ -163,30 +148,25 @@ describe("TempmdClient", () => {
 
     const result = new TempmdClient("https://api.temp.md", fetcher).publish({
       title: "Demo",
-      files: [
-        {
-          absolutePath,
-          path: "index.html",
-          size: 5,
-          contentType: "text/html",
-          hash: "hash",
-        },
-      ],
+      files: [file],
     });
 
     await expect(result).rejects.toMatchObject({
       name: "TempmdApiError",
       status: 0,
       code: "transport_error",
+      phase: "upload",
     } satisfies Partial<TempmdApiError>);
   });
 
-  it("waits for sibling uploads to settle before rejecting", async () => {
-    const firstPath = await createClientFile("first.html");
-    const secondPath = await createClientFile("second.html");
-    let releaseSecondUpload!: () => void;
-    const secondUpload = new Promise<Response>((resolve) => {
-      releaseSecondUpload = () => resolve(new Response(null, { status: 200 }));
+  it("waits for in-flight uploads but skips queued work after a failure", async () => {
+    const files = Array.from({ length: 5 }, (_, index) =>
+      createBundleFile(`file-${index + 1}.html`),
+    );
+    let releaseInFlightUploads!: () => void;
+    const inFlightUpload = new Promise<Response>((resolve) => {
+      releaseInFlightUploads = () =>
+        resolve(new Response(null, { status: 200 }));
     });
     const fetcher = vi.fn<typeof fetch>(async (url) => {
       if (url === "https://api.temp.md/publish-sessions") {
@@ -194,26 +174,26 @@ describe("TempmdClient", () => {
           sessionId: "session-1",
           tempId: "temp-1",
           uploadToken: "upload-secret",
-          uploads: [
-            {
-              path: "first.html",
-              status: "expected",
-              url: "https://uploads.temp.md/first.html",
-            },
-            {
-              path: "second.html",
-              status: "expected",
-              url: "https://uploads.temp.md/second.html",
-            },
-          ],
+          uploads: files.map((file, index) => ({
+            path: file.path,
+            status: "expected",
+            url: `https://uploads.temp.md/${index + 1}`,
+          })),
           skipped: [],
         });
       }
-      if (url === "https://uploads.temp.md/first.html") {
+      if (url === "https://uploads.temp.md/1") {
         return new Response("failed", { status: 500 });
       }
-      if (url === "https://uploads.temp.md/second.html") {
-        return secondUpload;
+      if (
+        url === "https://uploads.temp.md/2" ||
+        url === "https://uploads.temp.md/3" ||
+        url === "https://uploads.temp.md/4"
+      ) {
+        return inFlightUpload;
+      }
+      if (url === "https://uploads.temp.md/5") {
+        return new Response(null, { status: 200 });
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -221,22 +201,7 @@ describe("TempmdClient", () => {
     const publish = new TempmdClient("https://api.temp.md", fetcher)
       .publish({
         title: "Demo",
-        files: [
-          {
-            absolutePath: firstPath,
-            path: "first.html",
-            size: 5,
-            contentType: "text/html",
-            hash: "hash-1",
-          },
-          {
-            absolutePath: secondPath,
-            path: "second.html",
-            size: 5,
-            contentType: "text/html",
-            hash: "hash-2",
-          },
-        ],
+        files,
       })
       .finally(() => {
         settled = true;
@@ -244,15 +209,19 @@ describe("TempmdClient", () => {
 
     await vi.waitFor(() => {
       expect(fetcher).toHaveBeenCalledWith(
-        "https://uploads.temp.md/second.html",
+        "https://uploads.temp.md/2",
         expect.anything(),
       );
     });
     await Promise.resolve();
     expect(settled).toBe(false);
-    releaseSecondUpload();
+    releaseInFlightUploads();
     await expect(publish).rejects.toBeInstanceOf(TempmdApiError);
     expect(settled).toBe(true);
+    expect(fetcher).not.toHaveBeenCalledWith(
+      "https://uploads.temp.md/5",
+      expect.anything(),
+    );
   });
 
   it("classifies invalid success response bodies", async () => {
@@ -269,6 +238,7 @@ describe("TempmdClient", () => {
       name: "TempmdApiError",
       status: 200,
       code: "invalid_response",
+      phase: "session",
     } satisfies Partial<TempmdApiError>);
   });
 });

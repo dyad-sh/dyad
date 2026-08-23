@@ -81,7 +81,7 @@ export async function publishTempPreview(input: {
         ...(previous ? { previous } : {}),
       });
     } catch (error) {
-      if (!previous || !isStaleConnectionError(error)) throw error;
+      if (!previous || !isStaleConnectionError(error, "session")) throw error;
       if (previousRecord) {
         await store.write(input.appId, {
           ...previousRecord,
@@ -131,7 +131,7 @@ export async function revokeTempPreview(
     try {
       await createClient().revoke(connection);
     } catch (error) {
-      if (!isStaleConnectionError(error)) throw error;
+      if (!isStaleConnectionError(error, "revoke")) throw error;
     }
     const revoked: TempPreviewRecord = {
       ...record,
@@ -217,10 +217,14 @@ function isExpired(expiresAt: string | null): boolean {
   return expiresAt !== null && new Date(expiresAt).getTime() <= Date.now();
 }
 
-function isStaleConnectionError(error: unknown): boolean {
+function isStaleConnectionError(
+  error: unknown,
+  phase: "session" | "revoke",
+): boolean {
   return (
     error instanceof TempmdApiError &&
-    (error.status === 404 || error.status === 410)
+    error.phase === phase &&
+    (error.status === 403 || error.status === 404 || error.status === 410)
   );
 }
 

@@ -48,6 +48,14 @@ describe("discoverTempPreviewBundle", () => {
     expect(files[0]).toMatchObject({ contentType: "text/javascript" });
     expect(files[0].hash).toMatch(/^[a-f0-9]{64}$/);
     expect(files[1]).toMatchObject({ contentType: "application/wasm" });
+    expect(new TextDecoder().decode(files[0].contents)).toBe(
+      "console.log('hello')",
+    );
+
+    await writeFile(join(root, "assets", "app.js"), "changed after snapshot");
+    expect(new TextDecoder().decode(files[0].contents)).toBe(
+      "console.log('hello')",
+    );
   });
 
   it("requires a root index.html", async () => {

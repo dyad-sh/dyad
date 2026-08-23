@@ -18,6 +18,11 @@ const StoreSchema = z.object({
   records: z.record(z.string(), StoredRecordSchema),
 });
 
+const StoreEnvelopeSchema = z.object({
+  version: z.literal(1),
+  records: z.record(z.string(), z.unknown()),
+});
+
 export interface TempPreviewRecord {
   tempId: string;
   canonicalUrl: string;
@@ -61,21 +66,14 @@ export class TempPreviewStore {
           ? this.tokenCodec.encode(record.updateToken)
           : undefined,
       };
-      const temporaryPath = `${this.filePath}.tmp-${process.pid}-${Date.now()}`;
-      await mkdir(dirname(this.filePath), { recursive: true });
-      try {
-        await writeFile(temporaryPath, JSON.stringify(store, null, 2), "utf8");
-        await rename(temporaryPath, this.filePath);
-      } finally {
-        await rm(temporaryPath, { force: true }).catch(() => undefined);
-      }
+      await this.writeStoreFile(store);
     });
   }
 
   private async readStore(): Promise<z.infer<typeof StoreSchema>> {
+    let contents: string;
     try {
-      const contents = await readFile(this.filePath, "utf8");
-      return StoreSchema.parse(JSON.parse(contents));
+      contents = await readFile(this.filePath, "utf8");
     } catch (error) {
       if (
         typeof error === "object" &&
@@ -85,11 +83,55 @@ export class TempPreviewStore {
       ) {
         return { version: 1, records: {} };
       }
-      if (error instanceof SyntaxError || error instanceof z.ZodError) {
-        await this.backUpCorruptedStore();
-        return { version: 1, records: {} };
-      }
       throw error;
+    }
+
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(contents);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      return this.recoverCorruptedStore({ version: 1, records: {} });
+    }
+
+    const envelope = StoreEnvelopeSchema.safeParse(decoded);
+    if (!envelope.success) {
+      return this.recoverCorruptedStore({ version: 1, records: {} });
+    }
+
+    const records: z.infer<typeof StoreSchema>["records"] = {};
+    let discardedRecord = false;
+    for (const [appId, candidate] of Object.entries(envelope.data.records)) {
+      const result = StoredRecordSchema.safeParse(candidate);
+      if (result.success) {
+        records[appId] = result.data;
+      } else {
+        discardedRecord = true;
+      }
+    }
+    const salvaged = { version: 1 as const, records };
+    if (discardedRecord) return this.recoverCorruptedStore(salvaged);
+    return salvaged;
+  }
+
+  private async recoverCorruptedStore(
+    salvaged: z.infer<typeof StoreSchema>,
+  ): Promise<z.infer<typeof StoreSchema>> {
+    await this.backUpCorruptedStore();
+    await this.writeStoreFile(salvaged);
+    return salvaged;
+  }
+
+  private async writeStoreFile(
+    store: z.infer<typeof StoreSchema>,
+  ): Promise<void> {
+    const temporaryPath = `${this.filePath}.tmp-${process.pid}-${Date.now()}`;
+    await mkdir(dirname(this.filePath), { recursive: true });
+    try {
+      await writeFile(temporaryPath, JSON.stringify(store, null, 2), "utf8");
+      await rename(temporaryPath, this.filePath);
+    } finally {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
     }
   }
 

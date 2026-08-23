@@ -25,3 +25,14 @@ describe("the coolify scope", () => {
     expect(others).not.toContainEqual(queryKeys.coolify.status({ appId: 7 }));
   });
 });
+
+describe("the temporary-preview scope", () => {
+  it("reaches one app's status query or the whole family", () => {
+    expect(
+      queryKeysForInvalidationScope({ family: "temp-preview", appId: 7 }),
+    ).toEqual([queryKeys.tempPreviews.status({ appId: 7 })]);
+    expect(queryKeysForInvalidationScope({ family: "temp-preview" })).toEqual([
+      queryKeys.tempPreviews.all,
+    ]);
+  });
+});

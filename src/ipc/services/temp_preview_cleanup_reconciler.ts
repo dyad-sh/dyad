@@ -2,6 +2,7 @@ import log from "electron-log";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
+import { appOperationCoordinator } from "./app_operation_coordinator";
 import {
   clearTempPreviewAppDeletionMarker,
   deleteTempPreviewForApp,
@@ -30,21 +31,30 @@ export async function reconcilePendingTempPreviewDeletions(): Promise<void> {
 
   for (const appId of appIds) {
     try {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-        columns: { id: true },
-      });
-      if (app) {
-        await clearTempPreviewAppDeletionMarker(appId);
-        logger.info(
-          `Cleared stale temporary preview deletion marker for live app ${appId}`,
-        );
-        continue;
-      }
+      await appOperationCoordinator.run(
+        {
+          appId,
+          operation: "reconcile temporary preview deletion",
+          resources: ["provider"],
+        },
+        async () => {
+          const app = await db.query.apps.findFirst({
+            where: eq(apps.id, appId),
+            columns: { id: true },
+          });
+          if (app) {
+            await clearTempPreviewAppDeletionMarker(appId);
+            logger.info(
+              `Cleared stale temporary preview deletion marker for live app ${appId}`,
+            );
+            return;
+          }
 
-      await deleteTempPreviewForApp(appId);
-      logger.info(
-        `Reconciled temporary preview cleanup for deleted app ${appId}`,
+          await deleteTempPreviewForApp(appId);
+          logger.info(
+            `Reconciled temporary preview cleanup for deleted app ${appId}`,
+          );
+        },
       );
     } catch (error) {
       logger.warn(

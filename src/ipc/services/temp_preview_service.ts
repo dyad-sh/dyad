@@ -21,6 +21,7 @@ import {
   TempPreviewStoreUnreadableError,
   type TempPreviewRecord,
 } from "@/temp_preview/store";
+import { safeTempPreviewErrorMessage } from "./temp_preview_safe_error";
 
 const TEMP_PREVIEW_STORE_FILE = "temp-preview-connections.json";
 
@@ -273,16 +274,20 @@ function isStaleConnectionError(
 }
 
 function classifyTempPreviewError(error: unknown): Error {
-  if (isDyadError(error)) return error;
+  if (isDyadError(error)) {
+    return new DyadError(safeTempPreviewErrorMessage(error), error.kind);
+  }
   if (error instanceof TempPreviewStoreUnreadableError) {
-    return new DyadError(error.message, DyadErrorKind.External, {
-      cause: error,
-    });
+    return new DyadError(
+      safeTempPreviewErrorMessage(error),
+      DyadErrorKind.External,
+    );
   }
   if (!(error instanceof TempmdApiError)) {
-    return error instanceof Error
-      ? error
-      : new DyadError("Temporary preview failed.", DyadErrorKind.Unknown);
+    return new DyadError(
+      safeTempPreviewErrorMessage(error),
+      DyadErrorKind.Unknown,
+    );
   }
   let kind: DyadErrorKind;
   if (error.status === 400 || error.status === 413) {
@@ -300,5 +305,5 @@ function classifyTempPreviewError(error: unknown): Error {
   } else {
     kind = DyadErrorKind.External;
   }
-  return new DyadError(error.message, kind, { cause: error });
+  return new DyadError(safeTempPreviewErrorMessage(error), kind);
 }

@@ -160,6 +160,44 @@ describe("TempPreviewStore", () => {
     );
   });
 
+  it("recovers an expired record whose capability cannot be decoded", async () => {
+    const root = await createStoreRoot();
+    const filePath = join(root, "previews.json");
+    const store = new TempPreviewStore(filePath, {
+      encode: (token) => ({ value: `encrypted:${token}` }),
+      decode: () => {
+        throw new Error("keychain identity changed");
+      },
+    });
+    const expiresAt = new Date(Date.now() - 60_000).toISOString();
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        records: {
+          7: {
+            tempId: "temp-expired",
+            canonicalUrl: "https://expired.temp.md",
+            updateToken: { value: "encrypted:update-secret" },
+            expiresAt,
+            lastPublishedAt: "2026-08-01T00:00:00.000Z",
+            state: "active",
+            pendingDeletion: true,
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(store.read(7)).resolves.toMatchObject({
+      tempId: "temp-expired",
+      expiresAt,
+      updateToken: undefined,
+    });
+    await store.remove(7);
+    await expect(store.listPendingDeletionAppIds()).resolves.toEqual([]);
+  });
+
   it("removes only the requested app record", async () => {
     const root = await createStoreRoot();
     const filePath = join(root, "previews.json");

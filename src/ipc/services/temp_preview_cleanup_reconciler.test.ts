@@ -34,6 +34,7 @@ vi.mock("./temp_preview_service", () => ({
 }));
 
 import { reconcilePendingTempPreviewDeletions } from "./temp_preview_cleanup_reconciler";
+import { appOperationCoordinator } from "./app_operation_coordinator";
 
 describe("reconcilePendingTempPreviewDeletions", () => {
   beforeEach(() => {
@@ -67,6 +68,25 @@ describe("reconcilePendingTempPreviewDeletions", () => {
 
     expect(mocks.deletePreview).toHaveBeenCalledTimes(2);
     expect(mocks.clearMarker).not.toHaveBeenCalled();
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      expect.stringContaining("durable marker and capability remain for retry"),
+      expect.any(Error),
+    );
+  });
+
+  it("does not clear a marker while app deletion owns the app", async () => {
+    mocks.listPending.mockResolvedValue([7, 8]);
+    mocks.findApp.mockResolvedValue(null);
+    const deletion = appOperationCoordinator.beginAppDeletion(7);
+    try {
+      await reconcilePendingTempPreviewDeletions();
+    } finally {
+      deletion.release();
+    }
+
+    expect(mocks.clearMarker).not.toHaveBeenCalledWith(7);
+    expect(mocks.deletePreview).not.toHaveBeenCalledWith(7);
+    expect(mocks.deletePreview).toHaveBeenCalledWith(8);
     expect(mocks.logWarn).toHaveBeenCalledWith(
       expect.stringContaining("durable marker and capability remain for retry"),
       expect.any(Error),

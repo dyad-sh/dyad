@@ -69,20 +69,20 @@ export class TempPreviewStore {
           ? this.tokenCodec.decode(record.updateToken)
           : undefined;
       } catch (error) {
+        if (isExpired(record.expiresAt)) {
+          logger.warn(
+            `Could not decrypt the expired temporary preview capability for app ${appId}; treating it as expired without exposing the ciphertext.`,
+            error,
+          );
+          return projectRecord(record);
+        }
         logger.warn(
           `Could not decrypt the temporary preview capability for app ${appId}; preserving the encrypted record for retry.`,
           error,
         );
         throw new TempPreviewStoreUnreadableError(appId, { cause: error });
       }
-      return {
-        tempId: record.tempId,
-        canonicalUrl: record.canonicalUrl,
-        expiresAt: record.expiresAt,
-        lastPublishedAt: record.lastPublishedAt,
-        state: record.state,
-        updateToken,
-      };
+      return projectRecord(record, updateToken);
     });
   }
 
@@ -240,4 +240,24 @@ export class TempPreviewStore {
     }
     return backupPath;
   }
+}
+
+function projectRecord(
+  record: z.infer<typeof StoredRecordSchema>,
+  updateToken?: string,
+): TempPreviewRecord {
+  return {
+    tempId: record.tempId,
+    canonicalUrl: record.canonicalUrl,
+    expiresAt: record.expiresAt,
+    lastPublishedAt: record.lastPublishedAt,
+    state: record.state,
+    updateToken,
+  };
+}
+
+function isExpired(expiresAt: string | null): boolean {
+  if (expiresAt === null) return false;
+  const expiresAtMs = new Date(expiresAt).getTime();
+  return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
 }

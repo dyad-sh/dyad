@@ -79,6 +79,7 @@ import {
 } from "./temp_preview_service";
 import { TempmdApiError } from "@/temp_preview/client";
 import { TempPreviewStoreUnreadableError } from "@/temp_preview/store";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const roots: string[] = [];
 
@@ -138,8 +139,54 @@ describe("temp preview service", () => {
 
     await expect(
       publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
-    ).rejects.toBe(persistenceError);
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Unknown,
+      message: "disk full",
+      cause: undefined,
+    });
     expect(mocks.revoke).toHaveBeenCalledWith(published);
+  });
+
+  it("sanitizes build failures before returning them", async () => {
+    const appPath = await createApp();
+    mocks.simpleSpawn.mockRejectedValue(
+      new DyadError(
+        "Build failed in /Users/alice/Client-App with API_KEY=private-value",
+        DyadErrorKind.External,
+      ),
+    );
+
+    const error = await publishTempPreview({
+      appId: 7,
+      appPath,
+      appName: "Demo",
+    }).catch((caught) => caught);
+
+    expect(error).toMatchObject({
+      kind: DyadErrorKind.External,
+      cause: undefined,
+    });
+    expect(error.message).not.toMatch(/alice|private-value/);
+  });
+
+  it("sanitizes temp.md failures before returning them", async () => {
+    const appPath = await createApp();
+    mocks.publish.mockRejectedValue(
+      new TempmdApiError(
+        "Upload failed at https://private.internal/path?token=secret-value",
+        500,
+        undefined,
+        "session",
+      ),
+    );
+
+    await expect(
+      publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      cause: undefined,
+      message: expect.not.stringMatching(/private\.internal|secret-value/),
+    });
   });
 
   it("surfaces an unreadable capability without treating the preview as absent", async () => {

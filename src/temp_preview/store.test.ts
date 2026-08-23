@@ -9,7 +9,7 @@ vi.mock("electron-log", () => ({
   default: { scope: () => ({ warn: mocks.warn }) },
 }));
 
-import { TempPreviewStore } from "./store";
+import { TempPreviewStore, TempPreviewStoreUnreadableError } from "./store";
 
 const storeRoots: string[] = [];
 
@@ -125,7 +125,7 @@ describe("TempPreviewStore", () => {
     );
   });
 
-  it("quarantines a record whose update capability cannot be decoded", async () => {
+  it("preserves a record whose update capability cannot be decoded", async () => {
     const root = await createStoreRoot();
     const filePath = join(root, "previews.json");
     const store = new TempPreviewStore(filePath, {
@@ -134,35 +134,28 @@ describe("TempPreviewStore", () => {
         throw new Error("keychain identity changed");
       },
     });
-    await writeFile(
-      filePath,
-      JSON.stringify({
-        version: 1,
-        records: {
-          7: {
-            tempId: "temp-unreadable",
-            canonicalUrl: "https://unreadable.temp.md",
-            updateToken: { value: "encrypted:update-secret" },
-            expiresAt: null,
-            lastPublishedAt: "2026-08-23T00:00:00.000Z",
-            state: "active",
-          },
+    const originalContents = JSON.stringify({
+      version: 1,
+      records: {
+        7: {
+          tempId: "temp-unreadable",
+          canonicalUrl: "https://unreadable.temp.md",
+          updateToken: { value: "encrypted:update-secret" },
+          expiresAt: null,
+          lastPublishedAt: "2026-08-23T00:00:00.000Z",
+          state: "active",
         },
-      }),
-      "utf8",
-    );
+      },
+    });
+    await writeFile(filePath, originalContents, "utf8");
 
-    await expect(store.read(7)).resolves.toBeNull();
-    const repaired = JSON.parse(await readFile(filePath, "utf8"));
-    expect(repaired.records).toEqual({});
-    expect(await readdir(root)).toEqual(
-      expect.arrayContaining([
-        "previews.json",
-        expect.stringMatching(/^previews\.json\.corrupt-/),
-      ]),
+    await expect(store.read(7)).rejects.toBeInstanceOf(
+      TempPreviewStoreUnreadableError,
     );
+    expect(await readFile(filePath, "utf8")).toBe(originalContents);
+    expect(await readdir(root)).toEqual(["previews.json"]);
     expect(mocks.warn).toHaveBeenCalledWith(
-      expect.stringContaining("app IDs 7"),
+      expect.stringContaining("preserving the encrypted record"),
       expect.any(Error),
     );
   });

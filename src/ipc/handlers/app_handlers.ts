@@ -656,6 +656,7 @@ async function deleteAppByIdExclusive(
 
         if (!app) {
           if (options.allowMissing && options.knownAppPath) {
+            await deleteTempPreviewForApp(appId);
             await appRunDeletion.seal();
             appRunDeletion.commit();
             deletionCommitted = true;
@@ -685,6 +686,7 @@ async function deleteAppByIdExclusive(
         const doomedRow = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
+        await deleteTempPreviewForApp(appId);
         try {
           // `doomedRow` for the same reason it is re-read above: the test-user
           // id can land on the row after the first read, and deleting from the
@@ -697,7 +699,6 @@ async function deleteAppByIdExclusive(
               DyadErrorKind.External,
             );
           }
-          await deleteTempPreviewForApp(appId);
           await db.delete(apps).where(eq(apps.id, appId));
           appRunDeletion.commit();
           deletionCommitted = true;

@@ -42,13 +42,17 @@ vi.mock("@/temp_preview/bundle", () => ({
   discoverTempPreviewBundle: mocks.discoverBundle,
 }));
 
-vi.mock("@/temp_preview/store", () => ({
-  TempPreviewStore: class {
-    read = mocks.storeRead;
-    remove = mocks.storeRemove;
-    write = mocks.storeWrite;
-  },
-}));
+vi.mock("@/temp_preview/store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/temp_preview/store")>();
+  return {
+    ...actual,
+    TempPreviewStore: class {
+      read = mocks.storeRead;
+      remove = mocks.storeRemove;
+      write = mocks.storeWrite;
+    },
+  };
+});
 
 vi.mock("@/temp_preview/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/temp_preview/client")>();
@@ -63,10 +67,12 @@ vi.mock("@/temp_preview/client", async (importOriginal) => {
 
 import {
   deleteTempPreviewForApp,
+  getTempPreviewStatus,
   publishTempPreview,
   revokeTempPreview,
 } from "./temp_preview_service";
 import { TempmdApiError } from "@/temp_preview/client";
+import { TempPreviewStoreUnreadableError } from "@/temp_preview/store";
 
 const roots: string[] = [];
 
@@ -125,6 +131,20 @@ describe("temp preview service", () => {
       publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
     ).rejects.toBe(persistenceError);
     expect(mocks.revoke).toHaveBeenCalledWith(published);
+  });
+
+  it("surfaces an unreadable capability without treating the preview as absent", async () => {
+    mocks.storeRead.mockRejectedValue(
+      new TempPreviewStoreUnreadableError(7, {
+        cause: new Error("keychain unavailable"),
+      }),
+    );
+
+    await expect(getTempPreviewStatus(7)).rejects.toMatchObject({
+      message: expect.stringContaining(
+        "encrypted capability has been preserved",
+      ),
+    });
   });
 
   it("does not revoke an existing preview when an update cannot be persisted", async () => {
@@ -225,6 +245,21 @@ describe("temp preview service", () => {
     );
 
     await expect(deleteTempPreviewForApp(7)).rejects.toThrow("unavailable");
+    expect(mocks.storeRemove).not.toHaveBeenCalled();
+  });
+
+  it("does not remove an undecryptable capability during app deletion", async () => {
+    mocks.storeRead.mockRejectedValue(
+      new TempPreviewStoreUnreadableError(7, {
+        cause: new Error("keychain unavailable"),
+      }),
+    );
+
+    await expect(deleteTempPreviewForApp(7)).rejects.toMatchObject({
+      message: expect.stringContaining(
+        "encrypted capability has been preserved",
+      ),
+    });
     expect(mocks.storeRemove).not.toHaveBeenCalled();
   });
 

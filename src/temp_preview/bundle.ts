@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
-import { lstat, open, readdir } from "node:fs/promises";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const TEMP_PREVIEW_MAX_FILES = 100;
 export const TEMP_PREVIEW_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -17,6 +17,7 @@ export interface TempPreviewBundleFile {
 
 interface DiscoveredBundleFile {
   absolutePath: string;
+  rootRealPath: string;
   path: string;
   size: number;
   contentType: string;
@@ -47,9 +48,18 @@ export async function discoverTempPreviewBundle(
   if (!sourceStat.isDirectory()) {
     throw new Error("The temporary preview build output is not a directory.");
   }
+  const sourceRealPath = await realpath(source);
+  const currentSourceStat = await lstat(source);
+  if (
+    currentSourceStat.isSymbolicLink() ||
+    !currentSourceStat.isDirectory() ||
+    !isSameFile(sourceStat, currentSourceStat)
+  ) {
+    throw bundleFileChangedError("The build output");
+  }
 
   const paths: string[] = [];
-  await walk(source, source, paths);
+  await walk(source, source, sourceRealPath, paths);
   paths.sort((a, b) => a.localeCompare(b));
 
   if (!paths.includes("index.html")) {
@@ -62,6 +72,7 @@ export async function discoverTempPreviewBundle(
   let totalBytes = 0;
   for (const bundlePath of paths) {
     const absolutePath = join(source, ...bundlePath.split("/"));
+    await assertPathContained(sourceRealPath, absolutePath, bundlePath);
     const metadata = await lstat(absolutePath);
     if (metadata.isSymbolicLink() || !metadata.isFile()) {
       throw new Error(
@@ -79,6 +90,7 @@ export async function discoverTempPreviewBundle(
     }
     discovered.push({
       absolutePath,
+      rootRealPath: sourceRealPath,
       path: bundlePath,
       size: metadata.size,
       contentType: contentTypeFor(absolutePath),
@@ -96,9 +108,22 @@ export async function discoverTempPreviewBundle(
 async function walk(
   root: string,
   directory: string,
+  rootRealPath: string,
   paths: string[],
 ): Promise<void> {
+  const directoryPath = toPosix(relative(root, directory));
+  const displayPath = directoryPath || "The build output";
+  const beforeMetadata = await lstat(directory);
+  if (beforeMetadata.isSymbolicLink() || !beforeMetadata.isDirectory()) {
+    throw bundleFileChangedError(displayPath);
+  }
+  await assertPathContained(rootRealPath, directory, displayPath);
   const entries = await readdir(directory, { withFileTypes: true });
+  const afterMetadata = await lstat(directory);
+  await assertPathContained(rootRealPath, directory, displayPath);
+  if (!isSameFile(beforeMetadata, afterMetadata)) {
+    throw bundleFileChangedError(displayPath);
+  }
   entries.sort((a, b) => a.name.localeCompare(b.name));
 
   for (const entry of entries) {
@@ -107,7 +132,7 @@ async function walk(
     const absolutePath = join(directory, entry.name);
     const bundlePath = toPosix(relative(root, absolutePath));
     if (entry.isDirectory()) {
-      await walk(root, absolutePath, paths);
+      await walk(root, absolutePath, rootRealPath, paths);
       continue;
     }
     if (!entry.isFile()) continue;
@@ -127,17 +152,21 @@ async function snapshotFile(
   const noFollow = constants.O_NOFOLLOW ?? 0;
   let handle;
   try {
+    await assertPathContained(file.rootRealPath, file.absolutePath, file.path);
     handle = await open(file.absolutePath, constants.O_RDONLY | noFollow);
-    const [openedMetadata, currentPathMetadata] = await Promise.all([
-      handle.stat(),
-      lstat(file.absolutePath),
-    ]);
+    const [openedMetadata, currentPathMetadata, currentRealPath] =
+      await Promise.all([
+        handle.stat(),
+        lstat(file.absolutePath),
+        realpath(file.absolutePath),
+      ]);
     if (
       !openedMetadata.isFile() ||
       !currentPathMetadata.isFile() ||
       currentPathMetadata.isSymbolicLink() ||
       !isSameFile(file.metadata, openedMetadata) ||
       !isSameFile(openedMetadata, currentPathMetadata) ||
+      !isPathContained(file.rootRealPath, currentRealPath) ||
       openedMetadata.size !== file.size
     ) {
       throw bundleFileChangedError(file.path);
@@ -155,11 +184,15 @@ async function snapshotFile(
       if (bytesRead === 0) break;
       offset += bytesRead;
     }
-    const finalMetadata = await handle.stat();
+    const [finalMetadata, finalRealPath] = await Promise.all([
+      handle.stat(),
+      realpath(file.absolutePath),
+    ]);
     if (
       offset !== file.size ||
       finalMetadata.size !== file.size ||
-      !isSameFile(openedMetadata, finalMetadata)
+      !isSameFile(openedMetadata, finalMetadata) ||
+      !isPathContained(file.rootRealPath, finalRealPath)
     ) {
       throw bundleFileChangedError(file.path);
     }
@@ -179,6 +212,35 @@ async function snapshotFile(
   } finally {
     await handle?.close();
   }
+}
+
+async function assertPathContained(
+  rootRealPath: string,
+  candidatePath: string,
+  displayPath: string,
+): Promise<void> {
+  let candidateRealPath: string;
+  try {
+    candidateRealPath = await realpath(candidatePath);
+  } catch (error) {
+    if (isFileReplacementError(error)) {
+      throw bundleFileChangedError(displayPath, error);
+    }
+    throw error;
+  }
+  if (!isPathContained(rootRealPath, candidateRealPath)) {
+    throw bundleFileChangedError(displayPath);
+  }
+}
+
+function isPathContained(rootRealPath: string, candidateRealPath: string) {
+  const relativePath = relative(rootRealPath, candidateRealPath);
+  return (
+    relativePath === "" ||
+    (!isAbsolute(relativePath) &&
+      relativePath !== ".." &&
+      !relativePath.startsWith(`..${sep}`))
+  );
 }
 
 function isSameFile(first: Stats, second: Stats): boolean {

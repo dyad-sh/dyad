@@ -40,6 +40,16 @@ export interface TempPreviewTokenCodec {
   decode(secret: Secret): string;
 }
 
+export class TempPreviewStoreUnreadableError extends Error {
+  constructor(appId: number, options: ErrorOptions) {
+    super(
+      `Dyad could not unlock the temporary preview capability for app ${appId}. Retry after checking the system keychain; the encrypted capability has been preserved.`,
+      options,
+    );
+    this.name = "TempPreviewStoreUnreadableError";
+  }
+}
+
 export class TempPreviewStore {
   constructor(
     private readonly filePath: string,
@@ -58,9 +68,11 @@ export class TempPreviewStore {
           ? this.tokenCodec.decode(record.updateToken)
           : undefined;
       } catch (error) {
-        delete store.records[appIdKey];
-        await this.recoverCorruptedStore(store, [appId], error);
-        return null;
+        logger.warn(
+          `Could not decrypt the temporary preview capability for app ${appId}; preserving the encrypted record for retry.`,
+          error,
+        );
+        throw new TempPreviewStoreUnreadableError(appId, { cause: error });
       }
       return {
         ...record,

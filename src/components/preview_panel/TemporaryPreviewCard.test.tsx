@@ -127,6 +127,13 @@ describe("TemporaryPreviewCard", () => {
       await screen.findByRole("button", { name: "Create preview" }),
     );
     rerender(<TemporaryPreviewCard appId={43} />);
+    const otherAppCreate = await screen.findByRole("button", {
+      name: "Create preview",
+    });
+    expect((otherAppCreate as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Temporary preview is not published",
+    );
     resolvePublish(active);
 
     await waitFor(() => {
@@ -160,6 +167,13 @@ describe("TemporaryPreviewCard", () => {
     await user.click(await screen.findByRole("button", { name: "Revoke" }));
     await user.click(screen.getByRole("button", { name: "Revoke preview" }));
     rerender(<TemporaryPreviewCard appId={43} />);
+    const otherAppRevoke = await screen.findByRole("button", {
+      name: "Revoke",
+    });
+    expect((otherAppRevoke as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Temporary preview is active",
+    );
     resolveRevoke(revoked);
 
     await waitFor(() => {

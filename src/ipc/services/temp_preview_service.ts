@@ -16,7 +16,11 @@ import {
   TempmdClient,
   type TempPreviewConnection,
 } from "@/temp_preview/client";
-import { TempPreviewStore, type TempPreviewRecord } from "@/temp_preview/store";
+import {
+  TempPreviewStore,
+  TempPreviewStoreUnreadableError,
+  type TempPreviewRecord,
+} from "@/temp_preview/store";
 
 const TEMP_PREVIEW_STORE_FILE = "temp-preview-connections.json";
 
@@ -34,7 +38,11 @@ function createClient(): TempmdClient {
 export async function getTempPreviewStatus(
   appId: number,
 ): Promise<TempPreviewStatus> {
-  return statusFromRecord(await createStore().read(appId));
+  try {
+    return statusFromRecord(await createStore().read(appId));
+  } catch (error) {
+    throw classifyTempPreviewError(error);
+  }
 }
 
 export async function publishTempPreview(input: {
@@ -248,6 +256,11 @@ function isStaleConnectionError(
 
 function classifyTempPreviewError(error: unknown): Error {
   if (isDyadError(error)) return error;
+  if (error instanceof TempPreviewStoreUnreadableError) {
+    return new DyadError(error.message, DyadErrorKind.External, {
+      cause: error,
+    });
+  }
   if (!(error instanceof TempmdApiError)) {
     return error instanceof Error
       ? error

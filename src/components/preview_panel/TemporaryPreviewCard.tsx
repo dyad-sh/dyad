@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Check,
   Copy,
@@ -30,6 +35,9 @@ interface TemporaryPreviewCardProps {
   appId: number;
 }
 
+const TEMP_PREVIEW_PUBLISH_MUTATION_KEY = ["temp-preview", "publish"];
+const TEMP_PREVIEW_REVOKE_MUTATION_KEY = ["temp-preview", "revoke"];
+
 export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
@@ -41,6 +49,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
   });
 
   const publishMutation = useMutation({
+    mutationKey: TEMP_PREVIEW_PUBLISH_MUTATION_KEY,
     mutationFn: (originAppId: number) =>
       ipc.tempPreview.publish({ appId: originAppId }),
     onSuccess: (status, originAppId) => {
@@ -60,6 +69,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
   });
 
   const revokeMutation = useMutation({
+    mutationKey: TEMP_PREVIEW_REVOKE_MUTATION_KEY,
     mutationFn: (originAppId: number) =>
       ipc.tempPreview.revoke({ appId: originAppId }),
     onSuccess: (status, originAppId) => {
@@ -87,13 +97,27 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
     status?.state === "active" && status.canonicalUrl
       ? { ...status, canonicalUrl: status.canonicalUrl }
       : null;
-  const isPublishing = publishMutation.isPending;
+  const isPublishing =
+    useIsMutating({
+      mutationKey: TEMP_PREVIEW_PUBLISH_MUTATION_KEY,
+      predicate: (mutation) => mutation.state.variables === appId,
+    }) > 0;
+  const isRevoking =
+    useIsMutating({
+      mutationKey: TEMP_PREVIEW_REVOKE_MUTATION_KEY,
+      predicate: (mutation) => mutation.state.variables === appId,
+    }) > 0;
+  const isRevokeDialogPending =
+    useIsMutating({
+      mutationKey: TEMP_PREVIEW_REVOKE_MUTATION_KEY,
+      predicate: (mutation) => mutation.state.variables === revokeAppId,
+    }) > 0;
   const statusAnnouncement = getStatusAnnouncement({
     status,
     error: statusQuery.error,
     isChecking: statusQuery.isPending,
-    isPublishing: publishMutation.isPending,
-    isRevoking: revokeMutation.isPending,
+    isPublishing,
+    isRevoking,
   });
 
   return (
@@ -144,7 +168,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
               status={activeStatus}
               copied={copied}
               isPublishing={isPublishing}
-              isRevoking={revokeMutation.isPending}
+              isRevoking={isRevoking}
               onCopy={copyUrl}
               onOpen={(url) => {
                 void ipc.system
@@ -198,19 +222,19 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={revokeMutation.isPending}>
+            <AlertDialogCancel disabled={isRevokeDialogPending}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={revokeMutation.isPending}
+              disabled={isRevokeDialogPending}
               onClick={() => {
                 if (revokeAppId !== null) {
                   revokeMutation.mutate(revokeAppId);
                 }
               }}
             >
-              {revokeMutation.isPending ? (
+              {isRevokeDialogPending ? (
                 <Loader2 className="animate-spin" />
               ) : (
                 <Trash2 />

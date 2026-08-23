@@ -171,6 +171,67 @@ describe("useTestRunEvents", () => {
     expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(true);
   });
 
+  it("drops the native view when the run falls back to a browser", () => {
+    // Without this the user is left on a native "Test view" with every control
+    // locked by a run that is actually happening in a separate Playwright
+    // window. The only other signal is a warning line in the test output,
+    // which is collapsed by default.
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    store.set(previewNativeViewAppIdAtom, 1);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "panel",
+        state: "preview-fallback",
+        preview: true,
+        previewOwnerWindowSessionId: getActiveWindowSessionId(),
+      });
+    });
+
+    expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
+  });
+
+  it("leaves another window's native view up on a fallback", () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    store.set(previewNativeViewAppIdAtom, 1);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "preview-fallback",
+        preview: true,
+        previewOwnerWindowSessionId: OTHER_WINDOW_SESSION_ID,
+      });
+    });
+
+    expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
+  });
+
+  it("leaves a native view belonging to a different app alone on a fallback", () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 2);
+    store.set(previewNativeViewAppIdAtom, 2);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "preview-fallback",
+        preview: true,
+        previewOwnerWindowSessionId: getActiveWindowSessionId(),
+      });
+    });
+
+    expect(store.get(previewNativeViewAppIdAtom)).toBe(2);
+  });
+
   it("stores streamed output at root scope", async () => {
     vi.useFakeTimers();
     try {

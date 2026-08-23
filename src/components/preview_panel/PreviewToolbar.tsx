@@ -203,7 +203,12 @@ export const PreviewToolbar = () => {
     isChatPanelHiddenAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const useNativePreview = useAtomValue(previewNativeViewAppIdAtom) !== null;
+  const nativeViewAppId = useAtomValue(previewNativeViewAppIdAtom);
+  // Scoped to the selected app: a run belonging to a different app still owns
+  // the window's native view, and treating this toolbar as native would hide
+  // and screenshot that other app's view every time the overflow menu opens.
+  const useNativePreview =
+    nativeViewAppId !== null && nativeViewAppId === selectedAppId;
   const syncNativeOverlay = usePreviewNativeOverlay("preview-toolbar-overflow");
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const { state: previewState, send: sendPreviewEvent } =

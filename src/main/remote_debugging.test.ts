@@ -281,3 +281,45 @@ describe("resolveRemoteDebuggingEndpoint", () => {
     await expect(pending).resolves.toBeNull();
   });
 });
+
+describe("partially written port files", () => {
+  function enable() {
+    writeSettings(JSON.stringify({ enableTestRunInPreview: true }));
+    maybeEnableRemoteDebugging();
+  }
+
+  it("rejects a prefix of the port that would parse as a valid one", async () => {
+    // Chromium truncates then writes "<port>\n<target>". A read landing mid-
+    // write sees "512" of what will be "51234" — in range, and different from
+    // whatever was there before, so neither the range check nor the stale
+    // guard catches it. Accepting it would cache a dead endpoint for the whole
+    // session while still reporting CDP as ready.
+    enable();
+    fs.writeFileSync(
+      path.join(h.paths.sessionData, "DevToolsActivePort"),
+      "512",
+    );
+    vi.useFakeTimers();
+
+    const pending = resolveRemoteDebuggingEndpoint();
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it("accepts the port as soon as its terminating newline lands", async () => {
+    // The file carries no trailing newline of its own, so the newline after
+    // the port is the only completeness signal — and it is enough: the target
+    // path that follows says nothing about whether the port is whole.
+    enable();
+    fs.writeFileSync(
+      path.join(h.paths.sessionData, "DevToolsActivePort"),
+      "51234\n/devtools/browser/partial-gui",
+    );
+
+    await expect(resolveRemoteDebuggingEndpoint()).resolves.toEqual({
+      port: 51234,
+      httpEndpoint: "http://127.0.0.1:51234",
+    });
+  });
+});

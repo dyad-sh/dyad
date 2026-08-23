@@ -389,6 +389,37 @@ describe("PreviewPanel", () => {
     expect(mocks.setPreviewMode).not.toHaveBeenCalled();
   });
 
+  it("keeps the iframe when another app's run owns the native view", () => {
+    // The window holds one native view and it belongs to the app whose run
+    // opened it. Without the owner check, selecting a second app mid-run would
+    // show that app the *other* app's live test page.
+    mocks.previewNativeViewAppId = 2;
+    mocks.selectedAppId = 1;
+    mocks.testRunPhase = "running";
+
+    render(<PreviewPanel />);
+
+    expect(screen.getByText("Preview iframe")).toBeTruthy();
+    expect(screen.queryByText("Preview native view")).toBeNull();
+  });
+
+  it("leaves another app's native view alone when this app's run state goes idle", () => {
+    // `testRunPhase` is the *selected* app's. Acting on it here would tear down
+    // a view a different app's run is still driving, and drag that app's
+    // preview to the Tests panel.
+    mocks.previewNativeViewAppId = 2;
+    mocks.selectedAppId = 1;
+    mocks.testRunPhase = "running";
+
+    const { rerender } = render(<PreviewPanel />);
+
+    mocks.testRunPhase = "idle";
+    rerender(<PreviewPanel />);
+
+    expect(mocks.setPreviewNativeViewAppId).not.toHaveBeenCalled();
+    expect(mocks.setPreviewMode).not.toHaveBeenCalled();
+  });
+
   it("leaves an ordinary preview alone when a background test run finishes", () => {
     mocks.testRunPhase = "running";
 

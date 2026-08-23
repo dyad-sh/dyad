@@ -7,16 +7,24 @@ import { usePreviewNativeOverlay } from "./usePreviewNativeOverlay";
 
 /**
  * Any element that portals to the document body and paints over the preview
- * panel. Dialogs, alert dialogs, menus and popovers all land here regardless of
- * which primitive rendered them, which is what keeps this from having to be
- * wired into every dialog in the app one at a time.
+ * panel. Dialogs, alert dialogs, menus, selects, popovers and tooltips all land
+ * here regardless of which primitive rendered them, which is what keeps this
+ * from having to be wired into every dialog in the app one at a time.
  */
 const OVERLAY_SELECTOR = [
+  // Base UI is this app's only popup primitive, and it portals every surface
+  // into a container carrying `data-base-ui-portal`, marking the surface
+  // `data-open` only while it is actually up. Matching the pair covers the
+  // roles below plus the ones ARIA alone cannot reach: a Base UI tooltip popup
+  // carries no role at all, and a *closed* select leaves a stale
+  // `role="listbox"` behind in a hidden positioner — so keying on that role
+  // would both miss surfaces and latch onto ones that are already gone.
+  "[data-base-ui-portal] [data-open]",
+  // Portalled surfaces from anything that is not Base UI. These primitives
+  // unmount on close, so a bare role match cannot go stale.
   '[role="dialog"]',
   '[role="alertdialog"]',
   '[role="menu"]',
-  "[data-radix-popper-content-wrapper]",
-  "[data-floating-ui-portal]",
 ].join(",");
 
 function hasOpenOverlay(): boolean {
@@ -58,7 +66,10 @@ export function PreviewNativeOverlayGuard() {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["role", "data-state"],
+      // Base UI flips `data-open`/`data-closed` in place on a popup it keeps
+      // mounted, so an open or close can arrive as an attribute change with no
+      // childList mutation to notice.
+      attributeFilter: ["role", "data-state", "data-open", "data-closed"],
     });
     return () => observer.disconnect();
   }, [nativeViewAppId]);

@@ -60,6 +60,14 @@ function readFlagFromDisk(): boolean {
  * ready — Chromium reads command-line switches during startup.
  *
  * Port 0 lets the OS assign a free port; Chromium binds it to 127.0.0.1 only.
+ *
+ * SECURITY: this endpoint is unauthenticated and covers every webContents in
+ * the process — Dyad's own privileged renderer included — for the whole
+ * session, not just while tests run. That is an accepted, documented trade-off
+ * for an off-by-default experiment; see "Accepted risk: the 'Run tests in
+ * preview panel' experiment opens a CDP port" in docs/security.md for the
+ * reasoning, the mitigations it depends on, and what has to change before the
+ * experiment graduates.
  */
 export function maybeEnableRemoteDebugging(): void {
   if (!readFlagFromDisk()) {
@@ -111,8 +119,23 @@ function readPortFile(filePath: string): number | null {
     if (preexistingPortFileContents.get(filePath) === contents) {
       return null;
     }
-    const firstLine = contents.split("\n")[0]?.trim();
-    const port = Number(firstLine);
+    // Chromium creates/truncates this file and then writes
+    // "<port>\n<browser-target-path>" into it. A read landing mid-write sees a
+    // prefix — "512" of what will become "51234" — which parses as a perfectly
+    // valid port, and since the endpoint is cached for the rest of the session,
+    // accepting it points every later CDP attach at a port nothing is
+    // listening on.
+    //
+    // The newline is the proof the port is whole: it is only ever written after
+    // the last digit. Checked instead of re-reading for stability, which would
+    // trade a deterministic guarantee for a timing guess — and note the file
+    // has no trailing newline of its own, so requiring content after this one
+    // would reject a genuinely complete read.
+    const newlineIndex = contents.indexOf("\n");
+    if (newlineIndex === -1) {
+      return null;
+    }
+    const port = Number(contents.slice(0, newlineIndex).trim());
     // A truncated or stale file can hold something that parses as a number but
     // isn't a bindable port. An out-of-range value would make `httpEndpoint`
     // unusable while still reporting CDP as ready.

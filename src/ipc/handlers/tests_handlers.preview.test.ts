@@ -102,6 +102,62 @@ beforeEach(() => {
   fs.writeFileSync(playwrightPackagePath, "{}");
 });
 
+/**
+ * Makes spawnStreaming behave like a real preview batch: the discovery pass
+ * writes a one-spec report, and the per-test pass writes a passing result.
+ *
+ * Without this the default mock writes no report at all, so runPreviewTestBatch
+ * returns at its discovery-report check and `lastSpawn()` is the `--list`
+ * invocation — which would never carry `--headed` or `--workers=` regardless of
+ * the code under test, so an assertion against it proves nothing.
+ */
+function mockPreviewBatch() {
+  h.spawnStreaming.mockImplementation(async (options) => {
+    const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
+    fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+    const specFile = path.join(APP_PATH, "e2e-tests/auth.spec.ts");
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        suites: [
+          {
+            title: "e2e-tests/auth.spec.ts",
+            file: specFile,
+            specs: [
+              options.args.includes("--list")
+                ? {
+                    title: "only",
+                    line: 3,
+                    tests: [{ expectedStatus: "passed" }],
+                  }
+                : {
+                    title: "only",
+                    line: 3,
+                    tests: [
+                      {
+                        status: "expected",
+                        results: [{ status: "passed", duration: 10 }],
+                      },
+                    ],
+                  },
+            ],
+          },
+        ],
+      }),
+    );
+    return {
+      code: 0,
+      stdout: "",
+      stderr: "",
+      aborted: false,
+      timedOut: false,
+    };
+  });
+  return vi
+    .fn<(timeoutMs?: number) => Promise<string>>()
+    .mockResolvedValue("preview-target");
+}
+
 describe("preview runs", () => {
   it("keeps exact titles out of the Windows batch-file transport", () => {
     const titleGrep = "^shows 100% progress\non completion$";
@@ -138,18 +194,31 @@ describe("preview runs", () => {
   });
 
   it("drops --headed, which has no meaning without its own browser", async () => {
+    const rotatePreviewView = mockPreviewBatch();
+
     await runAppTestsCore({
       appId: 1,
       headed: true,
       previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
     });
 
+    // Discovery, then the one test. Asserted so this stays a claim about the
+    // per-test invocation rather than about the `--list` pass.
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(2);
     expect(lastSpawn().args).not.toContain("--headed");
   });
 
   it("keeps Playwright's own recorders off Dyad's windows", async () => {
-    await runAppTestsCore({ appId: 1, previewCdpEndpoint: CDP_ENDPOINT });
+    const rotatePreviewView = mockPreviewBatch();
 
+    await runAppTestsCore({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+    });
+
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(2);
     const { args, env } = lastSpawn();
     // A trace of the borrowed context records every page in it, Dyad's own
     // included; the copy-prompt snapshot is taken from the context's FIRST
@@ -159,15 +228,25 @@ describe("preview runs", () => {
   });
 
   it("stays serial, since tests take turns driving the preview panel", async () => {
+    const rotatePreviewView = mockPreviewBatch();
+
     await runAppTestsCore({
       appId: 1,
       parallel: true,
       previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
     });
 
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(2);
     const { args } = lastSpawn();
     expect(args).not.toContain("--fully-parallel");
-    expect(args.some((arg) => arg.startsWith("--workers="))).toBe(false);
+    // Pinned to one worker rather than merely left unset: the per-test
+    // invocation states the serial guarantee outright, so `parallel: true`
+    // reaching this far cannot widen it.
+    expect(args).toContain("--workers=1");
+    expect(args.filter((arg) => arg.startsWith("--workers="))).toEqual([
+      "--workers=1",
+    ]);
   });
 
   it("discovers and runs each test in its own fresh preview", async () => {
@@ -335,6 +414,72 @@ describe("a preview run the shim couldn't be routed for", () => {
     // And the preview view is handed back, not held frozen for a run that
     // isn't happening there.
     expect(onPreviewFallback).toHaveBeenCalled();
+  });
+
+  it("parallelizes as the user asked, since it is an ordinary browser run now", async () => {
+    // The preview is the only reason to force serial. Once routing is refused
+    // this is a normal browser run, and staying serial would silently ignore
+    // Parallel — which the renderer cannot decide for itself, because only
+    // main knows whether the app's tsconfig let the run into the preview.
+    h.ensurePlaywrightBootstrap.mockResolvedValueOnce({
+      installed: false,
+      previewRouted: false,
+    });
+
+    await runAppTestsCore({
+      appId: 1,
+      headed: true,
+      parallel: true,
+      previewCdpEndpoint: CDP_ENDPOINT,
+    });
+
+    expect(lastSpawn().args).toContain("--fully-parallel");
+  });
+});
+
+describe("post-batch preview teardown", () => {
+  it("does not turn a green run into an infrastructure failure", async () => {
+    // The rotation after the last test is cosmetic — it hands the user a clean
+    // page — and by then every result is already aggregated. Reporting its
+    // failure as an infraError made a fully passing run read as inconclusive,
+    // which costs an agent a fix attempt for nothing.
+    const rotatePreviewView = vi
+      .fn<(timeoutMs?: number) => Promise<string>>()
+      .mockResolvedValueOnce("preview-target")
+      .mockRejectedValueOnce(new Error("preview view never loaded"));
+    mockPreviewBatch();
+
+    const result = await runAppTestsCore({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+    });
+
+    expect(rotatePreviewView).toHaveBeenCalledTimes(2);
+    expect(result.infraError).toBeUndefined();
+    expect(result.results).toEqual([
+      expect.objectContaining({ file: "e2e-tests/auth.spec.ts" }),
+    ]);
+  });
+
+  it("gives teardown a fixed budget rather than the run's leftovers", async () => {
+    // Billed against the remaining wall clock, a batch that used most of its
+    // budget left the replacement view a few hundred milliseconds to load, so
+    // the longer the run, the likelier a clean result was overwritten.
+    const rotatePreviewView = vi
+      .fn<(timeoutMs?: number) => Promise<string>>()
+      .mockResolvedValue("preview-target");
+    mockPreviewBatch();
+
+    await runAppTestsCore({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+      timeoutMs: 60_000,
+    });
+
+    const teardownBudget = rotatePreviewView.mock.calls.at(-1)![0];
+    expect(teardownBudget).toBe(5_000);
   });
 });
 

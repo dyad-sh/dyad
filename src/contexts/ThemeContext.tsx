@@ -25,38 +25,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
   );
 
+  // The query owns the fetch. `staleTime: Infinity` keeps it to the single
+  // bootstrap call; every later value arrives on the nativeThemeUpdated event
+  // below and is written straight into this cache entry.
   const nativeThemeQuery = useQuery({
     queryKey: queryKeys.system.nativeTheme,
     queryFn: () => ipc.system.getNativeThemeState(),
     staleTime: Infinity,
-    enabled: false,
   });
 
   useEffect(() => {
-    let active = true;
-    let eventGeneration = 0;
+    // A main-to-renderer event and the query's own bootstrap reply are
+    // unordered, so an event that lands first must not be overwritten by an
+    // older invoke resolving afterwards. Cancelling the in-flight query is what
+    // enforces that: TanStack drops the response of a cancelled fetch instead
+    // of writing it over the newer value set here.
     const unsubscribe = ipc.events.system.onNativeThemeUpdated((state) => {
-      eventGeneration += 1;
+      void queryClient.cancelQueries({
+        queryKey: queryKeys.system.nativeTheme,
+      });
       queryClient.setQueryData(queryKeys.system.nativeTheme, state);
     });
 
-    // Subscribe before requesting the initial state: invoke replies and
-    // main-to-renderer events are unordered, so a newer event must win over an
-    // older bootstrap response that happens to resolve later.
-    const requestGeneration = eventGeneration;
-    void ipc.system
-      .getNativeThemeState()
-      .then((state) => {
-        if (active && eventGeneration === requestGeneration) {
-          queryClient.setQueryData(queryKeys.system.nativeTheme, state);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      active = false;
-      unsubscribe();
-    };
+    return unsubscribe;
   }, [queryClient]);
 
   const isDarkMode =

@@ -752,7 +752,7 @@ export function TestsPanel() {
   // With the experiment enabled, "headed" means visible in Dyad's preview
   // rather than in a separate Playwright browser window.
   const previewRunEnabled = !!settings?.enableTestRunInPreview;
-  const { data: automationStatus } = useQuery({
+  const { data: automationStatus, isError: automationStatusFailed } = useQuery({
     queryKey: queryKeys.previewView.automationStatus,
     queryFn: () => ipc.previewView.getAutomationStatus(),
     enabled: previewRunEnabled,
@@ -766,6 +766,9 @@ export function TestsPanel() {
   });
   const canRunInPreview = previewRunEnabled && !!automationStatus?.cdpReady;
   const runsInPreviewWebContentsView = canRunInPreview && headed;
+  // Display only. The value SENT to the runner is the user's raw choice: main
+  // decides whether the preview actually gets the run, and a run that falls
+  // back to an ordinary browser should parallelize as asked.
   const effectiveParallel = parallel && !runsInPreviewWebContentsView;
   // The experiment only opens its CDP port at boot, so with it freshly enabled
   // there is nothing for a preview run to drive. Headed runs are routed to the
@@ -774,14 +777,39 @@ export function TestsPanel() {
   // the iframe preview for a native view and then dead-end on the same advice.
   //
   // Keyed on a definitive `false` rather than on `!canRunInPreview`: the status
-  // query can take seconds (it polls for Chromium's port file) and can fail
-  // outright, and neither is a reason to tell the user to restart — still less
-  // to leave every run button dead for the rest of the session.
+  // query can fail outright, and that is not a reason to tell the user to
+  // restart — still less to leave every run button dead for the rest of the
+  // session. The not-yet-answered case is `previewStatusPending` below.
   const previewRestartRequired =
     previewRunEnabled && headed && automationStatus?.cdpReady === false;
-  const runBlockedTitle = previewRestartRequired
+  // The status query polls for Chromium's port file for up to 5s on its first
+  // call. While it is unanswered `canRunInPreview` is false and
+  // `previewRestartRequired` is false too, so a click in that window used to be
+  // dispatched with `preview: false` and silently open a separate browser —
+  // while the same click a moment later ran in the panel. Hold the run controls
+  // rather than route a run somewhere the user didn't ask for.
+  const previewStatusPending =
+    previewRunEnabled &&
+    headed &&
+    automationStatus === undefined &&
+    // An outright failure is NOT pending. The query keeps polling, so this can
+    // recover, and holding every run button hostage to a lookup that may never
+    // answer is worse than running in a browser and saying so.
+    !automationStatusFailed;
+  const runBlocked = previewRestartRequired || previewStatusPending;
+  const runBlockedReason = previewRestartRequired
     ? "Restart Dyad to run headed tests in the preview panel."
-    : undefined;
+    : previewStatusPending
+      ? "Checking whether the preview panel can host this run\u2026"
+      : undefined;
+  // Shown but not blocking: the run still happens, just not where the user
+  // asked, and leaving that unexplained is the whole complaint.
+  const previewUnavailableNotice =
+    previewRunEnabled && headed && automationStatusFailed
+      ? "Couldn't reach the preview panel's debugging port, so this run opens a separate browser window."
+      : undefined;
+  const previewNotice = runBlockedReason ?? previewUnavailableNotice;
+
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
     queryFn: async () => {
@@ -940,9 +968,13 @@ export function TestsPanel() {
           testFile: file,
           testLine: line,
           headed,
-          // A single targeted test can't parallelize. Preview WebContentsView
-          // runs also share one browser surface, so they must stay serial.
-          parallel: effectiveParallel && !isSingleTest,
+          // A single targeted test can't parallelize. Preview runs share one
+          // browser surface and must stay serial too — but that is decided in
+          // main, which is the only side that knows whether the app's tsconfig
+          // let the run into the preview at all. Deciding it here would leave a
+          // run that fell back to an ordinary browser stuck serial for no
+          // reason, despite Parallel being on.
+          parallel: parallel && !isSingleTest,
           slowMo,
           preview,
         });
@@ -977,7 +1009,7 @@ export function TestsPanel() {
       applyRunFinished,
       setRunState,
       headed,
-      effectiveParallel,
+      parallel,
       slowMo,
       runsInPreviewWebContentsView,
       setPreviewMode,
@@ -1439,8 +1471,12 @@ export function TestsPanel() {
                   <div className="space-y-0.5">
                     <Label htmlFor="test-option-slow-motion">Slow motion</Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      Pause between actions so a visible run is easier to
-                      follow.
+                      {headed
+                        ? "Pause between actions so a visible run is easier to follow."
+                        : // The setting is global and is honored on headless
+                          // runs too, so say what that costs rather than
+                          // quietly dropping a toggle the user turned on.
+                          "Pauses between actions on every run. With “Show the browser” off there’s nothing to watch, so it only makes the run slower."}
                     </p>
                   </div>
                   <Switch
@@ -1546,16 +1582,16 @@ export function TestsPanel() {
           specs.length > 0 && (
             <button
               onClick={() => runTests()}
-              disabled={!devServerRunning || previewRestartRequired}
+              disabled={!devServerRunning || runBlocked}
               title={
-                runBlockedTitle ??
+                runBlockedReason ??
                 "During database-isolated runs, other app operations may wait until the run finishes."
               }
               aria-label="Run all tests"
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                (!devServerRunning || previewRestartRequired) &&
+                (!devServerRunning || runBlocked) &&
                   "opacity-40 cursor-not-allowed",
               )}
             >
@@ -1565,6 +1601,22 @@ export function TestsPanel() {
           )
         )}
       </div>
+
+      {/* Why every Run control is dead, said out loud. Chromium suppresses
+          pointer events on a disabled control, so the `title` those buttons
+          carry never surfaces — the same reason the Record button hangs its
+          hint on a wrapper span. Without this the user gets a greyed-out panel
+          and no explanation anywhere on screen. */}
+      {testingEnabled && previewNotice && (
+        <div
+          data-testid="tests-panel-run-blocked-notice"
+          role="status"
+          className="flex items-start gap-1.5 border-b border-border/60 px-4 py-1.5 text-[11px] text-amber-700 dark:text-amber-500"
+        >
+          <ShieldAlert size={12} className="mt-0.5 shrink-0" />
+          <span>{previewNotice}</span>
+        </div>
+      )}
 
       {/* The experiment opens an unauthenticated CDP port on 127.0.0.1 for the
           whole session, not just while tests run. That is easy to enable once
@@ -1736,13 +1788,11 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={
-                  isRunning || !devServerRunning || previewRestartRequired
-                }
-                title={runBlockedTitle}
+                disabled={isRunning || !devServerRunning || runBlocked}
+                title={runBlockedReason}
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-                  (isRunning || !devServerRunning || previewRestartRequired) &&
+                  (isRunning || !devServerRunning || runBlocked) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -1852,10 +1902,8 @@ export function TestsPanel() {
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
                 result={runState.results[spec.file]}
-                disabled={
-                  isRunning || !devServerRunning || previewRestartRequired
-                }
-                runTitle={runBlockedTitle}
+                disabled={isRunning || !devServerRunning || runBlocked}
+                runTitle={runBlockedReason}
                 deleteDisabled={isRunning || isDeleting}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}

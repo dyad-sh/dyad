@@ -91,7 +91,10 @@ describe("ThemeProvider", () => {
   });
 
   it("falls back to the browser preference when native theme bootstrap fails", async () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
     h.getNativeThemeState.mockRejectedValue(new Error("IPC unavailable"));
 
     renderTheme();

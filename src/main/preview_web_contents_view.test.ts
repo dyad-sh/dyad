@@ -137,6 +137,8 @@ import { previewViewEvents } from "@/ipc/types/preview_view";
 
 const APP_URL = "http://localhost:42101/";
 const BOUNDS = { x: 10, y: 20, width: 300, height: 400 };
+/** The app whose run owns a window's native preview view in these tests. */
+const APP_ID = 1;
 
 let nextWebContentsId = 1;
 
@@ -724,6 +726,56 @@ describe("automation (preview test runs)", () => {
     expect(getPreviewViewStatus(asBrowserWindow).automationActive).toBe(true);
   });
 
+  it("re-arms the screenshot fallback for a replacement rotated under an overlay", async () => {
+    // `overlayActive` is carried across a rotation, but the capture timer lives
+    // on the entry the rotation destroys, and the renderer only sends
+    // set-overlay-active on the EDGES of its aggregate overlay state — so no
+    // new edge arrives to start one. Without re-arming here the renderer keeps
+    // painting the previous test's page for the rest of the batch.
+    vi.useFakeTimers();
+    const { window, asBrowserWindow, automation } = showAndAutomate();
+    setPreviewViewOverlayActive(asBrowserWindow, true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    window.webContents.sent.length = 0;
+    expect(automation!.rotate({ url: APP_URL })).toEqual({
+      ok: true,
+      targetId: expect.any(String),
+    });
+    const replacement = latestView();
+
+    // The frame the renderer holds belongs to a page that no longer exists, so
+    // it is cleared rather than left to go stale.
+    expect(
+      sentOn(window, previewViewEvents.screenshotUpdated.channel)[0],
+    ).toEqual({
+      channel: previewViewEvents.screenshotUpdated.channel,
+      payload: { dataUrl: null },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(replacement.webContents.capturePage).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("leaves the screenshot timer off when nothing is overlapping the view", async () => {
+    vi.useFakeTimers();
+    const { asBrowserWindow, automation } = showAndAutomate();
+    setPreviewViewOverlayActive(asBrowserWindow, false);
+
+    expect(automation!.rotate({ url: APP_URL })).toEqual({
+      ok: true,
+      targetId: expect.any(String),
+    });
+    const replacement = latestView();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(replacement.webContents.capturePage).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
   it("keeps replacements hidden and destroys the final one on end", () => {
     const { asBrowserWindow, automation } = showAndAutomate();
     hidePreviewView(asBrowserWindow);
@@ -899,7 +951,7 @@ describe("automation reservations", () => {
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
     const view = latestView();
 
-    const release = reservePreviewViewForAutomation(asBrowserWindow);
+    const release = reservePreviewViewForAutomation(asBrowserWindow, APP_ID)!;
     hidePreviewView(asBrowserWindow);
 
     expect(view.webContents.close).not.toHaveBeenCalled();
@@ -918,7 +970,7 @@ describe("automation reservations", () => {
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
     const view = latestView();
 
-    const release = reservePreviewViewForAutomation(asBrowserWindow);
+    const release = reservePreviewViewForAutomation(asBrowserWindow, APP_ID)!;
     hidePreviewView(asBrowserWindow);
     expect(view.webContents.close).not.toHaveBeenCalled();
 
@@ -933,8 +985,16 @@ describe("automation reservations", () => {
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
     const view = latestView();
 
-    const releaseFirst = reservePreviewViewForAutomation(asBrowserWindow);
-    const releaseSecond = reservePreviewViewForAutomation(asBrowserWindow);
+    const releaseFirst = reservePreviewViewForAutomation(
+      asBrowserWindow,
+      APP_ID,
+    )!;
+    // The same app's next run claims the view before aborting and awaiting the
+    // first run's teardown; the overlap is what keeps the page alive.
+    const releaseSecond = reservePreviewViewForAutomation(
+      asBrowserWindow,
+      APP_ID,
+    )!;
     hidePreviewView(asBrowserWindow);
 
     releaseFirst();
@@ -950,10 +1010,54 @@ describe("automation reservations", () => {
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
     const view = latestView();
 
-    reservePreviewViewForAutomation(asBrowserWindow)();
+    reservePreviewViewForAutomation(asBrowserWindow, APP_ID)!();
 
     expect(view.webContents.close).not.toHaveBeenCalled();
     expect(getPreviewViewStatus(asBrowserWindow).exists).toBe(true);
+  });
+
+  it("refuses a second app's run while one app owns the window's view", () => {
+    // A window holds exactly one native view. Admitting both runs used to let
+    // whichever rotated first navigate the other's page out from under it, so
+    // both readiness checks failed after each had paid for isolation setup.
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+
+    const release = reservePreviewViewForAutomation(asBrowserWindow, APP_ID)!;
+
+    expect(reservePreviewViewForAutomation(asBrowserWindow, APP_ID + 1)).toBe(
+      null,
+    );
+
+    // Once the owner lets go, the window is free for the other app.
+    release();
+    expect(
+      reservePreviewViewForAutomation(asBrowserWindow, APP_ID + 1),
+    ).not.toBeNull();
+  });
+
+  it("admits the other app once every overlapping claim is released", () => {
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+
+    const releaseFirst = reservePreviewViewForAutomation(
+      asBrowserWindow,
+      APP_ID,
+    )!;
+    const releaseSecond = reservePreviewViewForAutomation(
+      asBrowserWindow,
+      APP_ID,
+    )!;
+
+    releaseFirst();
+    expect(reservePreviewViewForAutomation(asBrowserWindow, APP_ID + 1)).toBe(
+      null,
+    );
+
+    releaseSecond();
+    expect(
+      reservePreviewViewForAutomation(asBrowserWindow, APP_ID + 1),
+    ).not.toBeNull();
   });
 });
 

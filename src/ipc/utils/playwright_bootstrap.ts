@@ -130,12 +130,25 @@ const GITIGNORE_ENTRIES = [
   "/playwright-report/",
   "/playwright/.cache/",
   ".last-run.json",
-  // Dyad-generated preview plumbing, regenerated on every run. Committing it
-  // would hand a teammate who doesn't use Dyad a tsconfig that shadows the
-  // app's own path aliases for everything under e2e-tests/.
-  "/e2e-tests/tsconfig.json",
-  "/e2e-tests/fixtures/dyad/",
 ];
+
+/**
+ * Dyad-generated preview plumbing, regenerated on every run. Committing it
+ * would hand a teammate who doesn't use Dyad a tsconfig that shadows the app's
+ * own path aliases for everything under e2e-tests/.
+ *
+ * Kept out of GITIGNORE_ENTRIES because that list is appended on every
+ * bootstrap for every app. An app owning its own `e2e-tests/tsconfig.json` is
+ * a supported configuration here — ensurePreviewShim declines to overwrite it
+ * and warns instead — so an unconditional rule would gitignore a file Dyad
+ * acknowledges belongs to the user, and one that isn't tracked yet would then
+ * never be committed at all. Appended from ensurePreviewShim instead, and only
+ * for the files Dyad actually generated.
+ */
+const PREVIEW_GITIGNORE_ENTRIES = {
+  tsconfig: "/e2e-tests/tsconfig.json",
+  shim: "/e2e-tests/fixtures/dyad/",
+} as const;
 
 /** Where the JSON reporter writes results, relative to the app root. */
 export const TEST_RESULTS_JSON = "test-results/results.json";
@@ -279,6 +292,33 @@ function tsconfigRoutesToShim(configPath: string, shimPath: string): boolean {
   );
 }
 
+/**
+ * Whether the app's own `e2e-tests/tsconfig.json` routes `@playwright/test` at
+ * `shimPath`, by its own `paths` or one inherited through `extends`.
+ *
+ * Both halves earn their place. `mapsToShim` reads the text it was handed, so
+ * it still answers when the file can't be parsed (where the substring fallback
+ * is the safe guess). `tsconfigRoutesToShim` re-reads from disk and walks the
+ * `extends` chain, resolving each mapping against its own `baseUrl` — without
+ * it an app that keeps its Playwright mapping in a shared base config reads as
+ * unrouted, which both turns preview runs off and makes the legacy shim look
+ * safe to delete out from under a mapping that still points at it.
+ */
+function appTsconfigRoutesToShim(
+  appPath: string,
+  tsconfigText: string,
+  relativeShimPath: string,
+  absoluteShimPath: string,
+): boolean {
+  return (
+    mapsToShim(tsconfigText, relativeShimPath) ||
+    tsconfigRoutesToShim(
+      path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH),
+      absoluteShimPath,
+    )
+  );
+}
+
 function findUnroutedCloserTsconfig(
   appPath: string,
   shimPath: string,
@@ -314,6 +354,24 @@ function findUnroutedCloserTsconfig(
 export type BrowserChannel = "chrome" | "msedge";
 
 /**
+ * The `use.screenshot`/`use.trace` block. Kept as a named constant so the
+ * migration for older generated configs splices in exactly what a fresh
+ * bootstrap writes.
+ */
+const PREVIEW_RECORDER_CONFIG_LINES = `    // Off for a preview run: it drives a browser that also contains Dyad's own
+    // windows, and these recorders capture every page they can see rather than
+    // the one under test. The fixture shim attaches a screenshot of just that
+    // page instead.
+    screenshot: process.env.${PREVIEW_CDP_ENDPOINT_ENV}
+      ? "off"
+      : "only-on-failure",
+    trace: process.env.${PREVIEW_CDP_ENDPOINT_ENV} ? "off" : "retain-on-failure",`;
+
+/** What that block looked like before preview runs existed. */
+const LEGACY_RECORDER_CONFIG_LINES = `    screenshot: "only-on-failure",
+    trace: "retain-on-failure",`;
+
+/**
  * Builds the `playwright-dyad.config.ts` source. When `channel` is set, the
  * config drives the user's already-installed Chrome/Edge (no bundled-Chromium
  * download); when null, it uses Playwright's downloaded Chromium.
@@ -339,14 +397,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",
 ${SLOW_MO_CONFIG_LINES}${channelLine}
-    // Off for a preview run: it drives a browser that also contains Dyad's own
-    // windows, and these recorders capture every page they can see rather than
-    // the one under test. The fixture shim attaches a screenshot of just that
-    // page instead.
-    screenshot: process.env.${PREVIEW_CDP_ENDPOINT_ENV}
-      ? "off"
-      : "only-on-failure",
-    trace: process.env.${PREVIEW_CDP_ENDPOINT_ENV} ? "off" : "retain-on-failure",
+${PREVIEW_RECORDER_CONFIG_LINES}
   },
 });
 `;
@@ -927,11 +978,16 @@ export function refreshGeneratedE2eTsconfig(appPath: string): void {
 }
 
 export function ensurePreviewShim(appPath: string): { warning?: string } {
+  // Only the files this run actually generated get a gitignore rule; see
+  // PREVIEW_GITIGNORE_ENTRIES.
+  const generatedEntries: string[] = [];
+
   const shimPath = path.join(appPath, PREVIEW_SHIM_RELATIVE_PATH);
   const existingShim = readFileOrNull(shimPath);
   if (existingShim === null || existingShim.includes(DYAD_CONFIG_SENTINEL)) {
     fs.mkdirSync(path.dirname(shimPath), { recursive: true });
     fs.writeFileSync(shimPath, buildPreviewShimSource());
+    generatedEntries.push(PREVIEW_GITIGNORE_ENTRIES.shim);
   }
 
   // Written even when the shim itself is hand-edited: without it the mapping
@@ -967,7 +1023,12 @@ export function ensurePreviewShim(appPath: string): { warning?: string } {
   const legacyShim = readFileOrNull(legacyShimPath);
   const legacyStillMapped =
     appOwnedTsconfig !== null &&
-    mapsToShim(appOwnedTsconfig, LEGACY_SHIM_PATH_FROM_E2E_TSCONFIG);
+    appTsconfigRoutesToShim(
+      appPath,
+      appOwnedTsconfig,
+      LEGACY_SHIM_PATH_FROM_E2E_TSCONFIG,
+      legacyShimPath,
+    );
   if (legacyStillMapped) {
     if (legacyShim === null || legacyShim.includes(DYAD_CONFIG_SENTINEL)) {
       fs.mkdirSync(path.dirname(legacyShimPath), { recursive: true });
@@ -980,10 +1041,20 @@ export function ensurePreviewShim(appPath: string): { warning?: string } {
   const rootRoutesToShim =
     appOwnedTsconfig === null ||
     legacyStillMapped ||
-    mapsToShim(appOwnedTsconfig, SHIM_PATH_FROM_E2E_TSCONFIG);
+    appTsconfigRoutesToShim(
+      appPath,
+      appOwnedTsconfig,
+      SHIM_PATH_FROM_E2E_TSCONFIG,
+      shimPath,
+    );
 
   if (appOwnedTsconfig === null) {
     fs.writeFileSync(tsconfigPath, buildE2eTsconfigSource(appPath));
+    generatedEntries.push(PREVIEW_GITIGNORE_ENTRIES.tsconfig);
+  }
+
+  if (generatedEntries.length > 0) {
+    appendGitignoreEntries(appPath, generatedEntries);
   }
 
   if (rootRoutesToShim) {
@@ -1203,14 +1274,74 @@ function configUsesChannel(appPath: string): boolean {
 }
 
 /**
+ * Blanks out `//` and block comments, leaving everything else — including
+ * string contents — in place.
+ *
+ * Scans rather than regex-replaces so the two cases can't be confused for each
+ * other: a `//` inside a string (the template's own `"http://localhost:32100"`)
+ * is consumed as string content instead of starting a comment, and a quote
+ * inside a comment can't open a string. Replaced with spaces rather than
+ * removed so offsets, and therefore the `(?:^|[,{\s])` boundary below, survive.
+ */
+function stripJsComments(source: string): string {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const rest = source.startsWith("//", i)
+      ? source.indexOf("\n", i)
+      : source.startsWith("/*", i)
+        ? (() => {
+            const end = source.indexOf("*/", i + 2);
+            return end === -1 ? -1 : end + 2;
+          })()
+        : null;
+    if (rest !== null) {
+      const stop = rest === -1 ? source.length : rest;
+      out += " ".repeat(stop - i);
+      i = stop;
+      continue;
+    }
+
+    const quote = source[i];
+    if (quote === '"' || quote === "'" || quote === "`") {
+      out += quote;
+      i += 1;
+      while (i < source.length && source[i] !== quote) {
+        // Keep escape pairs together so a `\"` can't be read as the closer.
+        const width = source[i] === "\\" ? 2 : 1;
+        out += source.slice(i, i + width);
+        i += width;
+      }
+      if (i < source.length) {
+        out += quote;
+        i += 1;
+      }
+      continue;
+    }
+
+    out += quote;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * True when Dyad's config names a `timeout` of its own. The template never
  * does, so any occurrence is the user's — and a CLI `--timeout` would override
  * it silently. Deliberately conservative: `expect: { timeout }` counts too,
  * because guessing wrong the other way overrides a deliberate choice.
+ *
+ * Comments are stripped first: the template ships a paragraph about timeouts,
+ * and reading prose as a setting would drop the `--timeout` raise that keeps a
+ * slow-motion run from timing out at Playwright's 30s default. Quoted keys
+ * (`"timeout":`) count, since JSON-style config is just as much a real setting.
  */
 export function configSetsTimeout(appPath: string): boolean {
   const text = readDyadConfigText(appPath);
-  return text != null && /(?:^|[,{\s])timeout\s*:/.test(text);
+  return (
+    text != null &&
+    /(?:^|[,{\s])["']?timeout["']?\s*:/.test(stripJsComments(text))
+  );
 }
 
 /** True when Dyad's config is still pure template output (safe to rewrite). */
@@ -1276,14 +1407,44 @@ function migrateConfigSlowMo(appPath: string): void {
   logger.info(`Added slow-motion support to ${DYAD_CONFIG_FILENAME}`);
 }
 
-function appendGitignoreEntries(appPath: string): void {
+/**
+ * Turns Playwright's own screenshot/trace recorders off for preview runs in a
+ * Dyad-generated config written before preview runs existed.
+ *
+ * `--trace=off` is passed on the CLI, so a stale config is already covered
+ * there — but Playwright has no CLI equivalent for `screenshot`. Without this,
+ * a failing test in an app bootstrapped by an older Dyad still captures every
+ * page reachable over the borrowed CDP connection, which includes Dyad's own
+ * product windows, and writes them into the run's artifacts directory.
+ *
+ * Only touches configs carrying the sentinel, and only while the generated
+ * lines are still verbatim — anything else is the user's to change.
+ */
+function migrateConfigPreviewRecorders(appPath: string): void {
+  if (!isDyadGeneratedConfig(appPath)) return;
+  const text = readDyadConfigText(appPath);
+  if (!text || text.includes(PREVIEW_CDP_ENDPOINT_ENV)) return;
+  if (!text.includes(LEGACY_RECORDER_CONFIG_LINES)) return;
+  fs.writeFileSync(
+    dyadConfigPath(appPath),
+    text.replace(LEGACY_RECORDER_CONFIG_LINES, PREVIEW_RECORDER_CONFIG_LINES),
+  );
+  logger.info(
+    `Scoped screenshot/trace capture to non-preview runs in ${DYAD_CONFIG_FILENAME}`,
+  );
+}
+
+function appendGitignoreEntries(
+  appPath: string,
+  entries: readonly string[] = GITIGNORE_ENTRIES,
+): void {
   const gitignorePath = path.join(appPath, ".gitignore");
   let existing = "";
   if (fs.existsSync(gitignorePath)) {
     existing = fs.readFileSync(gitignorePath, "utf8");
   }
   const existingLines = new Set(existing.split(/\r?\n/).map((l) => l.trim()));
-  const missing = GITIGNORE_ENTRIES.filter((e) => !existingLines.has(e));
+  const missing = entries.filter((e) => !existingLines.has(e));
   if (missing.length === 0) return;
 
   const prefix = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
@@ -1424,10 +1585,12 @@ export async function ensurePlaywrightBootstrap({
 
   // Bring an older Dyad config's testDir up to date (./tests -> ./e2e-tests) so
   // existing apps' runs target the new directory after the convention switch,
-  // and teach it the slow-motion option added later. Both are no-ops once the
-  // config is current, including right after the writes above.
+  // teach it the slow-motion option added later, and scope Playwright's own
+  // recorders away from preview runs. All are no-ops once the config is
+  // current, including right after the writes above.
   migrateConfigTestDir(appPath);
   migrateConfigSlowMo(appPath);
+  migrateConfigPreviewRecorders(appPath);
 
   let previewRouted = false;
   if (writePreviewShim) {

@@ -111,7 +111,10 @@ export const previewViewEvents = {
   }),
   screenshotUpdated: defineEvent({
     channel: "preview-view:screenshot-updated",
-    payload: z.object({ dataUrl: z.string() }),
+    // Nullable: main clears the renderer's cached frame when the page it
+    // belongs to is gone (an automation rotation destroys the view mid-run),
+    // so a stale screenshot of the previous test is never painted.
+    payload: z.object({ dataUrl: z.string().nullable() }),
   }),
 } as const;
 

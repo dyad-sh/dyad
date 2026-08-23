@@ -186,7 +186,7 @@ describe("TestsPanel", () => {
       });
     });
 
-    it("disables parallel runs in the preview WebContentsView", async () => {
+    it("shows parallel as unavailable in the preview but still sends the user's choice", async () => {
       mocks.settings = {
         ...experimentOn,
         testHeaded: true,
@@ -214,7 +214,12 @@ describe("TestsPanel", () => {
 
       await waitFor(() => {
         expect(mocks.runAppTests).toHaveBeenCalledWith(
-          expect.objectContaining({ preview: true, parallel: false }),
+          // `parallel: true` on purpose. Preview runs are serialized in main,
+          // which is the only side that knows whether the app's tsconfig let
+          // this run into the preview at all. Sending `false` from here would
+          // leave a run that fell back to an ordinary browser stuck serial for
+          // no reason, despite Parallel being on.
+          expect.objectContaining({ preview: true, parallel: true }),
         );
       });
     });
@@ -254,6 +259,65 @@ describe("TestsPanel", () => {
       expect(mocks.runAppTests).not.toHaveBeenCalled();
     });
 
+    it("says why the run controls are dead somewhere the user can see", async () => {
+      // Chromium suppresses pointer events on a disabled control, so the
+      // `title` on the button never surfaces — the reason has to be rendered.
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
+      renderPanel();
+
+      // The notice starts on the "checking" reason and settles on the restart
+      // one once the port lookup returns its definitive answer.
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("tests-panel-run-blocked-notice").textContent,
+        ).toContain("Restart Dyad");
+      });
+    });
+
+    it("holds the run controls while the preview status is still unknown", async () => {
+      // The status query polls for Chromium's port file for up to 5s. In that
+      // window neither `cdpReady` nor a definitive `false` is available, so a
+      // click used to be dispatched with `preview: false` and silently open a
+      // separate browser — while the same click a moment later ran in-panel.
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      let resolveStatus!: (value: { cdpReady: boolean }) => void;
+      mocks.getAutomationStatus.mockReturnValue(
+        new Promise<{ cdpReady: boolean }>((resolve) => {
+          resolveStatus = resolve;
+        }),
+      );
+      renderPanel();
+
+      const button = await screen.findByText("Run all");
+      await waitFor(() => {
+        expect(button.getAttribute("disabled")).not.toBeNull();
+      });
+      expect(
+        (await screen.findByTestId("tests-panel-run-blocked-notice"))
+          .textContent,
+      ).toContain("Checking");
+      fireEvent.click(button);
+      expect(mocks.runAppTests).not.toHaveBeenCalled();
+
+      // Once the port answers, the run goes to the preview as asked.
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      await act(async () => {
+        resolveStatus({ cdpReady: true });
+      });
+      await waitFor(() => {
+        expect(button.getAttribute("disabled")).toBeNull();
+      });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ preview: true }),
+        );
+      });
+    });
+
     it("disables the per-file and per-test runs too", async () => {
       // Not just the Run-all button: a per-file run reaches the same code
       // path, so it would tear down the iframe preview for a native view and
@@ -272,6 +336,33 @@ describe("TestsPanel", () => {
 
       fireEvent.click(fileRun);
       expect(mocks.runAppTests).not.toHaveBeenCalled();
+    });
+
+    it("runs in a browser and says so when the port lookup fails outright", async () => {
+      // A failed lookup is not "pending" — the query keeps polling, so it can
+      // recover, and holding every run button hostage to a check that may
+      // never answer is worse than running somewhere visible and explaining.
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      mocks.getAutomationStatus.mockRejectedValue(new Error("no port"));
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      renderPanel();
+
+      const button = await screen.findByText("Run all");
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("tests-panel-run-blocked-notice").textContent,
+        ).toContain("separate browser window");
+      });
+      expect(button.getAttribute("disabled")).toBeNull();
+
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ preview: false }),
+        );
+      });
     });
 
     it("leaves headless runs out of the preview", async () => {

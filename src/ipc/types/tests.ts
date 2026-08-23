@@ -448,8 +448,18 @@ export const TestsRunStatePayloadSchema = z.object({
    * dev-server restart, temporary branch/user delete) that no caller can
    * abort. Unlike `finished`, both are consumed for BOTH sources — the panel
    * writes its own start/finish state directly but cannot observe these two.
+   *
+   * "preview-fallback" is emitted mid-run when a run that asked for the native
+   * preview turned out to need an ordinary browser instead. It is not a
+   * terminal state: a "finished" still follows.
    */
-  state: z.enum(["started", "stopping", "cleaning-up", "finished"]),
+  state: z.enum([
+    "started",
+    "stopping",
+    "cleaning-up",
+    "preview-fallback",
+    "finished",
+  ]),
   /** Authoritative abort state, carried by progress events. */
   wasStopped: z.boolean().optional(),
   /** Single spec targeted, when set; absent = whole suite. */
@@ -461,8 +471,9 @@ export const TestsRunStatePayloadSchema = z.object({
   /** Whether this run drives the native preview view. Present on "started". */
   preview: z.boolean().optional(),
   /**
-   * Window allowed to activate its native preview for this run. Run state is
-   * broadcast, but preview automation remains owned by the invoking window.
+   * Window allowed to activate — and, on "preview-fallback", required to drop —
+   * its native preview for this run. Run state is broadcast, but preview
+   * automation remains owned by the invoking window.
    */
   previewOwnerWindowSessionId: WindowSessionIdSchema.optional(),
   /** Present only on "finished". */

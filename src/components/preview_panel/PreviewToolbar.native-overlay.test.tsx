@@ -143,8 +143,8 @@ beforeEach(() => {
 describe("PreviewToolbar native preview overlay", () => {
   it("hides the native surface before opening overflow UI and restores it on close", () => {
     const store = renderToolbar({ nativeViewAppId: 1 });
-    // jsdom measures every tab at 0 width against 0 available width, which the
-    // inter-tab gaps push over budget — so the overflow button really renders.
+    // happy-dom measures every tab at 0 width against 0 available width, which
+    // the inter-tab gaps push over budget — so the overflow button really renders.
     const overflow = screen.getByTestId("preview-mode-overflow-button");
 
     fireEvent.click(overflow);

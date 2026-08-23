@@ -9,14 +9,20 @@ const h = vi.hoisted(() => ({
   selectedAppIdAtom: Symbol("selectedAppIdAtom"),
   testRunStateAtom: Symbol("testRunStateAtom"),
   testRunPhase: "running" as "idle" | "setup" | "running",
+  // Whether renderer UI is currently covering the native surface. Settable so
+  // the false branch — where the screenshot fallback must NOT paint — is
+  // exercised rather than assumed.
+  overlayActive: true,
   setTestSetupOverlayActive: vi.fn(),
   onScreenshotUpdated: vi.fn(),
-  screenshotHandler: null as ((payload: { dataUrl: string }) => void) | null,
+  screenshotHandler: null as
+    | ((payload: { dataUrl: string | null }) => void)
+    | null,
 }));
 
 vi.mock("jotai", () => ({
   useAtomValue: (atom: symbol) => {
-    if (atom === h.overlayActiveAtom) return true;
+    if (atom === h.overlayActiveAtom) return h.overlayActive;
     if (atom === h.selectedAppIdAtom) return 1;
     if (atom === h.testRunStateAtom) return { phase: h.testRunPhase };
     return false;
@@ -114,6 +120,7 @@ import { PreviewWebContentsView } from "./PreviewWebContentsView";
 
 beforeEach(() => {
   h.testRunPhase = "running";
+  h.overlayActive = true;
   h.setTestSetupOverlayActive.mockReset();
   h.screenshotHandler = null;
   h.onScreenshotUpdated.mockReset().mockImplementation((handler) => {
@@ -186,5 +193,40 @@ describe("PreviewWebContentsView screenshot fallback", () => {
     expect(
       screen.queryByTestId("preview-native-test-setup-overlay"),
     ).toBeNull();
+  });
+
+  it("paints nothing over the native view while no overlay is up", () => {
+    // The native WebContentsView composites above all renderer DOM, so the
+    // screenshot is a stand-in for a surface the user cannot see. Painting it
+    // with no overlay up would cover the live page with a frozen frame.
+    h.overlayActive = false;
+    h.testRunPhase = "setup";
+    render(<PreviewWebContentsView loading={false} />);
+
+    act(() => {
+      h.screenshotHandler?.({ dataUrl: "data:image/png;base64,hidden" });
+    });
+
+    expect(screen.queryByTestId("preview-native-screenshot")).toBeNull();
+    expect(
+      screen.queryByTestId("preview-native-test-setup-overlay"),
+    ).toBeNull();
+  });
+
+  it("drops the cached frame when main clears it mid-run", () => {
+    // A rotation between isolated tests destroys the page the last frame came
+    // from, so main sends null rather than just stopping. Without honoring it
+    // the renderer would keep painting the previous test's page.
+    render(<PreviewWebContentsView loading={false} />);
+
+    act(() => {
+      h.screenshotHandler?.({ dataUrl: "data:image/png;base64,stale" });
+    });
+    expect(screen.getByTestId("preview-native-screenshot")).toBeTruthy();
+
+    act(() => {
+      h.screenshotHandler?.({ dataUrl: null });
+    });
+    expect(screen.queryByTestId("preview-native-screenshot")).toBeNull();
   });
 });

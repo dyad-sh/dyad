@@ -67,14 +67,19 @@ const entries = new Map<number, PreviewViewEntry>();
  * component and hides the view; without this, that would destroy the page the
  * run is about to attach to and dead-end it.
  */
-const automationReservations = new Map<number, number>();
+const automationReservations = new Map<
+  number,
+  /** The app that owns the claim, and how many of its runs overlap on it. */
+  { appId: number; count: number }
+>();
 
 function isClaimedForAutomation(
   key: number,
   entry: PreviewViewEntry | undefined,
 ): boolean {
   return (
-    !!entry?.automationActive || (automationReservations.get(key) ?? 0) > 0
+    !!entry?.automationActive ||
+    (automationReservations.get(key)?.count ?? 0) > 0
   );
 }
 
@@ -85,18 +90,37 @@ function isClaimedForAutomation(
  */
 export function reservePreviewViewForAutomation(
   window: BrowserWindow,
-): () => void {
+  appId: number,
+): (() => void) | null {
   const key = resolveKey(window);
   if (key === null) return () => {};
 
-  automationReservations.set(key, (automationReservations.get(key) ?? 0) + 1);
+  // A window holds exactly one native preview view, so admission is exclusive
+  // per window and scoped to the app that claimed it. Two apps' runs used to
+  // both be admitted here and then fight over the same view: whichever
+  // rotated it first navigated the other's page out from under it, and both
+  // readiness checks failed after each had already paid for isolation setup.
+  //
+  // Re-entrant for the SAME app on purpose: a second run for one app claims
+  // the view before aborting and awaiting the first run's teardown, and the
+  // overlapping claim is what keeps the view alive across that handoff.
+  const existing = automationReservations.get(key);
+  if (existing && existing.appId !== appId) {
+    return null;
+  }
+
+  automationReservations.set(key, {
+    appId,
+    count: (existing?.count ?? 0) + 1,
+  });
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    const remaining = (automationReservations.get(key) ?? 1) - 1;
-    if (remaining > 0) {
-      automationReservations.set(key, remaining);
+    const current = automationReservations.get(key);
+    const remaining = (current?.count ?? 1) - 1;
+    if (remaining > 0 && current) {
+      automationReservations.set(key, { ...current, count: remaining });
       return;
     }
     automationReservations.delete(key);
@@ -178,8 +202,13 @@ function emitNavigationState(
   });
 }
 
+/**
+ * Pushes the fallback frame to the renderer. `null` clears it: the renderer
+ * paints the last frame it received for as long as it holds one, so anything
+ * that invalidates the cache — a rotation destroying the page it came from —
+ * has to say so rather than just stop sending.
+ */
 function emitScreenshot(window: BrowserWindow, dataUrl: string | null): void {
-  if (!dataUrl) return;
   safeSend(window.webContents, previewViewEvents.screenshotUpdated.channel, {
     dataUrl,
   });
@@ -803,6 +832,18 @@ export function beginPreviewAutomation(
       replacement.view.setBounds(bounds);
       replacement.view.setVisible(!overlayActive && !hiddenDuringAutomation);
       replacement.currentUrl = url;
+      if (overlayActive) {
+        // `overlayActive` is carried over, but the capture timer is not: it
+        // lives on the entry destroyEntry() just tore down, and the renderer
+        // only sends preview-view:set-overlay-active on the edges of its
+        // aggregate overlay state — so no new edge arrives to start one. Left
+        // alone, the renderer would keep painting the frame it already has,
+        // which belongs to the previous test's now-destroyed page, for the
+        // rest of the batch. Clear it first so nothing stale is shown while
+        // the replacement loads; did-stop-loading seeds the new cache.
+        emitScreenshot(window, null);
+        startScreenshotCapture(window, key, replacement);
+      }
       void replacement.view.webContents.loadURL(url).catch((error) => {
         logger.debug(
           `Rotated preview view load settled with an error for ${url}:`,

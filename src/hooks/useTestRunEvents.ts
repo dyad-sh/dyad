@@ -127,6 +127,25 @@ export function useTestRunEvents() {
 
     const unsubscribeRunState = ipc.events.tests.onRunState((payload) => {
       const { appId, testFile, testLine } = payload;
+      if (payload.state === "preview-fallback") {
+        if (activeRunByAppId.current.get(appId)?.runId !== payload.runId) {
+          return;
+        }
+        // The run asked for the native preview and couldn't have it, so it is
+        // executing in a separate browser window. Handled for panel runs too
+        // (unlike "finished" below, which the panel applies itself): the panel
+        // switched to the native view optimistically on click, and leaving it
+        // up would show a dead "Test view" with Back/Reload/Restart all locked
+        // by a run happening somewhere the user can't see.
+        if (
+          payload.previewOwnerWindowSessionId === getActiveWindowSessionId()
+        ) {
+          setPreviewNativeViewAppId((current) =>
+            current === appId ? null : current,
+          );
+        }
+        return;
+      }
       if (payload.state === "started") {
         const activeRun = activeRunByAppId.current.get(appId);
         if (activeRun && payload.runId < activeRun.runId) {

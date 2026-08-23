@@ -168,6 +168,14 @@ function parallelWorkerCount(): number {
   return Math.max(1, Math.min(cores - 1, 8));
 }
 
+/**
+ * How long the cosmetic post-batch rotation gets to load its replacement view.
+ * Deliberately independent of the run's own deadline: by then the results are
+ * final, so the only thing a shrinking budget can change is whether the user
+ * ends up looking at a clean page or the last test's.
+ */
+const PREVIEW_TEARDOWN_ROTATION_TIMEOUT_MS = 5_000;
+
 // In-flight runs keyed by appId. `controller` lets the Stop button cancel an
 // in-progress bootstrap or test run; `done` resolves once the whole
 // prepare → run → teardown lifecycle has finished, so a new run can wait for
@@ -227,15 +235,17 @@ function emitRunState(
   event: IpcMainInvokeEvent,
   payload: TestsRunStatePayload,
 ): void {
-  const emittedPayload =
-    payload.source === "agent" && payload.state === "started" && payload.preview
-      ? {
-          ...payload,
-          previewOwnerWindowSessionId: windowRegistry.ensureRegistered(
-            event.sender,
-          ),
-        }
-      : payload;
+  // Stamped on any payload about a preview run, whatever its source: the
+  // native view belongs to the invoking window, so every window has to be able
+  // to tell whether a broadcast is about the view it is showing.
+  const emittedPayload = payload.preview
+    ? {
+        ...payload,
+        previewOwnerWindowSessionId: windowRegistry.ensureRegistered(
+          event.sender,
+        ),
+      }
+    : payload;
   broadcastToRegisteredWindows(event.sender, "tests:run-state", emittedPayload);
 }
 
@@ -655,13 +665,21 @@ async function runPreviewTestBatch({
     }
   } finally {
     try {
-      await rotatePreviewView?.(signal?.aborted ? 1 : remainingTimeout());
+      // Best-effort, and on a fixed budget rather than the batch's leftover
+      // time. This rotation is cosmetic — it hands the user a clean page after
+      // the run — and every test has already been executed and aggregated by
+      // the time it runs. Billing it against the remaining wall clock meant a
+      // batch that used most of its budget left the replacement view a few
+      // hundred milliseconds to load, and the timeout then reported a fully
+      // green run as an infrastructure failure, which an agent reads as
+      // inconclusive and spends a fix attempt on.
+      await rotatePreviewView?.(
+        signal?.aborted ? 1 : PREVIEW_TEARDOWN_ROTATION_TIMEOUT_MS,
+      );
     } catch (error) {
-      if (!result.infraError) {
-        result.infraError = {
-          message: `Couldn't restore a clean preview after the test run: ${error instanceof Error ? error.message : String(error)}`,
-        };
-      }
+      logger.warn(
+        `Couldn't restore a clean preview after the test run: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     result.results = aggregatePreviewCases(casesByFile);
   }
@@ -822,24 +840,19 @@ export async function runAppTestsCore({
   // `playwright test` has no `--base-url` option.
   // `--headed` opens a visible browser window so the user can watch the run.
   // It overrides the headless default (and the CI=true env set below).
-  // A preview run is already visible — it drives Dyad's own window — and has no
-  // browser of its own to make headed.
-  if (headed && !previewEndpoint) {
+  // Unconditional: a preview run returned above, so from here on this is always
+  // an ordinary browser run with a browser of its own to make headed.
+  if (headed) {
     args.push("--headed");
   }
   // Override the generated config's serial defaults (`workers: 1`,
   // `fullyParallel: false`) so a file's independent tests run concurrently.
   // `--fully-parallel` is what parallelizes tests *within* a single file.
-  // Preview tests each get a fresh page but still drive the same visible panel,
-  // so they can only ever be sequential.
-  if (parallel && !previewEndpoint) {
+  // Preview runs, which can only ever be sequential, returned above — so the
+  // caller's choice is honored as-is here, including on the fallback path where
+  // preview routing was refused and this became an ordinary browser run.
+  if (parallel) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
-  }
-  // A trace of the borrowed context records every page in it, Dyad's own
-  // windows included. Passed as a flag so it also covers apps whose generated
-  // config predates the same setting.
-  if (previewEndpoint) {
-    args.push("--trace=off");
   }
   // Slow motion spends wall-clock time inside each test, which Playwright bills
   // against its 30s per-test default — so a spec that's green at full speed
@@ -860,18 +873,9 @@ export async function runAppTestsCore({
         ...process.env,
         ...testEnv,
         [TEST_BASE_URL_ENV]: baseUrl,
-        // Only set for preview runs; the generated fixture shim is inert
-        // without it, so every other run keeps launching its own browser.
-        ...(previewEndpoint
-          ? {
-              [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
-              // Playwright's "copy prompt" snapshot goes into error-context.md
-              // and is taken from the borrowed context's FIRST page — over CDP
-              // that's a Dyad window, not the app. Suppress it rather than
-              // hand the model a picture of the user's editor.
-              PLAYWRIGHT_NO_COPY_PROMPT: "1",
-            }
-          : {}),
+        // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
+        // returned above; leaving the variable unset is what keeps the
+        // generated fixture shim inert so this run launches its own browser.
         // Left unset at full speed so the config's `|| 0` fallback applies.
         ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
         PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
@@ -1097,6 +1101,9 @@ export async function runAppTestsWithIsolation({
   // for a Neon branch to find out.
   let previewWindow: BrowserWindow | undefined;
   let previewCdpEndpoint: string | undefined;
+  // Set when the preview was asked for and refused before the run's output
+  // stream exists; reported through `emit` as soon as it does.
+  let previewFellBackToBrowser: string | undefined;
   if (preview) {
     previewWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
     if (!previewWindow) {
@@ -1126,9 +1133,23 @@ export async function runAppTestsWithIsolation({
   // Tests panel already shows the run as active: the "Tests running…" chip and
   // the exit button both unmount the preview component, whose cleanup would
   // otherwise destroy the very page this run is waiting to attach to.
-  const releasePreviewReservation = previewWindow
-    ? reservePreviewViewForAutomation(previewWindow)
-    : () => {};
+  let releasePreviewReservation: () => void = () => {};
+  if (previewWindow) {
+    const reservation = reservePreviewViewForAutomation(previewWindow, appId);
+    if (reservation === null) {
+      // Another app's run already owns this window's one native view. Both
+      // runs proceeding would navigate each other's page out from under them
+      // and fail both readiness checks — after each had paid for its own
+      // isolation setup. Take the ordinary browser instead: less to watch,
+      // but a real result, and the same fallback the missing-view path uses.
+      previewWindow = undefined;
+      previewCdpEndpoint = undefined;
+      previewFellBackToBrowser =
+        "another app's test run is using the preview panel";
+    } else {
+      releasePreviewReservation = reservation;
+    }
+  }
 
   // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
   // run's teardown — so a concurrent invocation sees THIS run as its prior
@@ -1200,7 +1221,9 @@ export async function runAppTestsWithIsolation({
     testFile: normalizedTestFile ?? undefined,
     testLine,
     grep,
-    preview,
+    // What this run is, not what it requested. A refused preview has already
+    // cleared the endpoint and will emit a correlated fallback event below.
+    preview: previewCdpEndpoint !== undefined,
   });
 
   // Install and announce the new owner before aborting the prior run. Its
@@ -1221,6 +1244,25 @@ export async function runAppTestsWithIsolation({
 
   const emit = (chunk: string, phase: "setup" | "running") =>
     emitOutput(event, appId, runId, chunk, phase);
+
+  if (previewFellBackToBrowser) {
+    emit(
+      `The preview panel can't host this run (${previewFellBackToBrowser}); running the tests in a separate browser instead.\n`,
+      "setup",
+    );
+    // The renderer switched to the native view optimistically on click, so it
+    // has to be told to switch back before the run starts somewhere else.
+    emitRunState(event, {
+      appId,
+      runId,
+      source,
+      state: "preview-fallback",
+      preview: true,
+      testFile: normalizedTestFile ?? undefined,
+      testLine,
+      grep,
+    });
+  }
 
   let finalResult: RunAppTestsResult = { appId, results: [] };
   // Set by isolation teardown below when `.env.local` couldn't be put back. The
@@ -1385,6 +1427,19 @@ export async function runAppTestsWithIsolation({
                 previewBaseUrl = undefined;
                 // Nothing is going to drive that view now, so stop holding it.
                 releasePreviewReservation();
+                // The renderer may already have switched to the native view on
+                // the "started" event; without this it stays there, locked, for
+                // a run happening in a browser window elsewhere.
+                emitRunState(event, {
+                  appId,
+                  runId,
+                  source,
+                  state: "preview-fallback",
+                  preview: true,
+                  testFile: normalizedTestFile ?? undefined,
+                  testLine,
+                  grep,
+                });
               } else {
                 return {
                   appId,
@@ -1464,9 +1519,26 @@ export async function runAppTestsWithIsolation({
               testEnv: prepared.testCredentials,
               previewCdpEndpoint,
               rotatePreviewView,
-              // The run turned out to need its own browser, so stop holding the
-              // preview view frozen (no navigation, no hiding) for it.
-              onPreviewFallback: () => automation?.end(),
+              // The run turned out to need its own browser, so stop holding
+              // the preview view frozen (no navigation, no hiding) for it.
+              onPreviewFallback: () => {
+                automation?.end();
+                // ...and tell the renderer, or the user is left staring at a
+                // native "Test view" with every control locked by the run
+                // while the tests actually execute in a separate Playwright
+                // window. The only other signal is a warning line in the test
+                // output, which is collapsed by default.
+                emitRunState(event, {
+                  appId,
+                  runId,
+                  source,
+                  state: "preview-fallback",
+                  preview: true,
+                  testFile: normalizedTestFile ?? undefined,
+                  testLine,
+                  grep,
+                });
+              },
             });
           } finally {
             automation?.end();

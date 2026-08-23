@@ -12,6 +12,10 @@ export function TestRunInPreviewSwitch() {
           id="enable-test-run-in-preview"
           aria-label="Run tests in preview panel"
           checked={!!settings?.enableTestRunInPreview}
+          // Until settings load the switch reads `false` whatever the stored
+          // value is, so a click here would send the *opposite* of what the
+          // user sees the moment the query resolves.
+          disabled={!settings}
           onCheckedChange={(checked) => {
             // The mutation surfaces its own error toast; swallowing the
             // rejection here keeps it from becoming an unhandled rejection.

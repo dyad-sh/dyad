@@ -413,10 +413,13 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         accessToken: encrypt(newSettings.coolify.accessToken.value),
       };
     }
-    if (newSettings.coolify?.adminPassword) {
+    if (newSettings.coolify?.admin) {
       newSettings.coolify = {
         ...newSettings.coolify,
-        adminPassword: encrypt(newSettings.coolify.adminPassword.value),
+        admin: {
+          ...newSettings.coolify.admin,
+          password: encrypt(newSettings.coolify.admin.password.value),
+        },
       };
     }
     if (newSettings.supabase) {
@@ -691,22 +694,25 @@ function readExistingSettingsFile(
       combinedSettings.coolify = rest;
     }
   }
-  if (combinedSettings.coolify?.adminPassword) {
+  if (combinedSettings.coolify?.admin) {
+    const admin = combinedSettings.coolify.admin;
     const resolved = resolveStoredSecret(
-      combinedSettings.coolify.adminPassword,
+      admin.password,
       "Coolify admin password",
-      ["coolify", "adminPassword"],
+      ["coolify", "admin", "password"],
       ctx,
     );
     if (resolved) {
       combinedSettings.coolify = {
         ...combinedSettings.coolify,
-        adminPassword: resolved,
+        admin: { ...admin, password: resolved },
       };
     } else {
-      // Dropped rather than kept as ciphertext nobody can read. The password
-      // still exists on the server's own .env, which is the honest fallback.
-      const { adminPassword: _dropped, ...rest } = combinedSettings.coolify;
+      // The whole account goes, not just the password. Dyad keeps this to be
+      // the way into a machine the user owns, and an address and an email
+      // with nothing to sign in with is not one. The password still exists in
+      // the server's own .env, which is the honest fallback.
+      const { admin: _dropped, ...rest } = combinedSettings.coolify;
       combinedSettings.coolify = rest;
     }
   }

@@ -381,9 +381,9 @@ describe("run", () => {
     await expect(checkThenRun()).rejects.toThrow("exit 1");
 
     const saved = h.written.at(-1) as {
-      coolify: { adminPassword: { value: string } };
+      coolify: { admin: { password: { value: string } } };
     };
-    expect(saved.coolify.adminPassword.value).toBe("Abc123@xyz");
+    expect(saved.coolify.admin.password.value).toBe("Abc123@xyz");
   });
 
   it("does not put back an address a later write replaced", async () => {
@@ -398,9 +398,11 @@ describe("run", () => {
     await expect(checkThenRun()).rejects.toThrow("exit 1");
 
     const saved = h.written.at(-1) as {
-      coolify: { adminInstanceUrl: string };
+      coolify: { admin: { instanceUrl: string } };
     };
-    expect(saved.coolify.adminInstanceUrl).toBe("https://203.0.113.5.sslip.io");
+    expect(saved.coolify.admin.instanceUrl).toBe(
+      "https://203.0.113.5.sslip.io",
+    );
   });
 
   it("reports what went wrong, not what the retry did", async () => {
@@ -445,10 +447,10 @@ describe("run", () => {
     // token but not this leaves them unable to sign in to their own server.
     await checkThenRun();
     const saved = h.written.at(-1) as {
-      coolify: { adminPassword?: { value: string }; adminEmail?: string };
+      coolify: { admin?: { password: { value: string }; email: string } };
     };
-    expect(saved.coolify.adminPassword?.value).toBe("Abc123@xyz");
-    expect(saved.coolify.adminEmail).toBe("me@gmail.com");
+    expect(saved.coolify.admin?.password.value).toBe("Abc123@xyz");
+    expect(saved.coolify.admin?.email).toBe("me@gmail.com");
   });
 
   it("records which instance the account is on", async () => {
@@ -456,9 +458,9 @@ describe("run", () => {
     // does not come along.
     await checkThenRun();
     const saved = h.written.at(-1) as {
-      coolify: { adminInstanceUrl?: string };
+      coolify: { admin?: { instanceUrl: string } };
     };
-    expect(saved.coolify.adminInstanceUrl).toBe("http://203.0.113.5:8000");
+    expect(saved.coolify.admin?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
   it("returns the password so it can be shown once", async () => {
@@ -484,12 +486,12 @@ describe("run", () => {
     // password away here would take away the only way to do it.
     const saved = h.written.at(-1) as {
       coolify: {
-        adminPassword?: { value: string };
+        admin?: { password: { value: string } };
         accessToken?: unknown;
         instanceUrl?: string;
       };
     };
-    expect(saved.coolify.adminPassword?.value).toBe("Abc123@xyz");
+    expect(saved.coolify.admin?.password.value).toBe("Abc123@xyz");
     // No token and no address, because there is no instance Dyad can talk to.
     expect(saved.coolify.accessToken).toBeUndefined();
     expect(saved.coolify.instanceUrl).toBeUndefined();
@@ -505,10 +507,12 @@ describe("run", () => {
     await checkThenRun().catch(() => {});
 
     const saved = h.written.at(-1) as {
-      coolify: { adminPassword?: { value: string }; adminInstanceUrl?: string };
+      coolify: {
+        admin?: { password: { value: string }; instanceUrl: string };
+      };
     };
-    expect(saved.coolify.adminPassword?.value).toBe("Abc123@xyz");
-    expect(saved.coolify.adminInstanceUrl).toBe("http://203.0.113.5:8000");
+    expect(saved.coolify.admin?.password.value).toBe("Abc123@xyz");
+    expect(saved.coolify.admin?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
   it("writes nothing when the failure came before any account", async () => {
@@ -598,9 +602,11 @@ describe("revealCredentials", () => {
       coolify: {
         instanceUrl: "http://203.0.113.5:8000",
         accessToken: { value: "1|abc" },
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "http://203.0.113.5:8000",
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "Abc123@xyz" },
+          instanceUrl: "http://203.0.113.5:8000",
+        },
       },
     };
     const result = (await call("coolify-setup:reveal-credentials")) as Record<
@@ -620,9 +626,11 @@ describe("revealCredentials", () => {
     // still has to know which machine these open.
     h.settings = {
       coolify: {
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "http://203.0.113.5:8000",
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "Abc123@xyz" },
+          instanceUrl: "http://203.0.113.5:8000",
+        },
       },
     };
     const result = (await call("coolify-setup:reveal-credentials")) as Record<
@@ -641,9 +649,11 @@ describe("revealCredentials", () => {
       coolify: {
         instanceUrl: "https://coolify.example.com",
         accessToken: { value: "1|abc" },
-        adminEmail: "me@gmail.com",
-        adminPassword: { value: "Abc123@xyz" },
-        adminInstanceUrl: "http://203.0.113.5:8000",
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "Abc123@xyz" },
+          instanceUrl: "http://203.0.113.5:8000",
+        },
       },
     };
     const result = (await call("coolify-setup:reveal-credentials")) as Record<

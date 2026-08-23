@@ -1141,14 +1141,38 @@ describe("preserving undecryptable secrets", () => {
     writeSettings({
       coolify: {
         instanceUrl: "http://203.0.113.5:8000",
-        adminPassword: { value: "invented-password" },
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "invented-password" },
+          instanceUrl: "http://203.0.113.5:8000",
+        },
       },
     });
 
-    expect(readStoredFile().coolify.adminPassword).toEqual({
-      value: "invented-password",
-      encryptionType: "plaintext",
+    expect(readStoredFile().coolify.admin).toEqual({
+      email: "me@gmail.com",
+      password: { value: "invented-password", encryptionType: "plaintext" },
+      instanceUrl: "http://203.0.113.5:8000",
     });
+  });
+
+  it("drops the whole admin account when its password will not decrypt", () => {
+    // An address and an email with nothing to sign in with is not a way into
+    // anything, and this is kept to be one.
+    store[mockSettingsPath] = JSON.stringify({
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        admin: {
+          email: "me@gmail.com",
+          password: lockedSecret("coolify"),
+          instanceUrl: "http://203.0.113.5:8000",
+        },
+      },
+    });
+
+    const read = readSettings();
+    expect(read.coolify?.admin).toBeUndefined();
+    expect(read.coolify?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
   it("preserves a locked provider apiKey when a write rebuilds providerSettings without it", () => {

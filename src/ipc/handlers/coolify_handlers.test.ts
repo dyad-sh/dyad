@@ -15,9 +15,7 @@ const settings: Record<string, unknown> = {};
 function storedCoolify() {
   return (settings.coolify ?? {}) as {
     accessToken?: { value: string };
-    adminEmail?: string;
-    adminPassword?: { value: string };
-    adminInstanceUrl?: string;
+    admin?: { email: string; password: { value: string }; instanceUrl: string };
   };
 }
 const rows: Record<string, unknown>[] = [];
@@ -257,9 +255,11 @@ describe("clearing the token", () => {
     // shows all of it and asks the user to confirm before it goes.
     settings.coolify = {
       ...(settings.coolify as Record<string, unknown>),
-      adminEmail: "me@gmail.com",
-      adminPassword: { value: "Abc123@xyz" },
-      adminInstanceUrl: "https://coolify.example.com",
+      admin: {
+        email: "me@gmail.com",
+        password: { value: "Abc123@xyz" },
+        instanceUrl: "https://coolify.example.com",
+      },
     };
 
     await call("coolify:clear-token");
@@ -338,9 +338,11 @@ describe("the admin account Dyad created", () => {
   beforeEach(() => {
     settings.coolify = {
       ...(settings.coolify as Record<string, unknown>),
-      adminEmail: "me@gmail.com",
-      adminPassword: { value: "Abc123@xyz" },
-      adminInstanceUrl: "https://coolify.example.com",
+      admin: {
+        email: "me@gmail.com",
+        password: { value: "Abc123@xyz" },
+        instanceUrl: "https://coolify.example.com",
+      },
     };
   });
 
@@ -354,8 +356,8 @@ describe("the admin account Dyad created", () => {
       acknowledgedInsecure: false,
     });
 
-    expect(storedCoolify().adminEmail).toBe("me@gmail.com");
-    expect(storedCoolify().adminPassword?.value).toBe("Abc123@xyz");
+    expect(storedCoolify().admin?.email).toBe("me@gmail.com");
+    expect(storedCoolify().admin?.password.value).toBe("Abc123@xyz");
   });
 
   it("goes when the instance is forgotten", async () => {
@@ -363,9 +365,7 @@ describe("the admin account Dyad created", () => {
     // would leave a password for a Coolify nothing is connected to.
     await call("coolify:clear-token");
 
-    expect(storedCoolify().adminEmail).toBeUndefined();
-    expect(storedCoolify().adminPassword).toBeUndefined();
-    expect(storedCoolify().adminInstanceUrl).toBeUndefined();
+    expect(storedCoolify().admin).toBeUndefined();
   });
 });
 

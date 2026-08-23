@@ -223,6 +223,18 @@ export type SupabaseOrganizationCredentials = z.infer<
  * where lives in the coolify_app_connections table, not here — this is the
  * instance, and it is instance-wide.
  */
+export const CoolifyAdminSchema = z.object({
+  email: z.string(),
+  password: SecretSchema,
+  /**
+   * The address this account belongs to.
+   *
+   * Written before there is a token to talk to the instance with, which is
+   * the window where nothing else names the machine the account opens.
+   */
+  instanceUrl: z.string(),
+});
+
 export const CoolifySchema = z.object({
   instanceUrl: z.string().optional(),
   accessToken: SecretSchema.optional(),
@@ -233,16 +245,12 @@ export const CoolifySchema = z.object({
    * own machine — showing it once and forgetting it leaves them locked out of
    * a server they own. Encrypted like the token, and only ever handed to the
    * renderer when it is asked for.
-   */
-  adminEmail: z.string().optional(),
-  adminPassword: SecretSchema.optional(),
-  /**
-   * The address the admin account above belongs to.
    *
-   * Set before there is a token to talk to the instance with, which is the
-   * window where nothing else here names the machine the account opens.
+   * One object rather than three fields, because the three are only ever
+   * meaningful together: an account without the address it opens is a
+   * password for nothing, and all three are written and forgotten at once.
    */
-  adminInstanceUrl: z.string().optional(),
+  admin: CoolifyAdminSchema.optional(),
 });
 export type Coolify = z.infer<typeof CoolifySchema>;
 

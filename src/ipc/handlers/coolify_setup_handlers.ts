@@ -118,9 +118,11 @@ function setupController(): CoolifySetupController {
             writeSettings({
               coolify: {
                 ...readSettings().coolify,
-                adminEmail: credentials.email,
-                adminPassword: { value: credentials.password },
-                adminInstanceUrl: dashboardUrl,
+                admin: {
+                  email: credentials.email,
+                  password: { value: credentials.password },
+                  instanceUrl: dashboardUrl,
+                },
               },
             });
             unsavedAccount = null;
@@ -143,11 +145,13 @@ function setupController(): CoolifySetupController {
               writeSettings({
                 coolify: {
                   ...readSettings().coolify,
-                  adminEmail: unsavedAccount.credentials.email,
-                  adminPassword: {
-                    value: unsavedAccount.credentials.password,
+                  admin: {
+                    email: unsavedAccount.credentials.email,
+                    password: {
+                      value: unsavedAccount.credentials.password,
+                    },
+                    instanceUrl: unsavedAccount.dashboardUrl,
                   },
-                  adminInstanceUrl: unsavedAccount.dashboardUrl,
                 },
               });
             } catch (retryError) {
@@ -180,12 +184,13 @@ function setupController(): CoolifySetupController {
             writeSettings({
               coolify: {
                 ...readSettings().coolify,
-                adminEmail: result.credentials.email,
-                adminPassword: { value: result.credentials.password },
-                // Stored even when no token was minted: it names the server this
-                // account is on, which is how connecting elsewhere later knows
-                // the account does not come along.
-                adminInstanceUrl: result.dashboardUrl,
+                admin: {
+                  email: result.credentials.email,
+                  password: { value: result.credentials.password },
+                  // Stored even when no token was minted, because then it is
+                  // the only thing naming the server this account is on.
+                  instanceUrl: result.dashboardUrl,
+                },
                 // The address and token go together: an address stored without a
                 // token would read as an instance Dyad can talk to and cannot.
                 // Stored without the acknowledgement `coolify:save-token`
@@ -417,12 +422,13 @@ export function registerCoolifySetupHandlers() {
     // time and signing out forgets all of it together. So the fields are read
     // straight out rather than checked against each other for whose they are.
     //
-    // adminInstanceUrl covers the window before a token exists: a server just
-    // installed is named by the account Dyad made on it and nothing else.
+    // The account's own address covers the window before a token exists: a
+    // server just installed is named by the account Dyad made on it and
+    // nothing else.
     return {
-      dashboardUrl: coolify?.instanceUrl ?? coolify?.adminInstanceUrl ?? null,
-      adminEmail: coolify?.adminEmail ?? null,
-      adminPassword: coolify?.adminPassword?.value ?? null,
+      dashboardUrl: coolify?.instanceUrl ?? coolify?.admin?.instanceUrl ?? null,
+      adminEmail: coolify?.admin?.email ?? null,
+      adminPassword: coolify?.admin?.password?.value ?? null,
       apiToken: coolify?.accessToken?.value ?? null,
     };
   });

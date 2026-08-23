@@ -374,6 +374,8 @@
   "annotations": {
     "commentOnSelection": "Comentar o texto selecionado",
     "editComment": "Editar comentário",
+    "viewComment": "Ver comentário",
+    "viewCommentFor": "Ver comentário sobre {{text}}",
     "addCommentPlaceholder": "Adicione seu comentário...",
     "deleteComment": "Excluir comentário",
     "cancel": "Cancelar",

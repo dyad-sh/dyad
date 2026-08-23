@@ -1,7 +1,27 @@
 import type { ChatAnnotation } from "@/atoms/chatAnnotationAtoms";
 
-function quoteSelectedText(text: string): string {
+// Zero-width space. Invisible in the rendered message and in the model's view
+// of the quote, but enough to break the mention/skill patterns below.
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+
+/**
+ * Quoted assistant output is context, not a command.
+ *
+ * The main process expands `@prompt:<id>`, `@media:<name>` and `/slug` over the
+ * whole prompt string before the turn runs, so a response that happened to
+ * contain one of those tokens would silently inline a stored prompt, expand a
+ * skill, or resolve a local file just because the user commented on it. Break
+ * the trigger so the text stays inert; the user's own comment is left alone so
+ * chat syntax they type themselves still works.
+ */
+function neutralizeChatSyntax(text: string): string {
   return text
+    .replace(/@(prompt|media)(?=:)/g, `@$1${ZERO_WIDTH_SPACE}`)
+    .replace(/(^|\s)\/(?=[a-zA-Z0-9-])/g, `$1/${ZERO_WIDTH_SPACE}`);
+}
+
+function quoteSelectedText(text: string): string {
+  return neutralizeChatSyntax(text)
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");

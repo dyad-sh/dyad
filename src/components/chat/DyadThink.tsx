@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ChevronRight } from "lucide-react";
+import { ANNOTATION_IGNORE_ATTRIBUTE } from "@/lib/annotationDom";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
 import { DyadTokenSavings } from "./DyadTokenSavings";
@@ -60,7 +61,10 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
       : "";
 
   return (
-    <div className="my-1">
+    // Collapsed reasoning is mounted lazily, so its text appears and
+    // disappears without the message changing. Keep it out of the annotation
+    // offset space or expanding it shifts every later annotation.
+    <div className="my-1" {...{ [ANNOTATION_IGNORE_ATTRIBUTE]: true }}>
       {/* Toggle header */}
       <button
         type="button"

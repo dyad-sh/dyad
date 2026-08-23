@@ -6,9 +6,9 @@ import { useTranslation } from "react-i18next";
 import {
   addChatAnnotation,
   chatAnnotationsAtom,
-  hasOverlappingChatAnnotation,
   removeChatAnnotation,
   updateChatAnnotation,
+  type ChatAnnotation,
 } from "@/atoms/chatAnnotationAtoms";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +16,12 @@ import {
   CHAT_ANNOTATION_ID_ATTRIBUTE,
   CHAT_ANNOTATION_MARK_SELECTOR,
   clearChatAnnotationHighlights,
+  findOverlappingChatAnnotation,
   getChatSelectionSnapshot,
 } from "./chatAnnotationDom";
+
+const POPOVER_WIDTH = 296;
+const POPOVER_HEIGHT = 180;
 
 interface FloatingSelection {
   x: number;
@@ -25,6 +29,28 @@ interface FloatingSelection {
   selectedText: string;
   startOffset: number;
   selectionLength: number;
+}
+
+/** Where the popover is pinned, so it can be repositioned as the page moves. */
+type FloatingAnchor = { kind: "mark"; id: string } | { kind: "range" };
+
+/** First `<mark>` fragment of an annotation, which carries its popover anchor. */
+function findAnnotationMark(container: HTMLElement, annotationId: string) {
+  return [
+    ...container.querySelectorAll<HTMLElement>(CHAT_ANNOTATION_MARK_SELECTOR),
+  ].find(
+    (mark) => mark.getAttribute(CHAT_ANNOTATION_ID_ATTRIBUTE) === annotationId,
+  );
+}
+
+function clampToViewport(rect: DOMRect): { x: number; y: number } {
+  return {
+    x: Math.max(
+      8,
+      Math.min(rect.right + 6, window.innerWidth - POPOVER_WIDTH - 8),
+    ),
+    y: Math.max(8, Math.min(rect.top, window.innerHeight - POPOVER_HEIGHT - 8)),
+  };
 }
 
 export function ChatMessageAnnotationLayer({
@@ -38,23 +64,44 @@ export function ChatMessageAnnotationLayer({
 }) {
   const { t } = useTranslation("chat");
   const [allAnnotations, setAllAnnotations] = useAtom(chatAnnotationsAtom);
-  const annotations = useMemo(
-    () =>
-      (allAnnotations.get(chatId) ?? []).filter(
-        (annotation) => annotation.messageId === messageId,
-      ),
-    [allAnnotations, chatId, messageId],
-  );
+  // Returning the previous array when this message's annotations are unchanged
+  // keeps the highlight effect from clearing and re-applying every message's
+  // marks whenever any annotation anywhere in the chat changes.
+  const stableAnnotationsRef = useRef<ChatAnnotation[]>([]);
+  const annotations = useMemo(() => {
+    const next = (allAnnotations.get(chatId) ?? []).filter(
+      (annotation) => annotation.messageId === messageId,
+    );
+    const previous = stableAnnotationsRef.current;
+    if (
+      previous.length === next.length &&
+      previous.every((annotation, index) => annotation === next[index])
+    ) {
+      return previous;
+    }
+    stableAnnotationsRef.current = next;
+    return next;
+  }, [allAnnotations, chatId, messageId]);
   const [floating, setFloating] = useState<FloatingSelection | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [showEditor, setShowEditor] = useState(false);
   const popoverRef = useRef<HTMLElement | null>(null);
+  const anchorRef = useRef<FloatingAnchor | null>(null);
   const setPopoverRef = useCallback((node: HTMLElement | null) => {
     popoverRef.current = node;
   }, []);
 
+  const markLabel = useCallback(
+    (selectedText: string) =>
+      selectedText.length === 0
+        ? t("annotations.viewComment")
+        : t("annotations.viewCommentFor", { text: selectedText }),
+    [t],
+  );
+
   const dismiss = useCallback(() => {
+    anchorRef.current = null;
     setFloating(null);
     setActiveId(null);
     setComment("");
@@ -64,23 +111,65 @@ export function ChatMessageAnnotationLayer({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    clearChatAnnotationHighlights(container);
-    applyChatAnnotationHighlights(container, annotations);
-    return () => clearChatAnnotationHighlights(container);
-  }, [annotations, containerRef]);
+
+    let frameId: number | null = null;
+    let isApplyingHighlights = false;
+
+    // Markdown content is re-rendered outside this effect's control (React
+    // reconciles the subtree, CodeHighlight swaps its fallback `<pre>` for
+    // Shiki once the highlighter loads), and either wipes the marks out. Watch
+    // the container and re-apply instead of highlighting exactly once.
+    const observer = new MutationObserver(() => {
+      if (isApplyingHighlights) return;
+      scheduleRefresh();
+    });
+
+    const refresh = () => {
+      observer.disconnect();
+      isApplyingHighlights = true;
+      try {
+        clearChatAnnotationHighlights(container);
+        applyChatAnnotationHighlights(container, annotations, markLabel);
+      } finally {
+        isApplyingHighlights = false;
+        observer.observe(container, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
+    };
+
+    const scheduleRefresh = () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        refresh();
+      });
+    };
+
+    scheduleRefresh();
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      clearChatAnnotationHighlights(container);
+    };
+  }, [annotations, containerRef, markLabel]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const openMark = (mark: HTMLElement) => {
-      const id = mark.getAttribute(CHAT_ANNOTATION_ID_ATTRIBUTE);
-      const annotation = annotations.find((item) => item.id === id);
-      if (!annotation) return;
-      const rect = mark.getBoundingClientRect();
+    const openAnnotation = (annotation: ChatAnnotation, rect: DOMRect) => {
+      anchorRef.current = { kind: "mark", id: annotation.id };
       setFloating({
-        x: Math.min(rect.right + 6, window.innerWidth - 304),
-        y: Math.max(8, rect.top),
+        ...clampToViewport(rect),
         selectedText: annotation.selectedText,
         startOffset: annotation.startOffset,
         selectionLength: annotation.selectionLength,
@@ -90,65 +179,171 @@ export function ChatMessageAnnotationLayer({
       setShowEditor(true);
     };
 
-    const handleMouseUp = (event: MouseEvent) => {
+    const openMark = (mark: HTMLElement) => {
+      const id = mark.getAttribute(CHAT_ANNOTATION_ID_ATTRIBUTE);
+      const annotation = annotations.find((item) => item.id === id);
+      if (!annotation) return;
+      openAnnotation(annotation, mark.getBoundingClientRect());
+    };
+
+    const markFromEvent = (event: Event) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
-      const mark = target?.closest(
-        CHAT_ANNOTATION_MARK_SELECTOR,
-      ) as HTMLElement | null;
-      if (mark) {
-        openMark(mark);
+      return (target?.closest(CHAT_ANNOTATION_MARK_SELECTOR) ??
+        null) as HTMLElement | null;
+    };
+
+    const findMark = (annotationId: string) =>
+      findAnnotationMark(container, annotationId);
+
+    // Capture the click on the way down so a highlight sitting inside a
+    // markdown link or a tool-card button opens the comment instead of also
+    // following the link / running the card action.
+    const handleClickCapture = (event: MouseEvent) => {
+      const mark = markFromEvent(event);
+      if (!mark) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openMark(mark);
+    };
+
+    const processSelection = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const snapshot = getChatSelectionSnapshot(container, range);
+      if (!snapshot) return;
+
+      const overlapping = findOverlappingChatAnnotation(
+        annotations,
+        snapshot.startOffset,
+        snapshot.selectionLength,
+      );
+      if (overlapping) {
+        // Silently doing nothing here read as "the feature is broken". Open the
+        // comment the selection collides with so the overlap is explained by
+        // what appears on screen.
+        const mark = findMark(overlapping.id);
+        openAnnotation(overlapping, (mark ?? range).getBoundingClientRect());
         return;
       }
 
-      requestAnimationFrame(() => {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-          return;
-        }
-        const range = selection.getRangeAt(0);
-        const snapshot = getChatSelectionSnapshot(container, range);
-        if (
-          !snapshot ||
-          hasOverlappingChatAnnotation(
-            annotations,
-            snapshot.startOffset,
-            snapshot.selectionLength,
-          )
-        ) {
-          return;
-        }
-        const rects = range.getClientRects();
-        const rect =
-          rects.item(rects.length - 1) ?? range.getBoundingClientRect();
-        setFloating({
-          x: Math.max(8, Math.min(rect.right + 6, window.innerWidth - 304)),
-          y: Math.max(8, Math.min(rect.top, window.innerHeight - 180)),
-          ...snapshot,
-        });
-        setActiveId(null);
-        setComment("");
-        setShowEditor(false);
+      const rects = range.getClientRects();
+      const rect =
+        rects.item(rects.length - 1) ?? range.getBoundingClientRect();
+      anchorRef.current = { kind: "range" };
+      setFloating({ ...clampToViewport(rect), ...snapshot });
+      setActiveId(null);
+      setComment("");
+      setShowEditor(false);
+    };
+
+    let frameId: number | null = null;
+    const scheduleProcessSelection = () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        processSelection();
       });
     };
 
+    const handleSelectionEnd = (event: Event) => {
+      if (markFromEvent(event)) return;
+      scheduleProcessSelection();
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const mark = target?.closest(
-        CHAT_ANNOTATION_MARK_SELECTOR,
-      ) as HTMLElement | null;
+      const mark = markFromEvent(event);
       if (mark && (event.key === "Enter" || event.key === " ")) {
         event.preventDefault();
         openMark(mark);
       }
     };
 
-    container.addEventListener("mouseup", handleMouseUp);
+    // Keyboard (shift+arrow) and touch selections never fire `mouseup`, so
+    // without this they could never reach the comment affordance. One layer is
+    // mounted per assistant message, so bail on someone else's selection before
+    // arming the debounce rather than after.
+    let selectionChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        selection.isCollapsed ||
+        !container.contains(selection.getRangeAt(0).commonAncestorContainer)
+      ) {
+        return;
+      }
+      if (selectionChangeTimer !== null) clearTimeout(selectionChangeTimer);
+      selectionChangeTimer = setTimeout(() => {
+        selectionChangeTimer = null;
+        scheduleProcessSelection();
+      }, 200);
+    };
+
+    container.addEventListener("click", handleClickCapture, true);
+    container.addEventListener("mouseup", handleSelectionEnd);
     container.addEventListener("keydown", handleKeyDown);
+    container.addEventListener("touchend", handleSelectionEnd);
+    document.addEventListener("selectionchange", handleSelectionChange);
     return () => {
-      container.removeEventListener("mouseup", handleMouseUp);
+      container.removeEventListener("click", handleClickCapture, true);
+      container.removeEventListener("mouseup", handleSelectionEnd);
       container.removeEventListener("keydown", handleKeyDown);
+      container.removeEventListener("touchend", handleSelectionEnd);
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      if (selectionChangeTimer !== null) clearTimeout(selectionChangeTimer);
     };
   }, [annotations, containerRef]);
+
+  // The popover is `position: fixed`, so it has to be re-pinned to its anchor
+  // whenever the transcript scrolls or the window resizes - otherwise it stays
+  // at stale viewport coordinates, floating over unrelated messages or landing
+  // off-screen.
+  useEffect(() => {
+    if (!floating) return;
+    const container = containerRef.current;
+
+    const reposition = () => {
+      const anchor = anchorRef.current;
+      if (!anchor || !container) return;
+
+      let rect: DOMRect | null = null;
+      if (anchor.kind === "mark") {
+        rect =
+          findAnnotationMark(container, anchor.id)?.getBoundingClientRect() ??
+          null;
+      } else {
+        const selection = window.getSelection();
+        rect =
+          selection && selection.rangeCount > 0
+            ? selection.getRangeAt(0).getBoundingClientRect()
+            : null;
+      }
+
+      if (!rect || (rect.width === 0 && rect.height === 0)) {
+        dismiss();
+        return;
+      }
+
+      const { x, y } = clampToViewport(rect);
+      setFloating((previous) =>
+        previous && (previous.x !== x || previous.y !== y)
+          ? { ...previous, x, y }
+          : previous,
+      );
+    };
+
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [containerRef, dismiss, floating]);
 
   useEffect(() => {
     if (!floating) return;

@@ -22,7 +22,9 @@ export function addChatAnnotation(
   const next = new Map(previous);
   next.set(annotation.chatId, [
     ...(next.get(annotation.chatId) ?? []),
-    annotation,
+    // Trim here as well as in `updateChatAnnotation` so both reducers store
+    // the same normalized text, whatever a caller hands them.
+    { ...annotation, comment: annotation.comment.trim() },
   ]);
   return next;
 }
@@ -65,6 +67,32 @@ export function clearChatAnnotations(
 ): ChatAnnotationsMap {
   const next = new Map(previous);
   next.delete(chatId);
+  return next;
+}
+
+/**
+ * Drops annotations that point at assistant messages the chat no longer has.
+ *
+ * Retry deletes the trailing user/assistant pair server-side, so without this
+ * the tray would keep - and later submit - a comment quoting stale text and
+ * labelled with a message id that does not exist any more.
+ */
+export function pruneChatAnnotations(
+  previous: ChatAnnotationsMap,
+  chatId: number,
+  existingMessageIds: ReadonlySet<number>,
+): ChatAnnotationsMap {
+  const current = previous.get(chatId);
+  if (!current) return previous;
+
+  const remaining = current.filter((annotation) =>
+    existingMessageIds.has(annotation.messageId),
+  );
+  if (remaining.length === current.length) return previous;
+
+  const next = new Map(previous);
+  if (remaining.length === 0) next.delete(chatId);
+  else next.set(chatId, remaining);
   return next;
 }
 

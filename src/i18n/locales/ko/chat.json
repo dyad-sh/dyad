@@ -377,6 +377,8 @@
   "annotations": {
     "commentOnSelection": "선택한 텍스트에 댓글 달기",
     "editComment": "댓글 수정",
+    "viewComment": "댓글 보기",
+    "viewCommentFor": "{{text}}에 대한 댓글 보기",
     "addCommentPlaceholder": "댓글을 추가하세요...",
     "deleteComment": "댓글 삭제",
     "cancel": "취소",

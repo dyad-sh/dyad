@@ -9,6 +9,10 @@ import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import {
+  chatAnnotationsAtom,
+  clearChatAnnotations,
+} from "@/atoms/chatAnnotationAtoms";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { createChatTabSessionStorage } from "@/window_infrastructure/chat_tab_session_storage";
 
@@ -539,6 +543,12 @@ export const removeChatIdFromAllTrackingAtom = atom(
       const next = new Map(planAcceptChoices);
       next.delete(chatId);
       set(planAcceptInNewChatByChatIdAtom, next);
+    }
+    // Clear unsent message annotations so they don't accumulate for a chat
+    // that no longer exists (or resurface if the id is ever reused)
+    const annotations = get(chatAnnotationsAtom);
+    if (annotations.has(chatId)) {
+      set(chatAnnotationsAtom, clearChatAnnotations(annotations, chatId));
     }
   },
 );

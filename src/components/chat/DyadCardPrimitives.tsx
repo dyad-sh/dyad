@@ -6,6 +6,7 @@ import {
   CircleX,
   CheckCircle2,
 } from "lucide-react";
+import { ANNOTATION_IGNORE_ATTRIBUTE } from "@/lib/annotationDom";
 import { CustomTagState } from "./stateTypes";
 
 /**
@@ -141,6 +142,10 @@ export function DyadCard({
         ${onClick ? "cursor-pointer" : ""}
         ${className}
       `}
+      // Card bodies expand and collapse independently of the message content,
+      // so their text stays out of the annotation offset space - otherwise
+      // toggling a card shifts the offsets of every annotation after it.
+      {...{ [ANNOTATION_IGNORE_ATTRIBUTE]: true }}
       onClick={onClick}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}

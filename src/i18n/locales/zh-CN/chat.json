@@ -374,6 +374,8 @@
   "annotations": {
     "commentOnSelection": "评论所选文本",
     "editComment": "编辑评论",
+    "viewComment": "查看评论",
+    "viewCommentFor": "查看关于 {{text}} 的评论",
     "addCommentPlaceholder": "添加评论...",
     "deleteComment": "删除评论",
     "cancel": "取消",

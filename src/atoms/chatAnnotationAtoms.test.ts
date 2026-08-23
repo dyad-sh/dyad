@@ -3,6 +3,7 @@ import {
   addChatAnnotation,
   clearChatAnnotations,
   hasOverlappingChatAnnotation,
+  pruneChatAnnotations,
   removeChatAnnotation,
   updateChatAnnotation,
   type ChatAnnotation,
@@ -56,5 +57,37 @@ describe("chat annotation state", () => {
   it("detects overlapping ranges but permits adjacent ranges", () => {
     expect(hasOverlappingChatAnnotation([annotation], 20, 5)).toBe(true);
     expect(hasOverlappingChatAnnotation([annotation], 23, 5)).toBe(false);
+  });
+
+  it("normalizes comment whitespace on both the add and update paths", () => {
+    const added = addChatAnnotation(new Map(), {
+      ...annotation,
+      comment: "  Change this  ",
+    });
+    const updated = updateChatAnnotation(
+      added,
+      annotation.chatId,
+      annotation.id,
+      "  Change this  ",
+    );
+
+    expect(added.get(7)?.[0].comment).toBe("Change this");
+    expect(updated.get(7)?.[0].comment).toBe("Change this");
+  });
+
+  it("prunes annotations whose message was retried away", () => {
+    const annotations = addChatAnnotation(
+      addChatAnnotation(new Map(), annotation),
+      { ...annotation, id: "annotation-2", messageId: 12 },
+    );
+
+    const pruned = pruneChatAnnotations(annotations, 7, new Set([11]));
+
+    expect(pruned.get(7)?.map((item) => item.id)).toEqual(["annotation-1"]);
+    // Nothing to prune returns the same map so Jotai skips the re-render.
+    expect(pruneChatAnnotations(pruned, 7, new Set([11]))).toBe(pruned);
+    expect(pruneChatAnnotations(pruned, 7, new Set<number>()).has(7)).toBe(
+      false,
+    );
   });
 });

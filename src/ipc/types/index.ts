@@ -49,6 +49,7 @@ export type {
 export { supabaseContracts, supabaseEvents } from "./supabase";
 export { neonContracts } from "./neon";
 export { migrationContracts } from "./migration";
+export { tempPreviewContracts } from "./temp_preview";
 export { systemContracts, systemEvents } from "./system";
 export {
   versionContracts,
@@ -109,6 +110,7 @@ export { vercelClient } from "./vercel";
 export { supabaseClient, supabaseEventClient } from "./supabase";
 export { neonClient } from "./neon";
 export { migrationClient } from "./migration";
+export { tempPreviewClient } from "./temp_preview";
 export { systemClient, systemEventClient } from "./system";
 export { versionClient } from "./version";
 export { languageModelClient } from "./language-model";
@@ -151,6 +153,7 @@ export {
   recordingEventClient,
   recordingEvents,
 } from "./recording";
+export type { TempPreviewStatus } from "./temp_preview";
 
 // =============================================================================
 // Type Exports
@@ -496,6 +499,7 @@ import { coolifyClient, coolifyEventClient } from "./coolify";
 import { supabaseClient, supabaseEventClient } from "./supabase";
 import { neonClient } from "./neon";
 import { migrationClient } from "./migration";
+import { tempPreviewClient } from "./temp_preview";
 import { systemClient, systemEventClient } from "./system";
 import { versionClient } from "./version";
 import { languageModelClient } from "./language-model";
@@ -574,6 +578,7 @@ export const ipc = {
   supabase: supabaseClient,
   neon: neonClient,
   migration: migrationClient,
+  tempPreview: tempPreviewClient,
 
   // Features
   system: systemClient,

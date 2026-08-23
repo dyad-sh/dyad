@@ -62,6 +62,13 @@ export const queryKeys = {
       ["apps", "search", query] as const,
   },
 
+  // Temporary previews
+  tempPreviews: {
+    all: ["temp-previews"] as const,
+    status: ({ appId }: { appId: number | null }) =>
+      ["temp-previews", "status", appId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // App Collections
   // ─────────────────────────────────────────────────────────────────────────────
@@ -485,6 +492,9 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.system)[keyof typeof queryKeys.system]>
   | QueryKeyOf<(typeof queryKeys.settings)[keyof typeof queryKeys.settings]>
   | QueryKeyOf<(typeof queryKeys.apps)[keyof typeof queryKeys.apps]>
+  | QueryKeyOf<
+      (typeof queryKeys.tempPreviews)[keyof typeof queryKeys.tempPreviews]
+    >
   | QueryKeyOf<
       (typeof queryKeys.appCollections)[keyof typeof queryKeys.appCollections]
     >

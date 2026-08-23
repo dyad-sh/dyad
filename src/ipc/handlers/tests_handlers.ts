@@ -75,6 +75,7 @@ import {
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
 import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
+import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
 const logger = log.scope("tests_handlers");
@@ -815,6 +816,13 @@ export async function runAppTestsWithIsolation({
   });
   testRunControllers.set(appId, { controller, done, runId });
 
+  // Whether this run took a sandbox. Reported on every run-state event so the
+  // cleanup copy can name what is actually being removed — the fallback path
+  // never creates a workspace, and claiming otherwise is the same class of
+  // inaccurate copy this work set out to remove. Declared before the progress
+  // emitter below, which an already-cancelled caller can fire synchronously.
+  let sandboxed = false;
+
   /**
    * Progress-only run-state events for the two waits a Stop cannot skip. Both
    * are emitted only while this controller still owns the app, so a late event
@@ -842,6 +850,7 @@ export async function runAppTestsWithIsolation({
       // Only `cleaning-up` carries this so the UI can name the remote provider
       // cleanup accurately. The normal preview is not restarted.
       isolation,
+      sandboxed,
     });
   };
 
@@ -954,20 +963,23 @@ export async function runAppTestsWithIsolation({
     // against the user's real database.
     const settings = readSettings();
     const runtimeMode = settings.runtimeMode2 ?? "host";
-    const sandboxUnavailable =
-      runtimeMode !== "host"
+    const sandboxUnavailable = usesSandboxedE2eTests(settings)
+      ? null
+      : runtimeMode !== "host"
         ? {
             disclosure: `Tests run against your normal preview because isolated test servers aren't available in ${runtimeMode} runtime yet.`,
             neonRefusal: `Isolated E2E test servers aren't available in ${runtimeMode} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run tests for this app.`,
           }
-        : settings.disableSandboxedE2eTests
-          ? {
-              disclosure:
-                "Tests run against your normal preview because isolated test servers are turned off in Settings.",
-              neonRefusal:
-                "Isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run tests for this app.",
-            }
-          : null;
+        : {
+            disclosure:
+              "Tests run against your normal preview because isolated test servers are turned off in Settings.",
+            neonRefusal:
+              "Isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run tests for this app.",
+          };
+    // Recorded once for this run rather than re-read later: the setting can
+    // change while the run is in flight, and the cleanup copy has to describe
+    // what this run actually did.
+    sandboxed = sandboxUnavailable === null;
     if (sandboxUnavailable) {
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
@@ -1003,6 +1015,11 @@ export async function runAppTestsWithIsolation({
           "repository-worktree",
           "test-files",
         ],
+        // Same as the run stage below: while this waits behind, say, a git
+        // operation holding `repository-worktree`, an unrelated operation that
+        // only conflicts with this one on `test-files` should still proceed
+        // rather than queue behind a test run it has no reason to wait for.
+        allowCompatibleQueueBypass: true,
         refuseWhenRecording: "run tests",
       },
       async () => {
@@ -1255,6 +1272,7 @@ export async function runAppTestsWithIsolation({
       results: source === "agent" ? finalResult.results : undefined,
       infraError: source === "agent" ? finalResult.infraError : undefined,
       isolation: finalResult.isolation,
+      sandboxed,
     });
     // A teardown failure must not skip the cleanup below — leaving the
     // controller registered and `done` unresolved would make every future

@@ -201,6 +201,7 @@ export function useTestRunEvents() {
                   // teardown accurately. The terminal `finished` event resends
                   // it, so this never becomes the badge's only source.
                   isolation: payload.isolation ?? prev.isolation,
+                  sandboxed: payload.sandboxed ?? prev.sandboxed,
                 },
         });
         return;

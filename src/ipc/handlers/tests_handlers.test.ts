@@ -277,6 +277,10 @@ describe("tests handlers", () => {
           "repository-worktree",
           "test-files",
         ],
+        // Same as the run stage: while the snapshot waits behind an unrelated
+        // blocker, work that only conflicts with it on `test-files` must not
+        // queue behind the whole test run.
+        allowCompatibleQueueBypass: true,
       });
     });
 

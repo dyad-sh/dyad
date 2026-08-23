@@ -450,6 +450,13 @@ export const TestsRunStatePayloadSchema = z.object({
   results: z.array(TestResultSchema).optional(),
   infraError: z.object({ message: z.string() }).optional(),
   isolation: TestIsolationSchema.optional(),
+  /**
+   * Whether this run executed in an isolated sandbox — a throwaway copy of the
+   * app served by its own dev server. False for the fallback path (Docker/cloud
+   * runtime, or the user's opt-out), which creates no workspace, so cleanup
+   * copy can name what is actually being removed.
+   */
+  sandboxed: z.boolean().optional(),
 });
 export type TestsRunStatePayload = z.infer<typeof TestsRunStatePayloadSchema>;
 

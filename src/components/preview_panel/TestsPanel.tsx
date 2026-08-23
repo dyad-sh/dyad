@@ -78,6 +78,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
+import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
 import { sameOriginStartPath } from "./previewAddressPath";
 
@@ -702,6 +703,13 @@ export function TestsPanel() {
   const parallel = settings?.testParallel ?? false;
 
   const devServerRunning = appUrl.appUrl !== null;
+  // A sandboxed run serves the app itself, on its own port, from its own copy —
+  // the user's preview is not involved, so requiring it would block the whole
+  // point of the feature. The fallback path (Docker/cloud runtime, or the
+  // opt-out) still runs Playwright against the preview and still needs it up.
+  // Recording is unaffected either way: it drives the live preview.
+  const testsNeedDevServer = !usesSandboxedE2eTests(settings);
+  const testRunBlocked = testsNeedDevServer && !devServerRunning;
   // Owns the run's whole lifecycle, teardown included. Gates every action that
   // must not interleave with it (Run, Record, Delete), because the per-app lock
   // is still held during `cleaning-up`.
@@ -1416,13 +1424,13 @@ export function TestsPanel() {
           specs.length > 0 && (
             <button
               onClick={() => runTests()}
-              disabled={!devServerRunning}
+              disabled={testRunBlocked}
               title="During database-isolated runs, other app operations may wait until the run finishes."
               aria-label="Run all tests"
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                !devServerRunning && "opacity-40 cursor-not-allowed",
+                testRunBlocked && "opacity-40 cursor-not-allowed",
               )}
             >
               <Play size={14} />
@@ -1457,11 +1465,14 @@ export function TestsPanel() {
                   {isCleaningUp
                     ? // The Neon teardown deletes the throwaway branch on
                       // Neon's side, which retries with backoff and is the
-                      // slowest case worth naming. Everything else is the local
-                      // sandbox and, for Supabase, the temporary test user.
+                      // slowest case worth naming. Otherwise it's the local
+                      // sandbox — when this run took one — and, for Supabase,
+                      // the temporary test user.
                       runState.isolation?.mode === "neon-branch"
                       ? "Removing the temporary test database… "
-                      : "Cleaning up the test sandbox… "
+                      : runState.sandboxed
+                        ? "Cleaning up the test sandbox… "
+                        : "Cleaning up the test data… "
                     : showStopping
                       ? "Stopping the tests… "
                       : runState.phase === "setup"
@@ -1559,8 +1570,8 @@ export function TestsPanel() {
             </div>
           )}
 
-          {/* Dev-server gate banner */}
-          {!devServerRunning && specs.length > 0 && (
+          {/* Dev-server gate banner — only when the run actually needs it. */}
+          {testRunBlocked && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
               <span className="flex-1">Start the app to run tests.</span>
@@ -1585,10 +1596,10 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isRunning || !devServerRunning}
+                disabled={isRunning || testRunBlocked}
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-                  (isRunning || !devServerRunning) &&
+                  (isRunning || testRunBlocked) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -1698,7 +1709,7 @@ export function TestsPanel() {
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
                 result={runState.results[spec.file]}
-                disabled={isRunning || !devServerRunning}
+                disabled={isRunning || testRunBlocked}
                 deleteDisabled={isRunning || isDeleting}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}

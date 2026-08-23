@@ -318,6 +318,43 @@ describe("TestsPanel", () => {
     ).toBe(true);
   });
 
+  it("runs sandboxed tests without the preview being up", async () => {
+    // A sandboxed run serves its own copy of the app on its own port. Requiring
+    // the user's preview would block the whole point of the feature — and would
+    // contradict the panel's own "your preview keeps running" disclosure.
+    mocks.appUrl = null;
+
+    renderPanel();
+
+    await screen.findByText("signup.spec.ts");
+    expect(screen.queryByText("Start the app to run tests.")).toBeNull();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Run all tests",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("still requires the preview when the run is not sandboxed", async () => {
+    // The fallback path runs Playwright against the user's preview, so the
+    // gate is still correct there.
+    mocks.appUrl = null;
+    mocks.settings = { disableSandboxedE2eTests: true };
+
+    renderPanel();
+
+    expect(await screen.findByText("Start the app to run tests.")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Run all tests",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
   describe("stopping a run", () => {
     /** Put the panel's app into `phase` as if a run had reached it. */
     function setPhase(
@@ -445,6 +482,7 @@ describe("TestsPanel", () => {
       setPhase(store, {
         phase: "cleaning-up",
         isolation: { mode: "supabase-test-user" },
+        sandboxed: true,
       });
 
       expect(screen.getByText(/Cleaning up the test sandbox/)).toBeTruthy();
@@ -453,6 +491,21 @@ describe("TestsPanel", () => {
         screen.getByRole("button", { name: "Cleaning up test data" })
           .textContent,
       ).toContain("Cleaning up…");
+    });
+
+    it("claims no sandbox when the run never took one", () => {
+      // The fallback path (docker/cloud runtime, or the opt-out) creates no
+      // workspace, so naming one would be the same inaccurate cleanup copy the
+      // Neon "restoring your preview" wording was.
+      const { store } = renderPanel();
+      setPhase(store, {
+        phase: "cleaning-up",
+        isolation: { mode: "supabase-test-user" },
+        sandboxed: false,
+      });
+
+      expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
+      expect(screen.queryByText(/test sandbox/)).toBeNull();
     });
 
     it("does not carry a completed run's stop latch into the next run", () => {

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import log from "electron-log";
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { trackE2eTestProcess } from "@/ipc/services/e2e_test_process_registry";
 import {
   choosePackageManagerFromSignal,
@@ -144,15 +145,20 @@ async function waitForReady({
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (signal?.aborted) throw new Error("Test run stopped.");
+    // Precondition throughout: a server that won't start or won't answer is a
+    // user/environment problem (a broken start command, a port taken, a build
+    // error), not a Dyad bug, and must not be reported as a product exception.
     const startError = spawnError();
     if (startError) {
-      throw new Error(
+      throw new DyadError(
         `Could not start the isolated test server: ${startError.message}`,
+        DyadErrorKind.Precondition,
       );
     }
     if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error(
+      throw new DyadError(
         `The isolated test server exited before becoming ready.\n${outputTail()}`,
+        DyadErrorKind.Precondition,
       );
     }
     try {
@@ -165,8 +171,9 @@ async function waitForReady({
     }
     await delay(SERVER_READY_POLL_MS, signal);
   }
-  throw new Error(
+  throw new DyadError(
     `The isolated test server did not become ready within 2 minutes.${portHint}\n${outputTail()}`,
+    DyadErrorKind.Precondition,
   );
 }
 

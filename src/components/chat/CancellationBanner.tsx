@@ -39,7 +39,9 @@ export function CancellationBanner({ appId }: { appId?: number | null }) {
       : runState.phase === "cleaning-up"
         ? runState.isolation?.mode === "neon-branch"
           ? t("cancellationRemovingTestDatabase")
-          : t("cancellationCleaningTestData")
+          : runState.sandboxed
+            ? t("cancellationCleaningTestSandbox")
+            : t("cancellationCleaningTestData")
         : runState.phase === "stopping"
           ? t("cancellationEndingTestRun")
           : null;

@@ -5,6 +5,7 @@ import log from "electron-log";
 
 import { getUserDataPath } from "@/paths/paths";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("e2e_test_workspace");
 
@@ -76,8 +77,11 @@ async function copyNodeModules(
     const stat = await fs.stat(source);
     if (!stat.isDirectory()) throw new Error("not a directory");
   } catch {
-    throw new Error(
+    // Precondition, not Internal: the user starts the app to fix this, and it
+    // must not be reported to PostHog as a product exception.
+    throw new DyadError(
       "The app's dependencies are not installed. Start the app successfully before running tests.",
+      DyadErrorKind.Precondition,
     );
   }
 

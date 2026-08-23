@@ -16,28 +16,21 @@ const logger = log.scope("test_screenshot");
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 
 /**
- * Read a Playwright failure screenshot as a PNG data URL, enforcing the same
- * containment guards as the `tests:screenshot` IPC handler: PNG-only, resolved
- * through symlinks, and inside the app's `test-results/` directory. Returns
- * null if the path is missing, not a PNG, or escapes both the app and Dyad's
- * retained per-run artifact root.
- *
- * Shared by the IPC handler (renderer thumbnails) and the agent's run_tests
- * tool (attaching a failure screenshot to the model).
+ * Resolve a Playwright artifact path through symlinks and confirm it lives
+ * under the app's `test-results/` directory, or under this app's retained
+ * per-run artifacts in user data. Returns the real path, or null when it
+ * escapes both.
  */
-export async function readTestScreenshotDataUrl(
+async function resolveContainedArtifact(
   appPath: string,
-  screenshotPath: string,
-  appId?: number,
+  artifactPath: string,
+  appId: number | undefined,
 ): Promise<string | null> {
   // Playwright reports absolute paths, but resolve relative ones against the
   // app dir just in case.
-  const resolved = path.isAbsolute(screenshotPath)
-    ? path.resolve(screenshotPath)
-    : path.resolve(appPath, screenshotPath);
-  if (path.extname(resolved).toLowerCase() !== ".png") {
-    return null;
-  }
+  const resolved = path.isAbsolute(artifactPath)
+    ? path.resolve(artifactPath)
+    : path.resolve(appPath, artifactPath);
   // No existsSync pre-check: realpath below already rejects a missing path
   // (throws → caught → null), and a separate check would open a TOCTOU window
   // where the path could be swapped for a symlink between check and resolve.
@@ -61,12 +54,7 @@ export async function readTestScreenshotDataUrl(
       // No retained sandbox artifacts yet.
     }
   } catch (error) {
-    logger.warn(`Failed to resolve screenshot path ${resolved}: ${error}`);
-    return null;
-  }
-  // Re-check the extension on the REAL (symlink-resolved) path: a `foo.png`
-  // symlink pointing at a `.env.local` would otherwise pass the initial gate.
-  if (path.extname(realPath).toLowerCase() !== ".png") {
+    logger.warn(`Failed to resolve test artifact path ${resolved}: ${error}`);
     return null;
   }
   const appRelative = path.relative(realAppPath, realPath);
@@ -84,7 +72,7 @@ export async function readTestScreenshotDataUrl(
   if (!insideApp && !insideArtifacts) {
     return null;
   }
-  // Only serve screenshots under `test-results/`, not any PNG in the app. Use
+  // Only serve files under `test-results/`, not anything else in the app. Use
   // split (not a string prefix) so a sibling like `test-results-foo/` can't
   // slip through.
   const segments = (insideApp ? appRelative : artifactRelative).split(path.sep);
@@ -96,6 +84,40 @@ export async function readTestScreenshotDataUrl(
     return null;
   }
   if (testResultsSegment !== "test-results") {
+    return null;
+  }
+  return realPath;
+}
+
+/**
+ * Read a Playwright failure screenshot as a PNG data URL, enforcing the same
+ * containment guards as the `tests:screenshot` IPC handler: PNG-only, resolved
+ * through symlinks, and inside the app's `test-results/` directory. Returns
+ * null if the path is missing, not a PNG, or escapes both the app and Dyad's
+ * retained per-run artifact root.
+ *
+ * Shared by the IPC handler (renderer thumbnails) and the agent's run_tests
+ * tool (attaching a failure screenshot to the model).
+ */
+export async function readTestScreenshotDataUrl(
+  appPath: string,
+  screenshotPath: string,
+  appId?: number,
+): Promise<string | null> {
+  if (path.extname(screenshotPath).toLowerCase() !== ".png") {
+    return null;
+  }
+  const realPath = await resolveContainedArtifact(
+    appPath,
+    screenshotPath,
+    appId,
+  );
+  if (realPath === null) {
+    return null;
+  }
+  // Re-check the extension on the REAL (symlink-resolved) path: a `foo.png`
+  // symlink pointing at a `.env.local` would otherwise pass the initial gate.
+  if (path.extname(realPath).toLowerCase() !== ".png") {
     return null;
   }
   let handle: fs.promises.FileHandle | undefined;
@@ -147,6 +169,72 @@ export async function readTestScreenshotDataUrl(
   } finally {
     await handle?.close().catch((error) => {
       logger.warn(`Failed to close screenshot ${realPath}: ${error}`);
+    });
+  }
+}
+
+/**
+ * Refuse to inline a page snapshot above this size. `error-context.md` is
+ * Playwright's accessibility-tree dump of the failing page; a pathological one
+ * would otherwise dominate the model request.
+ */
+const MAX_ERROR_CONTEXT_BYTES = 24 * 1024;
+
+/**
+ * Read the `error-context.md` page snapshot Playwright writes beside a failure
+ * screenshot, under the same containment guards as the screenshot reader.
+ *
+ * Used when the artifact lives outside the app — a sandboxed run retains it in
+ * user data, where the agent's `read_file` cannot reach — so the snapshot can
+ * be inlined instead of pointed at with a path that would only fail.
+ */
+export async function readTestErrorContext(
+  appPath: string,
+  screenshotPath: string,
+  appId?: number,
+): Promise<string | null> {
+  const contextPath = path.join(
+    path.dirname(screenshotPath),
+    "error-context.md",
+  );
+  const realPath = await resolveContainedArtifact(appPath, contextPath, appId);
+  if (realPath === null) {
+    return null;
+  }
+  // Re-check on the REAL path, for the same reason the screenshot reader does:
+  // an `error-context.md` symlink could otherwise point at `.env.local`.
+  if (path.extname(realPath).toLowerCase() !== ".md") {
+    return null;
+  }
+  let handle: fs.promises.FileHandle | undefined;
+  try {
+    const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+    handle = await fs.promises.open(realPath, fs.constants.O_RDONLY | noFollow);
+    const stats = await handle.stat();
+    if (!stats.isFile()) {
+      return null;
+    }
+    const size = Math.min(stats.size, MAX_ERROR_CONTEXT_BYTES);
+    const buf = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const { bytesRead } = await handle.read(
+        buf,
+        offset,
+        size - offset,
+        offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const text = buf.subarray(0, offset).toString("utf8");
+    return stats.size > size ? `${text}\n…(truncated)` : text;
+  } catch (error) {
+    logger.warn(`Failed to read page snapshot ${realPath}: ${error}`);
+    return null;
+  } finally {
+    await handle?.close().catch((error) => {
+      logger.warn(`Failed to close page snapshot ${realPath}: ${error}`);
     });
   }
 }

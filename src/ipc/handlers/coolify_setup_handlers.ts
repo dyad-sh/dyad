@@ -418,18 +418,25 @@ export function registerCoolifySetupHandlers() {
     // Dyad generated the password on their behalf, so refusing to show it
     // would lock them out of something they own.
     const coolify = readSettings().coolify;
-    // Everything here describes the same server, because Dyad holds one at a
-    // time and signing out forgets all of it together. So the fields are read
-    // straight out rather than checked against each other for whose they are.
-    //
-    // The account's own address covers the window before a token exists: a
-    // server just installed is named by the account Dyad made on it and
-    // nothing else.
+    // Each with the address it belongs to, rather than one address over both.
+    // They are usually the same server and occasionally not, and handing back
+    // a single address would mean deciding which one it is — a decision that
+    // shows one server's password under another's address when it guesses
+    // wrong. Kept apart, there is nothing to guess.
     return {
-      dashboardUrl: coolify?.instanceUrl ?? coolify?.admin?.instanceUrl ?? null,
-      adminEmail: coolify?.admin?.email ?? null,
-      adminPassword: coolify?.admin?.password?.value ?? null,
-      apiToken: coolify?.accessToken?.value ?? null,
+      instance: coolify?.instanceUrl
+        ? {
+            url: coolify.instanceUrl,
+            apiToken: coolify.accessToken?.value ?? null,
+          }
+        : null,
+      server: coolify?.admin
+        ? {
+            url: coolify.admin.instanceUrl,
+            email: coolify.admin.email,
+            password: coolify.admin.password?.value ?? null,
+          }
+        : null,
     };
   });
 

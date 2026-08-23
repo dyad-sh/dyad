@@ -108,14 +108,32 @@ export const SetupResultSchema = z.object({
 /**
  * What Dyad can tell the user about getting into their own server.
  *
+ * Two records, each carrying its own address, because they are facts about
+ * two different things: the instance Dyad talks to, and a machine Dyad built.
+ * Usually the same server, but not always — an install whose token could not
+ * be minted leaves an account behind while the user connects somewhere else.
+ * Folded into one address they would have to be checked against each other
+ * before either could be shown, and a check that guessed wrong would put one
+ * server's password under another's address.
+ *
  * Null where Dyad never had it: an instance connected by pasting a token has
- * no admin account Dyad created, so there is no password to hand back.
+ * no admin account Dyad created, and a server set up but not connected to has
+ * no instance.
  */
 export const RevealedCredentialsSchema = z.object({
-  dashboardUrl: z.string().nullable(),
-  adminEmail: z.string().nullable(),
-  adminPassword: z.string().nullable(),
-  apiToken: z.string().nullable(),
+  instance: z
+    .object({
+      url: z.string(),
+      apiToken: z.string().nullable(),
+    })
+    .nullable(),
+  server: z
+    .object({
+      url: z.string(),
+      email: z.string(),
+      password: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 /**

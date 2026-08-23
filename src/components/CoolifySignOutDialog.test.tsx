@@ -13,10 +13,15 @@ vi.mock("@/ipc/types", () => ({
 const { CoolifySignOutDialog: Dialog } = await import("./CoolifySignOutDialog");
 
 const FULL = {
-  dashboardUrl: "https://203.0.113.5.sslip.io",
-  adminEmail: "me@gmail.com",
-  adminPassword: "Abc123@xyzAbc123@xyz",
-  apiToken: "1|abcdefghijklmnop",
+  instance: {
+    url: "https://203.0.113.5.sslip.io",
+    apiToken: "1|abcdefghijklmnop",
+  },
+  server: {
+    url: "https://203.0.113.5.sslip.io",
+    email: "me@gmail.com",
+    password: "Abc123@xyzAbc123@xyz",
+  },
 };
 
 const onConfirm = vi.fn();
@@ -113,11 +118,7 @@ describe("the last look", () => {
   it("does not say it for an instance Dyad did not set up", async () => {
     // Connected by pasting a token, so nothing here was invented by Dyad and
     // a warning about losing it forever would be untrue.
-    h.revealCredentials.mockResolvedValue({
-      ...FULL,
-      adminEmail: null,
-      adminPassword: null,
-    });
+    h.revealCredentials.mockResolvedValue({ ...FULL, server: null });
     await openAndSettle();
 
     await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());

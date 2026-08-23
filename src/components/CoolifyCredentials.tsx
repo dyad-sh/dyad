@@ -97,24 +97,66 @@ export function CoolifyCredentials({
 
   if (!credentials) return null;
 
-  const { dashboardUrl, adminEmail, adminPassword, apiToken } = credentials;
+  const { instance, server } = credentials;
   // An instance connected by pasting a token has no account Dyad created and
-  // no address it chose, so there is nothing here worth a heading.
-  if (!dashboardUrl && !adminEmail && !adminPassword && !apiToken) return null;
+  // no server it built, so there is nothing here worth a heading.
+  if (!instance && !server) return null;
+  // The usual case: Dyad set the server up and is connected to it. Merged on
+  // the address matching exactly, never on a guess at two spellings of one
+  // machine — guessing wrong the other way shows two blocks with two correct
+  // addresses, which is a moment's confusion rather than a wrong password.
+  const isOneServer =
+    instance !== null && server !== null && instance.url === server.url;
 
   return (
     <div className="space-y-2 text-sm" data-testid="coolify-credentials">
       {/* Kept inside so a caller cannot leave a heading over nothing when
           there is nothing to show. */}
       {showTitle && (
-        <div className="border-t pt-3 font-semibold">
-          Your new Coolify server
-        </div>
+        <div className="border-t pt-3 font-semibold">Your Coolify server</div>
       )}
-      {dashboardUrl && <Field label="Address" value={dashboardUrl} />}
-      {adminEmail && <Field label="Email" value={adminEmail} />}
-      {adminPassword && <Field label="Password" value={adminPassword} secret />}
-      {apiToken && <Field label="API token" value={apiToken} secret />}
+
+      {isOneServer ? (
+        <>
+          <Field label="Address" value={instance.url} />
+          <Field label="Email" value={server.email} />
+          {server.password && (
+            <Field label="Password" value={server.password} secret />
+          )}
+          {instance.apiToken && (
+            <Field label="API token" value={instance.apiToken} secret />
+          )}
+        </>
+      ) : (
+        <>
+          {server && (
+            <div className="space-y-2" data-testid="coolify-credentials-server">
+              <div className="text-muted-foreground text-xs">
+                The server Dyad set up
+              </div>
+              <Field label="Address" value={server.url} />
+              <Field label="Email" value={server.email} />
+              {server.password && (
+                <Field label="Password" value={server.password} secret />
+              )}
+            </div>
+          )}
+          {instance && (
+            <div
+              className="space-y-2"
+              data-testid="coolify-credentials-instance"
+            >
+              <div className="text-muted-foreground text-xs">
+                The Coolify Dyad is connected to
+              </div>
+              <Field label="Address" value={instance.url} />
+              {instance.apiToken && (
+                <Field label="API token" value={instance.apiToken} secret />
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

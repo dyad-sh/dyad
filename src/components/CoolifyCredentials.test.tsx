@@ -24,10 +24,15 @@ function CoolifyCredentials(props: { showTitle?: boolean }) {
 }
 
 const FULL = {
-  dashboardUrl: "https://203.0.113.5.sslip.io",
-  adminEmail: "me@gmail.com",
-  adminPassword: "Abc123@xyzAbc123@xyz",
-  apiToken: "1|abcdefghijklmnop",
+  instance: {
+    url: "https://203.0.113.5.sslip.io",
+    apiToken: "1|abcdefghijklmnop",
+  },
+  server: {
+    url: "https://203.0.113.5.sslip.io",
+    email: "me@gmail.com",
+    password: "Abc123@xyzAbc123@xyz",
+  },
 };
 
 beforeEach(() => {
@@ -49,10 +54,10 @@ describe("what is on screen without asking", () => {
     await renderAndSettle();
 
     expect(screen.getByTestId("coolify-field-address").textContent).toBe(
-      FULL.dashboardUrl,
+      FULL.instance.url,
     );
     expect(screen.getByTestId("coolify-field-email").textContent).toBe(
-      FULL.adminEmail,
+      FULL.server.email,
     );
   });
 
@@ -90,7 +95,7 @@ describe("revealing one value", () => {
 
     await user.click(screen.getByRole("button", { name: "Show Password" }));
     expect(screen.getByTestId("coolify-field-password").textContent).toBe(
-      FULL.adminPassword,
+      FULL.server.password,
     );
 
     await user.click(screen.getByRole("button", { name: "Hide Password" }));
@@ -113,29 +118,60 @@ describe("revealing one value", () => {
 });
 
 describe("naming the section", () => {
-  it("names a server Dyad installed", async () => {
+  it("names a server Dyad installed but has no token for", async () => {
     // Reached by installing a server whose API token could not be minted, so
     // the account is all Dyad has for it.
-    h.revealCredentials.mockResolvedValue({ ...FULL, apiToken: null });
+    h.revealCredentials.mockResolvedValue({ ...FULL, instance: null });
     render(<CoolifyCredentials showTitle />);
 
     await waitFor(() =>
-      expect(screen.getByText("Your new Coolify server")).toBeTruthy(),
+      expect(screen.getByText("Your Coolify server")).toBeTruthy(),
     );
   });
 
   it("leaves no heading over nothing", async () => {
     // The caller cannot know there is anything to show until this has asked.
-    h.revealCredentials.mockResolvedValue({
-      dashboardUrl: null,
-      adminEmail: null,
-      adminPassword: null,
-      apiToken: null,
-    });
+    h.revealCredentials.mockResolvedValue({ instance: null, server: null });
     render(<CoolifyCredentials showTitle />);
 
     await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
-    expect(screen.queryByText("Your new Coolify server")).toBeNull();
+    expect(screen.queryByText("Your Coolify server")).toBeNull();
+  });
+});
+
+describe("two servers that are not the same server", () => {
+  it("keeps each address with what it opens", async () => {
+    // Installed a server whose token could not be minted, then connected to a
+    // different Coolify. One address over both would read as a way into the
+    // connected one that is not one.
+    h.revealCredentials.mockResolvedValue({
+      instance: {
+        url: "https://someone-elses.example.com",
+        apiToken: "1|other",
+      },
+      server: {
+        url: "http://203.0.113.5:8000",
+        email: "me@gmail.com",
+        password: "Abc123@xyz",
+      },
+    });
+    await renderAndSettle();
+
+    const forServer = screen.getByTestId("coolify-credentials-server");
+    const forInstance = screen.getByTestId("coolify-credentials-instance");
+    expect(forServer.textContent).toContain("http://203.0.113.5:8000");
+    expect(forServer.textContent).not.toContain("someone-elses");
+    expect(forInstance.textContent).toContain("someone-elses.example.com");
+    // The password belongs to the machine Dyad built, and stays with it.
+    expect(forInstance.textContent).not.toContain("Abc123@xyz");
+  });
+
+  it("shows one block when both describe the same address", async () => {
+    await renderAndSettle();
+
+    expect(screen.queryByTestId("coolify-credentials-server")).toBeNull();
+    expect(screen.queryByTestId("coolify-credentials-instance")).toBeNull();
+    expect(screen.getAllByTestId(/^coolify-field-address$/)).toHaveLength(1);
   });
 });
 
@@ -143,12 +179,7 @@ describe("an instance Dyad did not set up", () => {
   it("renders nothing rather than an empty heading", async () => {
     // Connected by pasting a token: no account Dyad created, no address it
     // chose. A panel of blanks would read as something having failed.
-    h.revealCredentials.mockResolvedValue({
-      dashboardUrl: null,
-      adminEmail: null,
-      adminPassword: null,
-      apiToken: null,
-    });
+    h.revealCredentials.mockResolvedValue({ instance: null, server: null });
     const { container } = render(<CoolifyCredentials />);
 
     await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
@@ -158,10 +189,8 @@ describe("an instance Dyad did not set up", () => {
 
   it("still shows a token the user pasted themselves", async () => {
     h.revealCredentials.mockResolvedValue({
-      dashboardUrl: "https://coolify.example.com",
-      adminEmail: null,
-      adminPassword: null,
-      apiToken: "1|theirs",
+      instance: { url: "https://coolify.example.com", apiToken: "1|theirs" },
+      server: null,
     });
     await renderAndSettle();
 

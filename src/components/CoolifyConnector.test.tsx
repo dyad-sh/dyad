@@ -18,7 +18,7 @@ vi.mock("sonner", () => ({ toast: toastMock }));
 vi.mock("@/components/CoolifyCredentials", () => ({
   CoolifyCredentials: ({ showTitle }: { showTitle?: boolean }) => (
     <div data-testid="coolify-credentials-stub">
-      {showTitle ? "Your new Coolify server" : null}
+      {showTitle ? "Your Coolify server" : null}
     </div>
   ),
 }));
@@ -338,7 +338,7 @@ describe("where someone with no Coolify lands", () => {
     render(<CoolifyConnector appId={1} />);
 
     const text = screen.getByTestId("coolify-server-setup-stub").textContent;
-    expect(text?.indexOf("Your new Coolify server")).toBeLessThan(
+    expect(text?.indexOf("Your Coolify server")).toBeLessThan(
       text?.indexOf("I already have Coolify installed") ?? -1,
     );
   });
@@ -351,7 +351,7 @@ describe("where someone with no Coolify lands", () => {
     render(<CoolifyConnector appId={1} />);
 
     expect(screen.getByTestId("coolify-credentials-stub").textContent).toBe(
-      "Your new Coolify server",
+      "Your Coolify server",
     );
     await openTokenForm(user);
     expect(screen.getByTestId("coolify-credentials-stub")).toBeTruthy();

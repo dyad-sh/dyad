@@ -597,16 +597,18 @@ describe("run", () => {
 });
 
 describe("revealCredentials", () => {
+  const ADMIN = {
+    email: "me@gmail.com",
+    password: { value: "Abc123@xyz" },
+    instanceUrl: "http://203.0.113.5:8000",
+  };
+
   it("hands back what Dyad knows about getting in", async () => {
     h.settings = {
       coolify: {
         instanceUrl: "http://203.0.113.5:8000",
         accessToken: { value: "1|abc" },
-        admin: {
-          email: "me@gmail.com",
-          password: { value: "Abc123@xyz" },
-          instanceUrl: "http://203.0.113.5:8000",
-        },
+        admin: ADMIN,
       },
     };
     const result = (await call("coolify-setup:reveal-credentials")) as Record<
@@ -614,76 +616,76 @@ describe("revealCredentials", () => {
       unknown
     >;
     expect(result).toEqual({
-      dashboardUrl: "http://203.0.113.5:8000",
-      adminEmail: "me@gmail.com",
-      adminPassword: "Abc123@xyz",
-      apiToken: "1|abc",
+      instance: { url: "http://203.0.113.5:8000", apiToken: "1|abc" },
+      server: {
+        url: "http://203.0.113.5:8000",
+        email: "me@gmail.com",
+        password: "Abc123@xyz",
+      },
     });
   });
 
-  it("gives the address of a server installed before any token", async () => {
-    // Nothing was ever connected, so there is no instanceUrl — but the user
-    // still has to know which machine these open.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "me@gmail.com",
-          password: { value: "Abc123@xyz" },
-          instanceUrl: "http://203.0.113.5:8000",
-        },
-      },
-    };
+  it("describes a server installed before any token as a server alone", async () => {
+    // Nothing was ever connected, so there is no instance — but the machine
+    // Dyad built is still named by the account it made on it.
+    h.settings = { coolify: { admin: ADMIN } };
     const result = (await call("coolify-setup:reveal-credentials")) as Record<
       string,
       unknown
     >;
-    expect(result.dashboardUrl).toBe("http://203.0.113.5:8000");
-    expect(result.adminPassword).toBe("Abc123@xyz");
+    expect(result.instance).toBeNull();
+    expect(result.server).toEqual({
+      url: "http://203.0.113.5:8000",
+      email: "me@gmail.com",
+      password: "Abc123@xyz",
+    });
   });
 
-  it("names the server by the address the token was saved for", async () => {
-    // The two differ when a server installed at its bare address is connected
-    // under the domain it was given afterwards. The address Dyad is talking
-    // to is the one that reaches Coolify, so it is the one shown.
+  it("keeps each address with what it opens when they are different", async () => {
+    // Installed a server whose token could not be minted, then connected to a
+    // different Coolify. One address over both would put the installed
+    // server's password under the other one's address.
     h.settings = {
       coolify: {
-        instanceUrl: "https://coolify.example.com",
-        accessToken: { value: "1|abc" },
-        admin: {
-          email: "me@gmail.com",
-          password: { value: "Abc123@xyz" },
-          instanceUrl: "http://203.0.113.5:8000",
-        },
+        instanceUrl: "https://someone-elses.example.com",
+        accessToken: { value: "1|for-the-other-one" },
+        admin: ADMIN,
       },
     };
-    const result = (await call("coolify-setup:reveal-credentials")) as Record<
-      string,
-      unknown
-    >;
-    expect(result.dashboardUrl).toBe("https://coolify.example.com");
-    // Still the same box, so its account is still what opens it.
-    expect(result.adminPassword).toBe("Abc123@xyz");
+    const result = (await call("coolify-setup:reveal-credentials")) as {
+      instance: { url: string; apiToken: string };
+      server: { url: string; password: string };
+    };
+    expect(result.instance.url).toBe("https://someone-elses.example.com");
+    expect(result.instance.apiToken).toBe("1|for-the-other-one");
+    expect(result.server.url).toBe("http://203.0.113.5:8000");
+    expect(result.server.password).toBe("Abc123@xyz");
+  });
+
+  it("hides a password it cannot read, keeping the server it belongs to", async () => {
+    h.settings = {
+      coolify: {
+        admin: { email: "me@gmail.com", instanceUrl: "http://h:8000" },
+      },
+    };
+    const result = (await call("coolify-setup:reveal-credentials")) as {
+      server: { url: string; email: string; password: string | null };
+    };
+    expect(result.server.password).toBeNull();
+    expect(result.server.email).toBe("me@gmail.com");
   });
 
   it("has nothing to hand back once the instance is forgotten", async () => {
-    // Signing out clears all of it, so there is no address or password left
-    // for the panel to put on screen.
     h.settings = { coolify: {} };
     const result = (await call("coolify-setup:reveal-credentials")) as Record<
       string,
       unknown
     >;
-    expect(result).toEqual({
-      dashboardUrl: null,
-      adminEmail: null,
-      adminPassword: null,
-      apiToken: null,
-    });
+    expect(result).toEqual({ instance: null, server: null });
   });
 
-  it("answers nulls for an instance Dyad did not set up", async () => {
-    // Connected by pasting a token, so there is no account Dyad created and
-    // nothing here it could hand back.
+  it("answers a null server for an instance Dyad did not set up", async () => {
+    // Connected by pasting a token, so there is no account Dyad created.
     h.settings = {
       coolify: {
         instanceUrl: "https://coolify.example.com",
@@ -694,9 +696,11 @@ describe("revealCredentials", () => {
       string,
       unknown
     >;
-    expect(result.adminPassword).toBeNull();
-    expect(result.adminEmail).toBeNull();
-    expect(result.apiToken).toBe("1|abc");
+    expect(result.server).toBeNull();
+    expect(result.instance).toEqual({
+      url: "https://coolify.example.com",
+      apiToken: "1|abc",
+    });
   });
 });
 

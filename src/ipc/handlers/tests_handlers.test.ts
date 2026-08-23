@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import type { RemoveFileAndCommitResult } from "../services/git_service";
 import { apps } from "@/db/schema";
+import { DEFAULT_SETTINGS } from "@/main/settings";
+import { runningApps } from "../utils/process_manager";
 import {
   appOperationCoordinator,
   type AppOperationRequest,
@@ -74,6 +76,8 @@ vi.mock("../services/git_service", () => ({
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
 const prepareIsolatedTestDatabaseMock = vi.hoisted(() => vi.fn());
+const readSettingsMock = vi.hoisted(() => vi.fn());
+const sendTelemetryEventMock = vi.hoisted(() => vi.fn());
 const ensurePlaywrightBootstrapMock = vi.hoisted(() => vi.fn());
 const createE2eTestWorkspaceMock = vi.hoisted(() => vi.fn());
 const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
@@ -128,6 +132,14 @@ vi.mock("../services/e2e_test_workspace", async (importOriginal) => {
 vi.mock("../services/e2e_test_runtime", () => ({
   startE2eTestRuntime: startE2eTestRuntimeMock,
 }));
+vi.mock("@/main/settings", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/main/settings")>();
+  return { ...actual, readSettings: readSettingsMock };
+});
+vi.mock("../utils/telemetry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/telemetry")>();
+  return { ...actual, sendTelemetryEvent: sendTelemetryEventMock };
+});
 vi.mock("../utils/spawn_streaming", () => ({
   spawnStreaming: spawnStreamingMock,
 }));
@@ -154,6 +166,11 @@ describe("tests handlers", () => {
     removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
     prepareIsolatedTestDatabaseMock.mockReset();
+    readSettingsMock.mockReset();
+    readSettingsMock.mockImplementation(() =>
+      structuredClone(DEFAULT_SETTINGS),
+    );
+    sendTelemetryEventMock.mockReset();
     ensurePlaywrightBootstrapMock.mockReset();
     ensurePlaywrightBootstrapMock.mockResolvedValue({ installed: false });
     createE2eTestWorkspaceMock.mockReset();
@@ -409,6 +426,141 @@ describe("tests handlers", () => {
       expect(stop).toHaveBeenCalledOnce();
       expect(teardown).toHaveBeenCalledOnce();
       expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it("refuses a testing-disabled app before bootstrapping or copying", async () => {
+      const appId = seedApp("app");
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toMatch(/Testing isn't enabled/i);
+      // Bootstrap writes into the user's real project and the snapshot copies
+      // the whole app; a refusal must stay side-effect-free.
+      expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
+      expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+    });
+
+    it("reports the first run in telemetry when bootstrap installed Playwright", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      ensurePlaywrightBootstrapMock.mockResolvedValue({ installed: true });
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+      });
+      spawnStreamingMock.mockImplementation(
+        async ({ cwd }: { cwd: string }) => {
+          const reportPath = path.join(cwd, "test-results", "results.json");
+          fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+          fs.writeFileSync(
+            reportPath,
+            JSON.stringify({
+              suites: [
+                {
+                  file: "e2e-tests/a.spec.ts",
+                  specs: [
+                    {
+                      title: "works",
+                      file: "e2e-tests/a.spec.ts",
+                      line: 1,
+                      tests: [{ status: "expected", results: [{}] }],
+                    },
+                  ],
+                },
+              ],
+            }),
+          );
+          return {
+            code: 0,
+            stdout: "",
+            stderr: "",
+            aborted: false,
+            timedOut: false,
+          };
+        },
+      );
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError).toBeUndefined();
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "e2e_tests_run",
+        expect.objectContaining({ first_run: true }),
+      );
+    });
+
+    describe("non-host runtime", () => {
+      afterEach(() => {
+        runningApps.clear();
+      });
+
+      function seedRunningApp(name: string): number {
+        const appId = seedApp(name);
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .run();
+        readSettingsMock.mockImplementation(() => ({
+          ...structuredClone(DEFAULT_SETTINGS),
+          runtimeMode2: "docker",
+        }));
+        runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+        return appId;
+      }
+
+      it("keeps running against the normal preview and discloses the gap", async () => {
+        const appId = seedRunningApp("app");
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "supabase-test-user" },
+          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        });
+
+        const result = await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+
+        expect(spawnStreamingMock).toHaveBeenCalled();
+        expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+        expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
+        expect(result.isolation).toMatchObject({
+          mode: "supabase-test-user",
+          reason: expect.stringMatching(/docker runtime/i),
+        });
+      });
+
+      it("refuses a Neon app rather than testing against the real database", async () => {
+        const appId = seedRunningApp("app");
+        harness.db
+          .update(apps)
+          .set({ neonProjectId: "neon-project" })
+          .where(eq(apps.id, appId))
+          .run();
+
+        const result = await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+
+        expect(result.infraError?.message).toMatch(/real database/i);
+        expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
+        expect(spawnStreamingMock).not.toHaveBeenCalled();
+      });
     });
   });
 

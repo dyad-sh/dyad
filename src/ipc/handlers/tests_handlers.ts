@@ -53,8 +53,15 @@ import { parseTestCases } from "../utils/parse_test_cases";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { sendTelemetryEvent } from "../utils/telemetry";
-import type { PreparedIsolation } from "../services/isolated_test_db";
+import {
+  prepareIsolatedTestDatabase,
+  type PreparedIsolation,
+} from "../services/isolated_test_db";
 import { prepareE2eTestDataIsolation } from "../services/e2e_test_data_isolation";
+import {
+  stopE2eTestProcessesSync,
+  trackE2eTestProcess,
+} from "../services/e2e_test_process_registry";
 import {
   createE2eTestWorkspace,
   retainE2eTestArtifacts,
@@ -203,6 +210,12 @@ export function stopAllAppTestsSync(): void {
   for (const run of testRunControllers.values()) {
     run.controller.abort();
   }
+  // Aborting is not enough here. The abort listeners route into `killProcess`,
+  // which tree-kills asynchronously, and `will-quit` does not await async work.
+  // Tree-kill the run-scoped children synchronously too, or a sandbox dev
+  // server survives the quit holding its port and its cwd under
+  // `<userData>/test-sandboxes`.
+  stopE2eTestProcessesSync();
 }
 
 export async function endTestsForApp(appId: number): Promise<void> {
@@ -260,6 +273,12 @@ export interface RunAppTestsCoreOptions {
   baseUrl?: string;
   /** Bootstrap is performed against the real app before sandbox creation. */
   skipBootstrap?: boolean;
+  /**
+   * Result of that earlier bootstrap. Threaded in with `skipBootstrap` so the
+   * `first_run` telemetry property keeps meaning "Playwright was installed by
+   * this run" instead of always reporting false for sandboxed runs.
+   */
+  bootstrapInstalled?: boolean;
   /** When set, runs a single spec file (relative path); otherwise runs all. */
   testFile?: string;
   /**
@@ -312,6 +331,7 @@ export async function runAppTestsCore({
   appPath: explicitAppPath,
   baseUrl: explicitBaseUrl,
   skipBootstrap = false,
+  bootstrapInstalled = false,
   testFile,
   testLine,
   grep,
@@ -353,7 +373,8 @@ export async function runAppTestsCore({
   }
 
   // 1. Lazy bootstrap (install Playwright + browser, write config), streamed.
-  let installed = false;
+  // Sandboxed runs bootstrap the real app earlier and pass the outcome in.
+  let installed = bootstrapInstalled;
   if (!skipBootstrap) {
     try {
       const result = await ensurePlaywrightBootstrap({
@@ -443,6 +464,9 @@ export async function runAppTestsCore({
       signal,
       timeoutMs,
       onOutput: (chunk) => emit(chunk, "running"),
+      // Quit tree-kills the runner synchronously; the signal path alone would
+      // leave a headless browser and the sandbox cwd behind.
+      onProcess: trackE2eTestProcess,
     });
   } catch (error) {
     // A spawn failure (e.g. npx missing from PATH) rejects rather than exiting
@@ -568,6 +592,137 @@ export async function runAppTestsCore({
   });
 
   return { appId, results };
+}
+
+/**
+ * Docker/cloud fallback. The run-scoped sandbox server is host-only for now, so
+ * these runtimes keep the pre-sandbox path — bootstrap and run against the
+ * normal preview — with the missing runtime isolation disclosed on the result
+ * rather than losing E2E testing entirely. Neon apps are the one exception:
+ * without a sandbox there is no throwaway branch to point the app at, so the
+ * only way to run would be against the user's real database.
+ */
+async function runTestsAgainstNormalPreview({
+  appId,
+  runtimeMode,
+  signal,
+  emit,
+  emitProgress,
+  onIsolationCleanupFailed,
+  testFile,
+  testLine,
+  grep,
+  headed,
+  parallel,
+  timeoutMs,
+}: {
+  appId: number;
+  runtimeMode: string;
+  signal: AbortSignal;
+  emit: (chunk: string, phase: "setup" | "running") => void;
+  emitProgress: (
+    state: "stopping" | "cleaning-up",
+    isolation?: TestIsolation,
+  ) => void;
+  onIsolationCleanupFailed: (failed: boolean) => void;
+  testFile?: string;
+  testLine?: number;
+  grep?: string;
+  headed?: boolean;
+  parallel?: boolean;
+  timeoutMs?: number;
+}): Promise<RunAppTestsResult> {
+  return appOperationCoordinator.run(
+    {
+      appId,
+      operation: "run-app-tests",
+      // This path runs Playwright against the user's real working tree and the
+      // normal preview, so it claims both — unlike the sandboxed path, which
+      // releases the tree after snapshotting and never touches the preview.
+      resources: [
+        readAppResource("app-path"),
+        readAppResource("repository-ref"),
+        "repository-worktree",
+        "provider",
+        "runtime",
+        "runtime-config",
+        "test-files",
+      ],
+      allowCompatibleQueueBypass: true,
+      refuseWhenRecording: "run tests",
+    },
+    async () => {
+      const app = await getApp(appId);
+      // Supabase isolation is provider-side and works in any runtime, so only
+      // an app whose isolation depends on the Neon branch swap is refused.
+      if (!app.supabaseProjectId && app.neonProjectId) {
+        return {
+          appId,
+          results: [],
+          infraError: {
+            message: `Isolated E2E test servers aren't available in ${runtimeMode} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run tests for this app.`,
+          },
+          isolation: {
+            mode: "none" as const,
+            reason: `Sandboxed E2E execution is not available in ${runtimeMode} runtime yet.`,
+          },
+        };
+      }
+
+      let prepared: PreparedIsolation | undefined;
+      try {
+        prepared = await prepareIsolatedTestDatabase({
+          app,
+          emit,
+          runtimeMode,
+          signal,
+        });
+        // Disclose the missing runtime sandbox, without overwriting a more
+        // specific provider reason (e.g. the Supabase publishable-key hint).
+        const isolation: TestIsolation = {
+          ...prepared.isolation,
+          reason:
+            prepared.isolation.reason ??
+            `Tests run against your normal preview because isolated test servers aren't available in ${runtimeMode} runtime yet.`,
+        };
+        if (prepared.infraError) {
+          return {
+            appId,
+            results: [],
+            infraError: prepared.infraError,
+            isolation,
+          };
+        }
+        const result = await runAppTestsCore({
+          appId,
+          testFile,
+          testLine,
+          grep,
+          headed,
+          parallel,
+          signal,
+          timeoutMs,
+          onOutput: emit,
+          testEnv: prepared.testCredentials,
+        });
+        return { ...result, isolation };
+      } finally {
+        if (prepared) {
+          try {
+            if (prepared.isolation.mode !== "none") {
+              emitProgress("cleaning-up", prepared.isolation);
+            }
+            onIsolationCleanupFailed(true);
+            onIsolationCleanupFailed(!(await prepared.teardown()).envRestored);
+          } catch (error) {
+            logger.error(
+              `Failed to tear down isolated test environment for app ${appId}: ${error}`,
+            );
+          }
+        }
+      }
+    },
+  );
 }
 
 export interface RunTestsWithIsolationOptions {
@@ -770,14 +925,53 @@ export async function runAppTestsWithIsolation({
     // The database lookup intentionally happens only after this run registered
     // above. Keeping every await behind registration ensures a rapid second
     // invocation chains behind this run instead of racing its isolation setup
-    // and env-file swap. (The resolved app is re-fetched inside the lock below,
-    // so this call exists only for the ordering barrier.)
-    await getApp(appId);
+    // and env-file swap.
+    const guardApp = await getApp(appId);
+
+    // Decide both refusals BEFORE the workspace stage. `ensurePlaywrightBootstrap`
+    // is not read-only — it installs `@playwright/test` into the user's real
+    // project, writes Dyad's config, and can download a browser — and the
+    // snapshot then copies the whole app plus `node_modules`. Neither may run
+    // for a run that is about to be turned away.
+    if (!guardApp.testingEnabled) {
+      finalResult = {
+        appId,
+        results: [],
+        infraError: {
+          message:
+            "Testing isn't enabled for this app. Enable it in the Tests panel before running tests.",
+        },
+      };
+      return finalResult;
+    }
+
+    const runtimeMode = readSettings().runtimeMode2 ?? "host";
+    if (runtimeMode !== "host") {
+      finalResult = withIsolationCleanupWarning(
+        await runTestsAgainstNormalPreview({
+          appId,
+          runtimeMode,
+          signal: controller.signal,
+          emit,
+          emitProgress,
+          onIsolationCleanupFailed: (failed) => {
+            isolationCleanupFailed = failed;
+          },
+          testFile: normalizedTestFile ?? undefined,
+          testLine,
+          grep,
+          headed,
+          parallel,
+          timeoutMs,
+        }),
+      );
+      return finalResult;
+    }
 
     // Bootstrap and snapshot under the real working-tree claim, then release it
     // before Playwright runs so ordinary app editing can continue against the
     // normal preview while this run uses its captured filesystem state.
-    workspace = await appOperationCoordinator.run(
+    const prepareResult = await appOperationCoordinator.run(
       {
         appId,
         operation: "prepare-e2e-test-workspace",
@@ -790,22 +984,26 @@ export async function runAppTestsWithIsolation({
         refuseWhenRecording: "run tests",
       },
       async () => {
-        const app = await getApp(appId);
-        const realAppPath = getDyadAppPath(app.path);
-        await ensurePlaywrightBootstrap({
+        const claimedApp = await getApp(appId);
+        const realAppPath = getDyadAppPath(claimedApp.path);
+        const { installed } = await ensurePlaywrightBootstrap({
           appPath: realAppPath,
           signal: controller.signal,
           onOutput: (chunk) => emit(chunk, "setup"),
         });
         emit("Copying the app into an isolated test workspace…\n", "setup");
-        return createE2eTestWorkspace({
-          appId,
-          appPath: realAppPath,
-          signal: controller.signal,
-          onProgress: (message) => emit(message, "setup"),
-        });
+        return {
+          installed,
+          workspace: await createE2eTestWorkspace({
+            appId,
+            appPath: realAppPath,
+            signal: controller.signal,
+            onProgress: (message) => emit(message, "setup"),
+          }),
+        };
       },
     );
+    workspace = prepareResult.workspace;
 
     // The live test only owns provider/test inputs. It deliberately does not
     // claim the normal runtime or runtime-config: its process is run-scoped and
@@ -842,6 +1040,8 @@ export async function runAppTestsWithIsolation({
         try {
           const app = await getApp(appId);
 
+          // Re-checked under this claim: the two stages take separate claims,
+          // so testing can be turned off between the snapshot and the run.
           if (!app.testingEnabled) {
             return {
               appId,
@@ -849,21 +1049,6 @@ export async function runAppTestsWithIsolation({
               infraError: {
                 message:
                   "Testing isn't enabled for this app. Enable it in the Tests panel before running tests.",
-              },
-            };
-          }
-
-          const runtimeMode = readSettings().runtimeMode2 ?? "host";
-          if (runtimeMode !== "host") {
-            return {
-              appId,
-              results: [],
-              infraError: {
-                message: `Isolated E2E test servers currently require host runtime. Switch from ${runtimeMode} runtime before running tests.`,
-              },
-              isolation: {
-                mode: "none" as const,
-                reason: `Sandboxed E2E execution is not available in ${runtimeMode} runtime yet.`,
               },
             };
           }
@@ -892,6 +1077,7 @@ export async function runAppTestsWithIsolation({
           emit("Starting the isolated test server…\n", "setup");
           testRuntime = await startE2eTestRuntime({
             workspacePath: workspace!.workspacePath,
+            installCommand: app.installCommand,
             startCommand: app.startCommand,
             signal: controller.signal,
             onOutput: (chunk) => emit(chunk, "setup"),
@@ -926,6 +1112,7 @@ export async function runAppTestsWithIsolation({
             appPath: workspace!.workspacePath,
             baseUrl: testRuntime.baseUrl,
             skipBootstrap: true,
+            bootstrapInstalled: prepareResult.installed,
             testFile: normalizedTestFile ?? undefined,
             testLine,
             grep,

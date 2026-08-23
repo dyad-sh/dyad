@@ -8,6 +8,8 @@ vi.mock("@/paths/paths", () => ({ getUserDataPath: vi.fn() }));
 import { getUserDataPath } from "@/paths/paths";
 import {
   createE2eTestWorkspace,
+  E2E_TEST_SANDBOX_DIR,
+  reconcileOrphanE2eTestWorkspaces,
   retainE2eTestArtifacts,
   rewriteE2eArtifactPath,
   shouldCopyE2eWorkspacePath,
@@ -133,6 +135,31 @@ describe("E2E test workspace", () => {
         "utf8",
       ),
     ).toBe("png");
+  });
+
+  it("sweeps abandoned sandboxes without touching a live run", async () => {
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    await fs.writeFile(path.join(appPath, "app.ts"), "app");
+
+    const live = await createE2eTestWorkspace({ appId: 9, appPath });
+    const sandboxRoot = path.join(userData, E2E_TEST_SANDBOX_DIR);
+    const orphan = path.join(sandboxRoot, "9-1-abandoned");
+    await fs.mkdir(orphan, { recursive: true });
+
+    await reconcileOrphanE2eTestWorkspaces();
+
+    await expect(fs.stat(orphan)).rejects.toThrow();
+    expect(
+      await fs.readFile(path.join(live.workspacePath, "app.ts"), "utf8"),
+    ).toBe("app");
+
+    await live.dispose();
+    await reconcileOrphanE2eTestWorkspaces();
+    await expect(fs.stat(live.workspacePath)).rejects.toThrow();
   });
 
   it("uses a root-based exclusion policy", () => {

@@ -27,6 +27,13 @@ const EXCLUDED_ROOTS = new Set([
 export const E2E_TEST_SANDBOX_DIR = "test-sandboxes";
 export const E2E_TEST_ARTIFACT_DIR = "test-artifacts";
 
+/**
+ * Run directories owned by an in-flight run. The startup orphan sweep skips
+ * these so it can never delete a sandbox out from under a run that started
+ * while the sweep was still walking a multi-gigabyte tree.
+ */
+const activeWorkspaceNames = new Set<string>();
+
 export interface E2eTestWorkspace {
   workspacePath: string;
   artifactPath: string;
@@ -119,13 +126,20 @@ export async function createE2eTestWorkspace({
   const artifactPath = path.join(artifactRoot, runName);
   assertOwnedPath(sandboxRoot, workspacePath);
   assertOwnedPath(artifactRoot, artifactPath);
+  // Claim the run directory before the first byte is copied so a concurrent
+  // orphan sweep already sees it as live.
+  activeWorkspaceNames.add(runName);
 
   let disposed = false;
   const dispose = async () => {
     if (disposed) return;
     disposed = true;
     assertOwnedPath(sandboxRoot, workspacePath);
-    await fs.rm(workspacePath, { recursive: true, force: true });
+    try {
+      await fs.rm(workspacePath, { recursive: true, force: true });
+    } finally {
+      activeWorkspaceNames.delete(runName);
+    }
   };
 
   try {
@@ -182,11 +196,34 @@ export function rewriteE2eArtifactPath(
   return path.join(artifactPath, relative);
 }
 
+/**
+ * Remove sandboxes left behind by a crash. Deletes run directories one by one
+ * and skips any run this process still owns, rather than removing the shared
+ * root: the sweep is fire-and-forget from startup and removing a multi-gigabyte
+ * tree is not instantaneous, so a Run pressed right after launch would
+ * otherwise be deleted mid-copy and surface as an unexplained ENOENT.
+ */
 export async function reconcileOrphanE2eTestWorkspaces(): Promise<void> {
   const sandboxRoot = path.join(getUserDataPath(), E2E_TEST_SANDBOX_DIR);
+  let entries;
   try {
-    await fs.rm(sandboxRoot, { recursive: true, force: true });
-  } catch (error) {
-    logger.warn(`Failed to remove abandoned E2E test workspaces: ${error}`);
+    entries = await fs.readdir(sandboxRoot, { withFileTypes: true });
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") {
+      logger.warn(`Failed to list abandoned E2E test workspaces: ${error}`);
+    }
+    return;
+  }
+  for (const entry of entries) {
+    if (activeWorkspaceNames.has(entry.name)) continue;
+    const runPath = path.join(sandboxRoot, entry.name);
+    try {
+      assertOwnedPath(sandboxRoot, runPath);
+      await fs.rm(runPath, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn(
+        `Failed to remove abandoned E2E test workspace ${entry.name}: ${error}`,
+      );
+    }
   }
 }

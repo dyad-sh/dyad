@@ -3,8 +3,9 @@ import fs, { promises as fsPromises } from "node:fs";
 import {
   execGit,
   getGitProcessEnvironment,
-  withGitAuthor,
+  withGitAuthorConfig,
 } from "@/ipc/utils/git_utils";
+import { getGitAuthor, type GitAuthor } from "@/ipc/utils/git_author";
 import {
   runBufferedProcess,
   type BufferedProcessResult,
@@ -13,6 +14,16 @@ import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
 export const PRE_COMMIT_STAGING_TIMEOUT_MS = 60_000;
+/**
+ * The message hooks only ever see a commit message, so they finish in seconds
+ * even when they shell out to a linter. They run inside the same coordinator
+ * claim as `pre-commit` (`rules/app-operation-coordination.md`), and that queue
+ * has no timeout, so giving them the full `PRE_COMMIT_TIMEOUT_MS` would let one
+ * manual commit hold the app's repository write lock for half an hour with
+ * every other operation for that app queued silently behind it. Two minutes
+ * still absorbs a cold `npx commitlint` start and bounds the worst case.
+ */
+export const COMMIT_MESSAGE_HOOK_TIMEOUT_MS = 2 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 12_000;
 
 async function resolveGitPath(
@@ -33,6 +44,78 @@ async function resolveGitPath(
 }
 
 type GitHookName = "pre-commit" | "prepare-commit-msg" | "commit-msg";
+
+/** Git's raw date format, e.g. `@1700000000 +0100`. */
+function formatGitRawDate(date: Date): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const hours = String(Math.trunc(absoluteOffset / 60)).padStart(2, "0");
+  const minutes = String(absoluteOffset % 60).padStart(2, "0");
+  return `@${Math.floor(date.getTime() / 1000)} ${sign}${hours}${minutes}`;
+}
+
+/**
+ * Reproduces the environment `git commit` hands to its hooks, which
+ * `git hook run` does not supply.
+ *
+ * Verified against Git 2.43: a native commit exports `GIT_AUTHOR_NAME`,
+ * `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE`, `GIT_INDEX_FILE` and `GIT_EDITOR` to
+ * every hook, while the standalone runner exports none of them. Passing the
+ * identity through `-c user.*` only reaches hooks that ask Git for its
+ * configuration; a hook that reads these variables directly would otherwise see
+ * them unset and could reject a valid commit or inspect the wrong index.
+ */
+async function getCommitHookEnvironment(
+  appPath: string,
+  author: GitAuthor,
+): Promise<NodeJS.ProcessEnv> {
+  const indexFile = await resolveGitPath(appPath, "index");
+  return {
+    GIT_AUTHOR_NAME: author.name,
+    GIT_AUTHOR_EMAIL: author.email,
+    // Git stamps this when the commit starts, which is what this hook run
+    // stands in for. The commit itself is created moments later.
+    GIT_AUTHOR_DATE: formatGitRawDate(new Date()),
+    // Every commit Dyad creates is non-interactive (`gitCommit` always uses
+    // `-m`), so a hook that opens an editor must no-op instead of waiting on a
+    // terminal that does not exist.
+    GIT_EDITOR: ":",
+    ...(indexFile ? { GIT_INDEX_FILE: indexFile } : {}),
+  };
+}
+
+/**
+ * Runs one of Git's commit hooks the way `git commit` would: with the author
+ * identity in configuration and the native commit-hook environment in place.
+ */
+async function runCommitHook({
+  path,
+  hookArgs,
+  signal,
+  timeoutMs,
+}: {
+  path: string;
+  hookArgs: string[];
+  signal?: AbortSignal;
+  timeoutMs: number;
+}): Promise<BufferedProcessResult> {
+  const author = await getGitAuthor();
+  const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
+  return runBufferedProcess({
+    command: gitLocation,
+    args: withGitAuthorConfig(author, ["hook", "run", ...hookArgs]),
+    cwd: path,
+    env: {
+      ...getPackageManagerCommandEnv(gitEnv),
+      ...(await getCommitHookEnvironment(path, author)),
+    },
+    signal,
+    timeoutMs,
+    maxOutputBytes: 256_000,
+    waitForCloseAfterForceKill: true,
+  });
+}
 
 async function isGitHookAvailable(
   appPath: string,
@@ -77,16 +160,11 @@ export async function runPreCommitHook({
   path: string;
   signal?: AbortSignal;
 }): Promise<BufferedProcessResult> {
-  const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
-  return runBufferedProcess({
-    command: gitLocation,
-    args: await withGitAuthor(["hook", "run", "pre-commit"]),
-    cwd: path,
-    env: getPackageManagerCommandEnv(gitEnv),
+  return runCommitHook({
+    path,
+    hookArgs: ["pre-commit"],
     signal,
     timeoutMs: PRE_COMMIT_TIMEOUT_MS,
-    maxOutputBytes: 256_000,
-    waitForCloseAfterForceKill: true,
   });
 }
 
@@ -114,22 +192,11 @@ async function runMessageHook({
   }
 
   await fsPromises.writeFile(messagePath, `${message}\n`, "utf8");
-  const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
-  const result = await runBufferedProcess({
-    command: gitLocation,
-    args: await withGitAuthor([
-      "hook",
-      "run",
-      hookName,
-      "--",
-      ...hookArgs(messagePath),
-    ]),
-    cwd: path,
-    env: getPackageManagerCommandEnv(gitEnv),
+  const result = await runCommitHook({
+    path,
+    hookArgs: [hookName, "--", ...hookArgs(messagePath)],
     signal,
-    timeoutMs: PRE_COMMIT_TIMEOUT_MS,
-    maxOutputBytes: 256_000,
-    waitForCloseAfterForceKill: true,
+    timeoutMs: COMMIT_MESSAGE_HOOK_TIMEOUT_MS,
   });
 
   return {

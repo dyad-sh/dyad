@@ -75,7 +75,8 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     handleCommit,
     handleFixPreCommitWithAI,
     isStartingAiFix,
-    canFixPreCommitWithAI,
+    isCheckingAiFixAvailability,
+    aiFixUnavailableReason,
   } = useCommitDialogRecovery({
     appId,
     source: "editor",
@@ -241,7 +242,8 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               prepareCommitMsgError={prepareCommitMsgError}
               commitMsgError={commitMsgError}
               isStartingAiFix={isStartingAiFix}
-              canFixPreCommitWithAI={canFixPreCommitWithAI}
+              isCheckingAiFixAvailability={isCheckingAiFixAvailability}
+              aiFixUnavailableReason={aiFixUnavailableReason}
               onFixPreCommitWithAI={() => void handleFixPreCommitWithAI()}
             />
           </div>

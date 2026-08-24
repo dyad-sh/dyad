@@ -221,6 +221,60 @@ describe("useFixPreCommitWithAI", () => {
     expect(mocks.deleteChat).toHaveBeenCalledWith(44);
   });
 
+  it("settles startup when the stream is stopped before acceptance arrives", async () => {
+    // `remote_manager` drops an optimistic pending submission on stop with a
+    // bare `onSettled({ success: false })` - no acceptance callback and no
+    // `queued` flag. Nothing else would settle the acceptance promise, so
+    // `isStarting` would stay true and lock the commit dialog open.
+    mocks.streamMessage.mockImplementationOnce(async ({ onSettled }) => {
+      onSettled?.({ success: false });
+      return true;
+    });
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    let started = true;
+    await act(async () => {
+      started = await result.current.fixPreCommitWithAI({
+        appId: 7,
+        commitMessage: "Save checkout fix",
+        failureOutput: "lint failed",
+      });
+    });
+
+    expect(started).toBe(false);
+    expect(result.current.isStarting).toBe(false);
+    expect(mocks.showError).toHaveBeenCalledWith("Chat submission rejected");
+    expect(mocks.deleteChat).toHaveBeenCalledWith(44);
+  });
+
+  it("still starts when a settled result follows a delivered acceptance", async () => {
+    mocks.streamMessage.mockImplementationOnce(
+      async ({ onAccepted, onSettled }) => {
+        onAccepted?.();
+        onSettled?.({ success: true });
+        return true;
+      },
+    );
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    let started = false;
+    await act(async () => {
+      started = await result.current.fixPreCommitWithAI({
+        appId: 7,
+        commitMessage: "Save checkout fix",
+        failureOutput: "lint failed",
+      });
+    });
+
+    expect(started).toBe(true);
+    expect(mocks.deleteChat).not.toHaveBeenCalled();
+    expect(mocks.selectChat).toHaveBeenCalledWith({ chatId: 44, appId: 7 });
+  });
+
   it("disables recovery when Agent or run_pre_commit is unavailable", () => {
     mocks.settings.current = {
       enableDyadPro: false,
@@ -237,5 +291,38 @@ describe("useFixPreCommitWithAI", () => {
     });
 
     expect(result.current.isAvailable).toBe(false);
+    expect(result.current.unavailableReason).toBe("tool-permission");
+  });
+
+  it("names an exhausted quota as the reason so the dialog can say so", () => {
+    mocks.settings.current = { enableDyadPro: false, agentToolConsents: {} };
+    mocks.quota.current = {
+      isQuotaExceeded: true,
+      isLoading: false,
+      error: null,
+    };
+
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current.isAvailable).toBe(false);
+    expect(result.current.unavailableReason).toBe("quota-exhausted");
+  });
+
+  it("reports no reason while availability is still loading", () => {
+    mocks.settings.current = { enableDyadPro: false, agentToolConsents: {} };
+    mocks.quota.current = {
+      isQuotaExceeded: false,
+      isLoading: true,
+      error: null,
+    };
+
+    const { result } = renderHook(() => useFixPreCommitWithAI(), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current.isAvailabilityLoading).toBe(true);
+    expect(result.current.unavailableReason).toBeNull();
   });
 });

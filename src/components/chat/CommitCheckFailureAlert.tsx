@@ -2,6 +2,18 @@ import { Sparkles, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import type { FixPreCommitUnavailableReason } from "@/hooks/useFixPreCommitWithAI";
+
+/**
+ * Copy for each way the AI fix can be unavailable. The button stays on screen
+ * and disabled rather than disappearing, so the reason has somewhere to go and
+ * the control does not pop in and out while availability is still loading.
+ */
+const FIX_UNAVAILABLE_KEYS = {
+  "tool-permission": "preview.fixWithAiToolDenied",
+  "quota-exhausted": "preview.fixWithAiQuotaExhausted",
+  unknown: "preview.fixWithAiUnavailable",
+} as const satisfies Record<FixPreCommitUnavailableReason, string>;
 
 /**
  * Which commit hook rejected the commit. `pre-commit` failures are about the
@@ -18,11 +30,15 @@ export function CommitCheckFailureAlert({
   kind,
   error,
   isStartingFix,
+  isCheckingFixAvailability,
+  fixUnavailableReason,
   onFix,
 }: {
   kind: CommitCheckKind;
   error: Error;
   isStartingFix?: boolean;
+  isCheckingFixAvailability?: boolean;
+  fixUnavailableReason?: FixPreCommitUnavailableReason | null;
   onFix?: () => void;
 }) {
   const { t } = useTranslation("home");
@@ -74,7 +90,11 @@ export function CommitCheckFailureAlert({
                 type="button"
                 size="sm"
                 onClick={onFix}
-                disabled={isStartingFix}
+                disabled={
+                  isStartingFix ||
+                  isCheckingFixAvailability ||
+                  Boolean(fixUnavailableReason)
+                }
                 data-testid="fix-pre-commit-with-ai-button"
               >
                 <Sparkles className="h-4 w-4" />
@@ -83,7 +103,11 @@ export function CommitCheckFailureAlert({
                   : t("preview.fixWithAi")}
               </Button>
               <p className="text-xs text-muted-foreground">
-                {t("preview.fixWithAiDescription")}
+                {isCheckingFixAvailability
+                  ? t("preview.checkingAiFixAvailability")
+                  : fixUnavailableReason
+                    ? t(FIX_UNAVAILABLE_KEYS[fixUnavailableReason])
+                    : t("preview.fixWithAiDescription")}
               </p>
             </div>
           )}

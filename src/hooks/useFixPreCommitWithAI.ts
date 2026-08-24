@@ -12,6 +12,16 @@ import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { isDyadProEnabled } from "@/lib/schemas";
 
+/**
+ * Why the AI fix cannot run right now. Named rather than boolean so the commit
+ * dialog can tell the user which of these it is, instead of dropping the
+ * affordance and leaving them to guess.
+ */
+export type FixPreCommitUnavailableReason =
+  | "tool-permission"
+  | "quota-exhausted"
+  | "unknown";
+
 export function buildPreCommitFixPrompt({
   commitMessage,
   failureOutput,
@@ -55,6 +65,14 @@ export function useFixPreCommitWithAI() {
     settings !== null &&
     settings.agentToolConsents?.run_pre_commit !== "never" &&
     (isPro || (!isQuotaLoading && !quotaError && !isQuotaExceeded));
+  const unavailableReason: FixPreCommitUnavailableReason | null =
+    isAvailable || isAvailabilityLoading
+      ? null
+      : settings?.agentToolConsents?.run_pre_commit === "never"
+        ? "tool-permission"
+        : isQuotaExceeded
+          ? "quota-exhausted"
+          : "unknown";
 
   const fixPreCommitWithAI = useCallback(
     async ({
@@ -109,12 +127,19 @@ export function useFixPreCommitWithAI() {
             rejectionReason = reason;
             settleAcceptance(false);
           },
+          // Settle on every outcome, not just the queued one. Stopping a
+          // stream before its acceptance was delivered drops the pending
+          // submission with a bare `onSettled({ success: false })` and no
+          // acceptance callback, and an unsettled `acceptance` would leave
+          // `isStarting` true forever - which disables the dialog's Cancel and
+          // Discard buttons and refuses to close it. The `acceptanceSettled`
+          // latch makes this a no-op once `onAccepted` has already run.
           onSettled: ({ queued }) => {
             if (queued) {
               rejectionReason =
                 "The AI fix request was queued instead of started.";
-              settleAcceptance(false);
             }
+            settleAcceptance(false);
           },
         });
         if (!passedValidation) {
@@ -168,5 +193,6 @@ export function useFixPreCommitWithAI() {
     isStarting,
     isAvailable,
     isAvailabilityLoading,
+    unavailableReason,
   };
 }

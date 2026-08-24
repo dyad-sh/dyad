@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../utils/git_utils", () => mocks);
 vi.mock("./pre_commit_service", () => ({
   PRE_COMMIT_TIMEOUT_MS: 10 * 60_000,
+  COMMIT_MESSAGE_HOOK_TIMEOUT_MS: 2 * 60_000,
   formatPreCommitOutput: (stdout: string, stderr: string) =>
     [stdout, stderr].filter(Boolean).join("\n") ||
     "The hook produced no output.",

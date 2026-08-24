@@ -1,6 +1,11 @@
 import { getGithubUser } from "../handlers/github_handlers";
 
-export async function getGitAuthor() {
+export interface GitAuthor {
+  name: string;
+  email: string;
+}
+
+export async function getGitAuthor(): Promise<GitAuthor> {
   const user = await getGithubUser();
   const author = user
     ? {

@@ -58,7 +58,11 @@ export function useCommitDialogRecovery({
   ]);
 
   const handleFixPreCommitWithAI = useCallback(async () => {
-    if (!commit.preCommitError || !aiFix.isAvailable) return false;
+    // Availability is not re-checked here: the button is rendered disabled with
+    // the reason when the fix is unavailable, and if availability flips between
+    // render and click, `fixPreCommitWithAI` surfaces its own toast rather than
+    // failing silently.
+    if (!commit.preCommitError) return false;
     const started = await aiFix.fixPreCommitWithAI({
       appId,
       commitMessage: commitMessage.trim(),
@@ -86,6 +90,7 @@ export function useCommitDialogRecovery({
     handleCommit,
     handleFixPreCommitWithAI,
     isStartingAiFix: aiFix.isStarting,
-    canFixPreCommitWithAI: aiFix.isAvailable && !aiFix.isAvailabilityLoading,
+    isCheckingAiFixAvailability: aiFix.isAvailabilityLoading,
+    aiFixUnavailableReason: aiFix.unavailableReason,
   };
 }

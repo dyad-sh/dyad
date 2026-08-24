@@ -36,7 +36,7 @@ import {
 } from "../services/app_operation_coordinator";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
-import { githubContracts, gitContracts } from "../types/github";
+import { githubContracts, gitContracts, gitEvents } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { safeSend } from "../utils/safe_sender";
 import type {
@@ -451,8 +451,10 @@ async function handleCommitChanges(
     cancellable: true,
     senderId: event.sender.id,
   });
+  let admitted = false;
   try {
-    return await withAppGitOp(appId, "commit", async (appPath) => {
+    const commit = withAppGitOp(appId, "commit", async (appPath) => {
+      admitted = true;
       if (controller.signal.aborted) {
         throw GitStateError(
           "The commit was cancelled.",
@@ -471,7 +473,7 @@ async function handleCommitChanges(
               active.cancellable = false;
             }
           }
-          safeSend(event.sender, "git:commit-progress", {
+          safeSend(event.sender, gitEvents.commitProgress.channel, {
             appId,
             operationId,
             phase,
@@ -479,6 +481,36 @@ async function handleCommitChanges(
         },
       });
     });
+
+    // Admission can sit in the coordinator queue for as long as whatever else
+    // holds the app's `repository` claim runs, and that queue has no timeout.
+    // A cancel that lands while the commit is still queued has to settle this
+    // invoke now: the renderer's `isCommitting` only clears when it does, so
+    // otherwise the dialog stays stuck on a disabled "Cancelling..." until the
+    // blocker releases. The queued admission still happens eventually, but its
+    // callback sees the aborted signal and commits nothing.
+    const cancelledBeforeAdmission = new Promise<never>((_resolve, reject) => {
+      const rejectAsCancelled = () => {
+        if (admitted) return;
+        reject(
+          GitStateError(
+            "The commit was cancelled.",
+            GIT_ERROR_CODES.COMMIT_CANCELLED,
+          ),
+        );
+      };
+      if (controller.signal.aborted) {
+        rejectAsCancelled();
+        return;
+      }
+      controller.signal.addEventListener("abort", rejectAsCancelled, {
+        once: true,
+      });
+    });
+    // Losing the race below leaves `commit` rejecting with nobody attached, so
+    // keep that rejection observed.
+    void commit.catch(() => {});
+    return await Promise.race([commit, cancelledBeforeAdmission]);
   } finally {
     event.sender.removeListener?.("destroyed", abortWhenSenderIsDestroyed);
     const active = activeCommitOperations.get(operationId);

@@ -1,4 +1,4 @@
-import { getGitAuthor } from "./git_author";
+import { getGitAuthor, type GitAuthor } from "./git_author";
 import { createHash } from "node:crypto";
 import {
   exec,
@@ -592,7 +592,18 @@ export async function ensureGitLineEndingPolicy({
  * Doing -c user.name/email sets both the committer and author identity.
  */
 export async function withGitAuthor(args: string[]): Promise<string[]> {
-  const author = await getGitAuthor();
+  return withGitAuthorConfig(await getGitAuthor(), args);
+}
+
+/**
+ * `withGitAuthor` for callers that already resolved the author and need it for
+ * something else too (the commit-hook environment, for example), so the
+ * identity is fetched once instead of once per use.
+ */
+export function withGitAuthorConfig(
+  author: GitAuthor,
+  args: string[],
+): string[] {
   return [
     "-c",
     `user.name=${author.name}`,

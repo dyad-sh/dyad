@@ -55,7 +55,8 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     handleCommit,
     handleFixPreCommitWithAI,
     isStartingAiFix,
-    canFixPreCommitWithAI,
+    isCheckingAiFixAvailability,
+    aiFixUnavailableReason,
   } = useCommitDialogRecovery({
     appId: appId ?? -1,
     source: "banner",
@@ -213,7 +214,8 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               prepareCommitMsgError={prepareCommitMsgError}
               commitMsgError={commitMsgError}
               isStartingAiFix={isStartingAiFix}
-              canFixPreCommitWithAI={canFixPreCommitWithAI}
+              isCheckingAiFixAvailability={isCheckingAiFixAvailability}
+              aiFixUnavailableReason={aiFixUnavailableReason}
               onFixPreCommitWithAI={() => void handleFixPreCommitWithAI()}
             />
           </div>

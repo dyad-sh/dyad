@@ -13,6 +13,7 @@ import {
   GitStateError,
 } from "../utils/git_utils";
 import {
+  COMMIT_MESSAGE_HOOK_TIMEOUT_MS,
   formatPreCommitOutput,
   isCommitMsgHookAvailable,
   isPreCommitHookAvailable,
@@ -86,7 +87,7 @@ async function runMessageHookPhase({
   const output = formatPreCommitOutput(result.stdout, result.stderr);
   if (result.timedOut) {
     throw GitStateError(
-      `${label} exceeded ${Math.round(PRE_COMMIT_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
+      `${label} exceeded ${Math.round(COMMIT_MESSAGE_HOOK_TIMEOUT_MS / 60_000)} minutes and were stopped.\n\n${output}`,
       failureCode,
     );
   }

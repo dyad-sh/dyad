@@ -21,6 +21,13 @@ vi.mock("react-i18next", () => ({
         "preview.fixWithAiDescription":
           "Dyad will try to fix the reported issues.",
         "preview.startingAiFix": "Opening chat...",
+        "preview.checkingAiFixAvailability":
+          "Checking whether Dyad can fix this...",
+        "preview.fixWithAiToolDenied":
+          "Dyad needs the run_pre_commit tool to fix this.",
+        "preview.fixWithAiQuotaExhausted":
+          "You have used all of your free Agent messages.",
+        "preview.fixWithAiUnavailable": "Fix with AI is unavailable right now.",
       })[key] ?? key,
   }),
 }));
@@ -80,6 +87,53 @@ describe("CommitCheckFailureAlert", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it.each([
+    ["tool-permission", "Dyad needs the run_pre_commit tool to fix this."],
+    ["quota-exhausted", "You have used all of your free Agent messages."],
+    ["unknown", "Fix with AI is unavailable right now."],
+  ] as const)(
+    "keeps the action visible and explains why it is unavailable (%s)",
+    (reason, expectedMessage) => {
+      const onFix = vi.fn();
+      render(
+        <CommitCheckFailureAlert
+          kind="pre-commit"
+          error={new Error("lint failed")}
+          fixUnavailableReason={reason}
+          onFix={onFix}
+        />,
+      );
+
+      const button = screen.getByTestId(
+        "fix-pre-commit-with-ai-button",
+      ) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(screen.getByRole("alert").textContent).toContain(expectedMessage);
+
+      fireEvent.click(button);
+      expect(onFix).not.toHaveBeenCalled();
+    },
+  );
+
+  it("holds the action in place while availability is still loading", () => {
+    render(
+      <CommitCheckFailureAlert
+        kind="pre-commit"
+        error={new Error("lint failed")}
+        isCheckingFixAvailability
+        onFix={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByTestId(
+      "fix-pre-commit-with-ai-button",
+    ) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Checking whether Dyad can fix this...",
+    );
   });
 
   it("shows commit-msg output inline without offering an AI fix", () => {

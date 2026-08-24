@@ -8,20 +8,23 @@ import {
 } from "./CommitButtonLabel";
 import { CommitCheckFailureAlert } from "./CommitCheckFailureAlert";
 import type { CommitProgressPhase } from "@/ipc/types/github";
+import type { FixPreCommitUnavailableReason } from "@/hooks/useFixPreCommitWithAI";
 
 export function CommitRecoveryAlerts({
   preCommitError,
   prepareCommitMsgError,
   commitMsgError,
   isStartingAiFix,
-  canFixPreCommitWithAI,
+  isCheckingAiFixAvailability,
+  aiFixUnavailableReason,
   onFixPreCommitWithAI,
 }: {
   preCommitError: Error | null;
   prepareCommitMsgError: Error | null;
   commitMsgError: Error | null;
   isStartingAiFix: boolean;
-  canFixPreCommitWithAI: boolean;
+  isCheckingAiFixAvailability: boolean;
+  aiFixUnavailableReason: FixPreCommitUnavailableReason | null;
   onFixPreCommitWithAI: () => void;
 }) {
   return (
@@ -31,7 +34,9 @@ export function CommitRecoveryAlerts({
           kind="pre-commit"
           error={preCommitError}
           isStartingFix={isStartingAiFix}
-          onFix={canFixPreCommitWithAI ? onFixPreCommitWithAI : undefined}
+          isCheckingFixAvailability={isCheckingAiFixAvailability}
+          fixUnavailableReason={aiFixUnavailableReason}
+          onFix={onFixPreCommitWithAI}
         />
       )}
 

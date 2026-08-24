@@ -355,6 +355,25 @@ describe("TestsPanel", () => {
     ).toBe(true);
   });
 
+  it("doesn't refuse the run while settings are still loading", async () => {
+    // `usesSandboxedE2eTests` answers false for absent settings, so the panel
+    // would flash the amber gate banner and a disabled Run button on every
+    // mount — a hard refusal for a state that may not apply at all.
+    mocks.appUrl = null;
+    mocks.settings = undefined as unknown as Record<string, unknown>;
+
+    renderPanel();
+
+    expect(
+      (
+        (await screen.findByRole("button", {
+          name: "Run all tests",
+        })) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(screen.queryByText("Start the app to run tests.")).toBeNull();
+  });
+
   describe("stopping a run", () => {
     /** Put the panel's app into `phase` as if a run had reached it. */
     function setPhase(

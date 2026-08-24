@@ -22,7 +22,55 @@ import {
 
 const logger = log.scope("e2e_test_runtime");
 const SERVER_READY_TIMEOUT_MS = 120_000;
+/**
+ * Budget when the spawned command installs before it serves. A custom app's
+ * install step runs inside the same shell command, so it spends the readiness
+ * budget: `pip install -r requirements.txt`, `bundle install`, `go mod
+ * download` or a cold `npm ci` routinely pass two minutes on a first run, and
+ * charging them against the server's own budget would fail a run whose server
+ * was about to come up. The normal preview imposes no deadline at all; this one
+ * exists only so a truly stuck command cannot hang the run forever.
+ */
+const INSTALL_AND_SERVER_READY_TIMEOUT_MS = 900_000;
 const SERVER_READY_POLL_MS = 250;
+
+/**
+ * How long the sandbox server gets to answer. A custom app's install step runs
+ * inside the same shell command as its start command, so it spends this budget
+ * too and needs a far larger one.
+ */
+export function e2eServerReadyTimeoutMs(app: {
+  installCommand?: string | null;
+  startCommand?: string | null;
+}): number {
+  return hasCustomE2eStartCommand(app)
+    ? INSTALL_AND_SERVER_READY_TIMEOUT_MS
+    : SERVER_READY_TIMEOUT_MS;
+}
+
+/**
+ * The dev server can't have this port. Thrown instead of matched by regex on a
+ * message, because the "exited before becoming ready" error embeds the last 8KB
+ * of server output — an app whose dev script also starts a sidecar (Postgres,
+ * Redis, a second worker) that logs about *its own* taken port would otherwise
+ * be retried three times before the real error reached the user.
+ */
+class PortInUseError extends Error {}
+
+/**
+ * Whether some text reports that *this* port is taken. The port number is
+ * required, for the same reason `PortInUseError` exists: a sidecar's clash on a
+ * different port is not this server's problem. Covers Vite's `Port 1234 is in
+ * use, trying another one...` (its default `strictPort: false`, which keeps the
+ * process alive on a port Dyad isn't polling) and Node's `listen EADDRINUSE:
+ * address already in use 127.0.0.1:1234`.
+ */
+function reportsPortInUse(text: string, port: number): boolean {
+  return new RegExp(
+    `port\\s+${port}\\s+is\\s+in\\s+use|(?:EADDRINUSE|address already in use)[^\\n]*[:\\s]${port}\\b`,
+    "i",
+  ).test(text);
+}
 
 export interface E2eTestRuntime {
   baseUrl: string;
@@ -190,58 +238,60 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * A dev server that found its port taken and quietly moved to another one.
- * Vite prints this and keeps running (its default is `strictPort: false`), so
- * without matching it the readiness poll would sit on the dead original port
- * for the full two minutes and then report a timeout, when a retry on a fresh
- * port is all that was needed. Matched against the process output rather than a
- * thrown error, because nothing throws in this case.
- */
-const PORT_TAKEN_OUTPUT = /port\s+\d+\s+is\s+in\s+use|address already in use/i;
-/** Errors and output that mean "try another port", for the retry loop below. */
-const PORT_TAKEN_MESSAGE =
-  /EADDRINUSE|address already in use|port \d+ is in use/i;
-
 async function waitForReady({
   baseUrl,
+  port,
   process: child,
   signal,
   outputTail,
   spawnError,
   portHint,
+  timeoutMs,
 }: {
   baseUrl: string;
+  port: number;
   process: ChildProcess;
   signal?: AbortSignal;
   outputTail: () => string;
   spawnError: () => Error | undefined;
   portHint: string;
+  timeoutMs: number;
 }): Promise<void> {
-  const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (signal?.aborted) throw new Error("Test run stopped.");
     // Precondition throughout: a server that won't start or won't answer is a
     // user/environment problem (a broken start command, a port taken, a build
     // error), not a Dyad bug, and must not be reported as a product exception.
+    // A port clash is the exception: the retry loop turns it into a fresh port,
+    // and only a repeat failure reaches the user.
     const startError = spawnError();
     if (startError) {
+      if (reportsPortInUse(startError.message, port)) {
+        throw new PortInUseError(startError.message);
+      }
       throw new DyadError(
         `Could not start the isolated test server: ${startError.message}`,
         DyadErrorKind.Precondition,
       );
     }
     if (child.exitCode !== null || child.signalCode !== null) {
+      if (reportsPortInUse(outputTail(), port)) {
+        throw new PortInUseError(
+          `The isolated test server exited because port ${port} was already in use.`,
+        );
+      }
       throw new DyadError(
         `The isolated test server exited before becoming ready.\n${outputTail()}`,
         DyadErrorKind.Precondition,
       );
     }
-    if (PORT_TAKEN_OUTPUT.test(outputTail())) {
-      // Not a Precondition: the retry loop turns this into a fresh port, and
-      // only a repeat failure reaches the user.
-      throw new Error(
-        `The isolated test server reported its port was already in use.\n${outputTail()}`,
+    if (reportsPortInUse(outputTail(), port)) {
+      // Still running, just not here — Vite's default `strictPort: false` moves
+      // to another port and says so. Without this the poll would sit on the
+      // dead port for the whole budget and then report a timeout.
+      throw new PortInUseError(
+        `The isolated test server moved off port ${port} because it was already in use.`,
       );
     }
     try {
@@ -255,7 +305,9 @@ async function waitForReady({
     await delay(SERVER_READY_POLL_MS, signal);
   }
   throw new DyadError(
-    `The isolated test server did not become ready within 2 minutes.${portHint}\n${outputTail()}`,
+    `The isolated test server did not become ready within ${Math.round(
+      timeoutMs / 60_000,
+    )} minutes.${portHint}\n${outputTail()}`,
     DyadErrorKind.Precondition,
   );
 }
@@ -275,7 +327,50 @@ async function startE2eTestRuntimeOnce({
 }): Promise<E2eTestRuntime> {
   if (signal?.aborted) throw new Error("Test run stopped.");
   const port = await allocateE2eTestPort();
+  // Every exit from here on must hand the port back. Without this, anything
+  // that throws before the try/catch below — a workspace read, the pnpm version
+  // probe, `spawn` itself — permanently burns one of the 200 band ports, and
+  // enough failures leave the process unable to allocate at all.
+  let portReserved = true;
+  const releasePort = () => {
+    if (!portReserved) return;
+    portReserved = false;
+    releaseE2eTestPort(port);
+  };
+  try {
+    return await startServerOnPort({
+      port,
+      workspacePath,
+      installCommand,
+      startCommand,
+      signal,
+      onOutput,
+      onBound: releasePort,
+    });
+  } finally {
+    releasePort();
+  }
+}
+
+async function startServerOnPort({
+  port,
+  workspacePath,
+  installCommand,
+  startCommand,
+  signal,
+  onOutput,
+  onBound,
+}: {
+  port: number;
+  workspacePath: string;
+  installCommand?: string | null;
+  startCommand?: string | null;
+  signal?: AbortSignal;
+  onOutput?: (chunk: string) => void;
+  onBound: () => void;
+}): Promise<E2eTestRuntime> {
   const baseUrl = `http://127.0.0.1:${port}`;
+  const isCustom = hasCustomE2eStartCommand({ installCommand, startCommand });
   const { command, env } = await buildE2eTestStartCommand({
     workspacePath,
     port,
@@ -286,8 +381,7 @@ async function startE2eTestRuntimeOnce({
   // `{port}` or PORT. If it ignores both it binds elsewhere and never answers
   // here, so name the fix instead of leaving a bare timeout.
   const portHint =
-    hasCustomE2eStartCommand({ installCommand, startCommand }) &&
-    !startCommand!.includes("{port}")
+    isCustom && !startCommand!.includes("{port}")
       ? ` Your custom start command may be ignoring the PORT environment variable — add {port} to it so Dyad can tell it which port to use.`
       : "";
   const child = spawn(command, [], {
@@ -337,15 +431,17 @@ async function startE2eTestRuntimeOnce({
   try {
     await waitForReady({
       baseUrl,
+      port,
       process: child,
       signal,
       outputTail: () => tail,
       spawnError: () => startError,
       portHint,
+      timeoutMs: e2eServerReadyTimeoutMs({ installCommand, startCommand }),
     });
     // The server owns the port now, so a concurrent allocation only needs the
     // real bind check to see it is taken.
-    releaseE2eTestPort(port);
+    onBound();
     logger.info(`Isolated E2E server ready on port ${port}`);
     return {
       baseUrl,
@@ -357,7 +453,6 @@ async function startE2eTestRuntimeOnce({
     };
   } catch (error) {
     signal?.removeEventListener("abort", onAbort);
-    releaseE2eTestPort(port);
     await stop();
     throw error;
   }
@@ -372,8 +467,7 @@ export async function startE2eTestRuntime(
       return await startE2eTestRuntimeOnce(options);
     } catch (error) {
       lastError = error;
-      const message = error instanceof Error ? error.message : String(error);
-      if (!PORT_TAKEN_MESSAGE.test(message)) throw error;
+      if (!(error instanceof PortInUseError)) throw error;
       options.onOutput?.(
         "[test server] The selected port was taken; retrying with another port…\n",
       );

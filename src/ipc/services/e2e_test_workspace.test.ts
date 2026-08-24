@@ -190,6 +190,75 @@ describe("E2E test workspace", () => {
     ).toBe("png");
   });
 
+  it("keeps the last run's artifacts when a new run never produces any", async () => {
+    // Pruning used to happen when the workspace was created. A run that then
+    // failed during setup left the panel showing the previous run's results
+    // with every screenshot path pointing at a directory that had just been
+    // deleted — thumbnails that silently stop loading.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    const previous = path.join(userData, E2E_TEST_ARTIFACT_DIR, "7-oldrun");
+    await fs.mkdir(path.join(previous, "test-results"), { recursive: true });
+    await fs.writeFile(path.join(previous, "test-results", "shot.png"), "png");
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    expect(
+      await fs.readFile(
+        path.join(previous, "test-results", "shot.png"),
+        "utf8",
+      ),
+    ).toBe("png");
+    await workspace.dispose();
+  });
+
+  it("drops the previous run's artifacts once this run has replacements", async () => {
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    const previous = path.join(userData, E2E_TEST_ARTIFACT_DIR, "7-oldrun");
+    await fs.mkdir(previous, { recursive: true });
+    const other = path.join(userData, E2E_TEST_ARTIFACT_DIR, "8-otherapp");
+    await fs.mkdir(other, { recursive: true });
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    await fs.mkdir(path.join(workspace.workspacePath, "test-results"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(workspace.workspacePath, "test-results", "shot.png"),
+      "png",
+    );
+    await retainE2eTestArtifacts(workspace);
+
+    const remaining = await fs.readdir(
+      path.join(userData, E2E_TEST_ARTIFACT_DIR),
+    );
+    expect(remaining).not.toContain("7-oldrun");
+    // Another app's artifacts are none of this run's business.
+    expect(remaining).toContain("8-otherapp");
+    expect(remaining).toContain(path.basename(workspace.artifactPath));
+    await workspace.dispose();
+  });
+
+  it("keeps run directory names short enough for Windows MAX_PATH", async () => {
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    const runName = path.basename(workspace.workspacePath);
+    // `<appId>-<12 hex>`; a full epoch + UUID was ~50 characters of pure path
+    // depth on top of a root already deeper than the app directory.
+    expect(runName).toMatch(/^7-[0-9a-f]{12}$/);
+    await workspace.dispose();
+  });
+
   it("sweeps abandoned sandboxes without touching a live run", async () => {
     const root = await tempRoot();
     const appPath = path.join(root, "app");

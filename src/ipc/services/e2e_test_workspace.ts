@@ -143,21 +143,21 @@ export async function createE2eTestWorkspace({
     fs.mkdir(sandboxRoot, { recursive: true }),
     fs.mkdir(artifactRoot, { recursive: true }),
   ]);
-  const oldArtifacts = await fs.readdir(artifactRoot, { withFileTypes: true });
-  await Promise.all(
-    oldArtifacts
-      .filter(
-        (entry) => entry.isDirectory() && entry.name.startsWith(`${appId}-`),
-      )
-      .map((entry) =>
-        fs.rm(path.join(artifactRoot, entry.name), {
-          recursive: true,
-          force: true,
-        }),
-      ),
-  );
+  // The previous run's artifacts are deliberately NOT pruned here. The panel is
+  // still showing that run's results, and every screenshot path on them points
+  // into the directory this would delete — so a new run that then fails during
+  // setup would leave the user looking at results whose thumbnails silently
+  // stop loading. `retainE2eTestArtifacts` prunes them once this run has
+  // produced replacements.
 
-  const runName = `${appId}-${Date.now()}-${randomUUID()}`;
+  // Kept short on purpose: `<userData>/test-sandboxes` is already deeper than
+  // the app directory, on Windows the copy is a real one and long-path support
+  // is off by default, and a pnpm tree
+  // (`node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/…`) that fits under
+  // the app dir can blow past MAX_PATH under a longer root and fail mid-copy.
+  // 12 hex characters of a v4 UUID is ~48 bits of entropy — far more than
+  // enough to separate runs of one app, at a third of the path cost.
+  const runName = `${appId}-${randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const workspacePath = path.join(sandboxRoot, runName);
   const artifactPath = path.join(artifactRoot, runName);
   assertOwnedPath(sandboxRoot, workspacePath);
@@ -241,17 +241,32 @@ export async function retainE2eTestArtifacts({
   artifactPath,
 }: Pick<E2eTestWorkspace, "workspacePath" | "artifactPath">): Promise<void> {
   const source = path.join(workspacePath, "test-results");
+  let hasArtifacts = true;
   try {
-    if (!(await fs.stat(source)).isDirectory()) return;
+    hasArtifacts = (await fs.stat(source)).isDirectory();
   } catch {
-    return;
+    hasArtifacts = false;
   }
-  await fs.rm(artifactPath, { recursive: true, force: true });
-  await fs.mkdir(artifactPath, { recursive: true });
-  await fs.cp(source, path.join(artifactPath, "test-results"), {
-    recursive: true,
-    verbatimSymlinks: false,
-  });
+  if (hasArtifacts) {
+    await fs.rm(artifactPath, { recursive: true, force: true });
+    await fs.mkdir(artifactPath, { recursive: true });
+    await fs.cp(source, path.join(artifactPath, "test-results"), {
+      recursive: true,
+      verbatimSymlinks: false,
+    });
+  }
+  // Only now are the previous run's artifacts safe to drop: this run has
+  // finished, so the results on screen are its own and nothing still points at
+  // them. Pruning before the run — where this used to happen — destroyed the
+  // last good screenshots whenever the new run failed during setup.
+  const runName = path.basename(artifactPath);
+  const appId = runDirectoryAppId(runName);
+  if (appId === null) return;
+  await removeRunDirectories(
+    path.dirname(artifactPath),
+    (name) => name !== runName && runDirectoryAppId(name) === appId,
+    "test artifacts",
+  );
 }
 
 export function rewriteE2eArtifactPath(

@@ -18,6 +18,7 @@ vi.mock("@/ipc/utils/socket_firewall", async (importOriginal) => {
 import {
   allocateE2eTestPort,
   buildE2eTestStartCommand,
+  e2eServerReadyTimeoutMs,
   releaseE2eTestPort,
   startE2eTestRuntime,
 } from "./e2e_test_runtime";
@@ -210,4 +211,114 @@ describe("startE2eTestRuntime port recovery", () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe("startE2eTestRuntime port accounting", () => {
+  it("hands the port back when start-command construction throws", async () => {
+    // The pnpm version probe runs between the allocation and the try/catch that
+    // used to be the only place releasing the port, so a failure here burned
+    // one of the 200 band ports for the life of the process — and enough of
+    // them left no port to allocate at all.
+    getPnpmMinimumReleaseAgeSupportMock.mockRejectedValue(new Error("probe"));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-release-"));
+    try {
+      await expect(
+        startE2eTestRuntime({ workspacePath: root }),
+      ).rejects.toThrow(/probe/);
+      const port = await allocateE2eTestPort();
+      try {
+        // Free again — which it only is if the failed run released it.
+        expect(port).toBe(E2E_TEST_SERVER_PORT_START);
+      } finally {
+        releaseE2eTestPort(port);
+      }
+    } finally {
+      mockPnpmAvailable(false);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("does not retry when a sidecar reports a clash on its own port", async () => {
+    // The "exited before becoming ready" error embeds 8KB of server output, so
+    // matching a substring of the whole message turned any sidecar's
+    // EADDRINUSE — Postgres, Redis, a second worker — into three more full
+    // server starts before the real error reached the user.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-sidecar-"));
+    const attempts = path.join(root, "attempts");
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      [
+        'import fs from "node:fs";',
+        'fs.appendFileSync(process.env.DYAD_ATTEMPTS, "x");',
+        // Deliberately NOT the port Dyad allocated.
+        "console.error('listen EADDRINUSE: address already in use 127.0.0.1:5432');",
+        "process.exit(1);",
+      ].join("\n"),
+    );
+    process.env.DYAD_ATTEMPTS = attempts;
+    try {
+      await expect(
+        startE2eTestRuntime({
+          workspacePath: root,
+          installCommand: "true",
+          startCommand: `"${process.execPath}" server.mjs {port}`,
+        }),
+      ).rejects.toThrow(/exited before becoming ready/i);
+      expect(fs.readFileSync(attempts, "utf8")).toBe("x");
+    } finally {
+      delete process.env.DYAD_ATTEMPTS;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("still retries when the clash really is on the allocated port", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-clash-"));
+    const attempts = path.join(root, "attempts");
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      [
+        'import fs from "node:fs";',
+        "const port = Number(process.argv[2]);",
+        'fs.appendFileSync(process.env.DYAD_ATTEMPTS, "x");',
+        "console.error(`listen EADDRINUSE: address already in use 127.0.0.1:${port}`);",
+        "process.exit(1);",
+      ].join("\n"),
+    );
+    process.env.DYAD_ATTEMPTS = attempts;
+    try {
+      await expect(
+        startE2eTestRuntime({
+          workspacePath: root,
+          installCommand: "true",
+          startCommand: `"${process.execPath}" server.mjs {port}`,
+        }),
+      ).rejects.toThrow(/in use/i);
+      expect(fs.readFileSync(attempts, "utf8")).toBe("xxx");
+    } finally {
+      delete process.env.DYAD_ATTEMPTS;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+describe("e2eServerReadyTimeoutMs", () => {
+  it("gives a custom app's install step room beyond the server budget", () => {
+    // `install && start` is one spawned command, so `pip install -r
+    // requirements.txt`, `bundle install` or a cold `npm ci` spends the
+    // readiness budget — and routinely passes two minutes on a first run.
+    const dyadManaged = e2eServerReadyTimeoutMs({});
+    const custom = e2eServerReadyTimeoutMs({
+      installCommand: "pip install -r requirements.txt",
+      startCommand: "python server.py",
+    });
+    expect(dyadManaged).toBe(120_000);
+    expect(custom).toBeGreaterThan(dyadManaged);
+  });
+
+  it("does not extend the budget for a start command with no install command", () => {
+    // Same rule `getCommand` uses: an app is custom only when both are set.
+    expect(e2eServerReadyTimeoutMs({ startCommand: "python server.py" })).toBe(
+      120_000,
+    );
+  });
 });

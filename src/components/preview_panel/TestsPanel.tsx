@@ -708,7 +708,12 @@ export function TestsPanel() {
   // point of the feature. The fallback path (Docker/cloud runtime, or the
   // opt-out) still runs Playwright against the preview and still needs it up.
   // Recording is unaffected either way: it drives the live preview.
-  const testsNeedDevServer = !usesSandboxedE2eTests(settings);
+  //
+  // While settings are still loading there is nothing to disclose yet:
+  // `usesSandboxedE2eTests` answers false for absent settings, which would
+  // flash the amber "Start the app to run tests." banner and a disabled Run
+  // button on every mount for a state that may not apply at all.
+  const testsNeedDevServer = !!settings && !usesSandboxedE2eTests(settings);
   const testRunBlocked = testsNeedDevServer && !devServerRunning;
   // Owns the run's whole lifecycle, teardown included. Gates every action that
   // must not interleave with it (Run, Record, Delete), because the per-app lock

@@ -21,7 +21,7 @@ import {
   rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock,
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
-import { FORGOTTEN_COOLIFY, UserSettings } from "@/lib/schemas";
+import { forgottenCoolify, UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
 import {
@@ -1169,8 +1169,30 @@ describe("preserving undecryptable secrets", () => {
       },
     });
 
-    writeSettings({ coolify: FORGOTTEN_COOLIFY });
+    writeSettings({ coolify: forgottenCoolify() });
 
+    expect(readStoredFile().coolify).toEqual({});
+  });
+
+  it("clears again on a second sign-out", () => {
+    // writeSettings edits the object it was handed, so a shape kept at module
+    // scope would carry one write's edits into the next sign-out.
+    store[mockSettingsPath] = JSON.stringify({
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        accessToken: lockedSecret("coolify"),
+      },
+    });
+    writeSettings({ coolify: forgottenCoolify() });
+    expect(readStoredFile().coolify).toEqual({});
+
+    store[mockSettingsPath] = JSON.stringify({
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        accessToken: lockedSecret("coolify"),
+      },
+    });
+    writeSettings({ coolify: forgottenCoolify() });
     expect(readStoredFile().coolify).toEqual({});
   });
 

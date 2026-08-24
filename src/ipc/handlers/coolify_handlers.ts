@@ -7,7 +7,7 @@ import { apps } from "../../db/schema";
 import { resolveBoth } from "../utils/dns_resolve";
 import { readSettings, writeSettings } from "../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { FORGOTTEN_COOLIFY } from "@/lib/schemas";
+import { forgottenCoolify } from "@/lib/schemas";
 import {
   getClient,
   readConnectionState,
@@ -172,7 +172,7 @@ export function registerCoolifyHandlers() {
     // Every field named rather than an empty object: an absent key reads to
     // writeSettings as one a consumer read could not decrypt, and it hands
     // the ciphertext back — so an empty coolify would return the token this
-    // is here to forget. FORGOTTEN_COOLIFY names them all and stops
+    // is here to forget. forgottenCoolify names them all and stops
     // compiling when CoolifySchema grows one more.
     //
     // The apps' rows are not touched. They read as disconnected without a
@@ -181,7 +181,7 @@ export function registerCoolifyHandlers() {
     // deploy build a second application beside the one already running and
     // lose a fight with it over the domain.
     coolifyDeployRegistry.cancelAll();
-    writeSettings({ coolify: FORGOTTEN_COOLIFY });
+    writeSettings({ coolify: forgottenCoolify() });
   });
 
   createTypedHandler(coolifyContracts.createProject, async (_, { name }) => {

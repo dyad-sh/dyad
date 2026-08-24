@@ -93,6 +93,50 @@ describe("acknowledging the loss", () => {
   });
 });
 
+describe("nothing to look at yet", () => {
+  it("will not sign out while it is still finding out", async () => {
+    // Ticking a box that says the details above have been saved, over a panel
+    // that has not shown any, is not the acknowledgement this asks for.
+    h.revealCredentials.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    open();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-sign-out-dialog")).toBeTruthy(),
+    );
+    await user.click(screen.getByTestId("coolify-sign-out-acknowledge"));
+
+    expect(signOutButton().disabled).toBe(true);
+  });
+
+  it("says so when it cannot read what it has stored", async () => {
+    // Signing out still forgets them, so staying silent would destroy
+    // credentials the user was never shown.
+    h.revealCredentials.mockRejectedValue(new Error("keychain locked"));
+    open();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-sign-out-unreadable")).toBeTruthy(),
+    );
+  });
+
+  it("says when it holds a password it cannot read", async () => {
+    // The panel cannot show a row for a value it does not have, so a missing
+    // password would otherwise read as there never having been one.
+    h.revealCredentials.mockResolvedValue({
+      ...FULL,
+      server: { ...FULL.server, password: null },
+    });
+    open();
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("coolify-sign-out-locked-password"),
+      ).toBeTruthy(),
+    );
+  });
+});
+
 describe("the last look", () => {
   it("shows what is about to be forgotten", async () => {
     await openAndSettle();

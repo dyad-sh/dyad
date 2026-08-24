@@ -216,12 +216,11 @@ export type SupabaseOrganizationCredentials = z.infer<
 >;
 
 /**
- * A Coolify instance Dyad can deploy to.
+ * The admin account on a server Dyad set up itself.
  *
- * One object rather than two loose fields: the address and the token are only
- * useful together, and neither says anything on its own. Which app deploys
- * where lives in the coolify_app_connections table, not here — this is the
- * instance, and it is instance-wide.
+ * Its own shape rather than fields on the instance below, because it is a
+ * fact about a machine Dyad built rather than about the Coolify Dyad talks
+ * to. Usually the same server; not always.
  */
 export const CoolifyAdminSchema = z.object({
   email: z.string(),
@@ -233,14 +232,36 @@ export const CoolifyAdminSchema = z.object({
    */
   password: SecretSchema.optional(),
   /**
-   * The address this account belongs to.
+   * The address of the server this account opens.
    *
-   * Written before there is a token to talk to the instance with, which is
-   * the window where nothing else names the machine the account opens.
+   * There are two addresses stored, and they are usually the same one. This
+   * is the machine Dyad installed Coolify on. `instanceUrl` on the object
+   * below is the Coolify Dyad is currently talking to.
+   *
+   * They come apart in one case. Coolify has no API for making API tokens, so
+   * Dyad mints one through a workaround, and that workaround can fail. The
+   * install still succeeded, so the finished screen hands over this account
+   * and says to make a token by hand — and the next screen offers the token
+   * form with this address already filled in. Someone who instead points that
+   * form at a different Coolify they already had ends up with this account
+   * for one server and a token for another.
+   *
+   * Keeping the address next to the account is what lets the panel put each
+   * secret under the server it actually opens. One address over both would
+   * have to pick, and picking wrong shows this password under the other
+   * server's name, which reads as a way into it and is not one.
    */
   instanceUrl: z.string(),
 });
 
+/**
+ * A Coolify instance Dyad can deploy to.
+ *
+ * One object rather than two loose fields: the address and the token are only
+ * useful together, and neither says anything on its own. Which app deploys
+ * where lives in the coolify_app_connections table, not here — this is the
+ * instance, and it is instance-wide.
+ */
 export const CoolifySchema = z.object({
   instanceUrl: z.string().optional(),
   accessToken: SecretSchema.optional(),
@@ -270,14 +291,21 @@ export type Coolify = z.infer<typeof CoolifySchema>;
  *
  * Typed so that a field added to CoolifySchema later fails to compile until
  * it is named here too, which is what an empty object was reaching for.
+ *
+ * Built fresh each call rather than shared. writeSettings merges one level
+ * deep and then edits what it merged by path, so a single object handed to it
+ * is the object it edits — and one kept at module scope would carry another
+ * write's edits into every sign-out after it.
  */
-export const FORGOTTEN_COOLIFY: {
+export function forgottenCoolify(): {
   [K in keyof Required<Coolify>]: undefined;
-} = {
-  instanceUrl: undefined,
-  accessToken: undefined,
-  admin: undefined,
-};
+} {
+  return {
+    instanceUrl: undefined,
+    accessToken: undefined,
+    admin: undefined,
+  };
+}
 
 export const SupabaseSchema = z.object({
   // Map keyed by organizationSlug -> organization credentials

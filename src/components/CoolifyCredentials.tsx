@@ -98,8 +98,8 @@ export function CoolifyCredentials({
   if (!credentials) return null;
 
   const { instance, server } = credentials;
-  // An instance connected by pasting a token has no account Dyad created and
-  // no server it built, so there is nothing here worth a heading.
+  // Nothing stored at all — signed out, or never connected. A panel of blanks
+  // would read as something having failed.
   if (!instance && !server) return null;
   // The usual case: Dyad set the server up and is connected to it. Merged on
   // the address matching exactly, never on a guess at two spellings of one
@@ -107,6 +107,9 @@ export function CoolifyCredentials({
   // addresses, which is a moment's confusion rather than a wrong password.
   const isOneServer =
     instance !== null && server !== null && instance.url === server.url;
+  // Only when there are two blocks to tell apart. Over a lone block they name
+  // something nothing is being distinguished from.
+  const showsBoth = instance !== null && server !== null;
 
   return (
     <div className="space-y-2 text-sm" data-testid="coolify-credentials">
@@ -131,9 +134,11 @@ export function CoolifyCredentials({
         <>
           {server && (
             <div className="space-y-2" data-testid="coolify-credentials-server">
-              <div className="text-muted-foreground text-xs">
-                The server Dyad set up
-              </div>
+              {showsBoth && (
+                <div className="text-muted-foreground text-xs">
+                  The server Dyad set up
+                </div>
+              )}
               <Field label="Address" value={server.url} />
               <Field label="Email" value={server.email} />
               {server.password && (
@@ -146,9 +151,11 @@ export function CoolifyCredentials({
               className="space-y-2"
               data-testid="coolify-credentials-instance"
             >
-              <div className="text-muted-foreground text-xs">
-                The Coolify Dyad is connected to
-              </div>
+              {showsBoth && (
+                <div className="text-muted-foreground text-xs">
+                  The Coolify Dyad is connected to
+                </div>
+              )}
               <Field label="Address" value={instance.url} />
               {instance.apiToken && (
                 <Field label="API token" value={instance.apiToken} secret />

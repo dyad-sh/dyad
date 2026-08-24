@@ -43,12 +43,26 @@ export function CoolifySignOutDialog({
 
   // Shares a key with the fields below, so opening this asks once. Only read
   // here to decide whether the password gets a warning of its own.
-  const { data: credentials } = useQuery({
+  const {
+    data: credentials,
+    isPending,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.coolify.credentials,
     queryFn: () => ipc.coolifySetup.revealCredentials(),
     gcTime: 0,
     enabled: open,
   });
+  // A tick over an empty panel is not the acknowledgement this asks for, so
+  // nothing can be confirmed until the read has answered. `enabled` leaves the
+  // query pending while the dialog is closed, which reads the same here.
+  const answered = !isPending || isError;
+  // Held but unreadable, which the panel below cannot show because there is
+  // no value to put on screen. Saying so beats a silently missing row.
+  const passwordIsLocked =
+    credentials?.server !== null &&
+    credentials?.server !== undefined &&
+    credentials.server.password === null;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -63,6 +77,30 @@ export function CoolifySignOutDialog({
               : ""}
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        {isPending && !isError && (
+          <div className="text-muted-foreground text-sm">
+            Looking up what Dyad has stored…
+          </div>
+        )}
+        {isError && (
+          <div
+            className="text-destructive text-sm"
+            data-testid="coolify-sign-out-unreadable"
+          >
+            Dyad could not read what it has stored for this Coolify. Signing out
+            still forgets it.
+          </div>
+        )}
+        {passwordIsLocked && (
+          <div
+            className="text-destructive text-sm"
+            data-testid="coolify-sign-out-locked-password"
+          >
+            Dyad is holding an admin password for this server but cannot read it
+            on this machine, so it cannot show it to you before it goes.
+          </div>
+        )}
 
         <CoolifyCredentials />
 
@@ -80,7 +118,10 @@ export function CoolifySignOutDialog({
           {/* Closes as it fires — it is a Close underneath — so there is no
               pending state to show here. The button that opened this stays on
               screen and carries that. */}
-          <AlertDialogAction disabled={!acknowledged} onClick={onConfirm}>
+          <AlertDialogAction
+            disabled={!acknowledged || !answered}
+            onClick={onConfirm}
+          >
             Sign out
           </AlertDialogAction>
         </AlertDialogFooter>

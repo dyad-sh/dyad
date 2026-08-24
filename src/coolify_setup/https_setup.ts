@@ -69,7 +69,15 @@ export function certificateDomainFor(
     if (isLoopbackAddress(bareCustom) || /\.local$/i.test(bareCustom)) {
       return null;
     }
-    if (isIP(bareCustom) === 4 && isNonRoutableAddress(bareCustom)) return null;
+    if (isIP(bareCustom) === 4) {
+      if (isNonRoutableAddress(bareCustom)) return null;
+      // A bare address is not a name any authority will certify, so asking
+      // for one spends the whole wait on a refusal. The derived spelling of
+      // the same address is a name, and is what the address would have been
+      // turned into had it been left out of the domain field.
+      return `${bareCustom}.sslip.io`;
+    }
+    if (isIP(bareCustom) === 6) return null;
     return bareCustom;
   }
 
@@ -239,7 +247,15 @@ export async function domainPointsAtServer(
     expectedIps,
     actualIps: resolved.addresses,
   });
-  return verdict === "points-elsewhere" ? "points-elsewhere" : "points-here";
+  if (verdict === "points-elsewhere") return "points-elsewhere";
+  // Two different things arrive as "unknown". With no expected addresses it
+  // is the server's own name that did not resolve, which is deliberately not
+  // an objection — refusing there would block a setup over a private name.
+  // With addresses on both sides it is records that cannot be compared,
+  // because they are in different families, and that is no more an answer
+  // about where the domain points than a resolver that never replied.
+  if (verdict === "unknown" && expectedIps.length > 0) return "unknown";
+  return "points-here";
 }
 
 export interface HttpsOutcome {
@@ -300,7 +316,12 @@ export async function tryEnableHttps(
     return {
       instanceUrl: plainUrlFor(host),
       secure: false,
-      reason: "This address cannot be given a certificate.",
+      // Says which of the two was refused. Blaming the address for a domain
+      // the user typed sends them to check the thing that was fine.
+      reason: customDomain?.trim()
+        ? `${customDomain.trim()} cannot be given a certificate, because ` +
+          `nothing on the public internet can reach it to check.`
+        : "This address cannot be given a certificate.",
     };
   }
 

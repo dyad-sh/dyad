@@ -174,6 +174,14 @@ describe("certificateDomainFor, for a domain given by hand", () => {
     expect(certificateDomainFor("203.0.113.5", "192.168.1.10")).toBeNull();
   });
 
+  it("turns a bare address into the name the derived path would use", async () => {
+    // No authority certifies a bare address, so asking spends the whole wait
+    // on a refusal — while the same address has a spelling that is a name.
+    expect(certificateDomainFor("203.0.113.5", "203.0.113.5")).toBe(
+      "203.0.113.5.sslip.io",
+    );
+  });
+
   it("keeps a name that could be validated", async () => {
     expect(certificateDomainFor("203.0.113.5", "coolify.example.com")).toBe(
       "coolify.example.com",
@@ -214,6 +222,18 @@ describe("domainPointsAtServer", () => {
     expect(
       await domainPointsAtServer("example.com", "203.0.113.5", {
         resolve: answers([], true),
+      }),
+    ).toBe("unknown");
+  });
+
+  it("says it does not know when the records cannot be compared", async () => {
+    // An IPv4 server and a domain carrying only an AAAA record. There is no
+    // overlap to find by construction, so this is no more an answer about
+    // where the domain points than a resolver that never replied — and the
+    // certificate poll after it would take the old machine for proof.
+    expect(
+      await domainPointsAtServer("coolify.example.com", "203.0.113.5", {
+        resolve: answers(["2001:db8::9"]),
       }),
     ).toBe("unknown");
   });

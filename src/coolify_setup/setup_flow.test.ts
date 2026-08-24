@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { runServerSetup, type SetupStep } from "./setup_flow";
 import { waitForAdminSeeded } from "./install";
 import { tryEnableHttps } from "./https_setup";
+import { DyadErrorKind } from "@/errors/dyad_error";
+import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 
 const REAL_TOKEN = "1|EcaUxT43T5fgdLJmnYj0702tEUC6viy5jEhO3Ujk2298db95";
@@ -455,6 +457,47 @@ describe("runServerSetup", () => {
     const bad = fakeServer({ installExit: 1 });
     await run(bad).promise.catch(() => {});
     expect(bad.session.end).toHaveBeenCalled();
+  });
+
+  it("says the link died rather than blaming the version for it", async () => {
+    // Answering null for a dead connection sends the user to the screen that
+    // tells them their freshly installed Coolify is too old to drive — for a
+    // question that never reached it. The install still stands either way.
+    const server = fakeServer();
+    server.session.run = vi.fn(
+      async (command: string, options?: { input?: string }) => {
+        const script = options?.input ?? "";
+        if (script.includes("constants.coolify.version")) {
+          throw new SshError(
+            "timeout",
+            "the connection stopped answering",
+            DyadErrorKind.External,
+          );
+        }
+        if (command.includes("MemTotal")) {
+          return {
+            code: 0,
+            stdout: "os=ubuntu\nmem=1967\ndir=no\ncontainer=\nbusy=no",
+            stderr: "",
+          };
+        }
+        if (script.includes("->exists()")) {
+          return { code: 0, stdout: transcript("yes"), stderr: "" };
+        }
+        if (script.includes("setupDynamicProxyConfiguration")) {
+          return { code: 0, stdout: transcript("applied"), stderr: "" };
+        }
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    ) as unknown as SshSession["run"];
+
+    const result = await run(server).promise;
+
+    expect(result.token).toBeNull();
+    expect(result.tokenUnavailableReason).toBe(
+      "Coolify did not answer while Dyad was opening its API.",
+    );
+    expect(result.credentials.password).toBeTruthy();
   });
 
   it("passes cancellation through rather than reporting it as a token problem", async () => {

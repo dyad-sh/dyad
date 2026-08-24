@@ -87,8 +87,10 @@ describe("readCoolifyVersion", () => {
     const session = {
       run: vi.fn(async () => {
         throw new SshError(
-          "connection-lost",
-          "connection lost",
+          // The connection stopped answering, which is the case this tells
+          // apart from a bound Dyad set on one command.
+          "timeout",
+          "the connection stopped answering",
           DyadErrorKind.External,
         );
       }),

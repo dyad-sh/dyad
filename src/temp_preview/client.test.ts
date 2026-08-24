@@ -126,6 +126,95 @@ describe("TempmdClient", () => {
     );
   });
 
+  it("retries an ambiguous finalize result with the same publish session", async () => {
+    const retryDelay = vi.fn().mockResolvedValue(undefined);
+    const fetcher = vi.fn<typeof fetch>();
+    fetcher
+      .mockResolvedValueOnce(
+        Response.json({
+          sessionId: "session-1",
+          tempId: "temp-1",
+          uploadToken: "upload-secret",
+          uploads: [],
+          skipped: [],
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError("connection closed"))
+      .mockResolvedValueOnce(
+        Response.json({
+          success: true,
+          tempId: "temp-1",
+          versionId: "version-1",
+          canonicalUrl: "https://example.temp.md",
+          expiresAt: "2026-08-30T00:00:00.000Z",
+          updateToken: "update-secret",
+        }),
+      );
+
+    await expect(
+      new TempmdClient("https://api.temp.md", fetcher, retryDelay).publish({
+        title: "Demo",
+        files: [],
+      }),
+    ).resolves.toMatchObject({
+      tempId: "temp-1",
+      updateToken: "update-secret",
+    });
+
+    expect(retryDelay).toHaveBeenCalledWith(250);
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      "https://api.temp.md/publish-sessions/session-1/finalize",
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer upload-secret" },
+      }),
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      3,
+      "https://api.temp.md/publish-sessions/session-1/finalize",
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer upload-secret" },
+      }),
+    );
+  });
+
+  it("does not retry a definitive finalize rejection", async () => {
+    const retryDelay = vi.fn().mockResolvedValue(undefined);
+    const fetcher = vi.fn<typeof fetch>();
+    fetcher
+      .mockResolvedValueOnce(
+        Response.json({
+          sessionId: "session-1",
+          tempId: "temp-1",
+          uploadToken: "upload-secret",
+          uploads: [],
+          skipped: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "Publish session expired", code: "session_expired" },
+          { status: 410 },
+        ),
+      );
+
+    await expect(
+      new TempmdClient("https://api.temp.md", fetcher, retryDelay).publish({
+        title: "Demo",
+        files: [],
+      }),
+    ).rejects.toMatchObject({
+      status: 410,
+      code: "session_expired",
+      phase: "finalize",
+    });
+
+    expect(retryDelay).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("classifies upload transport failures", async () => {
     const file = createBundleFile();
     const fetcher = vi.fn<typeof fetch>();

@@ -25,6 +25,8 @@ const FinalizedPublishSchema = z.object({
   updateToken: z.string().optional(),
 });
 
+const FINALIZE_RETRY_DELAYS_MS = [250, 1_000] as const;
+
 export interface TempPreviewConnection {
   tempId: string;
   canonicalUrl: string;
@@ -57,6 +59,9 @@ export class TempmdClient {
   constructor(
     baseUrl = "https://api.temp.md",
     private readonly fetcher: typeof fetch = fetch,
+    private readonly delay: (
+      milliseconds: number,
+    ) => Promise<void> = waitForDelay,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
@@ -128,15 +133,10 @@ export class TempmdClient {
       }
     });
 
-    const finalized = FinalizedPublishSchema.parse(
-      await this.json(
-        `/publish-sessions/${encodeURIComponent(session.sessionId)}/finalize`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.uploadToken}` },
-        },
-        "finalize",
-      ),
+    const finalized = await this.finalizeSession(
+      session.sessionId,
+      session.uploadToken,
+      Boolean(input.previous),
     );
     const updateToken = finalized.updateToken ?? input.previous?.updateToken;
     if (!updateToken) {
@@ -159,6 +159,51 @@ export class TempmdClient {
       },
       "revoke",
     );
+  }
+
+  private async finalizeSession(
+    sessionId: string,
+    uploadToken: string,
+    canReusePreviousToken: boolean,
+  ): Promise<z.infer<typeof FinalizedPublishSchema>> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const finalized = FinalizedPublishSchema.parse(
+          await this.json(
+            `/publish-sessions/${encodeURIComponent(sessionId)}/finalize`,
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${uploadToken}` },
+            },
+            "finalize",
+          ),
+        );
+        if (!canReusePreviousToken && !finalized.updateToken) {
+          throw new TempmdApiError(
+            "temp.md returned an invalid response",
+            200,
+            "invalid_response",
+            "finalize",
+          );
+        }
+        return finalized;
+      } catch (error) {
+        const normalized =
+          error instanceof z.ZodError
+            ? new TempmdApiError(
+                "temp.md returned an invalid response",
+                200,
+                "invalid_response",
+                "finalize",
+              )
+            : error;
+        const retryDelay = FINALIZE_RETRY_DELAYS_MS[attempt];
+        if (retryDelay === undefined || !isAmbiguousFinalizeError(normalized)) {
+          throw normalized;
+        }
+        await this.delay(retryDelay);
+      }
+    }
   }
 
   private async json(
@@ -199,6 +244,21 @@ export class TempmdClient {
       throw transportError(error, fallback, phase);
     }
   }
+}
+
+function isAmbiguousFinalizeError(error: unknown): boolean {
+  return (
+    error instanceof TempmdApiError &&
+    error.phase === "finalize" &&
+    (error.status === 0 ||
+      error.status === 408 ||
+      error.status >= 500 ||
+      error.code === "invalid_response")
+  );
+}
+
+function waitForDelay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function readJsonResponse(

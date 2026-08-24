@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { RemoveFileAndCommitResult } from "../services/git_service";
 import { apps } from "@/db/schema";
 import { DEFAULT_SETTINGS } from "@/main/settings";
@@ -80,6 +80,7 @@ const readSettingsMock = vi.hoisted(() => vi.fn());
 const sendTelemetryEventMock = vi.hoisted(() => vi.fn());
 const ensurePlaywrightBootstrapMock = vi.hoisted(() => vi.fn());
 const createE2eTestWorkspaceMock = vi.hoisted(() => vi.fn());
+const retainE2eTestArtifactsMock = vi.hoisted(() => vi.fn());
 const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
 const spawnStreamingMock = vi.hoisted(() => vi.fn());
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
@@ -126,12 +127,14 @@ vi.mock("../services/e2e_test_workspace", async (importOriginal) => {
   return {
     ...actual,
     createE2eTestWorkspace: createE2eTestWorkspaceMock,
-    retainE2eTestArtifacts: vi.fn(),
+    retainE2eTestArtifacts: retainE2eTestArtifactsMock,
   };
 });
-vi.mock("../services/e2e_test_runtime", () => ({
-  startE2eTestRuntime: startE2eTestRuntimeMock,
-}));
+vi.mock("../services/e2e_test_runtime", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/e2e_test_runtime")>();
+  return { ...actual, startE2eTestRuntime: startE2eTestRuntimeMock };
+});
 vi.mock("@/main/settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/main/settings")>();
   return { ...actual, readSettings: readSettingsMock };
@@ -173,6 +176,8 @@ describe("tests handlers", () => {
     sendTelemetryEventMock.mockReset();
     ensurePlaywrightBootstrapMock.mockReset();
     ensurePlaywrightBootstrapMock.mockResolvedValue({ installed: false });
+    retainE2eTestArtifactsMock.mockReset();
+    retainE2eTestArtifactsMock.mockResolvedValue(undefined);
     createE2eTestWorkspaceMock.mockReset();
     createE2eTestWorkspaceMock.mockImplementation(
       async ({ appPath }: { appPath: string }) => ({
@@ -575,6 +580,120 @@ describe("tests handlers", () => {
 
       expect(result.infraError?.message).toBe("Test run stopped.");
       expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
+    });
+
+    it("reports a failed Playwright bootstrap as an infra error, not a crash", async () => {
+      // This call used to live inside `runAppTestsCore`, which classified it as
+      // an `infraError`. Letting it escape from the sandbox prepare stage would
+      // reject the IPC call, record an internal product exception, and throw
+      // out of the agent's turn instead of counting as a non-attempt.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      ensurePlaywrightBootstrapMock.mockRejectedValue(
+        new Error("npm registry unreachable"),
+      );
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toMatch(/registry unreachable/i);
+      expect(result.results).toEqual([]);
+      expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+    });
+
+    it("reports a failed sandbox copy as an infra error, not a crash", async () => {
+      // The Run button is enabled without a dev server now, so an app whose
+      // dependencies were never installed reaches this — and must be told so,
+      // not answered with a rejected IPC call.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      createE2eTestWorkspaceMock.mockRejectedValue(
+        new DyadError(
+          "The app's dependencies are not installed. Start the app successfully before running tests.",
+          DyadErrorKind.Precondition,
+        ),
+      );
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toMatch(
+        /dependencies are not installed/i,
+      );
+      expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps a finished run's results when artifact retention fails", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      // Windows still holding a trace file, a full disk — retention is
+      // best-effort and must cost at most the screenshots.
+      retainE2eTestArtifactsMock.mockRejectedValue(new Error("EBUSY"));
+      spawnStreamingMock.mockImplementation(
+        async ({ cwd }: { cwd: string }) => {
+          const reportPath = path.join(cwd, "test-results", "results.json");
+          fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+          fs.writeFileSync(
+            reportPath,
+            JSON.stringify({
+              suites: [
+                {
+                  file: "e2e-tests/a.spec.ts",
+                  specs: [
+                    {
+                      title: "works",
+                      ok: true,
+                      tests: [{ results: [{ status: "passed" }] }],
+                    },
+                  ],
+                },
+              ],
+            }),
+          );
+          return {
+            code: 0,
+            stdout: "",
+            stderr: "",
+            aborted: false,
+            timedOut: false,
+          };
+        },
+      );
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError).toBeUndefined();
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].status).toBe("passed");
     });
 
     it("routes around the sandbox when the user turned it off", async () => {

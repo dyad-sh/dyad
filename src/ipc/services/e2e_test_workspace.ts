@@ -69,14 +69,27 @@ function assertOwnedPath(root: string, candidate: string): void {
 async function copyNodeModules(
   appPath: string,
   workspacePath: string,
-  signal?: AbortSignal,
-  countEntry?: () => void,
-) {
+  {
+    optional = false,
+    signal,
+    countEntry,
+  }: {
+    optional?: boolean;
+    signal?: AbortSignal;
+    countEntry?: () => void;
+  } = {},
+): Promise<void> {
   const source = path.join(appPath, "node_modules");
   try {
     const stat = await fs.stat(source);
     if (!stat.isDirectory()) throw new Error("not a directory");
   } catch {
+    // An app with its own install and start commands need not be Node-based at
+    // all, and its dependencies need not live in `node_modules`. Its install
+    // command runs inside the sandbox, so a missing tree here is normal rather
+    // than a refusal — refusing would make the sandbox structurally impossible
+    // for every such app.
+    if (optional) return;
     // Precondition, not Internal: the user starts the app to fix this, and it
     // must not be reported to PostHog as a product exception.
     throw new DyadError(
@@ -108,11 +121,17 @@ async function copyNodeModules(
 export async function createE2eTestWorkspace({
   appId,
   appPath,
+  hasCustomCommands = false,
   signal,
   onProgress,
 }: {
   appId: number;
   appPath: string;
+  /**
+   * The app supplies its own install and start commands, so it may not be a
+   * Node project and a missing `node_modules` is not a reason to refuse.
+   */
+  hasCustomCommands?: boolean;
   signal?: AbortSignal;
   onProgress?: (message: string) => void;
 }): Promise<E2eTestWorkspace> {
@@ -184,8 +203,12 @@ export async function createE2eTestWorkspace({
     if (signal?.aborted) throw new Error("Test run stopped.");
     const sourceMs = Date.now() - startedAt;
     onProgress?.("Cloning installed dependencies into the test workspace…\n");
-    await copyNodeModules(appPath, workspacePath, signal, () => {
-      dependencyEntries += 1;
+    await copyNodeModules(appPath, workspacePath, {
+      optional: hasCustomCommands,
+      signal,
+      countEntry: () => {
+        dependencyEntries += 1;
+      },
     });
     sendTelemetryEvent("e2e_test_workspace_created", {
       duration_ms: Date.now() - startedAt,
@@ -198,7 +221,17 @@ export async function createE2eTestWorkspace({
     });
     return { workspacePath, artifactPath, dispose };
   } catch (error) {
-    await dispose();
+    // Never let cleanup replace the failure it is cleaning up after. Removing a
+    // partially-copied tree can itself fail (EBUSY/EPERM on Windows), and that
+    // error would otherwise bury a well-classified Precondition — "your
+    // dependencies aren't installed" — under an unclassified internal one.
+    try {
+      await dispose();
+    } catch (disposeError) {
+      logger.warn(
+        `Failed to remove a partial E2E test workspace after a setup failure: ${disposeError}`,
+      );
+    }
     throw error;
   }
 }
@@ -224,9 +257,9 @@ export async function retainE2eTestArtifacts({
 export function rewriteE2eArtifactPath(
   screenshotPath: string | undefined,
   workspacePath: string,
-  artifactPath: string,
+  artifactPath: string | undefined,
 ): string | undefined {
-  if (!screenshotPath) return undefined;
+  if (!screenshotPath || !artifactPath) return undefined;
   const absolute = path.isAbsolute(screenshotPath)
     ? path.resolve(screenshotPath)
     : path.resolve(workspacePath, screenshotPath);

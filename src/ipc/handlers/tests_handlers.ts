@@ -69,6 +69,7 @@ import {
   type E2eTestWorkspace,
 } from "../services/e2e_test_workspace";
 import {
+  hasCustomE2eStartCommand,
   startE2eTestRuntime,
   type E2eTestRuntime,
 } from "../services/e2e_test_runtime";
@@ -111,10 +112,15 @@ function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
 }
 
+/**
+ * Repoint sandbox-relative artifact paths at the retained copy. `artifactPath`
+ * is undefined when retention failed, which drops the paths instead: the
+ * sandbox is about to be deleted, so a path into it would only fail to open.
+ */
 function rewriteResultArtifactPaths(
   results: TestResult[],
   workspacePath: string,
-  artifactPath: string,
+  artifactPath: string | undefined,
 ): TestResult[] {
   return results.map((result) => ({
     ...result,
@@ -728,6 +734,17 @@ async function runTestsAgainstNormalPreview({
   );
 }
 
+/**
+ * Outcome of the sandbox prepare stage. A setup failure is reported as data
+ * rather than thrown so the run still resolves to an ordinary `infraError`
+ * result — the same classification the non-sandboxed path gives a Playwright
+ * bootstrap failure — instead of rejecting the IPC call as an internal
+ * exception.
+ */
+type E2eTestPrepareResult =
+  | { installed: boolean; workspace: E2eTestWorkspace }
+  | { setupError: string };
+
 export interface RunTestsWithIsolationOptions {
   /**
    * The invoking IPC event. Its `sender` is where `tests:output` and
@@ -1022,26 +1039,55 @@ export async function runAppTestsWithIsolation({
         allowCompatibleQueueBypass: true,
         refuseWhenRecording: "run tests",
       },
-      async () => {
+      async (): Promise<E2eTestPrepareResult> => {
         const claimedApp = await getApp(appId);
         const realAppPath = getDyadAppPath(claimedApp.path);
-        const { installed } = await ensurePlaywrightBootstrap({
-          appPath: realAppPath,
-          signal: controller.signal,
-          onOutput: (chunk) => emit(chunk, "setup"),
-        });
-        emit("Copying the app into an isolated test workspace…\n", "setup");
-        return {
-          installed,
-          workspace: await createE2eTestWorkspace({
-            appId,
+        try {
+          const { installed } = await ensurePlaywrightBootstrap({
             appPath: realAppPath,
             signal: controller.signal,
-            onProgress: (message) => emit(message, "setup"),
-          }),
-        };
+            onOutput: (chunk) => emit(chunk, "setup"),
+          });
+          emit("Copying the app into an isolated test workspace…\n", "setup");
+          return {
+            installed,
+            workspace: await createE2eTestWorkspace({
+              appId,
+              appPath: realAppPath,
+              hasCustomCommands: hasCustomE2eStartCommand(claimedApp),
+              signal: controller.signal,
+              onProgress: (message) => emit(message, "setup"),
+            }),
+          };
+        } catch (error) {
+          // A Stop is not a setup failure — let it reach the outer catch, which
+          // turns it into the same "Test run stopped." result the in-run Stop
+          // path produces.
+          if (controller.signal.aborted) throw error;
+          // Everything else here — a Playwright install that can't reach the
+          // registry, a browser download that fails, a missing `node_modules`,
+          // a full disk — is an environment problem the user acts on, exactly
+          // like the bootstrap failure `runAppTestsCore` already reports as an
+          // `infraError`. Letting it escape instead would reject the IPC call,
+          // record an internal product exception, and (for the agent) throw out
+          // of the turn rather than count as a non-attempt infra failure.
+          const message =
+            error instanceof Error ? error.message : String(error);
+          logger.error(
+            `Isolated E2E test setup failed for app ${appId}: ${message}`,
+          );
+          return { setupError: message };
+        }
       },
     );
+    if ("setupError" in prepareResult) {
+      finalResult = withIsolationCleanupWarning({
+        appId,
+        results: [],
+        infraError: { message: prepareResult.setupError },
+      });
+      return finalResult;
+    }
     workspace = prepareResult.workspace;
 
     // The live test only owns provider/test inputs. It deliberately does not
@@ -1162,11 +1208,26 @@ export async function runAppTestsWithIsolation({
             onOutput: emit,
             testEnv: prepared.testCredentials,
           });
-          await retainE2eTestArtifacts(workspace!);
+          // Best-effort by nature: the run has already produced its results, so
+          // a failed copy (a trace file still held by a browser that hasn't
+          // fully exited on Windows, a full disk) must cost at most the
+          // screenshots — never the whole run. Paths are only rewritten when
+          // the artifacts actually made it out of the sandbox; otherwise they
+          // are dropped, since the sandbox they point into is deleted moments
+          // from now.
+          let retained = false;
+          try {
+            await retainE2eTestArtifacts(workspace!);
+            retained = true;
+          } catch (error) {
+            logger.warn(
+              `Failed to retain isolated test artifacts for app ${appId}: ${error}`,
+            );
+          }
           result.results = rewriteResultArtifactPaths(
             result.results,
             workspace!.workspacePath,
-            workspace!.artifactPath,
+            retained ? workspace!.artifactPath : undefined,
           );
           return { ...result, isolation: prepared.isolation };
         } finally {

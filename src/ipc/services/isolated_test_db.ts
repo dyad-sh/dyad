@@ -174,6 +174,10 @@ export async function prepareIsolatedTestDatabase({
   }
 
   const appPath = appPathOverride ?? getDyadAppPath(app.path);
+  // The env file this teardown restores lives inside the disposable sandbox,
+  // not in the user's project. Nothing the user can see depends on that restore
+  // succeeding, and the directory is deleted moments later either way.
+  const envIsDisposable = appPathOverride !== undefined;
   let envSnapshot: string | null = null;
   let envModified = false;
   let branchId: string | undefined;
@@ -196,10 +200,16 @@ export async function prepareIsolatedTestDatabase({
         logger.error(
           `Failed to restore .env.local for app ${app.id}: ${error}`,
         );
-        emit(
-          "Warning: Dyad couldn't restore your real database settings, so the temporary Neon branch was kept tracked for retry. Restore .env.local before running more tests.\n",
-          "setup",
-        );
+        // Only the recorder's swap can strand the user's real project. Saying
+        // this on the sandbox path would name a file in a directory that is
+        // about to be deleted and tell the user to fix something they never
+        // had a problem with.
+        if (!envIsDisposable) {
+          emit(
+            "Warning: Dyad couldn't restore your real database settings, so the temporary Neon branch was kept tracked for retry. Restore .env.local before running more tests.\n",
+            "setup",
+          );
+        }
       }
       if (envRestored && restartApp && !options.skipRestart) {
         try {
@@ -219,8 +229,12 @@ export async function prepareIsolatedTestDatabase({
     // it, and the row's id is what the startup sweep reconciles from. App
     // deletion — the one case where that row is about to disappear — handles the
     // branch itself, after the deletion commits.
+    //
+    // That reasoning cannot apply when the env file is the sandbox's own copy:
+    // nothing is left pointing at the branch, so gating on the restore there
+    // would only leak a real Neon branch over a file that no longer exists.
     let remoteCleanupCompleted = true;
-    if (branchId && envRestored) {
+    if (branchId && (envRestored || envIsDisposable)) {
       // Shared with the recovery path in `neon_test_branch`: the cleanup-only
       // marker is written before the fallible remote delete, so a crash in
       // between leaves a row that says the env is real and only the branch is

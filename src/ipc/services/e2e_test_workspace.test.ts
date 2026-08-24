@@ -119,6 +119,57 @@ describe("E2E test workspace", () => {
     },
   );
 
+  it("refuses a Dyad-managed app whose dependencies aren't installed", async () => {
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.writeFile(path.join(appPath, "package.json"), "{}");
+
+    await expect(createE2eTestWorkspace({ appId: 7, appPath })).rejects.toThrow(
+      /dependencies are not installed/i,
+    );
+    // The partial copy must not survive the refusal.
+    await expect(
+      fs.readdir(path.join(root, "user-data", E2E_TEST_SANDBOX_DIR)),
+    ).resolves.toEqual([]);
+  });
+
+  it("allows a custom-command app to have no node_modules at all", async () => {
+    // Custom install/start commands need not describe a Node project, and the
+    // install command runs inside the sandbox. Refusing here would make the
+    // sandbox structurally impossible for every such app — while the Run
+    // button stays enabled, because the dev-server gate is gone.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.writeFile(path.join(appPath, "main.py"), "print('hi')\n");
+
+    const workspace = await createE2eTestWorkspace({
+      appId: 7,
+      appPath,
+      hasCustomCommands: true,
+    });
+    expect(
+      await fs.readFile(path.join(workspace.workspacePath, "main.py"), "utf8"),
+    ).toBe("print('hi')\n");
+    await workspace.dispose();
+  });
+
+  it("drops artifact paths when retention didn't happen", () => {
+    // Retention is best-effort: when the copy out of the sandbox fails, the
+    // result keeps its verdicts but must not point at a directory that is
+    // about to be deleted.
+    expect(
+      rewriteE2eArtifactPath(
+        path.join("/ws", "test-results", "shot.png"),
+        "/ws",
+        undefined,
+      ),
+    ).toBeUndefined();
+  });
+
   it("retains and rewrites screenshot artifacts before disposal", async () => {
     const root = await tempRoot();
     const workspacePath = path.join(root, "workspace");

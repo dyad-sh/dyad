@@ -16,10 +16,17 @@ vi.mock("@/ipc/utils/socket_firewall", async (importOriginal) => {
 });
 
 import {
+  allocateE2eTestPort,
   buildE2eTestStartCommand,
+  releaseE2eTestPort,
   startE2eTestRuntime,
 } from "./e2e_test_runtime";
 import { runningApps } from "@/ipc/utils/process_manager";
+import {
+  E2E_TEST_SERVER_PORT_RANGE,
+  E2E_TEST_SERVER_PORT_START,
+  isReservedDyadPort,
+} from "../../../shared/ports";
 
 function mockPnpmAvailable(available: boolean) {
   getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
@@ -51,17 +58,24 @@ describe("buildE2eTestStartCommand", () => {
       installCommand: "custom-install",
       startCommand: "custom-server --listen {port}",
     });
-    expect(command.command).toBe("custom-server --listen 45678");
+    expect(command.command).toBe(
+      "custom-install && custom-server --listen 45678",
+    );
   });
 
-  it("runs a custom command verbatim instead of appending a port flag", async () => {
+  it("runs both custom commands verbatim instead of appending a port flag", async () => {
+    // Same `install && start` shape `getCommand` builds for the preview: the
+    // sandbox is a fresh copy, so skipping the install step would drop codegen
+    // or a build the server needs and break the app under test only.
     const command = await buildE2eTestStartCommand({
       workspacePath: path.resolve("app"),
       port: 45678,
       installCommand: "pip install -r requirements.txt",
       startCommand: "python server.py",
     });
-    expect(command.command).toBe("python server.py");
+    expect(command.command).toBe(
+      "pip install -r requirements.txt && python server.py",
+    );
     expect(command.env.PORT).toBe("45678");
   });
 
@@ -133,4 +147,67 @@ http.createServer((_request, response) => response.end("sandbox"))
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+describe("allocateE2eTestPort", () => {
+  it("allocates out of Dyad's reserved band, never another app's port", async () => {
+    const port = await allocateE2eTestPort();
+    try {
+      expect(port).toBeGreaterThanOrEqual(E2E_TEST_SERVER_PORT_START);
+      expect(port).toBeLessThan(
+        E2E_TEST_SERVER_PORT_START + E2E_TEST_SERVER_PORT_RANGE,
+      );
+      // The whole point: an OS-assigned ephemeral port would routinely land on
+      // the deterministic app or proxy port of another, currently stopped app.
+      expect(isReservedDyadPort(port)).toBe(false);
+    } finally {
+      releaseE2eTestPort(port);
+    }
+  });
+
+  it("does not hand the same port to two runs starting at once", async () => {
+    const [first, second] = await Promise.all([
+      allocateE2eTestPort(),
+      allocateE2eTestPort(),
+    ]);
+    try {
+      expect(first).not.toBe(second);
+    } finally {
+      releaseE2eTestPort(first);
+      releaseE2eTestPort(second);
+    }
+  });
+});
+
+describe("startE2eTestRuntime port recovery", () => {
+  it("stops polling a dead port when the server announces the clash", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-port-"));
+    // Mimics Vite's default `strictPort: false`: it prints the clash, moves to
+    // another port and keeps running, so nothing throws and nothing ever
+    // answers on the port Dyad picked. Without matching that output the poll
+    // would sit here for the full two-minute readiness timeout.
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      [
+        "const port = Number(process.argv[2]);",
+        "console.log(`Port ${port} is in use, trying another one...`);",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const startedAt = Date.now();
+    try {
+      await expect(
+        startE2eTestRuntime({
+          workspacePath: root,
+          installCommand: "true",
+          startCommand: `"${process.execPath}" server.mjs {port}`,
+        }),
+      ).rejects.toThrow(/already in use|is in use/i);
+      // Three attempts, each bailing on the announcement rather than waiting
+      // out SERVER_READY_TIMEOUT_MS (120s).
+      expect(Date.now() - startedAt).toBeLessThan(30_000);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

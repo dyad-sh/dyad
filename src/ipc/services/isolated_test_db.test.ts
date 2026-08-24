@@ -324,6 +324,45 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     );
   });
 
+  it("still deletes the branch when the sandbox's own env file can't be restored", async () => {
+    // The recorder keeps a branch whose delete would strand the real project
+    // still pointed at it. Nothing points at this one — the env file is inside
+    // the sandbox, which is deleted moments later — so gating the delete on
+    // that restore would leak a real Neon branch over a file nobody has.
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+    });
+    // A snapshot makes teardown write the file back; the missing directory
+    // makes that write fail the way a real one would.
+    mocks.readEnvFileIfExists.mockResolvedValue("REAL=1\n");
+    mocks.markAndDeleteTempTestBranch.mockResolvedValue(true);
+
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({ neonProjectId: "proj-1" }),
+      emit,
+      runtimeMode: "host",
+      appPathOverride: "/nonexistent-sandbox-dir/run-1",
+      restartApp: false,
+    });
+
+    emit.mockClear();
+    const result = await prepared.teardown();
+    expect(result.envRestored).toBe(false);
+    expect(result.remoteCleanupCompleted).toBe(true);
+    expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      "test-br",
+    );
+    // And it must not tell the user to go fix a `.env.local` they never had a
+    // problem with.
+    expect(
+      emit.mock.calls.some((call) =>
+        /restore your real database settings/i.test(String(call[0])),
+      ),
+    ).toBe(false);
+  });
+
   it("checks the direct dev server instead of the HTML-rewriting proxy", async () => {
     mocks.createTempTestBranch.mockResolvedValue({
       branchId: "test-br",

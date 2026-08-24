@@ -11,12 +11,12 @@ export const TEMP_PREVIEW_MAX_BUNDLE_BYTES = 50 * 1024 * 1024;
 const SENSITIVE_BUNDLE_PATH_PATTERNS = [
   /(^|\/)(?:\.git|\.ssh|\.aws|\.azure|\.kube|\.docker|\.config\/gcloud)(?:\/|$)/i,
   /(^|\/)(?:\.npmrc|\.yarnrc(?:\.yml)?|\.pypirc|\.netrc|\.git-credentials)$/i,
-  /(^|\/)id_(?:rsa|dsa|ecdsa|ed25519)$/i,
+  /(^|\/)id_(?:rsa|dsa|ecdsa|ed25519|xmss)(?:_sk)?$/i,
   /\.(?:key|pem|ppk|p12|pfx|jks|keystore|kdbx)$/i,
   /(^|\/)(?:credentials(?:\.json|\.ya?ml|\.toml)?|secrets?\.(?:json|ya?ml|toml))$/i,
   /(^|\/)(?:(?:[^/]+[-_])?service[-_]?account(?:[-_]?key)?|private[-_]?key)\.json$/i,
   /(^|\/)[^/]*firebase-adminsdk[^/]*\.json$/i,
-  /(^|\/)client_secret(?:_[^/]+)?\.json$/i,
+  /(^|\/)client_secrets?(?:_[^/]+)?\.json$/i,
   /(^|\/)application_default_credentials\.json$/i,
 ];
 

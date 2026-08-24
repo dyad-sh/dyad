@@ -87,6 +87,9 @@ describe("discoverTempPreviewBundle", () => {
     "assets/.env.production",
     ".git/config",
     ".ssh/id_ed25519",
+    "keys/id_ed25519_sk",
+    "keys/id_ecdsa_sk",
+    "keys/id_xmss",
     ".aws/credentials",
     ".docker/config.json",
     ".kube/config",
@@ -98,6 +101,7 @@ describe("discoverTempPreviewBundle", () => {
     "config/serviceAccountKey.json",
     "config/demo-firebase-adminsdk-abc.json",
     "oauth/client_secret_123.apps.googleusercontent.com.json",
+    "oauth/client_secrets.json",
   ])("rejects an obvious secret-bearing build path: %s", async (bundlePath) => {
     const root = await createBundleRoot();
     await writeFile(join(root, "index.html"), "ok");

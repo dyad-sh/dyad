@@ -296,21 +296,22 @@ describe("temp preview service", () => {
     expect(mocks.revoke).toHaveBeenCalledWith(updated);
   });
 
-  it("does not revoke an update when its stored capability remains valid", async () => {
+  it("revokes a same-capability update when renewed metadata cannot be persisted", async () => {
     const appPath = await createApp();
     mocks.storeRead.mockResolvedValue(previousRecord);
-    mocks.publish.mockResolvedValue({
+    const updated = {
       ...published,
       tempId: previousRecord.tempId,
       canonicalUrl: previousRecord.canonicalUrl,
       updateToken: previousRecord.updateToken,
-    });
+    };
+    mocks.publish.mockResolvedValue(updated);
     mocks.storeWrite.mockRejectedValueOnce(new Error("disk full"));
 
     await expect(
       publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
     ).rejects.toThrow("disk full");
-    expect(mocks.revoke).not.toHaveBeenCalled();
+    expect(mocks.revoke).toHaveBeenCalledWith(updated);
   });
 
   it("retires a stale connection and creates a fresh preview", async () => {

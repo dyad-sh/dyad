@@ -90,7 +90,6 @@ export async function publishTempPreview(input: {
     const previous = activeConnection(previousRecord);
     const client = createClient();
     let published: TempPreviewConnection;
-    let createdNewPreview = !previous;
     try {
       published = await client.publish({
         files,
@@ -107,7 +106,6 @@ export async function publishTempPreview(input: {
         });
       }
       published = await client.publish({ files, title: input.appName });
-      createdNewPreview = true;
     }
     const lastPublishedAt = new Date().toISOString();
     const record: TempPreviewRecord = {
@@ -122,16 +120,10 @@ export async function publishTempPreview(input: {
     try {
       await store.write(input.appId, record);
     } catch (error) {
-      const publishedCapabilityCannotBeRecovered =
-        createdNewPreview ||
-        published.tempId !== previous?.tempId ||
-        published.updateToken !== previous?.updateToken;
-      if (publishedCapabilityCannotBeRecovered) {
-        try {
-          await client.revoke(published);
-        } catch {
-          // Best-effort cleanup: preserve the local persistence failure.
-        }
+      try {
+        await client.revoke(published);
+      } catch {
+        // Best-effort cleanup: preserve the local persistence failure.
       }
       throw error;
     }

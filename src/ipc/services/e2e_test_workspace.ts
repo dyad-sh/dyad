@@ -247,24 +247,43 @@ export async function retainE2eTestArtifacts({
   } catch {
     hasArtifacts = false;
   }
-  if (hasArtifacts) {
-    await fs.rm(artifactPath, { recursive: true, force: true });
-    await fs.mkdir(artifactPath, { recursive: true });
-    await fs.cp(source, path.join(artifactPath, "test-results"), {
-      recursive: true,
-      verbatimSymlinks: false,
-    });
+  try {
+    if (hasArtifacts) {
+      await fs.rm(artifactPath, { recursive: true, force: true });
+      await fs.mkdir(artifactPath, { recursive: true });
+      await fs.cp(source, path.join(artifactPath, "test-results"), {
+        recursive: true,
+        verbatimSymlinks: false,
+      });
+    }
+  } finally {
+    // Runs in a `finally` so a failed copy can't strand the run it replaced:
+    // the caller drops the new paths on failure, so nothing points at either
+    // directory, and skipping the prune would leave the old one owner-less
+    // until the app is deleted.
+    await pruneSupersededArtifacts(artifactPath);
   }
-  // Only now are the previous run's artifacts safe to drop: this run has
-  // finished, so the results on screen are its own and nothing still points at
-  // them. Pruning before the run — where this used to happen — destroyed the
-  // last good screenshots whenever the new run failed during setup.
+}
+
+/**
+ * Drop the app's other retained artifact directories, now that this run has
+ * finished and the results on screen are its own.
+ *
+ * Runs belonging to another in-flight test run are skipped. A second Run for
+ * the same app aborts the first and proceeds without awaiting its teardown, so
+ * two runs' cleanups overlap — and whichever retained second would otherwise
+ * delete the other's screenshots before they ever reached the panel.
+ */
+async function pruneSupersededArtifacts(artifactPath: string): Promise<void> {
   const runName = path.basename(artifactPath);
   const appId = runDirectoryAppId(runName);
   if (appId === null) return;
   await removeRunDirectories(
     path.dirname(artifactPath),
-    (name) => name !== runName && runDirectoryAppId(name) === appId,
+    (name) =>
+      name !== runName &&
+      !activeWorkspaceNames.has(name) &&
+      runDirectoryAppId(name) === appId,
     "test artifacts",
   );
 }

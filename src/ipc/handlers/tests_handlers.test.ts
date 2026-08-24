@@ -355,6 +355,36 @@ describe("tests handlers", () => {
       expect(result.infraError?.message).toMatch(/settings were not changed/i);
     });
 
+    it("names the leftover Supabase test user, not a database", async () => {
+      // The Supabase path leaks a temporary auth user in the user's real
+      // project — no sweep picks that up, and no database was involved.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "supabase-test-user" },
+        infraError: {
+          message: "Isolation setup stopped before running tests.",
+        },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: false,
+        }),
+      });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toMatch(/temporary test user/i);
+      expect(result.infraError?.message).not.toMatch(/isolated test database/i);
+    });
+
     it("stays quiet when only the sandbox env was left unrestored", async () => {
       // The sandbox `.env.local` is deleted with the workspace seconds later,
       // so `envRestored` says nothing the user needs to hear.
@@ -606,6 +636,13 @@ describe("tests handlers", () => {
       expect(result.infraError?.message).toMatch(/registry unreachable/i);
       expect(result.results).toEqual([]);
       expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+      // No workspace was ever created, so the cleanup copy must not offer to
+      // remove one — `CancellationBanner` and the panel both branch on this.
+      const finished = broadcastToRegisteredWindowsMock.mock.calls
+        .filter(([, channel]) => channel === "tests:run-state")
+        .map(([, , payload]) => payload)
+        .find((payload) => payload.state === "finished");
+      expect(finished?.sandboxed).toBe(false);
     });
 
     it("reports a failed sandbox copy as an infra error, not a crash", async () => {

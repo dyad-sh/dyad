@@ -72,13 +72,24 @@ async function resolveContainedArtifact(
   if (!insideApp && !insideArtifacts) {
     return null;
   }
+  // Artifacts win when both match. `userData` can sit inside the project (a
+  // portable or dev install), which makes every retained artifact *also* look
+  // like an app path — and reading it as one skips the app-id check and then
+  // compares the run directory name against "test-results", so a perfectly
+  // legitimate thumbnail silently fails to load.
+  const useArtifactRoot = insideArtifacts;
   // Only serve files under `test-results/`, not anything else in the app. Use
   // split (not a string prefix) so a sibling like `test-results-foo/` can't
   // slip through.
-  const segments = (insideApp ? appRelative : artifactRelative).split(path.sep);
-  const testResultsSegment = insideApp ? segments[0] : segments[1];
+  const segments = (useArtifactRoot ? artifactRelative : appRelative).split(
+    path.sep,
+  );
+  // Retained artifacts are namespaced by run directory (`<appId>-<id>/`), so
+  // the `test-results` segment is one deeper — and the app id has to match, or
+  // one app could read another's screenshots.
+  const testResultsSegment = useArtifactRoot ? segments[1] : segments[0];
   if (
-    insideArtifacts &&
+    useArtifactRoot &&
     (appId === undefined || !segments[0].startsWith(`${appId}-`))
   ) {
     return null;

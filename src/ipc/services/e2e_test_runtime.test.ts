@@ -60,7 +60,7 @@ describe("buildE2eTestStartCommand", () => {
       startCommand: "custom-server --listen {port}",
     });
     expect(command.command).toBe(
-      "custom-install && custom-server --listen 45678",
+      "(custom-install) && (custom-server --listen 45678)",
     );
   });
 
@@ -75,9 +75,24 @@ describe("buildE2eTestStartCommand", () => {
       startCommand: "python server.py",
     });
     expect(command.command).toBe(
-      "pip install -r requirements.txt && python server.py",
+      "(pip install -r requirements.txt) && (python server.py)",
     );
     expect(command.env.PORT).toBe("45678");
+  });
+
+  it("groups each half so a start command's own operators still bind", async () => {
+    // `&&` binds left-to-right, so an ungrouped `install && A || B` runs `B`
+    // when the *install* fails — re-associating the user's command under test
+    // only.
+    const command = await buildE2eTestStartCommand({
+      workspacePath: path.resolve("app"),
+      port: 45678,
+      installCommand: "make deps",
+      startCommand: "./serve.sh || ./fallback.sh",
+    });
+    expect(command.command).toBe(
+      "(make deps) && (./serve.sh || ./fallback.sh)",
+    );
   });
 
   it("ignores a start command that has no matching install command", async () => {

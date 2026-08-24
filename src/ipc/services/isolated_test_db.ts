@@ -5,7 +5,6 @@ import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
 import {
   createTempTestBranch,
-  markTestBranchCleanupOnly,
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
@@ -261,14 +260,16 @@ export async function prepareIsolatedTestDatabase({
     envSnapshot = await readEnvFileIfExists({ appPath });
 
     // 2. Create the throwaway branch (off the preview branch, CoW).
-    const branch = await createTempTestBranch(app);
+    //
+    // The E2E sandbox never points the real app env at this branch, so it asks
+    // for the cleanup-only marker to be the *first* thing persisted — inside
+    // `createTempTestBranch`, before its own auth provisioning. Writing it
+    // afterwards would leave a window where a crash makes startup recovery
+    // rewrite the user's real `.env.local` for a run that never touched it.
+    const branch = await createTempTestBranch(app, {
+      cleanupOnly: !restartApp,
+    });
     branchId = branch.branchId;
-    // The E2E sandbox never points the real app env at this branch. Persist the
-    // cleanup-only form immediately so crash/startup reconciliation cannot
-    // mistake this run for the recorder's real-env swap.
-    if (!restartApp) {
-      await markTestBranchCleanupOnly(app, branchId);
-    }
 
     // 3. Point the app at the throwaway branch. Mark the env as modified before
     //    the write so a partial failure still triggers a restore in teardown.

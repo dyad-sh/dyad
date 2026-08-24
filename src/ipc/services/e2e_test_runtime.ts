@@ -118,6 +118,11 @@ export async function allocateE2eTestPort(): Promise<number> {
   for (let offset = 0; offset < E2E_TEST_SERVER_PORT_RANGE; offset += 1) {
     const port = E2E_TEST_SERVER_PORT_START + offset;
     if (pendingE2eTestPorts.has(port)) continue;
+    // The band is above every *default* reserved range, but Dyad's own E2E
+    // shards relocate those ranges: `DYAD_E2E_PORT_BLOCK_INDEX=9` puts a
+    // block's proxy sub-range at 51550–52549, straight through this band. The
+    // fallback loop below already asks; the band has to ask too.
+    if (isReservedDyadPort(port)) continue;
     if ((await probePort(port)) !== null) {
       pendingE2eTestPorts.add(port);
       return port;
@@ -185,12 +190,18 @@ export async function buildE2eTestStartCommand({
     // non-npm dependency install — so the app would start under the preview and
     // fail only under test. The sandbox is a fresh copy, so there is nothing
     // else that would have performed it.
+    //
+    // Each half is grouped. `&&` binds left-to-right, so an ungrouped
+    // `install && A || B` runs `B` when the *install* fails, and
+    // `install && A; B` runs `B` unconditionally — silently re-associating any
+    // start command that contains a shell operator. `getDefaultCommand` groups
+    // its own `install && dev` pair the same way.
     const trimmedStart = startCommand!.trim();
     const start = trimmedStart.includes("{port}")
       ? trimmedStart.replaceAll("{port}", String(port))
       : trimmedStart;
     return {
-      command: `${installCommand!.trim()} && ${start}`,
+      command: `(${installCommand!.trim()}) && (${start})`,
       env: { ...process.env, PORT: String(port) },
     };
   }

@@ -143,6 +143,7 @@ function resolveAuthBranchType(
  */
 export async function createTempTestBranch(
   appData: AppRow,
+  { cleanupOnly = false }: { cleanupOnly?: boolean } = {},
 ): Promise<TempTestBranch> {
   const projectId = appData.neonProjectId;
   if (!projectId) {
@@ -216,10 +217,20 @@ export async function createTempTestBranch(
   // SQLite lock), neither teardown nor reconciliation can find the branch to
   // delete it, so remove the branch we just created before rethrowing rather
   // than leaking it.
+  //
+  // A caller that will never point the real app at this branch writes the
+  // cleanup-only form HERE, not after this function returns. Everything below —
+  // Neon Auth provisioning, the cookie secret, their retries and backoff — can
+  // take seconds, and a crash or quit inside that window would otherwise leave
+  // a raw marker that startup recovery reads as the recorder's env swap and
+  // "restores" by rewriting the user's real `.env.local`.
+  const marker = cleanupOnly
+    ? `${CLEANUP_ONLY_BRANCH_PREFIX}${branch.id}`
+    : branch.id;
   try {
     await db
       .update(apps)
-      .set({ neonTestBranchId: branch.id })
+      .set({ neonTestBranchId: marker })
       .where(eq(apps.id, appData.id));
   } catch (error) {
     await deleteBranchBestEffort(projectId, branch.id);

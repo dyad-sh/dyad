@@ -928,8 +928,15 @@ export async function runAppTestsWithIsolation({
     result: RunAppTestsResult,
   ): RunAppTestsResult => {
     if (!isolationCleanupFailed) return result;
+    // Names what was actually left behind. The Neon path leaks a temporary
+    // branch that startup recovery retries; the Supabase path leaks a temporary
+    // auth user in the user's real project, which no sweep picks up — calling
+    // that "the isolated test database" is the same class of wrong-thing copy
+    // this work set out to remove.
     const restoreMessage =
-      "Dyad couldn't finish cleaning up the isolated test database. Your app settings were not changed; Dyad will retry remote cleanup on next startup.";
+      result.isolation?.mode === "supabase-test-user"
+        ? "Dyad couldn't delete the temporary test user it created in your Supabase project. Your app settings were not changed; you can remove the dyad-test user from Supabase Auth."
+        : "Dyad couldn't finish cleaning up the isolated test database. Your app settings were not changed; Dyad will retry remote cleanup on next startup.";
     return {
       ...result,
       // Appended rather than substituted: an isolation-setup failure explains
@@ -993,10 +1000,6 @@ export async function runAppTestsWithIsolation({
             neonRefusal:
               "Isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run tests for this app.",
           };
-    // Recorded once for this run rather than re-read later: the setting can
-    // change while the run is in flight, and the cleanup copy has to describe
-    // what this run actually did.
-    sandboxed = sandboxUnavailable === null;
     if (sandboxUnavailable) {
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
@@ -1089,6 +1092,12 @@ export async function runAppTestsWithIsolation({
       return finalResult;
     }
     workspace = prepareResult.workspace;
+    // Set here, not when the route was chosen: this flag drives the cleanup
+    // copy, and a run whose setup failed has no sandbox to claim Dyad is
+    // deleting. Recorded once rather than re-read later, because the setting
+    // can change while the run is in flight and the copy has to describe what
+    // this run actually did.
+    sandboxed = true;
 
     // The live test only owns provider/test inputs. It deliberately does not
     // claim the normal runtime or runtime-config: its process is run-scoped and

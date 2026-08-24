@@ -245,6 +245,73 @@ describe("E2E test workspace", () => {
     await workspace.dispose();
   });
 
+  it("does not delete a concurrent run's artifacts", async () => {
+    // A second Run for the same app aborts the first and proceeds without
+    // awaiting its teardown, so both cleanups overlap. Whichever retained
+    // second would otherwise delete the other's screenshots before they ever
+    // reached the panel.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+
+    const first = await createE2eTestWorkspace({ appId: 7, appPath });
+    const second = await createE2eTestWorkspace({ appId: 7, appPath });
+    await fs.mkdir(path.join(first.artifactPath, "test-results"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(first.artifactPath, "test-results", "shot.png"),
+      "png",
+    );
+    // The second run finishes its retention while the first is still live.
+    await fs.mkdir(path.join(second.workspacePath, "test-results"), {
+      recursive: true,
+    });
+    await retainE2eTestArtifacts(second);
+
+    expect(
+      await fs.readFile(
+        path.join(first.artifactPath, "test-results", "shot.png"),
+        "utf8",
+      ),
+    ).toBe("png");
+    await first.dispose();
+    await second.dispose();
+  });
+
+  it("still prunes the run it replaced when the copy fails", async () => {
+    // The caller drops the new paths on a failed copy, so nothing points at
+    // either directory — leaving the old one behind would strand it until the
+    // app is deleted.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    const previous = path.join(userData, E2E_TEST_ARTIFACT_DIR, "7-oldrun");
+    await fs.mkdir(previous, { recursive: true });
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    await fs.mkdir(path.join(workspace.workspacePath, "test-results"), {
+      recursive: true,
+    });
+    // An unreadable source makes the copy throw the way a real EBUSY/ENOSPC
+    // would, without touching the artifact root the prune has to write to.
+    await fs.chmod(path.join(workspace.workspacePath, "test-results"), 0o000);
+
+    try {
+      await expect(retainE2eTestArtifacts(workspace)).rejects.toThrow();
+      expect(
+        await fs.readdir(path.join(userData, E2E_TEST_ARTIFACT_DIR)),
+      ).not.toContain("7-oldrun");
+    } finally {
+      await fs.chmod(path.join(workspace.workspacePath, "test-results"), 0o755);
+      await workspace.dispose();
+    }
+  });
+
   it("keeps run directory names short enough for Windows MAX_PATH", async () => {
     const root = await tempRoot();
     const appPath = path.join(root, "app");

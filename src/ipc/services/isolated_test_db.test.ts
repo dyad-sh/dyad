@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
-  markTestBranchCleanupOnly: vi.fn().mockResolvedValue(undefined),
   // The mark-then-delete tail lives in `neon_test_branch` and is tested there
   // (`markAndDeleteTempTestBranch`), including the ordering it depends on. What
   // teardown owes it is the branch it actually created — the app row it holds is
@@ -46,7 +45,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../utils/neon_test_branch", () => ({
   createTempTestBranch: mocks.createTempTestBranch,
-  markTestBranchCleanupOnly: mocks.markTestBranchCleanupOnly,
   markAndDeleteTempTestBranch: mocks.markAndDeleteTempTestBranch,
 }));
 vi.mock("../utils/neon_test_account", () => ({
@@ -312,9 +310,14 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
         connectionUri: "postgres://temp",
       }),
     );
-    expect(mocks.markTestBranchCleanupOnly).toHaveBeenCalledWith(
+    // The marker is asked for at creation, not written afterwards: everything
+    // between (Neon Auth provisioning, the cookie secret, their backoff) takes
+    // seconds, and a crash in that window would leave a raw marker that startup
+    // recovery reads as the recorder's env swap and "restores" by rewriting the
+    // user's real `.env.local`.
+    expect(mocks.createTempTestBranch).toHaveBeenCalledWith(
       expect.objectContaining({ id: 1 }),
-      "test-br",
+      { cleanupOnly: true },
     );
     expect(mocks.executeApp).not.toHaveBeenCalled();
     await prepared.teardown();

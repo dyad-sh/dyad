@@ -138,6 +138,22 @@ describe("createTempTestBranch", () => {
     });
   });
 
+  it("persists the cleanup-only marker before provisioning, when asked", async () => {
+    // The E2E sandbox never points the real app at this branch. Everything
+    // after this write — Neon Auth provisioning, the cookie secret, their
+    // retries — takes seconds, and a crash in that window would otherwise leave
+    // a RAW marker that `restoreAppFromTestBranch` reads as the recorder's env
+    // swap and "restores" by rewriting the user's real `.env.local`.
+    await createTempTestBranch(makeApp(), { cleanupOnly: true });
+
+    expect(mocks.set).toHaveBeenCalledWith({
+      neonTestBranchId: "dyad-cleanup-only:v1:test-new-branch-id",
+    });
+    expect(mocks.set).not.toHaveBeenCalledWith({
+      neonTestBranchId: "test-new-branch-id",
+    });
+  });
+
   it("falls back to the development branch when there is no active branch", async () => {
     await createTempTestBranch(makeApp({ neonActiveBranchId: null }));
     expect(mocks.createProjectBranch).toHaveBeenCalledWith(

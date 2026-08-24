@@ -1,4 +1,11 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 import log from "electron-log";
 import { z } from "zod";
@@ -226,7 +233,10 @@ export class TempPreviewStore {
   private async backUpCorruptedStore(): Promise<string | null> {
     const backupPath = `${this.filePath}.corrupt-${process.pid}-${Date.now()}`;
     try {
-      await rename(this.filePath, backupPath);
+      // Keep the canonical file in place until writeStoreFile atomically
+      // replaces it. If repair cannot be persisted, the next read can retry
+      // salvaging valid capabilities from the original store.
+      await copyFile(this.filePath, backupPath);
     } catch (error) {
       if (
         typeof error === "object" &&

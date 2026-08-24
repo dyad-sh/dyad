@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TempPreviewStatus } from "@/ipc/types/temp_preview";
 import { queryKeys } from "@/lib/queryKeys";
 import { TemporaryPreviewCard } from "./TemporaryPreviewCard";
@@ -67,6 +67,10 @@ describe("TemporaryPreviewCard", () => {
     mocks.openExternalUrl.mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("creates a preview and replaces the create action with its public URL", async () => {
     const user = userEvent.setup();
     renderCard();
@@ -94,6 +98,35 @@ describe("TemporaryPreviewCard", () => {
     );
 
     expect(mocks.openExternalUrl).toHaveBeenCalledWith(active.canonicalUrl);
+  });
+
+  it("stops presenting an active preview when its expiry passes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-23T12:00:00.000Z"));
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    mocks.getStatus.mockReturnValue(new Promise(() => undefined));
+    const { queryClient } = renderCard();
+
+    await act(async () => {
+      queryClient.setQueryData(queryKeys.tempPreviews.status({ appId: 42 }), {
+        ...active,
+        expiresAt,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByText(active.canonicalUrl!)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Update preview" })).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(screen.getByText(/Your previous preview expired/)).toBeTruthy();
+    expect(screen.queryByText(active.canonicalUrl!)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Update preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Create preview" })).toBeTruthy();
   });
 
   it("reports a failure to open an existing preview", async () => {

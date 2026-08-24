@@ -125,6 +125,54 @@ describe("TempPreviewStore", () => {
     );
   });
 
+  it("keeps the canonical store when a corruption repair cannot be written", async () => {
+    const root = await createStoreRoot();
+    const filePath = join(root, "previews.json");
+    const store = new TempPreviewStore(filePath, {
+      encode: (token) => ({ value: `encrypted:${token}` }),
+      decode: (secret) => secret.value.replace(/^encrypted:/, ""),
+    });
+    const originalContents = JSON.stringify({
+      version: 1,
+      records: {
+        7: {
+          tempId: "temp-valid",
+          canonicalUrl: "https://valid.temp.md",
+          updateToken: { value: "encrypted:update-secret" },
+          expiresAt: null,
+          lastPublishedAt: "2026-08-23T00:00:00.000Z",
+          state: "active",
+        },
+        8: { invalid: true },
+      },
+    });
+    await writeFile(filePath, originalContents, "utf8");
+    const writeStoreFile = vi
+      .spyOn(
+        store as unknown as {
+          writeStoreFile: (contents: unknown) => Promise<void>;
+        },
+        "writeStoreFile",
+      )
+      .mockRejectedValueOnce(new Error("disk full"));
+
+    await expect(store.read(7)).rejects.toThrow("disk full");
+    expect(await readFile(filePath, "utf8")).toBe(originalContents);
+    const backupName = (await readdir(root)).find((name) =>
+      name.startsWith("previews.json.corrupt-"),
+    );
+    expect(backupName).toBeDefined();
+    expect(await readFile(join(root, backupName!), "utf8")).toBe(
+      originalContents,
+    );
+
+    writeStoreFile.mockRestore();
+    await expect(store.read(7)).resolves.toMatchObject({
+      tempId: "temp-valid",
+      updateToken: "update-secret",
+    });
+  });
+
   it("preserves a record whose update capability cannot be decoded", async () => {
     const root = await createStoreRoot();
     const filePath = join(root, "previews.json");

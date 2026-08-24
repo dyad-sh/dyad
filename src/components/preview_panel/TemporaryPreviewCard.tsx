@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useIsMutating,
   useMutation,
@@ -60,7 +60,7 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
         queryClient.getQueryData<TempPreviewStatus>(originQueryKey);
       queryClient.setQueryData(originQueryKey, status);
       toast.success(
-        previousStatus?.state === "active"
+        getCurrentTempPreviewStatus(previousStatus)?.state === "active"
           ? "Temporary preview updated"
           : "Temporary preview is live",
       );
@@ -92,7 +92,11 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
     }
   };
 
-  const status = statusQuery.data;
+  const storedStatus = statusQuery.data;
+  useExpiryRerender(
+    storedStatus?.state === "active" ? storedStatus.expiresAt : null,
+  );
+  const status = getCurrentTempPreviewStatus(storedStatus);
   const activeStatus =
     status?.state === "active" && status.canonicalUrl
       ? { ...status, canonicalUrl: status.canonicalUrl }
@@ -246,6 +250,35 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
       </AlertDialog>
     </>
   );
+}
+
+function useExpiryRerender(expiresAt: string | null): void {
+  const [expiryTick, setExpiryTick] = useState(0);
+
+  useEffect(() => {
+    const expiresAtMs = expiresAt ? new Date(expiresAt).getTime() : Number.NaN;
+    if (!Number.isFinite(expiresAtMs)) return;
+
+    const remainingMs = expiresAtMs - Date.now();
+    if (remainingMs <= 0) return;
+
+    // Browsers clamp longer timeouts. Rechecking after the clamp keeps this
+    // correct if a provider ever returns an expiry more than ~24 days away.
+    const timeout = window.setTimeout(
+      () => setExpiryTick((tick) => tick + 1),
+      Math.min(remainingMs, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [expiresAt, expiryTick]);
+}
+
+function getCurrentTempPreviewStatus(
+  status: TempPreviewStatus | undefined,
+): TempPreviewStatus | undefined {
+  if (status?.state !== "active" || !status.expiresAt) return status;
+  const expiresAtMs = new Date(status.expiresAt).getTime();
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs > Date.now()) return status;
+  return { ...status, state: "expired" };
 }
 
 function getStatusAnnouncement({

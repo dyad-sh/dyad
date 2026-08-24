@@ -396,7 +396,22 @@ export async function waitForAdminSeeded(
     await sleep(intervalMs, signal);
   }
 
-  const output = await runAdminSeeder(session, { signal });
+  let output = "";
+  try {
+    output = await runAdminSeeder(session, { signal });
+  } catch {
+    // Cancelling stops this the way it stops everything else, and that is not
+    // a server that would not seed. It has to stay a cancellation, or the run
+    // ends by telling the user to go and sign in to an install they stopped.
+    if (signal?.aborted) {
+      throw new DyadError("Cancelled.", DyadErrorKind.UserCancelled);
+    }
+    // Anything else leaves the install standing. Coolify is on the server, and
+    // a seeder that timed out or died says nothing either way about whether
+    // the account exists — so it is asked below rather than assumed, and what
+    // comes back is a server to sign in to by hand rather than a failed run.
+    // Ending here instead would take the password down with it.
+  }
   // Asked once more, bounded like every other question. A bound that is hit
   // reads as "no account yet" rather than as a failure — isAdminSeeded already
   // answers that way — so the seeder's own words, which say why it refused,

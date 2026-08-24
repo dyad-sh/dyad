@@ -205,6 +205,50 @@ describe("waiting for the admin account", () => {
     expect(asked[0]?.timeoutMs).toBe(20);
   });
 
+  it("hands back a server to sign in to when the seeder itself dies", async () => {
+    // Coolify is on the machine either way. Ending the run here would report
+    // an install that did not happen and take the password Dyad invented down
+    // with it, when the honest answer is to go and sign in by hand.
+    const session = sessionAnswering(
+      vi.fn(async (command: string) => {
+        if (command.includes("RootUserSeeder")) throw new Error("wedged");
+        return { code: 0, stdout: transcript("no"), stderr: "" };
+      }) as never,
+    );
+
+    await expect(
+      waitForAdminSeeded(session, "me@gmail.com", {
+        timeoutMs: 20,
+        intervalMs: 1,
+        attemptTimeoutMs: 20,
+      }),
+    ).resolves.toEqual({ seeded: false, reason: undefined });
+  });
+
+  it("keeps a cancellation a cancellation", async () => {
+    // Stopping throws here like anywhere else. Swallowed, it would end the run
+    // by telling the user to sign in to an install they just stopped.
+    const controller = new AbortController();
+    const session = sessionAnswering(
+      vi.fn(async (command: string) => {
+        if (command.includes("RootUserSeeder")) {
+          controller.abort();
+          throw new Error("aborted");
+        }
+        return { code: 0, stdout: transcript("no"), stderr: "" };
+      }) as never,
+    );
+
+    await expect(
+      waitForAdminSeeded(session, "me@gmail.com", {
+        timeoutMs: 20,
+        intervalMs: 1,
+        attemptTimeoutMs: 20,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.UserCancelled });
+  });
+
   it("bounds the repair and the confirmation after it, not only the poll", async () => {
     // The loop expiring is where the seeder runs, and the question after it
     // is the same question — asked on the same server that just failed to

@@ -72,8 +72,11 @@ vi.mock("@/temp_preview/client", async (importOriginal) => {
 });
 
 import {
+  clearTempPreviewAppDeletionMarker,
   deleteTempPreviewForApp,
   getTempPreviewStatus,
+  listPendingTempPreviewDeletionAppIds,
+  markTempPreviewForAppDeletion,
   publishTempPreview,
   revokeTempPreview,
 } from "./temp_preview_service";
@@ -130,6 +133,44 @@ describe("temp preview service", () => {
     await Promise.all(
       roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
     );
+  });
+
+  it("sanitizes deletion-marker store failures", async () => {
+    const operations = [
+      {
+        storeMethod: mocks.storeMarkPendingDeletion,
+        invoke: () => markTempPreviewForAppDeletion(7),
+      },
+      {
+        storeMethod: mocks.storeClearPendingDeletion,
+        invoke: () => clearTempPreviewAppDeletionMarker(7),
+      },
+      {
+        storeMethod: mocks.storeListPendingDeletionAppIds,
+        invoke: () => listPendingTempPreviewDeletionAppIds(),
+      },
+    ];
+
+    for (const { storeMethod, invoke } of operations) {
+      storeMethod.mockRejectedValueOnce(
+        Object.assign(
+          new Error(
+            "EACCES: permission denied, open '/Users/alice/Library/Application Support/Dyad/temp-preview-connections.json'",
+          ),
+          { code: "EACCES" },
+        ),
+      );
+
+      const error = await invoke().catch((caught) => caught);
+
+      expect(error).toMatchObject({
+        kind: DyadErrorKind.Unknown,
+        cause: undefined,
+      });
+      expect(error.message).not.toMatch(
+        /alice|Application Support|temp-preview-connections/,
+      );
+    }
   });
 
   it("best-effort revokes a new preview when local persistence fails", async () => {

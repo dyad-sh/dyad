@@ -713,8 +713,17 @@ export function TestsPanel() {
   // `usesSandboxedE2eTests` answers false for absent settings, which would
   // flash the amber "Start the app to run tests." banner and a disabled Run
   // button on every mount for a state that may not apply at all.
-  const testsNeedDevServer = !!settings && !usesSandboxedE2eTests(settings);
-  const testRunBlocked = testsNeedDevServer && !devServerRunning;
+  //
+  // Tri-state on purpose: `undefined` means settings haven't loaded, and that
+  // is neither a refusal nor a promise. `usesSandboxedE2eTests` answers false
+  // for absent settings, so reading it directly would flash the amber gate on
+  // every mount — and the Neon disclosure below has the opposite default, so
+  // reading `!disableSandboxedE2eTests` there would briefly promise sandboxing
+  // to a user who turned it off. One value, two explicit comparisons.
+  const sandboxAvailable = settings
+    ? usesSandboxedE2eTests(settings)
+    : undefined;
+  const testRunBlocked = sandboxAvailable === false && !devServerRunning;
   // Owns the run's whole lifecycle, teardown included. Gates every action that
   // must not interleave with it (Run, Record, Delete), because the per-app lock
   // is still held during `cleaning-up`.
@@ -768,10 +777,7 @@ export function TestsPanel() {
   // the alternative a user would assume is "my tests hit my real database" —
   // but it must not promise the preview restart the old env-swap path did.
   const showNeonSandboxDisclosure =
-    specs.length > 0 &&
-    !!app?.neonProjectId &&
-    (settings?.runtimeMode2 ?? "host") === "host" &&
-    !settings?.disableSandboxedE2eTests;
+    specs.length > 0 && !!app?.neonProjectId && sandboxAvailable === true;
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it

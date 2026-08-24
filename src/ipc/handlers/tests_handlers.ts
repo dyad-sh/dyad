@@ -744,6 +744,11 @@ async function runTestsAgainstNormalPreview({
 type E2eTestPrepareResult =
   | { installed: boolean; workspace: E2eTestWorkspace }
   | { setupError: string };
+// INVARIANT: the two arms are exclusive — a `setupError` never carries a
+// workspace. `createE2eTestWorkspace` disposes its own partially-copied tree
+// before it throws, which is what makes the caller's early return safe to take
+// without a dispose of its own. A future variant that returned both would leak
+// a sandbox directory silently, so it must dispose before returning instead.
 
 export interface RunTestsWithIsolationOptions {
   /**

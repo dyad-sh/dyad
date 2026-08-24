@@ -302,8 +302,14 @@ export function rewriteE2eArtifactPath(
   return path.join(artifactPath, relative);
 }
 
-/** Run directory names start with `<appId>-`; recover the id from one. */
-function runDirectoryAppId(name: string): number | null {
+/**
+ * Run directory names start with `<appId>-`; recover the id from one.
+ *
+ * The single parser every owner check goes through — the artifact prune and the
+ * screenshot reader both decide "is this run mine?" from it, and a second,
+ * hand-rolled prefix test in either place is how the two drift apart.
+ */
+export function runDirectoryAppId(name: string): number | null {
   const [prefix] = name.split("-");
   const appId = Number(prefix);
   return prefix !== "" && Number.isInteger(appId) ? appId : null;

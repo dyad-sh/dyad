@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import { getUserDataPath } from "@/paths/paths";
-import { E2E_TEST_ARTIFACT_DIR } from "@/ipc/services/e2e_test_workspace";
+import {
+  E2E_TEST_ARTIFACT_DIR,
+  runDirectoryAppId,
+} from "@/ipc/services/e2e_test_workspace";
 
 const logger = log.scope("test_screenshot");
 
@@ -90,7 +93,7 @@ async function resolveContainedArtifact(
   const testResultsSegment = useArtifactRoot ? segments[1] : segments[0];
   if (
     useArtifactRoot &&
-    (appId === undefined || !segments[0].startsWith(`${appId}-`))
+    (appId === undefined || runDirectoryAppId(segments[0]) !== appId)
   ) {
     return null;
   }

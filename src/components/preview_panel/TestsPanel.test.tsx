@@ -472,6 +472,18 @@ describe("TestsPanel", () => {
       expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
     });
 
+    it("promises no sandbox while settings are still loading", async () => {
+      // The Run gate treats loading as "sandbox available" so it doesn't refuse
+      // the run; this banner has to key off the same guard, or the panel
+      // briefly promises sandboxing to a user who has it turned off.
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = undefined as unknown as Record<string, unknown>;
+      renderPanel();
+
+      await screen.findByText("signup.spec.ts");
+      expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
+    });
+
     it("names the Neon teardown without promising a restore", () => {
       // This is the wait that can pass a minute (the branch delete retries with
       // backoff). Calling it "Running…" — as the panel used to — reads as a

@@ -436,7 +436,15 @@ async function startServerOnPort({
       // and that survivor still holds the workspace cwd `dispose()` is about to
       // remove. Leave it registered; `trackE2eTestProcess`'s own exit/error
       // listeners drop it whenever it does die.
-      if (child.exitCode !== null || child.signalCode !== null) {
+      //
+      // A child with no pid never started, so there is nothing for quit to kill
+      // and nothing that could later exit to drop it: untrack it here or it
+      // sits in the registry for the life of the process.
+      if (
+        child.pid === undefined ||
+        child.exitCode !== null ||
+        child.signalCode !== null
+      ) {
         untrack();
       }
     })();

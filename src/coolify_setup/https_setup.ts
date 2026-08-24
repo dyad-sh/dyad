@@ -390,11 +390,10 @@ export async function tryEnableHttps(
           `the domain resolves to ${host} and try again.`,
       };
     }
-    // Addresses came back for both, with no family in common — so there is
-    // nothing to compare, and which side is which varies. Naming a family
-    // here, or saying the domain has only those records, would state as fact
-    // something never established: one family's lookup can fail while the
-    // other answers, and resolveBoth reports that as an answer.
+    // Nothing came back for the server itself, so there is nothing to hold
+    // the domain against — which is not the domain's fault and may not be a
+    // fault at all: a name only this network answers to is reached over SSH
+    // and invisible to plain DNS.
     if (points === "server-unresolved") {
       return {
         instanceUrl: plainUrlFor(host),
@@ -406,6 +405,11 @@ export async function tryEnableHttps(
           `Coolify yourself.`,
       };
     }
+    // Addresses came back for both, with no family in common — so there is
+    // nothing to compare, and which side is which varies. Naming a family
+    // here, or saying the domain has only those records, would state as fact
+    // something never established: one family's lookup can fail while the
+    // other answers, and resolveBoth reports that as an answer.
     if (points === "different-families") {
       return {
         instanceUrl: plainUrlFor(host),

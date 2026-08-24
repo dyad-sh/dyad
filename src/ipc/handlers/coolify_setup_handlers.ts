@@ -98,18 +98,18 @@ function setupController(): CoolifySetupController {
           before one existed can put back what it wrote on the way in. */
       let accountConfirmed = false;
       /**
-       * Whether this run put a record down of its own.
+       * The record this run put down, or nothing if it never got that far.
        *
        * Connecting and the preflight both come before the password is handed
        * over, and either can end the run — a cancel, a server that is not
        * answering, an address that already has Coolify on it. There is
        * nothing of this run's to take back off then, and the account standing
        * there belongs to a server that still has it.
+       *
+       * Kept whole rather than as a flag, because the way out has to tell
+       * this record from anyone else's writing in the minutes since.
        */
-      let wroteProvisional = false;
-      /** What this run put down, so the way out can tell it from anyone
-          else's writing in between. */
-      let provisionalPassword: string | undefined;
+      let provisional: NonNullable<Coolify["admin"]> | undefined;
       let adminBeforeRun: Coolify["admin"];
       let unsavedAccount: {
         credentials: { email: string; password: string };
@@ -147,8 +147,11 @@ function setupController(): CoolifySetupController {
                 },
               },
             });
-            wroteProvisional = true;
-            provisionalPassword = credentials.password;
+            provisional = {
+              email: credentials.email,
+              password: { value: credentials.password },
+              instanceUrl: dashboardUrl,
+            };
           } catch (error) {
             // The run is worth more than this record. Failing here only means
             // the account has to be caught by the write below instead.
@@ -203,7 +206,7 @@ function setupController(): CoolifySetupController {
             } catch (retryError) {
               logger.error("Could not store the admin account", retryError);
             }
-          } else if (wroteProvisional && !accountConfirmed) {
+          } else if (provisional && !accountConfirmed) {
             // Nothing was ever seeded, so the password written on the way in
             // opens nothing. Put back whatever stood before rather than
             // clearing outright: a failure here can follow a server that was
@@ -216,7 +219,18 @@ function setupController(): CoolifySetupController {
               // run's record is still the one there. Anything else means
               // something during the run had its own say, and the snapshot
               // from before it started is not the newer answer.
-              if (now?.admin?.password?.value === provisionalPassword) {
+              //
+              // A password that will not decrypt is dropped on the way out of
+              // readSettings, with the account kept — so its absence is this
+              // record gone unreadable rather than somebody else's writing,
+              // and the rest of it still says whose it is.
+              const stillOurs =
+                now?.admin !== undefined &&
+                now.admin.email === provisional.email &&
+                now.admin.instanceUrl === provisional.instanceUrl &&
+                (now.admin.password === undefined ||
+                  now.admin.password.value === provisional.password?.value);
+              if (stillOurs) {
                 writeSettings({ coolify: { ...now, admin: adminBeforeRun } });
               }
             } catch (restoreError) {

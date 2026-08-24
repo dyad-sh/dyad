@@ -343,9 +343,13 @@ export async function tryEnableHttps(
     };
   }
 
-  // Only a domain of the user's own can point somewhere else. The derived
-  // sslip.io name resolves to the address it was built from, by construction.
-  if (customDomain) {
+  // Only a domain of the user's own can point somewhere else. A derived
+  // sslip.io name resolves to the address it was built from, by construction
+  // — including one derived from an address typed into the domain field,
+  // which is why this asks what the domain turned out to be rather than
+  // whether the field was filled. An address typed there that is not this
+  // server is still the user's own, and is still checked.
+  if (customDomain && domain !== `${host}.sslip.io`) {
     const points = await domainPointsAtServer(domain, host, {
       resolve,
       hostAddresses,
@@ -376,18 +380,21 @@ export async function tryEnableHttps(
           `the domain resolves to ${host} and try again.`,
       };
     }
-    // Looked it up and got an answer, in a family the server's address says
-    // nothing about. Telling the user to check the domain resolves would send
-    // them after something that may be perfectly correct.
+    // Addresses came back for both, with no family in common — so there is
+    // nothing to compare, and which side is which varies. Naming a family
+    // here, or saying the domain has only those records, would state as fact
+    // something never established: one family's lookup can fail while the
+    // other answers, and resolveBoth reports that as an answer.
     if (points === "different-families") {
       return {
         instanceUrl: plainUrlFor(host),
         secure: false,
         reason:
-          `${domain} has only IPv6 records and this server was given as ` +
-          `${host}, so Dyad cannot tell whether they are the same machine. ` +
-          `Give the server's address in the same family, or set the domain ` +
-          `in Coolify yourself.`,
+          `Dyad could not compare where ${domain} points with ${host}: the ` +
+          `addresses it has for them are in different families, so neither ` +
+          `says anything about the other. Give the server's address in the ` +
+          `same family as the domain's records, or set the domain in ` +
+          `Coolify yourself.`,
       };
     }
   }

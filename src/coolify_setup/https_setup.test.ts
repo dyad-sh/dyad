@@ -331,6 +331,20 @@ describe("tryEnableHttps", () => {
     expect(result.reason).toMatch(/could not look up where/i);
   });
 
+  it("names the domain it refused rather than the address", async () => {
+    // The address was fine; it was the domain the user typed that could not
+    // be certified, and blaming the address sends them to check that.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "coolify.local",
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.reason).toMatch(/^coolify\.local cannot be given/i);
+  });
+
   it("says which of the two it could not settle", async () => {
     // Two refusals with two different remedies. Telling someone whose domain
     // resolved fine to go and check that it resolves sends them after the
@@ -352,8 +366,60 @@ describe("tryEnableHttps", () => {
     expect(noAnswer.secure).toBe(false);
     expect(noAnswer.reason).toMatch(/could not look up where/i);
     expect(crossFamily.secure).toBe(false);
-    expect(crossFamily.reason).toMatch(/only IPv6 records/i);
+    expect(crossFamily.reason).toMatch(/different families/i);
     expect(crossFamily.reason).not.toMatch(/could not look up/i);
+  });
+
+  it("does not say which side holds which family", async () => {
+    // The server is the IPv6 side here. A message naming the domain as the
+    // one with IPv6 records would be false, and its remedy — give the
+    // server's address in the same family — is what the user already did.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "box.example.com", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async (name: string) => ({
+        addresses:
+          name === "box.example.com" ? ["2001:db8::1"] : ["203.0.113.5"],
+        failed: false,
+      }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.reason).not.toMatch(/only IPv6/i);
+    expect(result.reason).toMatch(/different families/i);
+  });
+
+  it("does not ask DNS about a name it derived from this server", async () => {
+    // The sslip.io spelling of the host resolves to the host by construction,
+    // so checking it can only fail for reasons that have nothing to do with
+    // where it points — and the advice would be to fix a name that is right.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "203.0.113.5",
+      resolve: async () => ({ addresses: [], failed: true }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(true);
+    expect(result.instanceUrl).toBe("https://203.0.113.5.sslip.io");
+  });
+
+  it("still checks an address typed there that is not this server", async () => {
+    // Derived the same way, but from somewhere else — so it resolves
+    // somewhere else by construction, which is exactly what to object to.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "198.51.100.9",
+      resolve: async () => ({ addresses: ["198.51.100.9"], failed: false }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.reason).toMatch(/does not point at this server/i);
   });
 
   it("still accepts a custom domain whose name simply has no records yet", async () => {

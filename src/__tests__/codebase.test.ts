@@ -423,13 +423,34 @@ describe("extractCodebase size stats", () => {
       },
     );
 
-    await extractCodebase({
+    const result = await extractCodebase({
       appPath: appDir,
       chatContext: noContext,
       onSizeStats,
     });
 
     expect(onSizeStats).not.toHaveBeenCalled();
+    // Only the measurement is suppressed. The turn still gets everything the
+    // walk managed to read.
+    expect(result.files.map((file) => file.path)).toEqual(["a.ts"]);
+  });
+
+  it("reports nothing when a listed file is gone on the native Git path", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
+    const onSizeStats = vi.fn();
+    // git ls-files --cached still lists a tracked file whose deletion has not
+    // been staged. The lstat fails, and the count would silently undercount.
+    vi.mocked(gitListFilesNative).mockResolvedValueOnce(["a.ts", "gone.ts"]);
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: noContext,
+      onSizeStats,
+    });
+
+    expect(onSizeStats).not.toHaveBeenCalled();
+    expect(result.files.map((file) => file.path)).toEqual(["a.ts"]);
   });
 
   it("is not called for a directory that does not exist", async () => {

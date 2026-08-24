@@ -423,10 +423,8 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
   }
 }
 
-async function cleanupDeletedAppTempPreview(appId: number): Promise<void> {
-  try {
-    await deleteTempPreviewForApp(appId);
-  } catch (error) {
+function scheduleDeletedAppTempPreviewCleanup(appId: number): void {
+  void deleteTempPreviewForApp(appId).catch((error) => {
     // The app deletion is already committed. Keep the stored capability so a
     // later recovery can retry revocation instead of making the public preview
     // permanently unreachable.
@@ -434,7 +432,7 @@ async function cleanupDeletedAppTempPreview(appId: number): Promise<void> {
       `App ${appId} was deleted, but its temporary preview could not be revoked. The stored capability was retained for recovery.`,
       error,
     );
-  }
+  });
 }
 
 /**
@@ -678,7 +676,7 @@ async function deleteAppByIdExclusive(
             await appRunDeletion.seal();
             appRunDeletion.commit();
             deletionCommitted = true;
-            await cleanupDeletedAppTempPreview(appId);
+            scheduleDeletedAppTempPreviewCleanup(appId);
             return { appPath: options.knownAppPath, doomedRow: null };
           }
           throw new DyadError("App not found", DyadErrorKind.NotFound);
@@ -745,7 +743,7 @@ async function deleteAppByIdExclusive(
             DyadErrorKind.External,
           );
         }
-        await cleanupDeletedAppTempPreview(appId);
+        scheduleDeletedAppTempPreviewCleanup(appId);
         return {
           appPath: getDyadAppPath(app.path),
           doomedRow: doomedRow ?? null,

@@ -279,13 +279,31 @@ describe("temp preview service", () => {
     });
   });
 
-  it("does not revoke an existing preview when an update cannot be persisted", async () => {
+  it("revokes an update when its replacement capability cannot be persisted", async () => {
+    const appPath = await createApp();
+    mocks.storeRead.mockResolvedValue(previousRecord);
+    const updated = {
+      ...published,
+      tempId: previousRecord.tempId,
+      canonicalUrl: previousRecord.canonicalUrl,
+    };
+    mocks.publish.mockResolvedValue(updated);
+    mocks.storeWrite.mockRejectedValueOnce(new Error("disk full"));
+
+    await expect(
+      publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
+    ).rejects.toThrow("disk full");
+    expect(mocks.revoke).toHaveBeenCalledWith(updated);
+  });
+
+  it("does not revoke an update when its stored capability remains valid", async () => {
     const appPath = await createApp();
     mocks.storeRead.mockResolvedValue(previousRecord);
     mocks.publish.mockResolvedValue({
       ...published,
       tempId: previousRecord.tempId,
       canonicalUrl: previousRecord.canonicalUrl,
+      updateToken: previousRecord.updateToken,
     });
     mocks.storeWrite.mockRejectedValueOnce(new Error("disk full"));
 

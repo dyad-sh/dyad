@@ -22,6 +22,6 @@ export function isTempPreviewExpired(
     expiresAt,
     lastPublishedAt,
   );
-  if (effectiveExpiry === null) return false;
+  if (effectiveExpiry === null) return true;
   return Date.parse(effectiveExpiry) <= now;
 }

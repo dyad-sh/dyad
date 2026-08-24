@@ -122,7 +122,11 @@ export async function publishTempPreview(input: {
     try {
       await store.write(input.appId, record);
     } catch (error) {
-      if (createdNewPreview) {
+      const publishedCapabilityCannotBeRecovered =
+        createdNewPreview ||
+        published.tempId !== previous?.tempId ||
+        published.updateToken !== previous?.updateToken;
+      if (publishedCapabilityCannotBeRecovered) {
         try {
           await client.revoke(published);
         } catch {

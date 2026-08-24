@@ -32,6 +32,9 @@ const createFromTemplateMock = vi.hoisted(() =>
 const deletionOrder = vi.hoisted(() => [] as string[]);
 const settleChatActorsForDeletionMock = vi.hoisted(() => vi.fn());
 const restoreAppFromTestBranchMock = vi.hoisted(() => vi.fn());
+const deleteTempPreviewForAppMock = vi.hoisted(() => vi.fn());
+const markTempPreviewForAppDeletionMock = vi.hoisted(() => vi.fn());
+const clearTempPreviewAppDeletionMarkerMock = vi.hoisted(() => vi.fn());
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -46,6 +49,19 @@ vi.mock("electron", () => ({
   },
   dialog: { showOpenDialog: vi.fn() },
 }));
+
+const electronLogMock = vi.hoisted(() => ({
+  default: {
+    scope: () => ({
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    }),
+  },
+}));
+vi.mock("electron-log", () => electronLogMock);
+vi.mock("electron-log/main", () => electronLogMock);
 
 vi.mock("@/paths/paths", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/paths/paths")>();
@@ -79,6 +95,12 @@ vi.mock("@/ipc/handlers/createFromTemplate", () => ({
 
 vi.mock("@/ipc/handlers/gitignoreUtils", () => ({
   ensureDyadGitignored: vi.fn(async () => {}),
+}));
+
+vi.mock("@/ipc/services/temp_preview_service", () => ({
+  clearTempPreviewAppDeletionMarker: clearTempPreviewAppDeletionMarkerMock,
+  deleteTempPreviewForApp: deleteTempPreviewForAppMock,
+  markTempPreviewForAppDeletion: markTempPreviewForAppDeletionMock,
 }));
 
 vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
@@ -181,6 +203,12 @@ describe("app naming handlers", () => {
     createFromTemplateMock.mockClear();
     restoreAppFromTestBranchMock.mockReset();
     restoreAppFromTestBranchMock.mockResolvedValue(true);
+    deleteTempPreviewForAppMock.mockReset();
+    deleteTempPreviewForAppMock.mockResolvedValue(undefined);
+    markTempPreviewForAppDeletionMock.mockReset();
+    markTempPreviewForAppDeletionMock.mockResolvedValue(false);
+    clearTempPreviewAppDeletionMarkerMock.mockReset();
+    clearTempPreviewAppDeletionMarkerMock.mockResolvedValue(undefined);
     registerAppHandlers();
     registerImportHandlers();
   });
@@ -533,6 +561,31 @@ describe("app naming handlers", () => {
         "release-subagents",
         "release",
       ]);
+    });
+
+    it("does not wait for post-commit temporary preview cleanup", async () => {
+      const appId = seedAppWithFolder("Delete Me", "delete-me");
+      let finishCleanup!: () => void;
+      const cleanupPending = new Promise<void>((resolve) => {
+        finishCleanup = resolve;
+      });
+      deleteTempPreviewForAppMock.mockReturnValueOnce(cleanupPending);
+
+      const deletion = harness.invokeHandler("delete-app", { appId });
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const outcome = await Promise.race([
+        deletion.then(() => "finished" as const),
+        new Promise<"blocked">((resolve) => {
+          timeout = setTimeout(() => resolve("blocked"), 500);
+        }),
+      ]);
+      clearTimeout(timeout);
+      finishCleanup();
+      await deletion;
+
+      expect(outcome).toBe("finished");
+      expect(deleteTempPreviewForAppMock).toHaveBeenCalledWith(appId);
+      expect(getAppRow(appId)).toBeUndefined();
     });
   });
 

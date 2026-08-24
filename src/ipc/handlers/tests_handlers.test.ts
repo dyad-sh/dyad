@@ -26,11 +26,9 @@ const TEST_WINDOW_SESSION_ID = WindowSessionIdSchema.parse(
   "10000000-0000-4000-8000-000000000001",
 );
 
-const { browserWindowFromWebContentsMock, resolveRemoteDebuggingEndpointMock } =
-  vi.hoisted(() => ({
-    browserWindowFromWebContentsMock: vi.fn(),
-    resolveRemoteDebuggingEndpointMock: vi.fn(),
-  }));
+const { browserWindowFromWebContentsMock } = vi.hoisted(() => ({
+  browserWindowFromWebContentsMock: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
@@ -41,10 +39,6 @@ vi.mock("electron", () => ({
     ),
     getAppPath: vi.fn(() => process.cwd()),
   },
-}));
-
-vi.mock("@/main/remote_debugging", () => ({
-  resolveRemoteDebuggingEndpoint: resolveRemoteDebuggingEndpointMock,
 }));
 
 vi.mock("@/paths/paths", async (importOriginal) => {
@@ -135,7 +129,6 @@ describe("tests handlers", () => {
     prepareIsolatedTestDatabaseMock.mockReset();
     broadcastToRegisteredWindowsMock.mockClear();
     browserWindowFromWebContentsMock.mockReset();
-    resolveRemoteDebuggingEndpointMock.mockReset();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
   });
@@ -179,10 +172,6 @@ describe("tests handlers", () => {
       };
       windowRegistry.register(sender, TEST_WINDOW_SESSION_ID);
       browserWindowFromWebContentsMock.mockReturnValue({});
-      resolveRemoteDebuggingEndpointMock.mockResolvedValue({
-        httpEndpoint: "http://127.0.0.1:9222",
-      });
-
       try {
         await runAppTestsWithIsolation({
           event: { sender } as any,

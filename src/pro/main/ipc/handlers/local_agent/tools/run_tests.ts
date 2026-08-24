@@ -15,7 +15,6 @@ import {
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
-import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
 import {
@@ -291,15 +290,9 @@ async function runSpec(
   // the preview experiment enabled, headed mode drives Dyad's native preview
   // view. A preview or narrowed run must stay serial.
   const settings = readSettings();
-  // A preview run needs the CDP endpoint Dyad opens at boot, which exists only
-  // if the experiment was already on when the app launched. Asking for one
-  // without it fails the run with "restart Dyad" — advice an agent cannot act
-  // on, and it would meet every run_tests call for the rest of the session.
-  // Checking here falls back to an ordinary headed browser instead.
   const preview =
     (settings.enableTestRunInPreview ?? false) &&
-    (settings.testHeaded ?? false) &&
-    (await resolveRemoteDebuggingEndpoint()) !== null;
+    (settings.testHeaded ?? false);
   const slowMo = settings.testSlowMo ?? false;
   return runAppTestsWithIsolation({
     event: ctx.event,

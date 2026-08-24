@@ -63,14 +63,26 @@ vi.mock("@/paths/paths", async (importOriginal) => ({
 
 import {
   buildPlaywrightCliInvocation,
-  runAppTestsCore,
+  runAppTestsCore as runAppTestsCoreWithoutToken,
+  type RunAppTestsCoreOptions,
 } from "./tests_handlers";
-import { PREVIEW_CDP_ENDPOINT_ENV } from "../utils/playwright_bootstrap";
+import {
+  PREVIEW_CDP_ENDPOINT_ENV,
+  PREVIEW_CDP_TOKEN_ENV,
+} from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
 
 const PROXY_URL = "http://localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
+const CDP_TOKEN = "test-preview-token";
 const APP_PATH = path.join(os.tmpdir(), "dyad-tests-preview", "apps", "my-app");
+
+function runAppTestsCore(options: RunAppTestsCoreOptions) {
+  return runAppTestsCoreWithoutToken({
+    ...options,
+    ...(options.previewCdpEndpoint ? { previewCdpToken: CDP_TOKEN } : {}),
+  });
+}
 
 function lastSpawn() {
   return h.spawnStreaming.mock.calls.at(-1)![0] as {
@@ -154,8 +166,8 @@ function mockPreviewBatch() {
     };
   });
   return vi
-    .fn<(timeoutMs?: number) => Promise<string>>()
-    .mockResolvedValue("preview-target");
+    .fn<(timeoutMs?: number) => Promise<void>>()
+    .mockResolvedValue(undefined);
 }
 
 describe("preview runs", () => {
@@ -183,6 +195,7 @@ describe("preview runs", () => {
     await runAppTestsCore({ appId: 1, previewCdpEndpoint: CDP_ENDPOINT });
 
     expect(lastSpawn().env[PREVIEW_CDP_ENDPOINT_ENV]).toBe(CDP_ENDPOINT);
+    expect(lastSpawn().env[PREVIEW_CDP_TOKEN_ENV]).toBe(CDP_TOKEN);
   });
 
   it("asks the bootstrap to generate the shim", async () => {
@@ -251,10 +264,8 @@ describe("preview runs", () => {
 
   it("discovers and runs each test in its own fresh preview", async () => {
     const rotatePreviewView = vi
-      .fn<(timeoutMs?: number) => Promise<string>>()
-      .mockResolvedValueOnce("preview-target-1")
-      .mockResolvedValueOnce("preview-target-2")
-      .mockResolvedValueOnce("preview-target-3");
+      .fn<(timeoutMs?: number) => Promise<void>>()
+      .mockResolvedValue(undefined);
     const percentTitle = "shows 100% progress\non completion";
     h.spawnStreaming.mockImplementation(async (options) => {
       const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
@@ -373,8 +384,6 @@ describe("preview runs", () => {
     expect(testSpawns[0].env.PLAYWRIGHT_JSON_OUTPUT_NAME).not.toBe(
       testSpawns[1].env.PLAYWRIGHT_JSON_OUTPUT_NAME,
     );
-    expect(testSpawns[0].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-1");
-    expect(testSpawns[1].env.DYAD_PREVIEW_TARGET_ID).toBe("preview-target-2");
     expect(testSpawns[0].args).toContain("--workers=1");
     expect(
       testSpawns[0].args.some((arg: string) =>
@@ -444,8 +453,8 @@ describe("post-batch preview teardown", () => {
     // failure as an infraError made a fully passing run read as inconclusive,
     // which costs an agent a fix attempt for nothing.
     const rotatePreviewView = vi
-      .fn<(timeoutMs?: number) => Promise<string>>()
-      .mockResolvedValueOnce("preview-target")
+      .fn<(timeoutMs?: number) => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error("preview view never loaded"));
     mockPreviewBatch();
 
@@ -467,8 +476,8 @@ describe("post-batch preview teardown", () => {
     // budget left the replacement view a few hundred milliseconds to load, so
     // the longer the run, the likelier a clean result was overwritten.
     const rotatePreviewView = vi
-      .fn<(timeoutMs?: number) => Promise<string>>()
-      .mockResolvedValue("preview-target");
+      .fn<(timeoutMs?: number) => Promise<void>>()
+      .mockResolvedValue(undefined);
     mockPreviewBatch();
 
     await runAppTestsCore({

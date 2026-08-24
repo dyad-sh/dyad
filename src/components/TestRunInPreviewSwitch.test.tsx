@@ -48,14 +48,12 @@ describe("TestRunInPreviewSwitch", () => {
     });
   });
 
-  it("says the debugging port outlives the run", () => {
-    // The exposure lasts the whole session, which is the part a user deciding
-    // whether to enable this needs to weigh.
+  it("explains that automation is run-scoped", () => {
     h.settings = { enableTestRunInPreview: false };
     render(<TestRunInPreviewSwitch />);
 
-    expect(screen.getByText(/whole/i).textContent).toContain(
-      "not just while tests run",
+    expect(screen.getByText(/authenticated connection/i).textContent).toContain(
+      "only for the test run",
     );
   });
 });

@@ -35,7 +35,6 @@ import {
   recoveryNeedsKeychainUnlock,
   retryRecoveryWithKeychainUnlock,
 } from "./main/safe_storage_legacy";
-import { maybeEnableRemoteDebugging } from "./main/remote_debugging";
 import { recordUpdaterError } from "./main/updater_state";
 import {
   sendTelemetryEvent,
@@ -263,11 +262,6 @@ async function logStartupExecutablePaths(): Promise<void> {
 }
 
 void logStartupExecutablePaths();
-
-// Must run before the app is ready (Chromium reads switches during startup),
-// and after the userData override above so the flag is read from the same
-// settings file the running instance uses.
-maybeEnableRemoteDebugging();
 
 // Capture native crashes (main/renderer/GPU/utility) as local minidumps. Not
 // uploaded; parsed on the next launch into a summary we send as telemetry.

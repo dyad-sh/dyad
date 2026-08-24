@@ -23,7 +23,6 @@ import {
   ChevronRight,
   Image as ImageIcon,
   Sparkles,
-  ShieldAlert,
   ShieldCheck,
   CircleDot,
   Code,
@@ -752,63 +751,11 @@ export function TestsPanel() {
   // With the experiment enabled, "headed" means visible in Dyad's preview
   // rather than in a separate Playwright browser window.
   const previewRunEnabled = !!settings?.enableTestRunInPreview;
-  const { data: automationStatus, isError: automationStatusFailed } = useQuery({
-    queryKey: queryKeys.previewView.automationStatus,
-    queryFn: () => ipc.previewView.getAutomationStatus(),
-    enabled: previewRunEnabled,
-    // Chromium can publish its DevTools port after the first lookup's window
-    // closes. Without a retry that one unlucky poll would disable every headed
-    // run — and advise a restart that fixes nothing — until this panel
-    // remounts. Stop as soon as the endpoint answers; the main process caches
-    // it, so these are cheap.
-    refetchInterval: (query) =>
-      query.state.data?.cdpReady === true ? false : 2_000,
-  });
-  const canRunInPreview = previewRunEnabled && !!automationStatus?.cdpReady;
-  const runsInPreviewWebContentsView = canRunInPreview && headed;
+  const runsInPreviewWebContentsView = previewRunEnabled && headed;
   // Display only. The value SENT to the runner is the user's raw choice: main
   // decides whether the preview actually gets the run, and a run that falls
   // back to an ordinary browser should parallelize as asked.
   const effectiveParallel = parallel && !runsInPreviewWebContentsView;
-  // The experiment only opens its CDP port at boot, so with it freshly enabled
-  // there is nothing for a preview run to drive. Headed runs are routed to the
-  // preview whenever the experiment is on, so EVERY entry point has to wait for
-  // the restart — a per-file or Retry run that slipped through would tear down
-  // the iframe preview for a native view and then dead-end on the same advice.
-  //
-  // Keyed on a definitive `false` rather than on `!canRunInPreview`: the status
-  // query can fail outright, and that is not a reason to tell the user to
-  // restart — still less to leave every run button dead for the rest of the
-  // session. The not-yet-answered case is `previewStatusPending` below.
-  const previewRestartRequired =
-    previewRunEnabled && headed && automationStatus?.cdpReady === false;
-  // The status query polls for Chromium's port file for up to 5s on its first
-  // call. While it is unanswered `canRunInPreview` is false and
-  // `previewRestartRequired` is false too, so a click in that window used to be
-  // dispatched with `preview: false` and silently open a separate browser —
-  // while the same click a moment later ran in the panel. Hold the run controls
-  // rather than route a run somewhere the user didn't ask for.
-  const previewStatusPending =
-    previewRunEnabled &&
-    headed &&
-    automationStatus === undefined &&
-    // An outright failure is NOT pending. The query keeps polling, so this can
-    // recover, and holding every run button hostage to a lookup that may never
-    // answer is worse than running in a browser and saying so.
-    !automationStatusFailed;
-  const runBlocked = previewRestartRequired || previewStatusPending;
-  const runBlockedReason = previewRestartRequired
-    ? "Restart Dyad to run headed tests in the preview panel."
-    : previewStatusPending
-      ? "Checking whether the preview panel can host this run\u2026"
-      : undefined;
-  // Shown but not blocking: the run still happens, just not where the user
-  // asked, and leaving that unexplained is the whole complaint.
-  const previewUnavailableNotice =
-    previewRunEnabled && headed && automationStatusFailed
-      ? "Couldn't reach the preview panel's debugging port, so this run opens a separate browser window."
-      : undefined;
-  const previewNotice = runBlockedReason ?? previewUnavailableNotice;
 
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
@@ -942,11 +889,6 @@ export function TestsPanel() {
       if (selectedAppId == null) return;
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
-      // `canRunInPreview`, not `previewRunEnabled`: the experiment only opens
-      // the CDP port at boot, so with it freshly enabled there's nothing to
-      // drive. Asking anyway would tear down the iframe preview for a native
-      // view and then fail the run with "restart Dyad". The Run-all button is
-      // disabled in that state; per-file and per-test runs reach here too.
       const preview = runsInPreviewWebContentsView;
       if (preview) {
         setPreviewNativeViewAppId(appId);
@@ -1447,7 +1389,7 @@ export function TestsPanel() {
                   <div className="space-y-0.5">
                     <Label htmlFor="test-option-headed">Show the browser</Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {canRunInPreview
+                      {previewRunEnabled
                         ? "Watch tests run in the preview panel."
                         : "Open a browser window while tests run."}
                     </p>
@@ -1582,17 +1524,15 @@ export function TestsPanel() {
           specs.length > 0 && (
             <button
               onClick={() => runTests()}
-              disabled={!devServerRunning || runBlocked}
+              disabled={!devServerRunning}
               title={
-                runBlockedReason ??
                 "During database-isolated runs, other app operations may wait until the run finishes."
               }
               aria-label="Run all tests"
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                (!devServerRunning || runBlocked) &&
-                  "opacity-40 cursor-not-allowed",
+                !devServerRunning && "opacity-40 cursor-not-allowed",
               )}
             >
               <Play size={14} />
@@ -1601,40 +1541,6 @@ export function TestsPanel() {
           )
         )}
       </div>
-
-      {/* Why every Run control is dead, said out loud. Chromium suppresses
-          pointer events on a disabled control, so the `title` those buttons
-          carry never surfaces — the same reason the Record button hangs its
-          hint on a wrapper span. Without this the user gets a greyed-out panel
-          and no explanation anywhere on screen. */}
-      {testingEnabled && previewNotice && (
-        <div
-          data-testid="tests-panel-run-blocked-notice"
-          role="status"
-          className="flex items-start gap-1.5 border-b border-border/60 px-4 py-1.5 text-[11px] text-amber-700 dark:text-amber-500"
-        >
-          <ShieldAlert size={12} className="mt-0.5 shrink-0" />
-          <span>{previewNotice}</span>
-        </div>
-      )}
-
-      {/* The experiment opens an unauthenticated CDP port on 127.0.0.1 for the
-          whole session, not just while tests run. That is easy to enable once
-          and forget, so say so where the feature is actually used rather than
-          only in the Settings switch the user saw weeks ago. */}
-      {canRunInPreview && (
-        <div
-          data-testid="tests-panel-debug-port-notice"
-          className="flex items-start gap-1.5 border-b border-border/60 px-4 py-1.5 text-[11px] text-amber-700 dark:text-amber-500"
-        >
-          <ShieldAlert size={12} className="mt-0.5 shrink-0" />
-          <span>
-            Debugging port open on 127.0.0.1 for this whole session. Turn off
-            "Run tests in preview panel" in Settings → Experiments and restart
-            Dyad to close it.
-          </span>
-        </div>
-      )}
 
       {/* Run-related status + banners only apply once testing is enabled. */}
       {testingEnabled && (
@@ -1788,11 +1694,10 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isRunning || !devServerRunning || runBlocked}
-                title={runBlockedReason}
+                disabled={isRunning || !devServerRunning}
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-                  (isRunning || !devServerRunning || runBlocked) &&
+                  (isRunning || !devServerRunning) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -1902,8 +1807,7 @@ export function TestsPanel() {
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
                 result={runState.results[spec.file]}
-                disabled={isRunning || !devServerRunning || runBlocked}
-                runTitle={runBlockedReason}
+                disabled={isRunning || !devServerRunning}
                 deleteDisabled={isRunning || isDeleting}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}

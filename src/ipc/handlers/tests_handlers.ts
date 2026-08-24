@@ -6,7 +6,7 @@ import { glob } from "glob";
 import log from "electron-log";
 import { BrowserWindow } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
-import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
+import { PreviewCdpBroker } from "@/main/preview_cdp_broker";
 import {
   beginPreviewAutomation,
   reservePreviewViewForAutomation,
@@ -54,7 +54,7 @@ import {
   ensurePlaywrightBootstrap,
   DYAD_CONFIG_FILENAME,
   PREVIEW_CDP_ENDPOINT_ENV,
-  PREVIEW_TARGET_ID_ENV,
+  PREVIEW_CDP_TOKEN_ENV,
   SLOW_MO_DELAY_MS,
   SLOW_MO_TEST_TIMEOUT_MS,
   TEST_BASE_URL_ENV,
@@ -334,15 +334,17 @@ export interface RunAppTestsCoreOptions {
    */
   testEnv?: Record<string, string>;
   /**
-   * Experimental: CDP endpoint of this Dyad instance. When set, the generated
-   * fixture shim connects to it and drives the page already loaded in the
-   * preview panel's native view instead of launching a browser, so the user
-   * watches the run in place. Tests run sequentially in separate processes and
-   * fresh native views; `headed` has no additional meaning.
+   * Experimental: endpoint of the run-scoped preview CDP broker. When set, the
+   * generated fixture shim drives only the page already loaded in the preview
+   * panel's native view instead of launching a browser. Tests run sequentially
+   * in separate processes and fresh native views; `headed` has no additional
+   * meaning.
    */
   previewCdpEndpoint?: string;
+  /** Bearer token accepted by the run-scoped preview CDP broker. */
+  previewCdpToken?: string;
   /** Replaces the native preview with a fresh session before/after tests. */
-  rotatePreviewView?: (timeoutMs?: number) => Promise<string>;
+  rotatePreviewView?: (timeoutMs?: number) => Promise<void>;
 }
 
 function appendRequestedTestTarget(
@@ -394,6 +396,7 @@ async function runPreviewTestBatch({
   emit,
   testEnv,
   previewEndpoint,
+  previewToken,
   rotatePreviewView,
   installed,
 }: {
@@ -409,7 +412,8 @@ async function runPreviewTestBatch({
   emit: (chunk: string, phase: "setup" | "running") => void;
   testEnv: Record<string, string> | undefined;
   previewEndpoint: string;
-  rotatePreviewView: ((timeoutMs?: number) => Promise<string>) | undefined;
+  previewToken: string;
+  rotatePreviewView: ((timeoutMs?: number) => Promise<void>) | undefined;
   installed: boolean;
 }): Promise<RunAppTestsResult> {
   const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
@@ -435,13 +439,13 @@ async function runPreviewTestBatch({
     if (deadline === undefined) return undefined;
     return Math.max(0, deadline - Date.now());
   };
-  const runnerEnv = (reportPath: string, targetId?: string) =>
+  const runnerEnv = (reportPath: string) =>
     getPackageManagerCommandEnv({
       ...process.env,
       ...testEnv,
       [TEST_BASE_URL_ENV]: baseUrl,
       [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
-      ...(targetId ? { [PREVIEW_TARGET_ID_ENV]: targetId } : {}),
+      [PREVIEW_CDP_TOKEN_ENV]: previewToken,
       PLAYWRIGHT_NO_COPY_PROMPT: "1",
       ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
       PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,
@@ -547,9 +551,8 @@ async function runPreviewTestBatch({
         result.infraError = timeoutInfraError(timeoutMs);
         break;
       }
-      let previewTargetId: string | undefined;
       try {
-        previewTargetId = await rotatePreviewView?.(rotationTimeout);
+        await rotatePreviewView?.(rotationTimeout);
       } catch (error) {
         result.infraError = {
           message: `Couldn't prepare a fresh preview for ${target.fullTitle}: ${error instanceof Error ? error.message : String(error)}`,
@@ -590,7 +593,7 @@ async function runPreviewTestBatch({
         run = await spawnStreaming({
           ...playwrightCliInvocationForApp(appPath, args),
           cwd: appPath,
-          env: runnerEnv(reportPath, previewTargetId),
+          env: runnerEnv(reportPath),
           signal,
           timeoutMs: invocationTimeout,
           onOutput: (chunk) => emit(chunk, "running"),
@@ -726,6 +729,7 @@ export async function runAppTestsCore({
   onOutput,
   testEnv,
   previewCdpEndpoint,
+  previewCdpToken,
   rotatePreviewView,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
@@ -790,6 +794,14 @@ export async function runAppTestsCore({
     return { appId, results: [], infraError: { message: "Test run stopped." } };
   }
 
+  if (previewEndpoint && !previewCdpToken) {
+    return {
+      appId,
+      results: [],
+      infraError: { message: "Preview automation credentials are missing." },
+    };
+  }
+
   if (previewEndpoint) {
     return runPreviewTestBatch({
       appId,
@@ -804,6 +816,7 @@ export async function runAppTestsCore({
       emit,
       testEnv,
       previewEndpoint,
+      previewToken: previewCdpToken!,
       rotatePreviewView,
       installed,
     });
@@ -1100,7 +1113,6 @@ export async function runAppTestsWithIsolation({
   // missing experiment flag or window is a dead end, and the user shouldn't pay
   // for a Neon branch to find out.
   let previewWindow: BrowserWindow | undefined;
-  let previewCdpEndpoint: string | undefined;
   // Set when the preview was asked for and refused before the run's output
   // stream exists; reported through `emit` as soon as it does.
   let previewFellBackToBrowser: string | undefined;
@@ -1113,19 +1125,6 @@ export async function runAppTestsWithIsolation({
         infraError: { message: "Couldn't find the window to preview in." },
       };
     }
-
-    const endpoint = await resolveRemoteDebuggingEndpoint();
-    if (!endpoint) {
-      return {
-        appId,
-        results: [],
-        infraError: {
-          message:
-            'Running tests in the preview panel needs the "Run tests in preview panel" experiment. Enable it in Settings → Experiments, then restart Dyad.',
-        },
-      };
-    }
-    previewCdpEndpoint = endpoint.httpEndpoint;
   }
 
   // Claim the view now, before isolation setup. The run doesn't take real
@@ -1143,7 +1142,6 @@ export async function runAppTestsWithIsolation({
       // isolation setup. Take the ordinary browser instead: less to watch,
       // but a real result, and the same fallback the missing-view path uses.
       previewWindow = undefined;
-      previewCdpEndpoint = undefined;
       previewFellBackToBrowser =
         "another app's test run is using the preview panel";
     } else {
@@ -1223,7 +1221,7 @@ export async function runAppTestsWithIsolation({
     grep,
     // What this run is, not what it requested. A refused preview has already
     // cleared the endpoint and will emit a correlated fallback event below.
-    preview: previewCdpEndpoint !== undefined,
+    preview: previewWindow !== undefined,
   });
 
   // Install and announce the new owner before aborting the prior run. Its
@@ -1385,7 +1383,7 @@ export async function runAppTestsWithIsolation({
           // Isolation may have restarted the dev server, so only now is the
           // preview guaranteed to be settled on the URL the run will target.
           let previewBaseUrl: string | undefined;
-          if (previewWindow && previewCdpEndpoint) {
+          if (previewWindow) {
             previewBaseUrl = getRunningTestBaseUrl(appId) ?? undefined;
             const ready = previewBaseUrl
               ? await waitForPreviewView(previewWindow, {
@@ -1423,7 +1421,6 @@ export async function runAppTestsWithIsolation({
                   "setup",
                 );
                 previewWindow = undefined;
-                previewCdpEndpoint = undefined;
                 previewBaseUrl = undefined;
                 // Nothing is going to drive that view now, so stop holding it.
                 releasePreviewReservation();
@@ -1462,7 +1459,7 @@ export async function runAppTestsWithIsolation({
               })
             : null;
 
-          if (previewCdpEndpoint && !automation) {
+          if (previewWindow && !automation) {
             // The view went away between the wait above and this call. Running
             // anyway would drive a page nothing is guarding: no destroyed-view
             // notification, and `showPreviewView` would navigate it mid-run.
@@ -1477,11 +1474,53 @@ export async function runAppTestsWithIsolation({
             };
           }
 
+          let previewBroker: PreviewCdpBroker | undefined;
+          let previewCdpEndpoint: string | undefined;
+          let previewCdpToken: string | undefined;
+          if (automation) {
+            const target = automation.getWebContents();
+            if (!target) {
+              return {
+                appId,
+                results: [],
+                infraError: {
+                  message:
+                    "The preview panel closed before automation could attach. Open the Preview tab and try again.",
+                },
+                isolation: prepared.isolation,
+              };
+            }
+            try {
+              previewBroker = new PreviewCdpBroker();
+              await previewBroker.start();
+              await previewBroker.setTarget(target);
+              const connection = previewBroker.connectionInfo;
+              previewCdpEndpoint = connection.endpoint;
+              previewCdpToken = connection.token;
+            } catch (error) {
+              await previewBroker?.close().catch(() => {});
+              automation.end();
+              return {
+                appId,
+                results: [],
+                infraError: {
+                  message: `Couldn't attach automation to the preview: ${error instanceof Error ? error.message : String(error)}`,
+                },
+                isolation: prepared.isolation,
+              };
+            }
+          }
+
           const automationWindow = previewWindow;
           const automationBaseUrl = previewBaseUrl;
           const rotatePreviewView =
             automation && automationWindow && automationBaseUrl
               ? async (remainingMs?: number) => {
+                  // Rotation destroys the current WebContentsView. Detach its
+                  // debugger first so the broker recognizes that loss as an
+                  // intentional handoff rather than an unexpected target
+                  // failure that should close the endpoint.
+                  previewBroker?.releaseTarget();
                   const rotated = automation.rotate({
                     url: automationBaseUrl,
                   });
@@ -1499,7 +1538,11 @@ export async function runAppTestsWithIsolation({
                   if (!ready.ok) {
                     throw new Error(ready.reason);
                   }
-                  return rotated.targetId;
+                  const replacement = automation.getWebContents();
+                  if (!replacement) {
+                    throw new Error("the rotated preview was destroyed");
+                  }
+                  await previewBroker?.setTarget(replacement);
                 }
               : undefined;
 
@@ -1518,6 +1561,7 @@ export async function runAppTestsWithIsolation({
               onOutput: emit,
               testEnv: prepared.testCredentials,
               previewCdpEndpoint,
+              previewCdpToken,
               rotatePreviewView,
               // The run turned out to need its own browser, so stop holding
               // the preview view frozen (no navigation, no hiding) for it.
@@ -1541,6 +1585,11 @@ export async function runAppTestsWithIsolation({
               },
             });
           } finally {
+            await previewBroker?.close().catch((error) => {
+              logger.warn(
+                `Failed to close preview automation broker: ${error}`,
+              );
+            });
             automation?.end();
           }
 

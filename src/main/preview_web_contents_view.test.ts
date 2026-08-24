@@ -700,10 +700,7 @@ describe("automation (preview test runs)", () => {
       view.options as { webPreferences: { partition: string } }
     ).webPreferences.partition;
 
-    expect(automation!.rotate({ url: APP_URL })).toEqual({
-      ok: true,
-      targetId: expect.any(String),
-    });
+    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
 
     const replacement = latestView();
     const replacementPartition = (
@@ -738,10 +735,7 @@ describe("automation (preview test runs)", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     window.webContents.sent.length = 0;
-    expect(automation!.rotate({ url: APP_URL })).toEqual({
-      ok: true,
-      targetId: expect.any(String),
-    });
+    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
     const replacement = latestView();
 
     // The frame the renderer holds belongs to a page that no longer exists, so
@@ -764,10 +758,7 @@ describe("automation (preview test runs)", () => {
     const { asBrowserWindow, automation } = showAndAutomate();
     setPreviewViewOverlayActive(asBrowserWindow, false);
 
-    expect(automation!.rotate({ url: APP_URL })).toEqual({
-      ok: true,
-      targetId: expect.any(String),
-    });
+    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
     const replacement = latestView();
 
     await vi.advanceTimersByTimeAsync(3_000);
@@ -780,10 +771,7 @@ describe("automation (preview test runs)", () => {
     const { asBrowserWindow, automation } = showAndAutomate();
     hidePreviewView(asBrowserWindow);
 
-    expect(automation!.rotate({ url: APP_URL })).toEqual({
-      ok: true,
-      targetId: expect.any(String),
-    });
+    expect(automation!.rotate({ url: APP_URL })).toEqual({ ok: true });
     const replacement = latestView();
     expect(replacement.setVisible).toHaveBeenCalledWith(false);
 

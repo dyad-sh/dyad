@@ -114,6 +114,9 @@ const ignore = (file: string) => {
   if (isPgRuntimeDependency(file)) {
     return false;
   }
+  if (file === "/node_modules/ws" || file.startsWith("/node_modules/ws/")) {
+    return false;
+  }
   if (file.startsWith("/.vite")) {
     return false;
   }

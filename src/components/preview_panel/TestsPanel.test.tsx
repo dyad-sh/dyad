@@ -33,7 +33,6 @@ const mocks = vi.hoisted(() => ({
   appUrl: "http://localhost:32100" as string | null,
   previewUrl: "http://localhost:32100/" as string | null,
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
-  getAutomationStatus: vi.fn(),
   updateSettings: vi.fn(),
   settings: {} as Record<string, unknown>,
 }));
@@ -46,9 +45,6 @@ vi.mock("@/ipc/types", () => ({
       runAppTests: mocks.runAppTests,
       stopAppTests: mocks.stopAppTests,
       getTestScreenshot: mocks.getTestScreenshot,
-    },
-    previewView: {
-      getAutomationStatus: mocks.getAutomationStatus,
     },
   },
 }));
@@ -159,7 +155,6 @@ describe("TestsPanel", () => {
       uncommittedReason: null,
     });
     mocks.settings = {};
-    mocks.getAutomationStatus.mockResolvedValue({ cdpReady: true });
   });
 
   describe("headed runs in preview", () => {
@@ -224,143 +219,19 @@ describe("TestsPanel", () => {
       });
     });
 
-    it("says the debugging port is open for the whole session", async () => {
-      // Enabled once and forgotten is the realistic case, and the exposure
-      // lasts the session rather than the run — so it belongs where the
-      // feature is used, not only in the Settings switch.
+    it("starts a preview run immediately", async () => {
       mocks.settings = { ...experimentOn, testHeaded: true };
-      renderPanel();
-
-      expect(
-        await screen.findByTestId("tests-panel-debug-port-notice"),
-      ).toBeTruthy();
-    });
-
-    it("keeps the port notice off when the experiment is off", async () => {
-      mocks.settings = { testHeaded: true };
-      renderPanel();
-
-      await screen.findByText("Run all");
-      expect(screen.queryByTestId("tests-panel-debug-port-notice")).toBeNull();
-    });
-
-    it("disables a headed run until Dyad has been restarted", async () => {
-      mocks.settings = { ...experimentOn, testHeaded: true };
-      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
-      renderPanel();
-
-      const button = await screen.findByText("Run all");
-      await waitFor(() => {
-        expect(button.getAttribute("disabled")).not.toBeNull();
-      });
-      expect(button.getAttribute("title")).toContain("Restart Dyad");
-
-      fireEvent.click(button);
-      expect(mocks.runAppTests).not.toHaveBeenCalled();
-    });
-
-    it("says why the run controls are dead somewhere the user can see", async () => {
-      // Chromium suppresses pointer events on a disabled control, so the
-      // `title` on the button never surfaces — the reason has to be rendered.
-      mocks.settings = { ...experimentOn, testHeaded: true };
-      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
-      renderPanel();
-
-      // The notice starts on the "checking" reason and settles on the restart
-      // one once the port lookup returns its definitive answer.
-      await waitFor(() => {
-        expect(
-          screen.getByTestId("tests-panel-run-blocked-notice").textContent,
-        ).toContain("Restart Dyad");
-      });
-    });
-
-    it("holds the run controls while the preview status is still unknown", async () => {
-      // The status query polls for Chromium's port file for up to 5s. In that
-      // window neither `cdpReady` nor a definitive `false` is available, so a
-      // click used to be dispatched with `preview: false` and silently open a
-      // separate browser — while the same click a moment later ran in-panel.
-      mocks.settings = { ...experimentOn, testHeaded: true };
-      let resolveStatus!: (value: { cdpReady: boolean }) => void;
-      mocks.getAutomationStatus.mockReturnValue(
-        new Promise<{ cdpReady: boolean }>((resolve) => {
-          resolveStatus = resolve;
-        }),
-      );
-      renderPanel();
-
-      const button = await screen.findByText("Run all");
-      await waitFor(() => {
-        expect(button.getAttribute("disabled")).not.toBeNull();
-      });
-      expect(
-        (await screen.findByTestId("tests-panel-run-blocked-notice"))
-          .textContent,
-      ).toContain("Checking");
-      fireEvent.click(button);
-      expect(mocks.runAppTests).not.toHaveBeenCalled();
-
-      // Once the port answers, the run goes to the preview as asked.
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
-      await act(async () => {
-        resolveStatus({ cdpReady: true });
-      });
-      await waitFor(() => {
-        expect(button.getAttribute("disabled")).toBeNull();
-      });
+      renderPanel();
+
+      const button = await screen.findByText("Run all");
+      expect(button.getAttribute("disabled")).toBeNull();
       await act(async () => {
         fireEvent.click(button);
       });
       await waitFor(() => {
         expect(mocks.runAppTests).toHaveBeenCalledWith(
           expect.objectContaining({ preview: true }),
-        );
-      });
-    });
-
-    it("disables the per-file and per-test runs too", async () => {
-      // Not just the Run-all button: a per-file run reaches the same code
-      // path, so it would tear down the iframe preview for a native view and
-      // then dead-end on the same "restart Dyad" error.
-      mocks.settings = { ...experimentOn, testHeaded: true };
-      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
-      renderPanel();
-
-      const fileRun = await screen.findByRole("button", {
-        name: `Run all tests in: signup.spec.ts`,
-      });
-      await waitFor(() => {
-        expect(fileRun.getAttribute("disabled")).not.toBeNull();
-      });
-      expect(fileRun.getAttribute("title")).toContain("Restart Dyad");
-
-      fireEvent.click(fileRun);
-      expect(mocks.runAppTests).not.toHaveBeenCalled();
-    });
-
-    it("runs in a browser and says so when the port lookup fails outright", async () => {
-      // A failed lookup is not "pending" — the query keeps polling, so it can
-      // recover, and holding every run button hostage to a check that may
-      // never answer is worse than running somewhere visible and explaining.
-      mocks.settings = { ...experimentOn, testHeaded: true };
-      mocks.getAutomationStatus.mockRejectedValue(new Error("no port"));
-      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
-      renderPanel();
-
-      const button = await screen.findByText("Run all");
-      await waitFor(() => {
-        expect(
-          screen.getByTestId("tests-panel-run-blocked-notice").textContent,
-        ).toContain("separate browser window");
-      });
-      expect(button.getAttribute("disabled")).toBeNull();
-
-      await act(async () => {
-        fireEvent.click(button);
-      });
-      await waitFor(() => {
-        expect(mocks.runAppTests).toHaveBeenCalledWith(
-          expect.objectContaining({ preview: false }),
         );
       });
     });

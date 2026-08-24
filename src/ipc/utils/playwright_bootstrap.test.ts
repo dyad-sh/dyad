@@ -24,7 +24,7 @@ import {
   isPlaywrightBrowserInstalled,
   refreshGeneratedE2eTsconfig,
   PREVIEW_CDP_ENDPOINT_ENV,
-  PREVIEW_TARGET_ID_ENV,
+  PREVIEW_CDP_TOKEN_ENV,
   PREVIEW_SHIM_RELATIVE_PATH,
   SHIM_TSCONFIG_RELATIVE_PATH,
   TEST_BASE_URL_ENV,
@@ -110,43 +110,23 @@ describe("buildPreviewShimSource", () => {
     // No browser is launched here, so the generated config's
     // `launchOptions.slowMo` never applies to a preview run.
     expect(source).toContain(`process.env.${TEST_SLOW_MO_ENV}`);
-    expect(source).toContain("connectOverCDP(endpoint, { slowMo })");
+    expect(source).toContain("connectOverCDP(endpoint, {");
+    expect(source).toContain("headers: { Authorization:");
   });
 
   it("attaches to the existing page instead of opening one", () => {
     expect(source).toContain("connectOverCDP");
-    expect(source).toContain("findPreviewContext(browser, targetId)");
-    expect(source).toContain(
-      "for (const candidateContext of browser.contexts())",
-    );
-    expect(source).toContain(
-      "for (const candidatePage of candidateContext.pages())",
-    );
-    expect(source).not.toContain("browser.contexts()[0]");
+    expect(source).toContain("requirePreviewContext(browser)");
+    expect(source).toContain("contexts.length !== 1");
     expect(source).toContain("context.pages().find");
     // Closing the context or page would take the user's preview down with it.
     expect(source).not.toContain("context.close()");
     expect(source).not.toContain("page.close()");
   });
 
-  it("clears Playwright media emulation outside all preview contexts", () => {
-    // connectOverCDP initializes every Electron page, including Dyad's own
-    // renderer, with Playwright's default light color scheme. Only the preview
-    // context should retain test-controlled media emulation.
-    expect(source).toContain(
-      'navigator.userAgent.includes("DyadPreviewTarget/")',
-    );
-    expect(source).toContain("!previewContexts.has(context)");
-    expect(source).toContain("page.emulateMedia({");
-    expect(source).toContain("colorScheme: null");
-    expect(source).toContain("reducedMotion: null");
-    expect(source).toContain("forcedColors: null");
-    expect(source).toContain("contrast: null");
-    expect(source).toContain('context.on("page", onPage)');
-    expect(source).toContain('context.off("page", onPage)');
-    expect(source.indexOf("await restoreNonPreviewMedia()")).toBeLessThan(
-      source.indexOf("await browser.close()"),
-    );
+  it("fails closed if the broker exposes more than the preview context", () => {
+    expect(source).toContain("instead of exactly one");
+    expect(source).not.toContain("protectNonPreviewContexts");
   });
 
   it("resolves relative URLs for API requests too", () => {
@@ -222,7 +202,7 @@ describe("preview shim fixtures", () => {
         env: {
           ...process.env,
           [PREVIEW_CDP_ENDPOINT_ENV]: "http://127.0.0.1:9222",
-          [PREVIEW_TARGET_ID_ENV]: "selected-preview",
+          [PREVIEW_CDP_TOKEN_ENV]: "test-token",
           [TEST_BASE_URL_ENV]: BASE_URL,
         },
       },
@@ -275,54 +255,13 @@ describe("preview shim fixtures", () => {
     };
   }
 
-  it("preserves media emulation in every active Dyad preview", async () => {
-    const makePage = (targetId?: string) => ({
-      evaluate: vi.fn(async (_fn: unknown, requestedTargetId?: string) =>
-        requestedTargetId === undefined
-          ? targetId !== undefined
-          : targetId === requestedTargetId,
-      ),
-      emulateMedia: vi.fn().mockResolvedValue(undefined),
-    });
-    const makeContext = (page: ReturnType<typeof makePage>) => ({
-      pages: () => [page],
-      on: vi.fn(),
-      off: vi.fn(),
-    });
-    const selectedPreviewPage = makePage("selected-preview");
-    const concurrentPreviewPage = makePage("another-preview");
-    const rendererPage = makePage();
-    const selectedPreviewContext = makeContext(selectedPreviewPage);
-    const concurrentPreviewContext = makeContext(concurrentPreviewPage);
-    const rendererContext = makeContext(rendererPage);
-    const browser = {
-      contexts: () => [
-        selectedPreviewContext,
-        concurrentPreviewContext,
-        rendererContext,
-      ],
-      close: vi.fn().mockResolvedValue(undefined),
-    };
+  it("rejects a broker that exposes any extra browser context", async () => {
+    const browser = { contexts: () => [{}, {}] };
     const fixtures = await loadShimFixtures(browser);
 
-    await fixtures.browser[0](
-      {},
-      async (usedBrowser) => expect(usedBrowser).toBe(browser),
-      PASSING_TEST_INFO,
-    );
-
-    expect(selectedPreviewPage.emulateMedia).not.toHaveBeenCalled();
-    expect(concurrentPreviewPage.emulateMedia).not.toHaveBeenCalled();
-    expect(rendererPage.emulateMedia).toHaveBeenCalledTimes(2);
-    expect(rendererContext.on).toHaveBeenCalledWith(
-      "page",
-      expect.any(Function),
-    );
-    expect(rendererContext.off).toHaveBeenCalledWith(
-      "page",
-      expect.any(Function),
-    );
-    expect(browser.close).toHaveBeenCalledOnce();
+    await expect(
+      fixtures.context({ browser }, async () => {}, PASSING_TEST_INFO),
+    ).rejects.toThrow("instead of exactly one");
   });
 
   async function runPageFixture({
@@ -359,14 +298,7 @@ describe("preview shim fixtures", () => {
       _options: contextOptions,
       request: api,
     };
-    const sameOriginDistractor = {
-      url: () => initialUrl,
-      evaluate: async () => false,
-    };
-    const distractorContext = {
-      pages: () => [sameOriginDistractor],
-    };
-    const browser = { contexts: () => [distractorContext, context] };
+    const browser = { contexts: () => [context] };
 
     // Run the real context fixture, then the real page fixture nested inside
     // it, exactly as Playwright would.
@@ -972,9 +904,8 @@ describe("buildPlaywrightConfig", () => {
 
   it("records no artifacts of its own during a preview run", () => {
     const config = buildPlaywrightConfig(null);
-    // Both recorders capture every page in the connection/context, which for a
-    // preview run includes Dyad's own windows. The shim attaches a screenshot
-    // of the page under test instead.
+    // Tracing needs browser-global CDP access, which the restricted preview
+    // broker does not expose. The shim attaches a screenshot directly instead.
     expect(config).toContain(
       `screenshot: process.env.${PREVIEW_CDP_ENDPOINT_ENV}`,
     );

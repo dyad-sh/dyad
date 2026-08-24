@@ -65,18 +65,6 @@ export const previewViewContracts = {
     input: z.void(),
     output: z.void(),
   }),
-  getAutomationStatus: defineContract({
-    channel: "preview-view:get-automation-status",
-    input: z.void(),
-    output: z.object({
-      /**
-       * Whether a test run can drive the preview: the debugging switch was
-       * applied at boot and Chromium published its port. False until Dyad is
-       * restarted after enabling the experiment.
-       */
-      cdpReady: z.boolean(),
-    }),
-  }),
 } as const;
 
 /**

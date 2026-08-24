@@ -41,6 +41,7 @@ export default defineConfig(({ forgeConfigSelf }) => ({
         "node-pty",
         "mustardscript",
         "pg",
+        "ws",
       ],
     },
   },

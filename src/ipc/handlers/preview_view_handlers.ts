@@ -7,7 +7,6 @@ import {
   previewViewSendContracts,
 } from "../types/preview_view";
 import { assertTrustedRenderer } from "../utils/renderer_security";
-import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
 import {
   hidePreviewView,
   previewViewGoBack,
@@ -62,10 +61,6 @@ export function registerPreviewViewHandlers(): void {
     if (!window) return;
     previewViewReload(window);
   });
-
-  createTypedHandler(previewViewContracts.getAutomationStatus, async () => ({
-    cdpReady: (await resolveRemoteDebuggingEndpoint()) !== null,
-  }));
 
   // Bounds arrive on every animation frame while a panel divider is dragged, so
   // they use a one-way channel. Invalid payloads are logged and dropped rather

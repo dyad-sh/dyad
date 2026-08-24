@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { WebContentsView, shell } from "electron";
-import type { BrowserWindow, Session } from "electron";
+import type { BrowserWindow, Session, WebContents } from "electron";
 import log from "electron-log";
 
 import { safeSend } from "../ipc/utils/safe_sender";
@@ -44,8 +44,6 @@ interface PreviewViewEntry {
   latestScreenshotDataUrl: string | null;
   screenshotTimer: ReturnType<typeof setInterval> | null;
   screenshotCapturePending: boolean;
-  /** Opaque marker used to select this exact view from the process-wide CDP endpoint. */
-  automationTargetId: string;
 }
 
 /**
@@ -314,7 +312,6 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
     latestScreenshotDataUrl: null,
     screenshotTimer: null,
     screenshotCapturePending: false,
-    automationTargetId: randomUUID(),
   };
 
   const contents = view.webContents;
@@ -326,13 +323,6 @@ function createEntry(window: BrowserWindow, key: number): PreviewViewEntry {
   entry.session.setPermissionCheckHandler(() => false);
   entry.session.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false),
-  );
-
-  // The remote-debugging endpoint exposes every window in this Electron
-  // process. Tag the exact native preview so Playwright never selects another
-  // same-origin preview from a different Dyad window.
-  contents.setUserAgent(
-    `${contents.getUserAgent()} DyadPreviewTarget/${entry.automationTargetId}`,
   );
 
   contents.setWindowOpenHandler(({ url }) => {
@@ -761,10 +751,12 @@ export async function waitForPreviewView(
  * there is no live view, so the caller can fail the run before spawning.
  */
 export interface PreviewAutomationSession {
+  /** The only WebContents this automation session is allowed to drive. */
+  getWebContents: () => WebContents | null;
   /** Replace the driven page with a fresh in-memory Electron session. */
   rotate: (options: {
     url: string;
-  }) => { ok: true; targetId: string } | { ok: false; reason: string };
+  }) => { ok: true } | { ok: false; reason: string };
   end: () => void;
 }
 
@@ -787,6 +779,14 @@ export function beginPreviewAutomation(
   let activeEntry = entry;
   let ended = false;
   return {
+    getWebContents: () => {
+      if (ended) return null;
+      const current = entries.get(key);
+      if (current !== activeEntry || current.view.webContents.isDestroyed()) {
+        return null;
+      }
+      return current.view.webContents;
+    },
     rotate: ({ url }) => {
       if (ended) {
         return { ok: false, reason: "preview automation already ended" };
@@ -851,7 +851,7 @@ export function beginPreviewAutomation(
         );
       });
       activeEntry = replacement;
-      return { ok: true, targetId: replacement.automationTargetId };
+      return { ok: true };
     },
     end: () => {
       if (ended) return;

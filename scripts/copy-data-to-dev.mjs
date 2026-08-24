@@ -20,7 +20,6 @@ const TRANSIENT_TOP_LEVEL_ENTRIES = new Set([
   "Crashpad",
   "DawnGraphiteCache",
   "DawnWebGPUCache",
-  "DevToolsActivePort",
   "GPUCache",
   "dyad-crash-reports",
   "logs",

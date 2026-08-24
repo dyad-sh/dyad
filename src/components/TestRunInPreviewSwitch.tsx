@@ -34,14 +34,11 @@ export function TestRunInPreviewSwitch() {
         place. The view lasts for the run only: component selection, the visual
         editor, the annotator, and console capture are unavailable while it is
         open. Each test gets a fresh page and browser session, so cookies and
-        stored data do not carry over between tests. Dyad must be restarted for
-        this setting to take effect.
+        stored data do not carry over between tests.
       </p>
-      <p className="text-[13px] leading-relaxed text-amber-700 dark:text-amber-500">
-        While enabled, Dyad opens a debugging port on 127.0.0.1 for the whole
-        session — not just while tests run — and any program on this machine
-        that finds it can control the app. Only enable this on a machine you
-        trust. Turn it off and restart Dyad when you're done.
+      <p className="text-[13px] leading-relaxed text-muted-foreground">
+        Automation uses an authenticated connection opened only for the test run
+        and scoped to its isolated preview page.
       </p>
     </div>
   );

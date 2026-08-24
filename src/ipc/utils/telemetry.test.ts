@@ -35,6 +35,44 @@ describe("shouldFilterTelemetryException", () => {
     ).toBe(true);
   });
 
+  it("does not report a server that could not be reached over SSH", async () => {
+    // A mistyped address or a firewalled port 22 is the user's own network,
+    // and the message carries whatever they typed.
+    const { SshError } = await import("@/ipc/utils/ssh_client");
+    expect(
+      shouldFilterTelemetryException(
+        new SshError(
+          "unreachable",
+          "Could not reach the server (ENOTFOUND).",
+          DyadErrorKind.External,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      shouldFilterTelemetryException(
+        new SshError(
+          "timeout",
+          "The server did not answer in time.",
+          DyadErrorKind.External,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("still reports an SSH failure nothing here recognised", async () => {
+    // The bucket for what was not classified is the one worth hearing about.
+    const { SshError } = await import("@/ipc/utils/ssh_client");
+    expect(
+      shouldFilterTelemetryException(
+        new SshError(
+          "unknown",
+          "Could not connect over SSH: something new",
+          DyadErrorKind.External,
+        ),
+      ),
+    ).toBe(false);
+  });
+
   it("filters RateLimitError 429s from retryWithRateLimit", () => {
     const error = new Error("Rate limited (429): Too Many Requests");
     error.name = "RateLimitError";

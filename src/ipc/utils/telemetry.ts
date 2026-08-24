@@ -6,6 +6,7 @@ import {
 } from "@/errors/dyad_error";
 import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { TelemetryEventPayload } from "@/ipc/types";
+import { SshError } from "@/ipc/utils/ssh_client";
 import {
   COOLIFY_REQUEST_ERROR_NAME,
   COOLIFY_TRANSPORT_ERROR_NAME,
@@ -124,6 +125,18 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // fails with the host in its message — "getaddrinfo ENOTFOUND <their box>" —
   // and its kind is External, which is not otherwise filtered.
   if (error instanceof Error && error.name === COOLIFY_TRANSPORT_ERROR_NAME) {
+    return true;
+  }
+
+  // The same thing again over SSH rather than HTTP: an address that does not
+  // answer, or a port nobody is listening on, is the user's own network being
+  // reported as a fault here — and the message carries whatever they typed.
+  // Only the two that say what went wrong. "unknown" is the bucket for a
+  // failure nothing here recognised, which is what telemetry is for.
+  if (
+    error instanceof SshError &&
+    (error.failure === "unreachable" || error.failure === "timeout")
+  ) {
     return true;
   }
 

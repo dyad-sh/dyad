@@ -10,6 +10,7 @@ import {
 import type { SetupServer, SetupSnapshot } from "../types/coolify_setup";
 import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "@/main/settings";
+import type { Coolify } from "@/lib/schemas";
 import {
   SshError,
   connectSsh,
@@ -93,6 +94,10 @@ function setupController(): CoolifySetupController {
        * starts to matter, which turns a keychain that was briefly busy into
        * nothing at all.
        */
+      /** Whether the server ever reported an account, so a run that ended
+          before one existed can put back what it wrote on the way in. */
+      let accountConfirmed = false;
+      let adminBeforeRun: Coolify["admin"];
       let unsavedAccount: {
         credentials: { email: string; password: string };
         dashboardUrl: string;
@@ -110,6 +115,31 @@ function setupController(): CoolifySetupController {
         connect: (t, verify, signal): Promise<SshSession> =>
           connectSsh(t, verify, { signal }),
         onProgress: ({ step, output }) => hooks.onProgress(step, output),
+        // Written before the installer runs, because the password it is about
+        // to put in the server's .env is already decided — and a run that ends
+        // without reaching the code below is exactly how the only copy of it
+        // gets lost. Put back on the way out if no account ever appeared, so a
+        // server that never got one does not leave a password behind for it.
+        onCredentialsBuilt: ({ credentials, dashboardUrl }) => {
+          try {
+            const current = readSettings().coolify;
+            adminBeforeRun = current?.admin;
+            writeSettings({
+              coolify: {
+                ...current,
+                admin: {
+                  email: credentials.email,
+                  password: { value: credentials.password },
+                  instanceUrl: dashboardUrl,
+                },
+              },
+            });
+          } catch (error) {
+            // The run is worth more than this record. Failing here only means
+            // the account has to be caught by the write below instead.
+            logger.error("Could not store the admin account early", error);
+          }
+        },
         // Written the moment the account exists rather than at the end. A
         // server whose dashboard never answers still has this account on it,
         // and Dyad is the only thing that knows the password it invented.
@@ -126,6 +156,7 @@ function setupController(): CoolifySetupController {
               },
             });
             unsavedAccount = null;
+            accountConfirmed = true;
           } catch (error) {
             // The account exists on the server whatever happened here, and a
             // second attempt is refused because Coolify is now installed. The
@@ -156,6 +187,22 @@ function setupController(): CoolifySetupController {
               });
             } catch (retryError) {
               logger.error("Could not store the admin account", retryError);
+            }
+          } else if (!accountConfirmed) {
+            // Nothing was ever seeded, so the password written on the way in
+            // opens nothing. Put back whatever stood before rather than
+            // clearing outright: a failure here can follow a server that was
+            // set up earlier, and that one's account is still the only copy
+            // of its own password.
+            try {
+              writeSettings({
+                coolify: { ...readSettings().coolify, admin: adminBeforeRun },
+              });
+            } catch (restoreError) {
+              logger.error(
+                "Could not put back the admin account",
+                restoreError,
+              );
             }
           }
           // A key that does not match is not the user declining, and reporting

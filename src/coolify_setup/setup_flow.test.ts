@@ -459,6 +459,38 @@ describe("runServerSetup", () => {
     expect(bad.session.end).toHaveBeenCalled();
   });
 
+  it("hands over the password before the installer is asked to use it", async () => {
+    // The installer writes it into the server's .env partway through a run of
+    // minutes. Anything that ends the process in between takes the only copy
+    // with it, and preflight then refuses to install over the container.
+    const server = fakeServer();
+    const seen: Array<{ password: string; at: number }> = [];
+    let installs = 0;
+    const original = server.session.run;
+    server.session.run = vi.fn(
+      async (command: string, options?: { input?: string }) => {
+        if (command.includes("bash -s")) installs += 1;
+        return (original as unknown as typeof server.session.run)(
+          command,
+          options,
+        );
+      },
+    ) as unknown as SshSession["run"];
+
+    await run(server, {
+      onCredentialsBuilt: ({
+        credentials,
+      }: {
+        credentials: { password: string };
+      }) => seen.push({ password: credentials.password, at: installs }),
+    }).promise;
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].password).toBeTruthy();
+    // Before the installer had run, not after.
+    expect(seen[0].at).toBe(0);
+  });
+
   it("says the link died rather than blaming the version for it", async () => {
     // Answering null for a dead connection sends the user to the screen that
     // tells them their freshly installed Coolify is too old to drive — for a

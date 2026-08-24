@@ -102,6 +102,17 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
   runServerSetup: vi.fn(async (options: Record<string, unknown>) => {
     h.runCalls += 1;
     h.lastSetupOptions = options;
+    // The real flow hands over the password before the installer runs, since
+    // it invented it rather than discovering it.
+    (
+      options.onCredentialsBuilt as (a: {
+        credentials: { email: string; password: string };
+        dashboardUrl: string;
+      }) => void
+    )({
+      credentials: { email: "me@gmail.com", password: "Abc123@xyz" },
+      dashboardUrl: "http://203.0.113.5:8000",
+    });
     // The real flow reports the account the moment it exists, before the
     // steps that can still fail.
     if (h.reportsAccount) {
@@ -515,12 +526,51 @@ describe("run", () => {
     expect(saved.coolify.admin?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
-  it("writes nothing when the failure came before any account", async () => {
+  it("leaves no account behind for a server that never got one", async () => {
+    // The password goes down before the installer runs, so a run that ends
+    // without ever seeding an account has to take it back off — it opens
+    // nothing, and leaving it would stand in the way of installing again.
     h.reportsAccount = false;
     h.setupError = new Error("This server cannot be set up automatically.");
     await checkThenRun().catch(() => {});
 
-    expect(h.written).toHaveLength(0);
+    const saved = h.written.at(-1) as { coolify: { admin?: unknown } };
+    expect(saved.coolify.admin).toBeUndefined();
+  });
+
+  it("has the password down before the installer is finished with it", async () => {
+    // The installer writes it into Coolify's own .env partway through a run
+    // that takes minutes. Quitting in between is what loses the only copy.
+    h.reportsAccount = false;
+    h.setupError = new Error("boom");
+    await checkThenRun().catch(() => {});
+
+    const early = h.written[0] as {
+      coolify: { admin?: { password?: { value: string } } };
+    };
+    expect(early.coolify.admin?.password?.value).toBeTruthy();
+  });
+
+  it("puts back an earlier server's account when this one never appeared", async () => {
+    // A failure here can follow a server set up before it, whose password is
+    // still the only copy of its own. Clearing outright would take that too.
+    h.settings = {
+      coolify: {
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "TheEarlierOne" },
+          instanceUrl: "http://198.51.100.9:8000",
+        },
+      },
+    } as Record<string, unknown>;
+    h.reportsAccount = false;
+    h.setupError = new Error("boom");
+    await checkThenRun().catch(() => {});
+
+    const saved = h.written.at(-1) as {
+      coolify: { admin?: { password?: { value: string } } };
+    };
+    expect(saved.coolify.admin?.password?.value).toBe("TheEarlierOne");
   });
 
   it("refuses a second setup on a different machine", async () => {

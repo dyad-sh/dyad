@@ -102,6 +102,19 @@ export interface SetupOptions {
     credentials: AdminCredentials;
     dashboardUrl: string;
   }) => void;
+  /**
+   * The password Dyad is about to give the server, before it is given.
+   *
+   * Dyad invents this rather than discovering it, so it is knowable a moment
+   * earlier than the account is — and the installer writes it into Coolify's
+   * own .env partway through a run that takes minutes. Quitting in between
+   * would otherwise leave a server nobody has the password for, which
+   * preflight then refuses to install over.
+   */
+  onCredentialsBuilt?: (account: {
+    credentials: AdminCredentials;
+    dashboardUrl: string;
+  }) => void;
 }
 
 export async function runServerSetup({
@@ -112,6 +125,7 @@ export async function runServerSetup({
   signal,
   connect,
   onAccountKnown,
+  onCredentialsBuilt,
   recoveryProbeTimeoutMs = RECOVERY_PROBE_TIMEOUT_MS,
   waitForDashboardImpl = waitForDashboard,
   waitForAdminSeededImpl = waitForAdminSeeded,
@@ -135,6 +149,13 @@ export async function runServerSetup({
     }
 
     const credentials = buildAdminCredentials(adminEmail);
+    // Before the installer, not after it. What it is about to write into the
+    // server's .env is already decided here, and the run that writes it is
+    // where a crash costs the only copy.
+    onCredentialsBuilt?.({
+      credentials,
+      dashboardUrl: plainUrlFor(target.host),
+    });
 
     report("installing");
     try {

@@ -296,7 +296,7 @@ describe("temp preview service", () => {
     expect(mocks.revoke).toHaveBeenCalledWith(updated);
   });
 
-  it("revokes a same-capability update when renewed metadata cannot be persisted", async () => {
+  it("keeps a same-capability update recoverable when renewed metadata cannot be persisted", async () => {
     const appPath = await createApp();
     mocks.storeRead.mockResolvedValue(previousRecord);
     const updated = {
@@ -311,7 +311,29 @@ describe("temp preview service", () => {
     await expect(
       publishTempPreview({ appId: 7, appPath, appName: "Demo" }),
     ).rejects.toThrow("disk full");
-    expect(mocks.revoke).toHaveBeenCalledWith(updated);
+    expect(mocks.revoke).not.toHaveBeenCalled();
+  });
+
+  it("reuses an expired stored capability for remote reconciliation", async () => {
+    const appPath = await createApp();
+    const expiredRecord = {
+      ...previousRecord,
+      expiresAt: "2026-08-01T00:00:00.000Z",
+    };
+    mocks.storeRead.mockResolvedValue(expiredRecord);
+
+    await publishTempPreview({ appId: 7, appPath, appName: "Demo" });
+
+    expect(mocks.publish).toHaveBeenCalledWith({
+      files: [],
+      title: "Demo",
+      previous: {
+        tempId: expiredRecord.tempId,
+        canonicalUrl: expiredRecord.canonicalUrl,
+        updateToken: expiredRecord.updateToken,
+        expiresAt: expiredRecord.expiresAt,
+      },
+    });
   });
 
   it("retires a stale connection and creates a fresh preview", async () => {

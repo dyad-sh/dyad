@@ -120,10 +120,15 @@ export async function publishTempPreview(input: {
     try {
       await store.write(input.appId, record);
     } catch (error) {
-      try {
-        await client.revoke(published);
-      } catch {
-        // Best-effort cleanup: preserve the local persistence failure.
+      const storedCapabilityCannotReconcile =
+        published.tempId !== previous?.tempId ||
+        published.updateToken !== previous?.updateToken;
+      if (storedCapabilityCannotReconcile) {
+        try {
+          await client.revoke(published);
+        } catch {
+          // Best-effort cleanup: preserve the local persistence failure.
+        }
       }
       throw error;
     }
@@ -246,12 +251,7 @@ function activeConnection(
   const expiresAt = record
     ? getEffectiveTempPreviewExpiry(record.expiresAt, record.lastPublishedAt)
     : null;
-  if (
-    !record ||
-    record.state !== "active" ||
-    !record.updateToken ||
-    isTempPreviewExpired(record.expiresAt, record.lastPublishedAt)
-  ) {
+  if (!record || record.state !== "active" || !record.updateToken) {
     return undefined;
   }
   return {

@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { discoverTempPreviewBundle, TEMP_PREVIEW_MAX_FILES } from "./bundle";
 
@@ -80,6 +80,50 @@ describe("discoverTempPreviewBundle", () => {
     const files = await discoverTempPreviewBundle(root);
 
     expect(files.map((file) => file.path)).toEqual(["index.html"]);
+  });
+
+  it.each([
+    ".env",
+    "assets/.env.production",
+    ".git/config",
+    ".ssh/id_ed25519",
+    ".aws/credentials",
+    ".docker/config.json",
+    ".kube/config",
+    "keys/deploy.pem",
+    "keys/deploy.ppk",
+    "keys/signing.p12",
+    "config/credentials.json",
+    "config/service-account.json",
+    "config/serviceAccountKey.json",
+    "config/demo-firebase-adminsdk-abc.json",
+    "oauth/client_secret_123.apps.googleusercontent.com.json",
+  ])("rejects an obvious secret-bearing build path: %s", async (bundlePath) => {
+    const root = await createBundleRoot();
+    await writeFile(join(root, "index.html"), "ok");
+    await mkdir(dirname(join(root, bundlePath)), { recursive: true });
+    await writeFile(join(root, bundlePath), "sensitive");
+
+    await expect(discoverTempPreviewBundle(root)).rejects.toThrow(
+      `Temporary preview blocked because ${bundlePath}`,
+    );
+  });
+
+  it("allows ordinary assets whose names mention keys or secrets", async () => {
+    const root = await createBundleRoot();
+    await mkdir(join(root, "assets"));
+    await writeFile(join(root, "index.html"), "ok");
+    await writeFile(join(root, "assets", "key.svg"), "<svg />");
+    await writeFile(join(root, "assets", "secrets.png"), "image");
+    await writeFile(join(root, "assets", "environment-setup.md"), "docs");
+
+    await expect(discoverTempPreviewBundle(root)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "assets/key.svg" }),
+        expect.objectContaining({ path: "assets/secrets.png" }),
+        expect.objectContaining({ path: "assets/environment-setup.md" }),
+      ]),
+    );
   });
 
   it("rejects a symbolic link used as the build-output root", async () => {

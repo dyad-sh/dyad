@@ -75,6 +75,10 @@ describe("TemporaryPreviewCard", () => {
     const user = userEvent.setup();
     renderCard();
 
+    expect(
+      screen.getByText(/Every file generated in dist becomes public/),
+    ).toBeTruthy();
+
     await user.click(
       await screen.findByRole("button", { name: "Create preview" }),
     );

@@ -143,8 +143,9 @@ export function TemporaryPreviewCard({ appId }: TemporaryPreviewCardProps) {
               deployment provider. It expires automatically after 7 days.
             </p>
             <p className="text-xs text-amber-700 dark:text-amber-300">
-              Anyone with the link can view it. Server-side features and secrets
-              are not included.
+              Anyone with the link can view it. Every file generated in dist
+              becomes public—remove credentials and sensitive data before
+              publishing. Server-side features are not included.
             </p>
           </div>
 

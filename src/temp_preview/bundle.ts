@@ -2,10 +2,23 @@ import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 
 export const TEMP_PREVIEW_MAX_FILES = 100;
 export const TEMP_PREVIEW_MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const TEMP_PREVIEW_MAX_BUNDLE_BYTES = 50 * 1024 * 1024;
+
+const SENSITIVE_BUNDLE_PATH_PATTERNS = [
+  /(^|\/)(?:\.git|\.ssh|\.aws|\.azure|\.kube|\.docker|\.config\/gcloud)(?:\/|$)/i,
+  /(^|\/)(?:\.npmrc|\.yarnrc(?:\.yml)?|\.pypirc|\.netrc|\.git-credentials)$/i,
+  /(^|\/)id_(?:rsa|dsa|ecdsa|ed25519)$/i,
+  /\.(?:key|pem|ppk|p12|pfx|jks|keystore|kdbx)$/i,
+  /(^|\/)(?:credentials(?:\.json|\.ya?ml|\.toml)?|secrets?\.(?:json|ya?ml|toml))$/i,
+  /(^|\/)(?:(?:[^/]+[-_])?service[-_]?account(?:[-_]?key)?|private[-_]?key)\.json$/i,
+  /(^|\/)[^/]*firebase-adminsdk[^/]*\.json$/i,
+  /(^|\/)client_secret(?:_[^/]+)?\.json$/i,
+  /(^|\/)application_default_credentials\.json$/i,
+];
 
 export interface TempPreviewBundleFile {
   path: string;
@@ -137,6 +150,12 @@ async function walk(
     }
     if (!entry.isFile()) continue;
 
+    if (isSensitiveBundlePath(bundlePath)) {
+      throw new Error(
+        `Temporary preview blocked because ${bundlePath} looks like a credential or secret file. Remove it from dist and retry.`,
+      );
+    }
+
     paths.push(bundlePath);
     if (paths.length > TEMP_PREVIEW_MAX_FILES) {
       throw new Error(
@@ -144,6 +163,13 @@ async function walk(
       );
     }
   }
+}
+
+function isSensitiveBundlePath(bundlePath: string): boolean {
+  return (
+    isDotenvFilePath(bundlePath) ||
+    SENSITIVE_BUNDLE_PATH_PATTERNS.some((pattern) => pattern.test(bundlePath))
+  );
 }
 
 async function snapshotFile(

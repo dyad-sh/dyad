@@ -264,6 +264,60 @@ describe("recordAppSizeForSession", () => {
     });
   });
 
+  it("remembers an app whose write failed", () => {
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    recordAppSizeForSession({
+      appId: 1,
+      fileCount: 5_000,
+      totalBytes: 900_000,
+    });
+    writeSpy.mockRestore();
+
+    recordAppSizeForSession({ appId: 2, fileCount: 20, totalBytes: 4_000 });
+
+    // What the session saw is a fact about the session, not about the disk. If
+    // the failed measurement were forgotten, this record would claim a
+    // single-app session and slip past the distinctApps filter with the
+    // largest app erased.
+    expect(readLastSessionRecord()).toMatchObject({
+      appId: 2,
+      fileCount: 20,
+      maxFileCount: 5_000,
+      maxTotalBytes: 900_000,
+      distinctApps: 2,
+    });
+  });
+
+  it("writes an unchanged measurement when the max drifted during a failed write", () => {
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
+
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    recordAppSizeForSession({
+      appId: 2,
+      fileCount: 5_000,
+      totalBytes: 900_000,
+    });
+    writeSpy.mockRestore();
+
+    // Back to app 1 at exactly the size already on disk. The measurement is
+    // unchanged, but the record is not, so skipping the write would leave the
+    // session claiming a single-app 100-byte session with the large app gone.
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
+
+    expect(readLastSessionRecord()).toEqual({
+      appId: 1,
+      fileCount: 10,
+      totalBytes: 100,
+      maxFileCount: 5_000,
+      maxTotalBytes: 900_000,
+      distinctApps: 2,
+    });
+  });
+
   it("writes again once the codebase actually changes", () => {
     recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
     recordAppSizeForSession({ appId: 1, fileCount: 11, totalBytes: 120 });

@@ -122,12 +122,25 @@ export function getPreviousSessionAppSize(): SessionAppSizeRecord | null {
 }
 
 /**
- * This session's measurement, mirrored to disk on every change. Memory is
- * authoritative so a write never has to read back and merge the file.
+ * What this session has seen. These are facts about the session, so they are
+ * updated on every measurement whether or not it reaches disk — a failed write
+ * that erased them would make a later successful record claim the session had
+ * only ever seen one app.
  */
-let currentSession: SessionAppSizeRecord | null = null;
+let largestMeasurement: { fileCount: number; totalBytes: number } | null = null;
 const measuredAppIds = new Set<number>();
 
+/**
+ * What is actually on disk, which is what a repeat measurement is compared
+ * against so a failed write is retried rather than skipped as unchanged.
+ */
+let lastWrittenRecord: SessionAppSizeRecord | null = null;
+
+/**
+ * Compares the whole record, not just the measurement. A failed write leaves
+ * lastWrittenRecord behind the session accumulators, so the same app at the
+ * same size can still owe the disk a larger max or a higher distinctApps.
+ */
 function isUnchanged(
   previous: SessionAppSizeRecord | null,
   next: SessionAppSizeRecord,
@@ -157,41 +170,38 @@ export function recordAppSizeForSession({
   fileCount: number;
   totalBytes: number;
 }): void {
-  // Compared on bytes, and both max fields move together, so the pair always
-  // describes one real app rather than a file count from one and a byte total
-  // from another.
-  const isLargest =
-    currentSession === null || totalBytes > currentSession.maxTotalBytes;
+  measuredAppIds.add(appId);
+  // Chosen on bytes, and the pair moves together, so it stays a description of
+  // one real app.
+  if (
+    largestMeasurement === null ||
+    totalBytes > largestMeasurement.totalBytes
+  ) {
+    largestMeasurement = { fileCount, totalBytes };
+  }
 
   const next: SessionAppSizeRecord = {
     fileCount,
     totalBytes,
     appId,
-    maxFileCount: isLargest ? fileCount : currentSession!.maxFileCount,
-    maxTotalBytes: isLargest ? totalBytes : currentSession!.maxTotalBytes,
-    distinctApps: measuredAppIds.has(appId)
-      ? measuredAppIds.size
-      : measuredAppIds.size + 1,
+    maxFileCount: largestMeasurement.fileCount,
+    maxTotalBytes: largestMeasurement.totalBytes,
+    distinctApps: measuredAppIds.size,
   };
 
-  if (isUnchanged(currentSession, next)) {
+  if (isUnchanged(lastWrittenRecord, next)) {
     return;
   }
 
-  // Memory is only updated once the record is on disk. Committing a failed
-  // write would make the next identical measurement look unchanged and skip
-  // its retry, losing the size for the rest of the session.
-  if (!writeLastSessionRecord(next)) {
-    return;
+  if (writeLastSessionRecord(next)) {
+    lastWrittenRecord = next;
   }
-
-  measuredAppIds.add(appId);
-  currentSession = next;
 }
 
 /** For tests: forget the session state accumulated in this module. */
 export function resetSessionStateForTesting(): void {
   measuredAppIds.clear();
-  currentSession = null;
+  largestMeasurement = null;
+  lastWrittenRecord = null;
   previousSessionAppSize = null;
 }

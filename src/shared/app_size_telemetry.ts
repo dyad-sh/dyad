@@ -13,22 +13,24 @@ export const SessionAppSizeRecordSchema = z.object({
   fileCount: z.number().int().nonnegative(),
   totalBytes: z.number().int().nonnegative(),
   /**
-   * The largest app the session measured, by bytes. The pair moves together,
-   * so both always describe one real app rather than a mix of two.
+   * The largest app the session measured, and its file count. Read them as one
+   * app's two dimensions, not as two independent maxima: the app is chosen by
+   * bytes, so maxFileCount is that app's file count and can be lower than the
+   * highest file count the session saw.
    *
-   * Recent and largest differ only when a session works in more than one app,
-   * and they argue for different things: a big app touched hours ago may be
-   * irrelevant to a crash, or may still be resident, since the file content
-   * cache is never cleared on an app switch. Both are reported so the data can
-   * settle which one tracks crashes.
+   * Recent and largest differ when a session works in more than one app, or
+   * when one app shrinks between turns. They argue for different things: a big
+   * app touched hours ago may be irrelevant to a crash, or may still be
+   * resident, since the file content cache is never cleared on an app switch.
+   * Both are reported so the data can settle which one tracks crashes.
    */
   maxFileCount: z.number().int().nonnegative(),
   maxTotalBytes: z.number().int().nonnegative(),
   /** The app measured, so a session that switched apps can be identified. */
   appId: z.number().int(),
   /**
-   * Distinct apps measured this session. Only single-app sessions have an
-   * unambiguous size, and there recent and largest are the same number.
+   * Distinct apps measured this session. Above one, recent and largest may
+   * describe different apps, so only the largest is unambiguous.
    */
   distinctApps: z.number().int().positive(),
 });

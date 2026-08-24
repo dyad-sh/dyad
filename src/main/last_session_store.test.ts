@@ -33,7 +33,7 @@ import {
 
 const RECORD_PATH = () => path.join(userDataDir, "last-session.json");
 
-const laneRecord = {
+const record = {
   fileCount: 120,
   totalBytes: 45_000,
   appId: 7,
@@ -51,15 +51,9 @@ afterEach(async () => {
 });
 
 describe("writeLastSessionRecord / readLastSessionRecord", () => {
-  it("round-trips both lanes", () => {
-    const record = { viewed: laneRecord, chatted: { ...laneRecord, appId: 8 } };
+  it("round-trips a record", () => {
     writeLastSessionRecord(record);
     expect(readLastSessionRecord()).toEqual(record);
-  });
-
-  it("round-trips a single lane", () => {
-    writeLastSessionRecord({ viewed: laneRecord });
-    expect(readLastSessionRecord()).toEqual({ viewed: laneRecord });
   });
 
   it("returns null when no record exists", () => {
@@ -71,10 +65,10 @@ describe("writeLastSessionRecord / readLastSessionRecord", () => {
     expect(readLastSessionRecord()).toBeNull();
   });
 
-  it("rejects a lane with the wrong shape", () => {
+  it("rejects a record with the wrong shape", () => {
     fs.writeFileSync(
       RECORD_PATH(),
-      JSON.stringify({ viewed: { ...laneRecord, fileCount: "many" } }),
+      JSON.stringify({ ...record, fileCount: "many" }),
     );
     expect(readLastSessionRecord()).toBeNull();
   });
@@ -82,21 +76,21 @@ describe("writeLastSessionRecord / readLastSessionRecord", () => {
   it("rejects a negative count rather than reporting it", () => {
     fs.writeFileSync(
       RECORD_PATH(),
-      JSON.stringify({ chatted: { ...laneRecord, fileCount: -1 } }),
+      JSON.stringify({ ...record, fileCount: -1 }),
     );
     expect(readLastSessionRecord()).toBeNull();
   });
 
   it("leaves no temp file behind", () => {
-    writeLastSessionRecord({ viewed: laneRecord });
+    writeLastSessionRecord(record);
     expect(fs.readdirSync(userDataDir)).toEqual(["last-session.json"]);
   });
 
-  it("does not throw when the record cannot be written", () => {
+  it("reports failure and does not throw when the write fails", () => {
     vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
       throw new Error("disk full");
     });
-    expect(() => writeLastSessionRecord({ viewed: laneRecord })).not.toThrow();
+    expect(writeLastSessionRecord(record)).toBe(false);
   });
 
   it("removes the temp file when the rename fails", () => {
@@ -104,39 +98,38 @@ describe("writeLastSessionRecord / readLastSessionRecord", () => {
       throw new Error("rename failed");
     });
 
-    writeLastSessionRecord({ viewed: laneRecord });
-
+    expect(writeLastSessionRecord(record)).toBe(false);
     expect(fs.readdirSync(userDataDir)).toEqual([]);
   });
 });
 
 describe("clearLastSessionRecord", () => {
   it("removes the record", () => {
-    writeLastSessionRecord({ viewed: laneRecord });
-    clearLastSessionRecord();
+    writeLastSessionRecord(record);
+    expect(clearLastSessionRecord()).toBe(true);
     expect(readLastSessionRecord()).toBeNull();
   });
 
-  it("is a no-op when there is nothing to clear", () => {
-    expect(() => clearLastSessionRecord()).not.toThrow();
+  it("counts an already-absent record as cleared", () => {
+    expect(clearLastSessionRecord()).toBe(true);
   });
 });
 
 describe("claimPreviousSessionAppSize", () => {
   it("returns the previous record and clears it from disk", () => {
-    writeLastSessionRecord({ viewed: laneRecord });
+    writeLastSessionRecord(record);
 
-    expect(claimPreviousSessionAppSize()).toEqual({ viewed: laneRecord });
+    expect(claimPreviousSessionAppSize()).toEqual(record);
     // Cleared, so a session that never measures an app cannot cause these
     // numbers to be attributed to it at the launch after next.
     expect(fs.existsSync(RECORD_PATH())).toBe(false);
   });
 
   it("retains the record in memory after the file is gone", () => {
-    writeLastSessionRecord({ chatted: laneRecord });
+    writeLastSessionRecord(record);
     claimPreviousSessionAppSize();
 
-    expect(getPreviousSessionAppSize()).toEqual({ chatted: laneRecord });
+    expect(getPreviousSessionAppSize()).toEqual(record);
   });
 
   it("reports nothing when the previous session measured no app", () => {
@@ -145,7 +138,7 @@ describe("claimPreviousSessionAppSize", () => {
   });
 
   it("reports nothing when the record cannot be deleted", () => {
-    writeLastSessionRecord({ viewed: laneRecord });
+    writeLastSessionRecord(record);
     vi.spyOn(fs, "unlinkSync").mockImplementation(() => {
       throw new Error("permission denied");
     });
@@ -158,12 +151,7 @@ describe("claimPreviousSessionAppSize", () => {
 
   it("does not resurrect a record written after the claim", () => {
     claimPreviousSessionAppSize();
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 5,
-      totalBytes: 50,
-    });
+    recordAppSizeForSession({ appId: 1, fileCount: 5, totalBytes: 50 });
 
     // This session's own measurement must not be reported as the previous
     // session's, which is why the claim happens before any chat can run.
@@ -172,90 +160,35 @@ describe("claimPreviousSessionAppSize", () => {
 });
 
 describe("recordAppSizeForSession", () => {
-  it("persists a measurement on the lane it was recorded for", () => {
-    recordAppSizeForSession({
-      lane: "chatted",
-      appId: 42,
-      fileCount: 10,
-      totalBytes: 100,
-    });
+  it("persists a measurement", () => {
+    recordAppSizeForSession({ appId: 42, fileCount: 10, totalBytes: 100 });
 
-    const record = readLastSessionRecord();
-    expect(record?.chatted).toMatchObject({
+    expect(readLastSessionRecord()).toEqual({
       appId: 42,
       fileCount: 10,
       totalBytes: 100,
       distinctApps: 1,
     });
-    expect(record?.viewed).toBeUndefined();
   });
 
-  it("keeps the two lanes independent", () => {
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 2_000,
-      totalBytes: 900_000,
-    });
-    recordAppSizeForSession({
-      lane: "chatted",
-      appId: 2,
-      fileCount: 30,
-      totalBytes: 4_000,
-    });
+  it("counts distinct apps", () => {
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
+    recordAppSizeForSession({ appId: 2, fileCount: 900, totalBytes: 90_000 });
 
-    const record = readLastSessionRecord();
-    // Writing one lane must not clobber the other; this is the case that
-    // distinguishes browsing a big app from working in a small one.
-    expect(record?.viewed).toMatchObject({ appId: 1, fileCount: 2_000 });
-    expect(record?.chatted).toMatchObject({ appId: 2, fileCount: 30 });
-  });
-
-  it("counts distinct apps per lane", () => {
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 10,
-      totalBytes: 100,
-    });
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 2,
-      fileCount: 900,
-      totalBytes: 90_000,
-    });
-    recordAppSizeForSession({
-      lane: "chatted",
-      appId: 2,
-      fileCount: 900,
-      totalBytes: 90_000,
-    });
-
-    const record = readLastSessionRecord();
     // Size is attributed to the last app measured; distinctApps flags that the
-    // viewed lane's attribution is not unambiguous, while the chat lane's is.
-    expect(record?.viewed).toMatchObject({ appId: 2, distinctApps: 2 });
-    expect(record?.chatted).toMatchObject({ appId: 2, distinctApps: 1 });
+    // attribution is not unambiguous.
+    expect(readLastSessionRecord()).toMatchObject({
+      appId: 2,
+      distinctApps: 2,
+    });
   });
 
   it("skips the write when the measurement is unchanged", () => {
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 10,
-      totalBytes: 100,
-    });
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
     const writeSpy = vi.spyOn(fs, "writeFileSync");
 
-    // Re-selecting the same app refires the effect; an unchanged codebase
-    // must not rewrite the file each time.
     for (let i = 0; i < 3; i++) {
-      recordAppSizeForSession({
-        lane: "viewed",
-        appId: 1,
-        fileCount: 10,
-        totalBytes: 100,
-      });
+      recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
     }
 
     expect(writeSpy).not.toHaveBeenCalled();
@@ -266,25 +199,15 @@ describe("recordAppSizeForSession", () => {
       throw new Error("disk full");
     });
 
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 10,
-      totalBytes: 100,
-    });
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
     expect(readLastSessionRecord()).toBeNull();
 
-    // The identical measurement must not look unchanged, or the lane would be
+    // The identical measurement must not look unchanged, or the size would be
     // lost for the rest of the session.
     writeSpy.mockRestore();
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 10,
-      totalBytes: 100,
-    });
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
 
-    expect(readLastSessionRecord()?.viewed).toMatchObject({
+    expect(readLastSessionRecord()).toMatchObject({
       appId: 1,
       fileCount: 10,
       distinctApps: 1,
@@ -292,56 +215,31 @@ describe("recordAppSizeForSession", () => {
   });
 
   it("writes again once the codebase actually changes", () => {
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 10,
-      totalBytes: 100,
-    });
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 11,
-      totalBytes: 120,
-    });
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
+    recordAppSizeForSession({ appId: 1, fileCount: 11, totalBytes: 120 });
 
     // Re-measuring the same app must not consume another distinctApps slot.
-    expect(readLastSessionRecord()?.viewed).toMatchObject({
+    expect(readLastSessionRecord()).toMatchObject({
       fileCount: 11,
       totalBytes: 120,
       distinctApps: 1,
     });
 
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 2,
-      fileCount: 5,
-      totalBytes: 50,
-    });
+    recordAppSizeForSession({ appId: 2, fileCount: 5, totalBytes: 50 });
 
-    expect(readLastSessionRecord()?.viewed).toMatchObject({
+    expect(readLastSessionRecord()).toMatchObject({
       appId: 2,
       distinctApps: 2,
     });
   });
 
   it("writes again when the same size is measured for a different app", () => {
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 1,
-      fileCount: 10,
-      totalBytes: 100,
-    });
-    recordAppSizeForSession({
-      lane: "viewed",
-      appId: 2,
-      fileCount: 10,
-      totalBytes: 100,
-    });
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
+    recordAppSizeForSession({ appId: 2, fileCount: 10, totalBytes: 100 });
 
     // Identical numbers for a different app is a real app switch, not a
     // repeat, so it must not be skipped by the unchanged check.
-    expect(readLastSessionRecord()?.viewed).toMatchObject({
+    expect(readLastSessionRecord()).toMatchObject({
       appId: 2,
       distinctApps: 2,
     });

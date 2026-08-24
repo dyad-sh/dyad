@@ -552,27 +552,6 @@ async function prepareCodebaseFiles({
 }
 
 /**
- * Measures an app's size without preparing an extract. Stops at the file
- * listing, so it skips reading contents and the modification-time sort.
- * Returns undefined when the app directory is unreadable.
- */
-export async function measureCodebaseSize(
-  appPath: string,
-): Promise<CodebaseSizeStats | undefined> {
-  try {
-    await fsAsync.access(appPath);
-  } catch {
-    return undefined;
-  }
-
-  const collected = await collectFilesNativeGit(appPath);
-  return {
-    fileCount: collected.files.length,
-    totalBytes: collected.totalBytes,
-  };
-}
-
-/**
  * List codebase files without reading their contents.
  */
 export async function listCodebaseFileMetadata({

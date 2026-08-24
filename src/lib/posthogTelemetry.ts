@@ -2,7 +2,7 @@ import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
 import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
 import {
   appSizeEventFields,
-  type LastSessionRecord,
+  type SessionAppSizeRecord,
 } from "@/shared/app_size_telemetry";
 
 type TelemetryProperties = Record<string, unknown> | undefined;
@@ -12,7 +12,7 @@ export type InitialLoadTelemetryInput = {
   appVersion: string;
   platform: string | null;
   isFirstSession: boolean;
-  previousSessionAppSize?: LastSessionRecord | null;
+  previousSessionAppSize?: SessionAppSizeRecord | null;
 };
 
 export function getSettingsPersonTelemetryProperties(settings: UserSettings) {

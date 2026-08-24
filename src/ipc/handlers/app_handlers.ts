@@ -46,8 +46,6 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
-import { recordAppSizeForSession } from "../../main/last_session_store";
-import { measureCodebaseSize } from "../../utils/codebase";
 import { addLog } from "../../lib/log_store";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import {
@@ -180,10 +178,6 @@ import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
-
-// Identifies the most recent viewed-app-size request, so a slower scan cannot
-// land after a newer one.
-let latestViewedAppSizeRequest = 0;
 
 async function renameDirectoryWithCaseHop(fromPath: string, toPath: string) {
   const tempPath = path.join(
@@ -1109,31 +1103,6 @@ export function registerAppHandlers() {
         return { app: newDbApp };
       },
     );
-  });
-
-  createTypedHandler(appContracts.recordViewedAppSize, async (_, appId) => {
-    const request = ++latestViewedAppSizeRequest;
-    try {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-      if (!app) {
-        return;
-      }
-
-      const sizeStats = await measureCodebaseSize(getDyadAppPath(app.path));
-      // A scan for an app the user has already left must not overwrite the
-      // one they stayed on.
-      if (!sizeStats || request !== latestViewedAppSizeRequest) {
-        return;
-      }
-
-      recordAppSizeForSession({ lane: "viewed", appId, ...sizeStats });
-    } catch (error) {
-      // Telemetry only. Letting this throw would report it as a product
-      // exception for something nothing is waiting on.
-      logger.warn("Failed to record viewed app size:", error);
-    }
   });
 
   createTypedHandler(appContracts.getApp, async (_, appId) => {

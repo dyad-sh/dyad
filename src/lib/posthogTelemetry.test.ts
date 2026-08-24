@@ -110,8 +110,6 @@ describe("getInitialLoadTelemetryProperties", () => {
       modelProvider: "auto",
       defaultChatMode: "ask",
       runtimeMode2: "docker",
-      has_prev_session_viewed_size: false,
-      has_prev_session_chat_size: false,
     });
   });
 
@@ -136,64 +134,27 @@ describe("getInitialLoadTelemetryProperties", () => {
       modelProvider: "auto",
       defaultChatMode: null,
       runtimeMode2: "host",
-      has_prev_session_viewed_size: false,
-      has_prev_session_chat_size: false,
     });
   });
 
-  it("carries the previous session's app sizes as the crash-rate denominator", () => {
+  it("carries the previous session's app size as the crash-rate denominator", () => {
     const properties = getInitialLoadTelemetryProperties({
       settings: makeSettings({}),
       appVersion: "1.1.0",
       platform: null,
       isFirstSession: false,
       previousSessionAppSize: {
-        viewed: {
-          fileCount: 310,
-          totalBytes: 2_000_000,
-          appId: 9,
-          distinctApps: 1,
-        },
-        chatted: {
-          fileCount: 310,
-          totalBytes: 2_000_000,
-          appId: 9,
-          distinctApps: 1,
-        },
+        fileCount: 310,
+        totalBytes: 2_000_000,
+        appId: 9,
+        distinctApps: 1,
       },
     });
 
     expect(properties).toMatchObject({
-      has_prev_session_viewed_size: true,
-      prev_session_viewed_file_count: 310,
-      prev_session_viewed_bytes: 2_000_000,
-      has_prev_session_chat_size: true,
-      prev_session_chat_file_count: 310,
-      prev_session_lanes_same_app: true,
-    });
-  });
-
-  it("reports a browsed-but-never-prompted session on the viewed lane only", () => {
-    const properties = getInitialLoadTelemetryProperties({
-      settings: makeSettings({}),
-      appVersion: "1.1.0",
-      platform: null,
-      isFirstSession: false,
-      previousSessionAppSize: {
-        viewed: {
-          fileCount: 1_800,
-          totalBytes: 9_000_000,
-          appId: 9,
-          distinctApps: 1,
-        },
-      },
-    });
-
-    // The case the chat lane alone would have discarded entirely.
-    expect(properties).toMatchObject({
-      has_prev_session_viewed_size: true,
-      prev_session_viewed_file_count: 1_800,
-      has_prev_session_chat_size: false,
+      prev_session_app_file_count: 310,
+      prev_session_app_bytes: 2_000_000,
+      prev_session_distinct_apps: 1,
     });
   });
 });

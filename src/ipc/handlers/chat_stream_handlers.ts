@@ -1713,7 +1713,6 @@ ${componentSnippet}
           // still reports the size it died on.
           onSizeStats: (sizeStats) =>
             recordAppSizeForSession({
-              lane: "chatted",
               appId: updatedChat.app.id,
               ...sizeStats,
             }),

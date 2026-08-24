@@ -2,9 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import {
-  LastSessionRecordSchema,
-  type AppSizeLane,
-  type LastSessionRecord,
+  SessionAppSizeRecordSchema,
   type SessionAppSizeRecord,
 } from "@/shared/app_size_telemetry";
 import { getUserDataPath } from "../paths/paths";
@@ -14,7 +12,7 @@ const logger = log.scope("last_session_store");
 const LAST_SESSION_FILE = "last-session.json";
 
 /**
- * Persists the app sizes a session worked with, so they survive into the next
+ * Persists the app size a session worked in, so it survives into the next
  * launch. Its own file rather than user-settings.json because writeSettings
  * re-encrypts every stored token on each call. Not the crash sentinel either:
  * that is deleted on clean exit, and clean exits are the denominator we need.
@@ -28,7 +26,7 @@ function getLastSessionPath(): string {
  * a torn file would be read back at the next launch. Returns whether the
  * record reached disk, so callers can avoid treating it as persisted.
  */
-export function writeLastSessionRecord(record: LastSessionRecord): boolean {
+export function writeLastSessionRecord(record: SessionAppSizeRecord): boolean {
   let tmpPath: string | undefined;
   try {
     const filePath = getLastSessionPath();
@@ -54,13 +52,13 @@ export function writeLastSessionRecord(record: LastSessionRecord): boolean {
  * Returns null when the record is absent or unparseable. Both mean "no size to
  * report", which telemetry sends as absent fields rather than guessing.
  */
-export function readLastSessionRecord(): LastSessionRecord | null {
+export function readLastSessionRecord(): SessionAppSizeRecord | null {
   try {
     const filePath = getLastSessionPath();
     if (!fs.existsSync(filePath)) {
       return null;
     }
-    const parsed = LastSessionRecordSchema.safeParse(
+    const parsed = SessionAppSizeRecordSchema.safeParse(
       JSON.parse(fs.readFileSync(filePath, "utf-8")),
     );
     if (!parsed.success) {
@@ -92,14 +90,14 @@ export function clearLastSessionRecord(): boolean {
   }
 }
 
-let previousSessionAppSize: LastSessionRecord | null = null;
+let previousSessionAppSize: SessionAppSizeRecord | null = null;
 
 /**
  * Takes over the record for this session, returning what the previous one
  * held. Read and clear are paired here, as with claimCrashSentinel, so the
  * clear can't end up ordered before the read.
  */
-export function claimPreviousSessionAppSize(): LastSessionRecord | null {
+export function claimPreviousSessionAppSize(): SessionAppSizeRecord | null {
   const previous = readLastSessionRecord();
   // A record that cannot be deleted would be reported again on every later
   // launch, so it only counts as claimed once it is gone.
@@ -111,26 +109,23 @@ export function claimPreviousSessionAppSize(): LastSessionRecord | null {
  * Kept in memory for the whole session, since the renderer asks for it on
  * app:initial-load rather than during startup.
  */
-export function getPreviousSessionAppSize(): LastSessionRecord | null {
+export function getPreviousSessionAppSize(): SessionAppSizeRecord | null {
   return previousSessionAppSize;
 }
 
 /**
- * This session's measurements, mirrored to disk on every change. Memory is
+ * This session's measurement, mirrored to disk on every change. Memory is
  * authoritative so a write never has to read back and merge the file.
  */
-const currentSession: LastSessionRecord = {};
-const measuredAppIds: Record<AppSizeLane, Set<number>> = {
-  viewed: new Set(),
-  chatted: new Set(),
-};
+let currentSession: SessionAppSizeRecord | null = null;
+const measuredAppIds = new Set<number>();
 
 function isUnchanged(
-  previous: SessionAppSizeRecord | undefined,
+  previous: SessionAppSizeRecord | null,
   next: Omit<SessionAppSizeRecord, "distinctApps">,
 ): boolean {
   return (
-    previous !== undefined &&
+    previous !== null &&
     previous.appId === next.appId &&
     previous.fileCount === next.fileCount &&
     previous.totalBytes === next.totalBytes
@@ -138,48 +133,43 @@ function isUnchanged(
 }
 
 /**
- * Records the size of an app this session worked with. Each lane has one
- * writer: app selection for "viewed", chat turns for "chatted". An unchanged
+ * Records the size of the app a chat turn just ran against. An unchanged
  * measurement skips the write entirely.
  */
 export function recordAppSizeForSession({
-  lane,
   appId,
   fileCount,
   totalBytes,
 }: {
-  lane: AppSizeLane;
   appId: number;
   fileCount: number;
   totalBytes: number;
 }): void {
   const measurement = { fileCount, totalBytes, appId };
-  if (isUnchanged(currentSession[lane], measurement)) {
+  if (isUnchanged(currentSession, measurement)) {
     return;
   }
 
   const next = {
     ...measurement,
-    distinctApps: measuredAppIds[lane].has(appId)
-      ? measuredAppIds[lane].size
-      : measuredAppIds[lane].size + 1,
+    distinctApps: measuredAppIds.has(appId)
+      ? measuredAppIds.size
+      : measuredAppIds.size + 1,
   };
   // Memory is only updated once the record is on disk. Committing a failed
   // write would make the next identical measurement look unchanged and skip
-  // its retry, losing the lane for the rest of the session.
-  if (!writeLastSessionRecord({ ...currentSession, [lane]: next })) {
+  // its retry, losing the size for the rest of the session.
+  if (!writeLastSessionRecord(next)) {
     return;
   }
 
-  measuredAppIds[lane].add(appId);
-  currentSession[lane] = next;
+  measuredAppIds.add(appId);
+  currentSession = next;
 }
 
 /** For tests: forget the session state accumulated in this module. */
 export function resetSessionStateForTesting(): void {
-  measuredAppIds.viewed.clear();
-  measuredAppIds.chatted.clear();
-  delete currentSession.viewed;
-  delete currentSession.chatted;
+  measuredAppIds.clear();
+  currentSession = null;
   previousSessionAppSize = null;
 }

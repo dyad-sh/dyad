@@ -2,11 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  extractCodebase,
-  listCodebaseFileMetadata,
-  measureCodebaseSize,
-} from "@/utils/codebase";
+import { extractCodebase, listCodebaseFileMetadata } from "@/utils/codebase";
 import { gitListFilesNative } from "@/ipc/utils/git_utils";
 
 vi.mock("electron-log", () => ({
@@ -194,7 +190,7 @@ describe("extractCodebase", () => {
   });
 });
 
-describe("measureCodebaseSize", () => {
+describe("extractCodebase size stats", () => {
   let appDir: string | undefined;
 
   afterEach(async () => {
@@ -204,6 +200,29 @@ describe("measureCodebaseSize", () => {
     }
     vi.restoreAllMocks();
   });
+
+  const noContext = {
+    contextPaths: [],
+    smartContextAutoIncludes: [],
+  };
+
+  /** Captures what the extraction reports, which is the only way it is read. */
+  async function sizeOf(
+    dir: string,
+    chatContext: Parameters<
+      typeof extractCodebase
+    >[0]["chatContext"] = noContext,
+  ) {
+    let sizeStats: unknown;
+    await extractCodebase({
+      appPath: dir,
+      chatContext,
+      onSizeStats: (stats) => {
+        sizeStats = stats;
+      },
+    });
+    return sizeStats;
+  }
 
   it("counts files and bytes, excluding gitignored files", async () => {
     appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
@@ -222,10 +241,7 @@ describe("measureCodebaseSize", () => {
     await fs.promises.writeFile(path.join(appDir, "b.ts"), "bb\n");
 
     // .gitignore (12) + a.ts (5) + b.ts (3); secret.json excluded.
-    expect(await measureCodebaseSize(appDir)).toEqual({
-      fileCount: 3,
-      totalBytes: 20,
-    });
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 3, totalBytes: 20 });
   });
 
   it("counts files and bytes, excluding build output directories", async () => {
@@ -238,10 +254,7 @@ describe("measureCodebaseSize", () => {
     );
     await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
 
-    expect(await measureCodebaseSize(appDir)).toEqual({
-      fileCount: 1,
-      totalBytes: 5,
-    });
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 1, totalBytes: 5 });
   });
 
   it("counts files whose contents are withheld from the model", async () => {
@@ -254,10 +267,15 @@ describe("measureCodebaseSize", () => {
     );
     await fs.promises.writeFile(path.join(appDir, "a.ts"), "one\ntwo\n");
 
-    expect(await measureCodebaseSize(appDir)).toEqual({
-      fileCount: 2,
-      totalBytes: 18,
-    });
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 2, totalBytes: 18 });
+  });
+
+  it("counts an empty file toward the file count but not the byte total", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "one\ntwo");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "");
+
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 2, totalBytes: 7 });
   });
 
   it("counts a conflicted file once, not once per index stage", async () => {
@@ -274,51 +292,7 @@ describe("measureCodebaseSize", () => {
       "other.ts",
     ]);
 
-    expect(await measureCodebaseSize(appDir)).toEqual({
-      fileCount: 2,
-      totalBytes: 8,
-    });
-  });
-
-  it("counts bytes on the native Git path too", async () => {
-    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
-    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
-    await fs.promises.writeFile(path.join(appDir, "b.ts"), "bb\n");
-    // The suite otherwise forces the traversal fallback; exercise the path
-    // that actually runs in production.
-    vi.mocked(gitListFilesNative).mockResolvedValueOnce(["a.ts", "b.ts"]);
-
-    expect(await measureCodebaseSize(appDir)).toEqual({
-      fileCount: 2,
-      totalBytes: 8,
-    });
-  });
-
-  it("counts an empty file toward the file count but not the byte total", async () => {
-    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
-    await fs.promises.writeFile(path.join(appDir, "a.ts"), "one\ntwo");
-    await fs.promises.writeFile(path.join(appDir, "b.ts"), "");
-
-    expect(await measureCodebaseSize(appDir)).toEqual({
-      fileCount: 2,
-      totalBytes: 7,
-    });
-  });
-
-  it("reads no file contents", async () => {
-    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
-    await fs.promises.writeFile(path.join(appDir, "a.ts"), "secret content");
-    const readFileSpy = vi.spyOn(fs.promises, "readFile");
-
-    await measureCodebaseSize(appDir);
-
-    expect(readFileSpy).not.toHaveBeenCalled();
-  });
-
-  it("returns undefined for a directory that does not exist", async () => {
-    expect(
-      await measureCodebaseSize(path.join(os.tmpdir(), "codebase-missing-dir")),
-    ).toBeUndefined();
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 2, totalBytes: 8 });
   });
 
   it("does not let an extraction emit a conflicted file more than once", async () => {
@@ -334,7 +308,7 @@ describe("measureCodebaseSize", () => {
 
     const result = await extractCodebase({
       appPath: appDir,
-      chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      chatContext: noContext,
     });
 
     expect(result.files.map((file) => file.path).sort()).toEqual([
@@ -342,23 +316,54 @@ describe("measureCodebaseSize", () => {
       "other.ts",
     ]);
   });
-});
 
-describe("extractCodebase onSizeStats", () => {
-  let appDir: string | undefined;
+  it("counts bytes on the native Git path too", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "bb\n");
+    // The suite otherwise forces the traversal fallback; exercise the path
+    // that actually runs in production.
+    vi.mocked(gitListFilesNative).mockResolvedValueOnce(["a.ts", "b.ts"]);
 
-  afterEach(async () => {
-    if (appDir) {
-      await fs.promises.rm(appDir, { recursive: true, force: true });
-      appDir = undefined;
-    }
-    vi.restoreAllMocks();
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 2, totalBytes: 8 });
   });
 
-  const noContext = {
-    contextPaths: [],
-    smartContextAutoIncludes: [],
-  };
+  it("reports the same size whichever way the prompt is assembled", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.mkdir(path.join(appDir, "src", "components", "ui"), {
+      recursive: true,
+    });
+    // src/components/ui reaches the model as a placeholder, but it is still
+    // part of the app. Size comes from the filesystem, never from how the
+    // prompt happens to be built.
+    await fs.promises.writeFile(
+      path.join(appDir, "src", "components", "ui", "button.tsx"),
+      "a\nb\nc\nd\ne\n",
+    );
+    await fs.promises.writeFile(path.join(appDir, "src", "app.tsx"), "one\n");
+
+    expect(await sizeOf(appDir)).toEqual({ fileCount: 2, totalBytes: 14 });
+  });
+
+  it("reports the same size regardless of per-chat context filtering", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.mkdir(path.join(appDir, "src"));
+    await fs.promises.writeFile(path.join(appDir, "src", "keep.ts"), "keep\n");
+    await fs.promises.writeFile(
+      path.join(appDir, "src", "other.ts"),
+      "other\nlines\nhere\n",
+    );
+
+    const unfiltered = await sizeOf(appDir);
+    const filtered = await sizeOf(appDir, {
+      contextPaths: [{ globPath: "src/keep.ts" }],
+      smartContextAutoIncludes: [],
+    });
+
+    // This is the property the whole metric rests on: two chats against the
+    // same app must report the same app size regardless of context config.
+    expect(filtered).toEqual(unfiltered);
+  });
 
   it("reports the size before reading any file contents", async () => {
     appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
@@ -379,38 +384,6 @@ describe("extractCodebase onSizeStats", () => {
     // size, so the callback has to fire before any content is read.
     expect(readsWhenReported).toBe(0);
     expect(readFileSpy).toHaveBeenCalled();
-  });
-
-  it("reports the same size regardless of per-chat context filtering", async () => {
-    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
-    await fs.promises.mkdir(path.join(appDir, "src"));
-    await fs.promises.writeFile(path.join(appDir, "src", "keep.ts"), "keep\n");
-    await fs.promises.writeFile(
-      path.join(appDir, "src", "other.ts"),
-      "other\nlines\nhere\n",
-    );
-
-    const sizes: unknown[] = [];
-    await extractCodebase({
-      appPath: appDir,
-      chatContext: noContext,
-      onSizeStats: (stats) => sizes.push(stats),
-    });
-    const filtered = await extractCodebase({
-      appPath: appDir,
-      chatContext: {
-        contextPaths: [{ globPath: "src/keep.ts" }],
-        smartContextAutoIncludes: [],
-      },
-      onSizeStats: (stats) => sizes.push(stats),
-    });
-
-    // This is the property the whole metric rests on: two chats against the
-    // same app must report the same app size regardless of context config.
-    expect(sizes[0]).toEqual(sizes[1]);
-    expect(sizes[0]).toEqual(await measureCodebaseSize(appDir));
-    // Only the file list the chat sees narrows.
-    expect(filtered.files).toHaveLength(1);
   });
 
   it("is not called for a directory that does not exist", async () => {

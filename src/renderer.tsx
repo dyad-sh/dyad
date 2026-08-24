@@ -40,7 +40,6 @@ import {
   useRegisterEntityDisposer,
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
-import { useRecordViewedAppSize } from "./hooks/useRecordViewedAppSize";
 import {
   ensureRecentViewedChatIdAtom,
   initializeChatTabSessionStorageAtom,
@@ -186,8 +185,6 @@ function RendererServices() {
     [store],
   );
   useRegisterEntityDisposer("app", clearAppRuntime);
-
-  useRecordViewedAppSize();
 
   // Fetch user budget on app load
   useEffect(() => {

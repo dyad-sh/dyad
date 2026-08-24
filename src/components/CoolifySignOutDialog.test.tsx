@@ -10,6 +10,7 @@ vi.mock("@/ipc/types", () => ({
   ipc: { coolifySetup: { revealCredentials: h.revealCredentials } },
 }));
 
+const { queryKeys } = await import("@/lib/queryKeys");
 const { CoolifySignOutDialog: Dialog } = await import("./CoolifySignOutDialog");
 
 const FULL = {
@@ -118,6 +119,39 @@ describe("nothing to look at yet", () => {
     await waitFor(() =>
       expect(screen.getByTestId("coolify-sign-out-unreadable")).toBeTruthy(),
     );
+    // Said once. The panel below reports the read; this only adds what it
+    // means for signing out, so both saying it reads as a stutter.
+    expect(
+      screen.queryAllByText(/could not read what it has stored/i),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the details on screen when only a later read failed", async () => {
+    // The panel still has them, so it still shows them. Saying a read failed
+    // over a panel full of credentials leaves a sentence hanging off nothing,
+    // and this is the moment the user is asked to confirm they saved them.
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <Dialog open onOpenChange={onOpenChange} onConfirm={onConfirm} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-field-password")).toBeTruthy(),
+    );
+
+    h.revealCredentials.mockRejectedValue(new Error("keychain locked"));
+    await client.refetchQueries({ queryKey: queryKeys.coolify.credentials });
+    await waitFor(() => expect(h.revealCredentials).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByTestId("coolify-field-password")).toBeTruthy();
+    expect(screen.queryByTestId("coolify-sign-out-unreadable")).toBeNull();
+    // And the acknowledgement still means what it says.
+    await user.click(screen.getByTestId("coolify-sign-out-acknowledge"));
+    expect(signOutButton().disabled).toBe(false);
   });
 
   it("says when it holds a password it cannot read", async () => {

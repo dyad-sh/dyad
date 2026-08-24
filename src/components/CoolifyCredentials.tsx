@@ -89,12 +89,30 @@ export function CoolifyCredentials({
   // Not held after this leaves the screen: these are the keys to the user's
   // server, and there is no reason for them to sit in a cache once nothing is
   // showing them.
-  const { data: credentials } = useQuery({
+  const { data: credentials, isError } = useQuery({
     queryKey: queryKeys.coolify.credentials,
     queryFn: () => ipc.coolifySetup.revealCredentials(),
     gcTime: 0,
   });
 
+  // Said rather than left blank. Callers introduce this panel as the details
+  // they are about to show, so rendering nothing at all reads as Dyad holding
+  // nothing rather than as a read that did not answer.
+  //
+  // Only when there is nothing to show. A read that fails over details already
+  // in hand — the refetch on window focus, which production does not retry —
+  // still leaves them readable, and taking a password Dyad holds the only copy
+  // of off the screen to report the refresh would be the worse trade.
+  if (isError && !credentials) {
+    return (
+      <p
+        className="text-destructive text-sm"
+        data-testid="coolify-credentials-unreadable"
+      >
+        Dyad could not read what it has stored for this Coolify.
+      </p>
+    );
+  }
   if (!credentials) return null;
 
   const { instance, server } = credentials;

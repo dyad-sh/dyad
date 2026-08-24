@@ -57,6 +57,10 @@ export function CoolifySignOutDialog({
   // nothing can be confirmed until the read has answered. `enabled` leaves the
   // query pending while the dialog is closed, which reads the same here.
   const answered = !isPending || isError;
+  // What the panel below reports: a read that failed with nothing already in
+  // hand. A failed refetch over details it can still show is not one, and the
+  // line below would then hang off nothing.
+  const readFailed = isError && !credentials;
   // Held but unreadable, which the panel below cannot show because there is
   // no value to put on screen. Saying so beats a silently missing row.
   const passwordIsLocked =
@@ -83,13 +87,12 @@ export function CoolifySignOutDialog({
             Looking up what Dyad has stored…
           </div>
         )}
-        {isError && (
+        {readFailed && (
           <div
             className="text-destructive text-sm"
             data-testid="coolify-sign-out-unreadable"
           >
-            Dyad could not read what it has stored for this Coolify. Signing out
-            still forgets it.
+            Signing out forgets it anyway.
           </div>
         )}
         {passwordIsLocked && (

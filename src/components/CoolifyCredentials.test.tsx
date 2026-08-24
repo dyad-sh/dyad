@@ -10,6 +10,7 @@ vi.mock("@/ipc/types", () => ({
   ipc: { coolifySetup: { revealCredentials: h.revealCredentials } },
 }));
 
+const { queryKeys } = await import("@/lib/queryKeys");
 const { CoolifyCredentials: Panel } = await import("./CoolifyCredentials");
 
 function CoolifyCredentials(props: { showTitle?: boolean }) {
@@ -172,6 +173,62 @@ describe("two servers that are not the same server", () => {
     expect(screen.queryByTestId("coolify-credentials-server")).toBeNull();
     expect(screen.queryByTestId("coolify-credentials-instance")).toBeNull();
     expect(screen.getAllByTestId(/^coolify-field-address$/)).toHaveLength(1);
+  });
+});
+
+describe("a read that did not answer", () => {
+  it("keeps details it already has when a later read fails", async () => {
+    // The panel refetches on window focus once its data is a minute old, and
+    // production does not retry. Standing that failure in front of a password
+    // Dyad holds the only copy of takes it off screen with nothing to copy —
+    // and in the sign-out dialog it goes just as the user is asked to confirm
+    // they have saved it.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <Panel />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-field-password")).toBeTruthy(),
+    );
+
+    h.revealCredentials.mockRejectedValue(new Error("keychain locked"));
+    await client.refetchQueries({ queryKey: queryKeys.coolify.credentials });
+    // The refetch settling is not the panel having re-rendered on it, and
+    // reading the screen in between shows what was there before either way.
+    await waitFor(() => expect(h.revealCredentials).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByTestId("coolify-field-password")).toBeTruthy();
+    expect(screen.queryByTestId("coolify-credentials-unreadable")).toBeNull();
+  });
+
+  it("says so rather than rendering nothing", async () => {
+    // Callers introduce this panel as the details they are about to show, so
+    // a blank space where they should be reads as Dyad holding nothing.
+    h.revealCredentials.mockRejectedValue(new Error("keychain locked"));
+    render(<CoolifyCredentials />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-credentials-unreadable")).toBeTruthy(),
+    );
+  });
+
+  it("stays silent when there is genuinely nothing stored", async () => {
+    // Signed out, or connected by pasting a token. Saying a read failed here
+    // would report a problem that did not happen.
+    h.revealCredentials.mockResolvedValue({ instance: null, server: null });
+    const { container } = render(<CoolifyCredentials />);
+
+    // Waiting for the call is not waiting for the answer, and a pending query
+    // renders nothing whatever this branch does. Settling first is what makes
+    // a wrong branch here visible.
+    await waitFor(() => expect(h.revealCredentials).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId("coolify-credentials-unreadable")).toBeNull();
+    expect(container.textContent).toBe("");
   });
 });
 

@@ -386,6 +386,14 @@ test("manual commits run pre-commit hooks and surface failures", async ({
     timeout: Timeout.MEDIUM,
   });
   await expect(cancelCommitButton).toBeEnabled();
+  // The progress event is emitted before the hook subprocess starts. Wait for
+  // the hook's own run log so this exercises cancellation during the hook,
+  // rather than racing cancellation against process startup.
+  await expect
+    .poll(() => fs.readFileSync(runLogPath, "utf-8"), {
+      timeout: Timeout.MEDIUM,
+    })
+    .toBe("pass\nfail\nslow\n");
   await cancelCommitButton.click();
   await expect(commitButton).toBeEnabled({ timeout: Timeout.MEDIUM });
 

@@ -263,9 +263,8 @@ export async function commitAllChanges(
             commitHash = await gitCommit({
               path: ctx.appPath,
               message: message,
-              // Local Agent commits are internal turn checkpoints. Verification is
+              // Low-level gitCommit is hook-free. Local Agent verification is
               // owned by run_pre_commit so a failing hook cannot prevent versioning.
-              noVerify: true,
             });
           } catch (error) {
             logger.error(

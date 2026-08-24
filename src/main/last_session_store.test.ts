@@ -36,6 +36,8 @@ const RECORD_PATH = () => path.join(userDataDir, "last-session.json");
 const record = {
   fileCount: 120,
   totalBytes: 45_000,
+  maxFileCount: 120,
+  maxTotalBytes: 45_000,
   appId: 7,
   distinctApps: 1,
 };
@@ -163,10 +165,58 @@ describe("recordAppSizeForSession", () => {
   it("persists a measurement", () => {
     recordAppSizeForSession({ appId: 42, fileCount: 10, totalBytes: 100 });
 
+    // A session's first measurement is both the most recent and the largest.
     expect(readLastSessionRecord()).toEqual({
       appId: 42,
       fileCount: 10,
       totalBytes: 100,
+      maxFileCount: 10,
+      maxTotalBytes: 100,
+      distinctApps: 1,
+    });
+  });
+
+  it("keeps the largest app alongside the most recent one", () => {
+    recordAppSizeForSession({
+      appId: 1,
+      fileCount: 5_000,
+      totalBytes: 900_000,
+    });
+    recordAppSizeForSession({ appId: 2, fileCount: 20, totalBytes: 4_000 });
+
+    // Switching to a scratch app before dying would otherwise report 20 files
+    // for a session that spent its time in a 5,000-file codebase.
+    expect(readLastSessionRecord()).toMatchObject({
+      appId: 2,
+      fileCount: 20,
+      totalBytes: 4_000,
+      maxFileCount: 5_000,
+      maxTotalBytes: 900_000,
+      distinctApps: 2,
+    });
+  });
+
+  it("moves both max fields together so they describe one app", () => {
+    // More files but fewer bytes: max must not mix a count from one app with
+    // a byte total from another.
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 900_000 });
+    recordAppSizeForSession({ appId: 2, fileCount: 5_000, totalBytes: 4_000 });
+
+    expect(readLastSessionRecord()).toMatchObject({
+      maxFileCount: 10,
+      maxTotalBytes: 900_000,
+    });
+  });
+
+  it("advances the max when the same app grows", () => {
+    recordAppSizeForSession({ appId: 1, fileCount: 10, totalBytes: 100 });
+    recordAppSizeForSession({ appId: 1, fileCount: 30, totalBytes: 400 });
+
+    expect(readLastSessionRecord()).toMatchObject({
+      fileCount: 30,
+      totalBytes: 400,
+      maxFileCount: 30,
+      maxTotalBytes: 400,
       distinctApps: 1,
     });
   });

@@ -435,13 +435,15 @@ describe("extractCodebase size stats", () => {
     expect(result.files.map((file) => file.path)).toEqual(["a.ts"]);
   });
 
-  it("reports nothing when a listed file is gone on the native Git path", async () => {
+  it("still reports when a git-listed file is simply gone", async () => {
     appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
     await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
-    const onSizeStats = vi.fn();
-    // git ls-files --cached still lists a tracked file whose deletion has not
-    // been staged. The lstat fails, and the count would silently undercount.
+    // git ls-files --cached lists tracked files whose deletion has not been
+    // staged. The file is definitively gone, so excluding it is exact, not an
+    // undercount, and suppressing here would blind the metric to any app in
+    // that state until the deletion is committed.
     vi.mocked(gitListFilesNative).mockResolvedValueOnce(["a.ts", "gone.ts"]);
+    const onSizeStats = vi.fn();
 
     const result = await extractCodebase({
       appPath: appDir,
@@ -449,8 +451,37 @@ describe("extractCodebase size stats", () => {
       onSizeStats,
     });
 
-    expect(onSizeStats).not.toHaveBeenCalled();
+    expect(onSizeStats).toHaveBeenCalledWith({ fileCount: 1, totalBytes: 5 });
     expect(result.files.map((file) => file.path)).toEqual(["a.ts"]);
+  });
+
+  it("reports nothing when a git-listed file cannot be read", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "bb\n");
+    const onSizeStats = vi.fn();
+    // A permission error is different: the file is there and we cannot see it,
+    // so the count is short by an unknown amount.
+    const realLstat = fs.promises.lstat;
+    vi.spyOn(fs.promises, "lstat").mockImplementation(
+      async (target, ...rest) => {
+        if (String(target).endsWith("b.ts")) {
+          const error = new Error("permission denied") as NodeJS.ErrnoException;
+          error.code = "EACCES";
+          throw error;
+        }
+        return realLstat(target, ...(rest as []));
+      },
+    );
+    vi.mocked(gitListFilesNative).mockResolvedValueOnce(["a.ts", "b.ts"]);
+
+    await extractCodebase({
+      appPath: appDir,
+      chatContext: noContext,
+      onSizeStats,
+    });
+
+    expect(onSizeStats).not.toHaveBeenCalled();
   });
 
   it("is not called for a directory that does not exist", async () => {

@@ -78,6 +78,14 @@ export function readLastSessionRecord(): SessionAppSizeRecord | null {
  * the record is gone; an already-absent record counts as cleared.
  */
 export function clearLastSessionRecord(): boolean {
+  // A process killed between the write and the rename leaves the temp file
+  // behind, and only startup is in a position to notice.
+  try {
+    fs.unlinkSync(`${getLastSessionPath()}.tmp`);
+  } catch {
+    // Absent, which is the normal case, or not removable.
+  }
+
   try {
     fs.unlinkSync(getLastSessionPath());
     return true;
@@ -122,19 +130,23 @@ const measuredAppIds = new Set<number>();
 
 function isUnchanged(
   previous: SessionAppSizeRecord | null,
-  next: Omit<SessionAppSizeRecord, "distinctApps">,
+  next: SessionAppSizeRecord,
 ): boolean {
   return (
     previous !== null &&
     previous.appId === next.appId &&
     previous.fileCount === next.fileCount &&
-    previous.totalBytes === next.totalBytes
+    previous.totalBytes === next.totalBytes &&
+    previous.maxFileCount === next.maxFileCount &&
+    previous.maxTotalBytes === next.maxTotalBytes &&
+    previous.distinctApps === next.distinctApps
   );
 }
 
 /**
- * Records the size of the app a chat turn just ran against. An unchanged
- * measurement skips the write entirely.
+ * Records the size of the app a chat turn just ran against, keeping both the
+ * most recent measurement and the largest one the session has seen. An
+ * unchanged record skips the write entirely.
  */
 export function recordAppSizeForSession({
   appId,
@@ -145,17 +157,27 @@ export function recordAppSizeForSession({
   fileCount: number;
   totalBytes: number;
 }): void {
-  const measurement = { fileCount, totalBytes, appId };
-  if (isUnchanged(currentSession, measurement)) {
-    return;
-  }
+  // Compared on bytes, and both max fields move together, so the pair always
+  // describes one real app rather than a file count from one and a byte total
+  // from another.
+  const isLargest =
+    currentSession === null || totalBytes > currentSession.maxTotalBytes;
 
-  const next = {
-    ...measurement,
+  const next: SessionAppSizeRecord = {
+    fileCount,
+    totalBytes,
+    appId,
+    maxFileCount: isLargest ? fileCount : currentSession!.maxFileCount,
+    maxTotalBytes: isLargest ? totalBytes : currentSession!.maxTotalBytes,
     distinctApps: measuredAppIds.has(appId)
       ? measuredAppIds.size
       : measuredAppIds.size + 1,
   };
+
+  if (isUnchanged(currentSession, next)) {
+    return;
+  }
+
   // Memory is only updated once the record is on disk. Committing a failed
   // write would make the next identical measurement look unchanged and skip
   // its retry, losing the size for the rest of the session.

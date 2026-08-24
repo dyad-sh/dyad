@@ -146,7 +146,8 @@ describe("getInitialLoadTelemetryProperties", () => {
       previousSessionAppSize: {
         fileCount: 310,
         totalBytes: 2_000_000,
-        appId: 9,
+        maxFileCount: 310,
+        maxTotalBytes: 2_000_000,
         distinctApps: 1,
       },
     });
@@ -154,6 +155,8 @@ describe("getInitialLoadTelemetryProperties", () => {
     expect(properties).toMatchObject({
       prev_session_app_file_count: 310,
       prev_session_app_bytes: 2_000_000,
+      prev_session_max_app_file_count: 310,
+      prev_session_max_app_bytes: 2_000_000,
       prev_session_distinct_apps: 1,
     });
   });

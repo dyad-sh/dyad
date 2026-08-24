@@ -200,6 +200,17 @@ interface CollectedFiles {
 }
 
 /**
+ * A file that is definitively gone has been observed, not missed, so it is
+ * excluded from the count without spoiling it. `git ls-files --cached` lists
+ * tracked files whose deletion has not been staged, which is routine. A
+ * directory that cannot be read is different: it hides an unknown number of
+ * files, so that still counts as incomplete.
+ */
+function isMissingFileError(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException)?.code === "ENOENT";
+}
+
+/**
  * Traverses a directory and collects all relevant files using native Git.
  */
 async function collectFilesNativeGit(dir: string): Promise<CollectedFiles> {
@@ -242,7 +253,9 @@ async function collectFilesNativeGit(dir: string): Promise<CollectedFiles> {
         return { file, size: stats.size };
       } catch (error) {
         logger.error(`Failed to read file ${file}:`, error);
-        incomplete = true;
+        if (!isMissingFileError(error)) {
+          incomplete = true;
+        }
         return null;
       }
     }),
@@ -321,7 +334,9 @@ async function collectFilesByTraversal(
           size = stats.size;
         } catch (error) {
           logger.error(`Error checking file size: ${fullPath}`, error);
-          incomplete = true;
+          if (!isMissingFileError(error)) {
+            incomplete = true;
+          }
           return;
         }
 

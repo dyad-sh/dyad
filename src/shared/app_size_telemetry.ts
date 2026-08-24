@@ -6,20 +6,41 @@ import { z } from "zod";
  * contract that carries it, and the helpers that flatten it.
  */
 export const SessionAppSizeRecordSchema = z.object({
-  /** Files eligible to be sent to the AI, before per-chat context filtering. */
+  /**
+   * The most recent measurement: files eligible to be sent to the AI, before
+   * per-chat context filtering, and their total bytes.
+   */
   fileCount: z.number().int().nonnegative(),
-  /** Total bytes of those files. */
   totalBytes: z.number().int().nonnegative(),
+  /**
+   * The largest app the session measured, by bytes. The pair moves together,
+   * so both always describe one real app rather than a mix of two.
+   *
+   * Recent and largest differ only when a session works in more than one app,
+   * and they argue for different things: a big app touched hours ago may be
+   * irrelevant to a crash, or may still be resident, since the file content
+   * cache is never cleared on an app switch. Both are reported so the data can
+   * settle which one tracks crashes.
+   */
+  maxFileCount: z.number().int().nonnegative(),
+  maxTotalBytes: z.number().int().nonnegative(),
   /** The app measured, so a session that switched apps can be identified. */
   appId: z.number().int(),
   /**
-   * Distinct apps measured this session. Size is attributed to the last one,
-   * so only single-app sessions are unambiguous; analysis can filter on this.
+   * Distinct apps measured this session. Only single-app sessions have an
+   * unambiguous size, and there recent and largest are the same number.
    */
   distinctApps: z.number().int().positive(),
 });
 
 export type SessionAppSizeRecord = z.infer<typeof SessionAppSizeRecordSchema>;
+
+/** What crosses IPC and reaches PostHog. The app id stays main-side. */
+export const AppSizeTelemetrySchema = SessionAppSizeRecordSchema.omit({
+  appId: true,
+});
+
+export type AppSizeTelemetry = z.infer<typeof AppSizeTelemetrySchema>;
 
 /**
  * Flat telemetry fields for the previous session's app size. Shared by
@@ -32,11 +53,16 @@ export type SessionAppSizeRecord = z.infer<typeof SessionAppSizeRecordSchema>;
  *
  * app:initial-load fires once per window while app:crash_detected fires once
  * per session, so the absolute crash rate reads low by roughly the average
- * window count. Both size buckets are scaled the same way, so comparisons
- * between them are unaffected.
+ * window count. That factor cancels between size buckets only if windows per
+ * session is independent of app size, which is worth checking before reading
+ * anything into absolute rates.
+ *
+ * Names are snake_case to match app:crash_detected, which is snake_case
+ * throughout. app:initial-load is otherwise camelCase, but both events have to
+ * emit identical names for the comparison to work.
  */
 export function appSizeEventFields(
-  record: SessionAppSizeRecord | null | undefined,
+  record: AppSizeTelemetry | null | undefined,
 ): Record<string, unknown> {
   if (!record) {
     // Absent rather than zeroed: a session with no app isn't a zero-size app,
@@ -46,6 +72,8 @@ export function appSizeEventFields(
   return {
     prev_session_app_file_count: record.fileCount,
     prev_session_app_bytes: record.totalBytes,
+    prev_session_max_app_file_count: record.maxFileCount,
+    prev_session_max_app_bytes: record.maxTotalBytes,
     prev_session_distinct_apps: record.distinctApps,
   };
 }

@@ -12,6 +12,7 @@ import {
   waitForAdminSeeded,
   waitForDashboard,
 } from "./install";
+import { SshError } from "@/ipc/utils/ssh_client";
 import { tryAutomaticAccess } from "./api_token";
 import { plainUrlFor, tryEnableHttps } from "./https_setup";
 import type { HttpsOutcome } from "./https_setup";
@@ -266,10 +267,15 @@ export async function runServerSetup({
       // throws: losing a working server because the last step failed would be
       // the worse outcome by far.
       if ((error as { kind?: string }).kind === "user_cancelled") throw error;
+      // A lost link is reported as one. Handing back the transport's own
+      // words would tell the user about a socket when what they need to know
+      // is that the server stopped answering and the rest is theirs to do.
       result.tokenUnavailableReason =
-        error instanceof Error
-          ? error.message
-          : "Coolify's API could not be opened automatically.";
+        error instanceof SshError
+          ? "Coolify did not answer while Dyad was opening its API."
+          : error instanceof Error
+            ? error.message
+            : "Coolify's API could not be opened automatically.";
     }
 
     report("done");

@@ -8,6 +8,8 @@ import {
   supportsAutomaticToken,
   tryAutomaticAccess,
 } from "./api_token";
+import { DyadErrorKind } from "@/errors/dyad_error";
+import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 
 /** Wraps a value the way a real tinker transcript carries it. */
@@ -75,6 +77,41 @@ describe("readCoolifyVersion", () => {
 
   it("answers null when the reply is not a version", async () => {
     const session = fakeSession(["Command not found"]);
+    expect(await readCoolifyVersion(session)).toBeNull();
+  });
+
+  it("does not call a lost link an unreadable version", async () => {
+    // Answering null here sends the caller down the path that tells the user
+    // their freshly installed Coolify is too old to drive, for a question
+    // that never reached it.
+    const session = {
+      run: vi.fn(async () => {
+        throw new SshError(
+          "connection-lost",
+          "connection lost",
+          DyadErrorKind.External,
+        );
+      }),
+      end: vi.fn(),
+    } as unknown as SshSession;
+
+    await expect(readCoolifyVersion(session)).rejects.toBeInstanceOf(SshError);
+  });
+
+  it("still answers null when a bound Dyad set is the one that was hit", async () => {
+    // The instance is reachable and simply did not answer in time, which is
+    // the case this was written for.
+    const session = {
+      run: vi.fn(async () => {
+        throw new SshError(
+          "command-timeout",
+          "timed out",
+          DyadErrorKind.External,
+        );
+      }),
+      end: vi.fn(),
+    } as unknown as SshSession;
+
     expect(await readCoolifyVersion(session)).toBeNull();
   });
 });

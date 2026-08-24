@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   getServerKey: vi.fn(),
   snapshot: vi.fn(),
   dismiss: vi.fn(),
+  declineInsecureToken: vi.fn(),
   changedListeners: [] as Array<(state: unknown) => void>,
   inspect: vi.fn(),
   run: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock("@/ipc/types", () => ({
       cancel: h.cancel,
       snapshot: h.snapshot,
       dismiss: h.dismiss,
+      declineInsecureToken: h.declineInsecureToken,
     },
     events: {
       coolifySetup: {
@@ -92,6 +94,7 @@ beforeEach(() => {
   h.changedListeners.length = 0;
   h.snapshot.mockResolvedValue(IDLE);
   h.dismiss.mockResolvedValue(undefined);
+  h.declineInsecureToken.mockResolvedValue(undefined);
   h.getServerKey.mockResolvedValue({ publicKey: PUBLIC_KEY });
   h.cancel.mockResolvedValue(undefined);
   h.inspect.mockResolvedValue({
@@ -779,6 +782,54 @@ describe("when it finishes", () => {
       operationId: "op-1",
     },
     result: { ...DONE_RESULT, ...over },
+  });
+
+  it("does not keep a token for an unencrypted address unless asked to", async () => {
+    // The token is written when the run ends, before anyone has read the
+    // warning. Continuing past it without a word is not agreement.
+    h.snapshot.mockResolvedValue(
+      doneState({ secure: false, insecureReason: "No certificate arrived." }),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-continue")).toBeTruthy(),
+    );
+    await user.click(screen.getByTestId("coolify-setup-continue"));
+
+    expect(h.declineInsecureToken).toHaveBeenCalled();
+  });
+
+  it("keeps it when the address is agreed to", async () => {
+    h.snapshot.mockResolvedValue(
+      doneState({ secure: false, insecureReason: "No certificate arrived." }),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-accept-insecure")).toBeTruthy(),
+    );
+    await user.click(screen.getByTestId("coolify-setup-accept-insecure"));
+    await user.click(screen.getByTestId("coolify-setup-continue"));
+
+    expect(h.declineInsecureToken).not.toHaveBeenCalled();
+  });
+
+  it("asks nothing when the address is encrypted", async () => {
+    // Nothing crosses the network in the clear, so there is no decision.
+    h.snapshot.mockResolvedValue(doneState());
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-continue")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("coolify-setup-accept-insecure")).toBeNull();
+    await user.click(screen.getByTestId("coolify-setup-continue"));
+
+    expect(h.declineInsecureToken).not.toHaveBeenCalled();
   });
 
   it("shows the details, since this is the moment they are needed", async () => {

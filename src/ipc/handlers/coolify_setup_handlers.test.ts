@@ -646,6 +646,38 @@ describe("run", () => {
   });
 });
 
+describe("declining a token for an unencrypted address", () => {
+  it("takes the token and the address off, and leaves the account", async () => {
+    // The account is the way into a server that is running either way, and
+    // holding it sends nothing anywhere. The token is what would have crossed
+    // the network in the clear on every deploy.
+    h.settings = {
+      coolify: {
+        instanceUrl: "http://203.0.113.5:8000",
+        accessToken: { value: "1|abc" },
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "Abc123@xyz" },
+          instanceUrl: "http://203.0.113.5:8000",
+        },
+      },
+    } as Record<string, unknown>;
+
+    await call("coolify-setup:decline-insecure-token");
+
+    const saved = h.written.at(-1) as {
+      coolify: {
+        instanceUrl?: string;
+        accessToken?: unknown;
+        admin?: { password?: { value: string } };
+      };
+    };
+    expect(saved.coolify.accessToken).toBeUndefined();
+    expect(saved.coolify.instanceUrl).toBeUndefined();
+    expect(saved.coolify.admin?.password?.value).toBe("Abc123@xyz");
+  });
+});
+
 describe("revealCredentials", () => {
   const ADMIN = {
     email: "me@gmail.com",

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Copy, Check, ServerCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
@@ -90,6 +91,9 @@ export function CoolifyServerSetup({
   const [host, setHost] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [customDomain, setCustomDomain] = useState("");
+  // Unticked every time the screen appears: it is about the address this run
+  // ended on, not a preference that outlives it.
+  const [acceptedInsecureToken, setAcceptedInsecureToken] = useState(false);
 
   // Kept with the address it was asked about. The answer arrives after a
   // round trip, and by then the address in the field may be a different
@@ -163,7 +167,15 @@ export function CoolifyServerSetup({
   });
 
   /** Puts the finished screen away and lets the panel behind catch up. */
-  const leaveResult = async (instanceUrl?: string) => {
+  const leaveResult = async (
+    instanceUrl?: string,
+    { declineToken = false }: { declineToken?: boolean } = {},
+  ) => {
+    // Before the queries are refreshed, so the panel behind never sees the
+    // token that is about to be taken back off.
+    if (declineToken) {
+      await ipc.coolifySetup.declineInsecureToken().catch(showError);
+    }
     // Refreshed before the screen is put away. Dismissing first hands the
     // panel back to a connector that still believes there is no token, so the
     // empty install form flashes up before the right screen arrives.
@@ -233,6 +245,23 @@ export function CoolifyServerSetup({
               crosses your network unencrypted every time it deploys. Adding a
               domain that points at this server fixes it.
             </p>
+            {/* A decision rather than a notice, and only where there is one to
+                make: a token was created, and keeping it is what puts it on
+                the network. Unticked to start, so continuing without reading
+                this leaves Dyad unconnected rather than connected over a
+                address nobody agreed to. */}
+            {result.tokenStored && (
+              <label className="mt-2 flex items-center gap-2">
+                <Checkbox
+                  checked={acceptedInsecureToken}
+                  onCheckedChange={(checked) =>
+                    setAcceptedInsecureToken(checked === true)
+                  }
+                  data-testid="coolify-setup-accept-insecure"
+                />
+                <span>Keep Dyad connected to this address anyway</span>
+              </label>
+            )}
           </div>
         )}
         {result.tokenStored ? (
@@ -258,7 +287,12 @@ export function CoolifyServerSetup({
           </div>
         )}
         <Button
-          onClick={() => void leaveResult(result.dashboardUrl)}
+          onClick={() =>
+            void leaveResult(result.dashboardUrl, {
+              declineToken:
+                !result.secure && result.tokenStored && !acceptedInsecureToken,
+            })
+          }
           data-testid="coolify-setup-continue"
         >
           Continue

@@ -241,6 +241,20 @@ export const coolifySetupContracts = {
     output: SetupSnapshotSchema,
   }),
 
+  /**
+   * The user read the unencrypted-address warning and did not accept it.
+   *
+   * The token is stored when the run ends, before anyone has seen that
+   * warning, so this is how declining takes it back off. The account stays:
+   * it is the way into a server that exists either way, and the address it
+   * names is not what travels on every deploy.
+   */
+  declineInsecureToken: defineContract({
+    channel: "coolify-setup:decline-insecure-token",
+    input: z.void(),
+    output: z.void(),
+  }),
+
   /** The user has read the finished screen; put the panel back to the form. */
   dismiss: defineContract({
     channel: "coolify-setup:dismiss",

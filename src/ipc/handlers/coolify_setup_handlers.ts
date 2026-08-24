@@ -487,6 +487,17 @@ export function registerCoolifySetupHandlers() {
     };
   });
 
+  createTypedHandler(coolifySetupContracts.declineInsecureToken, async () => {
+    // Only the two that make Dyad talk to the instance. The admin account is
+    // the way into a server that is running either way, and holding it sends
+    // nothing anywhere — the token is what would have crossed the network in
+    // the clear on every deploy.
+    const current = readSettings().coolify;
+    writeSettings({
+      coolify: { ...current, instanceUrl: undefined, accessToken: undefined },
+    });
+  });
+
   createTypedHandler(coolifySetupContracts.cancel, async () => {
     // Abandoning mid-install leaves whatever the installer had done on the
     // server. Nothing here tries to undo it: a half-installed Coolify is

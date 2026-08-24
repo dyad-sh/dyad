@@ -1705,24 +1705,19 @@ ${componentSnippet}
             : validateChatContext(updatedChat.app.chatContext);
 
         // Extract codebase for current app
-        const {
-          formattedOutput: codebaseInfo,
-          files,
-          sizeStats,
-        } = await extractCodebase({
+        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
           appPath,
           chatContext,
+          // Recorded as soon as the file list is known rather than after the
+          // extract is built, so a turn that dies reading a large codebase
+          // still reports the size it died on.
+          onSizeStats: (sizeStats) =>
+            recordAppSizeForSession({
+              lane: "chatted",
+              appId: updatedChat.app.id,
+              ...sizeStats,
+            }),
         });
-
-        // Persist the size so the next launch can report it, whether this
-        // session crashes or exits cleanly. Extraction already did the work.
-        if (sizeStats) {
-          recordAppSizeForSession({
-            lane: "chatted",
-            appId: updatedChat.app.id,
-            ...sizeStats,
-          });
-        }
 
         // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching

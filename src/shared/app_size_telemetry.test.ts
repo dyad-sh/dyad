@@ -11,7 +11,6 @@ const lane = (
   totalBytes: 1_200_000,
   appId: 3,
   distinctApps: 1,
-  measuredAt: 1_000,
   ...overrides,
 });
 

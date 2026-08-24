@@ -17,7 +17,6 @@ export const SessionAppSizeRecordSchema = z.object({
    * so only single-app sessions are unambiguous; analysis can filter on this.
    */
   distinctApps: z.number().int().positive(),
-  measuredAt: z.number(),
 });
 
 export type SessionAppSizeRecord = z.infer<typeof SessionAppSizeRecordSchema>;
@@ -59,6 +58,11 @@ function laneFields(
  * app:initial-load (every launch, the denominator) and app:crash_detected (the
  * numerator) so both populations are measured identically. Scalars only,
  * because PostHog cannot easily filter nested JSON.
+ *
+ * app:initial-load fires once per window while app:crash_detected fires once
+ * per session, so the absolute crash rate reads low by roughly the average
+ * window count. Both size buckets are scaled the same way, so comparisons
+ * between them still hold.
  */
 export function appSizeEventFields(
   record: LastSessionRecord | null | undefined,

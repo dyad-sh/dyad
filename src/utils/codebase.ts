@@ -552,6 +552,27 @@ async function prepareCodebaseFiles({
 }
 
 /**
+ * Measures an app's size without preparing an extract. Stops at the file
+ * listing, so it skips reading contents and the modification-time sort.
+ * Returns undefined when the app directory is unreadable.
+ */
+export async function measureCodebaseSize(
+  appPath: string,
+): Promise<CodebaseSizeStats | undefined> {
+  try {
+    await fsAsync.access(appPath);
+  } catch {
+    return undefined;
+  }
+
+  const collected = await collectFilesNativeGit(appPath);
+  return {
+    fileCount: collected.files.length,
+    totalBytes: collected.totalBytes,
+  };
+}
+
+/**
  * List codebase files without reading their contents.
  */
 export async function listCodebaseFileMetadata({
@@ -563,7 +584,6 @@ export async function listCodebaseFileMetadata({
 }): Promise<{
   files: BaseFile[];
   totalFileCount: number;
-  sizeStats?: CodebaseSizeStats;
 }> {
   const prepared = await prepareCodebaseFiles({ appPath, chatContext });
   const preparedFiles = prepared?.preparedFiles ?? [];
@@ -574,7 +594,6 @@ export async function listCodebaseFileMetadata({
       force,
     })),
     totalFileCount: preparedFiles.length,
-    sizeStats: prepared?.sizeStats,
   };
 }
 
@@ -582,15 +601,18 @@ export async function listCodebaseFileMetadata({
  * Extract and format codebase files as a string to be included in prompts
  * @param params.appPath - Path to the codebase to extract
  * @param params.chatContext - Chat context selecting which paths to include
+ * @param params.onSizeStats - Called with the app's size as soon as the file
+ *   list is known, before any contents are read. Reading a large codebase can
+ *   exhaust the heap, so a caller recording the size must not wait for it.
  * @returns Object containing formatted output and individual files
  */
 export async function extractCodebase(params: {
   appPath: string;
   chatContext: AppChatContext;
+  onSizeStats?: (sizeStats: CodebaseSizeStats) => void;
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
-  sizeStats?: CodebaseSizeStats;
 }> {
   // Tracked so memory snapshots can tell when an extraction was running.
   extractCodebaseStarted();
@@ -604,13 +626,14 @@ export async function extractCodebase(params: {
 async function extractCodebaseInner({
   appPath,
   chatContext,
+  onSizeStats,
 }: {
   appPath: string;
   chatContext: AppChatContext;
+  onSizeStats?: (sizeStats: CodebaseSizeStats) => void;
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
-  sizeStats?: CodebaseSizeStats;
 }> {
   const startTime = Date.now();
   const prepared = await prepareCodebaseFiles({
@@ -624,6 +647,13 @@ async function extractCodebaseInner({
     };
   }
   const { preparedFiles, sizeStats } = prepared;
+  try {
+    onSizeStats?.(sizeStats);
+  } catch (error) {
+    // The callback reports size for telemetry; it must not fail the chat turn
+    // this extraction belongs to.
+    logger.warn("onSizeStats callback failed:", error);
+  }
 
   // Format files and collect individual file contents
   const formatPromises = preparedFiles.map(async (preparedFile) => {
@@ -677,7 +707,6 @@ async function extractCodebaseInner({
   return {
     formattedOutput,
     files: filesArray,
-    sizeStats,
   };
 }
 

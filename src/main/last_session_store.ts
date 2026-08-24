@@ -25,16 +25,28 @@ function getLastSessionPath(): string {
 
 /**
  * Written atomically: the session this describes may be killed mid-write, and
- * a torn file would be read back at the next launch.
+ * a torn file would be read back at the next launch. Returns whether the
+ * record reached disk, so callers can avoid treating it as persisted.
  */
-export function writeLastSessionRecord(record: LastSessionRecord): void {
+export function writeLastSessionRecord(record: LastSessionRecord): boolean {
+  let tmpPath: string | undefined;
   try {
     const filePath = getLastSessionPath();
-    const tmpPath = `${filePath}.tmp`;
+    tmpPath = `${filePath}.tmp`;
     fs.writeFileSync(tmpPath, JSON.stringify(record));
     fs.renameSync(tmpPath, filePath);
+    return true;
   } catch (error) {
     logger.error("Error writing last session record:", error);
+    // A rename that failed leaves the temp file sitting in userData.
+    try {
+      if (tmpPath) {
+        fs.unlinkSync(tmpPath);
+      }
+    } catch {
+      // Nothing to clean up, or it cannot be removed either.
+    }
+    return false;
   }
 }
 
@@ -64,15 +76,19 @@ export function readLastSessionRecord(): LastSessionRecord | null {
 
 /**
  * Clears the record once consumed, so a session that never measures an app
- * doesn't report the previous session's numbers as its own.
+ * doesn't report the previous session's numbers as its own. Returns whether
+ * the record is gone; an already-absent record counts as cleared.
  */
-export function clearLastSessionRecord(): void {
+export function clearLastSessionRecord(): boolean {
   try {
     fs.unlinkSync(getLastSessionPath());
+    return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      logger.error("Error clearing last session record:", error);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return true;
     }
+    logger.error("Error clearing last session record:", error);
+    return false;
   }
 }
 
@@ -84,8 +100,10 @@ let previousSessionAppSize: LastSessionRecord | null = null;
  * clear can't end up ordered before the read.
  */
 export function claimPreviousSessionAppSize(): LastSessionRecord | null {
-  previousSessionAppSize = readLastSessionRecord();
-  clearLastSessionRecord();
+  const previous = readLastSessionRecord();
+  // A record that cannot be deleted would be reported again on every later
+  // launch, so it only counts as claimed once it is gone.
+  previousSessionAppSize = clearLastSessionRecord() ? previous : null;
   return previousSessionAppSize;
 }
 
@@ -109,7 +127,7 @@ const measuredAppIds: Record<AppSizeLane, Set<number>> = {
 
 function isUnchanged(
   previous: SessionAppSizeRecord | undefined,
-  next: Omit<SessionAppSizeRecord, "distinctApps" | "measuredAt">,
+  next: Omit<SessionAppSizeRecord, "distinctApps">,
 ): boolean {
   return (
     previous !== undefined &&
@@ -122,7 +140,7 @@ function isUnchanged(
 /**
  * Records the size of an app this session worked with. Each lane has one
  * writer: app selection for "viewed", chat turns for "chatted". An unchanged
- * measurement skips the write rather than just advancing the timestamp.
+ * measurement skips the write entirely.
  */
 export function recordAppSizeForSession({
   lane,
@@ -140,13 +158,21 @@ export function recordAppSizeForSession({
     return;
   }
 
-  measuredAppIds[lane].add(appId);
-  currentSession[lane] = {
+  const next = {
     ...measurement,
-    distinctApps: measuredAppIds[lane].size,
-    measuredAt: Date.now(),
+    distinctApps: measuredAppIds[lane].has(appId)
+      ? measuredAppIds[lane].size
+      : measuredAppIds[lane].size + 1,
   };
-  writeLastSessionRecord(currentSession);
+  // Memory is only updated once the record is on disk. Committing a failed
+  // write would make the next identical measurement look unchanged and skip
+  // its retry, losing the lane for the rest of the session.
+  if (!writeLastSessionRecord({ ...currentSession, [lane]: next })) {
+    return;
+  }
+
+  measuredAppIds[lane].add(appId);
+  currentSession[lane] = next;
 }
 
 /** For tests: forget the session state accumulated in this module. */

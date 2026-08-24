@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
@@ -10,13 +11,16 @@ import { ipc } from "@/ipc/types";
  */
 export function useRecordViewedAppSize(): void {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { mutate } = useMutation({
+    mutationFn: (appId: number) => ipc.app.recordViewedAppSize(appId),
+    // Telemetry only; a failure here must not surface to the user.
+    onError: () => {},
+  });
 
   useEffect(() => {
     if (selectedAppId == null) {
       return;
     }
-    void ipc.app.recordViewedAppSize(selectedAppId).catch(() => {
-      // Telemetry only; a failure here must not surface to the user.
-    });
-  }, [selectedAppId]);
+    mutate(selectedAppId);
+  }, [selectedAppId, mutate]);
 }

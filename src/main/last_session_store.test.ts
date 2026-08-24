@@ -38,7 +38,6 @@ const laneRecord = {
   totalBytes: 45_000,
   appId: 7,
   distinctApps: 1,
-  measuredAt: 1_700_000_000_000,
 };
 
 beforeEach(async () => {
@@ -99,6 +98,16 @@ describe("writeLastSessionRecord / readLastSessionRecord", () => {
     });
     expect(() => writeLastSessionRecord({ viewed: laneRecord })).not.toThrow();
   });
+
+  it("removes the temp file when the rename fails", () => {
+    vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw new Error("rename failed");
+    });
+
+    writeLastSessionRecord({ viewed: laneRecord });
+
+    expect(fs.readdirSync(userDataDir)).toEqual([]);
+  });
 });
 
 describe("clearLastSessionRecord", () => {
@@ -135,6 +144,18 @@ describe("claimPreviousSessionAppSize", () => {
     expect(getPreviousSessionAppSize()).toBeNull();
   });
 
+  it("reports nothing when the record cannot be deleted", () => {
+    writeLastSessionRecord({ viewed: laneRecord });
+    vi.spyOn(fs, "unlinkSync").mockImplementation(() => {
+      throw new Error("permission denied");
+    });
+
+    // A record still on disk would be re-reported at every later launch, so an
+    // incomplete claim reports nothing at all.
+    expect(claimPreviousSessionAppSize()).toBeNull();
+    expect(getPreviousSessionAppSize()).toBeNull();
+  });
+
   it("does not resurrect a record written after the claim", () => {
     claimPreviousSessionAppSize();
     recordAppSizeForSession({
@@ -167,7 +188,6 @@ describe("recordAppSizeForSession", () => {
       distinctApps: 1,
     });
     expect(record?.viewed).toBeUndefined();
-    expect(record?.chatted?.measuredAt).toBeGreaterThan(0);
   });
 
   it("keeps the two lanes independent", () => {
@@ -241,6 +261,36 @@ describe("recordAppSizeForSession", () => {
     expect(writeSpy).not.toHaveBeenCalled();
   });
 
+  it("retries after a failed write instead of treating it as recorded", () => {
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    recordAppSizeForSession({
+      lane: "viewed",
+      appId: 1,
+      fileCount: 10,
+      totalBytes: 100,
+    });
+    expect(readLastSessionRecord()).toBeNull();
+
+    // The identical measurement must not look unchanged, or the lane would be
+    // lost for the rest of the session.
+    writeSpy.mockRestore();
+    recordAppSizeForSession({
+      lane: "viewed",
+      appId: 1,
+      fileCount: 10,
+      totalBytes: 100,
+    });
+
+    expect(readLastSessionRecord()?.viewed).toMatchObject({
+      appId: 1,
+      fileCount: 10,
+      distinctApps: 1,
+    });
+  });
+
   it("writes again once the codebase actually changes", () => {
     recordAppSizeForSession({
       lane: "viewed",
@@ -255,9 +305,23 @@ describe("recordAppSizeForSession", () => {
       totalBytes: 120,
     });
 
+    // Re-measuring the same app must not consume another distinctApps slot.
     expect(readLastSessionRecord()?.viewed).toMatchObject({
       fileCount: 11,
       totalBytes: 120,
+      distinctApps: 1,
+    });
+
+    recordAppSizeForSession({
+      lane: "viewed",
+      appId: 2,
+      fileCount: 5,
+      totalBytes: 50,
+    });
+
+    expect(readLastSessionRecord()?.viewed).toMatchObject({
+      appId: 2,
+      distinctApps: 2,
     });
   });
 

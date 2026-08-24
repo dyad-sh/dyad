@@ -153,14 +153,12 @@ describe("getInitialLoadTelemetryProperties", () => {
           totalBytes: 2_000_000,
           appId: 9,
           distinctApps: 1,
-          measuredAt: Date.now(),
         },
         chatted: {
           fileCount: 310,
           totalBytes: 2_000_000,
           appId: 9,
           distinctApps: 1,
-          measuredAt: Date.now(),
         },
       },
     });
@@ -187,7 +185,6 @@ describe("getInitialLoadTelemetryProperties", () => {
           totalBytes: 9_000_000,
           appId: 9,
           distinctApps: 1,
-          measuredAt: Date.now(),
         },
       },
     });

@@ -54,7 +54,16 @@ export class ChatActions {
 
   async clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There are two new chat buttons.
-    const previousChatId = new URL(this.page.url()).searchParams.get("id");
+    let previousChatId = new URL(this.page.url()).searchParams.get("id");
+    if (previousChatId === null) {
+      // Importing an app creates and navigates to its initial chat
+      // asynchronously. Do not let that pending navigation masquerade as the
+      // receipt for this New Chat click.
+      await expect(() => {
+        previousChatId = new URL(this.page.url()).searchParams.get("id");
+        expect(previousChatId).not.toBeNull();
+      }).toPass({ timeout: Timeout.MEDIUM });
+    }
     const visibleNewChatButtons = this.page.locator(
       '[data-testid="new-chat-button"]:visible',
     );
@@ -70,21 +79,45 @@ export class ChatActions {
       await expect(visibleNewChatButtons.nth(index)).toBeVisible({
         timeout: 1_000,
       });
-      await visibleNewChatButtons.nth(index).click({ timeout: 1_000 });
+      try {
+        await visibleNewChatButtons.nth(index).click({ timeout: 1_000 });
+      } catch (error) {
+        // The click can be dispatched successfully and then reject because the
+        // navigation replaces its target. Retrying that click creates a second
+        // chat, so treat a changed route as the receipt for the first click.
+        const navigationCompleted = await expect(() => {
+          const currentChatId = new URL(this.page.url()).searchParams.get("id");
+          expect(currentChatId).not.toBe(previousChatId);
+        })
+          .toPass({ timeout: 1_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (!navigationCompleted) {
+          throw error;
+        }
+      }
     }).toPass({ timeout: Timeout.MEDIUM });
 
     await expect(async () => {
       const currentChatId = new URL(this.page.url()).searchParams.get("id");
-      if (previousChatId === null) {
-        expect(currentChatId).not.toBeNull();
-      } else {
-        expect(currentChatId).not.toBe(previousChatId);
-      }
+      expect(currentChatId).not.toBe(previousChatId);
 
       const chatInput = this.getChatInput();
       await expect(chatInput).toBeVisible({ timeout: 1_000 });
       const text = await chatInput.textContent({ timeout: 1_000 });
       expect(text?.trim() ?? "").toBe("");
+
+      // Prompt admission and per-chat input state use the selected-chat atom,
+      // so wait for the matching tab to become active before returning.
+      const currentChatTab = this.page.getByTestId(`chat-tab-${currentChatId}`);
+      const tabButton = currentChatTab.locator('button[aria-current="page"]');
+      if (!(await tabButton.isVisible().catch(() => false))) {
+        await currentChatTab
+          .locator("button")
+          .first()
+          .click({ timeout: 1_000 });
+      }
+      await expect(tabButton).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
   }
 
@@ -195,7 +228,7 @@ export class ChatActions {
   async selectChatMode(
     mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
   ) {
-    await this.page.getByTestId("chat-mode-selector").click();
+    const trigger = this.page.getByTestId("chat-mode-selector");
     const mapping: Record<string, string> = {
       build: "Build Generate and edit code",
       ask: "Ask Ask",
@@ -205,11 +238,47 @@ export class ChatActions {
       plan: "Plan.*Design before you build",
     };
     const optionName = mapping[mode];
-    await this.page
-      .getByRole("option", {
-        name: new RegExp(optionName),
-      })
-      .click();
+    const selectedName: Record<string, RegExp> = {
+      build: /Chat mode: Build/,
+      ask: /Chat mode: Ask/,
+      agent: /Chat mode: Build/,
+      "local-agent": /Chat mode: Agent/,
+      "basic-agent": /Chat mode: Basic Agent/,
+      plan: /Chat mode: Plan/,
+    };
+    const storedMode = mode === "basic-agent" ? "local-agent" : mode;
+
+    await expect(async () => {
+      const selectedMode = await trigger.getAttribute("aria-label");
+      if (!selectedName[mode].test(selectedMode ?? "")) {
+        await trigger.click({ timeout: 1_000 });
+        await this.page
+          .getByRole("option", { name: new RegExp(optionName) })
+          .click({ timeout: 1_000 });
+      }
+
+      await expect(trigger).toHaveAttribute("aria-label", selectedName[mode], {
+        timeout: 1_000,
+      });
+      const chatId = Number(new URL(this.page.url()).searchParams.get("id"));
+      if (Number.isInteger(chatId) && chatId > 0 && mode !== "agent") {
+        const persistedMode = await this.page.evaluate(
+          async ({ id }) => {
+            const chat = await (window as any).electron.ipcRenderer.invoke(
+              "get-chat",
+              id,
+            );
+            return chat.chatMode;
+          },
+          { id: chatId },
+        );
+        expect(persistedMode).toBe(storedMode);
+      }
+      await this.page.waitForTimeout(100);
+      await expect(trigger).toHaveAttribute("aria-label", selectedName[mode], {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async selectLocalAgentMode() {

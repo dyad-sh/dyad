@@ -2,5 +2,6 @@
 - paragraph: tc=basic
 - paragraph: This is a simple basic response
 - button "Copy"
+- text: "Version 1: Init Dyad app"
 - button "Undo"
 - button "Retry"

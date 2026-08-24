@@ -43,9 +43,18 @@ interface BundleRootIdentity {
   metadata: Stats;
 }
 
+interface BundleDirectoryIdentity {
+  absolutePath: string;
+  displayPath: string;
+  metadata: Stats;
+}
+
 export async function discoverTempPreviewBundle(
   sourcePath: string,
-  options: { beforeTraversal?: () => Promise<void> } = {},
+  options: {
+    beforeTraversal?: () => Promise<void>;
+    afterTraversal?: () => Promise<void>;
+  } = {},
 ): Promise<TempPreviewBundleFile[]> {
   const source = resolve(sourcePath);
   let sourceStat;
@@ -84,10 +93,13 @@ export async function discoverTempPreviewBundle(
   };
 
   const paths: string[] = [];
+  const directories: BundleDirectoryIdentity[] = [];
   await options.beforeTraversal?.();
   await assertRootUnchanged(root);
-  await walk(source, source, root, paths);
+  await walk(source, source, root, paths, directories);
+  await options.afterTraversal?.();
   await assertRootUnchanged(root);
+  await assertDirectoriesUnchanged(root.realPath, directories);
   paths.sort((a, b) => a.localeCompare(b));
 
   if (!paths.includes("index.html")) {
@@ -127,6 +139,7 @@ export async function discoverTempPreviewBundle(
     });
     await assertRootUnchanged(root);
   }
+  await assertDirectoriesUnchanged(root.realPath, directories);
 
   const files: TempPreviewBundleFile[] = [];
   for (const file of discovered) {
@@ -135,6 +148,7 @@ export async function discoverTempPreviewBundle(
     await assertRootUnchanged(root);
   }
   await assertRootUnchanged(root);
+  await assertDirectoriesUnchanged(root.realPath, directories);
   return files;
 }
 
@@ -143,6 +157,7 @@ async function walk(
   directory: string,
   rootIdentity: BundleRootIdentity,
   paths: string[],
+  directories: BundleDirectoryIdentity[],
 ): Promise<void> {
   await assertRootUnchanged(rootIdentity);
   const directoryPath = toPosix(relative(root, directory));
@@ -158,6 +173,12 @@ async function walk(
   if (!isSameFile(beforeMetadata, afterMetadata)) {
     throw bundleFileChangedError(displayPath);
   }
+  const directoryIdentity = {
+    absolutePath: directory,
+    displayPath,
+    metadata: afterMetadata,
+  };
+  directories.push(directoryIdentity);
   entries.sort((a, b) => a.name.localeCompare(b.name));
 
   for (const entry of entries) {
@@ -166,7 +187,7 @@ async function walk(
     const absolutePath = join(directory, entry.name);
     const bundlePath = toPosix(relative(root, absolutePath));
     if (entry.isDirectory()) {
-      await walk(root, absolutePath, rootIdentity, paths);
+      await walk(root, absolutePath, rootIdentity, paths, directories);
       continue;
     }
     if (!entry.isFile()) continue;
@@ -184,6 +205,7 @@ async function walk(
       );
     }
   }
+  await assertDirectoryUnchanged(rootIdentity.realPath, directoryIdentity);
   await assertRootUnchanged(rootIdentity);
 }
 
@@ -281,6 +303,41 @@ async function assertRootUnchanged(root: BundleRootIdentity): Promise<void> {
   } catch (error) {
     if (isFileReplacementError(error)) {
       throw bundleFileChangedError("The build output", error);
+    }
+    throw error;
+  }
+}
+
+async function assertDirectoriesUnchanged(
+  rootRealPath: string,
+  directories: BundleDirectoryIdentity[],
+): Promise<void> {
+  for (const directory of directories) {
+    await assertDirectoryUnchanged(rootRealPath, directory);
+  }
+}
+
+async function assertDirectoryUnchanged(
+  rootRealPath: string,
+  directory: BundleDirectoryIdentity,
+): Promise<void> {
+  try {
+    const metadata = await lstat(directory.absolutePath);
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      !isSameFile(directory.metadata, metadata)
+    ) {
+      throw bundleFileChangedError(directory.displayPath);
+    }
+    await assertPathContained(
+      rootRealPath,
+      directory.absolutePath,
+      directory.displayPath,
+    );
+  } catch (error) {
+    if (isFileReplacementError(error)) {
+      throw bundleFileChangedError(directory.displayPath, error);
     }
     throw error;
   }

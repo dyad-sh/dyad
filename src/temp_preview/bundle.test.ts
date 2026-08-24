@@ -167,6 +167,20 @@ describe("discoverTempPreviewBundle", () => {
     ).rejects.toThrow("The build output changed");
   });
 
+  it("rejects a nested directory changed after traversal", async () => {
+    const root = await createBundleRoot();
+    const assets = join(root, "assets");
+    await mkdir(assets);
+    await writeFile(join(root, "index.html"), "ok");
+    await writeFile(join(assets, "app.js"), "original");
+
+    await expect(
+      discoverTempPreviewBundle(root, {
+        afterTraversal: () => writeFile(join(assets, "late.js"), "late"),
+      }),
+    ).rejects.toThrow("assets changed");
+  });
+
   it("reports a missing build-output directory clearly", async () => {
     const root = await createBundleRoot();
 

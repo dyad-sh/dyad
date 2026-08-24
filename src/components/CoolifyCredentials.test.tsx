@@ -158,6 +158,11 @@ describe("two servers that are not the same server", () => {
     });
     await renderAndSettle();
 
+    // One id each, so a lookup for the address reaches one thing rather than
+    // two — both blocks carry one.
+    expect(screen.getByTestId("coolify-field-server-address")).toBeTruthy();
+    expect(screen.getByTestId("coolify-field-instance-address")).toBeTruthy();
+
     const forServer = screen.getByTestId("coolify-credentials-server");
     const forInstance = screen.getByTestId("coolify-credentials-instance");
     expect(forServer.textContent).toContain("http://203.0.113.5:8000");

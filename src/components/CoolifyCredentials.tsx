@@ -23,16 +23,26 @@ function Field({
   label,
   value,
   secret,
+  idPrefix,
 }: {
   label: string;
   value: string;
   secret?: boolean;
+  /**
+   * Told apart from the same label in the other block, and only when both
+   * are on screen. Both carry an address, so an id naming just the label
+   * would be two things at once — which any lookup for it reaches
+   * ambiguously. One block alone has nothing to be confused with.
+   */
+  idPrefix?: string;
 }) {
   const [shown, setShown] = useState(false);
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(resetTimer.current), []);
-  const id = label.toLowerCase().replace(/\s+/g, "-");
+  const id = `${idPrefix ? `${idPrefix}-` : ""}${label
+    .toLowerCase()
+    .replace(/\s+/g, "-")}`;
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
@@ -157,10 +167,23 @@ export function CoolifyCredentials({
                   The server Dyad set up
                 </div>
               )}
-              <Field label="Address" value={server.url} />
-              <Field label="Email" value={server.email} />
+              <Field
+                label="Address"
+                value={server.url}
+                idPrefix={showsBoth ? "server" : undefined}
+              />
+              <Field
+                label="Email"
+                value={server.email}
+                idPrefix={showsBoth ? "server" : undefined}
+              />
               {server.password && (
-                <Field label="Password" value={server.password} secret />
+                <Field
+                  label="Password"
+                  value={server.password}
+                  secret
+                  idPrefix={showsBoth ? "server" : undefined}
+                />
               )}
             </div>
           )}
@@ -174,9 +197,18 @@ export function CoolifyCredentials({
                   The Coolify Dyad is connected to
                 </div>
               )}
-              <Field label="Address" value={instance.url} />
+              <Field
+                label="Address"
+                value={instance.url}
+                idPrefix={showsBoth ? "instance" : undefined}
+              />
               {instance.apiToken && (
-                <Field label="API token" value={instance.apiToken} secret />
+                <Field
+                  label="API token"
+                  value={instance.apiToken}
+                  secret
+                  idPrefix={showsBoth ? "instance" : undefined}
+                />
               )}
             </div>
           )}

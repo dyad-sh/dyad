@@ -30,15 +30,22 @@ export interface TempPreviewBundleFile {
 
 interface DiscoveredBundleFile {
   absolutePath: string;
-  rootRealPath: string;
+  root: BundleRootIdentity;
   path: string;
   size: number;
   contentType: string;
   metadata: Stats;
 }
 
+interface BundleRootIdentity {
+  absolutePath: string;
+  realPath: string;
+  metadata: Stats;
+}
+
 export async function discoverTempPreviewBundle(
   sourcePath: string,
+  options: { beforeTraversal?: () => Promise<void> } = {},
 ): Promise<TempPreviewBundleFile[]> {
   const source = resolve(sourcePath);
   let sourceStat;
@@ -70,9 +77,17 @@ export async function discoverTempPreviewBundle(
   ) {
     throw bundleFileChangedError("The build output");
   }
+  const root: BundleRootIdentity = {
+    absolutePath: source,
+    realPath: sourceRealPath,
+    metadata: sourceStat,
+  };
 
   const paths: string[] = [];
-  await walk(source, source, sourceRealPath, paths);
+  await options.beforeTraversal?.();
+  await assertRootUnchanged(root);
+  await walk(source, source, root, paths);
+  await assertRootUnchanged(root);
   paths.sort((a, b) => a.localeCompare(b));
 
   if (!paths.includes("index.html")) {
@@ -84,6 +99,7 @@ export async function discoverTempPreviewBundle(
   const discovered: DiscoveredBundleFile[] = [];
   let totalBytes = 0;
   for (const bundlePath of paths) {
+    await assertRootUnchanged(root);
     const absolutePath = join(source, ...bundlePath.split("/"));
     await assertPathContained(sourceRealPath, absolutePath, bundlePath);
     const metadata = await lstat(absolutePath);
@@ -103,37 +119,42 @@ export async function discoverTempPreviewBundle(
     }
     discovered.push({
       absolutePath,
-      rootRealPath: sourceRealPath,
+      root,
       path: bundlePath,
       size: metadata.size,
       contentType: contentTypeFor(absolutePath),
       metadata,
     });
+    await assertRootUnchanged(root);
   }
 
   const files: TempPreviewBundleFile[] = [];
   for (const file of discovered) {
+    await assertRootUnchanged(root);
     files.push(await snapshotFile(file));
+    await assertRootUnchanged(root);
   }
+  await assertRootUnchanged(root);
   return files;
 }
 
 async function walk(
   root: string,
   directory: string,
-  rootRealPath: string,
+  rootIdentity: BundleRootIdentity,
   paths: string[],
 ): Promise<void> {
+  await assertRootUnchanged(rootIdentity);
   const directoryPath = toPosix(relative(root, directory));
   const displayPath = directoryPath || "The build output";
   const beforeMetadata = await lstat(directory);
   if (beforeMetadata.isSymbolicLink() || !beforeMetadata.isDirectory()) {
     throw bundleFileChangedError(displayPath);
   }
-  await assertPathContained(rootRealPath, directory, displayPath);
+  await assertPathContained(rootIdentity.realPath, directory, displayPath);
   const entries = await readdir(directory, { withFileTypes: true });
   const afterMetadata = await lstat(directory);
-  await assertPathContained(rootRealPath, directory, displayPath);
+  await assertPathContained(rootIdentity.realPath, directory, displayPath);
   if (!isSameFile(beforeMetadata, afterMetadata)) {
     throw bundleFileChangedError(displayPath);
   }
@@ -145,7 +166,7 @@ async function walk(
     const absolutePath = join(directory, entry.name);
     const bundlePath = toPosix(relative(root, absolutePath));
     if (entry.isDirectory()) {
-      await walk(root, absolutePath, rootRealPath, paths);
+      await walk(root, absolutePath, rootIdentity, paths);
       continue;
     }
     if (!entry.isFile()) continue;
@@ -163,6 +184,7 @@ async function walk(
       );
     }
   }
+  await assertRootUnchanged(rootIdentity);
 }
 
 function isSensitiveBundlePath(bundlePath: string): boolean {
@@ -178,7 +200,8 @@ async function snapshotFile(
   const noFollow = constants.O_NOFOLLOW ?? 0;
   let handle;
   try {
-    await assertPathContained(file.rootRealPath, file.absolutePath, file.path);
+    await assertRootUnchanged(file.root);
+    await assertPathContained(file.root.realPath, file.absolutePath, file.path);
     handle = await open(file.absolutePath, constants.O_RDONLY | noFollow);
     const [openedMetadata, currentPathMetadata, currentRealPath] =
       await Promise.all([
@@ -192,7 +215,7 @@ async function snapshotFile(
       currentPathMetadata.isSymbolicLink() ||
       !isSameFile(file.metadata, openedMetadata) ||
       !isSameFile(openedMetadata, currentPathMetadata) ||
-      !isPathContained(file.rootRealPath, currentRealPath) ||
+      !isPathContained(file.root.realPath, currentRealPath) ||
       openedMetadata.size !== file.size
     ) {
       throw bundleFileChangedError(file.path);
@@ -218,10 +241,11 @@ async function snapshotFile(
       offset !== file.size ||
       finalMetadata.size !== file.size ||
       !isSameFile(openedMetadata, finalMetadata) ||
-      !isPathContained(file.rootRealPath, finalRealPath)
+      !isPathContained(file.root.realPath, finalRealPath)
     ) {
       throw bundleFileChangedError(file.path);
     }
+    await assertRootUnchanged(file.root);
 
     return {
       path: file.path,
@@ -237,6 +261,28 @@ async function snapshotFile(
     throw error;
   } finally {
     await handle?.close();
+  }
+}
+
+async function assertRootUnchanged(root: BundleRootIdentity): Promise<void> {
+  try {
+    const [metadata, currentRealPath] = await Promise.all([
+      lstat(root.absolutePath),
+      realpath(root.absolutePath),
+    ]);
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      !isSameFile(root.metadata, metadata) ||
+      relative(root.realPath, currentRealPath) !== ""
+    ) {
+      throw bundleFileChangedError("The build output");
+    }
+  } catch (error) {
+    if (isFileReplacementError(error)) {
+      throw bundleFileChangedError("The build output", error);
+    }
+    throw error;
   }
 }
 

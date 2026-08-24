@@ -1,6 +1,7 @@
 import {
   mkdtemp,
   mkdir,
+  rename,
   rm,
   symlink,
   truncate,
@@ -144,6 +145,26 @@ describe("discoverTempPreviewBundle", () => {
     await expect(discoverTempPreviewBundle(linkedRoot)).rejects.toThrow(
       "must not be a symbolic link",
     );
+  });
+
+  it("rejects a build-output root replaced before traversal", async () => {
+    const parent = await createBundleRoot();
+    const root = join(parent, "dist");
+    const replacement = join(parent, "replacement");
+    const original = join(parent, "original");
+    await mkdir(root);
+    await mkdir(replacement);
+    await writeFile(join(root, "index.html"), "original");
+    await writeFile(join(replacement, "index.html"), "replacement");
+
+    await expect(
+      discoverTempPreviewBundle(root, {
+        beforeTraversal: async () => {
+          await rename(root, original);
+          await rename(replacement, root);
+        },
+      }),
+    ).rejects.toThrow("The build output changed");
   });
 
   it("reports a missing build-output directory clearly", async () => {

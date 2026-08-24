@@ -215,6 +215,41 @@ describe("TempmdClient", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("does not retry a 4xx response whose server code is invalid_response", async () => {
+    const retryDelay = vi.fn().mockResolvedValue(undefined);
+    const fetcher = vi.fn<typeof fetch>();
+    fetcher
+      .mockResolvedValueOnce(
+        Response.json({
+          sessionId: "session-1",
+          tempId: "temp-1",
+          uploadToken: "upload-secret",
+          uploads: [],
+          skipped: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: "Invalid request", code: "invalid_response" },
+          { status: 400 },
+        ),
+      );
+
+    await expect(
+      new TempmdClient("https://api.temp.md", fetcher, retryDelay).publish({
+        title: "Demo",
+        files: [],
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "invalid_response",
+      phase: "finalize",
+    });
+
+    expect(retryDelay).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("classifies upload transport failures", async () => {
     const file = createBundleFile();
     const fetcher = vi.fn<typeof fetch>();

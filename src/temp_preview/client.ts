@@ -253,7 +253,9 @@ function isAmbiguousFinalizeError(error: unknown): boolean {
     (error.status === 0 ||
       error.status === 408 ||
       error.status >= 500 ||
-      error.code === "invalid_response")
+      (error.code === "invalid_response" &&
+        error.status >= 200 &&
+        error.status < 300))
   );
 }
 

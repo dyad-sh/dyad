@@ -223,7 +223,7 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("example.com", "203.0.113.5", {
         resolve: answers([], true),
       }),
-    ).toBe("unknown");
+    ).toBe("no-answer");
   });
 
   it("says it does not know when the records cannot be compared", async () => {
@@ -235,7 +235,7 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("coolify.example.com", "203.0.113.5", {
         resolve: answers(["2001:db8::9"]),
       }),
-    ).toBe("unknown");
+    ).toBe("different-families");
   });
 
   it("does not object when the domain has no records yet", async () => {
@@ -329,6 +329,31 @@ describe("tryEnableHttps", () => {
     expect(result.secure).toBe(false);
     expect(result.instanceUrl).toBe("http://203.0.113.5:8000");
     expect(result.reason).toMatch(/could not look up where/i);
+  });
+
+  it("says which of the two it could not settle", async () => {
+    // Two refusals with two different remedies. Telling someone whose domain
+    // resolved fine to go and check that it resolves sends them after the
+    // thing that was working.
+    const { session } = fakeSession();
+    const noAnswer = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async () => ({ addresses: [], failed: true }),
+      check: async () => true,
+    });
+    const crossFamily = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async () => ({ addresses: ["2001:db8::9"], failed: false }),
+      check: async () => true,
+    });
+
+    expect(noAnswer.secure).toBe(false);
+    expect(noAnswer.reason).toMatch(/could not look up where/i);
+    expect(crossFamily.secure).toBe(false);
+    expect(crossFamily.reason).toMatch(/only IPv6 records/i);
+    expect(crossFamily.reason).not.toMatch(/could not look up/i);
   });
 
   it("still accepts a custom domain whose name simply has no records yet", async () => {

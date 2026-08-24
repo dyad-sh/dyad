@@ -228,7 +228,9 @@ export async function domainPointsAtServer(
     resolve = resolveBoth,
     hostAddresses,
   }: { resolve?: typeof resolveBoth; hostAddresses?: string[] } = {},
-): Promise<"points-here" | "points-elsewhere" | "unknown"> {
+): Promise<
+  "points-here" | "points-elsewhere" | "no-answer" | "different-families"
+> {
   // A server known by a name is resolved to the addresses it stands for, so
   // the domain is compared against the same thing either way. A name that
   // does not resolve leaves nothing to compare, which the verdict below reads
@@ -242,7 +244,7 @@ export async function domainPointsAtServer(
   // arrive with nothing to compare, but only the second is the domain saying
   // where it points — the first is Dyad not having asked successfully, which
   // the caller has to be able to tell apart from an answer.
-  if (resolved.failed) return "unknown";
+  if (resolved.failed) return "no-answer";
   const verdict = domainCheckVerdict({
     expectedIps,
     actualIps: resolved.addresses,
@@ -254,7 +256,9 @@ export async function domainPointsAtServer(
   // With addresses on both sides it is records that cannot be compared,
   // because they are in different families, and that is no more an answer
   // about where the domain points than a resolver that never replied.
-  if (verdict === "unknown" && expectedIps.length > 0) return "unknown";
+  if (verdict === "unknown" && expectedIps.length > 0) {
+    return "different-families";
+  }
   return "points-here";
 }
 
@@ -362,7 +366,7 @@ export async function tryEnableHttps(
     // domain still pointing at a machine the user is moving off would be
     // taken as proof, and its address stored as the instance to send the API
     // token to on every deploy.
-    if (points === "unknown") {
+    if (points === "no-answer") {
       return {
         instanceUrl: plainUrlFor(host),
         secure: false,
@@ -370,6 +374,20 @@ export async function tryEnableHttps(
           `Dyad could not look up where ${domain} points, so it cannot tell ` +
           `whether a certificate for it would describe this machine. Check ` +
           `the domain resolves to ${host} and try again.`,
+      };
+    }
+    // Looked it up and got an answer, in a family the server's address says
+    // nothing about. Telling the user to check the domain resolves would send
+    // them after something that may be perfectly correct.
+    if (points === "different-families") {
+      return {
+        instanceUrl: plainUrlFor(host),
+        secure: false,
+        reason:
+          `${domain} has only IPv6 records and this server was given as ` +
+          `${host}, so Dyad cannot tell whether they are the same machine. ` +
+          `Give the server's address in the same family, or set the domain ` +
+          `in Coolify yourself.`,
       };
     }
   }

@@ -18,8 +18,12 @@ function queuedCountText(count: number) {
   return new RegExp(`^${count}\\s+Queued`, "i");
 }
 
-async function startMediumStream(harness: HybridChatHarness, chatId: number) {
-  const { send } = await harness.typeInChat("tc=1 [sleep=medium]", {
+async function startStream(
+  harness: HybridChatHarness,
+  chatId: number,
+  duration: "medium" | "long" = "medium",
+) {
+  const { send } = await harness.typeInChat(`tc=1 [sleep=${duration}]`, {
     chatId,
   });
   send();
@@ -81,7 +85,7 @@ describe("pause queue (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    await startMediumStream(harness, chatId);
+    await startStream(harness, chatId);
     await queueMessages(
       harness,
       chatId,
@@ -102,7 +106,7 @@ describe("pause queue (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    await startMediumStream(harness, chatId);
+    await startStream(harness, chatId, "long");
     await queueMessages(
       harness,
       chatId,
@@ -159,7 +163,7 @@ describe("pause queue (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    await startMediumStream(harness, chatId);
+    await startStream(harness, chatId, "long");
     await queueMessages(
       harness,
       chatId,
@@ -187,7 +191,7 @@ describe("pause queue (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    await startMediumStream(harness, chatId);
+    await startStream(harness, chatId, "long");
     // The first queued prompt sleeps as well, so the window between "resume
     // dispatched item 1" and the stop click stays wide open.
     await queueMessages(harness, chatId, [
@@ -229,7 +233,7 @@ describe("pause queue (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    await startMediumStream(harness, chatId);
+    await startStream(harness, chatId);
     await queueMessages(
       harness,
       chatId,
@@ -276,7 +280,7 @@ describe("pause queue (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    await startMediumStream(harness, chatId);
+    await startStream(harness, chatId, "long");
     await queueMessages(harness, chatId, [
       "tc=1 [sleep=medium] stopped 1",
       "stopped 2",

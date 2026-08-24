@@ -147,8 +147,10 @@ describe("concurrent Local Agent writers (integration)", () => {
     expect((await latestImplementer(secondIndependentChatId))?.status).toBe(
       "completed",
     );
-    expect(
-      (await assistantMessages(secondIndependentChatId)).at(-1)?.commitHash,
-    ).toBeTruthy();
+    const secondIndependentAssistant = (
+      await assistantMessages(secondIndependentChatId)
+    ).at(-1);
+    expect(secondIndependentAssistant?.sourceCommitHash).toBeTruthy();
+    expect(secondIndependentAssistant?.commitHash).toBeNull();
   }, 90_000);
 });

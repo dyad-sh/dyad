@@ -10,8 +10,10 @@ vi.mock("node:fs", async () => {
   return {
     ...actual,
     default: {
+      ...actual,
       existsSync: vi.fn(),
       promises: {
+        ...actual.promises,
         readFile: vi.fn(),
         writeFile: vi.fn(),
       },

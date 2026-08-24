@@ -12,9 +12,6 @@
 - text: Done https://example.com/docs/getting-started
 - paragraph: Here's a summary of the page content. The getting started guide covers three main items. Let me know if you need more details!
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
-- text: Modified files (1)
-- button "M .gitignore +1"
 - button "Undo"
 - button "Retry"

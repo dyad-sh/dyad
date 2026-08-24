@@ -23,6 +23,7 @@ import {
   startE2eTestRuntime,
 } from "./e2e_test_runtime";
 import { runningApps } from "@/ipc/utils/process_manager";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   E2E_TEST_SERVER_PORT_RANGE,
   E2E_TEST_SERVER_PORT_START,
@@ -301,13 +302,17 @@ describe("startE2eTestRuntime port accounting", () => {
     );
     process.env.DYAD_ATTEMPTS = attempts;
     try {
+      // Precondition, not Internal: three fresh ports all taken means something
+      // else on the machine holds them, which the user acts on — it must not
+      // land in telemetry as an unclassified product exception the way a bare
+      // `Error` would.
       await expect(
         startE2eTestRuntime({
           workspacePath: root,
           installCommand: "true",
           startCommand: `"${process.execPath}" server.mjs {port}`,
         }),
-      ).rejects.toThrow(/in use/i);
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
       expect(fs.readFileSync(attempts, "utf8")).toBe("xxx");
     } finally {
       delete process.env.DYAD_ATTEMPTS;

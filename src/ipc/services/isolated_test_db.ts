@@ -433,7 +433,14 @@ async function prepareSupabaseTestUserIsolation({
     let remoteCleanupCompleted = true;
     if (testUser) {
       try {
-        await deleteTempTestUser({
+        // The RETURN value, not just the absence of a throw. This delete is
+        // best-effort inside — a 5xx from the Auth Admin API, or a
+        // service-role key fetch that fails, resolves `false` and deliberately
+        // leaves `supabaseTestUserId` on the row for the startup sweep. Reading
+        // only the throw would report a clean teardown for a test user still
+        // sitting in the user's real project. The Neon sibling reads its
+        // verdict the same way.
+        remoteCleanupCompleted = await deleteTempTestUser({
           ...app,
           supabaseTestUserId: testUser.userId,
         });
@@ -535,14 +542,29 @@ async function prepareSupabaseTestUserIsolation({
       teardown,
     };
   } catch (error) {
-    await teardown();
+    // Keep the verdict. `NOOP_TEARDOWN` answers "nothing left over", which
+    // would report a clean cancellation for a Stop pressed just after the test
+    // user was created and whose delete then failed. The Neon path carries its
+    // verdict forward the same way.
+    let remoteCleanupCompleted = false;
+    try {
+      ({ remoteCleanupCompleted } = await teardown());
+    } catch (teardownError) {
+      logger.error(
+        `Teardown failed during error recovery for app ${app.id}: ${teardownError}`,
+      );
+    }
+    const settledTeardown = async (): Promise<TeardownResult> => ({
+      envRestored: true,
+      remoteCleanupCompleted,
+    });
     // The pre-flight abort check above throws into this catch; a user Stop is
     // a deliberate cancellation, not a setup failure.
     if (signal?.aborted) {
       return {
         isolation: { mode: "none", reason: "Test run stopped." },
         infraError: { message: "Test run stopped." },
-        teardown: NOOP_TEARDOWN,
+        teardown: settledTeardown,
       };
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -557,7 +579,7 @@ async function prepareSupabaseTestUserIsolation({
       infraError: {
         message: `Couldn't set up an isolated test user, so the run was stopped. Your real data was not touched. Reason: ${message}`,
       },
-      teardown: NOOP_TEARDOWN,
+      teardown: settledTeardown,
     };
   }
 }

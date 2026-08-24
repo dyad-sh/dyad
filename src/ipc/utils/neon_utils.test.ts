@@ -331,6 +331,35 @@ describe("ensureNeonAuthTrustedOrigin", () => {
     vi.clearAllMocks();
   });
 
+  it("backs off and retries when Neon rate-limits the lookup", async () => {
+    // Running several specs back to back is exactly the burst that trips Neon's
+    // rate limit. Every other Neon call in this flow retries; an unretried
+    // clash here refused the entire run, including specs that never sign in.
+    const rateLimited = Object.assign(new Error("Too many requests"), {
+      response: { status: 429 },
+    });
+    const listBranchNeonAuthTrustedDomains = vi
+      .fn()
+      .mockRejectedValueOnce(rateLimited)
+      .mockResolvedValue({ data: { domains: [] } });
+    const addBranchNeonAuthTrustedDomain = vi
+      .fn()
+      .mockResolvedValue({ data: undefined });
+    mocks.getNeonClient.mockResolvedValue({
+      listBranchNeonAuthTrustedDomains,
+      addBranchNeonAuthTrustedDomain,
+    });
+
+    await expect(
+      ensureNeonAuthTrustedOrigin({
+        projectId: "proj-1",
+        branchId: "br-test",
+        origin: "http://127.0.0.1:52150",
+      }),
+    ).resolves.toBe("http://127.0.0.1:52150");
+    expect(listBranchNeonAuthTrustedDomains).toHaveBeenCalledTimes(2);
+  }, 30_000);
+
   it("preserves an HTTP loopback origin exactly", async () => {
     const listBranchNeonAuthTrustedDomains = vi.fn().mockResolvedValue({
       data: { domains: [] },

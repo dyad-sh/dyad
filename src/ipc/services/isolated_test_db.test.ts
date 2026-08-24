@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   createNeonTestAccount: vi.fn(),
   ensureNeonAuthTrustedOrigin: vi.fn().mockResolvedValue(null),
   createTempTestUser: vi.fn(),
-  deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
+  deleteTempTestUser: vi.fn().mockResolvedValue(true),
   checkRls: vi.fn().mockResolvedValue({ tablesWithoutRls: [] }),
   detectLegacyAppKey: vi.fn().mockResolvedValue(undefined),
   getPublishableKey: vi.fn(),
@@ -132,6 +132,7 @@ beforeEach(() => {
     password: "pw",
     projectUrl: "https://sb-1.supabase.co",
   });
+  mocks.deleteTempTestUser.mockResolvedValue(true);
   mocks.getPublishableKey.mockResolvedValue("anon-key-123");
   mocks.createNeonTestAccount.mockResolvedValue({
     email: "neon-test@dyad.test",
@@ -634,6 +635,60 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
       password: "pw",
       projectUrl: "https://sb-1.supabase.co",
       anonKey: "anon-key-123",
+    });
+  });
+
+  it("reports a leaked test user when the delete quietly fails", async () => {
+    // `deleteTempTestUser` is best-effort inside: a 5xx from the Auth Admin API
+    // resolves `false` and deliberately leaves the id on the row for the
+    // startup sweep. Reading only the throw reported a clean teardown for a
+    // test user still sitting in the user's real project.
+    mocks.deleteTempTestUser.mockResolvedValue(false);
+
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      emit,
+      runtimeMode: "host",
+    });
+
+    await expect(prepared.teardown()).resolves.toMatchObject({
+      envRestored: true,
+      remoteCleanupCompleted: false,
+    });
+  });
+
+  it("carries the teardown verdict through a setup failure", async () => {
+    // A Stop pressed just after the test user was created runs teardown inside
+    // the catch. Handing back a NOOP teardown afterwards answers "nothing left
+    // over" and reports a clean cancellation for a user that leaked.
+    mocks.deleteTempTestUser.mockResolvedValue(false);
+    const stop = new AbortController();
+    mocks.createTempTestUser.mockImplementation(async () => {
+      stop.abort();
+      return {
+        userId: "user-1",
+        email: "dyad-test+1@dyad.test",
+        password: "pw",
+        projectUrl: "https://sb-1.supabase.co",
+      };
+    });
+
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      emit,
+      runtimeMode: "host",
+      signal: stop.signal,
+    });
+
+    expect(prepared.infraError?.message).toBe("Test run stopped.");
+    await expect(prepared.teardown()).resolves.toMatchObject({
+      remoteCleanupCompleted: false,
     });
   });
 

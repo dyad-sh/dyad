@@ -13,6 +13,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { reconcileTrustedDomains } from "./vercel_neon_sync_helpers";
+import { retryOnLocked } from "./retryOnLocked";
 import { getDyadAppPath } from "@/paths/paths";
 
 export type NeonBranchType = "production" | "development";
@@ -414,9 +415,13 @@ export async function ensureNeonAuthTrustedOrigin({
 }): Promise<string | null> {
   const trustedOrigin = new URL(origin).origin;
   const neonClient = await getNeonClient();
-  const existing = await neonClient.listBranchNeonAuthTrustedDomains(
-    projectId,
-    branchId,
+  // Both calls back off on 423/429 like every other Neon call in the test-run
+  // flow. Running several specs back to back is exactly the burst that trips
+  // the rate limit, and an unretried clash here refuses the whole run — even
+  // one whose specs never touch sign-in.
+  const existing = await retryOnLocked(
+    () => neonClient.listBranchNeonAuthTrustedDomains(projectId, branchId),
+    `List Neon Auth trusted domains for branch ${branchId}`,
   );
   const alreadyTrusted = (existing.data?.domains ?? []).some(({ domain }) => {
     try {
@@ -426,10 +431,14 @@ export async function ensureNeonAuthTrustedOrigin({
     }
   });
   if (alreadyTrusted) return null;
-  await neonClient.addBranchNeonAuthTrustedDomain(projectId, branchId, {
-    domain: trustedOrigin,
-    auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
-  });
+  await retryOnLocked(
+    () =>
+      neonClient.addBranchNeonAuthTrustedDomain(projectId, branchId, {
+        domain: trustedOrigin,
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+      }),
+    `Add Neon Auth trusted origin for branch ${branchId}`,
+  );
   return trustedOrigin;
 }
 

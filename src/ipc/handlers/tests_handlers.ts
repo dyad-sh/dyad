@@ -929,13 +929,14 @@ export async function runAppTestsWithIsolation({
   ): RunAppTestsResult => {
     if (!isolationCleanupFailed) return result;
     // Names what was actually left behind. The Neon path leaks a temporary
-    // branch that startup recovery retries; the Supabase path leaks a temporary
-    // auth user in the user's real project, which no sweep picks up — calling
-    // that "the isolated test database" is the same class of wrong-thing copy
-    // this work set out to remove.
+    // branch, the Supabase path a temporary auth user in the user's real
+    // project — calling that second one "the isolated test database" is the
+    // same class of wrong-thing copy this work set out to remove. Both are
+    // retried by their own startup sweep (`reconcileOrphanTestBranches`,
+    // `reconcileOrphanTestUsers`), so both say so.
     const restoreMessage =
       result.isolation?.mode === "supabase-test-user"
-        ? "Dyad couldn't delete the temporary test user it created in your Supabase project. Your app settings were not changed; you can remove the dyad-test user from Supabase Auth."
+        ? "Dyad couldn't delete the temporary test user it created in your Supabase project. Your app settings were not changed; Dyad will retry the deletion on next startup."
         : "Dyad couldn't finish cleaning up the isolated test database. Your app settings were not changed; Dyad will retry remote cleanup on next startup.";
     return {
       ...result,

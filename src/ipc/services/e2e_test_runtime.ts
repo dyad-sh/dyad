@@ -142,7 +142,13 @@ export async function allocateE2eTestPort(): Promise<number> {
       return port;
     }
   }
-  throw new Error("Could not allocate a test port.");
+  // Precondition, like every other server-start failure here: the machine has
+  // no free port to give, which is an environment problem the user acts on, not
+  // a Dyad bug to record as a product exception.
+  throw new DyadError(
+    "Dyad couldn't find a free port for the isolated test server. Close some running servers and try again.",
+    DyadErrorKind.Precondition,
+  );
 }
 
 /** Hand a port back once its server has bound it (or failed to start). */
@@ -483,6 +489,15 @@ export async function startE2eTestRuntime(
         "[test server] The selected port was taken; retrying with another port…\n",
       );
     }
+  }
+  // Same reasoning: three fresh ports all found taken means something else on
+  // the machine holds them, not that Dyad malfunctioned. Left as-is when it is
+  // already a classified DyadError (an abort, a Precondition from readiness).
+  if (lastError instanceof PortInUseError) {
+    throw new DyadError(
+      `Dyad couldn't get a free port for the isolated test server: ${lastError.message}`,
+      DyadErrorKind.Precondition,
+    );
   }
   throw lastError;
 }

@@ -160,4 +160,42 @@ describe("simpleSpawn", () => {
         "Failed to spawn command: ENOENT\n\nSTDOUT:\nbounded stdout\n\nSTDERR:\nbounded stderr",
     });
   });
+
+  it("does not expose suppressed command output through logs", async () => {
+    const spawnError = new BufferedProcessSpawnError(
+      "ENOENT in /Users/alice/Client-App",
+      "API_KEY=private-value",
+      "TOKEN=other-secret",
+    );
+    runBufferedProcessMock.mockRejectedValue(spawnError);
+
+    await expect(
+      simpleSpawn({
+        command: "npm run build",
+        cwd: "/Users/alice/Client-App",
+        successMessage: "built successfully",
+        errorPrefix: "build failed",
+        logOutput: false,
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("API_KEY=private-value"),
+    });
+
+    expect(runBufferedProcessMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onStdout: undefined,
+        onStderr: undefined,
+      }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      "Failed to spawn command: npm run build",
+    );
+    expect(logger.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      spawnError,
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(
+      /alice|private-value|other-secret/,
+    );
+  });
 });

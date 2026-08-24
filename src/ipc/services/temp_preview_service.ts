@@ -64,6 +64,10 @@ export async function publishTempPreview(input: {
       env: getPackageManagerCommandEnv(),
       successMessage: "Temporary preview build completed",
       errorPrefix: "Failed to build the temporary preview",
+      // App-owned build output can contain secrets and local paths. Keep it in
+      // the bounded failure result for classifyTempPreviewError to sanitize,
+      // but do not persist the raw stream in application/debug-bundle logs.
+      logOutput: false,
     });
 
     let files;

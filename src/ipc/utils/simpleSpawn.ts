@@ -17,6 +17,7 @@ export async function simpleSpawn({
   env,
   signal,
   timeoutMs = DEFAULT_BUFFERED_PROCESS_TIMEOUT_MS,
+  logOutput = true,
 }: {
   command: string;
   cwd: string;
@@ -28,6 +29,10 @@ export async function simpleSpawn({
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   timeoutMs?: number;
+  // Disable when command output may contain app-owned credentials or paths.
+  // Failure output remains bounded and available to the caller for a safe
+  // projection, but is not decoded into or persisted by application logs.
+  logOutput?: boolean;
 }): Promise<void> {
   const spawnEnv = env ?? getPackageManagerCommandEnv();
   logger.info(`Running: ${command}`);
@@ -43,12 +48,16 @@ export async function simpleSpawn({
       // The output is only needed for failures. On success, release the
       // bounded byte buffers without decoding them into additional strings.
       captureOutputOnSuccess: false,
-      onStdout: (output) => logger.info(output),
-      onStderr: (output) => logger.error(output),
+      onStdout: logOutput ? (output) => logger.info(output) : undefined,
+      onStderr: logOutput ? (output) => logger.error(output) : undefined,
     });
   } catch (error) {
     if (error instanceof BufferedProcessSpawnError) {
-      logger.error(`Failed to spawn command: ${command}`, error);
+      if (logOutput) {
+        logger.error(`Failed to spawn command: ${command}`, error);
+      } else {
+        logger.error(`Failed to spawn command: ${command}`);
+      }
       throw new DyadError(
         `Failed to spawn command: ${error.message}\n\nSTDOUT:\n${error.stdout}\n\nSTDERR:\n${error.stderr}`,
         DyadErrorKind.External,

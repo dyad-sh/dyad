@@ -167,6 +167,9 @@ describe("temp preview service", () => {
       cause: undefined,
     });
     expect(error.message).not.toMatch(/alice|private-value/);
+    expect(mocks.simpleSpawn).toHaveBeenCalledWith(
+      expect.objectContaining({ logOutput: false }),
+    );
   });
 
   it("sanitizes temp.md failures before returning them", async () => {

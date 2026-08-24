@@ -1,5 +1,9 @@
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
 import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
+import {
+  appSizeEventFields,
+  type LastSessionRecord,
+} from "@/shared/app_size_telemetry";
 
 type TelemetryProperties = Record<string, unknown> | undefined;
 
@@ -8,6 +12,7 @@ export type InitialLoadTelemetryInput = {
   appVersion: string;
   platform: string | null;
   isFirstSession: boolean;
+  previousSessionAppSize?: LastSessionRecord | null;
 };
 
 export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
@@ -24,6 +29,7 @@ export function getInitialLoadTelemetryProperties({
   appVersion,
   platform,
   isFirstSession,
+  previousSessionAppSize,
 }: InitialLoadTelemetryInput) {
   return {
     ...getSettingsPersonTelemetryProperties(settings),
@@ -34,6 +40,9 @@ export function getInitialLoadTelemetryProperties({
     modelProvider: settings.selectedModel.provider,
     defaultChatMode: settings.defaultChatMode ?? null,
     runtimeMode2: settings.runtimeMode2 ?? "host",
+    // Fires on every launch, so this is the denominator for
+    // app:crash_detected's size fields. Both bypass non-Pro sampling already.
+    ...appSizeEventFields(previousSessionAppSize),
   };
 }
 

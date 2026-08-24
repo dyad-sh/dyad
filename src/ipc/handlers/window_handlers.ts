@@ -4,6 +4,7 @@ import { platform } from "os";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { getInitialLoadIsFirstSession } from "@/main/settings";
+import { getPreviousSessionAppSize } from "@/main/last_session_store";
 
 const logger = log.scope("window-handlers");
 
@@ -63,6 +64,7 @@ export function registerWindowHandlers() {
     async () => {
       return {
         isFirstSession: getInitialLoadIsFirstSession(),
+        previousSessionAppSize: getPreviousSessionAppSize(),
       };
     },
   );

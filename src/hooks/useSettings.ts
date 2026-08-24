@@ -97,6 +97,8 @@ export function useSettings() {
         appVersion,
         platform: platform ?? null,
         isFirstSession: initialLoadTelemetryContext.isFirstSession,
+        previousSessionAppSize:
+          initialLoadTelemetryContext.previousSessionAppSize,
       }),
     );
     initialLoadTelemetryState = "sent";

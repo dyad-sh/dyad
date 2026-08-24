@@ -161,6 +161,7 @@ import {
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings, setSentinelActiveChat } from "@/main/settings";
+import { recordAppSizeForSession } from "@/main/last_session_store";
 import {
   buildLocalAgentAttachmentInfo,
   getInlineImageMimeType,
@@ -1704,10 +1705,24 @@ ${componentSnippet}
             : validateChatContext(updatedChat.app.chatContext);
 
         // Extract codebase for current app
-        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
+        const {
+          formattedOutput: codebaseInfo,
+          files,
+          sizeStats,
+        } = await extractCodebase({
           appPath,
           chatContext,
         });
+
+        // Persist the size so the next launch can report it, whether this
+        // session crashes or exits cleanly. Extraction already did the work.
+        if (sizeStats) {
+          recordAppSizeForSession({
+            lane: "chatted",
+            appId: updatedChat.app.id,
+            ...sizeStats,
+          });
+        }
 
         // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching

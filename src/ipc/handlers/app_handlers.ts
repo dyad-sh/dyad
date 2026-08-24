@@ -46,6 +46,8 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
+import { recordAppSizeForSession } from "../../main/last_session_store";
+import { listCodebaseFileMetadata } from "../../utils/codebase";
 import { addLog } from "../../lib/log_store";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import {
@@ -1103,6 +1105,29 @@ export function registerAppHandlers() {
         return { app: newDbApp };
       },
     );
+  });
+
+  createTypedHandler(appContracts.recordViewedAppSize, async (_, appId) => {
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!app) {
+      return;
+    }
+
+    // Metadata only, since this runs while the app is opening. The empty chat
+    // context keeps the measurement about the app, not the selected chat.
+    const { sizeStats } = await listCodebaseFileMetadata({
+      appPath: getDyadAppPath(app.path),
+      chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+    });
+    if (sizeStats) {
+      recordAppSizeForSession({
+        lane: "viewed",
+        appId,
+        ...sizeStats,
+      });
+    }
   });
 
   createTypedHandler(appContracts.getApp, async (_, appId) => {

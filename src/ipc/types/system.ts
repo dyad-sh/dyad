@@ -5,6 +5,7 @@ import {
   createClient,
   createEventClient,
 } from "../contracts/core";
+import { LastSessionRecordSchema } from "../../shared/app_size_telemetry";
 
 // =============================================================================
 // System Schemas
@@ -235,6 +236,8 @@ export const systemContracts = {
     input: z.void(),
     output: z.object({
       isFirstSession: z.boolean(),
+      // Absent when the previous session never measured an app.
+      previousSessionAppSize: LastSessionRecordSchema.nullish(),
     }),
   }),
 

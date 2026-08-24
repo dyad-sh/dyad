@@ -79,6 +79,11 @@ import {
   crashAnnotationEventFields,
   crashPerformanceEventFields,
 } from "./utils/crash_telemetry_fields";
+import { appSizeEventFields } from "./shared/app_size_telemetry";
+import {
+  claimPreviousSessionAppSize,
+  getPreviousSessionAppSize,
+} from "./main/last_session_store";
 import { classifyOom } from "./utils/oom_classifier";
 import {
   stopAllAppsSync,
@@ -412,6 +417,11 @@ export async function onReady() {
   // the keychain and git all run below; if one of them kills us, a sentinel
   // still naming the previous session would report this crash as that one.
   const previousSession = claimCrashSentinel(LAUNCH_TIME);
+
+  // Claimed here, before anything can overwrite it, so the record always
+  // describes the session that just ended. Runs whether or not that session
+  // crashed: both populations have to be measured the same way.
+  claimPreviousSessionAppSize();
 
   // Linux: claim the dyad:// scheme for this build (best-effort, see module).
   // setAsDefaultProtocolClient above is unreliable on Linux. Pass this instance's
@@ -831,6 +841,9 @@ function deliverPendingCrashRecovery(target: BrowserWindow): void {
     // Comma-joined: crash event properties stay scalar for PostHog.
     oom_verdict: oom.verdict,
     ...(oom.signals.length > 0 && { oom_signals: oom.signals.join(",") }),
+    // How big the app was that this session died on. Same helper as
+    // app:initial-load, so both events carry identical fields.
+    ...appSizeEventFields(getPreviousSessionAppSize()),
   });
 
   pendingForceCloseData = null;

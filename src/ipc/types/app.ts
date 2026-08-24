@@ -407,6 +407,14 @@ export const appContracts = {
     output: AppSchema,
   }),
 
+  // Fire-and-forget: records the size of an app the user just opened, so a
+  // session that browses without ever prompting still reports one.
+  recordViewedAppSize: defineContract({
+    channel: "record-viewed-app-size",
+    input: z.number(),
+    output: z.void(),
+  }),
+
   listApps: defineContract({
     channel: "list-apps",
     input: z.void(),

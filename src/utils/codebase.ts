@@ -178,9 +178,25 @@ export async function readFileWithCache(
 }
 
 /**
+ * Size of the app as the AI sees it, measured before per-chat context
+ * filtering so it describes the app rather than the chat's configuration.
+ * Excludes whatever collectFiles* excludes: gitignored files, node_modules,
+ * lockfiles, and anything over MAX_FILE_SIZE.
+ */
+export interface CodebaseSizeStats {
+  fileCount: number;
+  totalBytes: number;
+}
+
+interface CollectedFiles {
+  files: string[];
+  totalBytes: number;
+}
+
+/**
  * Traverses a directory and collects all relevant files using native Git.
  */
-async function collectFilesNativeGit(dir: string): Promise<string[]> {
+async function collectFilesNativeGit(dir: string): Promise<CollectedFiles> {
   let files: string[] = [];
 
   try {
@@ -194,6 +210,9 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
         excludedDirs: EXCLUDED_DIRS,
       })
     ).map((file) => path.join(dir, file));
+    // git ls-files prints an unmerged path once per index stage, so a
+    // conflicted file arrives up to three times. Only one file exists on disk.
+    files = [...new Set(files)];
   } catch (error) {
     logger.error(
       `Git failed to read directory ${dir} and is falling back to filesystem traversal:`,
@@ -204,23 +223,28 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     return await collectFilesByTraversal(dir, dir);
   }
 
-  // Git cannot exclude files by size, so we still need to do that manually
-  return (
-    await Promise.all(
-      files.map(async (file) => {
-        try {
-          const stats = await fsAsync.lstat(file);
-          if (!stats.isFile() || stats.size > MAX_FILE_SIZE) {
-            return "";
-          }
-          return file;
-        } catch (error) {
-          logger.error(`Failed to read file ${file}:`, error);
-          return "";
+  // Git cannot exclude files by size, so we still need to do that manually.
+  // The stat has to happen either way, so byte totals cost nothing extra.
+  const sized = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const stats = await fsAsync.lstat(file);
+        if (!stats.isFile() || stats.size > MAX_FILE_SIZE) {
+          return null;
         }
-      }),
-    )
-  ).filter(Boolean);
+        return { file, size: stats.size };
+      } catch (error) {
+        logger.error(`Failed to read file ${file}:`, error);
+        return null;
+      }
+    }),
+  );
+
+  const kept = sized.filter((entry) => entry !== null);
+  return {
+    files: kept.map((entry) => entry.file),
+    totalBytes: kept.reduce((sum, entry) => sum + entry.size, 0),
+  };
 }
 
 /**
@@ -229,15 +253,16 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
 async function collectFilesByTraversal(
   dir: string,
   baseDir: string,
-): Promise<string[]> {
+): Promise<CollectedFiles> {
   const files: string[] = [];
+  let totalBytes = 0;
 
   // Check if directory exists
   try {
     await fsAsync.access(dir);
   } catch {
     // Directory doesn't exist or is not accessible
-    return files;
+    return { files, totalBytes };
   }
 
   try {
@@ -266,8 +291,9 @@ async function collectFilesByTraversal(
 
       if (entry.isDirectory()) {
         // Recursively process subdirectories
-        const subDirFiles = await collectFilesByTraversal(fullPath, baseDir);
-        files.push(...subDirFiles);
+        const subDir = await collectFilesByTraversal(fullPath, baseDir);
+        files.push(...subDir.files);
+        totalBytes += subDir.totalBytes;
       } else if (entry.isFile()) {
         // Skip excluded files
         if (EXCLUDED_FILES.includes(entry.name)) {
@@ -275,11 +301,13 @@ async function collectFilesByTraversal(
         }
 
         // Skip files that are too large
+        let size: number;
         try {
           const stats = await fsAsync.stat(fullPath);
           if (stats.size > MAX_FILE_SIZE) {
             return;
           }
+          size = stats.size;
         } catch (error) {
           logger.error(`Error checking file size: ${fullPath}`, error);
           return;
@@ -287,6 +315,7 @@ async function collectFilesByTraversal(
 
         // Include all files in the list
         files.push(fullPath);
+        totalBytes += size;
       }
     });
 
@@ -295,7 +324,7 @@ async function collectFilesByTraversal(
     logger.error(`Error reading directory ${dir}:`, error);
   }
 
-  return files;
+  return { files, totalBytes };
 }
 
 const OMITTED_FILE_CONTENT = "// File contents excluded from context";
@@ -414,13 +443,18 @@ interface PreparedCodebaseFile extends BaseFile {
   absolutePath: string;
 }
 
+interface PreparedCodebase {
+  preparedFiles: PreparedCodebaseFile[];
+  sizeStats: CodebaseSizeStats;
+}
+
 async function prepareCodebaseFiles({
   appPath,
   chatContext,
 }: {
   appPath: string;
   chatContext: AppChatContext;
-}): Promise<PreparedCodebaseFile[] | undefined> {
+}): Promise<PreparedCodebase | undefined> {
   const settings = readSettings();
   const isSmartContextEnabled =
     settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
@@ -431,7 +465,12 @@ async function prepareCodebaseFiles({
     return undefined;
   }
 
-  let files = await collectFilesNativeGit(appPath);
+  const collected = await collectFilesNativeGit(appPath);
+  // Captured here, before the context filtering below, so the reported size
+  // describes the app rather than the current chat's context configuration.
+  const fileCount = collected.files.length;
+  const totalBytes = collected.totalBytes;
+  let files = collected.files;
 
   const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
   const includedFiles = new Set<string>();
@@ -500,13 +539,16 @@ async function prepareCodebaseFiles({
     Boolean(settings.isTestMode),
   );
 
-  return sortedFiles.map((file) => ({
-    absolutePath: file,
-    path: path.relative(appPath, file).split(path.sep).join("/"),
-    force:
-      autoIncludedFiles.has(path.normalize(file)) &&
-      !excludedFiles.has(path.normalize(file)),
-  }));
+  return {
+    preparedFiles: sortedFiles.map((file) => ({
+      absolutePath: file,
+      path: path.relative(appPath, file).split(path.sep).join("/"),
+      force:
+        autoIncludedFiles.has(path.normalize(file)) &&
+        !excludedFiles.has(path.normalize(file)),
+    })),
+    sizeStats: { fileCount, totalBytes },
+  };
 }
 
 /**
@@ -518,9 +560,13 @@ export async function listCodebaseFileMetadata({
 }: {
   appPath: string;
   chatContext: AppChatContext;
-}): Promise<{ files: BaseFile[]; totalFileCount: number }> {
-  const preparedFiles =
-    (await prepareCodebaseFiles({ appPath, chatContext })) ?? [];
+}): Promise<{
+  files: BaseFile[];
+  totalFileCount: number;
+  sizeStats?: CodebaseSizeStats;
+}> {
+  const prepared = await prepareCodebaseFiles({ appPath, chatContext });
+  const preparedFiles = prepared?.preparedFiles ?? [];
 
   return {
     files: preparedFiles.map(({ path: filePath, force }) => ({
@@ -528,6 +574,7 @@ export async function listCodebaseFileMetadata({
       force,
     })),
     totalFileCount: preparedFiles.length,
+    sizeStats: prepared?.sizeStats,
   };
 }
 
@@ -543,6 +590,7 @@ export async function extractCodebase(params: {
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
+  sizeStats?: CodebaseSizeStats;
 }> {
   // Tracked so memory snapshots can tell when an extraction was running.
   extractCodebaseStarted();
@@ -562,18 +610,20 @@ async function extractCodebaseInner({
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
+  sizeStats?: CodebaseSizeStats;
 }> {
   const startTime = Date.now();
-  const preparedFiles = await prepareCodebaseFiles({
+  const prepared = await prepareCodebaseFiles({
     appPath,
     chatContext,
   });
-  if (!preparedFiles) {
+  if (!prepared) {
     return {
       formattedOutput: `# Error: Directory ${appPath} does not exist or is not accessible`,
       files: [],
     };
   }
+  const { preparedFiles, sizeStats } = prepared;
 
   // Format files and collect individual file contents
   const formatPromises = preparedFiles.map(async (preparedFile) => {
@@ -627,6 +677,7 @@ async function extractCodebaseInner({
   return {
     formattedOutput,
     files: filesArray,
+    sizeStats,
   };
 }
 

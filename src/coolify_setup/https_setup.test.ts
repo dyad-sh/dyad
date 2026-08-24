@@ -273,10 +273,11 @@ describe("domainPointsAtServer", () => {
     ).toBe("points-here");
   });
 
-  it("does not object when the server's own name does not resolve", async () => {
-    // A different case from the domain's own lookup failing: there is nothing
-    // to compare against rather than no answer about where the domain points,
-    // and refusing here would block a setup over a private name.
+  it("says it does not know when the server's own name does not resolve", async () => {
+    // A name only this machine or this network answers to: connectSsh reaches
+    // it, plain DNS cannot see it, and there is nothing to hold the domain
+    // against. Accepting compared the user's domain with nothing at all —
+    // and the certificate poll afterwards takes any trusted answer for proof.
     const nothingForTheServer = async (target: string) => ({
       addresses: target === "box.internal" ? [] : ["198.51.100.9"],
       failed: target === "box.internal",
@@ -286,7 +287,7 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("coolify.example.com", "box.internal", {
         resolve: nothingForTheServer,
       }),
-    ).toBe("points-here");
+    ).toBe("no-answer");
   });
 });
 
@@ -368,6 +369,27 @@ describe("tryEnableHttps", () => {
     expect(crossFamily.secure).toBe(false);
     expect(crossFamily.reason).toMatch(/different families/i);
     expect(crossFamily.reason).not.toMatch(/could not look up/i);
+  });
+
+  it("refuses a custom domain when the server's name says nothing", async () => {
+    // The server answers to a name plain DNS cannot see. There is nothing to
+    // hold the domain against, and the poll below settles for any address
+    // serving a trusted certificate — so a domain pointing at the machine
+    // being moved off would be taken for proof.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "box.internal", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async (name: string) => ({
+        addresses: name === "box.internal" ? [] : ["198.51.100.9"],
+        failed: name === "box.internal",
+      }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.instanceUrl).toBe("http://box.internal:8000");
+    expect(result.reason).toMatch(/could not look up where/i);
   });
 
   it("does not say which side holds which family", async () => {

@@ -250,14 +250,16 @@ export async function domainPointsAtServer(
     actualIps: resolved.addresses,
   });
   if (verdict === "points-elsewhere") return "points-elsewhere";
-  // Two different things arrive as "unknown". With no expected addresses it
-  // is the server's own name that did not resolve, which is deliberately not
-  // an objection — refusing there would block a setup over a private name.
+  // Two different things arrive as "unknown", and neither is an answer.
+  //
   // With addresses on both sides it is records that cannot be compared,
-  // because they are in different families, and that is no more an answer
-  // about where the domain points than a resolver that never replied.
-  if (verdict === "unknown" && expectedIps.length > 0) {
-    return "different-families";
+  // because they are in different families. With none on ours it is the
+  // server's own name that did not resolve — a name only this machine or
+  // this network answers to, which plain DNS cannot see and connectSsh
+  // reaches anyway. Accepting there compared a user's domain against
+  // nothing at all, which is the whole of what this function is for.
+  if (verdict === "unknown") {
+    return expectedIps.length > 0 ? "different-families" : "no-answer";
   }
   return "points-here";
 }

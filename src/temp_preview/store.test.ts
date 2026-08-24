@@ -246,6 +246,45 @@ describe("TempPreviewStore", () => {
     await expect(store.listPendingDeletionAppIds()).resolves.toEqual([]);
   });
 
+  it("recovers a seven-day-old record with a missing expiry", async () => {
+    const root = await createStoreRoot();
+    const filePath = join(root, "previews.json");
+    const store = new TempPreviewStore(filePath, {
+      encode: (token) => ({ value: `encrypted:${token}` }),
+      decode: () => {
+        throw new Error("keychain identity changed");
+      },
+    });
+    const lastPublishedAt = new Date(
+      Date.now() - 8 * 24 * 60 * 60 * 1_000,
+    ).toISOString();
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        records: {
+          7: {
+            tempId: "temp-expired",
+            canonicalUrl: "https://expired.temp.md",
+            updateToken: { value: "encrypted:update-secret" },
+            expiresAt: null,
+            lastPublishedAt,
+            state: "active",
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(store.read(7)).resolves.toMatchObject({
+      tempId: "temp-expired",
+      expiresAt: new Date(
+        Date.parse(lastPublishedAt) + 7 * 24 * 60 * 60 * 1_000,
+      ).toISOString(),
+      updateToken: undefined,
+    });
+  });
+
   it("removes only the requested app record", async () => {
     const root = await createStoreRoot();
     const filePath = join(root, "previews.json");

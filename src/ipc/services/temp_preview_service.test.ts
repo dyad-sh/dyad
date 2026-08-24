@@ -188,6 +188,38 @@ describe("temp preview service", () => {
     expect(mocks.revoke).toHaveBeenCalledWith(published);
   });
 
+  it("derives the seven-day expiry when temp.md omits it", async () => {
+    const appPath = await createApp();
+    mocks.publish.mockResolvedValueOnce({ ...published, expiresAt: null });
+
+    const status = await publishTempPreview({
+      appId: 7,
+      appPath,
+      appName: "Demo",
+    });
+
+    expect(status).toMatchObject({ state: "active" });
+    const storedRecord = mocks.storeWrite.mock.calls[0][1];
+    expect(status.expiresAt).toBe(storedRecord.expiresAt);
+    expect(Date.parse(storedRecord.expiresAt)).toBe(
+      Date.parse(storedRecord.lastPublishedAt) + 7 * 24 * 60 * 60 * 1_000,
+    );
+  });
+
+  it("expires a stored preview seven days after publish when expiry is missing", async () => {
+    mocks.storeRead.mockResolvedValueOnce({
+      ...previousRecord,
+      lastPublishedAt: new Date(
+        Date.now() - 8 * 24 * 60 * 60 * 1_000,
+      ).toISOString(),
+    });
+
+    await expect(getTempPreviewStatus(7)).resolves.toMatchObject({
+      state: "expired",
+      expiresAt: expect.any(String),
+    });
+  });
+
   it("sanitizes build failures before returning them", async () => {
     const appPath = await createApp();
     mocks.simpleSpawn.mockRejectedValue(

@@ -17,6 +17,10 @@ import {
   type TempPreviewConnection,
 } from "@/temp_preview/client";
 import {
+  getEffectiveTempPreviewExpiry,
+  isTempPreviewExpired,
+} from "@/temp_preview/expiry";
+import {
   TempPreviewStore,
   TempPreviewStoreUnreadableError,
   type TempPreviewRecord,
@@ -105,9 +109,14 @@ export async function publishTempPreview(input: {
       published = await client.publish({ files, title: input.appName });
       createdNewPreview = true;
     }
+    const lastPublishedAt = new Date().toISOString();
     const record: TempPreviewRecord = {
       ...published,
-      lastPublishedAt: new Date().toISOString(),
+      expiresAt: getEffectiveTempPreviewExpiry(
+        published.expiresAt,
+        lastPublishedAt,
+      ),
+      lastPublishedAt,
       state: "active",
     };
     try {
@@ -238,11 +247,14 @@ async function assertBuildScript(appPath: string): Promise<void> {
 function activeConnection(
   record: TempPreviewRecord | null,
 ): TempPreviewConnection | undefined {
+  const expiresAt = record
+    ? getEffectiveTempPreviewExpiry(record.expiresAt, record.lastPublishedAt)
+    : null;
   if (
     !record ||
     record.state !== "active" ||
     !record.updateToken ||
-    isExpired(record.expiresAt)
+    isTempPreviewExpired(record.expiresAt, record.lastPublishedAt)
   ) {
     return undefined;
   }
@@ -250,7 +262,7 @@ function activeConnection(
     tempId: record.tempId,
     canonicalUrl: record.canonicalUrl,
     updateToken: record.updateToken,
-    expiresAt: record.expiresAt,
+    expiresAt,
   };
 }
 
@@ -263,19 +275,20 @@ function statusFromRecord(record: TempPreviewRecord | null): TempPreviewStatus {
       lastPublishedAt: null,
     };
   }
+  const expiresAt = getEffectiveTempPreviewExpiry(
+    record.expiresAt,
+    record.lastPublishedAt,
+  );
   return {
     state:
-      record.state === "active" && isExpired(record.expiresAt)
+      record.state === "active" &&
+      isTempPreviewExpired(record.expiresAt, record.lastPublishedAt)
         ? "expired"
         : record.state,
     canonicalUrl: record.canonicalUrl,
-    expiresAt: record.expiresAt,
+    expiresAt,
     lastPublishedAt: record.lastPublishedAt,
   };
-}
-
-function isExpired(expiresAt: string | null): boolean {
-  return expiresAt !== null && new Date(expiresAt).getTime() <= Date.now();
 }
 
 function isStaleConnectionError(

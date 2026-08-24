@@ -11,6 +11,7 @@ import log from "electron-log";
 import { z } from "zod";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
 import { SecretSchema, type Secret } from "@/lib/schemas";
+import { getEffectiveTempPreviewExpiry, isTempPreviewExpired } from "./expiry";
 
 const logger = log.scope("temp_preview_store");
 
@@ -76,7 +77,7 @@ export class TempPreviewStore {
           ? this.tokenCodec.decode(record.updateToken)
           : undefined;
       } catch (error) {
-        if (isExpired(record.expiresAt)) {
+        if (isTempPreviewExpired(record.expiresAt, record.lastPublishedAt)) {
           logger.warn(
             `Could not decrypt the expired temporary preview capability for app ${appId}; treating it as expired without exposing the ciphertext.`,
             error,
@@ -259,15 +260,12 @@ function projectRecord(
   return {
     tempId: record.tempId,
     canonicalUrl: record.canonicalUrl,
-    expiresAt: record.expiresAt,
+    expiresAt: getEffectiveTempPreviewExpiry(
+      record.expiresAt,
+      record.lastPublishedAt,
+    ),
     lastPublishedAt: record.lastPublishedAt,
     state: record.state,
     updateToken,
   };
-}
-
-function isExpired(expiresAt: string | null): boolean {
-  if (expiresAt === null) return false;
-  const expiresAtMs = new Date(expiresAt).getTime();
-  return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
 }

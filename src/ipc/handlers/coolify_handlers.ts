@@ -103,6 +103,7 @@ export function registerCoolifyHandlers() {
       hasToken: Boolean(token),
       tokenId: token ? tokenFingerprint(token) : null,
       instanceUrl: settings.coolify?.instanceUrl ?? null,
+      serverUrl: settings.coolify?.admin?.instanceUrl ?? null,
       connection: readConnection(state),
       appUrl: deployed?.appUrl ?? null,
       lastDeployedAt: deployed?.lastDeployedAt.getTime() ?? null,

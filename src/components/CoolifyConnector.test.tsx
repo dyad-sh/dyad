@@ -304,11 +304,147 @@ const NO_TOKEN = {
     hasToken: false,
     tokenId: null,
     instanceUrl: null,
+    serverUrl: null,
     connection: null,
     appUrl: null,
     lastDeployedAt: null,
   },
 };
+
+/** Installed, and its API token could not be minted — so no token, but a
+    server whose account Dyad is the only holder of. */
+const SERVER_NO_TOKEN = {
+  status: { ...NO_TOKEN.status, serverUrl: "http://203.0.113.5:8000" },
+};
+
+describe("a server Dyad set up but has no token for", () => {
+  it("will not set up another over the top of it", async () => {
+    // Installing again replaces the only copy of this one's password, so it
+    // is not something a screen offers on the way past.
+    deploy.value = SERVER_NO_TOKEN;
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-already-has-server")).toBeTruthy();
+    expect(screen.queryByTestId("coolify-server-setup-stub")).toBeNull();
+  });
+
+  it("offers signing out as the way to a different Coolify", async () => {
+    // The only state where Dyad holds a Coolify and has no token to give up,
+    // so without this there is nothing here that reaches the account.
+    deploy.value = SERVER_NO_TOKEN;
+    render(<CoolifyConnector appId={1} />);
+
+    expect(
+      screen.getByRole("button", { name: "Sign out of Coolify" }),
+    ).toBeTruthy();
+  });
+
+  it("pins the address to that server", async () => {
+    // A token typed against another address would leave the account naming
+    // one machine and the token another.
+    deploy.value = SERVER_NO_TOKEN;
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Enter an API token" }),
+    );
+    const field = screen.getByTestId(
+      "coolify-instance-url",
+    ) as HTMLInputElement;
+    expect(field.readOnly).toBe(true);
+    await user.type(field, "https://somewhere-else.example.com");
+    expect(field.value).toBe("http://203.0.113.5:8000");
+  });
+
+  it("still refuses a new install after one was cancelled", async () => {
+    // Cancelling rests the machine in failed with nothing to report and no
+    // way to clear it, so treating that as a failure to make room for would
+    // hand the installer back for as long as the app is open.
+    deploy.value = SERVER_NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      message: "Cancelled",
+      cancelled: true,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-already-has-server")).toBeTruthy();
+    expect(screen.queryByTestId("coolify-server-setup-stub")).toBeNull();
+  });
+
+  it("does not stand in front of an install that failed", async () => {
+    // The account is written partway through, so a failure after that point
+    // has one stored. The message, the log and the way to clear it are the
+    // installer's, and retrying is the ordinary thing to do next.
+    deploy.value = SERVER_NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      message: "boom",
+      cancelled: false,
+    };
+    render(<CoolifyConnector appId={1} />);
+    expect({
+      failureVisible: Boolean(
+        screen.queryByTestId("coolify-server-setup-stub"),
+      ),
+      refusalCard: Boolean(screen.queryByTestId("coolify-already-has-server")),
+    }).toEqual({ failureVisible: true, refusalCard: false });
+  });
+
+  it("can be connected to from the card that refuses a new install", async () => {
+    // The address cannot be typed into here, so a form that never filled it
+    // in would leave signing out — which forgets the password Dyad is the
+    // only holder of — as the only way on from that card.
+    deploy.value = SERVER_NO_TOKEN;
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Enter an API token" }),
+    );
+    await user.type(screen.getByTestId("coolify-token"), "1|abc");
+    // A freshly installed server answers on http until it has a certificate,
+    // so this is the ordinary way through rather than an unusual one.
+    await user.click(screen.getByTestId("coolify-acknowledge-insecure"));
+
+    expect(
+      (screen.getByTestId("coolify-save-token") as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("keeps the way back to a failure the installer is reporting", async () => {
+    // That screen carries the message, the output and the only control that
+    // clears the run, so the token form must not be a one-way door into it.
+    deploy.value = SERVER_NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      message: "boom",
+      cancelled: false,
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "I already have Coolify installed" }),
+    );
+    expect(screen.getByTestId("coolify-no-instance")).toBeTruthy();
+  });
+
+  it("does not offer the installer as a way out of the token form", async () => {
+    deploy.value = SERVER_NO_TOKEN;
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Enter an API token" }),
+    );
+    expect(screen.queryByTestId("coolify-no-instance")).toBeNull();
+  });
+});
 
 describe("where someone with no Coolify lands", () => {
   it("offers to install one rather than asking for a token", async () => {

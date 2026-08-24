@@ -135,7 +135,13 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     // Leaving the edit refills, since this keys on that too.
     if (isEditingConnection) return;
     const connection = status?.connection;
-    setInstanceUrl(connection?.instanceUrl ?? status?.instanceUrl ?? "");
+    // The server Dyad set up wins, because that is the case where the field is
+    // pinned and nothing else can fill it in. It is also the one address that
+    // is right there: a stored token names the instance it opens, which is not
+    // necessarily the machine whose account Dyad is holding.
+    setInstanceUrl(
+      status?.serverUrl ?? connection?.instanceUrl ?? status?.instanceUrl ?? "",
+    );
     setServerUuid(connection?.serverUuid ?? "");
     setProjectUuid(connection?.projectUuid ?? "");
     setDomain(connection?.domain ?? "");
@@ -143,7 +149,13 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     // only on keystrokes left a tick given for a typed address sitting over the
     // remembered one this puts back.
     setAcknowledgedInsecure(false);
-  }, [appId, status?.connection, status?.instanceUrl, isEditingConnection]);
+  }, [
+    appId,
+    status?.connection,
+    status?.instanceUrl,
+    status?.serverUrl,
+    isEditingConnection,
+  ]);
 
   // Only on an app change. Keying this to the connection would close the form
   // under the user whenever a background refetch handed back a new object.
@@ -159,6 +171,16 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // One element, not one per branch: rendering a second copy elsewhere in the
   // tree would remount the panel and lose the result it is being kept for.
   const setupState: SetupSnapshot = setupSnapshot ?? { type: "idle" };
+  /**
+   * A failure the installer has something to say about.
+   *
+   * Cancelling is the user's own decision rather than a fault, so it carries
+   * no message and no way to clear itself — the machine simply rests in
+   * `failed` until the next run. Treating that as something to make room for
+   * would hand the installer back for good.
+   */
+  const isReportingFailure =
+    setupState.type === "failed" && !setupState.cancelled;
 
   const serverSetup = (
     <CoolifyServerSetup
@@ -325,11 +347,78 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   );
 
   // --- Step 1: get a Coolify, or connect to one ---
+  // The one control that makes Dyad forget a Coolify: the address, the token,
+  // and the admin account for a server it set up. Available wherever Dyad
+  // holds any of those, because holding an account without a token is still
+  // holding a Coolify — and it is what has to be given up to reach a
+  // different one.
+  const signOut = (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={clearToken.isPending}
+        onClick={() => setIsConfirmingSignOut(true)}
+      >
+        Sign out of Coolify
+      </Button>
+      <CoolifySignOutDialog
+        open={isConfirmingSignOut}
+        onOpenChange={setIsConfirmingSignOut}
+        onConfirm={async () => {
+          try {
+            await clearToken.mutateAsync();
+            // The component is not remounted when the token goes, so without
+            // this the form comes back holding the credential just forgotten —
+            // and pressing Connect would silently store it again, which is
+            // the opposite of what signing out to rotate a token is for.
+            setToken("");
+            setAcknowledgedInsecure(false);
+            toast.success(
+              "Signed out of Coolify. Your server keeps running and your apps keep their settings.",
+            );
+          } catch (error) {
+            toast.error(getErrorMessage(error));
+          }
+        }}
+      />
+    </>
+  );
+
   if (!status.hasToken) {
     // Installing comes first: the token form asks for an address and a token,
     // which is a question about a Coolify that already exists. Landing on it
     // told everyone else they were in the wrong place.
     if (!isEnteringToken) {
+      // Dyad already has a server. Setting up another would replace the only
+      // copy of its password, so the way to one is through giving this one up
+      // deliberately rather than through starting again over the top of it.
+      //
+      // Not over a failure the installer is reporting. Its message, output and
+      // the way to clear it are all on that screen, and standing in front of
+      // it leaves the run both unexplained and impossible to dismiss. Retrying
+      // is also the ordinary thing to do next, and it lands on the same server.
+      if (status.serverUrl && !isReportingFailure) {
+        return (
+          <div className="space-y-3" data-testid="coolify-connector">
+            <div
+              className="rounded-md border p-3 text-sm"
+              data-testid="coolify-already-has-server"
+            >
+              <p className="font-medium">Dyad already set up a server</p>
+              <p className="text-muted-foreground">
+                Its details are below. Finish connecting to it, or sign out to
+                set up a different one — signing out forgets these.
+              </p>
+            </div>
+            <Button onClick={() => setIsEnteringToken(true)}>
+              Enter an API token
+            </Button>
+            {newServerCredentials}
+            {signOut}
+          </div>
+        );
+      }
       return (
         <div className="space-y-3" data-testid="coolify-connector">
           {serverSetup}
@@ -369,6 +458,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             data-testid="coolify-instance-url"
             placeholder="https://coolify.example.com"
             value={instanceUrl}
+            // Fixed to the server Dyad set up while it holds that server's
+            // account. A token typed against another address would leave the
+            // account describing one machine and the token another, which is
+            // a pairing nothing downstream can tell apart from a way in.
+            readOnly={Boolean(status.serverUrl)}
             onChange={(e) => {
               setInstanceUrl(e.target.value);
               // The consent was given for the address that was on screen at
@@ -377,6 +471,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               setAcknowledgedInsecure(false);
             }}
           />
+          {status.serverUrl && (
+            <p className="text-muted-foreground text-xs">
+              The server Dyad set up. Sign out to connect to a different
+              Coolify.
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor={tokenId}>API token</Label>
@@ -409,6 +509,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 onCheckedChange={(checked) =>
                   setAcknowledgedInsecure(checked === true)
                 }
+                data-testid="coolify-acknowledge-insecure"
               />
               <span>Connect anyway</span>
             </label>
@@ -446,60 +547,33 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
         {newServerCredentials}
 
-        {/* Back to the installer, for someone who came here by mistake. */}
-        <div className="border-t pt-3">
-          <p className="text-sm text-muted-foreground">
-            No Coolify server yet?{" "}
-            <button
-              type="button"
-              className="font-medium text-foreground underline underline-offset-4 hover:no-underline"
-              onClick={() => setIsEnteringToken(false)}
-              data-testid="coolify-no-instance"
-            >
-              Set one up
-            </button>{" "}
-            on a server you already have.
-          </p>
-        </div>
+        {/* Back to the installer, for someone who came here by mistake, and
+            the only way back to a failure it is reporting. Not offered while
+            Dyad holds a server's account and has nothing to report: that
+            screen refuses to set up another anyway, and signing out is the
+            way there. */}
+        {status.serverUrl && !isReportingFailure ? (
+          <div className="border-t pt-3">{signOut}</div>
+        ) : (
+          <div className="border-t pt-3">
+            <p className="text-sm text-muted-foreground">
+              No Coolify server yet?{" "}
+              <button
+                type="button"
+                className="font-medium text-foreground underline underline-offset-4 hover:no-underline"
+                onClick={() => setIsEnteringToken(false)}
+                data-testid="coolify-no-instance"
+              >
+                Set one up
+              </button>{" "}
+              on a server you already have.
+            </p>
+          </div>
+        )}
       </div>
     );
   }
 
-  // The only control that removes the stored instance URL and token. It used
-  // to live solely inside the discovery-error card, so rotating a token or
-  // moving to another instance meant first breaking discovery on purpose.
-  const signOut = (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={clearToken.isPending}
-        onClick={() => setIsConfirmingSignOut(true)}
-      >
-        Sign out of Coolify
-      </Button>
-      <CoolifySignOutDialog
-        open={isConfirmingSignOut}
-        onOpenChange={setIsConfirmingSignOut}
-        onConfirm={async () => {
-          try {
-            await clearToken.mutateAsync();
-            // The component is not remounted when the token goes, so without
-            // this the form comes back holding the credential just forgotten —
-            // and pressing Connect would silently store it again, which is
-            // the opposite of what signing out to rotate a token is for.
-            setToken("");
-            setAcknowledgedInsecure(false);
-            toast.success(
-              "Signed out of Coolify. Your server keeps running and your apps keep their settings.",
-            );
-          } catch (error) {
-            toast.error(getErrorMessage(error));
-          }
-        }}
-      />
-    </>
-  );
   // Two things are on this screen and they are not the same thing: the
   // Coolify the user connected to, which is theirs and outlives any app, and
   // where this one app deploys. Kept apart so the instance and its way back

@@ -228,6 +228,28 @@ describe("naming the stored token", () => {
     expect(JSON.stringify(status)).not.toContain("super-secret");
   });
 
+  it("names a server Dyad set up, so the panel can hold the address to it", async () => {
+    settings.coolify = {
+      ...(settings.coolify as Record<string, unknown>),
+      admin: {
+        email: "me@gmail.com",
+        password: { value: "Abc123@xyz" },
+        instanceUrl: "http://203.0.113.5:8000",
+      },
+    };
+    const status: any = await call("coolify:get-status", { appId: 1 });
+
+    expect(status.serverUrl).toBe("http://203.0.113.5:8000");
+    // The address, and nothing that opens it.
+    expect(JSON.stringify(status)).not.toContain("Abc123@xyz");
+  });
+
+  it("has no server address when Dyad set nothing up", async () => {
+    const status: any = await call("coolify:get-status", { appId: 1 });
+
+    expect(status.serverUrl).toBeNull();
+  });
+
   it("is absent when there is no token", async () => {
     settings.coolify = { instanceUrl: "https://coolify.example.com" };
     const status: any = await call("coolify:get-status", { appId: 1 });

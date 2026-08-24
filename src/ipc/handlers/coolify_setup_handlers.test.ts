@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   /** How many writes fail before the store comes back. */
   writeFailures: 0,
   reportsAccountTwice: false,
+  failsBeforeCredentials: false,
+  onRunStarted: null as null | (() => void),
   preflightThrows: false,
   preflightReady: true,
   fingerprint: "SHA256:fingerprint",
@@ -102,6 +104,9 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
   runServerSetup: vi.fn(async (options: Record<string, unknown>) => {
     h.runCalls += 1;
     h.lastSetupOptions = options;
+    // Connecting and the preflight both come before the password is handed
+    // over, and either can end the run.
+    if (h.failsBeforeCredentials) throw h.setupError;
     // The real flow hands over the password before the installer runs, since
     // it invented it rather than discovering it.
     (
@@ -138,6 +143,8 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
         });
       }
     }
+    // Something else writing while the run is in flight.
+    h.onRunStarted?.();
     if (h.setupError) throw h.setupError;
     return h.setupResult;
   }),
@@ -184,6 +191,8 @@ beforeEach(() => {
   h.lastSetupOptions = null;
   h.sessionEnded = 0;
   h.reportsAccount = true;
+  h.failsBeforeCredentials = false;
+  h.onRunStarted = null;
   h.runCalls = 0;
   h.verifiedAgainst.length = 0;
   h.writeThrows = false;
@@ -549,6 +558,57 @@ describe("run", () => {
       coolify: { admin?: { password?: { value: string } } };
     };
     expect(early.coolify.admin?.password?.value).toBeTruthy();
+  });
+
+  it("does not put back a record something else replaced mid-run", async () => {
+    // Minutes of installing sit between the record going down and the way
+    // out. Signing out in another window during that time is a newer answer
+    // than the snapshot taken before the run started.
+    h.settings = {
+      coolify: {
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "TheEarlierOne" },
+          instanceUrl: "http://198.51.100.9:8000",
+        },
+      },
+    } as Record<string, unknown>;
+    h.reportsAccount = false;
+    h.setupError = new Error("boom");
+    h.onRunStarted = () => {
+      // As a sign-out in another window would leave it.
+      h.settings.coolify = {};
+    };
+    await checkThenRun().catch(() => {});
+
+    // Not the snapshot from before the run, which is older than the sign-out.
+    const admin = (
+      h.settings.coolify as { admin?: { password?: { value: string } } }
+    )?.admin;
+    expect(admin).toBeUndefined();
+  });
+
+  it("leaves an earlier server's account alone when the run never got that far", async () => {
+    // Connecting, a cancel and a preflight refusal all end the run before the
+    // password is handed over, so there is nothing of this run's to take back
+    // — and the account standing there belongs to a server that still has it.
+    h.settings = {
+      coolify: {
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "TheEarlierOne" },
+          instanceUrl: "http://198.51.100.9:8000",
+        },
+      },
+    } as Record<string, unknown>;
+    h.failsBeforeCredentials = true;
+    h.setupError = new DyadError("Cancelled.", DyadErrorKind.UserCancelled);
+    await checkThenRun().catch(() => {});
+
+    const admin = (
+      h.settings.coolify as { admin?: { password?: { value: string } } }
+    ).admin;
+    expect(admin?.password?.value).toBe("TheEarlierOne");
   });
 
   it("puts back an earlier server's account when this one never appeared", async () => {

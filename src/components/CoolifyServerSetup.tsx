@@ -174,7 +174,15 @@ export function CoolifyServerSetup({
     // Before the queries are refreshed, so the panel behind never sees the
     // token that is about to be taken back off.
     if (declineToken) {
-      await ipc.coolifySetup.declineInsecureToken().catch(showError);
+      // Not swallowed. Dismissing over a failure here would put the screen
+      // away with the token still stored — the one outcome the checkbox was
+      // there to prevent — and say nothing about it.
+      try {
+        await ipc.coolifySetup.declineInsecureToken();
+      } catch (error) {
+        showError(error);
+        return;
+      }
     }
     // Refreshed before the screen is put away. Dismissing first hands the
     // panel back to a connector that still believes there is no token, so the

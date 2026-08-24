@@ -97,6 +97,19 @@ function setupController(): CoolifySetupController {
       /** Whether the server ever reported an account, so a run that ended
           before one existed can put back what it wrote on the way in. */
       let accountConfirmed = false;
+      /**
+       * Whether this run put a record down of its own.
+       *
+       * Connecting and the preflight both come before the password is handed
+       * over, and either can end the run — a cancel, a server that is not
+       * answering, an address that already has Coolify on it. There is
+       * nothing of this run's to take back off then, and the account standing
+       * there belongs to a server that still has it.
+       */
+      let wroteProvisional = false;
+      /** What this run put down, so the way out can tell it from anyone
+          else's writing in between. */
+      let provisionalPassword: string | undefined;
       let adminBeforeRun: Coolify["admin"];
       let unsavedAccount: {
         credentials: { email: string; password: string };
@@ -134,6 +147,8 @@ function setupController(): CoolifySetupController {
                 },
               },
             });
+            wroteProvisional = true;
+            provisionalPassword = credentials.password;
           } catch (error) {
             // The run is worth more than this record. Failing here only means
             // the account has to be caught by the write below instead.
@@ -188,16 +203,22 @@ function setupController(): CoolifySetupController {
             } catch (retryError) {
               logger.error("Could not store the admin account", retryError);
             }
-          } else if (!accountConfirmed) {
+          } else if (wroteProvisional && !accountConfirmed) {
             // Nothing was ever seeded, so the password written on the way in
             // opens nothing. Put back whatever stood before rather than
             // clearing outright: a failure here can follow a server that was
             // set up earlier, and that one's account is still the only copy
             // of its own password.
             try {
-              writeSettings({
-                coolify: { ...readSettings().coolify, admin: adminBeforeRun },
-              });
+              const now = readSettings().coolify;
+              // Minutes of installing sit between the record going down and
+              // this, so what stood before is only worth putting back if this
+              // run's record is still the one there. Anything else means
+              // something during the run had its own say, and the snapshot
+              // from before it started is not the newer answer.
+              if (now?.admin?.password?.value === provisionalPassword) {
+                writeSettings({ coolify: { ...now, admin: adminBeforeRun } });
+              }
             } catch (restoreError) {
               logger.error(
                 "Could not put back the admin account",

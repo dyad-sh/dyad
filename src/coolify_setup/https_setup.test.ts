@@ -287,7 +287,7 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("coolify.example.com", "box.internal", {
         resolve: nothingForTheServer,
       }),
-    ).toBe("no-answer");
+    ).toBe("server-unresolved");
   });
 });
 
@@ -389,7 +389,10 @@ describe("tryEnableHttps", () => {
 
     expect(result.secure).toBe(false);
     expect(result.instanceUrl).toBe("http://box.internal:8000");
-    expect(result.reason).toMatch(/could not look up where/i);
+    // Names the server, which is what could not be looked up — not the
+    // domain, which may be perfectly correct.
+    expect(result.reason).toMatch(/could not look up an address for/i);
+    expect(result.reason).toContain("box.internal");
   });
 
   it("does not say which side holds which family", async () => {

@@ -229,7 +229,11 @@ export async function domainPointsAtServer(
     hostAddresses,
   }: { resolve?: typeof resolveBoth; hostAddresses?: string[] } = {},
 ): Promise<
-  "points-here" | "points-elsewhere" | "no-answer" | "different-families"
+  | "points-here"
+  | "points-elsewhere"
+  | "no-answer"
+  | "server-unresolved"
+  | "different-families"
 > {
   // A server known by a name is resolved to the addresses it stands for, so
   // the domain is compared against the same thing either way. A name that
@@ -259,7 +263,11 @@ export async function domainPointsAtServer(
   // reaches anyway. Accepting there compared a user's domain against
   // nothing at all, which is the whole of what this function is for.
   if (verdict === "unknown") {
-    return expectedIps.length > 0 ? "different-families" : "no-answer";
+    // Told apart because the remedies are not the same. One is a lookup for
+    // the domain that never came back; the other is the server answering to
+    // a name plain DNS cannot see, where the domain may be perfectly correct
+    // and there is simply nothing here to hold it against.
+    return expectedIps.length > 0 ? "different-families" : "server-unresolved";
   }
   return "points-here";
 }
@@ -387,6 +395,17 @@ export async function tryEnableHttps(
     // here, or saying the domain has only those records, would state as fact
     // something never established: one family's lookup can fail while the
     // other answers, and resolveBoth reports that as an answer.
+    if (points === "server-unresolved") {
+      return {
+        instanceUrl: plainUrlFor(host),
+        secure: false,
+        reason:
+          `Dyad could not look up an address for ${host}, so it cannot tell ` +
+          `whether ${domain} points at this server. Reach the server by an ` +
+          `address or a name DNS can answer for, or set the domain in ` +
+          `Coolify yourself.`,
+      };
+    }
     if (points === "different-families") {
       return {
         instanceUrl: plainUrlFor(host),

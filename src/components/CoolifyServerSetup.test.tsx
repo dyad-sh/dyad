@@ -801,6 +801,25 @@ describe("when it finishes", () => {
     expect(h.declineInsecureToken).toHaveBeenCalled();
   });
 
+  it("stays put when the token could not be taken back off", async () => {
+    // Dismissing here would put the screen away with the token still stored,
+    // which is the one outcome the checkbox exists to prevent.
+    h.snapshot.mockResolvedValue(
+      doneState({ secure: false, insecureReason: "No certificate arrived." }),
+    );
+    h.declineInsecureToken.mockRejectedValue(new Error("keychain locked"));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-continue")).toBeTruthy(),
+    );
+    await user.click(screen.getByTestId("coolify-setup-continue"));
+
+    expect(h.showError).toHaveBeenCalled();
+    expect(h.dismiss).not.toHaveBeenCalled();
+  });
+
   it("keeps it when the address is agreed to", async () => {
     h.snapshot.mockResolvedValue(
       doneState({ secure: false, insecureReason: "No certificate arrived." }),

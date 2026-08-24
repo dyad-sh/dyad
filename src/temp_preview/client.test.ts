@@ -126,6 +126,53 @@ describe("TempmdClient", () => {
     );
   });
 
+  it("does not reuse a previous capability for a different finalized preview", async () => {
+    const retryDelay = vi.fn().mockResolvedValue(undefined);
+    const fetcher = vi.fn<typeof fetch>();
+    const mismatchedFinalize = () =>
+      Response.json({
+        success: true,
+        tempId: "temp-2",
+        versionId: "version-2",
+        canonicalUrl: "https://different.temp.md",
+        expiresAt: "2026-08-30T00:00:00.000Z",
+      });
+    fetcher
+      .mockResolvedValueOnce(
+        Response.json({
+          sessionId: "session-2",
+          tempId: "temp-2",
+          uploadToken: "upload-secret",
+          uploads: [],
+          skipped: [],
+        }),
+      )
+      .mockResolvedValueOnce(mismatchedFinalize())
+      .mockResolvedValueOnce(mismatchedFinalize())
+      .mockResolvedValueOnce(mismatchedFinalize());
+
+    await expect(
+      new TempmdClient("https://api.temp.md", fetcher, retryDelay).publish({
+        title: "Demo",
+        files: [],
+        previous: {
+          tempId: "temp-1",
+          canonicalUrl: "https://example.temp.md",
+          updateToken: "old-update-secret",
+          expiresAt: null,
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 200,
+      code: "invalid_response",
+      phase: "finalize",
+    });
+
+    expect(retryDelay).toHaveBeenNthCalledWith(1, 250);
+    expect(retryDelay).toHaveBeenNthCalledWith(2, 1_000);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
   it("retries an ambiguous finalize result with the same publish session", async () => {
     const retryDelay = vi.fn().mockResolvedValue(undefined);
     const fetcher = vi.fn<typeof fetch>();

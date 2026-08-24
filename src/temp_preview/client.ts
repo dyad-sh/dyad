@@ -136,9 +136,13 @@ export class TempmdClient {
     const finalized = await this.finalizeSession(
       session.sessionId,
       session.uploadToken,
-      Boolean(input.previous),
+      input.previous?.tempId,
     );
-    const updateToken = finalized.updateToken ?? input.previous?.updateToken;
+    const updateToken =
+      finalized.updateToken ??
+      (finalized.tempId === input.previous?.tempId
+        ? input.previous.updateToken
+        : undefined);
     if (!updateToken) {
       throw new Error("temp.md did not return an update capability.");
     }
@@ -164,7 +168,7 @@ export class TempmdClient {
   private async finalizeSession(
     sessionId: string,
     uploadToken: string,
-    canReusePreviousToken: boolean,
+    previousTempId?: string,
   ): Promise<z.infer<typeof FinalizedPublishSchema>> {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -178,7 +182,8 @@ export class TempmdClient {
             "finalize",
           ),
         );
-        if (!canReusePreviousToken && !finalized.updateToken) {
+        const canReusePreviousToken = finalized.tempId === previousTempId;
+        if (!finalized.updateToken && !canReusePreviousToken) {
           throw new TempmdApiError(
             "temp.md returned an invalid response",
             200,

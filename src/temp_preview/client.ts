@@ -71,7 +71,7 @@ export class TempmdClient {
     title: string;
     previous?: TempPreviewConnection;
   }): Promise<TempPreviewConnection> {
-    const session = SessionSchema.parse(
+    const sessionResult = SessionSchema.safeParse(
       await this.json(
         "/publish-sessions",
         {
@@ -98,6 +98,15 @@ export class TempmdClient {
         "session",
       ),
     );
+    if (!sessionResult.success) {
+      throw new TempmdApiError(
+        "temp.md returned an invalid response",
+        200,
+        "invalid_response",
+        "session",
+      );
+    }
+    const session = sessionResult.data;
 
     const outstanding = session.uploads.filter(
       (upload) => upload.status === "expected",

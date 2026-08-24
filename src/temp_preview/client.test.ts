@@ -74,6 +74,29 @@ describe("TempmdClient", () => {
     expect(new TextDecoder().decode(uploadBody as Uint8Array)).toBe("hello");
   });
 
+  it("normalizes malformed publish-session responses", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      Response.json({
+        sessionId: "session-1",
+        tempId: "temp-1",
+        uploadToken: "upload-secret",
+        uploads: [],
+      }),
+    );
+
+    await expect(
+      new TempmdClient("https://api.temp.md", fetcher).publish({
+        title: "Demo",
+        files: [],
+      }),
+    ).rejects.toMatchObject({
+      message: "temp.md returned an invalid response",
+      status: 200,
+      code: "invalid_response",
+      phase: "session",
+    });
+  });
+
   it("uses the scoped update capability for update and revoke requests", async () => {
     const fetcher = vi.fn<typeof fetch>();
     fetcher

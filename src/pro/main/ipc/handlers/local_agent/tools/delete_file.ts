@@ -51,7 +51,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       const { relativePath: operationPath, fullPath: fullFilePath } =
         await prepareDeletePath(ctx.appPath, args.path);
 
-      return withLock(getFileWriteKey(fullFilePath), async () => {
+      return withLock(await getFileWriteKey(fullFilePath), async () => {
         const currentStat = lstatIfExists(fullFilePath);
         const didDelete = currentStat !== null;
         if (currentStat) {

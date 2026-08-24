@@ -56,7 +56,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       ctx.onSharedServerModuleChange?.(operationPath);
     }
 
-    await withLock(getFileWriteKey(fullFilePath), async () => {
+    await withLock(await getFileWriteKey(fullFilePath), async () => {
       // Ensure directory exists
       const dirPath = path.dirname(fullFilePath);
       fs.mkdirSync(dirPath, { recursive: true });

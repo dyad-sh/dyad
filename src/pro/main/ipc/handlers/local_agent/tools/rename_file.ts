@@ -57,7 +57,10 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
       return withLocks(
-        [getFileWriteKey(fromFullPath), getFileWriteKey(toFullPath)],
+        [
+          await getFileWriteKey(fromFullPath),
+          await getFileWriteKey(toFullPath),
+        ],
         async () => {
           const didRename =
             path.normalize(fromFullPath) !== path.normalize(toFullPath) &&

@@ -507,7 +507,7 @@ export async function switchAppToPublishableKey({
 
   // The same lock the agent's file-writing tools take, so this read-modify-write
   // can neither clobber nor be clobbered by a concurrent write to this file.
-  return withLock(getFileWriteKey(clientFilePath), async () => {
+  return withLock(await getFileWriteKey(clientFilePath), async () => {
     // Read git's view BEFORE the rewrite — afterwards every file looks dirty,
     // including the one we just made dirty ourselves.
     const wasClean = await wasClientFileClean({ appPath, relativePath });

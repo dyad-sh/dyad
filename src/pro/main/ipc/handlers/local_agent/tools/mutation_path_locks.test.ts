@@ -53,15 +53,29 @@ vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
 
 describe("Local Agent mutation path locks", () => {
   let appPath: string;
+  let appPathAliasParent: string;
+  let physicalAppPath: string;
 
   beforeEach(async () => {
-    appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-path-locks-"));
+    physicalAppPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-path-locks-physical-"),
+    );
+    appPathAliasParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-path-locks-alias-"),
+    );
+    appPath = path.join(appPathAliasParent, "app");
+    await fs.symlink(
+      physicalAppPath,
+      appPath,
+      process.platform === "win32" ? "junction" : "dir",
+    );
     gitAdd.mockResolvedValue(undefined);
     gitRemove.mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
-    await fs.rm(appPath, { recursive: true, force: true });
+    await fs.rm(appPathAliasParent, { recursive: true, force: true });
+    await fs.rm(physicalAppPath, { recursive: true, force: true });
     vi.clearAllMocks();
   });
 
@@ -79,13 +93,12 @@ describe("Local Agent mutation path locks", () => {
 
   it("deletes under the physical path's mutation lock", async () => {
     const filePath = path.join(appPath, "victim.ts");
-    const physicalAppPath = await fs.realpath(appPath);
     await fs.writeFile(filePath, "delete me");
 
     await deleteFileTool.execute({ path: "victim.ts" }, context());
 
     expect(withLockSpy).toHaveBeenCalledWith(
-      getFileWriteKey(path.join(physicalAppPath, "victim.ts")),
+      await getFileWriteKey(path.join(physicalAppPath, "victim.ts")),
       expect.any(Function),
     );
     await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
@@ -102,10 +115,22 @@ describe("Local Agent mutation path locks", () => {
     );
 
     expect(withLocksSpy).toHaveBeenCalledWith(
-      [getFileWriteKey(sourcePath), getFileWriteKey(destinationPath)],
+      [
+        await getFileWriteKey(path.join(physicalAppPath, "source.ts")),
+        await getFileWriteKey(path.join(physicalAppPath, "destination.ts")),
+      ],
       expect.any(Function),
     );
     await expect(fs.stat(sourcePath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(destinationPath, "utf8")).resolves.toBe("source");
+  });
+
+  it("uses the same lock key through physical and symlinked app paths", async () => {
+    const aliasPath = path.join(appPath, "missing", "new-file.ts");
+    const physicalPath = path.join(physicalAppPath, "missing", "new-file.ts");
+
+    await expect(getFileWriteKey(aliasPath)).resolves.toBe(
+      await getFileWriteKey(physicalPath),
+    );
   });
 });

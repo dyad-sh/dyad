@@ -1,12 +1,39 @@
+import fs from "node:fs";
+import path from "node:path";
+
 const locks = new Map<string, Promise<void>>();
 
 /**
- * Build the lock ID used to serialize mutations to a single file path.
- * File writers, deletes, and both sides of a rename must use this so they
- * don't race against each other on the same physical path.
+ * Build the lock ID used to serialize mutations to a single physical file
+ * path. The existing parent is canonicalized without following the final
+ * entry, so aliases to the app root share a key while delete/rename can still
+ * lock a symlink entry rather than its target.
  */
-export function getFileWriteKey(filePath: string): string {
-  return `filewrite:${filePath}`;
+export async function getFileWriteKey(filePath: string): Promise<string> {
+  const finalEntryName = path.basename(filePath);
+  let existingParent = path.dirname(filePath);
+  const missingSegments: string[] = [];
+
+  for (;;) {
+    try {
+      const realParent = await fs.promises.realpath(existingParent);
+      return `filewrite:${path.join(realParent, ...missingSegments, finalEntryName)}`;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw error;
+      }
+      const parent = path.dirname(existingParent);
+      if (parent === existingParent) {
+        throw error;
+      }
+      missingSegments.unshift(path.basename(existingParent));
+      existingParent = parent;
+    }
+  }
 }
 
 /**

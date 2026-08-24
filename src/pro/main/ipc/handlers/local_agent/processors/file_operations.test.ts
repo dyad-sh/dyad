@@ -17,6 +17,7 @@ vi.mock("electron-log", () => ({
   default: {
     scope: () => ({
       error: vi.fn(),
+      warn: vi.fn(),
     }),
   },
 }));
@@ -95,11 +96,13 @@ describe("commitAllChanges", () => {
     const first = commitAllChanges({
       appId: 9,
       appPath: "/mock/app",
+      fileMutationCount: 1,
       supabaseProjectId: null,
     });
     const second = commitAllChanges({
       appId: 9,
       appPath: "/mock/app",
+      fileMutationCount: 1,
       supabaseProjectId: null,
     });
     await vi.waitFor(() => expect(mocks.gitCommit).toHaveBeenCalledOnce());
@@ -110,6 +113,35 @@ describe("commitAllChanges", () => {
     await expect(second).resolves.toEqual({ commitHash: "current-head" });
     expect(mocks.getGitUncommittedFiles).toHaveBeenCalledTimes(2);
     expect(mocks.gitAddAll).toHaveBeenCalledOnce();
+  });
+
+  it("does not attribute an existing commit to a clean no-op turn", async () => {
+    mocks.getGitUncommittedFiles.mockResolvedValue([]);
+
+    await expect(
+      commitAllChanges({
+        appId: 1,
+        appPath: "/mock/app",
+        fileMutationCount: 0,
+        supabaseProjectId: null,
+      }),
+    ).resolves.toEqual({ commitHash: undefined });
+
+    expect(mocks.getCurrentCommitHash).not.toHaveBeenCalled();
+  });
+
+  it("keeps a clean mutated turn successful when HEAD cannot be resolved", async () => {
+    mocks.getGitUncommittedFiles.mockResolvedValue([]);
+    mocks.getCurrentCommitHash.mockRejectedValue(new Error("missing HEAD"));
+
+    await expect(
+      commitAllChanges({
+        appId: 1,
+        appPath: "/mock/app",
+        fileMutationCount: 1,
+        supabaseProjectId: null,
+      }),
+    ).resolves.toEqual({ commitHash: undefined });
   });
 });
 

@@ -461,7 +461,7 @@ export const gitRestoreFileTool: ToolDefinition<
     });
     const fullPath = safeJoin(ctx.appPath, operationPath);
 
-    await withLock(getFileWriteKey(fullPath), async () => {
+    await withLock(await getFileWriteKey(fullPath), async () => {
       await restoreAgentGitFile({
         path: ctx.appPath,
         revision: args.revision,

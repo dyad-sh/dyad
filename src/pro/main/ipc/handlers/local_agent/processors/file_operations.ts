@@ -234,7 +234,10 @@ export async function deployAllFunctionsIfNeeded(
  * Commit all changes
  */
 export async function commitAllChanges(
-  ctx: Pick<AgentContext, "appId" | "appPath" | "supabaseProjectId">,
+  ctx: Pick<
+    AgentContext,
+    "appId" | "appPath" | "fileMutationCount" | "supabaseProjectId"
+  >,
   chatSummary?: string,
 ): Promise<{
   commitHash?: string;
@@ -273,11 +276,15 @@ export async function commitAllChanges(
               error,
             );
           }
-        } else {
+        } else if ((ctx.fileMutationCount ?? 0) > 0) {
           // Another concurrent finalizer may already have checkpointed this
           // turn's shared-tree edits. Preserve an immutable review/restore
           // target instead of treating the clean checkpoint as hashless.
-          commitHash = await getCurrentCommitHash({ path: ctx.appPath });
+          try {
+            commitHash = await getCurrentCommitHash({ path: ctx.appPath });
+          } catch (error) {
+            logger.warn("Failed to resolve the clean checkpoint HEAD", error);
+          }
         }
 
         return {

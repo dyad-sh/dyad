@@ -114,7 +114,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       ctx.onSharedServerModuleChange?.(operationPath);
     }
 
-    await withLock(getFileWriteKey(fullFilePath), async () => {
+    await withLock(await getFileWriteKey(fullFilePath), async () => {
       if (!fs.existsSync(fullFilePath)) {
         throw new DyadError(
           `File does not exist: ${args.file_path}`,

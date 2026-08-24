@@ -165,17 +165,36 @@ describe("hasTrustedCertificate", () => {
   });
 });
 
+describe("certificateDomainFor, for a domain given by hand", () => {
+  it("refuses a name nothing public can validate", async () => {
+    // Same reasoning the derived names get. Asking anyway spends the whole
+    // certificate wait — two minutes — on an answer that cannot arrive.
+    expect(certificateDomainFor("203.0.113.5", "coolify.local")).toBeNull();
+    expect(certificateDomainFor("203.0.113.5", "localhost")).toBeNull();
+    expect(certificateDomainFor("203.0.113.5", "192.168.1.10")).toBeNull();
+  });
+
+  it("keeps a name that could be validated", async () => {
+    expect(certificateDomainFor("203.0.113.5", "coolify.example.com")).toBe(
+      "coolify.example.com",
+    );
+    expect(
+      certificateDomainFor("203.0.113.5", "https://coolify.example.com/"),
+    ).toBe("coolify.example.com");
+  });
+});
+
 describe("domainPointsAtServer", () => {
   const answers =
     (addresses: string[], failed = false) =>
     async () => ({ addresses, failed });
 
-  it("is true when the domain resolves to the server", async () => {
+  it("says it points here when the domain resolves to the server", async () => {
     expect(
       await domainPointsAtServer("coolify.example.com", "203.0.113.5", {
         resolve: answers(["203.0.113.5"]),
       }),
-    ).toBe(true);
+    ).toBe("points-here");
   });
 
   it("is false when it still points at something else", async () => {
@@ -185,26 +204,28 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("example.com", "203.0.113.5", {
         resolve: answers(["198.51.100.9"]),
       }),
-    ).toBe(false);
+    ).toBe("points-elsewhere");
   });
 
-  it("does not object when the resolver could not be reached", async () => {
-    // Not knowing is not the same as knowing it is wrong, and this only
-    // decides whether to attempt something that is checked afterwards anyway.
+  it("says it does not know when the resolver could not be reached", async () => {
+    // Told apart from an answer, because the certificate poll that follows
+    // settles for any address serving a certificate it trusts — so a domain
+    // still pointing at the machine the user is moving off would pass it.
     expect(
       await domainPointsAtServer("example.com", "203.0.113.5", {
         resolve: answers([], true),
       }),
-    ).toBe(true);
+    ).toBe("unknown");
   });
 
   it("does not object when the domain has no records yet", async () => {
-    // It may be minutes old. The certificate wait is the real answer.
+    // The resolver answered; the name simply has nothing yet. It may be
+    // minutes old, and the certificate wait is the real answer.
     expect(
       await domainPointsAtServer("example.com", "203.0.113.5", {
         resolve: answers([]),
       }),
-    ).toBe(true);
+    ).toBe("points-here");
   });
 
   it("compares a server known by a name against what the name resolves to", async () => {
@@ -221,7 +242,7 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("coolify.example.com", "box.example.com", {
         resolve: byName,
       }),
-    ).toBe(false);
+    ).toBe("points-elsewhere");
   });
 
   it("accepts a domain that resolves to the same place as the named server", async () => {
@@ -229,12 +250,13 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("coolify.example.com", "box.example.com", {
         resolve: answers(["203.0.113.5"]),
       }),
-    ).toBe(true);
+    ).toBe("points-here");
   });
 
-  it("says nothing when the server's own name does not resolve", async () => {
-    // Not knowing where the server is is not the same as knowing the domain
-    // is wrong, and refusing here would block a setup over a private name.
+  it("does not object when the server's own name does not resolve", async () => {
+    // A different case from the domain's own lookup failing: there is nothing
+    // to compare against rather than no answer about where the domain points,
+    // and refusing here would block a setup over a private name.
     const nothingForTheServer = async (target: string) => ({
       addresses: target === "box.internal" ? [] : ["198.51.100.9"],
       failed: target === "box.internal",
@@ -244,7 +266,7 @@ describe("domainPointsAtServer", () => {
       await domainPointsAtServer("coolify.example.com", "box.internal", {
         resolve: nothingForTheServer,
       }),
-    ).toBe(true);
+    ).toBe("points-here");
   });
 });
 
@@ -267,6 +289,42 @@ describe("tryEnableHttps", () => {
     });
 
     expect(asked.filter((n) => n === "box.example.com")).toHaveLength(1);
+  });
+
+  it("will not take a custom domain on trust when DNS could not be checked", async () => {
+    // The certificate poll settles for any address answering with a trusted
+    // certificate, and resolves the name through the system rather than the
+    // resolver asked here. A domain still pointing at the machine the user is
+    // moving off would pass it, and its address would become the instance the
+    // API token is sent to on every deploy.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async () => ({ addresses: [], failed: true }),
+      // Would say yes, which is the point: it is never asked.
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.instanceUrl).toBe("http://203.0.113.5:8000");
+    expect(result.reason).toMatch(/could not look up where/i);
+  });
+
+  it("still accepts a custom domain whose name simply has no records yet", async () => {
+    // The resolver answered. A name minutes old has nothing to say and the
+    // certificate wait is the real test, which is not the same as Dyad never
+    // having got an answer at all.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async () => ({ addresses: [], failed: false }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(true);
+    expect(result.instanceUrl).toBe("https://coolify.example.com");
   });
 
   it("says what it is doing while it takes the domain back off", async () => {

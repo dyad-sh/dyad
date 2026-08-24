@@ -60,7 +60,18 @@ export function certificateDomainFor(
   customDomain?: string | null,
 ): string | null {
   const custom = customDomain?.trim();
-  if (custom) return custom.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (custom) {
+    const bareCustom = custom.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    // The same reasoning as the derived names below, which a domain given by
+    // hand needs just as much: nothing public can validate a name only this
+    // machine answers to, and asking anyway spends the whole certificate wait
+    // on an answer that cannot arrive.
+    if (isLoopbackAddress(bareCustom) || /\.local$/i.test(bareCustom)) {
+      return null;
+    }
+    if (isIP(bareCustom) === 4 && isNonRoutableAddress(bareCustom)) return null;
+    return bareCustom;
+  }
 
   const bare = host.trim();
   if (isIP(bare) === 4) {
@@ -209,7 +220,7 @@ export async function domainPointsAtServer(
     resolve = resolveBoth,
     hostAddresses,
   }: { resolve?: typeof resolveBoth; hostAddresses?: string[] } = {},
-): Promise<boolean> {
+): Promise<"points-here" | "points-elsewhere" | "unknown"> {
   // A server known by a name is resolved to the addresses it stands for, so
   // the domain is compared against the same thing either way. A name that
   // does not resolve leaves nothing to compare, which the verdict below reads
@@ -219,15 +230,16 @@ export async function domainPointsAtServer(
       ? [host]
       : (hostAddresses ?? (await resolve(host)).addresses);
   const resolved = await resolve(domain);
-  // Only a domain that resolves somewhere else is an objection. A resolver we
-  // could not reach and a name with no records yet both come back with nothing
-  // to compare, which is not knowing rather than knowing it is wrong.
-  return (
-    domainCheckVerdict({
-      expectedIps,
-      actualIps: resolved.addresses,
-    }) !== "points-elsewhere"
-  );
+  // A resolver that could not be reached is not a name with no records. Both
+  // arrive with nothing to compare, but only the second is the domain saying
+  // where it points — the first is Dyad not having asked successfully, which
+  // the caller has to be able to tell apart from an answer.
+  if (resolved.failed) return "unknown";
+  const verdict = domainCheckVerdict({
+    expectedIps,
+    actualIps: resolved.addresses,
+  });
+  return verdict === "points-elsewhere" ? "points-elsewhere" : "points-here";
 }
 
 export interface HttpsOutcome {
@@ -308,18 +320,37 @@ export async function tryEnableHttps(
 
   // Only a domain of the user's own can point somewhere else. The derived
   // sslip.io name resolves to the address it was built from, by construction.
-  if (
-    customDomain &&
-    !(await domainPointsAtServer(domain, host, { resolve, hostAddresses }))
-  ) {
-    return {
-      instanceUrl: plainUrlFor(host),
-      secure: false,
-      reason:
-        `${domain} does not point at this server, so a certificate for it ` +
-        `would not describe this machine. Point it at ${host} and set the ` +
-        `domain in Coolify.`,
-    };
+  if (customDomain) {
+    const points = await domainPointsAtServer(domain, host, {
+      resolve,
+      hostAddresses,
+    });
+    if (points === "points-elsewhere") {
+      return {
+        instanceUrl: plainUrlFor(host),
+        secure: false,
+        reason:
+          `${domain} does not point at this server, so a certificate for it ` +
+          `would not describe this machine. Point it at ${host} and set the ` +
+          `domain in Coolify.`,
+      };
+    }
+    // Not knowing is not permission. The certificate poll below settles for
+    // any address that answers with a certificate it trusts, and it resolves
+    // the name through the system rather than the resolver asked here — so a
+    // domain still pointing at a machine the user is moving off would be
+    // taken as proof, and its address stored as the instance to send the API
+    // token to on every deploy.
+    if (points === "unknown") {
+      return {
+        instanceUrl: plainUrlFor(host),
+        secure: false,
+        reason:
+          `Dyad could not look up where ${domain} points, so it cannot tell ` +
+          `whether a certificate for it would describe this machine. Check ` +
+          `the domain resolves to ${host} and try again.`,
+      };
+    }
   }
 
   const url = httpsUrlFor(domain);

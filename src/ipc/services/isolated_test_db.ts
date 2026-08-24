@@ -8,6 +8,8 @@ import {
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
+import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
+import { retryOnLocked } from "../utils/retryOnLocked";
 import {
   checkRls,
   createTempTestUser,
@@ -249,6 +251,28 @@ export async function prepareIsolatedTestDatabase({
     let authSetup: IsolationAuthSetup | undefined;
     if (branch.neonAuthBaseUrl) {
       try {
+        // Neon Auth validates the browser's Origin on sign-in. A temporary
+        // branch gets its own Auth configuration, so it does not inherit the
+        // preview proxy origin trusted by the app's development branch. Add
+        // the exact origin the recorder and Playwright will use before handing
+        // them credentials; otherwise account creation succeeds but sign-in is
+        // rejected as an invalid origin.
+        const proxyUrl = runningApps.get(app.id)?.proxyUrl;
+        if (!proxyUrl) {
+          throw new Error(
+            "The preview proxy URL is unavailable for Neon Auth sign-in.",
+          );
+        }
+        await retryOnLocked(
+          () =>
+            ensureNeonAuthTrustedDomain({
+              projectId: app.neonProjectId!,
+              branchId: branch.branchId,
+              origin: new URL(proxyUrl).origin,
+            }),
+          `Trust preview origin for Neon test branch ${branch.branchId}`,
+        );
+
         const account = await createNeonTestAccount({
           neonAuthBaseUrl: branch.neonAuthBaseUrl,
           appId: app.id,
@@ -264,10 +288,10 @@ export async function prepareIsolatedTestDatabase({
         };
       } catch (error) {
         logger.warn(
-          `Couldn't provision a Neon test account for app ${app.id}; continuing unauthenticated: ${error}`,
+          `Couldn't prepare Neon test authentication for app ${app.id}; continuing unauthenticated: ${error}`,
         );
         emit(
-          "Couldn't create a test account for sign-in — continuing without authentication.\n",
+          "Couldn't prepare test sign-in — continuing without authentication.\n",
           "setup",
         );
       }

@@ -74,20 +74,45 @@ export function buildVercelEnvPayload(
 }
 
 /**
- * Normalizes a domain or URL to a canonical origin `https://<host>` for
- * comparison. Strips scheme/path/query/fragment, lowercases the host. Returns
- * null for empty or wildcard (`*`) values (which can't be redirect URIs).
+ * Normalizes a domain or URL to a canonical origin for comparison. Deployed
+ * domains use `https://<host>`; an explicit HTTP loopback URL keeps `http://`
+ * because local app previews are actually served over HTTP and auth origin
+ * matching includes the scheme. Strips path/query/fragment and lowercases the
+ * host. Returns null for empty or wildcard (`*`) values (which can't be
+ * redirect URIs).
  */
 export function canonicalOrigin(value: string): string | null {
   if (!value) return null;
-  let host = value.trim();
-  if (!host) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("*")) return null;
+
+  // Neon Auth compares the complete browser Origin, including its scheme.
+  // Production hosts should remain HTTPS even if a caller supplies `http://`,
+  // but Dyad's local preview genuinely runs over HTTP. Preserve that scheme for
+  // loopback only so its sign-in origin can be allowlisted exactly.
+  if (/^http:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "[::1]"
+      ) {
+        return parsed.origin.toLowerCase();
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  let host = trimmed;
   // Strip scheme (http://, https://, etc.).
   host = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
   // Strip path, query, and fragment (keeps only the host[:port]).
   host = host.split(/[/?#]/)[0];
   host = host.toLowerCase();
-  if (!host || host.includes("*")) return null;
+  if (!host) return null;
   return `https://${host}`;
 }
 

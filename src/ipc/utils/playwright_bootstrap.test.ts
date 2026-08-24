@@ -251,9 +251,15 @@ describe("preview shim fixtures", () => {
 
   function makeApiStub() {
     const calls: string[] = [];
-    const record = (name: string) => (url: unknown) => {
+    const record = (name: string) => (url: unknown, _options?: unknown) => {
       calls.push(`${name}:${String(url)}`);
-      return Promise.resolve(null);
+      return Promise.resolve(
+        name === "post"
+          ? {
+              ok: () => true,
+            }
+          : null,
+      );
     };
     return {
       calls,
@@ -336,13 +342,15 @@ describe("preview shim fixtures", () => {
     const page = Object.create({ goto: gotoOnPrototype }) as {
       goto: (url: string) => Promise<null>;
       url: () => string;
-      evaluate: (
-        fn: (marker: string) => boolean,
-        marker: string,
-      ) => Promise<boolean>;
+      evaluate: (fn: unknown, arg: unknown) => Promise<unknown>;
     };
+    const browserAuthRequests: unknown[] = [];
     page.url = () => initialUrl;
-    page.evaluate = async (_fn, marker) => marker === "selected-preview";
+    page.evaluate = async (_fn, arg) => {
+      if (typeof arg === "string") return arg === "selected-preview";
+      browserAuthRequests.push(arg);
+      return { ok: true, status: 200 };
+    };
 
     const { calls, api } = makeApiStub();
     const originalApi = { ...api };
@@ -365,6 +373,7 @@ describe("preview shim fixtures", () => {
     let result!: {
       navigations: string[];
       apiCalls: string[];
+      browserAuthRequests: unknown[];
       context: typeof context;
       page: typeof page;
       gotoOnPrototype: typeof gotoOnPrototype;
@@ -384,10 +393,14 @@ describe("preview shim fixtures", () => {
             await target.goto("/todos?done=1");
             await target.goto("https://example.com/elsewhere");
             await api.get("/api/health");
+            await api.post("/api/auth/sign-in/email", {
+              data: { email: "test@dyad.test", password: "secret" },
+            });
             await api.fetch("https://example.com/api/health");
             result = {
               navigations,
               apiCalls: calls,
+              browserAuthRequests,
               context,
               page: target,
               gotoOnPrototype,
@@ -427,13 +440,15 @@ describe("preview shim fixtures", () => {
   });
 
   it("resolves relative API request URLs and restores the methods after", async () => {
-    const { apiCalls, apiDuringRun, originalApi } = await runPageFixture({
-      initialUrl: "http://localhost:32100/",
-      contextOptions: {},
-    });
+    const { apiCalls, apiDuringRun, originalApi, browserAuthRequests } =
+      await runPageFixture({
+        initialUrl: "http://localhost:32100/",
+        contextOptions: {},
+      });
 
     expect(apiCalls).toEqual([
       "get:http://localhost:32100/api/health",
+      "post:http://localhost:32100/api/auth/sign-in/email",
       "fetch:https://example.com/api/health",
     ]);
     // Patched for the duration of the fixture...
@@ -442,6 +457,12 @@ describe("preview shim fixtures", () => {
     for (const name of Object.keys(originalApi)) {
       expect(apiDuringRun[name]).toBeDefined();
     }
+    expect(browserAuthRequests).toEqual([
+      {
+        signInUrl: "http://localhost:32100/api/auth/sign-in/email",
+        data: { email: "test@dyad.test", password: "secret" },
+      },
+    ]);
   });
 
   it("still navigates when the internal options field is gone", async () => {

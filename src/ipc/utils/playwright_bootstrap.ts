@@ -536,6 +536,67 @@ async function protectNonPreviewContexts(
   };
 }
 
+async function ensurePreviewBetterAuthSession({
+  context,
+  origin,
+  requestUrl,
+  requestData,
+}: {
+  context: pw.BrowserContext;
+  origin: string;
+  requestUrl: string;
+  requestData: unknown;
+}): Promise<void> {
+  const page = context.pages().find((candidate) => {
+    try {
+      return new URL(candidate.url()).origin === origin;
+    } catch {
+      return false;
+    }
+  });
+  if (!page) return;
+
+  const result = await page.evaluate(
+    async ({ signInUrl, data }) => {
+      const hasSession = async () => {
+        const response = await fetch("/api/auth/get-session", {
+          credentials: "include",
+        });
+        if (!response.ok) return false;
+        const body = await response.json().catch(() => null);
+        return !!(
+          body &&
+          (body.user || (body.session && body.session.user))
+        );
+      };
+
+      // A normal Playwright-owned context receives APIRequestContext cookies
+      // automatically. Electron's pre-existing CDP context can report a
+      // successful sign-in without exposing that cookie to the page. Avoid a
+      // second request when the native session already has it.
+      if (await hasSession()) return { ok: true, status: 200 };
+
+      const response = await fetch(signInUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: typeof data === "string" ? data : JSON.stringify(data),
+      });
+      if (!response.ok) {
+        return { ok: false, status: response.status };
+      }
+      return { ok: await hasSession(), status: response.status };
+    },
+    { signInUrl: requestUrl, data: requestData },
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      \`Dyad preview: Better Auth sign-in returned \${result.status}, but no browser session was established.\`,
+    );
+  }
+}
+
 export const test = !endpoint
   ? pw.test
   : pw.test.extend({
@@ -598,12 +659,45 @@ export const test = !endpoint
           if (typeof original !== "function") continue;
           originalApiMethods.set(name, original);
           // A Request object (fetch's other overload) carries its own URL.
-          api[name] = (url, options) =>
-            original.call(
+          api[name] = async (url, options) => {
+            const resolvedUrl =
+              typeof url === "string" ? new URL(url, baseUrl).href : url;
+            const response = await original.call(
               api,
-              typeof url === "string" ? new URL(url, baseUrl).href : url,
+              resolvedUrl,
               options,
             );
+
+            // Better Auth depends on a first-party HttpOnly cookie. Playwright's
+            // API client can return success under connectOverCDP while Electron's
+            // native preview session remains signed out. Verify in the page and,
+            // only when necessary, repeat this one idempotent credential exchange
+            // through browser fetch so Chromium accepts Set-Cookie itself.
+            if (typeof resolvedUrl === "string") {
+              const parsedUrl = new URL(resolvedUrl);
+              const requestData = (
+                options as { data?: unknown } | undefined
+              )?.data;
+              if (
+                name === "post" &&
+                parsedUrl.origin === origin &&
+                parsedUrl.pathname === "/api/auth/sign-in/email" &&
+                requestData !== undefined &&
+                response &&
+                typeof (response as { ok?: unknown }).ok === "function" &&
+                (response as { ok: () => boolean }).ok()
+              ) {
+                await ensurePreviewBetterAuthSession({
+                  context,
+                  origin,
+                  requestUrl: resolvedUrl,
+                  requestData,
+                });
+              }
+            }
+
+            return response;
+          };
         }
         try {
           // Pre-existing context: hand it over without closing it afterwards.

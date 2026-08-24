@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   // stale by this point — so that is what these tests pin.
   markAndDeleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
   createNeonTestAccount: vi.fn(),
+  ensureNeonAuthTrustedDomain: vi.fn().mockResolvedValue(null),
   createTempTestUser: vi.fn(),
   deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
   checkRls: vi.fn().mockResolvedValue({ tablesWithoutRls: [] }),
@@ -48,6 +49,9 @@ vi.mock("../utils/neon_test_branch", () => ({
 }));
 vi.mock("../utils/neon_test_account", () => ({
   createNeonTestAccount: mocks.createNeonTestAccount,
+}));
+vi.mock("../utils/neon_utils", () => ({
+  ensureNeonAuthTrustedDomain: mocks.ensureNeonAuthTrustedDomain,
 }));
 vi.mock("../../supabase_admin/supabase_context", () => ({
   getPublishableKey: mocks.getPublishableKey,
@@ -132,6 +136,7 @@ beforeEach(() => {
     email: "neon-test@dyad.test",
     password: "neon-pw",
   });
+  mocks.ensureNeonAuthTrustedDomain.mockResolvedValue(null);
 });
 
 describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
@@ -458,6 +463,14 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
         neonAuthBaseUrl: "https://auth",
         appId: 1,
       });
+      expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith({
+        projectId: "proj-1",
+        branchId: "test-br",
+        origin: "http://localhost:42100",
+      });
+      expect(
+        mocks.ensureNeonAuthTrustedDomain.mock.invocationCallOrder[0],
+      ).toBeLessThan(mocks.createNeonTestAccount.mock.invocationCallOrder[0]);
       expect(prepared.testCredentials).toEqual({
         DYAD_TEST_USER_EMAIL: "neon-test@dyad.test",
         DYAD_TEST_USER_PASSWORD: "neon-pw",
@@ -493,6 +506,38 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
       expect(prepared.infraError).toBeUndefined();
       expect(prepared.testCredentials).toBeUndefined();
       expect(prepared.authSetup).toBeUndefined();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("continues unauthenticated when the preview origin cannot be trusted", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+      cookieSecret: "secret",
+    });
+    mocks.ensureNeonAuthTrustedDomain.mockRejectedValue(
+      new Error("trusted domain rejected"),
+    );
+    const fetchSpy = withServerUp();
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        emit,
+        runtimeMode: "host",
+      });
+
+      expect(prepared.isolation).toEqual({ mode: "neon-branch" });
+      expect(prepared.infraError).toBeUndefined();
+      expect(prepared.testCredentials).toBeUndefined();
+      expect(prepared.authSetup).toBeUndefined();
+      expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
+      expect(emit).toHaveBeenCalledWith(
+        expect.stringMatching(/continuing without authentication/i),
+        "setup",
+      );
     } finally {
       fetchSpy.mockRestore();
     }

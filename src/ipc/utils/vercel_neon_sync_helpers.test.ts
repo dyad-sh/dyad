@@ -82,6 +82,18 @@ describe("canonicalOrigin", () => {
     expect(canonicalOrigin("   ")).toBeNull();
     expect(canonicalOrigin("*.vercel.app")).toBeNull();
   });
+
+  it("preserves explicit HTTP loopback origins for local auth", () => {
+    expect(canonicalOrigin("http://localhost:42111/path")).toBe(
+      "http://localhost:42111",
+    );
+    expect(canonicalOrigin("http://127.0.0.1:42111/path")).toBe(
+      "http://127.0.0.1:42111",
+    );
+    expect(canonicalOrigin("http://[::1]:42111/path")).toBe(
+      "http://[::1]:42111",
+    );
+  });
 });
 
 describe("reconcileTrustedDomains", () => {

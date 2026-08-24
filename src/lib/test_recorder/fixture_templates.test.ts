@@ -12,11 +12,13 @@ describe("generateTestUserFixtureSource", () => {
     expect(source).toContain("/api/auth/sign-in/email");
     expect(source).toContain("process.env.DYAD_TEST_USER_EMAIL");
     expect(source).toContain("process.env.DYAD_TEST_USER_PASSWORD");
-    // `page.request` sends no Origin of its own, and signIn runs before the
-    // first navigation — without an explicit origin Better Auth's CSRF check
-    // rejects the sign-in with a 403.
+    // The browser must own the request so Electron accepts Better Auth's
+    // HttpOnly cookie in the same first-party session as the app page.
     expect(source).toContain("process.env.DYAD_TEST_BASE_URL");
-    expect(source).toContain("headers: { origin, referer: `${origin}/` }");
+    expect(source).toContain("await page.goto(origin)");
+    expect(source).toContain("await page.evaluate(");
+    expect(source).toContain('credentials: "include"');
+    expect(source).not.toContain("page.request.post");
     // Should NOT reference Supabase-only env vars.
     expect(source).not.toContain("DYAD_TEST_SUPABASE_ANON_KEY");
   });

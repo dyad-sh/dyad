@@ -14,6 +14,8 @@ import {
   SLOW_CONSENT_TOOL,
 } from "./consentClassifier";
 import { matchAssertionCodePayload } from "./testAssertionsFixtures";
+import { loadLocalAgentFixture } from "./localAgentHandler";
+import type { ToolCall, Turn } from "./localAgentTypes";
 
 /**
  * Generate a dump file from the request and return the path marker
@@ -110,11 +112,138 @@ function extractTestCaseName(promptText: string): string | null {
   return m[1].trim().split(/\s+/)[0] || null;
 }
 
+async function waitForDelayOrDisconnect(
+  res: Response,
+  delayMs: number,
+): Promise<boolean> {
+  let disconnected = false;
+  await new Promise<void>((resolve) => {
+    const onClose = () => {
+      disconnected = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      res.removeListener("close", onClose);
+      resolve();
+    }, delayMs);
+    res.once("close", onClose);
+  });
+  return disconnected;
+}
+
 /**
  * Create SSE event string
  */
 function createSSEEvent(eventType: string, data: any): string {
   return `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function countFunctionCallOutputs(input: unknown): number {
+  return Array.isArray(input)
+    ? input.filter((item) => item?.type === "function_call_output").length
+    : 0;
+}
+
+async function responsesFixtureTurn(
+  testCaseName: string | null,
+  input: unknown,
+): Promise<Turn | undefined> {
+  if (!testCaseName?.startsWith("local-agent/")) return undefined;
+  const fixture = await loadLocalAgentFixture(
+    testCaseName.slice("local-agent/".length),
+  );
+  return fixture.turns?.[countFunctionCallOutputs(input)];
+}
+
+async function streamResponsesToolCalls(params: {
+  res: Response;
+  baseResponseFields: Record<string, unknown>;
+  toolCalls: ToolCall[];
+  usage: Record<string, unknown>;
+}): Promise<void> {
+  const { res, baseResponseFields, toolCalls, usage } = params;
+  let sequence = 0;
+  const nextSequence = () => sequence++;
+  const output = toolCalls.map((toolCall, index) => ({
+    id: `fc_${Date.now()}_${index}`,
+    call_id: `call_${Date.now()}_${index}`,
+    type: "function_call" as const,
+    name: toolCall.name,
+    arguments: JSON.stringify(toolCall.args),
+    status: "completed" as const,
+  }));
+
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+  res.write(
+    createSSEEvent("response.created", {
+      type: "response.created",
+      sequence_number: nextSequence(),
+      response: {
+        ...baseResponseFields,
+        output_text: "",
+        output: [],
+        status: "in_progress",
+      },
+    }),
+  );
+
+  for (const [outputIndex, item] of output.entries()) {
+    res.write(
+      createSSEEvent("response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        sequence_number: nextSequence(),
+        item: { ...item, arguments: "", status: "in_progress" },
+      }),
+    );
+    res.write(
+      createSSEEvent("response.function_call_arguments.delta", {
+        type: "response.function_call_arguments.delta",
+        output_index: outputIndex,
+        item_id: item.id,
+        sequence_number: nextSequence(),
+        delta: item.arguments,
+      }),
+    );
+    res.write(
+      createSSEEvent("response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        output_index: outputIndex,
+        item_id: item.id,
+        sequence_number: nextSequence(),
+        name: item.name,
+        arguments: item.arguments,
+      }),
+    );
+    res.write(
+      createSSEEvent("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        sequence_number: nextSequence(),
+        item,
+      }),
+    );
+  }
+
+  res.write(
+    createSSEEvent("response.completed", {
+      type: "response.completed",
+      sequence_number: nextSequence(),
+      response: {
+        ...baseResponseFields,
+        output_text: "",
+        output,
+        status: "completed",
+        usage,
+      },
+    }),
+  );
+  res.write("data: [DONE]\n\n");
+  res.end();
 }
 
 /**
@@ -167,6 +296,7 @@ export const createResponsesHandler =
     const testCaseName = isCompactionRequest
       ? null
       : extractTestCaseName(lastUserText);
+    const localAgentTurn = await responsesFixtureTurn(testCaseName, input);
     if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       const testFilePath = path.join(
         resolveFixturesDir(),
@@ -270,6 +400,25 @@ export const createResponsesHandler =
       output_tokens_details: { reasoning_tokens: 0 },
       total_tokens: 10 + Math.max(1, Math.ceil(messageContent.length / 4)),
     });
+
+    if (localAgentTurn?.delayMs) {
+      const disconnected = await waitForDelayOrDisconnect(
+        res,
+        localAgentTurn.delayMs,
+      );
+      if (disconnected || res.destroyed) return;
+    }
+
+    if (stream && localAgentTurn?.toolCalls?.length) {
+      return streamResponsesToolCalls({
+        res,
+        baseResponseFields,
+        toolCalls: localAgentTurn.toolCalls,
+        usage: mkUsage(),
+      });
+    }
+
+    if (localAgentTurn?.text) messageContent = localAgentTurn.text;
 
     // Non-streaming response
     if (!stream) {

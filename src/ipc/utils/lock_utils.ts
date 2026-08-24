@@ -1,9 +1,9 @@
 const locks = new Map<string, Promise<void>>();
 
 /**
- * Build the lock ID used to serialize writes to a single file path.
- * Some tool calls (e.g. `write_file` and `search_replace`) must use
- * this so they don't race against each other on the same file.
+ * Build the lock ID used to serialize mutations to a single file path.
+ * File writers, deletes, and both sides of a rename must use this so they
+ * don't race against each other on the same physical path.
  */
 export function getFileWriteKey(filePath: string): string {
   return `filewrite:${filePath}`;
@@ -39,4 +39,24 @@ export function withLock<T>(lockId: string, fn: () => Promise<T>): Promise<T> {
   });
 
   return result;
+}
+
+/**
+ * Acquires several locks in one canonical order before running an operation.
+ * Sorting and deduplicating prevents two multi-path operations (for example,
+ * opposing renames) from deadlocking while preserving the single-file lock
+ * protocol used by other writers.
+ */
+export function withLocks<T>(
+  lockIds: readonly string[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  const orderedLockIds = [...new Set(lockIds)].sort();
+  const acquire = (index: number): Promise<T> => {
+    const lockId = orderedLockIds[index];
+    return lockId === undefined
+      ? fn()
+      : withLock(lockId, () => acquire(index + 1));
+  };
+  return acquire(0);
 }

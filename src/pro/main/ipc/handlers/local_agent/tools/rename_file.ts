@@ -15,6 +15,7 @@ import {
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
 
 const logger = log.scope("rename_file");
 
@@ -55,106 +56,118 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       });
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
-      const didRename =
-        path.normalize(fromFullPath) !== path.normalize(toFullPath) &&
-        fs.existsSync(fromFullPath);
+      return withLocks(
+        [getFileWriteKey(fromFullPath), getFileWriteKey(toFullPath)],
+        async () => {
+          const didRename =
+            path.normalize(fromFullPath) !== path.normalize(toFullPath) &&
+            fs.existsSync(fromFullPath);
 
-      if (didRename) {
-        // Track if this involves shared modules
-        if (
-          isSharedServerModule(fromOperationPath) ||
-          isSharedServerModule(toOperationPath)
-        ) {
-          ctx.isSharedModulesChanged = true;
-          if (isSharedServerModule(fromOperationPath)) {
-            ctx.sharedServerModulePaths.push(fromOperationPath);
-            ctx.onSharedServerModuleChange?.(fromOperationPath);
-          }
-          if (isSharedServerModule(toOperationPath)) {
-            ctx.sharedServerModulePaths.push(toOperationPath);
-            ctx.onSharedServerModuleChange?.(toOperationPath);
-          }
-        }
-
-        // Ensure target directory exists
-        const dirPath = path.dirname(toFullPath);
-        fs.mkdirSync(dirPath, { recursive: true });
-
-        fs.renameSync(fromFullPath, toFullPath);
-        logger.log(
-          `Successfully renamed file: ${fromFullPath} -> ${toFullPath}`,
-        );
-
-        // Update git
-        await gitAdd({ path: ctx.appPath, filepath: toOperationPath });
-        try {
-          await gitRemove({ path: ctx.appPath, filepath: fromOperationPath });
-        } catch (error) {
-          logger.warn(`Failed to git remove old file ${args.from}:`, error);
-        }
-
-        // Handle Supabase functions
-        if (ctx.supabaseProjectId) {
-          if (isServerFunction(fromOperationPath)) {
-            const functionName = extractFunctionNameFromPath(fromOperationPath);
-            if (ctx.allowDeploySideEffects === false) {
-              ctx.onDeferredFunctionDelete?.(functionName);
-            } else {
-              try {
-                await deleteSupabaseFunction({
-                  supabaseProjectId: ctx.supabaseProjectId,
-                  functionName,
-                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-                });
-              } catch (error) {
-                logger.warn(
-                  `Failed to delete old Supabase function: ${args.from}`,
-                  error,
-                );
+          if (didRename) {
+            // Track if this involves shared modules
+            if (
+              isSharedServerModule(fromOperationPath) ||
+              isSharedServerModule(toOperationPath)
+            ) {
+              ctx.isSharedModulesChanged = true;
+              if (isSharedServerModule(fromOperationPath)) {
+                ctx.sharedServerModulePaths.push(fromOperationPath);
+                ctx.onSharedServerModuleChange?.(fromOperationPath);
+              }
+              if (isSharedServerModule(toOperationPath)) {
+                ctx.sharedServerModulePaths.push(toOperationPath);
+                ctx.onSharedServerModuleChange?.(toOperationPath);
               }
             }
-          }
-          if (isServerFunction(toOperationPath)) {
-            const functionName = extractFunctionNameFromPath(toOperationPath);
-            if (ctx.allowDeploySideEffects === false) {
-              ctx.onDeferredFunctionDeploy?.(functionName);
-            } else if (!ctx.isSharedModulesChanged) {
-              try {
-                await deploySupabaseFunction({
-                  supabaseProjectId: ctx.supabaseProjectId,
-                  functionName,
-                  appPath: ctx.appPath,
-                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-                });
-              } catch (error) {
-                return `File renamed, but failed to deploy Supabase function: ${error}`;
+
+            // Ensure target directory exists
+            const dirPath = path.dirname(toFullPath);
+            fs.mkdirSync(dirPath, { recursive: true });
+
+            fs.renameSync(fromFullPath, toFullPath);
+            logger.log(
+              `Successfully renamed file: ${fromFullPath} -> ${toFullPath}`,
+            );
+
+            // Update git
+            await gitAdd({ path: ctx.appPath, filepath: toOperationPath });
+            try {
+              await gitRemove({
+                path: ctx.appPath,
+                filepath: fromOperationPath,
+              });
+            } catch (error) {
+              logger.warn(`Failed to git remove old file ${args.from}:`, error);
+            }
+
+            // Handle Supabase functions
+            if (ctx.supabaseProjectId) {
+              if (isServerFunction(fromOperationPath)) {
+                const functionName =
+                  extractFunctionNameFromPath(fromOperationPath);
+                if (ctx.allowDeploySideEffects === false) {
+                  ctx.onDeferredFunctionDelete?.(functionName);
+                } else {
+                  try {
+                    await deleteSupabaseFunction({
+                      supabaseProjectId: ctx.supabaseProjectId,
+                      functionName,
+                      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                    });
+                  } catch (error) {
+                    logger.warn(
+                      `Failed to delete old Supabase function: ${args.from}`,
+                      error,
+                    );
+                  }
+                }
               }
-            } else {
-              try {
-                ctx.pendingFunctionDeploys.push(functionName);
-              } catch (error) {
-                logger.warn(
-                  `File renamed, but failed to identify Supabase function name: ${args.to}`,
-                  error,
-                );
+              if (isServerFunction(toOperationPath)) {
+                const functionName =
+                  extractFunctionNameFromPath(toOperationPath);
+                if (ctx.allowDeploySideEffects === false) {
+                  ctx.onDeferredFunctionDeploy?.(functionName);
+                } else if (!ctx.isSharedModulesChanged) {
+                  try {
+                    await deploySupabaseFunction({
+                      supabaseProjectId: ctx.supabaseProjectId,
+                      functionName,
+                      appPath: ctx.appPath,
+                      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                    });
+                  } catch (error) {
+                    return `File renamed, but failed to deploy Supabase function: ${error}`;
+                  }
+                } else {
+                  try {
+                    ctx.pendingFunctionDeploys.push(functionName);
+                  } catch (error) {
+                    logger.warn(
+                      `File renamed, but failed to identify Supabase function name: ${args.to}`,
+                      error,
+                    );
+                  }
+                }
               }
             }
+          } else {
+            logger.warn(
+              `Source file for rename does not exist: ${fromFullPath}`,
+            );
           }
-        }
-      } else {
-        logger.warn(`Source file for rename does not exist: ${fromFullPath}`);
-      }
 
-      if (didRename) {
-        queueCloudSandboxSnapshotSync({
-          appId: ctx.appId,
-          changedPaths: [toOperationPath],
-          deletedPaths: [fromOperationPath],
-        });
-      }
+          if (didRename) {
+            queueCloudSandboxSnapshotSync({
+              appId: ctx.appId,
+              changedPaths: [toOperationPath],
+              deletedPaths: [fromOperationPath],
+            });
+          }
 
-      return didRename
-        ? `Successfully renamed ${args.from} to ${args.to}`
-        : `Source file ${args.from} did not exist or already matched ${args.to}, so nothing was renamed.`;
+          return didRename
+            ? `Successfully renamed ${args.from} to ${args.to}`
+            : `Source file ${args.from} did not exist or already matched ${args.to}, so nothing was renamed.`;
+        },
+      );
     },
   };

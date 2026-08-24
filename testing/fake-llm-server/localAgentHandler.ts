@@ -135,7 +135,9 @@ function extractAttachmentPath(messages: any[]): string | null {
  * Load a fixture file dynamically
  * Tries .ts first (for dev mode with ts-node), then .js
  */
-async function loadFixture(fixtureName: string): Promise<LocalAgentFixture> {
+export async function loadLocalAgentFixture(
+  fixtureName: string,
+): Promise<LocalAgentFixture> {
   if (fixtureCache.has(fixtureName)) {
     return fixtureCache.get(fixtureName)!;
   }
@@ -548,7 +550,7 @@ export async function handleLocalAgentFixture(
   fakeLlmLog(`[local-agent] Messages count: ${messages.length}`);
 
   try {
-    const fixture = await loadFixture(fixtureName);
+    const fixture = await loadLocalAgentFixture(fixtureName);
     const sessionId = getSessionId(messages);
 
     // Determine which outer loop pass we're on based on todo reminder messages
@@ -660,9 +662,8 @@ export async function handleLocalAgentFixture(
     }
 
     // Optional delay so tests can cancel the stream while it is still open.
-    // Abort the wait as soon as the client disconnects so the timer doesn't
-    // keep the event loop alive (delaying test teardown) and we don't later
-    // try to write to a closed response (ERR_STREAM_WRITE_AFTER_END / EPIPE).
+    // Watch the response: the request can close normally as soon as its body is
+    // consumed, before the response starts streaming.
     if (turn.delayMs && turn.delayMs > 0) {
       let aborted = false;
       await new Promise<void>((resolve) => {
@@ -672,12 +673,12 @@ export async function handleLocalAgentFixture(
           resolve();
         };
         const timer = setTimeout(() => {
-          req.removeListener("close", onClose);
+          res.removeListener("close", onClose);
           resolve();
         }, turn.delayMs);
-        req.once("close", onClose);
+        res.once("close", onClose);
       });
-      if (aborted || req.destroyed) {
+      if (aborted || res.destroyed) {
         return;
       }
     }

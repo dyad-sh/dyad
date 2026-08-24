@@ -23,6 +23,11 @@ response from `<dyad-write>` XML to a local-Agent fixture that invokes
 the real chat stream. Build-mode text responses are not processed as Agent tool
 calls.
 
+Local Agent roots and OpenAI-backed Implementers can use different transports:
+roots may call Chat Completions while Implementers call the Responses API. When
+a fake fixture covers both actors, implement equivalent fixture-tool streaming
+for both endpoints or the Implementer will never execute its tool calls.
+
 In a fresh worktree, the root `npm install` does not install the nested
 `testing/fake-llm-server` package. Before chat-flow or hybrid suites that load
 its Git routes, run `npm ci --prefix testing/fake-llm-server`; otherwise test

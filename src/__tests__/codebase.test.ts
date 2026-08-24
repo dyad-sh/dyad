@@ -386,6 +386,52 @@ describe("extractCodebase size stats", () => {
     expect(readFileSpy).toHaveBeenCalled();
   });
 
+  it("reports nothing when the app directory cannot be read", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
+    const onSizeStats = vi.fn();
+    // The directory exists, so the existence check passes, but the walk finds
+    // nothing. A zero would land in the small-app bucket as a real reading.
+    vi.spyOn(fs.promises, "readdir").mockRejectedValue(
+      new Error("permission denied"),
+    );
+
+    await extractCodebase({
+      appPath: appDir,
+      chatContext: noContext,
+      onSizeStats,
+    });
+
+    expect(onSizeStats).not.toHaveBeenCalled();
+  });
+
+  it("reports nothing when part of the tree cannot be read", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.mkdir(path.join(appDir, "src"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa\n");
+    await fs.promises.writeFile(path.join(appDir, "src", "b.ts"), "bb\n");
+    const onSizeStats = vi.fn();
+    // One unreadable file makes the count an undercount by an unknown amount,
+    // which is indistinguishable from a genuinely smaller app.
+    const realStat = fs.promises.stat;
+    vi.spyOn(fs.promises, "stat").mockImplementation(
+      async (target, ...rest) => {
+        if (String(target).endsWith("b.ts")) {
+          throw new Error("permission denied");
+        }
+        return realStat(target, ...(rest as []));
+      },
+    );
+
+    await extractCodebase({
+      appPath: appDir,
+      chatContext: noContext,
+      onSizeStats,
+    });
+
+    expect(onSizeStats).not.toHaveBeenCalled();
+  });
+
   it("is not called for a directory that does not exist", async () => {
     const onSizeStats = vi.fn();
 

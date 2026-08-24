@@ -191,6 +191,12 @@ export interface CodebaseSizeStats {
 interface CollectedFiles {
   files: string[];
   totalBytes: number;
+  /**
+   * True when part of the tree could not be read. Extraction still uses
+   * whatever was collected, but a partial walk is indistinguishable from a
+   * small app, so it must not be reported as a measurement.
+   */
+  incomplete: boolean;
 }
 
 /**
@@ -225,6 +231,7 @@ async function collectFilesNativeGit(dir: string): Promise<CollectedFiles> {
 
   // Git cannot exclude files by size, so we still need to do that manually.
   // The stat has to happen either way, so byte totals cost nothing extra.
+  let incomplete = false;
   const sized = await Promise.all(
     files.map(async (file) => {
       try {
@@ -235,6 +242,7 @@ async function collectFilesNativeGit(dir: string): Promise<CollectedFiles> {
         return { file, size: stats.size };
       } catch (error) {
         logger.error(`Failed to read file ${file}:`, error);
+        incomplete = true;
         return null;
       }
     }),
@@ -244,6 +252,7 @@ async function collectFilesNativeGit(dir: string): Promise<CollectedFiles> {
   return {
     files: kept.map((entry) => entry.file),
     totalBytes: kept.reduce((sum, entry) => sum + entry.size, 0),
+    incomplete,
   };
 }
 
@@ -256,13 +265,14 @@ async function collectFilesByTraversal(
 ): Promise<CollectedFiles> {
   const files: string[] = [];
   let totalBytes = 0;
+  let incomplete = false;
 
   // Check if directory exists
   try {
     await fsAsync.access(dir);
   } catch {
     // Directory doesn't exist or is not accessible
-    return { files, totalBytes };
+    return { files, totalBytes, incomplete: true };
   }
 
   try {
@@ -294,6 +304,7 @@ async function collectFilesByTraversal(
         const subDir = await collectFilesByTraversal(fullPath, baseDir);
         files.push(...subDir.files);
         totalBytes += subDir.totalBytes;
+        incomplete ||= subDir.incomplete;
       } else if (entry.isFile()) {
         // Skip excluded files
         if (EXCLUDED_FILES.includes(entry.name)) {
@@ -310,6 +321,7 @@ async function collectFilesByTraversal(
           size = stats.size;
         } catch (error) {
           logger.error(`Error checking file size: ${fullPath}`, error);
+          incomplete = true;
           return;
         }
 
@@ -322,9 +334,10 @@ async function collectFilesByTraversal(
     await Promise.all(promises);
   } catch (error) {
     logger.error(`Error reading directory ${dir}:`, error);
+    incomplete = true;
   }
 
-  return { files, totalBytes };
+  return { files, totalBytes, incomplete };
 }
 
 const OMITTED_FILE_CONTENT = "// File contents excluded from context";
@@ -445,7 +458,7 @@ interface PreparedCodebaseFile extends BaseFile {
 
 interface PreparedCodebase {
   preparedFiles: PreparedCodebaseFile[];
-  sizeStats: CodebaseSizeStats;
+  sizeStats: CodebaseSizeStats | undefined;
 }
 
 async function prepareCodebaseFiles({
@@ -468,8 +481,11 @@ async function prepareCodebaseFiles({
   const collected = await collectFilesNativeGit(appPath);
   // Captured here, before the context filtering below, so the reported size
   // describes the app rather than the current chat's context configuration.
-  const fileCount = collected.files.length;
-  const totalBytes = collected.totalBytes;
+  // A walk that could not read part of the tree undercounts by an unknown
+  // amount, which would land in the small-app bucket, so it reports nothing.
+  const sizeStats: CodebaseSizeStats | undefined = collected.incomplete
+    ? undefined
+    : { fileCount: collected.files.length, totalBytes: collected.totalBytes };
   let files = collected.files;
 
   const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
@@ -547,7 +563,7 @@ async function prepareCodebaseFiles({
         autoIncludedFiles.has(path.normalize(file)) &&
         !excludedFiles.has(path.normalize(file)),
     })),
-    sizeStats: { fileCount, totalBytes },
+    sizeStats,
   };
 }
 
@@ -626,12 +642,14 @@ async function extractCodebaseInner({
     };
   }
   const { preparedFiles, sizeStats } = prepared;
-  try {
-    onSizeStats?.(sizeStats);
-  } catch (error) {
-    // The callback reports size for telemetry; it must not fail the chat turn
-    // this extraction belongs to.
-    logger.warn("onSizeStats callback failed:", error);
+  if (sizeStats) {
+    try {
+      onSizeStats?.(sizeStats);
+    } catch (error) {
+      // The callback reports size for telemetry; it must not fail the chat
+      // turn this extraction belongs to.
+      logger.warn("onSizeStats callback failed:", error);
+    }
   }
 
   // Format files and collect individual file contents

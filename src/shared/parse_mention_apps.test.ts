@@ -1,4 +1,6 @@
 import {
+  findKnownAppMentions,
+  formatKnownAppMentionsForDisplay,
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
   parseAppMentions,
@@ -273,6 +275,38 @@ describe("splitAppMentionTrailingDots", () => {
 });
 
 describe("parseKnownAppMentions", () => {
+  it("matches known app names containing spaces", () => {
+    const result = parseKnownAppMentions(
+      "Compare @app:My App with the current app",
+      ["My App"],
+    );
+
+    expect(result).toEqual(["My App"]);
+  });
+
+  it("prefers the longest known app name containing spaces", () => {
+    const result = parseKnownAppMentions("Compare @app:My App", [
+      "My",
+      "My App",
+    ]);
+
+    expect(result).toEqual(["My App"]);
+  });
+
+  it("does not match a spaced app name inside a longer word", () => {
+    const result = parseKnownAppMentions("Compare @app:My Application", [
+      "My App",
+    ]);
+
+    expect(result).toEqual([]);
+  });
+
+  it("matches spaced app names case-insensitively", () => {
+    const result = parseKnownAppMentions("Compare @app:my app", ["My App"]);
+
+    expect(result).toEqual(["My App"]);
+  });
+
   it("matches dotted app names from the known app list", () => {
     const result = parseKnownAppMentions("Check @app:foo.app.com", [
       "foo.app.com",
@@ -335,7 +369,48 @@ describe("parseKnownAppMentions", () => {
   });
 });
 
+describe("findKnownAppMentions", () => {
+  it("returns a span that excludes terminal punctuation", () => {
+    const prompt = "Compare @app:My App.";
+    const result = findKnownAppMentions(prompt, ["My App"]);
+
+    expect(result).toEqual([
+      {
+        appName: "My App",
+        start: prompt.indexOf("@app:"),
+        end: prompt.indexOf("."),
+      },
+    ]);
+  });
+});
+
+describe("formatKnownAppMentionsForDisplay", () => {
+  it("renders a spaced internal mention without consuming punctuation", () => {
+    const result = formatKnownAppMentionsForDisplay("Compare @app:My App.", [
+      "My App",
+    ]);
+
+    expect(result).toBe("Compare @My App.");
+  });
+});
+
 describe("formatKnownAppMentionsForPrompt", () => {
+  it("formats visible app mentions containing spaces", () => {
+    const result = formatKnownAppMentionsForPrompt("Compare @My App.", [
+      "My App",
+    ]);
+
+    expect(result).toBe("Compare @app:My App.");
+  });
+
+  it("formats visible app mentions case-insensitively", () => {
+    const result = formatKnownAppMentionsForPrompt("Compare @my app", [
+      "My App",
+    ]);
+
+    expect(result).toBe("Compare @app:my app");
+  });
+
   it("allows terminal periods after visible app mentions", () => {
     const result = formatKnownAppMentionsForPrompt("Fix bug in @MyApp.", [
       "MyApp",

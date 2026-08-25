@@ -67,6 +67,7 @@ import {
 
 const FOO_APP = { id: 1, name: "foo.app.com", path: "foo-app" };
 const BAR_APP = { id: 2, name: "bar", path: "bar-app" };
+const SPACED_APP = { id: 3, name: "App With Spaces", path: "spaced-app" };
 
 describe("mention app utilities", () => {
   beforeEach(() => {
@@ -99,6 +100,24 @@ describe("mention app utilities", () => {
       { appName: "foo.app.com", appPath: "/dyad-apps/foo-app" },
     ]);
     expect(result.appIds).toEqual([1]);
+    expect(result.changed).toBe(true);
+  });
+
+  it("resolves an app mention whose known name contains spaces", async () => {
+    dbMocks.findMany.mockResolvedValue([SPACED_APP]);
+
+    const result = await resolveStickyReferencedApps({
+      prompt: "Please compare @app:App With Spaces.",
+      persistedAppIds: [],
+    });
+
+    expect(result.references).toEqual([
+      {
+        appName: "App With Spaces",
+        appPath: "/dyad-apps/spaced-app",
+      },
+    ]);
+    expect(result.appIds).toEqual([3]);
     expect(result.changed).toBe(true);
   });
 

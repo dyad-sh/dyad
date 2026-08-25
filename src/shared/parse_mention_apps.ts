@@ -7,7 +7,6 @@ export const MENTION_REGEX = new RegExp(
 const APP_MENTION_PREFIX_REGEX = /@app:/g;
 const APP_MENTION_CANDIDATE_CHAR_REGEX = /[a-zA-Z0-9_.-]/;
 const VISIBLE_APP_MENTION_CONTINUATION_REGEX = /[a-zA-Z0-9_:/\\-]/;
-const TERMINAL_DOT_PUNCTUATION_REGEX = /^\.+$/;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -40,17 +39,6 @@ export function parseAppMentions(prompt: string): string[] {
   }
 
   return mentions;
-}
-
-function readMentionCandidate(prompt: string, startIndex: number): string {
-  let endIndex = startIndex;
-  while (
-    endIndex < prompt.length &&
-    APP_MENTION_CANDIDATE_CHAR_REGEX.test(prompt[endIndex])
-  ) {
-    endIndex++;
-  }
-  return prompt.slice(startIndex, endIndex);
 }
 
 function hasVisibleAppMentionBoundary(
@@ -87,6 +75,103 @@ function hasVisibleAppMentionBoundary(
   );
 }
 
+function hasKnownAppMentionBoundary(text: string, nextIndex: number): boolean {
+  const nextChar = text[nextIndex];
+  if (nextChar === undefined) {
+    return true;
+  }
+
+  if (nextChar !== ".") {
+    return !APP_MENTION_CANDIDATE_CHAR_REGEX.test(nextChar);
+  }
+
+  let afterDotsIndex = nextIndex;
+  while (text[afterDotsIndex] === ".") {
+    afterDotsIndex++;
+  }
+
+  const afterDotsChar = text[afterDotsIndex];
+  if (afterDotsChar === undefined) {
+    return true;
+  }
+
+  return (
+    !APP_MENTION_CANDIDATE_CHAR_REGEX.test(afterDotsChar) &&
+    afterDotsChar !== "/" &&
+    afterDotsChar !== "\\"
+  );
+}
+
+function sortedUniqueAppNames(appNames: string[]): string[] {
+  return [...new Set(appNames)]
+    .filter((name) => name.length > 0)
+    .sort((a, b) => b.length - a.length);
+}
+
+export interface KnownAppMentionMatch {
+  appName: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Find internal `@app:Name` mentions by matching against known app names.
+ * Matching known names makes spaces unambiguous and lets every consumer use
+ * the same longest-name and boundary rules.
+ */
+export function findKnownAppMentions(
+  prompt: string,
+  appNames: string[],
+): KnownAppMentionMatch[] {
+  const sortedAppNames = sortedUniqueAppNames(appNames);
+  if (sortedAppNames.length === 0) {
+    return [];
+  }
+
+  const mentions: KnownAppMentionMatch[] = [];
+  let match: RegExpExecArray | null;
+  APP_MENTION_PREFIX_REGEX.lastIndex = 0;
+  while ((match = APP_MENTION_PREFIX_REGEX.exec(prompt)) !== null) {
+    const nameStart = match.index + match[0].length;
+    const appName = sortedAppNames.find((name) => {
+      const nameEnd = nameStart + name.length;
+      return (
+        prompt.slice(nameStart, nameEnd).toLowerCase() === name.toLowerCase() &&
+        hasKnownAppMentionBoundary(prompt, nameEnd)
+      );
+    });
+
+    if (appName) {
+      mentions.push({
+        appName,
+        start: match.index,
+        end: nameStart + appName.length,
+      });
+    }
+  }
+
+  return mentions;
+}
+
+export function formatKnownAppMentionsForDisplay(
+  text: string,
+  appNames: string[],
+): string {
+  const matches = findKnownAppMentions(text, appNames);
+  if (matches.length === 0) {
+    return text;
+  }
+
+  let result = "";
+  let lastIndex = 0;
+  for (const match of matches) {
+    result += text.slice(lastIndex, match.start);
+    result += `@${text.slice(match.start + "@app:".length, match.end)}`;
+    lastIndex = match.end;
+  }
+  return result + text.slice(lastIndex);
+}
+
 /**
  * Parse app mentions by matching against known app names, preferring the
  * longest known name. This handles names with dots without letting shorter app
@@ -96,54 +181,18 @@ export function parseKnownAppMentions(
   prompt: string,
   appNames: string[],
 ): string[] {
-  const sortedAppNames = [...new Set(appNames)]
-    .filter((name) => name.length > 0)
-    .sort((a, b) => b.length - a.length);
-  if (sortedAppNames.length === 0) {
-    return [];
-  }
-
-  const mentions: string[] = [];
-  let match: RegExpExecArray | null;
-  APP_MENTION_PREFIX_REGEX.lastIndex = 0;
-  while ((match = APP_MENTION_PREFIX_REGEX.exec(prompt)) !== null) {
-    const candidate = readMentionCandidate(
-      prompt,
-      match.index + match[0].length,
-    );
-    const candidateLower = candidate.toLowerCase();
-
-    const appName = sortedAppNames.find((name) => {
-      const nameLower = name.toLowerCase();
-      if (candidateLower === nameLower) {
-        return true;
-      }
-      if (!candidateLower.startsWith(nameLower)) {
-        return false;
-      }
-      const suffix = candidate.slice(name.length);
-      return TERMINAL_DOT_PUNCTUATION_REGEX.test(suffix);
-    });
-
-    if (appName) {
-      mentions.push(appName);
-    }
-  }
-
-  return mentions;
+  return findKnownAppMentions(prompt, appNames).map(({ appName }) => appName);
 }
 
 export function formatKnownAppMentionsForPrompt(
   text: string,
   appNames: string[],
 ): string {
-  const sortedAppNames = [...new Set(appNames)]
-    .filter((name) => name.length > 0)
-    .sort((a, b) => b.length - a.length);
+  const sortedAppNames = sortedUniqueAppNames(appNames);
 
   let formattedText = text;
   for (const appName of sortedAppNames) {
-    const mentionRegex = new RegExp(`@(${escapeRegExp(appName)})`, "g");
+    const mentionRegex = new RegExp(`@(${escapeRegExp(appName)})`, "gi");
     formattedText = formattedText.replace(
       mentionRegex,
       (match, mentionName: string, offset: number, fullText: string) => {

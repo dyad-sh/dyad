@@ -312,7 +312,7 @@ describe("ChatTabs helpers", () => {
   it("promotes a non-visible selected tab and bumps the last visible tab", () => {
     const orderedIds = [4, 2, 3, 1];
     const nextIds = applySelectionToOrderedChatIds(orderedIds, 1, 3);
-    expect(nextIds).toEqual([1, 4, 2, 3]);
+    expect(nextIds).toEqual([4, 2, 1, 3]);
   });
 
   it("reorders only visible tabs during drag", () => {
@@ -338,7 +338,7 @@ describe("ChatTabs helpers", () => {
       2,
       4,
     );
-    expect(visibleTabs.map((c) => c.id)).toEqual([4, 1]);
+    expect(visibleTabs.map((c) => c.id)).toEqual([1, 4]);
     expect(overflowTabs.map((c) => c.id)).toEqual([2, 3]);
   });
 

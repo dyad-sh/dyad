@@ -54,6 +54,11 @@ notification, reopen, and tab actions must not bypass the transition. Scope
 delayed DOM restoration (for example scroll retries) to the selected entity and
 a generation token so stale callbacks cannot overwrite a later selection.
 
+Repeated entity panes must also isolate DOM focus: restore focus through a ref
+owned by the pane instead of `document.querySelector`, and do not let
+programmatic descendant focus change router/global selection. Gate pane focus
+transitions on explicit pointer, keyboard-navigation, or activation intent.
+
 ## Entity Scoping
 
 When state belongs to an entity, key it by that entity id instead of using a

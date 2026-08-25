@@ -122,6 +122,7 @@ export function ChatPanel({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const terminalToggleButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Tracks whether the user is at the bottom of the scroll container.
   // Uses a ref so followOutput can read it without stale closures,
@@ -388,11 +389,7 @@ export function ChatPanel({
       return next;
     });
     requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLButtonElement>(
-          '[data-testid="toggle-terminal-button"]',
-        )
-        ?.focus();
+      terminalToggleButtonRef.current?.focus();
     });
   }, [chatId, setTerminalOpenByChatId]);
 
@@ -414,6 +411,7 @@ export function ChatPanel({
           chatId={chatId}
           onRemoveFromWorkspace={onRemoveFromWorkspace}
           removeFromWorkspaceLabel={removeFromWorkspaceLabel}
+          terminalToggleButtonRef={terminalToggleButtonRef}
           isVersionPaneOpen={isVersionPaneOpen}
           isPreviewOpen={isPreviewOpen}
           onTogglePreview={onTogglePreview}

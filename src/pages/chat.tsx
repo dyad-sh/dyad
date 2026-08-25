@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PanelsTopLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { shouldFocusWorkspacePane } from "./chatWorkspaceFocus";
 
 const DEFAULT_CHAT_PANEL_SIZE = 50;
 
@@ -63,17 +64,17 @@ export default function ChatPage() {
       ),
     [selectedAppId, validChatIds, workspaces],
   );
+  const isWorkspaceView = isWorkspaceRoute && workspaceChatIds.length > 0;
   const visibleChatIds = useMemo(
     () =>
       getVisibleChatViewIds({
         workspaceChatIds,
         focusedChatId: chatId,
         validChatIds,
-        isWorkspaceView: isWorkspaceRoute,
+        isWorkspaceView,
       }),
-    [chatId, isWorkspaceRoute, validChatIds, workspaceChatIds],
+    [chatId, isWorkspaceView, validChatIds, workspaceChatIds],
   );
-  const isWorkspaceView = isWorkspaceRoute && workspaceChatIds.length > 0;
   const isMultiChatWorkspace = isWorkspaceView && workspaceChatIds.length > 1;
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
@@ -218,15 +219,24 @@ export default function ChatPage() {
       return;
     }
 
-    if (validChatIds.has(chatId)) {
+    const fallbackChatId = validChatIds.has(chatId) ? chatId : chats[0]?.id;
+    if (fallbackChatId !== undefined) {
       navigate({
         to: "/chat",
-        search: { id: chatId, appId: selectedAppId },
+        search: { id: fallbackChatId, appId: selectedAppId },
         replace: true,
       });
+      return;
     }
+
+    navigate({
+      to: "/app-details",
+      search: { appId: selectedAppId },
+      replace: true,
+    });
   }, [
     chatId,
+    chats,
     isWorkspaceRoute,
     loading,
     navigate,
@@ -262,6 +272,27 @@ export default function ChatPage() {
       replace: true,
     });
   };
+
+  const keyboardFocusIntentRef = useRef(false);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") keyboardFocusIntentRef.current = true;
+    };
+    const clearIntent = (event: KeyboardEvent) => {
+      if (event.key === "Tab") keyboardFocusIntentRef.current = false;
+    };
+    const clearOnBlur = () => {
+      keyboardFocusIntentRef.current = false;
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", clearIntent, true);
+    window.addEventListener("blur", clearOnBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", clearIntent, true);
+      window.removeEventListener("blur", clearOnBlur);
+    };
+  }, []);
 
   const removeChatFromWorkspace = (removedChatId: number) => {
     if (selectedAppId === null) return;
@@ -378,11 +409,27 @@ export default function ChatPage() {
                         isFocused ? "border-primary" : "border-transparent",
                       )}
                       onPointerDownCapture={(event) =>
+                        shouldFocusWorkspacePane("pointer", false) &&
                         focusChat(workspaceChatId, event.target)
                       }
-                      onFocusCapture={(event) =>
-                        focusChat(workspaceChatId, event.target)
-                      }
+                      onClickCapture={(event) => {
+                        if (
+                          event.detail === 0 &&
+                          shouldFocusWorkspacePane("activation", false)
+                        ) {
+                          focusChat(workspaceChatId, event.target);
+                        }
+                      }}
+                      onFocusCapture={(event) => {
+                        if (
+                          shouldFocusWorkspacePane(
+                            "focus",
+                            keyboardFocusIntentRef.current,
+                          )
+                        ) {
+                          focusChat(workspaceChatId, event.target);
+                        }
+                      }}
                     >
                       <ChatPanel
                         chatId={workspaceChatId}

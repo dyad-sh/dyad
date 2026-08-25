@@ -24,7 +24,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useChats } from "@/hooks/useChats";
 import { showError, showSuccess } from "@/lib/toast";
-import { useEffect } from "react";
+import { useEffect, type Ref } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
@@ -39,6 +39,7 @@ interface ChatHeaderProps {
   chatId?: number;
   onRemoveFromWorkspace?: () => void;
   removeFromWorkspaceLabel?: string;
+  terminalToggleButtonRef?: Ref<HTMLButtonElement>;
   isVersionPaneOpen: boolean;
   isPreviewOpen: boolean;
   onTogglePreview: () => void;
@@ -49,6 +50,7 @@ export function ChatHeader({
   chatId,
   onRemoveFromWorkspace,
   removeFromWorkspaceLabel,
+  terminalToggleButtonRef,
   isVersionPaneOpen,
   isPreviewOpen,
   onTogglePreview,
@@ -245,6 +247,7 @@ export function ChatHeader({
               <TooltipTrigger
                 render={
                   <button
+                    ref={terminalToggleButtonRef}
                     type="button"
                     data-testid="toggle-terminal-button"
                     onClick={handleToggleTerminal}

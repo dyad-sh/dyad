@@ -1,5 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { getActiveWindowSessionId } from "@/window_infrastructure/chat_tab_session_storage";
+import type { WindowSessionId } from "@/window_infrastructure/types";
 
 export interface ChatWorkspaceState {
   visibleChatIds: number[];
@@ -8,6 +10,13 @@ export interface ChatWorkspaceState {
 export type ChatWorkspaceByAppId = Record<number, ChatWorkspaceState>;
 
 const CHAT_WORKSPACE_STORAGE_VERSION = 1;
+export const CHAT_WORKSPACE_STORAGE_PREFIX = "chat-workspace-v1:";
+
+export function chatWorkspaceStorageKey(
+  windowSessionId: WindowSessionId,
+): string {
+  return `${CHAT_WORKSPACE_STORAGE_PREFIX}${windowSessionId}`;
+}
 
 interface PersistedChatWorkspaceState {
   version: typeof CHAT_WORKSPACE_STORAGE_VERSION;
@@ -21,11 +30,6 @@ interface ChatWorkspaceSyncStorage {
   ) => ChatWorkspaceByAppId;
   setItem: (key: string, newValue: ChatWorkspaceByAppId) => void;
   removeItem: (key: string) => void;
-  subscribe: (
-    key: string,
-    callback: (value: ChatWorkspaceByAppId) => void,
-    initialValue: ChatWorkspaceByAppId,
-  ) => (() => void) | undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,32 +94,54 @@ export function createChatWorkspaceStorage(
     typeof window === "undefined" ? undefined : window.localStorage,
 ): ChatWorkspaceSyncStorage {
   return {
-    getItem(key, initialValue) {
+    getItem(_key, initialValue) {
       return deserializeChatWorkspaceState(
-        getStorage()?.getItem(key) ?? null,
+        getStorage()?.getItem(
+          chatWorkspaceStorageKey(getActiveWindowSessionId()),
+        ) ?? null,
         initialValue,
       );
     },
-    setItem(key, newValue) {
+    setItem(_key, newValue) {
       const persisted: PersistedChatWorkspaceState = {
         version: CHAT_WORKSPACE_STORAGE_VERSION,
         workspaces: normalizeChatWorkspaceByAppId(newValue),
       };
-      getStorage()?.setItem(key, JSON.stringify(persisted));
+      getStorage()?.setItem(
+        chatWorkspaceStorageKey(getActiveWindowSessionId()),
+        JSON.stringify(persisted),
+      );
     },
-    removeItem(key) {
-      getStorage()?.removeItem(key);
-    },
-    subscribe(key, callback, initialValue) {
-      if (typeof window === "undefined") return undefined;
-      const onStorage = (event: StorageEvent) => {
-        if (event.key !== key) return;
-        callback(deserializeChatWorkspaceState(event.newValue, initialValue));
-      };
-      window.addEventListener("storage", onStorage);
-      return () => window.removeEventListener("storage", onStorage);
+    removeItem(_key) {
+      getStorage()?.removeItem(
+        chatWorkspaceStorageKey(getActiveWindowSessionId()),
+      );
     },
   };
+}
+
+export function pruneChatWorkspaceWindowSessions(
+  storage: Storage,
+  restorableWindowSessionIds: readonly WindowSessionId[],
+): void {
+  try {
+    const restorableKeys = new Set(
+      restorableWindowSessionIds.map(chatWorkspaceStorageKey),
+    );
+    const staleKeys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (
+        key?.startsWith(CHAT_WORKSPACE_STORAGE_PREFIX) &&
+        !restorableKeys.has(key)
+      ) {
+        staleKeys.push(key);
+      }
+    }
+    for (const key of staleKeys) storage.removeItem(key);
+  } catch (error) {
+    console.error("Failed to prune chat workspace window sessions", error);
+  }
 }
 
 export function getVisibleWorkspaceChatIds(
@@ -147,11 +173,17 @@ export function getVisibleChatViewIds({
 const chatWorkspaceStorage = createChatWorkspaceStorage();
 
 export const chatWorkspaceByAppIdAtom = atomWithStorage<ChatWorkspaceByAppId>(
-  "chat-workspace-by-app-id",
+  "chat-workspace-by-window",
   {},
   chatWorkspaceStorage,
-  { getOnInit: true },
 );
+
+export const initializeChatWorkspaceStorageAtom = atom(null, (_get, set) => {
+  set(
+    chatWorkspaceByAppIdAtom,
+    chatWorkspaceStorage.getItem("chat-workspace-by-window", {}),
+  );
+});
 
 function updateWorkspace(
   workspaces: ChatWorkspaceByAppId,

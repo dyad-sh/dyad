@@ -137,9 +137,11 @@ function CustomMenu({ loading: _loading, ...props }: any) {
 function EnterKeyPlugin({
   onSubmit,
   disableSendButton,
+  containerRef,
 }: {
   onSubmit: () => void;
   disableSendButton: boolean;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -147,14 +149,7 @@ function EnterKeyPlugin({
     return editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent) => {
-        // Check if mentions menu is open by looking for our custom menu element
-        const mentionsMenu = document.querySelector(
-          '[data-mentions-menu="true"]',
-        );
-        const hasVisibleItems =
-          mentionsMenu && mentionsMenu.children.length > 0;
-
-        if (hasVisibleItems) {
+        if (hasVisibleMentionsMenu(containerRef.current)) {
           // If mentions menu is open with items, let the mentions plugin handle the Enter key
           return false;
         }
@@ -168,9 +163,14 @@ function EnterKeyPlugin({
       },
       COMMAND_PRIORITY_HIGH, // Use higher priority to catch before mentions plugin
     );
-  }, [editor, onSubmit, disableSendButton]);
+  }, [containerRef, editor, onSubmit, disableSendButton]);
 
   return null;
+}
+
+export function hasVisibleMentionsMenu(container: HTMLElement | null): boolean {
+  const mentionsMenu = container?.querySelector('[data-mentions-menu="true"]');
+  return Boolean(mentionsMenu && mentionsMenu.children.length > 0);
 }
 
 function EditableStatePlugin({ editable }: { editable: boolean }) {
@@ -312,6 +312,7 @@ export function LexicalChatInput({
   const { prompts } = usePrompts();
   const { mediaApps } = useAppMediaFiles();
   const historyTriggerActiveRef = useRef(false);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
   const appFiles = app?.files;
@@ -495,7 +496,7 @@ export function LexicalChatInput({
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative flex-1">
+      <div ref={editorContainerRef} className="relative flex-1">
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
@@ -525,6 +526,7 @@ export function LexicalChatInput({
         <EnterKeyPlugin
           onSubmit={onSubmit}
           disableSendButton={disableSendButton}
+          containerRef={editorContainerRef}
         />
         <ExternalValueSyncPlugin
           value={value}

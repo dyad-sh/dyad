@@ -312,7 +312,7 @@ export function applySelectionToOrderedChatIds(
   visibleTabCount: number,
 ): number[] {
   const selectedIndex = orderedChatIds.indexOf(selectedChatId);
-  if (selectedIndex === -1) {
+  if (selectedIndex === -1 || visibleTabCount <= 0) {
     // Unknown chat ID — don't modify the order. The caller should
     // ensure selectedChatId is valid before invoking this function.
     return orderedChatIds;
@@ -324,7 +324,7 @@ export function applySelectionToOrderedChatIds(
 
   const nextIds = [...orderedChatIds];
   nextIds.splice(selectedIndex, 1);
-  nextIds.unshift(selectedChatId);
+  nextIds.splice(Math.max(visibleTabCount - 1, 0), 0, selectedChatId);
   return nextIds;
 }
 
@@ -438,12 +438,17 @@ export function partitionChatsByVisibleCount(
   );
   if (visibleTabCount > 0 && selectedIndex >= visibleTabCount) {
     const selectedChat = orderedChats[selectedIndex];
-    const otherChats = orderedChats.filter(
-      (chat) => chat.id !== selectedChatId,
-    );
+    const visibleTabs = orderedChats.slice(0, visibleTabCount);
+    const displacedTab = visibleTabs[visibleTabCount - 1];
+    visibleTabs[visibleTabCount - 1] = selectedChat;
     return {
-      visibleTabs: [selectedChat, ...otherChats.slice(0, visibleTabCount - 1)],
-      overflowTabs: otherChats.slice(visibleTabCount - 1),
+      visibleTabs,
+      overflowTabs: [
+        displacedTab,
+        ...orderedChats
+          .slice(visibleTabCount)
+          .filter((chat) => chat.id !== selectedChatId),
+      ],
     };
   }
   return {

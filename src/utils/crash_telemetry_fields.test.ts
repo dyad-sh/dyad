@@ -12,6 +12,9 @@ describe("crashPerformanceEventFields", () => {
       memoryUsageMB: 400,
       heapUsedMB: 512,
       heapLimitMB: 4144,
+      diskTotalMB: 476000,
+      diskUsedMB: 401000,
+      diskAvailableMB: 51000,
       processWorkingSetsMB: { browser: 400, tab: 900, zygote: 30, unknown: 20 },
       activity: {
         activeStreams: 1,
@@ -45,6 +48,11 @@ describe("crashPerformanceEventFields", () => {
     expect(fields.peak_active_streams).toBe(2);
     expect(fields.peak_ts_utility_process).toBeNull();
     expect(fields.peak_heap_used_mb).toBe(1024);
+    expect(fields.last_known_disk_total_mb).toBe(476000);
+    expect(fields.last_known_disk_used_mb).toBe(401000);
+    // Reported separately from used because space the platform withholds
+    // sits between them: used + available is short of total.
+    expect(fields.last_known_disk_available_mb).toBe(51000);
 
     // No object-valued properties: PostHog cannot filter nested JSON.
     for (const value of Object.values(fields)) {
@@ -60,6 +68,7 @@ describe("crashPerformanceEventFields", () => {
 
     expect(fields.last_known_memory_mb).toBe(400);
     expect(fields.last_known_working_set_browser_mb).toBeUndefined();
+    expect(fields.last_known_disk_total_mb).toBeUndefined();
     expect(fields.last_known_active_streams).toBeUndefined();
     expect(fields.peak_active_streams).toBeUndefined();
   });

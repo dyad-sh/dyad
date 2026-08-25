@@ -146,6 +146,16 @@ testWithConfig({})(
     expect(
       settings.lastKnownPerformance.systemCpuPercent,
     ).toBeGreaterThanOrEqual(0);
+    // statfs works on every platform we ship, so a real capture always has
+    // disk figures. Used never exceeds total; available can trail both.
+    expect(settings.lastKnownPerformance.diskTotalMB).toBeGreaterThan(0);
+    expect(settings.lastKnownPerformance.diskUsedMB).toBeGreaterThan(0);
+    expect(settings.lastKnownPerformance.diskUsedMB).toBeLessThanOrEqual(
+      settings.lastKnownPerformance.diskTotalMB,
+    );
+    expect(settings.lastKnownPerformance.diskAvailableMB).toBeLessThanOrEqual(
+      settings.lastKnownPerformance.diskTotalMB,
+    );
 
     // Verify the timestamp is recent (within the last minute)
     const now = Date.now();

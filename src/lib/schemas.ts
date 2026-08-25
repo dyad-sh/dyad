@@ -352,6 +352,12 @@ export const LastKnownPerformanceSchema = z.object({
   systemMemoryUsageMB: z.number().optional(),
   systemMemoryTotalMB: z.number().optional(),
   systemCpuPercent: z.number().optional(),
+  // Capacity of the volume holding the user data directory. diskUsedMB counts
+  // every allocated block; diskAvailableMB excludes space the platform holds
+  // back (root reserve, quota), so the two need not sum to diskTotalMB.
+  diskTotalMB: z.number().optional(),
+  diskUsedMB: z.number().optional(),
+  diskAvailableMB: z.number().optional(),
   // Main process V8 heap, from v8.getHeapStatistics().
   heapUsedMB: z.number().optional(),
   heapLimitMB: z.number().optional(),

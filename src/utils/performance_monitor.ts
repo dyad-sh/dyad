@@ -10,6 +10,8 @@ import {
 import { getActiveStreamCount } from "../ipc/handlers/chat_stream_handlers";
 import { runningApps } from "../ipc/utils/process_manager";
 import { typescriptUtilityProcessScheduler } from "../ipc/processors/typescript_utility_process_scheduler";
+import { getUserDataPath } from "../paths/paths";
+import { getDiskUsageMB } from "./disk_usage";
 
 const logger = log.scope("performance-monitor");
 
@@ -231,6 +233,9 @@ function capturePerformanceMetrics() {
         : 0;
     const kernelPeakRssMB = getKernelPeakRssMB();
     const activity = snapshotActivity();
+    // The user data volume, not the apps volume: writeSettings below already
+    // blocks on it every tick, so this adds no new main-thread exposure.
+    const diskUsage = getDiskUsageMB(getUserDataPath());
 
     logger.debug(
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
@@ -271,6 +276,11 @@ function capturePerformanceMetrics() {
         systemMemoryUsageMB: systemMemory.usedMemoryMB,
         systemMemoryTotalMB: systemMemory.totalMemoryMB,
         systemCpuPercent,
+        ...(diskUsage && {
+          diskTotalMB: diskUsage.totalMB,
+          diskUsedMB: diskUsage.usedMB,
+          diskAvailableMB: diskUsage.availableMB,
+        }),
         heapUsedMB,
         heapLimitMB,
         ...(processWorkingSetsMB && { processWorkingSetsMB }),

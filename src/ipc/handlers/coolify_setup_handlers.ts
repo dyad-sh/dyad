@@ -231,7 +231,21 @@ function setupController(): CoolifySetupController {
                 (now.admin.password === undefined ||
                   now.admin.password.value === provisional.password?.value);
               if (stillOurs) {
-                writeSettings({ coolify: { ...now, admin: adminBeforeRun } });
+                writeSettings({
+                  coolify: {
+                    ...now,
+                    // Named, not merely absent. A password readSettings could
+                    // not decrypt comes back with the key gone, and a key that
+                    // is gone reads to the write as one a consumer dropped —
+                    // so the ciphertext on disk is handed back, and by now
+                    // that ciphertext is this run's, filed under the earlier
+                    // server's name. Present and undefined is the clear.
+                    admin: adminBeforeRun && {
+                      ...adminBeforeRun,
+                      password: adminBeforeRun.password,
+                    },
+                  },
+                });
               }
             } catch (restoreError) {
               logger.error(

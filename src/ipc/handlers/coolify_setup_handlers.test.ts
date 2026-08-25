@@ -560,6 +560,63 @@ describe("run", () => {
     expect(early.coolify.admin?.password?.value).toBeTruthy();
   });
 
+  it("names the password when putting back a record that had none", async () => {
+    // An earlier account whose password already would not decrypt comes back
+    // from readSettings with the key gone. Writing it back that way reads as
+    // a key some consumer dropped, and the ciphertext on disk — this run's by
+    // now — is handed back under the earlier server's name.
+    h.settings = {
+      coolify: {
+        admin: {
+          email: "old@gmail.com",
+          instanceUrl: "http://198.51.100.9:8000",
+        },
+      },
+    } as Record<string, unknown>;
+    h.reportsAccount = false;
+    h.setupError = new Error("boom");
+    h.onRunStarted = () => {
+      const coolify = h.settings.coolify as { admin?: Record<string, unknown> };
+      if (coolify.admin) delete coolify.admin.password;
+    };
+    await checkThenRun().catch(() => {});
+
+    const written = h.written.at(-1) as { coolify: { admin?: object } };
+    expect(written.coolify.admin).toBeDefined();
+    expect(
+      Object.prototype.hasOwnProperty.call(written.coolify.admin, "password"),
+    ).toBe(true);
+  });
+
+  it("tells this run's record from one for a different account", async () => {
+    // Same address, different admin email: another install's record is not
+    // this run's to undo, and with no readable password the email is what
+    // says so.
+    h.settings = {
+      coolify: {
+        admin: {
+          email: "old@gmail.com",
+          password: { value: "TheEarlierOne" },
+          instanceUrl: "http://198.51.100.9:8000",
+        },
+      },
+    } as Record<string, unknown>;
+    h.reportsAccount = false;
+    h.setupError = new Error("boom");
+    h.onRunStarted = () => {
+      h.settings.coolify = {
+        admin: {
+          email: "someone-else@gmail.com",
+          instanceUrl: "http://203.0.113.5:8000",
+        },
+      };
+    };
+    await checkThenRun().catch(() => {});
+
+    const admin = (h.settings.coolify as { admin?: { email?: string } })?.admin;
+    expect(admin?.email).toBe("someone-else@gmail.com");
+  });
+
   it("does not put back over another server set up mid-run", async () => {
     // Same admin email, different machine, and a password that will not
     // decrypt — so the password says nothing and the address is the only

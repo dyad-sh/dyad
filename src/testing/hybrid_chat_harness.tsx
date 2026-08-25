@@ -69,6 +69,10 @@ import {
 import type { RendererEvent } from "./electron_mock";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
+  chatAnnotationsAtom,
+  type ChatAnnotation,
+} from "@/atoms/chatAnnotationAtoms";
+import {
   attachmentsAtom,
   chatInputValuesByIdAtom,
   selectedChatIdAtom,
@@ -366,6 +370,10 @@ export interface HybridChatHarness extends ChatFlowHarness {
    */
   setChatInputValue: (text: string, opts?: MountOptions) => void;
   getChatInputValue: (chatId: number) => string;
+
+  /** Seed/read a chat's transient assistant-message annotations. */
+  setChatAnnotations: (chatId: number, annotations: ChatAnnotation[]) => void;
+  getChatAnnotations: (chatId: number) => ChatAnnotation[];
 
   /**
    * Seed the real ChatInput attachment atom with browser File objects, matching
@@ -1195,6 +1203,21 @@ export async function setupHybridChatHarness(
     const getChatInputValue = (chatId: number) =>
       getActiveStore().get(chatInputValuesByIdAtom).get(chatId) ?? "";
 
+    const setChatAnnotations = (
+      chatId: number,
+      annotations: ChatAnnotation[],
+    ): void => {
+      const store = getActiveStore();
+      const next = new Map(store.get(chatAnnotationsAtom));
+      if (annotations.length === 0) next.delete(chatId);
+      else next.set(chatId, annotations);
+      act(() => {
+        store.set(chatAnnotationsAtom, next);
+      });
+    };
+    const getChatAnnotations = (chatId: number): ChatAnnotation[] =>
+      getActiveStore().get(chatAnnotationsAtom).get(chatId) ?? [];
+
     const typeInChat = async (
       text: string,
       opts: MountOptions = {},
@@ -1668,6 +1691,8 @@ export async function setupHybridChatHarness(
       setSwitch,
       setChatInputValue: seedChatInput,
       getChatInputValue,
+      setChatAnnotations,
+      getChatAnnotations,
       setChatAttachments,
       setSelectedComponents,
       typeInChat,

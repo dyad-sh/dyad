@@ -185,6 +185,13 @@ describe("useTestRunEvents", () => {
       emitRunState({
         appId: 1,
         source: "panel",
+        state: "started",
+        preview: true,
+        previewOwnerWindowSessionId: getActiveWindowSessionId(),
+      });
+      emitRunState({
+        appId: 1,
+        source: "panel",
         state: "preview-fallback",
         preview: true,
         previewOwnerWindowSessionId: getActiveWindowSessionId(),
@@ -204,6 +211,13 @@ describe("useTestRunEvents", () => {
       emitRunState({
         appId: 1,
         source: "agent",
+        state: "started",
+        preview: true,
+        previewOwnerWindowSessionId: OTHER_WINDOW_SESSION_ID,
+      });
+      emitRunState({
+        appId: 1,
+        source: "agent",
         state: "preview-fallback",
         preview: true,
         previewOwnerWindowSessionId: OTHER_WINDOW_SESSION_ID,
@@ -220,6 +234,13 @@ describe("useTestRunEvents", () => {
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
     act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        preview: true,
+        previewOwnerWindowSessionId: getActiveWindowSessionId(),
+      });
       emitRunState({
         appId: 1,
         source: "agent",

@@ -8,4 +8,5 @@ import { z } from "zod";
 export const chatSearchSchema = z.object({
   id: z.number().optional(),
   appId: z.number().optional(),
+  workspace: z.boolean().optional(),
 });

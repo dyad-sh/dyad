@@ -13,7 +13,7 @@ import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { useUserInputRequests } from "@/user_input/hooks";
 import { useAtomValue } from "jotai";
 import { CheckCircle2, Loader2, RefreshCw, Undo } from "lucide-react";
@@ -591,13 +591,15 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       previewState.session.checkedOutVersionId !== null
         ? previewState.session.originBranch
         : null;
-    const { streamMessage, isStreaming } = useStreamChat();
+    const paneChatId = usePaneChatId();
+    const { streamMessage, isStreaming } = useStreamChat({
+      chatId: paneChatId,
+    });
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
-    const selectedChatId = useAtomValue(selectedChatIdAtom);
-    const { chat: selectedChat } = useChatMode(selectedChatId);
+    const { chat: selectedChat } = useChatMode(paneChatId);
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
@@ -686,7 +688,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         restoreTargetBranch,
         sendPreviewMutation,
         streamMessage,
-        selectedChatId,
+        selectedChatId: paneChatId ?? null,
         appId,
         renderSetupBanner,
       }),
@@ -703,7 +705,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         restoreTargetBranch,
         sendPreviewMutation,
         streamMessage,
-        selectedChatId,
+        paneChatId,
         appId,
         renderSetupBanner,
       ],

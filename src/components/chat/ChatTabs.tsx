@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { Loader2, MoreHorizontal, X } from "lucide-react";
+import { Loader2, MoreHorizontal, PanelsTopLeft, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
@@ -93,6 +93,12 @@ import {
   earlyChatTabRemovalEvents,
 } from "@/app_wiring/early_renderer_events";
 import type { ChatTabPresentationState } from "@/window_infrastructure/types";
+import {
+  chatWorkspaceByAppIdAtom,
+  hideChatFromWorkspaceAtom,
+  showChatInWorkspaceAtom,
+  type ChatWorkspaceByAppId,
+} from "@/atoms/chatWorkspaceAtoms";
 
 const MIN_VISIBLE_TAB_WIDTH_PX = 160;
 const TAB_GAP_PX = 4;
@@ -342,8 +348,14 @@ export function shouldSkipChatSelection(
   selectedChatId: number | null,
   nextChatId: number,
   pathname: string,
+  isWorkspaceRoute = false,
+  nextIsWorkspaceRoute = false,
 ): boolean {
-  return selectedChatId === nextChatId && pathname === "/chat";
+  return (
+    selectedChatId === nextChatId &&
+    pathname === "/chat" &&
+    isWorkspaceRoute === nextIsWorkspaceRoute
+  );
 }
 
 export function shouldCapturePresentationBeforeNavigation(
@@ -457,6 +469,29 @@ interface ChatTabsProps {
   selectedChatId: number | null;
 }
 
+export interface ChatWorkspaceTab {
+  appId: number;
+  chatIds: number[];
+}
+
+export function getChatWorkspaceTabs(
+  workspaces: ChatWorkspaceByAppId,
+  chats: ChatSummary[],
+): ChatWorkspaceTab[] {
+  const chatAppById = new Map(chats.map((chat) => [chat.id, chat.appId]));
+
+  return Object.entries(workspaces)
+    .map(([rawAppId, workspace]) => {
+      const appId = Number(rawAppId);
+      const chatIds = Array.from(new Set(workspace.visibleChatIds)).filter(
+        (chatId) => chatAppById.get(chatId) === appId,
+      );
+      return { appId, chatIds };
+    })
+    .filter((workspace) => workspace.chatIds.length > 0)
+    .sort((left, right) => left.appId - right.appId);
+}
+
 function ChatTabActivity({
   chatId,
   notified,
@@ -509,6 +544,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const hydrateChatTabSession = useSetAtom(hydrateChatTabSessionAtom);
   const persistChatTabSession = useSetAtom(persistChatTabSessionAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const workspaces = useAtomValue(chatWorkspaceByAppIdAtom);
+  const showChatInWorkspace = useSetAtom(showChatInWorkspaceAtom);
+  const hideChatFromWorkspace = useSetAtom(hideChatFromWorkspaceAtom);
   const { reopenClosedTab, hasClosedTabs, lastClosedTab } =
     useReopenClosedTab();
   const { selectChat } = useSelectChat();
@@ -517,6 +555,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const routeSearch = useRouterState({
+    select: (state) => state.location.search,
+  }) as { appId?: number; workspace?: boolean };
+  const isWorkspaceRoute =
+    pathname === "/chat" && routeSearch.workspace === true;
+  const workspaceRouteAppId = isWorkspaceRoute ? routeSearch.appId : undefined;
   const locationHref = useRouterState({
     select: (state) => state.location.href,
   });
@@ -546,6 +590,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     () => new Map(chats.map((chat) => [chat.id, chat])),
     [chats],
   );
+  const workspaceTabs = useMemo(() => {
+    const tabs = getChatWorkspaceTabs(workspaces, chats);
+    if (workspaceRouteAppId === undefined) return tabs;
+    return [
+      ...tabs.filter((tab) => tab.appId === workspaceRouteAppId),
+      ...tabs.filter((tab) => tab.appId !== workspaceRouteAppId),
+    ];
+  }, [chats, workspaces, workspaceRouteAppId]);
   const publishChatTabOwnership = useCallback(async () => {
     await ipc.windowInfrastructure.setChatTabOwnership(
       getActiveStoredChatTabs(),
@@ -1214,27 +1266,58 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   ]);
 
   const visibleTabCapacity = useMemo(
-    () => getVisibleTabCapacity(containerWidth, orderedChats.length),
-    [containerWidth, orderedChats.length],
+    () =>
+      getVisibleTabCapacity(
+        containerWidth,
+        orderedChats.length + workspaceTabs.length,
+      ),
+    [containerWidth, orderedChats.length, workspaceTabs.length],
   );
 
-  const visibleTabCount =
+  const totalVisibleTabCount =
     visibleTabCapacity > 0
       ? visibleTabCapacity
-      : Math.min(orderedChats.length, DEFAULT_UNMEASURED_VISIBLE_TABS);
+      : Math.min(
+          orderedChats.length + workspaceTabs.length,
+          DEFAULT_UNMEASURED_VISIBLE_TABS,
+        );
+  const visibleWorkspaceTabCount = isWorkspaceRoute
+    ? Math.min(workspaceTabs.length, totalVisibleTabCount)
+    : Math.min(
+        workspaceTabs.length,
+        Math.max(totalVisibleTabCount - (orderedChats.length > 0 ? 1 : 0), 0),
+      );
+  const visibleWorkspaceTabs = workspaceTabs.slice(0, visibleWorkspaceTabCount);
+  const overflowWorkspaceTabs = workspaceTabs.slice(visibleWorkspaceTabCount);
+  const visibleTabCount = Math.max(
+    totalVisibleTabCount - visibleWorkspaceTabCount,
+    0,
+  );
 
   const { visibleTabs, overflowTabs } = useMemo(
     () => partitionChatsByVisibleCount(orderedChats, visibleTabCount),
     [orderedChats, visibleTabCount],
   );
-  const overflowTabsForMenu = useMemo(
-    () => overflowTabs.slice(0, MAX_OVERFLOW_MENU_ITEMS),
-    [overflowTabs],
+  const overflowWorkspaceTabsForMenu = overflowWorkspaceTabs.slice(
+    0,
+    MAX_OVERFLOW_MENU_ITEMS,
   );
+  const overflowTabsForMenu = useMemo(
+    () =>
+      overflowTabs.slice(
+        0,
+        Math.max(
+          MAX_OVERFLOW_MENU_ITEMS - overflowWorkspaceTabsForMenu.length,
+          0,
+        ),
+      ),
+    [overflowTabs, overflowWorkspaceTabsForMenu.length],
+  );
+  const overflowTabCount = overflowWorkspaceTabs.length + overflowTabs.length;
 
   // Re-run when orderedChats becomes non-empty so the ResizeObserver attaches
   // after the container div renders (it returns null when there are no chats).
-  const hasChats = orderedChats.length > 0;
+  const hasChats = orderedChats.length > 0 || workspaceTabs.length > 0;
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
@@ -1328,9 +1411,19 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   ]);
 
   const selectChatWithPresentation = useCallback(
-    (chatId: number, appId: number) => {
+    (chatId: number, appId: number, options: { workspace?: boolean } = {}) => {
       clearNotification(chatId);
-      if (shouldSkipChatSelection(selectedChatId, chatId, pathname)) return;
+      if (
+        shouldSkipChatSelection(
+          selectedChatId,
+          chatId,
+          pathname,
+          isWorkspaceRoute,
+          options.workspace === true,
+        )
+      ) {
+        return;
+      }
 
       if (selectedChatId !== null) {
         const selectedChat = chatsById.get(selectedChatId);
@@ -1351,6 +1444,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         chatId,
         appId,
         preserveTabOrder: true,
+        workspace: options.workspace,
       });
       const presentation =
         presentationByChatIdRef.current.get(chatId) ??
@@ -1363,6 +1457,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       capturePresentation,
       chatsById,
       clearNotification,
+      isWorkspaceRoute,
       neutralPresentation,
       pathname,
       restorePresentation,
@@ -1385,6 +1480,17 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     }
 
     selectChatWithPresentation(chat.id, chat.appId);
+  };
+
+  const handleWorkspaceTabClick = (workspace: ChatWorkspaceTab) => {
+    const nextChatId =
+      selectedChatId !== null && workspace.chatIds.includes(selectedChatId)
+        ? selectedChatId
+        : workspace.chatIds[0];
+    if (nextChatId === undefined) return;
+    selectChatWithPresentation(nextChatId, workspace.appId, {
+      workspace: true,
+    });
   };
 
   useEffect(() => {
@@ -1424,6 +1530,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         })
         .filter((record): record is ClosedTabRecord => record !== null);
 
+      for (const record of records) {
+        hideChatFromWorkspace({
+          appId: record.appId,
+          chatId: record.chatId,
+        });
+      }
+
       closeMultipleTabs(records);
 
       // Switch to fallback when a fallback is provided and either there is
@@ -1455,6 +1568,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [
       clearNotification,
       closeMultipleTabs,
+      hideChatFromWorkspace,
       selectedChatId,
       chatsById,
       neutralPresentation,
@@ -1531,8 +1645,88 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         }}
       >
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+          {visibleWorkspaceTabs.map((workspace) => {
+            const app = appById.get(workspace.appId);
+            const appName = app?.name ?? `App ${workspace.appId}`;
+            const isActive =
+              isWorkspaceRoute && workspaceRouteAppId === workspace.appId;
+            const workspaceAriaLabel = t("workspaceTabAria", {
+              appName,
+              count: workspace.chatIds.length,
+            });
+
+            return (
+              <Tooltip key={`workspace-${workspace.appId}`}>
+                <TooltipTrigger
+                  render={
+                    <div
+                      data-testid={`chat-workspace-tab-${workspace.appId}`}
+                      className={cn(
+                        "no-app-region-drag relative flex h-8 min-w-[160px] max-w-52 items-center gap-1 px-2 py-0.5",
+                        isActive
+                          ? "z-10 rounded-t-md rounded-b-none border border-b-0 border-primary/30 bg-primary/10 text-primary"
+                          : "rounded-md border border-primary/15 bg-primary/5 text-primary/80 hover:bg-primary/10 hover:text-primary",
+                      )}
+                    />
+                  }
+                >
+                  <AppAvatar
+                    appId={workspace.appId}
+                    name={appName}
+                    className="h-4 w-4 rounded-sm text-[8px]"
+                  />
+                  <PanelsTopLeft
+                    size={12}
+                    className="shrink-0"
+                    aria-hidden="true"
+                  />
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      handleWorkspaceTabClick(workspace);
+                    }}
+                    onClick={(event) => {
+                      if (event.detail !== 0) return;
+                      handleWorkspaceTabClick(workspace);
+                    }}
+                    className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-current={isActive ? "page" : undefined}
+                    aria-label={workspaceAriaLabel}
+                  >
+                    <div className="flex min-w-0 flex-col justify-center text-xs">
+                      <span
+                        className={cn(
+                          "truncate leading-3",
+                          isActive
+                            ? "font-semibold text-primary"
+                            : "font-medium text-primary/80",
+                        )}
+                      >
+                        {t("workspaceTabName")}
+                      </span>
+                      <span
+                        className={cn(
+                          "truncate text-[11px] leading-3.5",
+                          isActive ? "text-primary/90" : "text-primary/80",
+                        )}
+                      >
+                        {t("workspaceTabDetails", {
+                          appName,
+                          count: workspace.chatIds.length,
+                        })}
+                      </span>
+                    </div>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start" sideOffset={6}>
+                  {workspaceAriaLabel}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
           {visibleTabs.map((chat) => {
-            const isActive = selectedChatId === chat.id;
+            const isActive = !isWorkspaceRoute && selectedChatId === chat.id;
             const title = chat.title?.trim() || t("newChat");
             const app = appById.get(chat.appId);
             const appName = app?.name ?? `App ${chat.appId}`;
@@ -1543,6 +1737,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             const hasTabsToRight =
               tabIndex !== -1 && tabIndex < orderedChatIds.length - 1;
             const hasOtherTabs = orderedChatIds.length > 1;
+            const isInWorkspace =
+              workspaces[chat.appId]?.visibleChatIds.includes(chat.id) ?? false;
 
             return (
               <ContextMenu key={chat.id}>
@@ -1751,6 +1947,44 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   </Tooltip>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={() => {
+                      if (isInWorkspace) {
+                        const nextWorkspaceChatId = workspaces[
+                          chat.appId
+                        ]?.visibleChatIds.find((id) => id !== chat.id);
+                        hideChatFromWorkspace({
+                          appId: chat.appId,
+                          chatId: chat.id,
+                        });
+                        if (
+                          isWorkspaceRoute &&
+                          workspaceRouteAppId === chat.appId &&
+                          selectedChatId === chat.id
+                        ) {
+                          if (nextWorkspaceChatId !== undefined) {
+                            selectChatWithPresentation(
+                              nextWorkspaceChatId,
+                              chat.appId,
+                              { workspace: true },
+                            );
+                          } else {
+                            selectChatWithPresentation(chat.id, chat.appId);
+                          }
+                        }
+                      } else {
+                        showChatInWorkspace({
+                          appId: chat.appId,
+                          chatId: chat.id,
+                        });
+                      }
+                    }}
+                  >
+                    {isInWorkspace
+                      ? t("removeFromWorkspace")
+                      : t("addToWorkspace")}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
                   {enableMultiWindow && (
                     <>
                       <ContextMenuItem
@@ -1813,17 +2047,51 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           })}
         </div>
 
-        {overflowTabs.length > 0 && (
+        {overflowTabCount > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className="no-app-region-drag flex h-7 w-8 items-center justify-center rounded-md border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
               aria-label={t("openOverflowTabs", {
-                count: overflowTabs.length,
+                count: overflowTabCount,
               })}
             >
               <MoreHorizontal size={14} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
+              {overflowWorkspaceTabsForMenu.map((workspace) => {
+                const appName =
+                  appById.get(workspace.appId)?.name ??
+                  `App ${workspace.appId}`;
+                return (
+                  <DropdownMenuItem
+                    key={`workspace-${workspace.appId}`}
+                    onClick={() => handleWorkspaceTabClick(workspace)}
+                    className="flex items-center gap-2"
+                  >
+                    <AppAvatar
+                      appId={workspace.appId}
+                      name={appName}
+                      className="h-5 w-5 rounded text-[9px]"
+                    />
+                    <PanelsTopLeft
+                      size={14}
+                      className="shrink-0 text-primary"
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs leading-3.5 font-bold text-primary">
+                        {t("workspaceTabName")}
+                      </div>
+                      <div className="truncate text-xs leading-4">
+                        {t("workspaceTabDetails", {
+                          appName,
+                          count: workspace.chatIds.length,
+                        })}
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
               {overflowTabsForMenu.map((chat) => {
                 const title = chat.title?.trim() || t("newChat");
                 const appName =

@@ -30,14 +30,16 @@ export function getRandomNumberId() {
  */
 export function useStreamChat({
   hasChatId = true,
-}: { hasChatId?: boolean } = {}) {
+  chatId: chatIdOverride,
+}: { hasChatId?: boolean; chatId?: number } = {}) {
   const chatStreamManager = useChatStreamManager();
 
-  let chatId: number | undefined;
+  let routeChatId: number | undefined;
   if (hasChatId) {
     const { id } = useSearch({ from: "/chat" });
-    chatId = id;
+    routeChatId = id;
   }
+  const chatId = chatIdOverride ?? routeChatId;
   const streamState = useChatStreamState(chatId);
   const queueRevision = streamState?.queueRevision;
   const queuedMessages = useMemo<QueuedMessageItem[]>(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useAtomValue, useStore } from "jotai";
+import { useStore } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,7 @@ import {
   LoaderCircle,
   X,
 } from "lucide-react";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { getUserInputReadModel } from "@/user_input/read_model";
 import { usePendingQuestionnaires } from "@/user_input/hooks";
 
@@ -26,7 +26,7 @@ export function QuestionnaireInput() {
   const store = useStore();
   const userInputReadModel = getUserInputReadModel({ store });
   const questionnaireMap = usePendingQuestionnaires();
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const questionnaire =
     chatId != null ? questionnaireMap.get(chatId) : undefined;
 

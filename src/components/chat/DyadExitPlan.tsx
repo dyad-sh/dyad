@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 import { AlertCircle, CheckCircle, ArrowRight } from "lucide-react";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { usePlanHandoffState } from "@/plan_handoff/usePlanHandoff";
 
 interface DyadExitPlanProps {
@@ -15,7 +15,7 @@ interface DyadExitPlanProps {
 
 export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
   const { notes } = node.properties;
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const acceptInNewChatByChatId = useAtomValue(planAcceptInNewChatByChatIdAtom);
   const handoffState = usePlanHandoffState(chatId);
   const failure =

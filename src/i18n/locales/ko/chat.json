@@ -373,5 +373,14 @@
   "guide": "가이드",
   "agentModeActivated": "에이전트 모드 활성화됨",
   "agentModeTip": "팁: 새 채팅을 만들면 에이전트에게 더 나은 결과를 위한 깨끗한 컨텍스트를 제공할 수 있습니다.",
-  "neverShowAgain": "다시 표시 안 함"
+  "neverShowAgain": "다시 표시 안 함",
+  "addToWorkspace": "작업 공간에 추가",
+  "removeFromWorkspace": "작업 공간에서 제거",
+  "removeFromWorkspaceNamed": "작업 공간에서 {{title}} 제거",
+  "workspaceChatCount": "작업 공간의 채팅 {{count}}개",
+  "workspaceTabName": "작업 공간",
+  "workspaceTabDetails": "{{appName}} · 채팅 {{count}}개",
+  "workspaceTabAria": "채팅 {{count}}개가 있는 {{appName}} 작업 공간",
+  "openFocusedChat": "포커스된 채팅 열기",
+  "focusedChatAria": "{{title}}, 포커스됨"
 }

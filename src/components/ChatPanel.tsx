@@ -56,17 +56,24 @@ import {
   useChatMessages,
   useChatMessagesLoaded,
 } from "@/hooks/useChatMessages";
+import { ChatPaneProvider } from "./chat/ChatPaneContext";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
 interface ChatPanelProps {
   chatId?: number;
+  isFocused?: boolean;
+  onRemoveFromWorkspace?: () => void;
+  removeFromWorkspaceLabel?: string;
   isPreviewOpen: boolean;
   onTogglePreview: () => void;
 }
 
 export function ChatPanel({
   chatId,
+  isFocused = true,
+  onRemoveFromWorkspace,
+  removeFromWorkspaceLabel,
   isPreviewOpen,
   onTogglePreview,
 }: ChatPanelProps) {
@@ -397,120 +404,130 @@ export function ChatPanel({
     ? { duration: 0.12 }
     : { duration: 0.22, ease: drawerEase };
 
-  const showTerminalDrawer = isTerminalOpen && chatId && !isVersionPaneOpen;
+  const showVersionPane = isFocused && isVersionPaneOpen;
+  const showTerminalDrawer = isTerminalOpen && chatId && !showVersionPane;
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <ChatHeader
-        isVersionPaneOpen={isVersionPaneOpen}
-        isPreviewOpen={isPreviewOpen}
-        onTogglePreview={onTogglePreview}
-        onVersionClick={() => {
-          if (isVersionPaneOpen) {
-            sendVersionPreview({ type: "CLOSE" });
-          } else if (selectedAppId !== null) {
-            sendVersionPreview({ type: "OPEN", appId: selectedAppId });
-          }
-        }}
-      />
-      <div className="flex flex-1 overflow-hidden">
-        {!isVersionPaneOpen && (
-          <div className="relative flex-1 min-w-0 overflow-hidden">
-            <AnimatePresence>
-              {!showTerminalDrawer && (
-                <motion.div
-                  key="chat"
-                  className="absolute inset-0 flex min-h-0 flex-col"
-                  initial={
-                    reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }
-                  }
-                  animate={
-                    reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }
-                  }
-                  exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
-                  transition={chatLayerTransition}
-                >
-                  <div className="flex-1 relative overflow-hidden">
-                    <MessagesList
-                      messages={messages}
-                      messagesEndRef={messagesEndRef}
-                      ref={messagesContainerRef}
-                      onAtBottomChange={handleAtBottomChange}
-                    />
+    <ChatPaneProvider chatId={chatId}>
+      <div className="relative flex h-full flex-col overflow-hidden">
+        <ChatHeader
+          chatId={chatId}
+          onRemoveFromWorkspace={onRemoveFromWorkspace}
+          removeFromWorkspaceLabel={removeFromWorkspaceLabel}
+          isVersionPaneOpen={isVersionPaneOpen}
+          isPreviewOpen={isPreviewOpen}
+          onTogglePreview={onTogglePreview}
+          onVersionClick={() => {
+            if (isVersionPaneOpen) {
+              sendVersionPreview({ type: "CLOSE" });
+            } else if (selectedAppId !== null) {
+              sendVersionPreview({ type: "OPEN", appId: selectedAppId });
+            }
+          }}
+        />
+        <div className="flex flex-1 overflow-hidden">
+          {!showVersionPane && (
+            <div className="relative flex-1 min-w-0 overflow-hidden">
+              <AnimatePresence>
+                {!showTerminalDrawer && (
+                  <motion.div
+                    key="chat"
+                    className="absolute inset-0 flex min-h-0 flex-col"
+                    initial={
+                      reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }
+                    }
+                    animate={
+                      reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }
+                    }
+                    exit={
+                      reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }
+                    }
+                    transition={chatLayerTransition}
+                  >
+                    <div className="flex-1 relative overflow-hidden">
+                      <MessagesList
+                        messages={messages}
+                        messagesEndRef={messagesEndRef}
+                        ref={messagesContainerRef}
+                        onAtBottomChange={handleAtBottomChange}
+                      />
 
-                    {/* Scroll to bottom button */}
-                    {showScrollButton && (
-                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                onClick={handleScrollButtonClick}
-                                size="icon"
-                                className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
-                                variant="outline"
-                              />
-                            }
-                          >
-                            <ArrowDown className="h-4 w-4" />
-                          </TooltipTrigger>
-                          <TooltipContent>{t("scrollToBottom")}</TooltipContent>
-                        </Tooltip>
-                      </div>
+                      {/* Scroll to bottom button */}
+                      {showScrollButton && (
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  onClick={handleScrollButtonClick}
+                                  size="icon"
+                                  className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
+                                  variant="outline"
+                                />
+                              }
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t("scrollToBottom")}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      )}
+                    </div>
+                    {showFreeAgentQuotaBanner && (
+                      <FreeAgentQuotaBanner
+                        onSwitchToBuildMode={
+                          isFreeProModel(selectedModel)
+                            ? undefined
+                            : () => void setChatMode("build").catch(() => {})
+                        }
+                      />
                     )}
-                  </div>
-                  {showFreeAgentQuotaBanner && (
-                    <FreeAgentQuotaBanner
-                      onSwitchToBuildMode={
-                        isFreeProModel(selectedModel)
-                          ? undefined
-                          : () => void setChatMode("build").catch(() => {})
-                      }
-                    />
-                  )}
-                  <SupabaseLegacyKeyBanner appId={selectedAppId} />
-                  <NotificationBanner />
-                  <ChatInput chatId={chatId} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-        <VersionPane />
-      </div>
-      <AnimatePresence initial={false}>
-        {showTerminalDrawer && (
-          <motion.div
-            key="terminal"
-            data-testid="terminal-drawer"
-            className="absolute inset-0 z-20 flex min-h-0 flex-col"
-            initial={reducedMotion ? { opacity: 0 } : { y: "100%" }}
-            animate={reducedMotion ? { opacity: 1 } : { y: 0 }}
-            exit={reducedMotion ? { opacity: 0 } : { y: "100%" }}
-            transition={terminalLayerTransition}
-            onAnimationComplete={() => {
-              setTerminalFitSignal((value) => value + 1);
-            }}
-          >
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  {t("terminal.loading")}
-                </div>
-              }
+                    <SupabaseLegacyKeyBanner appId={selectedAppId} />
+                    <NotificationBanner />
+                    <ChatInput chatId={chatId} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+          {isFocused && <VersionPane />}
+        </div>
+        <AnimatePresence initial={false}>
+          {showTerminalDrawer && (
+            <motion.div
+              key="terminal"
+              data-testid="terminal-drawer"
+              className="absolute inset-0 z-20 flex min-h-0 flex-col"
+              initial={reducedMotion ? { opacity: 0 } : { y: "100%" }}
+              animate={reducedMotion ? { opacity: 1 } : { y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { y: "100%" }}
+              transition={terminalLayerTransition}
+              onAnimationComplete={() => {
+                setTerminalFitSignal((value) => value + 1);
+              }}
             >
-              <TerminalPanel
-                appId={selectedAppId}
-                chatId={chatId}
-                appName={currentApp?.name}
-                onExit={closeTerminal}
-                fitSignal={terminalFitSignal}
-                size="full"
-              />
-            </Suspense>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    {t("terminal.loading")}
+                  </div>
+                }
+              >
+                <TerminalPanel
+                  appId={selectedAppId}
+                  chatId={chatId}
+                  appName={currentApp?.name}
+                  onExit={closeTerminal}
+                  fitSignal={terminalFitSignal}
+                  size="full"
+                />
+              </Suspense>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </ChatPaneProvider>
   );
 }

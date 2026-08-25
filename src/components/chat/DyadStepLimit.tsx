@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { useAtomValue } from "jotai";
 import { CustomTagState } from "./stateTypes";
 import {
   DyadCard,
@@ -9,7 +8,7 @@ import {
 import { PauseCircle, Play, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { hasPendingReviewContinuation } from "@/hooks/subagentReviewContinuation";
 
 interface DyadStepLimitProps {
@@ -27,8 +26,8 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
   const { steps = "50", limit: _limit = "50", state } = node.properties;
   const isFinished = state === "finished";
   const content = typeof children === "string" ? children : "";
-  const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage, clearPauseOnly } = useStreamChat();
+  const chatId = usePaneChatId();
+  const { streamMessage, clearPauseOnly } = useStreamChat({ chatId });
   const [isLoading, setIsLoading] = useState(false);
 
   const handleContinue = () => {

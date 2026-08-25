@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 
 import { selectedAppIdAtom, previewModeAtom } from "@/atoms/appAtoms";
-import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { useChatMessages } from "@/hooks/useChatMessages";
@@ -124,7 +125,7 @@ interface LiveAssertionPlans {
 const NO_LIVE_PLANS: LiveAssertionPlans = { tag: null, pendingCount: 0 };
 
 export function TestAssertionsInput() {
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const messages = useChatMessages(chatId);
   const { tag, pendingCount } = useMemo(() => {
     let newest: AssertionsTagSummary | null = null;
@@ -203,14 +204,14 @@ export function TestAssertionsPlanCard({
   /** Unanswered plans in this chat, including this one. */
   pendingCount?: number;
 }) {
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const appId = useAtomValue(selectedAppIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const queryClient = useQueryClient();
   const chatStreamManager = useChatStreamManager();
-  const { streamMessage } = useStreamChat();
+  const { streamMessage } = useStreamChat({ chatId });
   // The agent is parked on this card's request for as long as it's live, so
   // answering it resumes that turn. It won't be live for a card reloaded after
   // a restart, or one whose turn was stopped — those fall back to handing the

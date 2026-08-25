@@ -25,6 +25,7 @@ import {
   getVisibleTabCapacity,
   matchesPreNavigationPresentationCapture,
   getFallbackChatIdAfterClose,
+  getChatWorkspaceTabs,
   groupChatIdsByApp,
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
@@ -152,8 +153,27 @@ describe("ChatTabs helpers", () => {
 
   it("reselects the active chat when navigation must return to the chat route", () => {
     expect(shouldSkipChatSelection(7, 7, "/chat")).toBe(true);
+    expect(shouldSkipChatSelection(7, 7, "/chat", true, false)).toBe(false);
+    expect(shouldSkipChatSelection(7, 7, "/chat", false, true)).toBe(false);
+    expect(shouldSkipChatSelection(7, 7, "/chat", true, true)).toBe(true);
     expect(shouldSkipChatSelection(7, 7, "/settings")).toBe(false);
     expect(shouldSkipChatSelection(7, 8, "/chat")).toBe(false);
+  });
+
+  it("creates workspace tabs only from explicit same-app membership", () => {
+    expect(
+      getChatWorkspaceTabs(
+        {
+          1: { visibleChatIds: [1, 2, 1, 99] },
+          2: { visibleChatIds: [3] },
+          3: { visibleChatIds: [] },
+        },
+        [chat(1, 1), chat(2, 1), chat(3, 2), chat(99, 2)],
+      ),
+    ).toEqual([
+      { appId: 1, chatIds: [1, 2] },
+      { appId: 2, chatIds: [3] },
+    ]);
   });
 
   it("captures the outgoing chat before route-driven presentation changes", () => {

@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { ipc } from "@/ipc/types";
@@ -9,9 +9,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useSummarizeInNewChat() {
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const appId = useAtomValue(selectedAppIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage } = useStreamChat({ chatId });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 

@@ -21,8 +21,7 @@ import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
-import { useAtomValue } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import {
   useChatStreamPreview,
   useChatStreamState,
@@ -131,7 +130,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   messageId,
   showStreamingPreview = false,
 }) => {
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const streamState = useChatStreamState(chatId ?? undefined) ?? {
     type: "idle",
   };

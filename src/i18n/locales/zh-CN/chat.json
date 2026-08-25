@@ -374,10 +374,13 @@
   "addToWorkspace": "添加到工作区",
   "removeFromWorkspace": "从工作区移除",
   "removeFromWorkspaceNamed": "从工作区移除 {{title}}",
-  "workspaceChatCount": "工作区中有 {{count}} 个聊天",
+  "workspaceChatCount_one": "工作区中有 {{count}} 个聊天",
+  "workspaceChatCount_other": "工作区中有 {{count}} 个聊天",
   "workspaceTabName": "工作区",
-  "workspaceTabDetails": "{{appName}} · {{count}} 个聊天",
-  "workspaceTabAria": "{{appName}} 工作区，{{count}} 个聊天",
+  "workspaceTabDetails_one": "{{appName}} · {{count}} 个聊天",
+  "workspaceTabDetails_other": "{{appName}} · {{count}} 个聊天",
+  "workspaceTabAria_one": "{{appName}} 工作区，{{count}} 个聊天",
+  "workspaceTabAria_other": "{{appName}} 工作区，{{count}} 个聊天",
   "openFocusedChat": "打开聚焦的聊天",
   "focusedChatAria": "{{title}}，已聚焦"
 }

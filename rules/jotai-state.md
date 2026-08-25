@@ -90,6 +90,11 @@ Components should usually read `currentTestSpecsAtom` rather than repeat
 
 - Use write-only atoms or domain helper hooks for repeated mutations such as
   append, clear, set-for-id, or remove-for-id.
+- When supplying a custom synchronous storage to `atomWithStorage`, declare its
+  structural `getItem`/`setItem`/`removeItem` type locally. `SyncStorage` appears
+  in Jotai's internal declarations but is not exported by the public
+  `jotai/vanilla/utils` barrel, and importing it there makes `tsgo` select the
+  async overload and spread `Promise<Value>` errors through atom consumers.
 - Keep high-frequency state, such as logs, separate from slower state so a log
   append does not rerender consumers of unrelated preview metadata.
 - Combine fields only when they form one domain concept and are updated

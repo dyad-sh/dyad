@@ -294,6 +294,18 @@ export function getVisibleTabCapacity(
   return Math.min(withOverflow, totalTabs);
 }
 
+export function getVisibleWorkspaceTabCount(
+  totalVisibleTabCount: number,
+  workspaceTabCount: number,
+  chatTabCount: number,
+): number {
+  return Math.min(
+    workspaceTabCount,
+    Math.max(totalVisibleTabCount - (chatTabCount > 0 ? 1 : 0), 0),
+    1,
+  );
+}
+
 export function applySelectionToOrderedChatIds(
   orderedChatIds: number[],
   selectedChatId: number,
@@ -419,7 +431,21 @@ export function shouldRemoveTransferredChatFromRenderer(
 export function partitionChatsByVisibleCount(
   orderedChats: ChatSummary[],
   visibleTabCount: number,
+  selectedChatId?: number | null,
 ): { visibleTabs: ChatSummary[]; overflowTabs: ChatSummary[] } {
+  const selectedIndex = orderedChats.findIndex(
+    (chat) => chat.id === selectedChatId,
+  );
+  if (visibleTabCount > 0 && selectedIndex >= visibleTabCount) {
+    const selectedChat = orderedChats[selectedIndex];
+    const otherChats = orderedChats.filter(
+      (chat) => chat.id !== selectedChatId,
+    );
+    return {
+      visibleTabs: [selectedChat, ...otherChats.slice(0, visibleTabCount - 1)],
+      overflowTabs: otherChats.slice(visibleTabCount - 1),
+    };
+  }
   return {
     visibleTabs: orderedChats.slice(0, visibleTabCount),
     overflowTabs: orderedChats.slice(visibleTabCount),
@@ -1281,12 +1307,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           orderedChats.length + workspaceTabs.length,
           DEFAULT_UNMEASURED_VISIBLE_TABS,
         );
-  const visibleWorkspaceTabCount = isWorkspaceRoute
-    ? Math.min(workspaceTabs.length, totalVisibleTabCount)
-    : Math.min(
-        workspaceTabs.length,
-        Math.max(totalVisibleTabCount - (orderedChats.length > 0 ? 1 : 0), 0),
-      );
+  // Keep workspace access visible without allowing workspace tabs to crowd all
+  // regular chats out of the strip. The active workspace is sorted first.
+  const visibleWorkspaceTabCount = getVisibleWorkspaceTabCount(
+    totalVisibleTabCount,
+    workspaceTabs.length,
+    orderedChats.length,
+  );
   const visibleWorkspaceTabs = workspaceTabs.slice(0, visibleWorkspaceTabCount);
   const overflowWorkspaceTabs = workspaceTabs.slice(visibleWorkspaceTabCount);
   const visibleTabCount = Math.max(
@@ -1295,8 +1322,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   );
 
   const { visibleTabs, overflowTabs } = useMemo(
-    () => partitionChatsByVisibleCount(orderedChats, visibleTabCount),
-    [orderedChats, visibleTabCount],
+    () =>
+      partitionChatsByVisibleCount(
+        orderedChats,
+        visibleTabCount,
+        selectedChatId,
+      ),
+    [orderedChats, selectedChatId, visibleTabCount],
   );
   const overflowWorkspaceTabsForMenu = overflowWorkspaceTabs.slice(
     0,

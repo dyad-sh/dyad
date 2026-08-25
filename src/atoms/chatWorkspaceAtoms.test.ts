@@ -2,6 +2,7 @@ import { createStore } from "jotai";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   chatWorkspaceByAppIdAtom,
+  createChatWorkspaceStorage,
   getVisibleChatViewIds,
   getVisibleWorkspaceChatIds,
   hideChatFromWorkspaceAtom,
@@ -69,5 +70,57 @@ describe("chat workspace atoms", () => {
         isWorkspaceView: true,
       }),
     ).toEqual([10, 20]);
+  });
+
+  it("renders the route chat while the chats query is still loading", () => {
+    expect(
+      getVisibleChatViewIds({
+        workspaceChatIds: [],
+        focusedChatId: 42,
+        validChatIds: new Set(),
+        isWorkspaceView: false,
+      }),
+    ).toEqual([42]);
+  });
+
+  it("loads only validated workspace entries from versioned storage", () => {
+    const values = new Map<string, string>();
+    values.set(
+      "workspace",
+      JSON.stringify({
+        version: 1,
+        workspaces: {
+          1: { visibleChatIds: [10, 10, -1, "bad", 20] },
+          2: null,
+          invalid: { visibleChatIds: [30] },
+        },
+      }),
+    );
+    const storage = createChatWorkspaceStorage(() => ({
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+      clear: () => values.clear(),
+      key: (index) => Array.from(values.keys())[index] ?? null,
+      get length() {
+        return values.size;
+      },
+    }));
+
+    expect(storage.getItem("workspace", {})).toEqual({
+      1: { visibleChatIds: [10, 20] },
+    });
+
+    values.set(
+      "workspace",
+      JSON.stringify({ version: 2, workspaces: { 1: null } }),
+    );
+    expect(storage.getItem("workspace", {})).toEqual({});
+
+    storage.setItem("workspace", { 3: { visibleChatIds: [30] } });
+    expect(JSON.parse(values.get("workspace") ?? "null")).toEqual({
+      version: 1,
+      workspaces: { 3: { visibleChatIds: [30] } },
+    });
   });
 });

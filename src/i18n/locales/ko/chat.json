@@ -377,10 +377,13 @@
   "addToWorkspace": "작업 공간에 추가",
   "removeFromWorkspace": "작업 공간에서 제거",
   "removeFromWorkspaceNamed": "작업 공간에서 {{title}} 제거",
-  "workspaceChatCount": "작업 공간의 채팅 {{count}}개",
+  "workspaceChatCount_one": "작업 공간의 채팅 {{count}}개",
+  "workspaceChatCount_other": "작업 공간의 채팅 {{count}}개",
   "workspaceTabName": "작업 공간",
-  "workspaceTabDetails": "{{appName}} · 채팅 {{count}}개",
-  "workspaceTabAria": "채팅 {{count}}개가 있는 {{appName}} 작업 공간",
+  "workspaceTabDetails_one": "{{appName}} · 채팅 {{count}}개",
+  "workspaceTabDetails_other": "{{appName}} · 채팅 {{count}}개",
+  "workspaceTabAria_one": "채팅 {{count}}개가 있는 {{appName}} 작업 공간",
+  "workspaceTabAria_other": "채팅 {{count}}개가 있는 {{appName}} 작업 공간",
   "openFocusedChat": "포커스된 채팅 열기",
   "focusedChatAria": "{{title}}, 포커스됨"
 }

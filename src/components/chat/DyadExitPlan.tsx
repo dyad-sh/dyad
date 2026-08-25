@@ -17,7 +17,7 @@ export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
   const { notes } = node.properties;
   const chatId = usePaneChatId();
   const acceptInNewChatByChatId = useAtomValue(planAcceptInNewChatByChatIdAtom);
-  const handoffState = usePlanHandoffState(chatId);
+  const handoffState = usePlanHandoffState(chatId ?? null);
   const failure =
     handoffState.phase === "failed"
       ? (handoffState.failure ?? "Plan implementation could not be started.")

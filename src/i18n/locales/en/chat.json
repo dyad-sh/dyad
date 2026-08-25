@@ -377,10 +377,13 @@
   "addToWorkspace": "Add to workspace",
   "removeFromWorkspace": "Remove from workspace",
   "removeFromWorkspaceNamed": "Remove {{title}} from workspace",
-  "workspaceChatCount": "{{count}} chats in workspace",
+  "workspaceChatCount_one": "{{count}} chat in workspace",
+  "workspaceChatCount_other": "{{count}} chats in workspace",
   "workspaceTabName": "Workspace",
-  "workspaceTabDetails": "{{appName}} · {{count}} chats",
-  "workspaceTabAria": "{{appName}} workspace, {{count}} chats",
+  "workspaceTabDetails_one": "{{appName}} · {{count}} chat",
+  "workspaceTabDetails_other": "{{appName}} · {{count}} chats",
+  "workspaceTabAria_one": "{{appName}} workspace, {{count}} chat",
+  "workspaceTabAria_other": "{{appName}} workspace, {{count}} chats",
   "openFocusedChat": "Open focused chat",
   "focusedChatAria": "{{title}}, focused"
 }

@@ -375,10 +375,13 @@
   "addToWorkspace": "Añadir al espacio de trabajo",
   "removeFromWorkspace": "Quitar del espacio de trabajo",
   "removeFromWorkspaceNamed": "Quitar {{title}} del espacio de trabajo",
-  "workspaceChatCount": "{{count}} chats en el espacio de trabajo",
+  "workspaceChatCount_one": "{{count}} chat en el espacio de trabajo",
+  "workspaceChatCount_other": "{{count}} chats en el espacio de trabajo",
   "workspaceTabName": "Espacio de trabajo",
-  "workspaceTabDetails": "{{appName}} · {{count}} chats",
-  "workspaceTabAria": "Espacio de trabajo de {{appName}}, {{count}} chats",
+  "workspaceTabDetails_one": "{{appName}} · {{count}} chat",
+  "workspaceTabDetails_other": "{{appName}} · {{count}} chats",
+  "workspaceTabAria_one": "Espacio de trabajo de {{appName}}, {{count}} chat",
+  "workspaceTabAria_other": "Espacio de trabajo de {{appName}}, {{count}} chats",
   "openFocusedChat": "Abrir el chat enfocado",
   "focusedChatAria": "{{title}}, enfocado"
 }

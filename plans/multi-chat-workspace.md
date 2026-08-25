@@ -176,9 +176,9 @@ Add `ChatPaneContext` with `ChatPaneProvider`, `usePaneChatId()`, and focused-pa
 Provide explicit chat-keyed APIs such as:
 
 ```ts
-useChatInputValue(chatId)
-useSetChatInputValue(chatId)
-usePaneChatId()
+useChatInputValue(chatId);
+useSetChatInputValue(chatId);
+usePaneChatId();
 ```
 
 All pane-local mutations—send, stop, retry, approval, draft writes, plan actions, terminal controls, tool cards, and delayed callbacks—must carry an explicit chat ID. Singleton selection is reserved for genuinely shared/global surfaces.
@@ -344,18 +344,18 @@ No database migration or new external IPC endpoint is expected for the MVP.
 
 ## Risks and Mitigations
 
-| Risk | Likelihood | Impact | Mitigation |
-| --- | --- | --- | --- |
-| Hidden singleton chat dependencies target the wrong pane | High | High | Complete pane-context migration first; add multi-panel hybrid isolation tests. |
-| Shared app surfaces appear pane-local | High | High | Keep one preview/runtime/version surface and label focused-chat-specific actions. |
-| Concurrent chats conflict on one working tree/runtime | Medium | High | Reuse main-process app-operation coordination and expose queued/blocked ownership. |
-| Many mounted panels consume excessive memory/CPU | Medium | High | Minimum pane dimensions, compact/minimized rendering, virtualization, selectors, and profiling. |
-| Focus, route, and delayed callbacks race | Medium | High | One centralized focus transition and explicit chat IDs captured at invocation time. |
-| Deleted/closed/transferred chats leave stale panes | Medium | High | Shared pruning transitions and lifecycle tests for every removal path. |
-| Persistence conflicts with tab/window ownership | Medium | Medium | Separate versioned workspace storage; validate against current app/window chats. |
-| Remove-pane and close-chat semantics confuse users | Medium | Medium | Distinct labels, pane-local remove action, and destructive confirmation only for deletion. |
-| Responsive grids become unusable with many chats | Medium | Medium | Minimum dimensions, compact/minimized states, maximize, scrolling, and narrow switcher. |
-| Workspace refactor regresses single-chat behavior | Medium | High | Land identity scoping first with unchanged UI and retain existing regression suites. |
+| Risk                                                     | Likelihood | Impact | Mitigation                                                                                      |
+| -------------------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------- |
+| Hidden singleton chat dependencies target the wrong pane | High       | High   | Complete pane-context migration first; add multi-panel hybrid isolation tests.                  |
+| Shared app surfaces appear pane-local                    | High       | High   | Keep one preview/runtime/version surface and label focused-chat-specific actions.               |
+| Concurrent chats conflict on one working tree/runtime    | Medium     | High   | Reuse main-process app-operation coordination and expose queued/blocked ownership.              |
+| Many mounted panels consume excessive memory/CPU         | Medium     | High   | Minimum pane dimensions, compact/minimized rendering, virtualization, selectors, and profiling. |
+| Focus, route, and delayed callbacks race                 | Medium     | High   | One centralized focus transition and explicit chat IDs captured at invocation time.             |
+| Deleted/closed/transferred chats leave stale panes       | Medium     | High   | Shared pruning transitions and lifecycle tests for every removal path.                          |
+| Persistence conflicts with tab/window ownership          | Medium     | Medium | Separate versioned workspace storage; validate against current app/window chats.                |
+| Remove-pane and close-chat semantics confuse users       | Medium     | Medium | Distinct labels, pane-local remove action, and destructive confirmation only for deletion.      |
+| Responsive grids become unusable with many chats         | Medium     | Medium | Minimum dimensions, compact/minimized states, maximize, scrolling, and narrow switcher.         |
+| Workspace refactor regresses single-chat behavior        | Medium     | High   | Land identity scoping first with unchanged UI and retain existing regression suites.            |
 
 ## Open Questions
 

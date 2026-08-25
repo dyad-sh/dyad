@@ -263,6 +263,27 @@ export default function ChatPage() {
     });
   };
 
+  const removeChatFromWorkspace = (removedChatId: number) => {
+    if (selectedAppId === null) return;
+    const nextWorkspaceChatId = workspaceChatIds.find(
+      (id) => id !== removedChatId,
+    );
+    hideChatFromWorkspace({ appId: selectedAppId, chatId: removedChatId });
+
+    if (removedChatId === chatId && nextWorkspaceChatId !== undefined) {
+      store.set(selectedChatIdAtom, nextWorkspaceChatId);
+      void navigate({
+        to: "/chat",
+        search: {
+          id: nextWorkspaceChatId,
+          appId: selectedAppId,
+          workspace: true,
+        },
+        replace: true,
+      });
+    }
+  };
+
   // Keep chat panel size in sync with hidden state (from toolbar button / other views)
   useEffect(() => {
     if (!chatPanelRef.current) return;
@@ -330,7 +351,7 @@ export default function ChatPage() {
                 className={cn(
                   "min-h-0 flex-1 overflow-hidden",
                   isMultiChatWorkspace &&
-                    "grid auto-rows-[minmax(0,1fr)] grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-1 bg-border p-1",
+                    "scrollbar-on-hover grid auto-rows-[minmax(320px,1fr)] grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-1 overflow-auto bg-border p-1",
                 )}
                 data-testid="chat-workspace"
               >
@@ -367,14 +388,8 @@ export default function ChatPage() {
                         chatId={workspaceChatId}
                         isFocused={isFocused}
                         onRemoveFromWorkspace={
-                          isMultiChatWorkspace &&
-                          !isFocused &&
-                          selectedAppId !== null
-                            ? () =>
-                                hideChatFromWorkspace({
-                                  appId: selectedAppId,
-                                  chatId: workspaceChatId,
-                                })
+                          isMultiChatWorkspace && selectedAppId !== null
+                            ? () => removeChatFromWorkspace(workspaceChatId)
                             : undefined
                         }
                         removeFromWorkspaceLabel={t(

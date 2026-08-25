@@ -23,6 +23,7 @@ import {
   consumePreNavigationPresentationCapture,
   getOrderedRecentChatIds,
   getVisibleTabCapacity,
+  getVisibleWorkspaceTabCount,
   matchesPreNavigationPresentationCapture,
   getFallbackChatIdAfterClose,
   getChatWorkspaceTabs,
@@ -330,9 +331,27 @@ describe("ChatTabs helpers", () => {
     expect(overflowTabs.map((c) => c.id)).toEqual([3, 4]);
   });
 
+  it("keeps the selected chat visible while its persisted order updates", () => {
+    const orderedChats = [chat(1), chat(2), chat(3), chat(4)];
+    const { visibleTabs, overflowTabs } = partitionChatsByVisibleCount(
+      orderedChats,
+      2,
+      4,
+    );
+    expect(visibleTabs.map((c) => c.id)).toEqual([4, 1]);
+    expect(overflowTabs.map((c) => c.id)).toEqual([2, 3]);
+  });
+
   it("uses overflow-aware capacity with min width constraints", () => {
     // 3 tabs fit at 140px each (+ gaps), but with overflow trigger reserved only 2 fit.
     expect(getVisibleTabCapacity(430, 4, 140)).toBe(2);
+  });
+
+  it("caps visible workspaces and reserves a regular chat slot", () => {
+    expect(getVisibleWorkspaceTabCount(2, 2, 4)).toBe(1);
+    expect(getVisibleWorkspaceTabCount(4, 3, 8)).toBe(1);
+    expect(getVisibleWorkspaceTabCount(1, 2, 4)).toBe(0);
+    expect(getVisibleWorkspaceTabCount(2, 2, 0)).toBe(1);
   });
 
   it("selects right-adjacent tab when closing active middle tab", () => {

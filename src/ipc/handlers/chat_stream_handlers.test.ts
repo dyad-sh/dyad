@@ -10,6 +10,7 @@ import {
 import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import {
   addTrackedValue,
+  markStreamAdmitted,
   removeDyadTags,
   removeTrackedValue,
   setPartialResponseForStream,
@@ -40,6 +41,19 @@ describe("stream invocation tracking", () => {
     removeTrackedValue(trackedInvocations, 42, olderInvocation);
 
     expect(trackedInvocations.get(42)).toEqual(new Set([newerInvocation]));
+  });
+
+  it("reports concurrency only when a distinct second chat is admitted", () => {
+    const admittedStreams = new Map<number, Set<object>>();
+    const firstChatStream = {};
+    const duplicateFirstChatStream = {};
+    const secondChatStream = {};
+
+    expect(markStreamAdmitted(admittedStreams, 42, firstChatStream)).toBeNull();
+    expect(
+      markStreamAdmitted(admittedStreams, 42, duplicateFirstChatStream),
+    ).toBeNull();
+    expect(markStreamAdmitted(admittedStreams, 84, secondChatStream)).toBe(2);
   });
 
   it("keeps partial responses isolated between concurrent streams", () => {

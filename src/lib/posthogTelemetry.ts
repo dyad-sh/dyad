@@ -104,6 +104,10 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  if (eventName === "chat:concurrent-stream-started") {
+    return true;
+  }
+
   // PostHog people.set emits a $set event. Sampling it would leave person
   // properties stale even though the corresponding settings update succeeded.
   if (eventName === "$set") {

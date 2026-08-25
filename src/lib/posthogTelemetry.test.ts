@@ -159,6 +159,14 @@ describe("getSettingsPersonTelemetryProperties", () => {
 });
 
 describe("shouldBypassNonProTelemetrySampling", () => {
+  it("always sends concurrent chat starts", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "chat:concurrent-stream-started",
+      }),
+    ).toBe(true);
+  });
+
   it("always sends sandbox.script.* events for non-Pro sampling", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

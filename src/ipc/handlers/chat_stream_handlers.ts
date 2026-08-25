@@ -406,6 +406,7 @@ interface TrackedStream {
 // Track active streams for cancellation together with the renderer correlation
 // identity. Legacy callers may omit InvocationRef and/or use numeric streamId.
 const activeStreams = new Map<number, Set<TrackedStream>>();
+const admittedStreams = new Map<number, Set<TrackedStream>>();
 const admissionPendingStreams = new Set<AbortController>();
 
 // How many chats are currently streaming a response. Used by the
@@ -443,6 +444,16 @@ export function removeTrackedValue<T>(
   if (values.size === 0) {
     trackedValues.delete(chatId);
   }
+}
+
+export function markStreamAdmitted<T>(
+  admitted: Map<number, Set<T>>,
+  chatId: number,
+  stream: T,
+): number | null {
+  const isNewConcurrentChat = !admitted.has(chatId);
+  addTrackedValue(admitted, chatId, stream);
+  return isNewConcurrentChat && admitted.size > 1 ? admitted.size : null;
 }
 
 // A restore must drain existing streams and prevent new ones from entering the
@@ -1021,6 +1032,16 @@ export function registerChatStreamHandlers() {
         // installed and is then a plain in-flight stream the restore cancels.
         // Do NOT introduce an `await` between the checks above and this line.
         admissionPendingStreams.delete(abortController);
+        const concurrentChatCount = markStreamAdmitted(
+          admittedStreams,
+          req.chatId,
+          trackedStream,
+        );
+        if (concurrentChatCount !== null) {
+          sendTelemetryEvent("chat:concurrent-stream-started", {
+            concurrentChatCount,
+          });
+        }
         break;
       }
 
@@ -2825,6 +2846,7 @@ This conversation includes one or more image attachments. When the user uploads 
       // Clean up the abort controller
       if (trackedStream) {
         removeTrackedValue(activeStreams, req.chatId, trackedStream);
+        removeTrackedValue(admittedStreams, req.chatId, trackedStream);
       }
       admissionPendingStreams.delete(abortController);
       partialResponses.delete(abortController);

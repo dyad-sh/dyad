@@ -297,7 +297,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = messages.at(-1);
   const disableSendButton =
-    chatAnnotations.length === 0 &&
     selectedMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&

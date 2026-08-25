@@ -27,6 +27,57 @@ describe("chat annotations (integration)", () => {
     await harness?.dispose();
   });
 
+  it("blocks annotated follow-ups while the latest code proposal is unapproved", async () => {
+    const [assistantMessage] = await harness.db
+      .insert(messages)
+      .values({
+        chatId: harness.chatId,
+        role: "assistant",
+        content:
+          '<dyad-write path="src/pending.tsx" description="Pending change">export const pending = true;</dyad-write>',
+      })
+      .returning({ id: messages.id });
+
+    harness.mount();
+    await screen.findByTestId("chat-input-container");
+
+    harness.setChatAnnotations(harness.chatId, [
+      {
+        id: "pending-proposal-annotation",
+        chatId: harness.chatId,
+        messageId: assistantMessage.id,
+        selectedText: "export const pending = true;",
+        comment: "Please rename this before applying it.",
+        createdAt: 1,
+        startOffset: 0,
+        selectionLength: 28,
+      },
+    ]);
+
+    await screen.findByTestId("chat-annotations-tray");
+    const sendButton = await screen.findByLabelText(
+      /^(sendMessage|Send message)$/,
+    );
+    await waitFor(() => {
+      expect((sendButton as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    const streamInvokeCount = harness.bridge.invokeLog.filter(
+      (entry) => entry.channel === "chat:stream",
+    ).length;
+
+    fireEvent.click(sendButton);
+    await harness.pressEnterInChat("");
+    await harness.bridge.settleInFlight();
+
+    expect(
+      harness.bridge.invokeLog.filter(
+        (entry) => entry.channel === "chat:stream",
+      ),
+    ).toHaveLength(streamInvokeCount);
+    expect(harness.getChatAnnotations(harness.chatId)).toHaveLength(1);
+  });
+
   it("submits annotations without composer text through the real chat flow", async () => {
     const [assistantMessage] = await harness.db
       .insert(messages)

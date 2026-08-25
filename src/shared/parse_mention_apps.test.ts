@@ -301,6 +301,18 @@ describe("parseKnownAppMentions", () => {
     expect(result).toEqual([]);
   });
 
+  it("does not match a Unicode app name inside a longer word", () => {
+    const result = parseKnownAppMentions("Compare @app:应用程序", ["应用"]);
+
+    expect(result).toEqual([]);
+  });
+
+  it("does not match a spaced app name before a Unicode word suffix", () => {
+    const result = parseKnownAppMentions("Compare @app:My App测试", ["My App"]);
+
+    expect(result).toEqual([]);
+  });
+
   it("matches spaced app names case-insensitively", () => {
     const result = parseKnownAppMentions("Compare @app:my app", ["My App"]);
 
@@ -409,6 +421,14 @@ describe("formatKnownAppMentionsForPrompt", () => {
     ]);
 
     expect(result).toBe("Compare @app:my app");
+  });
+
+  it("does not format a Unicode app name inside a longer word", () => {
+    const result = formatKnownAppMentionsForPrompt("Compare @应用程序", [
+      "应用",
+    ]);
+
+    expect(result).toBe("Compare @应用程序");
   });
 
   it("allows terminal periods after visible app mentions", () => {

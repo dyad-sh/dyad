@@ -5,8 +5,8 @@ export const MENTION_REGEX = new RegExp(
 );
 
 const APP_MENTION_PREFIX_REGEX = /@app:/g;
-const APP_MENTION_CANDIDATE_CHAR_REGEX = /[a-zA-Z0-9_.-]/;
-const VISIBLE_APP_MENTION_CONTINUATION_REGEX = /[a-zA-Z0-9_:/\\-]/;
+const APP_MENTION_CANDIDATE_CHAR_REGEX = /[\p{L}\p{N}\p{M}_.-]/u;
+const VISIBLE_APP_MENTION_CONTINUATION_REGEX = /[\p{L}\p{N}\p{M}_:/\\-]/u;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

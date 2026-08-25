@@ -33,6 +33,7 @@ import {
   selectedChatIdAtom,
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -173,7 +174,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     pauseQueue,
     clearPauseOnly,
     resumeQueue,
-  } = useStreamChat();
+  } = useStreamChat({ chatId });
   const { isCancellationRequested, requestCancellation } =
     useCancellationRequestLatch({
       chatId,
@@ -1135,7 +1136,8 @@ function SuggestionButton({
   children: React.ReactNode;
   tooltipText: string | string[];
 }) {
-  const { isStreaming } = useStreamChat();
+  const chatId = usePaneChatId();
+  const { isStreaming } = useStreamChat({ chatId });
   return (
     <Tooltip>
       <TooltipTrigger
@@ -1174,7 +1176,7 @@ function SummarizeInNewChatButton() {
 
 function RefactorFileButton({ path }: { path: string }) {
   const { t } = useTranslation("chat");
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const { streamMessage } = useStreamChat();
   const onClick = () => {
     if (!chatId) {
@@ -1201,7 +1203,7 @@ function RefactorFileButton({ path }: { path: string }) {
 
 function WriteCodeProperlyButton() {
   const { t } = useTranslation("chat");
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const { streamMessage } = useStreamChat();
   const onClick = () => {
     if (!chatId) {
@@ -1293,7 +1295,7 @@ function RefreshButton() {
 function KeepGoingButton() {
   const { t } = useTranslation("chat");
   const { streamMessage } = useStreamChat();
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const onClick = () => {
     if (!chatId) {
       console.error("No chat id found");
@@ -1314,7 +1316,7 @@ function KeepGoingButton() {
 function AddTypeScriptButton() {
   const { t } = useTranslation("chat");
   const { streamMessage } = useStreamChat();
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const onClick = () => {
     if (!chatId) {
       console.error("No chat id found");

@@ -370,5 +370,17 @@
   "guide": "指南",
   "agentModeActivated": "Agent 模式已激活",
   "agentModeTip": "提示：创建新聊天以给 Agent 一个干净的上下文，获得更好的结果。",
-  "neverShowAgain": "不再显示"
+  "neverShowAgain": "不再显示",
+  "addToWorkspace": "添加到工作区",
+  "removeFromWorkspace": "从工作区移除",
+  "removeFromWorkspaceNamed": "从工作区移除 {{title}}",
+  "workspaceChatCount_one": "工作区中有 {{count}} 个聊天",
+  "workspaceChatCount_other": "工作区中有 {{count}} 个聊天",
+  "workspaceTabName": "工作区",
+  "workspaceTabDetails_one": "{{appName}} · {{count}} 个聊天",
+  "workspaceTabDetails_other": "{{appName}} · {{count}} 个聊天",
+  "workspaceTabAria_one": "{{appName}} 工作区，{{count}} 个聊天",
+  "workspaceTabAria_other": "{{appName}} 工作区，{{count}} 个聊天",
+  "openFocusedChat": "打开聚焦的聊天",
+  "focusedChatAria": "{{title}}，已聚焦"
 }

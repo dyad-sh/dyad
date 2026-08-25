@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { AlertTriangle, XCircle, Sparkles } from "lucide-react";
-import { useAtomValue } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import { isStreamActive } from "@/chat_stream/transition";
@@ -26,12 +25,12 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
   children,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const streamState = useChatStreamState(selectedChatId ?? undefined) ?? {
+  const paneChatId = usePaneChatId();
+  const streamState = useChatStreamState(paneChatId) ?? {
     type: "idle",
   };
   const isStreaming = isStreamActive(streamState);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage } = useStreamChat({ chatId: paneChatId });
 
   // If the type is not warning, it is an error (in case LLM gives a weird "type")
   const isError = type !== "warning";
@@ -41,10 +40,10 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
 
   const handleAIFix = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (message && selectedChatId) {
+    if (message && paneChatId) {
       streamMessage({
         prompt: `Fix the error: ${message}`,
-        chatId: selectedChatId,
+        chatId: paneChatId,
       });
     }
   };

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
 import { usePendingIntegrations } from "@/user_input/hooks";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -37,7 +37,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 }) => {
   const { t } = useTranslation("home");
   const appId = useAtomValue(selectedAppIdAtom);
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const pendingIntegrationMap = usePendingIntegrations();
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
@@ -194,7 +194,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     isSubmitting: isContinueSubmitting,
     handleContinue,
     handleSkip,
-  } = useIntegrationContinue();
+  } = useIntegrationContinue(chatId);
 
   const handleSkipClick = () => void handleSkip();
 

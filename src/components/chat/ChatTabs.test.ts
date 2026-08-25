@@ -23,9 +23,13 @@ import {
   consumePreNavigationPresentationCapture,
   getOrderedRecentChatIds,
   getVisibleTabCapacity,
+  getVisibleWorkspaceTabCount,
   matchesPreNavigationPresentationCapture,
   getFallbackChatIdAfterClose,
+  getChatWorkspaceTabs,
   groupChatIdsByApp,
+  isIntraWorkspaceFocusChange,
+  isIntraWorkspaceNavigation,
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
   restoreLocalStorageSnapshot,
@@ -128,6 +132,8 @@ describe("ChatTabs helpers", () => {
       return callbacks.length;
     });
     const wrapper = document.createElement("div");
+    const pane = document.createElement("section");
+    pane.dataset.chatId = "7";
     wrapper.dataset.testid = "messages-list";
     const viewport = document.createElement("div");
     viewport.dataset.virtuosoScroller = "";
@@ -136,9 +142,10 @@ describe("ChatTabs helpers", () => {
       clientHeight: { value: 200 },
     });
     wrapper.append(viewport);
-    document.body.append(wrapper);
+    pane.append(wrapper);
+    document.body.append(pane);
 
-    restoreMessagesScrollTop(300, () => true);
+    restoreMessagesScrollTop(300, () => true, 7);
     callbacks.shift()?.(0);
     expect(viewport.scrollTop).toBe(300);
 
@@ -147,13 +154,64 @@ describe("ChatTabs helpers", () => {
     callbacks.shift()?.(2);
     callbacks.shift()?.(3);
     expect(viewport.scrollTop).toBe(300);
-    wrapper.remove();
+    pane.remove();
+  });
+
+  it("restores scroll only in the pane that owns the chat", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const makePane = (chatId: number, scrollTop: number) => {
+      const pane = document.createElement("section");
+      pane.dataset.chatId = String(chatId);
+      const messages = document.createElement("div");
+      messages.dataset.testid = "messages-list";
+      Object.defineProperties(messages, {
+        scrollHeight: { value: 1_000 },
+        clientHeight: { value: 200 },
+      });
+      messages.scrollTop = scrollTop;
+      pane.append(messages);
+      document.body.append(pane);
+      return { pane, messages };
+    };
+    const first = makePane(7, 100);
+    const second = makePane(8, 600);
+
+    restoreMessagesScrollTop(250, () => true, 7);
+    callbacks.shift()?.(0);
+
+    expect(first.messages.scrollTop).toBe(250);
+    expect(second.messages.scrollTop).toBe(600);
+    first.pane.remove();
+    second.pane.remove();
   });
 
   it("reselects the active chat when navigation must return to the chat route", () => {
     expect(shouldSkipChatSelection(7, 7, "/chat")).toBe(true);
+    expect(shouldSkipChatSelection(7, 7, "/chat", true, false)).toBe(false);
+    expect(shouldSkipChatSelection(7, 7, "/chat", false, true)).toBe(false);
+    expect(shouldSkipChatSelection(7, 7, "/chat", true, true)).toBe(true);
     expect(shouldSkipChatSelection(7, 7, "/settings")).toBe(false);
     expect(shouldSkipChatSelection(7, 8, "/chat")).toBe(false);
+  });
+
+  it("creates workspace tabs only from explicit same-app membership", () => {
+    expect(
+      getChatWorkspaceTabs(
+        {
+          1: { visibleChatIds: [1, 2, 1, 99] },
+          2: { visibleChatIds: [3] },
+          3: { visibleChatIds: [] },
+        },
+        [chat(1, 1), chat(2, 1), chat(3, 2), chat(99, 2)],
+      ),
+    ).toEqual([
+      { appId: 1, chatIds: [1, 2] },
+      { appId: 2, chatIds: [3] },
+    ]);
   });
 
   it("captures the outgoing chat before route-driven presentation changes", () => {
@@ -180,6 +238,51 @@ describe("ChatTabs helpers", () => {
         "/chat",
         8,
       ),
+    ).toBe(false);
+  });
+
+  it("recognizes focus-only navigation inside one workspace", () => {
+    expect(
+      isIntraWorkspaceNavigation(
+        "/chat",
+        { appId: 1, workspace: true },
+        "/chat",
+        { appId: 1, workspace: true },
+      ),
+    ).toBe(true);
+    expect(
+      isIntraWorkspaceNavigation(
+        "/chat",
+        { appId: 1, workspace: true },
+        "/chat",
+        { appId: 2, workspace: true },
+      ),
+    ).toBe(false);
+
+    const chatsById = new Map([
+      [7, chat(7, 1)],
+      [8, chat(8, 1)],
+      [9, chat(9, 2)],
+    ]);
+    expect(
+      isIntraWorkspaceFocusChange({
+        isWorkspaceRoute: true,
+        workspaceAppId: 1,
+        previousChatId: 7,
+        selectedChatId: 8,
+        workspaces: { 1: { visibleChatIds: [7, 8] } },
+        chatsById,
+      }),
+    ).toBe(true);
+    expect(
+      isIntraWorkspaceFocusChange({
+        isWorkspaceRoute: true,
+        workspaceAppId: 1,
+        previousChatId: 7,
+        selectedChatId: 9,
+        workspaces: { 1: { visibleChatIds: [7, 9] } },
+        chatsById,
+      }),
     ).toBe(false);
   });
 
@@ -291,7 +394,7 @@ describe("ChatTabs helpers", () => {
   it("promotes a non-visible selected tab and bumps the last visible tab", () => {
     const orderedIds = [4, 2, 3, 1];
     const nextIds = applySelectionToOrderedChatIds(orderedIds, 1, 3);
-    expect(nextIds).toEqual([1, 4, 2, 3]);
+    expect(nextIds).toEqual([4, 2, 1, 3]);
   });
 
   it("reorders only visible tabs during drag", () => {
@@ -310,9 +413,27 @@ describe("ChatTabs helpers", () => {
     expect(overflowTabs.map((c) => c.id)).toEqual([3, 4]);
   });
 
+  it("keeps the selected chat visible while its persisted order updates", () => {
+    const orderedChats = [chat(1), chat(2), chat(3), chat(4)];
+    const { visibleTabs, overflowTabs } = partitionChatsByVisibleCount(
+      orderedChats,
+      2,
+      4,
+    );
+    expect(visibleTabs.map((c) => c.id)).toEqual([1, 4]);
+    expect(overflowTabs.map((c) => c.id)).toEqual([2, 3]);
+  });
+
   it("uses overflow-aware capacity with min width constraints", () => {
     // 3 tabs fit at 140px each (+ gaps), but with overflow trigger reserved only 2 fit.
     expect(getVisibleTabCapacity(430, 4, 140)).toBe(2);
+  });
+
+  it("caps visible workspaces and reserves a regular chat slot", () => {
+    expect(getVisibleWorkspaceTabCount(2, 2, 4)).toBe(1);
+    expect(getVisibleWorkspaceTabCount(4, 3, 8)).toBe(1);
+    expect(getVisibleWorkspaceTabCount(1, 2, 4)).toBe(0);
+    expect(getVisibleWorkspaceTabCount(2, 2, 0)).toBe(1);
   });
 
   it("selects right-adjacent tab when closing active middle tab", () => {

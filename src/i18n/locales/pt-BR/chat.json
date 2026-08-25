@@ -370,5 +370,17 @@
   "guide": "Guia",
   "agentModeActivated": "Modo Agente Ativado",
   "agentModeTip": "Dica: Crie um novo chat para dar ao agente um contexto limpo para melhores resultados.",
-  "neverShowAgain": "Não mostrar novamente"
+  "neverShowAgain": "Não mostrar novamente",
+  "addToWorkspace": "Adicionar ao espaço de trabalho",
+  "removeFromWorkspace": "Remover do espaço de trabalho",
+  "removeFromWorkspaceNamed": "Remover {{title}} do espaço de trabalho",
+  "workspaceChatCount_one": "{{count}} chat no espaço de trabalho",
+  "workspaceChatCount_other": "{{count}} chats no espaço de trabalho",
+  "workspaceTabName": "Espaço de trabalho",
+  "workspaceTabDetails_one": "{{appName}} · {{count}} chat",
+  "workspaceTabDetails_other": "{{appName}} · {{count}} chats",
+  "workspaceTabAria_one": "Espaço de trabalho de {{appName}}, {{count}} chat",
+  "workspaceTabAria_other": "Espaço de trabalho de {{appName}}, {{count}} chats",
+  "openFocusedChat": "Abrir chat em foco",
+  "focusedChatAria": "{{title}}, em foco"
 }

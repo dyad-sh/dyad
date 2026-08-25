@@ -13,8 +13,12 @@ import { usePlanDocument } from "@/hooks/usePlanDocument";
  *
  * @param options.enabled - Extra condition to suppress the query (e.g. while plan is streaming). Defaults to true.
  */
-export function usePlan({ enabled = true }: { enabled?: boolean } = {}) {
-  const chatId = useAtomValue(selectedChatIdAtom);
+export function usePlan({
+  enabled = true,
+  chatId: chatIdOverride,
+}: { enabled?: boolean; chatId?: number } = {}) {
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const chatId = chatIdOverride ?? selectedChatId ?? undefined;
   const appId = useAtomValue(selectedAppIdAtom);
   const planDocument = usePlanDocument(chatId);
   const setPlanState = useSetAtom(planStateAtom);

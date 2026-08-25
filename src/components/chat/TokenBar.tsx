@@ -13,8 +13,8 @@ import {
   AlignLeft,
   ExternalLink,
 } from "lucide-react";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
-import { useAtom } from "jotai";
+import { chatInputValuesByIdAtom } from "@/atoms/chatAtoms";
+import { useAtomValue } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 
@@ -23,7 +23,8 @@ interface TokenBarProps {
 }
 
 export function TokenBar({ chatId }: TokenBarProps) {
-  const [inputValue] = useAtom(chatInputValueAtom);
+  const inputValuesById = useAtomValue(chatInputValuesByIdAtom);
+  const inputValue = chatId ? (inputValuesById.get(chatId) ?? "") : "";
   const { settings } = useSettings();
   const { result, error } = useCountTokens(chatId ?? null, inputValue);
 

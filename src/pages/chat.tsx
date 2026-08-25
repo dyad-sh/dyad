@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   PanelGroup,
   Panel,
@@ -9,27 +9,73 @@ import { ChatPanel } from "../components/ChatPanel";
 import { PreviewPanel } from "../components/preview_panel/PreviewPanel";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { isPreviewOpenAtom, isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
+import {
+  chatWorkspaceByAppIdAtom,
+  getVisibleChatViewIds,
+  getVisibleWorkspaceChatIds,
+  hideChatFromWorkspaceAtom,
+  pruneChatWorkspaceAtom,
+} from "@/atoms/chatWorkspaceAtoms";
+import { Button } from "@/components/ui/button";
+import { PanelsTopLeft } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { shouldFocusWorkspacePane } from "./chatWorkspaceFocus";
 
 const DEFAULT_CHAT_PANEL_SIZE = 50;
 
 export default function ChatPage() {
-  const { id: chatId, appId: routeAppId } = useSearch({ from: "/chat" });
+  const { t } = useTranslation("chat");
+  const {
+    id: chatId,
+    appId: routeAppId,
+    workspace: isWorkspaceRoute = false,
+  } = useSearch({ from: "/chat" });
   const navigate = useNavigate();
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const store = useStore();
   const [isResizing, setIsResizing] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+  const workspaces = useAtomValue(chatWorkspaceByAppIdAtom);
+  const hideChatFromWorkspace = useSetAtom(hideChatFromWorkspaceAtom);
+  const pruneChatWorkspace = useSetAtom(pruneChatWorkspaceAtom);
+  const validChatIds = useMemo(
+    () => new Set(chats.map((chat) => chat.id)),
+    [chats],
+  );
+  const workspaceChatIds = useMemo(
+    () =>
+      getVisibleWorkspaceChatIds(
+        selectedAppId === null
+          ? []
+          : (workspaces[selectedAppId]?.visibleChatIds ?? []),
+        validChatIds,
+      ),
+    [selectedAppId, validChatIds, workspaces],
+  );
+  const isWorkspaceView = isWorkspaceRoute && workspaceChatIds.length > 0;
+  const visibleChatIds = useMemo(
+    () =>
+      getVisibleChatViewIds({
+        workspaceChatIds,
+        focusedChatId: chatId,
+        validChatIds,
+        isWorkspaceView,
+      }),
+    [chatId, isWorkspaceView, validChatIds, workspaceChatIds],
+  );
+  const isMultiChatWorkspace = isWorkspaceView && workspaceChatIds.length > 1;
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
   const selectedAppIdRef = useRef(selectedAppId);
@@ -44,12 +90,37 @@ export default function ChatPage() {
   }, [chatId, setSelectedChatId]);
 
   useEffect(() => {
+    if (selectedAppId === null || loading) return;
+    pruneChatWorkspace({
+      appId: selectedAppId,
+      validChatIds,
+    });
+  }, [loading, pruneChatWorkspace, selectedAppId, validChatIds]);
+
+  useEffect(() => {
     if (chatId || loading) {
       return;
     }
 
     if (!selectedAppId) {
       navigate({ to: "/", replace: true });
+      return;
+    }
+
+    if (routeAppId && routeAppId !== selectedAppId) {
+      return;
+    }
+
+    if (isWorkspaceRoute && workspaceChatIds.length > 0) {
+      navigate({
+        to: "/chat",
+        search: {
+          id: workspaceChatIds[0],
+          appId: selectedAppId,
+          workspace: true,
+        },
+        replace: true,
+      });
       return;
     }
 
@@ -70,18 +141,28 @@ export default function ChatPage() {
       search: { appId: selectedAppId },
       replace: true,
     });
-  }, [chatId, chats, loading, navigate, selectedAppId, setSelectedAppId]);
+  }, [
+    chatId,
+    chats,
+    isWorkspaceRoute,
+    loading,
+    navigate,
+    routeAppId,
+    selectedAppId,
+    setSelectedAppId,
+    workspaceChatIds,
+  ]);
 
   useEffect(() => {
-    if (!chatId) {
-      return;
-    }
-
     if (routeAppId) {
       if (routeAppId !== selectedAppIdRef.current) {
         selectedAppIdRef.current = routeAppId;
         setSelectedAppId(routeAppId);
       }
+      return;
+    }
+
+    if (!chatId) {
       return;
     }
 
@@ -109,6 +190,64 @@ export default function ChatPage() {
   }, [chatId, routeAppId, chats, setSelectedAppId]);
 
   useEffect(() => {
+    if (
+      !isWorkspaceRoute ||
+      chatId === undefined ||
+      loading ||
+      selectedAppId === null ||
+      (routeAppId !== undefined && routeAppId !== selectedAppId)
+    ) {
+      return;
+    }
+
+    if (workspaceChatIds.includes(chatId)) {
+      return;
+    }
+
+    const nextWorkspaceChatId = workspaceChatIds[0];
+    if (nextWorkspaceChatId !== undefined) {
+      setSelectedChatId(nextWorkspaceChatId);
+      navigate({
+        to: "/chat",
+        search: {
+          id: nextWorkspaceChatId,
+          appId: selectedAppId,
+          workspace: true,
+        },
+        replace: true,
+      });
+      return;
+    }
+
+    const fallbackChatId = validChatIds.has(chatId) ? chatId : chats[0]?.id;
+    if (fallbackChatId !== undefined) {
+      navigate({
+        to: "/chat",
+        search: { id: fallbackChatId, appId: selectedAppId },
+        replace: true,
+      });
+      return;
+    }
+
+    navigate({
+      to: "/app-details",
+      search: { appId: selectedAppId },
+      replace: true,
+    });
+  }, [
+    chatId,
+    chats,
+    isWorkspaceRoute,
+    loading,
+    navigate,
+    routeAppId,
+    selectedAppId,
+    setSelectedChatId,
+    validChatIds,
+    workspaceChatIds,
+  ]);
+
+  useEffect(() => {
     if (isPreviewOpen) {
       ref.current?.expand();
     } else {
@@ -117,6 +256,64 @@ export default function ChatPage() {
   }, [isPreviewOpen]);
   const ref = useRef<ImperativePanelHandle>(null);
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
+
+  const focusChat = (nextChatId: number, target: EventTarget | null) => {
+    if (
+      target instanceof Element &&
+      target.closest("[data-workspace-remove]")
+    ) {
+      return;
+    }
+    if (nextChatId === chatId || selectedAppId === null) return;
+    store.set(selectedChatIdAtom, nextChatId);
+    void navigate({
+      to: "/chat",
+      search: { id: nextChatId, appId: selectedAppId, workspace: true },
+      replace: true,
+    });
+  };
+
+  const keyboardFocusIntentRef = useRef(false);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") keyboardFocusIntentRef.current = true;
+    };
+    const clearIntent = (event: KeyboardEvent) => {
+      if (event.key === "Tab") keyboardFocusIntentRef.current = false;
+    };
+    const clearOnBlur = () => {
+      keyboardFocusIntentRef.current = false;
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", clearIntent, true);
+    window.addEventListener("blur", clearOnBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", clearIntent, true);
+      window.removeEventListener("blur", clearOnBlur);
+    };
+  }, []);
+
+  const removeChatFromWorkspace = (removedChatId: number) => {
+    if (selectedAppId === null) return;
+    const nextWorkspaceChatId = workspaceChatIds.find(
+      (id) => id !== removedChatId,
+    );
+    hideChatFromWorkspace({ appId: selectedAppId, chatId: removedChatId });
+
+    if (removedChatId === chatId && nextWorkspaceChatId !== undefined) {
+      store.set(selectedChatIdAtom, nextWorkspaceChatId);
+      void navigate({
+        to: "/chat",
+        search: {
+          id: nextWorkspaceChatId,
+          appId: selectedAppId,
+          workspace: true,
+        },
+        replace: true,
+      });
+    }
+  };
 
   // Keep chat panel size in sync with hidden state (from toolbar button / other views)
   useEffect(() => {
@@ -149,20 +346,139 @@ export default function ChatPage() {
         minSize={1}
         className={cn(!isResizing && "transition-all duration-100 ease-in-out")}
       >
-        <div className="h-full w-full">
+        <div className="flex h-full w-full flex-col">
           {!isChatPanelHidden && (
-            <ChatPanel
-              chatId={chatId}
-              isPreviewOpen={isPreviewOpen}
-              onTogglePreview={() => {
-                setIsPreviewOpen(!isPreviewOpen);
-                if (isPreviewOpen) {
-                  ref.current?.collapse();
-                } else {
-                  ref.current?.expand();
-                }
-              }}
-            />
+            <>
+              {isWorkspaceView && (
+                <div className="flex h-9 shrink-0 items-center justify-between border-b bg-muted/40 px-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <PanelsTopLeft className="h-3.5 w-3.5" />
+                    <span>
+                      {t("workspaceChatCount", {
+                        count: workspaceChatIds.length,
+                      })}
+                    </span>
+                  </div>
+                  {isMultiChatWorkspace && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        if (selectedAppId === null || chatId === undefined)
+                          return;
+                        void navigate({
+                          to: "/chat",
+                          search: { id: chatId, appId: selectedAppId },
+                        });
+                      }}
+                    >
+                      {t("openFocusedChat")}
+                    </Button>
+                  )}
+                </div>
+              )}
+              <div
+                className={cn(
+                  "min-h-0 flex-1 overflow-hidden",
+                  isMultiChatWorkspace &&
+                    "scrollbar-on-hover grid auto-rows-[minmax(320px,1fr)] grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-1 overflow-auto bg-border p-1",
+                )}
+                data-testid="chat-workspace"
+              >
+                {visibleChatIds.length === 0 ? (
+                  <section
+                    className="relative h-full min-h-0 overflow-hidden bg-background"
+                    data-testid="chat-workspace-empty"
+                  >
+                    <ChatPanel
+                      chatId={undefined}
+                      isPreviewOpen={isPreviewOpen}
+                      onTogglePreview={() => {
+                        setIsPreviewOpen(!isPreviewOpen);
+                        if (isPreviewOpen) {
+                          ref.current?.collapse();
+                        } else {
+                          ref.current?.expand();
+                        }
+                      }}
+                    />
+                  </section>
+                ) : (
+                  visibleChatIds.map((workspaceChatId) => {
+                    const isFocused = workspaceChatId === chatId;
+                    const workspaceChat = chats.find(
+                      (chat) => chat.id === workspaceChatId,
+                    );
+                    const chatLabel =
+                      workspaceChat?.title?.trim() || `Chat ${workspaceChatId}`;
+                    return (
+                      <section
+                        key={workspaceChatId}
+                        aria-label={
+                          isFocused
+                            ? t("focusedChatAria", { title: chatLabel })
+                            : chatLabel
+                        }
+                        data-testid={`chat-workspace-pane-${workspaceChatId}`}
+                        data-chat-id={workspaceChatId}
+                        className={cn(
+                          "relative min-h-0 overflow-hidden bg-background",
+                          !isMultiChatWorkspace && "h-full",
+                          isMultiChatWorkspace && "rounded-md border-2",
+                          isFocused ? "border-primary" : "border-transparent",
+                        )}
+                        onPointerDownCapture={(event) =>
+                          shouldFocusWorkspacePane("pointer", false) &&
+                          focusChat(workspaceChatId, event.target)
+                        }
+                        onClickCapture={(event) => {
+                          if (
+                            event.detail === 0 &&
+                            shouldFocusWorkspacePane("activation", false)
+                          ) {
+                            focusChat(workspaceChatId, event.target);
+                          }
+                        }}
+                        onFocusCapture={(event) => {
+                          if (
+                            shouldFocusWorkspacePane(
+                              "focus",
+                              keyboardFocusIntentRef.current,
+                            )
+                          ) {
+                            focusChat(workspaceChatId, event.target);
+                          }
+                        }}
+                      >
+                        <ChatPanel
+                          chatId={workspaceChatId}
+                          isFocused={isFocused}
+                          onRemoveFromWorkspace={
+                            isMultiChatWorkspace && selectedAppId !== null
+                              ? () => removeChatFromWorkspace(workspaceChatId)
+                              : undefined
+                          }
+                          removeFromWorkspaceLabel={t(
+                            "removeFromWorkspaceNamed",
+                            { title: chatLabel },
+                          )}
+                          isPreviewOpen={isPreviewOpen}
+                          onTogglePreview={() => {
+                            setIsPreviewOpen(!isPreviewOpen);
+                            if (isPreviewOpen) {
+                              ref.current?.collapse();
+                            } else {
+                              ref.current?.expand();
+                            }
+                          }}
+                        />
+                      </section>
+                    );
+                  })
+                )}
+              </div>
+            </>
           )}
         </div>
       </Panel>

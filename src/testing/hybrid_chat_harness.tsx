@@ -248,6 +248,8 @@ export interface MountOptions {
   chatId?: number;
   /** App to select. Default: the harness's default app. */
   appId?: number;
+  /** Render multiple real ChatPanels in one workspace-like grid. */
+  workspaceChatIds?: number[];
   /** Install the same main->renderer listeners AppRoot registers. Default true. */
   wireAppEvents?: boolean;
   /** Render the plan preview panel alongside ChatPanel for plan-mode tests. */
@@ -791,6 +793,26 @@ export async function setupHybridChatHarness(
         validateSearch: chatSearchSchema,
         component: function HybridChatRoute() {
           const search = chatTestRoute.useSearch();
+          if (opts.workspaceChatIds && opts.workspaceChatIds.length > 0) {
+            return (
+              <div data-testid="chat-workspace">
+                {opts.workspaceChatIds.map((workspaceChatId) => (
+                  <section
+                    key={workspaceChatId}
+                    data-testid={`chat-workspace-pane-${workspaceChatId}`}
+                    data-chat-id={workspaceChatId}
+                  >
+                    <ChatPanel
+                      chatId={workspaceChatId}
+                      isFocused={workspaceChatId === search.id}
+                      isPreviewOpen={false}
+                      onTogglePreview={() => {}}
+                    />
+                  </section>
+                ))}
+              </div>
+            );
+          }
           return (
             <>
               <ChatPanel
@@ -1201,9 +1223,12 @@ export async function setupHybridChatHarness(
     ): Promise<TypeInChatResult> => {
       seedChatInput(text, opts);
 
-      const sendButton = await screen.findByLabelText(
-        /^(sendMessage|Send message)$/,
+      const pane = document.querySelector<HTMLElement>(
+        `[data-chat-id="${opts.chatId ?? nodeHarness.chatId}"]`,
       );
+      const sendButton = pane
+        ? await within(pane).findByLabelText(/^(sendMessage|Send message)$/)
+        : await screen.findByLabelText(/^(sendMessage|Send message)$/);
       await waitFor(() => {
         expect((sendButton as HTMLButtonElement).hasAttribute("disabled")).toBe(
           false,
@@ -1220,7 +1245,12 @@ export async function setupHybridChatHarness(
       opts: MountOptions = {},
     ): Promise<void> => {
       seedChatInput(text, opts);
-      const container = screen.getByTestId("chat-input-container");
+      const pane = document.querySelector<HTMLElement>(
+        `[data-chat-id="${opts.chatId ?? nodeHarness.chatId}"]`,
+      );
+      const container = pane
+        ? within(pane).getByTestId("chat-input-container")
+        : screen.getByTestId("chat-input-container");
       const editable = container.querySelector('[contenteditable="true"]');
       if (!editable) {
         throw new Error(

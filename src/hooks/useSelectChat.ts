@@ -27,12 +27,14 @@ export function useSelectChat() {
       preserveTabOrder = false,
       prefillInput,
       scrollToBottom = false,
+      workspace = false,
     }: {
       chatId: number;
       appId: number;
       preserveTabOrder?: boolean;
       prefillInput?: string;
       scrollToBottom?: boolean;
+      workspace?: boolean;
     }) => {
       if (scrollToBottom) {
         setScrollToBottomRequestedChatIds((prev) => {
@@ -50,7 +52,9 @@ export function useSelectChat() {
       }
       const navigationResult = navigate({
         to: "/chat",
-        search: { id: chatId, appId },
+        search: workspace
+          ? { id: chatId, appId, workspace: true }
+          : { id: chatId, appId },
       });
 
       if (prefillInput !== undefined) {

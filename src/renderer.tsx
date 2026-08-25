@@ -45,6 +45,10 @@ import {
   initializeChatTabSessionStorageAtom,
 } from "./atoms/chatAtoms";
 import {
+  initializeChatWorkspaceStorageAtom,
+  pruneChatWorkspaceWindowSessions,
+} from "./atoms/chatWorkspaceAtoms";
+import {
   configureChatTabWindowSession,
   promoteMostRecentChatTabSession,
   pruneChatTabWindowSessions,
@@ -254,7 +258,12 @@ function RendererServices() {
               window.localStorage,
               bootstrap.restorableWindowSessionIds,
             );
+            pruneChatWorkspaceWindowSessions(
+              window.localStorage,
+              bootstrap.restorableWindowSessionIds,
+            );
             store.set(initializeChatTabSessionStorageAtom);
+            store.set(initializeChatWorkspaceStorageAtom);
           } catch (error) {
             // Browser storage is optional presentation state. A denied or full
             // localStorage must not turn a successful main-process bootstrap

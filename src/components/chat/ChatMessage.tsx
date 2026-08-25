@@ -23,7 +23,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { useChatStreamHasPreview } from "@/hooks/useChatStream";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -106,7 +106,8 @@ const ChatMessage = ({
   isLastMessage,
   isCancelledPrompt,
 }: ChatMessageProps) => {
-  const { isStreaming } = useStreamChat();
+  const paneChatId = usePaneChatId();
+  const { isStreaming } = useStreamChat({ chatId: paneChatId });
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
   const {
@@ -123,8 +124,7 @@ const ChatMessage = ({
   // Sidecar tool-input XML preview lives outside message.content. Subscribe
   // to its equality-gated boolean so non-last messages only re-render on the
   // empty/non-empty transition, not on every preview chunk.
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const hasPreviewForChat = useChatStreamHasPreview(selectedChatId);
+  const hasPreviewForChat = useChatStreamHasPreview(paneChatId ?? null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const hasStreamingPreview =
     message.role === "assistant" &&
@@ -213,14 +213,14 @@ const ChatMessage = ({
     !isCancelled;
 
   const handleRestoreToMessage = (restoreCodebase: boolean) => {
-    if (appId == null || selectedChatId == null) {
+    if (appId == null || paneChatId == null) {
       return;
     }
     setShowRestoreConfirm(false);
     sendPreviewEvent({
       type: "RESTORE_TO_MESSAGE",
       appId,
-      chatId: selectedChatId,
+      chatId: paneChatId,
       messageId: message.id,
       restoreCodebase,
     });
@@ -405,9 +405,9 @@ const ChatMessage = ({
                 </div>
               </div>
             ) : null}
-            {message.role === "assistant" && selectedChatId != null && (
+            {message.role === "assistant" && paneChatId != null && (
               <SubagentTeamCard
-                chatId={selectedChatId}
+                chatId={paneChatId}
                 messageId={message.id}
                 rootIsStreaming={isLastMessage && isStreaming}
                 showReviewAction={isLastMessage}

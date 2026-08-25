@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { appBlueprintStateAtom } from "@/atoms/appBlueprintAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePaneChatId } from "./ChatPaneContext";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useTemplates } from "@/hooks/useTemplates";
@@ -62,7 +62,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
   node,
 }) => {
   const props = node.properties;
-  const chatId = useAtomValue(selectedChatIdAtom);
+  const chatId = usePaneChatId();
   const appBlueprintState = useAtomValue(appBlueprintStateAtom);
   const setAppBlueprintState = useSetAtom(appBlueprintStateAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);

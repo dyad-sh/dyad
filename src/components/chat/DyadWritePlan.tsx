@@ -5,6 +5,7 @@ import { previewModeAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
+import { usePaneChatId } from "./ChatPaneContext";
 
 interface DyadWritePlanProps {
   node: {
@@ -23,11 +24,15 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const chatId = usePaneChatId();
 
   // Consider in progress if state is pending OR complete is explicitly "false"
   const isInProgress = state === "pending" || complete === "false";
 
-  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
+  const { savedPlan, hasPlanInMemory } = usePlan({
+    enabled: !isInProgress,
+    chatId,
+  });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
 

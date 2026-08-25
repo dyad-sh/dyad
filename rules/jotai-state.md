@@ -54,6 +54,11 @@ notification, reopen, and tab actions must not bypass the transition. Scope
 delayed DOM restoration (for example scroll retries) to the selected entity and
 a generation token so stale callbacks cannot overwrite a later selection.
 
+Repeated entity panes must also isolate DOM focus: restore focus through a ref
+owned by the pane instead of `document.querySelector`, and do not let
+programmatic descendant focus change router/global selection. Gate pane focus
+transitions on explicit pointer, keyboard-navigation, or activation intent.
+
 ## Entity Scoping
 
 When state belongs to an entity, key it by that entity id instead of using a
@@ -90,6 +95,11 @@ Components should usually read `currentTestSpecsAtom` rather than repeat
 
 - Use write-only atoms or domain helper hooks for repeated mutations such as
   append, clear, set-for-id, or remove-for-id.
+- When supplying a custom synchronous storage to `atomWithStorage`, declare its
+  structural `getItem`/`setItem`/`removeItem` type locally. `SyncStorage` appears
+  in Jotai's internal declarations but is not exported by the public
+  `jotai/vanilla/utils` barrel, and importing it there makes `tsgo` select the
+  async overload and spread `Promise<Value>` errors through atom consumers.
 - Keep high-frequency state, such as logs, separate from slower state so a log
   append does not rerender consumers of unrelated preview metadata.
 - Combine fields only when they form one domain concept and are updated

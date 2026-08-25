@@ -5,6 +5,7 @@ import {
   GitBranch,
   Info,
   SquareTerminal,
+  X,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -20,11 +21,10 @@ import {
 } from "../ui/tooltip";
 import { ipc } from "@/ipc/types";
 import { useRouter } from "@tanstack/react-router";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useChats } from "@/hooks/useChats";
 import { showError, showSuccess } from "@/lib/toast";
-import { useEffect } from "react";
+import { useEffect, type Ref } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
@@ -36,6 +36,10 @@ import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import { cn } from "@/lib/utils";
 
 interface ChatHeaderProps {
+  chatId?: number;
+  onRemoveFromWorkspace?: () => void;
+  removeFromWorkspaceLabel?: string;
+  terminalToggleButtonRef?: Ref<HTMLButtonElement>;
   isVersionPaneOpen: boolean;
   isPreviewOpen: boolean;
   onTogglePreview: () => void;
@@ -43,6 +47,10 @@ interface ChatHeaderProps {
 }
 
 export function ChatHeader({
+  chatId,
+  onRemoveFromWorkspace,
+  removeFromWorkspaceLabel,
+  terminalToggleButtonRef,
   isVersionPaneOpen,
   isPreviewOpen,
   onTogglePreview,
@@ -52,13 +60,12 @@ export function ChatHeader({
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
-  const [selectedChatId] = useAtom(selectedChatIdAtom);
   const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
     terminalOpenByChatIdAtom,
   );
   const { invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
-  const { isStreaming } = useStreamChat();
+  const { isStreaming } = useStreamChat({ chatId });
   const {
     branchInfo,
     isLoading: branchInfoLoading,
@@ -77,7 +84,7 @@ export function ChatHeader({
     if (appId) {
       refetchBranchInfo();
     }
-  }, [appId, selectedChatId, isStreaming, refetchBranchInfo]);
+  }, [appId, chatId, isStreaming, refetchBranchInfo]);
 
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
@@ -112,18 +119,18 @@ export function ChatHeader({
   const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
 
   const currentBranchName = branchInfo?.branch;
-  const isTerminalOpen = selectedChatId
-    ? (terminalOpenByChatId.get(selectedChatId) ?? false)
+  const isTerminalOpen = chatId
+    ? (terminalOpenByChatId.get(chatId) ?? false)
     : false;
-  const isTerminalDisabled = !appId || !selectedChatId;
+  const isTerminalDisabled = !appId || !chatId;
 
   const handleToggleTerminal = () => {
-    if (!appId || !selectedChatId) return;
+    if (!appId || !chatId) return;
 
     const nextOpen = !isTerminalOpen;
     setTerminalOpenByChatId((prev) => {
       const next = new Map(prev);
-      next.set(selectedChatId, nextOpen);
+      next.set(chatId, nextOpen);
       return next;
     });
   };
@@ -234,12 +241,13 @@ export function ChatHeader({
           </Button>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
+                    ref={terminalToggleButtonRef}
                     type="button"
                     data-testid="toggle-terminal-button"
                     onClick={handleToggleTerminal}
@@ -273,6 +281,28 @@ export function ChatHeader({
               <PanelRightOpen size={20} />
             )}
           </button>
+          {onRemoveFromWorkspace && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      data-workspace-remove
+                      onClick={onRemoveFromWorkspace}
+                      aria-label={
+                        removeFromWorkspaceLabel ?? t("removeFromWorkspace")
+                      }
+                      className="shrink-0 cursor-pointer rounded-md p-2 hover:bg-(--background-lightest)"
+                    />
+                  }
+                >
+                  <X size={20} />
+                </TooltipTrigger>
+                <TooltipContent>{t("removeFromWorkspace")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
     </div>

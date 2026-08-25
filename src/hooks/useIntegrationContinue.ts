@@ -15,8 +15,9 @@ import {
  * Shared continue logic for the integration setup flow. Request lifecycle
  * reads and responses go through the generic user-input read-model adapter.
  */
-export function useIntegrationContinue() {
-  const chatId = useAtomValue(selectedChatIdAtom);
+export function useIntegrationContinue(chatIdOverride?: number) {
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const chatId = chatIdOverride ?? selectedChatId ?? undefined;
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const store = useStore();
   const userInputReadModel = getUserInputReadModel({ store });

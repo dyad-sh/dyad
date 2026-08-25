@@ -60,4 +60,22 @@ describe("useSelectChat", () => {
       new Set([202]),
     );
   });
+
+  it("opens workspace routes only when explicitly requested", () => {
+    const { wrapper } = makeHarness();
+    const { result } = renderHook(() => useSelectChat(), { wrapper });
+
+    act(() => {
+      result.current.selectChat({
+        chatId: 101,
+        appId: 7,
+        workspace: true,
+      });
+    });
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/chat",
+      search: { id: 101, appId: 7, workspace: true },
+    });
+  });
 });

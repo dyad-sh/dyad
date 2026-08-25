@@ -25,7 +25,7 @@ describe("PreviewErrorBanner", () => {
       />,
     );
 
-    expect(screen.getByText(/Tip:/)).toBeTruthy();
+    expect(screen.getByText("Try restarting the app.")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Fix error with AI" }),
     ).toBeTruthy();
@@ -35,8 +35,8 @@ describe("PreviewErrorBanner", () => {
     );
 
     expect(screen.getByTestId("preview-error-banner")).toBeTruthy();
-    expect(screen.getByText("Error Line 6 error")).toBeTruthy();
-    expect(screen.queryByText(/Tip:/)).toBeNull();
+    expect(screen.getByText("Line 6 error")).toBeTruthy();
+    expect(screen.queryByText("Try restarting the app.")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Fix error with AI" }),
     ).toBeNull();
@@ -45,7 +45,7 @@ describe("PreviewErrorBanner", () => {
       screen.getByRole("button", { name: "Expand error banner" }),
     );
 
-    expect(screen.getByText(/Tip:/)).toBeTruthy();
+    expect(screen.getByText("Try restarting the app.")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Fix error with AI" }),
     ).toBeTruthy();
@@ -78,10 +78,9 @@ describe("PreviewErrorBanner", () => {
     );
 
     expect(screen.queryByText(/Stack trace/)).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Show full error message/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Show details" }));
 
     expect(screen.getByText(/Stack trace/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hide details" })).toBeTruthy();
   });
 });

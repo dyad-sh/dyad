@@ -1,8 +1,14 @@
 import { useState } from "react";
-import { ChevronRight, Lightbulb, Sparkles, X } from "lucide-react";
+import {
+  CircleAlert,
+  ChevronDown,
+  ChevronUp,
+  Lightbulb,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { cn } from "@/lib/utils";
 
 interface PreviewErrorBannerProps {
   error:
@@ -21,7 +27,7 @@ export function PreviewErrorBanner({
   onAIFix,
 }: PreviewErrorBannerProps) {
   const [isBannerCollapsed, setIsBannerCollapsed] = useState(false);
-  const [isErrorMessageCollapsed, setIsErrorMessageCollapsed] = useState(true);
+  const [areErrorDetailsVisible, setAreErrorDetailsVisible] = useState(false);
   const { isStreaming } = useStreamChat();
 
   if (!error) return null;
@@ -30,133 +36,115 @@ export function PreviewErrorBanner({
   const isInternalDyadError = error.source === "dyad-app";
   const isSyncError = error.source === "dyad-sync";
 
-  const getTruncatedError = () => {
-    const firstLine = error.message.split("\n")[0];
-    const snippetLength = 250;
-    const snippet = error.message.substring(0, snippetLength);
-    return firstLine.length < snippet.length
-      ? firstLine
-      : snippet + (snippet.length === snippetLength ? "..." : "");
-  };
+  const firstLine = error.message.split("\n")[0];
+  const summaryWithoutErrorPrefix = firstLine.replace(/^Error:?\s+/i, "");
+  const errorSummary = summaryWithoutErrorPrefix || firstLine;
 
   return (
     <div
-      className="absolute top-2 left-2 right-2 z-10 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md shadow-sm p-2"
+      className="absolute top-2 left-2 right-2 z-10 rounded-md border border-red-200 bg-red-50 p-3 shadow-sm dark:border-red-800 dark:bg-red-950"
       data-testid="preview-error-banner"
     >
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Dismiss error banner"
-        className="absolute top-1 left-1 p-1 hover:bg-red-100 dark:hover:bg-red-900 rounded"
-      >
-        <X size={14} className="text-red-500 dark:text-red-400" />
-      </button>
-      <button
-        type="button"
-        onClick={() => setIsBannerCollapsed((collapsed) => !collapsed)}
-        aria-label={
-          isBannerCollapsed ? "Expand error banner" : "Collapse error banner"
-        }
-        aria-expanded={!isBannerCollapsed}
-        aria-controls="preview-error-banner-content"
-        className="absolute top-1 left-7 p-1 hover:bg-red-100 dark:hover:bg-red-900 rounded"
-        data-testid="preview-error-banner-toggle"
-      >
-        <ChevronRight
-          size={14}
-          className={cn(
-            "text-red-500 dark:text-red-400 transform transition-transform",
-            !isBannerCollapsed && "rotate-90",
-          )}
+      <div className="flex items-start gap-2">
+        <CircleAlert
+          aria-hidden="true"
+          size={16}
+          className="mt-0.5 shrink-0 text-red-600 dark:text-red-400"
         />
-      </button>
 
-      {(isInternalDyadError || isSyncError) && (
-        <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
-        </div>
-      )}
-
-      {isBannerCollapsed ? (
-        <div
-          className={cn(
-            "pl-12 pr-1 py-1 text-xs font-mono text-red-700 dark:text-red-300 truncate",
-            (isInternalDyadError || isSyncError) && "pr-32",
-          )}
-          title={error.message}
-        >
-          {getTruncatedError()}
-        </div>
-      ) : (
-        <div id="preview-error-banner-content">
-          {/* Error message in the middle */}
-          <div
-            className={cn(
-              "pl-12 pr-6 py-1 text-sm",
-              (isInternalDyadError || isSyncError) && "pt-6",
-            )}
-          >
-            <button
-              type="button"
-              className="w-full text-left text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
-              onClick={() =>
-                setIsErrorMessageCollapsed((collapsed) => !collapsed)
-              }
-              aria-label={
-                isErrorMessageCollapsed
-                  ? `Show full error message: ${getTruncatedError()}`
-                  : `Hide full error message: ${error.message}`
-              }
-              aria-expanded={!isErrorMessageCollapsed}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <p
+              className="truncate text-sm font-medium text-red-800 dark:text-red-200"
+              title={error.message}
             >
-              <ChevronRight
-                size={14}
-                className={cn(
-                  "mt-0.5 flex-shrink-0 transform transition-transform",
-                  !isErrorMessageCollapsed && "rotate-90",
-                )}
-              />
-
-              <span>
-                {isErrorMessageCollapsed ? getTruncatedError() : error.message}
+              {errorSummary}
+            </p>
+            {(isInternalDyadError || isSyncError) && (
+              <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300">
+                {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
               </span>
-            </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setIsBannerCollapsed((collapsed) => !collapsed)}
+            aria-label={
+              isBannerCollapsed
+                ? "Expand error banner"
+                : "Collapse error banner"
+            }
+            aria-expanded={!isBannerCollapsed}
+            aria-controls="preview-error-banner-content"
+            className="rounded p-1 text-red-500 transition-colors hover:bg-red-100 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900 dark:hover:text-red-200"
+            data-testid="preview-error-banner-toggle"
+          >
+            {isBannerCollapsed ? (
+              <ChevronDown aria-hidden="true" size={14} />
+            ) : (
+              <ChevronUp aria-hidden="true" size={14} />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss error banner"
+            className="rounded p-1 text-red-500 transition-colors hover:bg-red-100 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900 dark:hover:text-red-200"
+          >
+            <X aria-hidden="true" size={14} />
+          </button>
+        </div>
+      </div>
+
+      {!isBannerCollapsed && (
+        <div id="preview-error-banner-content" className="mt-2 pl-6">
+          <button
+            type="button"
+            className="text-xs font-medium text-red-700 underline-offset-2 hover:text-red-900 hover:underline dark:text-red-300 dark:hover:text-red-100"
+            onClick={() =>
+              setAreErrorDetailsVisible((detailsVisible) => !detailsVisible)
+            }
+            aria-expanded={areErrorDetailsVisible}
+          >
+            {areErrorDetailsVisible ? "Hide details" : "Show details"}
+          </button>
+
+          {areErrorDetailsVisible && (
+            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-red-700 dark:text-red-300">
+              {error.message}
+            </pre>
+          )}
+
+          <div className="mt-2 flex items-start gap-2 text-sm text-red-700 dark:text-red-200">
+            <Lightbulb
+              aria-hidden="true"
+              size={15}
+              className="mt-0.5 shrink-0 text-red-600 dark:text-red-300"
+            />
+            <span>
+              {isDockerError
+                ? "Make sure Docker Desktop is running and try restarting the app."
+                : isSyncError
+                  ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
+                  : isInternalDyadError
+                    ? "Try restarting the Dyad app or your computer."
+                    : "Try restarting the app."}
+            </span>
           </div>
 
-          {/* Tip message */}
-          <div className="mt-2 px-6">
-            <div className="relative p-2 bg-red-100 dark:bg-red-900 rounded-sm flex gap-1 items-center">
-              <div>
-                <Lightbulb
-                  size={16}
-                  className="text-red-800 dark:text-red-300"
-                />
-              </div>
-              <span className="text-sm text-red-700 dark:text-red-200">
-                <span className="font-medium">Tip: </span>
-                {isDockerError
-                  ? "Make sure Docker Desktop is running and try restarting the app."
-                  : isSyncError
-                    ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
-                    : isInternalDyadError
-                      ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
-                      : "Check if restarting the app fixes the error."}
-              </span>
-            </div>
-          </div>
-
-          {/* Action buttons at the bottom */}
           {!isDockerError && error.source === "preview-app" && (
-            <div className="mt-3 px-6 flex justify-end gap-2">
+            <div className="mt-3 flex justify-end gap-2">
               <CopyErrorMessage errorMessage={error.message} />
               <button
                 type="button"
                 disabled={isStreaming}
                 onClick={onAIFix}
-                className="cursor-pointer flex items-center space-x-1 px-2 py-1 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex cursor-pointer items-center gap-1 rounded bg-red-500 px-2 py-1 text-sm text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-600 dark:hover:bg-red-700"
               >
-                <Sparkles size={14} />
+                <Sparkles aria-hidden="true" size={14} />
                 <span>Fix error with AI</span>
               </button>
             </div>

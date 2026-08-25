@@ -1,15 +1,9 @@
-- button "Dismiss error banner":
-  - img
-- button "Collapse error banner" [expanded]:
-  - img
-- 'button /Hide full error message: Error Line 6 error Stack trace: Index \(http:\/\/localhost:\d+\/src\/pages\/Index\.tsx:6:6\)/ [expanded]':
-  - img
-  - text: ""
-- img
-- text: "Tip: Check if restarting the app fixes the error."
+- paragraph: Line 6 error
+- button "Collapse error banner" [expanded]
+- button "Dismiss error banner"
+- button "Hide details" [expanded]
+- text: "/Error Line 6 error Stack trace: Index \\(http:\\/\\/localhost:\\d+\\/src\\/pages\\/Index\\.tsx:6:6\\) Try restarting the app\\./"
 - button "Copy":
   - img
   - text: ""
-- button "Fix error with AI":
-  - img
-  - text: ""
+- button "Fix error with AI"

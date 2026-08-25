@@ -231,6 +231,63 @@ test("right-click context menu: Close tabs to the right", async ({ po }) => {
   }).toPass({ timeout: Timeout.MEDIUM });
 });
 
+test("adds, focuses, and removes chats in a workspace", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  await po.sendPrompt("[dump] Workspace chat one");
+  await po.chatActions.waitForChatCompletion();
+  const firstActiveChatTab = po.page
+    .locator('[data-testid^="chat-tab-"][draggable="true"]')
+    .filter({ has: po.page.locator('button[aria-current="page"]') });
+  await expect(firstActiveChatTab).toBeVisible({ timeout: Timeout.MEDIUM });
+  const firstChatId = Number(
+    (await firstActiveChatTab.getAttribute("data-testid"))?.replace(
+      "chat-tab-",
+      "",
+    ),
+  );
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Workspace chat two");
+  await po.chatActions.waitForChatCompletion();
+  const secondChatTab = po.page
+    .locator('[data-testid^="chat-tab-"][draggable="true"]')
+    .filter({ has: po.page.locator('button[aria-current="page"]') });
+  await expect(secondChatTab).toBeVisible({ timeout: Timeout.MEDIUM });
+  const secondChatId = Number(
+    (await secondChatTab.getAttribute("data-testid"))?.replace("chat-tab-", ""),
+  );
+  expect(secondChatId).not.toBe(firstChatId);
+  const firstChatTab = po.page.getByTestId(`chat-tab-${firstChatId}`);
+  const secondOwnedChatTab = po.page.getByTestId(`chat-tab-${secondChatId}`);
+
+  await firstChatTab.click({ button: "right" });
+  await po.page.getByText("Add to workspace", { exact: true }).click();
+  await secondOwnedChatTab.click({ button: "right" });
+  await po.page.getByText("Add to workspace", { exact: true }).click();
+
+  const workspaceTab = po.page.locator(
+    '[data-testid^="chat-workspace-tab-"] button',
+  );
+  await expect(workspaceTab).toBeVisible({ timeout: Timeout.MEDIUM });
+  await workspaceTab.click();
+
+  const firstPane = po.page.getByTestId(`chat-workspace-pane-${firstChatId}`);
+  const secondPane = po.page.getByTestId(`chat-workspace-pane-${secondChatId}`);
+  await expect(firstPane).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(secondPane).toBeVisible({ timeout: Timeout.MEDIUM });
+
+  await firstPane.click({ position: { x: 8, y: 8 } });
+  await expect(firstPane).toHaveAttribute("aria-label", /, focused$/);
+
+  await firstPane
+    .getByRole("button", { name: /^Remove .* from workspace$/ })
+    .click();
+  await expect(firstPane).toHaveCount(0);
+  await expect(secondPane).toBeVisible();
+});
+
 test("right-click context menu: Reopen closed tab", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");

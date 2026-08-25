@@ -154,15 +154,15 @@ export default function ChatPage() {
   ]);
 
   useEffect(() => {
-    if (!chatId) {
-      return;
-    }
-
     if (routeAppId) {
       if (routeAppId !== selectedAppIdRef.current) {
         selectedAppIdRef.current = routeAppId;
         setSelectedAppId(routeAppId);
       }
+      return;
+    }
+
+    if (!chatId) {
       return;
     }
 
@@ -386,76 +386,97 @@ export default function ChatPage() {
                 )}
                 data-testid="chat-workspace"
               >
-                {visibleChatIds.map((workspaceChatId) => {
-                  const isFocused = workspaceChatId === chatId;
-                  const workspaceChat = chats.find(
-                    (chat) => chat.id === workspaceChatId,
-                  );
-                  const chatLabel =
-                    workspaceChat?.title?.trim() || `Chat ${workspaceChatId}`;
-                  return (
-                    <section
-                      key={workspaceChatId}
-                      aria-label={
-                        isFocused
-                          ? t("focusedChatAria", { title: chatLabel })
-                          : chatLabel
-                      }
-                      data-testid={`chat-workspace-pane-${workspaceChatId}`}
-                      className={cn(
-                        "relative min-h-0 overflow-hidden bg-background",
-                        !isMultiChatWorkspace && "h-full",
-                        isMultiChatWorkspace && "rounded-md border-2",
-                        isFocused ? "border-primary" : "border-transparent",
-                      )}
-                      onPointerDownCapture={(event) =>
-                        shouldFocusWorkspacePane("pointer", false) &&
-                        focusChat(workspaceChatId, event.target)
-                      }
-                      onClickCapture={(event) => {
-                        if (
-                          event.detail === 0 &&
-                          shouldFocusWorkspacePane("activation", false)
-                        ) {
-                          focusChat(workspaceChatId, event.target);
+                {visibleChatIds.length === 0 ? (
+                  <section
+                    className="relative h-full min-h-0 overflow-hidden bg-background"
+                    data-testid="chat-workspace-empty"
+                  >
+                    <ChatPanel
+                      chatId={undefined}
+                      isPreviewOpen={isPreviewOpen}
+                      onTogglePreview={() => {
+                        setIsPreviewOpen(!isPreviewOpen);
+                        if (isPreviewOpen) {
+                          ref.current?.collapse();
+                        } else {
+                          ref.current?.expand();
                         }
                       }}
-                      onFocusCapture={(event) => {
-                        if (
-                          shouldFocusWorkspacePane(
-                            "focus",
-                            keyboardFocusIntentRef.current,
-                          )
-                        ) {
-                          focusChat(workspaceChatId, event.target);
+                    />
+                  </section>
+                ) : (
+                  visibleChatIds.map((workspaceChatId) => {
+                    const isFocused = workspaceChatId === chatId;
+                    const workspaceChat = chats.find(
+                      (chat) => chat.id === workspaceChatId,
+                    );
+                    const chatLabel =
+                      workspaceChat?.title?.trim() || `Chat ${workspaceChatId}`;
+                    return (
+                      <section
+                        key={workspaceChatId}
+                        aria-label={
+                          isFocused
+                            ? t("focusedChatAria", { title: chatLabel })
+                            : chatLabel
                         }
-                      }}
-                    >
-                      <ChatPanel
-                        chatId={workspaceChatId}
-                        isFocused={isFocused}
-                        onRemoveFromWorkspace={
-                          isMultiChatWorkspace && selectedAppId !== null
-                            ? () => removeChatFromWorkspace(workspaceChatId)
-                            : undefined
-                        }
-                        removeFromWorkspaceLabel={t(
-                          "removeFromWorkspaceNamed",
-                          { title: chatLabel },
+                        data-testid={`chat-workspace-pane-${workspaceChatId}`}
+                        data-chat-id={workspaceChatId}
+                        className={cn(
+                          "relative min-h-0 overflow-hidden bg-background",
+                          !isMultiChatWorkspace && "h-full",
+                          isMultiChatWorkspace && "rounded-md border-2",
+                          isFocused ? "border-primary" : "border-transparent",
                         )}
-                        isPreviewOpen={isPreviewOpen}
-                        onTogglePreview={() => {
-                          setIsPreviewOpen(!isPreviewOpen);
-                          if (isPreviewOpen) {
-                            ref.current?.collapse();
-                          } else {
-                            ref.current?.expand();
+                        onPointerDownCapture={(event) =>
+                          shouldFocusWorkspacePane("pointer", false) &&
+                          focusChat(workspaceChatId, event.target)
+                        }
+                        onClickCapture={(event) => {
+                          if (
+                            event.detail === 0 &&
+                            shouldFocusWorkspacePane("activation", false)
+                          ) {
+                            focusChat(workspaceChatId, event.target);
                           }
                         }}
-                      />
-                    </section>
-                  );
-                })}
+                        onFocusCapture={(event) => {
+                          if (
+                            shouldFocusWorkspacePane(
+                              "focus",
+                              keyboardFocusIntentRef.current,
+                            )
+                          ) {
+                            focusChat(workspaceChatId, event.target);
+                          }
+                        }}
+                      >
+                        <ChatPanel
+                          chatId={workspaceChatId}
+                          isFocused={isFocused}
+                          onRemoveFromWorkspace={
+                            isMultiChatWorkspace && selectedAppId !== null
+                              ? () => removeChatFromWorkspace(workspaceChatId)
+                              : undefined
+                          }
+                          removeFromWorkspaceLabel={t(
+                            "removeFromWorkspaceNamed",
+                            { title: chatLabel },
+                          )}
+                          isPreviewOpen={isPreviewOpen}
+                          onTogglePreview={() => {
+                            setIsPreviewOpen(!isPreviewOpen);
+                            if (isPreviewOpen) {
+                              ref.current?.collapse();
+                            } else {
+                              ref.current?.expand();
+                            }
+                          }}
+                        />
+                      </section>
+                    );
+                  })
+                )}
               </div>
             </>
           )}

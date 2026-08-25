@@ -109,8 +109,13 @@ const CHAT_TAB_TRANSFER_MIME = "application/x-dyad-chat-tab-transfer";
 const SCROLL_RESTORE_MAX_FRAMES = 120;
 const SCROLL_RESTORE_STABILIZATION_FRAMES = 4;
 
-function getMessagesScrollViewport(): HTMLElement | null {
-  const wrapper = document.querySelector<HTMLElement>(
+function getMessagesScrollViewport(chatId?: number): HTMLElement | null {
+  const root =
+    chatId === undefined
+      ? document
+      : document.querySelector<HTMLElement>(`[data-chat-id="${chatId}"]`);
+  if (!root) return null;
+  const wrapper = root.querySelector<HTMLElement>(
     '[data-testid="messages-list"]',
   );
   return (
@@ -135,12 +140,13 @@ export function restoreLocalStorageSnapshot(
 export function restoreMessagesScrollTop(
   scrollTop: number,
   shouldContinue: () => boolean,
+  chatId?: number,
 ): void {
   let remainingFrames = SCROLL_RESTORE_MAX_FRAMES;
   let stableFrames = 0;
   const apply = () => {
     if (!shouldContinue()) return;
-    const viewport = getMessagesScrollViewport();
+    const viewport = getMessagesScrollViewport(chatId);
     if (viewport) {
       viewport.scrollTop = scrollTop;
       if (
@@ -382,6 +388,56 @@ export function shouldCapturePresentationBeforeNavigation(
     fromPathname === "/chat" &&
     fromChatId === presentedChatId &&
     (toPathname !== "/chat" || toChatId !== presentedChatId)
+  );
+}
+
+export function isIntraWorkspaceNavigation(
+  fromPathname: string | undefined,
+  fromSearch: { appId?: unknown; workspace?: unknown },
+  toPathname: string,
+  toSearch: { appId?: unknown; workspace?: unknown },
+): boolean {
+  return (
+    fromPathname === "/chat" &&
+    toPathname === "/chat" &&
+    fromSearch.workspace === true &&
+    toSearch.workspace === true &&
+    typeof fromSearch.appId === "number" &&
+    fromSearch.appId === toSearch.appId
+  );
+}
+
+export function isIntraWorkspaceFocusChange({
+  isWorkspaceRoute,
+  workspaceAppId,
+  previousChatId,
+  selectedChatId,
+  workspaces,
+  chatsById,
+}: {
+  isWorkspaceRoute: boolean;
+  workspaceAppId: number | undefined;
+  previousChatId: number | null;
+  selectedChatId: number | null;
+  workspaces: ChatWorkspaceByAppId;
+  chatsById: Map<number, ChatSummary>;
+}): boolean {
+  if (
+    !isWorkspaceRoute ||
+    workspaceAppId === undefined ||
+    previousChatId === null ||
+    selectedChatId === null ||
+    previousChatId === selectedChatId
+  ) {
+    return false;
+  }
+
+  const workspaceChatIds = workspaces[workspaceAppId]?.visibleChatIds ?? [];
+  return (
+    workspaceChatIds.includes(previousChatId) &&
+    workspaceChatIds.includes(selectedChatId) &&
+    chatsById.get(previousChatId)?.appId === workspaceAppId &&
+    chatsById.get(selectedChatId)?.appId === workspaceAppId
   );
 }
 
@@ -656,7 +712,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
   const capturePresentation = useCallback(
     (chatId: number, appId: number) => {
-      const messages = getMessagesScrollViewport();
+      const messages = getMessagesScrollViewport(chatId);
       if (
         pathname !== "/chat" ||
         presentedChatIdRef.current !== chatId ||
@@ -725,6 +781,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           scrollRestoreGeneration === scrollRestoreGenerationRef.current &&
           (options.chatId === undefined ||
             store.get(selectedChatIdAtom) === options.chatId),
+        presentationChatId,
       );
       if (options.restoreComponents !== false) {
         requestAnimationFrame(() => {
@@ -756,9 +813,23 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         const presentedChatId = presentedChatIdRef.current;
         if (presentedChatId === null) return;
         const fromSearch = navigation.fromLocation?.search as
-          | { id?: unknown }
+          | { id?: unknown; appId?: unknown; workspace?: unknown }
           | undefined;
-        const toSearch = navigation.toLocation.search as { id?: unknown };
+        const toSearch = navigation.toLocation.search as {
+          id?: unknown;
+          appId?: unknown;
+          workspace?: unknown;
+        };
+        if (
+          isIntraWorkspaceNavigation(
+            navigation.fromLocation?.pathname,
+            fromSearch ?? {},
+            navigation.toLocation.pathname,
+            toSearch,
+          )
+        ) {
+          return;
+        }
         const fromChatId =
           typeof fromSearch?.id === "number" ? fromSearch.id : null;
         const toChatId = typeof toSearch.id === "number" ? toSearch.id : null;
@@ -796,6 +867,24 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     );
     if (previousChatId === selectedChatId) return;
 
+    if (
+      isIntraWorkspaceFocusChange({
+        isWorkspaceRoute,
+        workspaceAppId: workspaceRouteAppId,
+        previousChatId,
+        selectedChatId,
+        workspaces,
+        chatsById,
+      })
+    ) {
+      // Workspace panes remain mounted and own their scroll/input state. A
+      // focus change only routes shared actions; it must not replay the
+      // single-chat file/preview/panel presentation transition.
+      scrollRestoreGenerationRef.current += 1;
+      presentedChatIdRef.current = selectedChatId;
+      return;
+    }
+
     if (previousChatId !== null && !capturedBeforeNavigation) {
       const previousChat = chatsById.get(previousChatId);
       if (previousChat) {
@@ -823,9 +912,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   }, [
     capturePresentation,
     chatsById,
+    isWorkspaceRoute,
     neutralPresentation,
     restorePresentation,
     selectedChatId,
+    workspaces,
+    workspaceRouteAppId,
   ]);
 
   const adoptCrossWindowTab = useCallback(
@@ -1211,12 +1303,23 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             );
             const previousSelectedChatId = store.get(selectedChatIdAtom);
             const movedChat = chatsById.get(chatId);
+            const wasInWorkspace = movedChat
+              ? (store
+                  .get(chatWorkspaceByAppIdAtom)
+                  [movedChat.appId]?.visibleChatIds.includes(chatId) ?? false)
+              : false;
             const movedPresentation = movedChat
               ? capturePresentation(chatId, movedChat.appId)
               : null;
             try {
               const remaining = orderedChatIds.filter((id) => id !== chatId);
               store.set(removeTransferredChatTabAtom, chatId);
+              if (movedChat) {
+                hideChatFromWorkspace({
+                  appId: movedChat.appId,
+                  chatId,
+                });
+              }
               if (store.get(selectedChatIdAtom) === chatId) {
                 const fallback = remaining[0];
                 const fallbackChat = fallback
@@ -1261,6 +1364,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               store.set(sessionOpenedChatIdsAtom, previousSession);
               store.set(chatInputValuesByIdAtom, previousDrafts);
               store.set(terminalOpenByChatIdAtom, previousTerminals);
+              if (wasInWorkspace && movedChat) {
+                showChatInWorkspace({
+                  appId: movedChat.appId,
+                  chatId,
+                });
+              }
               if (
                 previousSelectedChatId === chatId &&
                 movedChat &&
@@ -1288,11 +1397,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     capturePresentation,
     chatsById,
     hasHydratedTabSession,
+    hideChatFromWorkspace,
     navigate,
     neutralPresentation,
     orderedChatIds,
     restorePresentation,
     selectChat,
+    showChatInWorkspace,
     store,
   ]);
 

@@ -28,6 +28,8 @@ import {
   getFallbackChatIdAfterClose,
   getChatWorkspaceTabs,
   groupChatIdsByApp,
+  isIntraWorkspaceFocusChange,
+  isIntraWorkspaceNavigation,
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
   restoreLocalStorageSnapshot,
@@ -130,6 +132,8 @@ describe("ChatTabs helpers", () => {
       return callbacks.length;
     });
     const wrapper = document.createElement("div");
+    const pane = document.createElement("section");
+    pane.dataset.chatId = "7";
     wrapper.dataset.testid = "messages-list";
     const viewport = document.createElement("div");
     viewport.dataset.virtuosoScroller = "";
@@ -138,9 +142,10 @@ describe("ChatTabs helpers", () => {
       clientHeight: { value: 200 },
     });
     wrapper.append(viewport);
-    document.body.append(wrapper);
+    pane.append(wrapper);
+    document.body.append(pane);
 
-    restoreMessagesScrollTop(300, () => true);
+    restoreMessagesScrollTop(300, () => true, 7);
     callbacks.shift()?.(0);
     expect(viewport.scrollTop).toBe(300);
 
@@ -149,7 +154,39 @@ describe("ChatTabs helpers", () => {
     callbacks.shift()?.(2);
     callbacks.shift()?.(3);
     expect(viewport.scrollTop).toBe(300);
-    wrapper.remove();
+    pane.remove();
+  });
+
+  it("restores scroll only in the pane that owns the chat", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const makePane = (chatId: number, scrollTop: number) => {
+      const pane = document.createElement("section");
+      pane.dataset.chatId = String(chatId);
+      const messages = document.createElement("div");
+      messages.dataset.testid = "messages-list";
+      Object.defineProperties(messages, {
+        scrollHeight: { value: 1_000 },
+        clientHeight: { value: 200 },
+      });
+      messages.scrollTop = scrollTop;
+      pane.append(messages);
+      document.body.append(pane);
+      return { pane, messages };
+    };
+    const first = makePane(7, 100);
+    const second = makePane(8, 600);
+
+    restoreMessagesScrollTop(250, () => true, 7);
+    callbacks.shift()?.(0);
+
+    expect(first.messages.scrollTop).toBe(250);
+    expect(second.messages.scrollTop).toBe(600);
+    first.pane.remove();
+    second.pane.remove();
   });
 
   it("reselects the active chat when navigation must return to the chat route", () => {
@@ -201,6 +238,51 @@ describe("ChatTabs helpers", () => {
         "/chat",
         8,
       ),
+    ).toBe(false);
+  });
+
+  it("recognizes focus-only navigation inside one workspace", () => {
+    expect(
+      isIntraWorkspaceNavigation(
+        "/chat",
+        { appId: 1, workspace: true },
+        "/chat",
+        { appId: 1, workspace: true },
+      ),
+    ).toBe(true);
+    expect(
+      isIntraWorkspaceNavigation(
+        "/chat",
+        { appId: 1, workspace: true },
+        "/chat",
+        { appId: 2, workspace: true },
+      ),
+    ).toBe(false);
+
+    const chatsById = new Map([
+      [7, chat(7, 1)],
+      [8, chat(8, 1)],
+      [9, chat(9, 2)],
+    ]);
+    expect(
+      isIntraWorkspaceFocusChange({
+        isWorkspaceRoute: true,
+        workspaceAppId: 1,
+        previousChatId: 7,
+        selectedChatId: 8,
+        workspaces: { 1: { visibleChatIds: [7, 8] } },
+        chatsById,
+      }),
+    ).toBe(true);
+    expect(
+      isIntraWorkspaceFocusChange({
+        isWorkspaceRoute: true,
+        workspaceAppId: 1,
+        previousChatId: 7,
+        selectedChatId: 9,
+        workspaces: { 1: { visibleChatIds: [7, 9] } },
+        chatsById,
+      }),
     ).toBe(false);
   });
 

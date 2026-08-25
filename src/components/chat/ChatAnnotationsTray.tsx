@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { ChevronDown, ChevronUp, MessageSquare, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, Trash2, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,16 +13,12 @@ import {
   useChatMessages,
   useChatMessagesLoaded,
 } from "@/hooks/useChatMessages";
-import { useStreamChat } from "@/hooks/useStreamChat";
-import { serializeChatAnnotations } from "@/lib/serializeChatAnnotations";
 
 export function ChatAnnotationsTray({ chatId }: { chatId: number }) {
   const { t } = useTranslation("chat");
   const [allAnnotations, setAllAnnotations] = useAtom(chatAnnotationsAtom);
   const [expanded, setExpanded] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const listId = useId();
-  const { streamMessage, isStreaming } = useStreamChat();
   const messages = useChatMessages(chatId);
   const messagesLoaded = useChatMessagesLoaded(chatId);
   const annotations = useMemo(
@@ -44,37 +40,6 @@ export function ChatAnnotationsTray({ chatId }: { chatId: number }) {
   }, [chatId, messages, messagesLoaded, setAllAnnotations]);
 
   if (annotations.length === 0) return null;
-
-  const send = () => {
-    if (isSending || isStreaming) return;
-    // Snapshot the exact text submitted so an edit made while the turn is in
-    // flight survives settlement instead of being dropped by id.
-    const submitted = new Map(
-      annotations.map((annotation) => [annotation.id, annotation.comment]),
-    );
-    setIsSending(true);
-    streamMessage({
-      chatId,
-      prompt: serializeChatAnnotations(annotations),
-      onSettled: ({ success, queued }) => {
-        // A queued turn was accepted and will run; leaving the comments in the
-        // tray would invite the user to send the same prompt twice.
-        if (success || queued) {
-          setAllAnnotations((previous) => {
-            const next = new Map(previous);
-            const remaining = (next.get(chatId) ?? []).filter(
-              (annotation) =>
-                submitted.get(annotation.id) !== annotation.comment,
-            );
-            if (remaining.length === 0) next.delete(chatId);
-            else next.set(chatId, remaining);
-            return next;
-          });
-        }
-        setIsSending(false);
-      },
-    });
-  };
 
   return (
     <div
@@ -99,21 +64,16 @@ export function ChatAnnotationsTray({ chatId }: { chatId: number }) {
         </button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
+          className="size-7 text-muted-foreground hover:text-foreground"
+          aria-label={t("annotations.discard")}
           onClick={() =>
             setAllAnnotations((previous) =>
               clearChatAnnotations(previous, chatId),
             )
           }
         >
-          {t("annotations.discard")}
-        </Button>
-        <Button size="sm" disabled={isStreaming || isSending} onClick={send}>
-          <span role="status" aria-live="polite">
-            {isSending
-              ? t("annotations.sending")
-              : t("annotations.send", { count: annotations.length })}
-          </span>
+          <X className="size-4" />
         </Button>
       </div>
       {expanded && (

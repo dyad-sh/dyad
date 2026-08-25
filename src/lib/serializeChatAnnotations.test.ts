@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChatAnnotation } from "@/atoms/chatAnnotationAtoms";
-import { serializeChatAnnotations } from "./serializeChatAnnotations";
+import {
+  composeChatPrompt,
+  hasChatComposerPayload,
+  serializeChatAnnotations,
+} from "./serializeChatAnnotations";
 
 function annotation(overrides: Partial<ChatAnnotation> = {}): ChatAnnotation {
   return {
@@ -68,5 +72,41 @@ describe("serializeChatAnnotations", () => {
     ]);
 
     expect(prompt).toContain("Use /webapp-testing on this.");
+  });
+
+  it("uses annotations as a complete prompt when the composer is empty", () => {
+    const prompt = composeChatPrompt("", [annotation()]);
+
+    expect(prompt).toContain("comments on your latest response");
+    expect(prompt).toContain("Make this clearer.");
+  });
+
+  it("appends annotations to typed composer text", () => {
+    const prompt = composeChatPrompt("Please also simplify the example.", [
+      annotation(),
+    ]);
+
+    expect(prompt).toMatch(
+      /^Please also simplify the example\.\n\nI have comments on your latest response\./,
+    );
+  });
+
+  it("treats annotations as submittable composer content", () => {
+    expect(
+      hasChatComposerPayload({
+        inputValue: "",
+        attachmentCount: 0,
+        hasSuccessfulImageJobs: false,
+        annotationCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      hasChatComposerPayload({
+        inputValue: "",
+        attachmentCount: 0,
+        hasSuccessfulImageJobs: false,
+        annotationCount: 0,
+      }),
+    ).toBe(false);
   });
 });

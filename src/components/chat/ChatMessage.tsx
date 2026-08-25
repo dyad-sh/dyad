@@ -54,6 +54,7 @@ import {
   shouldShowMessageFooter,
 } from "./messageApprovalStatus";
 import { ChatMessageAnnotationLayer } from "./ChatMessageAnnotationLayer";
+import { isChatMessageAnnotatable } from "./chatAnnotationEligibility";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -368,10 +369,13 @@ const ChatMessage = ({
                 )}
               </div>
             )}
-            {message.role === "assistant" &&
-              selectedChatId != null &&
-              !isCancelled &&
-              !(isLastMessage && isStreaming) && (
+            {selectedChatId != null &&
+              isChatMessageAnnotatable({
+                role: message.role,
+                isLastMessage,
+                isCancelled,
+                isStreaming,
+              }) && (
                 <ChatMessageAnnotationLayer
                   containerRef={assistantContentRef}
                   chatId={selectedChatId}

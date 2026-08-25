@@ -44,5 +44,36 @@ export function serializeChatAnnotations(
     )
     .join("\n\n---\n\n");
 
-  return `I have comments on earlier assistant responses. Address every comment below.\n\n${comments}`;
+  return `I have comments on your latest response. Address every comment below.\n\n${comments}`;
+}
+
+export function composeChatPrompt(
+  prompt: string,
+  annotations: ChatAnnotation[],
+): string {
+  if (annotations.length === 0) return prompt;
+
+  const annotationPrompt = serializeChatAnnotations(annotations);
+  return prompt.trim()
+    ? `${prompt.trim()}\n\n${annotationPrompt}`
+    : annotationPrompt;
+}
+
+export function hasChatComposerPayload({
+  inputValue,
+  attachmentCount,
+  hasSuccessfulImageJobs,
+  annotationCount,
+}: {
+  inputValue: string;
+  attachmentCount: number;
+  hasSuccessfulImageJobs: boolean;
+  annotationCount: number;
+}): boolean {
+  return (
+    inputValue.trim().length > 0 ||
+    attachmentCount > 0 ||
+    hasSuccessfulImageJobs ||
+    annotationCount > 0
+  );
 }

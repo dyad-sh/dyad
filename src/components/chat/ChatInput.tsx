@@ -33,6 +33,7 @@ import {
   selectedChatIdAtom,
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
+import { chatAnnotationsAtom } from "@/atoms/chatAnnotationAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -122,6 +123,10 @@ import {
   MAX_CHAT_PROMPT_CHARS,
 } from "@/shared/chatAttachmentLimits";
 import { ChatAnnotationsTray } from "./ChatAnnotationsTray";
+import {
+  composeChatPrompt,
+  hasChatComposerPayload,
+} from "@/lib/serializeChatAnnotations";
 
 const showTokenBarAtom = atom(false);
 
@@ -144,6 +149,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
     },
     [chatId, setInputValuesById],
+  );
+  const [allChatAnnotations, setAllChatAnnotations] =
+    useAtom(chatAnnotationsAtom);
+  const chatAnnotations = useMemo(
+    () => (chatId ? (allChatAnnotations.get(chatId) ?? []) : []),
+    [allChatAnnotations, chatId],
   );
   const { settings } = useSettings();
   const {
@@ -286,12 +297,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = messages.at(-1);
   const disableSendButton =
+    chatAnnotations.length === 0 &&
     selectedMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
     proposal.type === "code-proposal" &&
     messageId === lastMessage.id;
+  const hasComposerPayload = hasChatComposerPayload({
+    inputValue,
+    attachmentCount: attachments.length,
+    hasSuccessfulImageJobs,
+    annotationCount: chatAnnotations.length,
+  });
 
   // Extract user message history for terminal-style navigation
   const userMessageHistory = useMemo(() => {
@@ -510,15 +528,53 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleSubmit = async () => {
     if (
-      (!inputValue.trim() &&
-        attachments.length === 0 &&
-        !hasSuccessfulImageJobs) ||
+      !hasComposerPayload ||
       !chatId ||
       pendingFiles ||
       isAwaitingTurnAcceptanceRef.current
     ) {
       return;
     }
+
+    const submittedAnnotations = chatAnnotations;
+    const submittedAnnotationIds = new Set(
+      submittedAnnotations.map((annotation) => annotation.id),
+    );
+    const hideSubmittedAnnotations = () => {
+      if (submittedAnnotationIds.size === 0) return;
+      setAllChatAnnotations((previous) => {
+        const next = new Map(previous);
+        const remaining = (next.get(chatId) ?? []).filter(
+          (annotation) => !submittedAnnotationIds.has(annotation.id),
+        );
+        if (remaining.length === 0) next.delete(chatId);
+        else next.set(chatId, remaining);
+        return next;
+      });
+    };
+    let restoredSubmittedAnnotations = false;
+    const restoreSubmittedAnnotations = () => {
+      if (submittedAnnotations.length === 0 || restoredSubmittedAnnotations) {
+        return;
+      }
+      restoredSubmittedAnnotations = true;
+      setAllChatAnnotations((previous) => {
+        const current = previous.get(chatId) ?? [];
+        const currentIds = new Set(current.map((annotation) => annotation.id));
+        const missing = submittedAnnotations.filter(
+          (annotation) => !currentIds.has(annotation.id),
+        );
+        if (missing.length === 0) return previous;
+        const next = new Map(previous);
+        next.set(
+          chatId,
+          [...missing, ...current].sort(
+            (left, right) => left.createdAt - right.createdAt,
+          ),
+        );
+        return next;
+      });
+    };
 
     if (isRecording) {
       await toggleRecording();
@@ -533,13 +589,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         ? `${inputValue} ${imageMentions}`
         : inputValue
       : imageMentions;
+    const currentInput = composeChatPrompt(
+      promptWithImages,
+      submittedAnnotations,
+    );
 
-    if (promptWithImages.length > MAX_CHAT_PROMPT_CHARS) {
+    if (currentInput.length > MAX_CHAT_PROMPT_CHARS) {
       showErrorToast(CHAT_PROMPT_LENGTH_LIMIT_MESSAGE);
       return;
     }
 
-    const currentInput = promptWithImages;
     const submittedInputValue = inputValue;
     const submittedImageJobIds = visibleSuccessfulImageJobs.map(
       (job) => job.id,
@@ -566,6 +625,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         attachments,
         selectedComponents: componentsToSend,
       });
+      hideSubmittedAnnotations();
       dismissSubmittedImageJobs();
       resetEditingState();
       return;
@@ -582,6 +642,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
       if (queued) {
         // Only clear input, attachments, and components on successful queue
+        hideSubmittedAnnotations();
         clearComposerAfterSubmit();
         clearAttachments();
         dismissSubmittedImageJobs();
@@ -622,6 +683,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       dismissSubmittedImageJobs();
     };
     isAwaitingTurnAcceptanceRef.current = true;
+    hideSubmittedAnnotations();
+    let wasAccepted = false;
     await streamMessage({
       prompt: currentInput,
       chatId,
@@ -630,15 +693,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
       onAccepted: () => {
+        wasAccepted = true;
         isAwaitingTurnAcceptanceRef.current = false;
         clearAcceptedPayload();
       },
       onAcceptanceRejected: () => {
         isAwaitingTurnAcceptanceRef.current = false;
+        restoreSubmittedAnnotations();
       },
-      onSettled: ({ queued }) => {
+      onSettled: ({ success, queued }) => {
         isAwaitingTurnAcceptanceRef.current = false;
         if (queued) clearAcceptedPayload();
+        if (!success && !queued && !wasAccepted) {
+          restoreSubmittedAnnotations();
+        }
       },
     });
     posthog.capture("chat:submit", { chatMode });
@@ -1083,12 +1151,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={handleSubmit}
-                      disabled={
-                        (!inputValue.trim() &&
-                          attachments.length === 0 &&
-                          !hasSuccessfulImageJobs) ||
-                        disableSendButton
-                      }
+                      disabled={!hasComposerPayload || disableSendButton}
                       aria-label={t("sendMessage")}
                       className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
                     />

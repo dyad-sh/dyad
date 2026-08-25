@@ -30,7 +30,9 @@ import {
   findKnownAppMentions,
   formatKnownAppMentionsForDisplay,
   formatKnownAppMentionsForPrompt,
+  MENTION_REGEX,
   parseKnownAppMentions,
+  splitAppMentionTrailingDots,
 } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { HistoryNavigation, HISTORY_TRIGGER } from "./HistoryNavigation";
@@ -198,6 +200,12 @@ function ExternalValueSyncPlugin({
     // Derive the display text that should appear in the editor (@Name) from the
     // internal value representation (@app:Name)
     let displayText = formatKnownAppMentionsForDisplay(value || "", appNames);
+    // Preserve legacy no-space tokens recalled after their app was renamed.
+    MENTION_REGEX.lastIndex = 0;
+    displayText = displayText.replace(MENTION_REGEX, (_match, candidate) => {
+      const { appName, trailingDots } = splitAppMentionTrailingDots(candidate);
+      return appName ? `@${appName}${trailingDots}` : _match;
+    });
     displayText = displayText.replace(/@prompt:(\d+)/g, (_m, idStr) => {
       const id = Number(idStr);
       const title = promptsById[id];
@@ -233,15 +241,38 @@ function ExternalValueSyncPlugin({
         type: "app" | "prompt" | "file" | "media";
         value: string;
       };
-      const mentions: ExternalMention[] = findKnownAppMentions(
-        value,
-        appNames,
-      ).map((match) => ({
+      const knownAppMentions = findKnownAppMentions(value, appNames);
+      const mentions: ExternalMention[] = knownAppMentions.map((match) => ({
         start: match.start,
         end: match.end,
         type: "app",
         value: value.slice(match.start + "@app:".length, match.end),
       }));
+
+      // Rehydrate unmatched legacy tokens. Current known-name spans win, so
+      // this fallback cannot split a spaced or dotted app mention.
+      MENTION_REGEX.lastIndex = 0;
+      let legacyMatch: RegExpExecArray | null;
+      while ((legacyMatch = MENTION_REGEX.exec(value)) !== null) {
+        const legacyStart = legacyMatch.index;
+        if (
+          knownAppMentions.some(
+            (known) => legacyStart >= known.start && legacyStart < known.end,
+          )
+        ) {
+          continue;
+        }
+        const { appName } = splitAppMentionTrailingDots(legacyMatch[1]);
+        if (!appName) {
+          continue;
+        }
+        mentions.push({
+          start: legacyStart,
+          end: legacyStart + "@app:".length + appName.length,
+          type: "app",
+          value: appName,
+        });
+      }
 
       const otherMentionRegex = /@prompt:(\d+)|@file:([^\s]+)|@media:([^\s]+)/g;
       let lastIndex = 0;

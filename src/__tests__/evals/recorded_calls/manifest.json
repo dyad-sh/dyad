@@ -5,18 +5,12 @@
       {
         "case": "extract-a-helper-function",
         "fixture": "order_processor.ts",
-        "calls": [
-          "01.txt"
-        ]
+        "calls": ["01.txt"]
       },
       {
         "case": "add-zod-validation",
         "fixture": "user_handler.ts",
-        "calls": [
-          "01.txt",
-          "02.txt",
-          "03.txt"
-        ]
+        "calls": ["01.txt", "02.txt", "03.txt"]
       },
       {
         "case": "refactor-giant-component",
@@ -44,19 +38,12 @@
       {
         "case": "add-error-handling",
         "fixture": "fetch_client.ts",
-        "calls": [
-          "01.txt",
-          "02.txt",
-          "03.txt"
-        ]
+        "calls": ["01.txt", "02.txt", "03.txt"]
       },
       {
         "case": "add-zod-validation",
         "fixture": "user_handler.ts",
-        "calls": [
-          "01.txt",
-          "02.txt"
-        ]
+        "calls": ["01.txt", "02.txt"]
       }
     ]
   }

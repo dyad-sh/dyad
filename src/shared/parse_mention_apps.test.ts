@@ -366,6 +366,15 @@ describe("parseKnownAppMentions", () => {
     expect(result).toEqual(["Foo", "Bar"]);
   });
 
+  it("does not parse a mention prefix nested inside a matched app name", () => {
+    const result = parseKnownAppMentions("Compare @app:Research @app:Finance", [
+      "Research @app:Finance",
+      "Finance",
+    ]);
+
+    expect(result).toEqual(["Research @app:Finance"]);
+  });
+
   it("stops a known dotted app mention before a path suffix", () => {
     const result = parseKnownAppMentions("@app:foo.app.com/path", [
       "foo.app.com",
@@ -403,6 +412,15 @@ describe("formatKnownAppMentionsForDisplay", () => {
     ]);
 
     expect(result).toBe("Compare @My App.");
+  });
+
+  it("renders an app name containing the mention prefix once", () => {
+    const result = formatKnownAppMentionsForDisplay(
+      "Compare @app:Research @app:Finance",
+      ["Research @app:Finance", "Finance"],
+    );
+
+    expect(result).toBe("Compare @Research @app:Finance");
   });
 });
 

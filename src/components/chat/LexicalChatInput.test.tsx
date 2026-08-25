@@ -77,4 +77,27 @@ describe("LexicalChatInput", () => {
       ).toBe("Compare @App With Spaces.");
     });
   });
+
+  it("rehydrates a saved no-space mention after the app is renamed", async () => {
+    appMocks.apps = [{ id: 1, name: "NewName" }];
+    const { container } = render(
+      <LexicalChatInput
+        value="Compare @app:OldName."
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        messageHistory={[]}
+        excludeCurrentApp={false}
+        disableSendButton={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll('[data-beautiful-mention="@OldName"]'),
+      ).toHaveLength(1);
+      expect(
+        container.querySelector('[contenteditable="true"]')?.textContent,
+      ).toBe("Compare @OldName.");
+    });
+  });
 });

@@ -142,11 +142,15 @@ export function findKnownAppMentions(
     });
 
     if (appName) {
+      const end = nameStart + appName.length;
       mentions.push({
         appName,
         start: match.index,
-        end: nameStart + appName.length,
+        end,
       });
+      // Display names may themselves contain `@app:`. Do not interpret a
+      // prefix inside the accepted longest name as another reference.
+      APP_MENTION_PREFIX_REGEX.lastIndex = end;
     }
   }
 

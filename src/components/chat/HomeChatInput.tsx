@@ -69,7 +69,8 @@ export function HomeChatInput({
   });
 
   const [appSearchOpen, setAppSearchOpen] = useState(false);
-  const { apps } = useLoadApps();
+  const { apps, loading: appsLoading } = useLoadApps();
+  const canSelectApp = !appsLoading && apps.length > 0;
 
   const typingText = useTypingPlaceholder([
     "an ecommerce store...",
@@ -283,50 +284,52 @@ export function HomeChatInput({
           <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={() => {
-                        if (!disabled) setAppSearchOpen(true);
-                      }}
-                      disabled={disabled}
-                      className={cn(
-                        "cursor-pointer px-2 py-1 ml-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1",
-                        selectedApp
-                          ? "bg-primary/10 text-primary hover:bg-primary/15"
-                          : "text-foreground/80 hover:text-foreground hover:bg-muted/60",
-                      )}
-                      data-testid="home-app-selector"
-                    />
-                  }
-                >
-                  <FolderOpenIcon size={14} />
-                  <span className="truncate max-w-[150px]">
-                    {selectedApp ? selectedApp.name : "No app selected"}
-                  </span>
-                  {selectedApp && (
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedApp(null);
-                      }}
-                      className="hover:bg-primary/20 rounded-sm p-0.5 transition-colors"
-                      aria-label="Deselect app"
-                      data-testid="home-app-selector-clear"
-                    >
-                      <XIcon size={12} />
-                    </button>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {selectedApp
-                    ? "Change selected app"
-                    : "Select an existing app"}
-                </TooltipContent>
-              </Tooltip>
+              {canSelectApp && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={() => {
+                          if (!disabled) setAppSearchOpen(true);
+                        }}
+                        disabled={disabled}
+                        className={cn(
+                          "cursor-pointer px-2 py-1 ml-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1",
+                          selectedApp
+                            ? "bg-primary/10 text-primary hover:bg-primary/15"
+                            : "text-foreground/80 hover:text-foreground hover:bg-muted/60",
+                        )}
+                        data-testid="home-app-selector"
+                      />
+                    }
+                  >
+                    <FolderOpenIcon size={14} />
+                    <span className="truncate max-w-[150px]">
+                      {selectedApp ? selectedApp.name : "No app selected"}
+                    </span>
+                    {selectedApp && (
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedApp(null);
+                        }}
+                        className="hover:bg-primary/20 rounded-sm p-0.5 transition-colors"
+                        aria-label="Deselect app"
+                        data-testid="home-app-selector-clear"
+                      >
+                        <XIcon size={12} />
+                      </button>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {selectedApp
+                      ? "Change selected app"
+                      : "Select an existing app"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
             <AuxiliaryActionsMenu
@@ -337,7 +340,7 @@ export function HomeChatInput({
         </div>
       </div>
 
-      {appSearchOpen && (
+      {appSearchOpen && canSelectApp && (
         <AppSearchDialog
           open={appSearchOpen}
           onOpenChange={setAppSearchOpen}

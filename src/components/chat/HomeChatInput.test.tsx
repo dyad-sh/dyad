@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeChatInput } from "./HomeChatInput";
 
 const mocks = vi.hoisted(() => ({
+  apps: [{ id: 1, name: "Existing" }],
+  appsLoading: false,
   setInputValue: vi.fn(),
   setSelectedApp: vi.fn(),
   transcription: null as null | ((text: string) => void),
@@ -37,7 +39,10 @@ vi.mock("@/hooks/useTypingPlaceholder", () => ({
   useTypingPlaceholder: () => "something",
 }));
 vi.mock("@/hooks/useLoadApps", () => ({
-  useLoadApps: () => ({ apps: [{ id: 1, name: "Existing" }] }),
+  useLoadApps: () => ({
+    apps: mocks.apps,
+    loading: mocks.appsLoading,
+  }),
 }));
 vi.mock("@/hooks/useAttachments", () => ({
   useAttachments: () => ({
@@ -105,8 +110,10 @@ vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl: vi.fn() } },
 }));
 
-describe("HomeChatInput disabled state", () => {
+describe("HomeChatInput", () => {
   beforeEach(() => {
+    mocks.apps = [{ id: 1, name: "Existing" }];
+    mocks.appsLoading = false;
     mocks.setInputValue.mockReset();
     mocks.setSelectedApp.mockReset();
     mocks.transcription = null;
@@ -147,5 +154,20 @@ describe("HomeChatInput disabled state", () => {
     act(() => mocks.transcription?.("late transcript"));
 
     expect(mocks.setInputValue).not.toHaveBeenCalled();
+  });
+
+  it("shows the app selector only when the loaded list contains an app", () => {
+    mocks.appsLoading = true;
+    const view = render(<HomeChatInput onSubmit={vi.fn()} />);
+
+    expect(screen.queryByTestId("home-app-selector")).toBeNull();
+
+    mocks.appsLoading = false;
+    view.rerender(<HomeChatInput onSubmit={vi.fn()} />);
+    expect(screen.getByTestId("home-app-selector")).toBeTruthy();
+
+    mocks.apps = [];
+    view.rerender(<HomeChatInput onSubmit={vi.fn()} />);
+    expect(screen.queryByTestId("home-app-selector")).toBeNull();
   });
 });

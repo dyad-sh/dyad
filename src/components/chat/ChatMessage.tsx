@@ -49,7 +49,10 @@ import {
 } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { SubagentTeamCard } from "./SubagentTeamCard";
-import { getVisibleMessageApprovalState } from "./messageApprovalStatus";
+import {
+  getVisibleMessageApprovalState,
+  shouldShowMessageFooter,
+} from "./messageApprovalStatus";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -137,6 +140,13 @@ const ChatMessage = ({
   const visibleApprovalState = getVisibleMessageApprovalState(
     message.approvalState,
   );
+  const showMessageFooter = shouldShowMessageFooter({
+    hasAssistantText,
+    isStreaming,
+    hasHistoricalAssistantModel:
+      message.role === "assistant" && !isLastMessage && Boolean(message.model),
+    visibleApprovalState,
+  });
   //handle copy chat
   const { copyMessageContent, copied } = useCopyToClipboard();
   const handleCopyFormatted = async () => {
@@ -353,7 +363,7 @@ const ChatMessage = ({
                 )}
               </div>
             )}
-            {(hasAssistantText && !isStreaming) || visibleApprovalState ? (
+            {showMessageFooter ? (
               <div
                 className={`mt-2 flex items-center ${
                   hasAssistantText && !isStreaming ? "justify-between" : ""

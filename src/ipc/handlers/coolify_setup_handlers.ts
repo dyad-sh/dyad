@@ -22,6 +22,7 @@ import { ensureServerKey } from "@/coolify_setup/server_key";
 import { preflight } from "@/coolify_setup/install";
 import { runServerSetup } from "@/coolify_setup/setup_flow";
 import { CoolifySetupController } from "@/coolify_setup/controller";
+import { selectCoolifySetupCapabilities } from "@/coolify_setup/capabilities";
 import { uuidIdSource } from "@/state_machines/clock";
 import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
@@ -488,7 +489,7 @@ export function registerCoolifySetupHandlers() {
     // a remedy that does not apply. The machine's own refusal is the true one,
     // and it comes when the run below is started.
     if (
-      setupController().getState().type !== "running" &&
+      selectCoolifySetupCapabilities(setupController().getState()).canStart &&
       readSettings().coolify?.admin
     ) {
       // Dyad holds the only copy of one server's admin password, and a run

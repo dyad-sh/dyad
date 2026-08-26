@@ -594,6 +594,7 @@ export async function listCodebaseFileMetadata({
 }): Promise<{
   files: BaseFile[];
   totalFileCount: number;
+  sizeStats?: CodebaseSizeStats;
 }> {
   const prepared = await prepareCodebaseFiles({ appPath, chatContext });
   const preparedFiles = prepared?.preparedFiles ?? [];
@@ -604,6 +605,7 @@ export async function listCodebaseFileMetadata({
       force,
     })),
     totalFileCount: preparedFiles.length,
+    sizeStats: prepared?.sizeStats,
   };
 }
 

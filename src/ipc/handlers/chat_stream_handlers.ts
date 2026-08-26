@@ -47,7 +47,11 @@ import type {
   ChatStreamTransportEndPayload,
 } from "@/chat_stream/protocol";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import { CodebaseFile, extractCodebase } from "../../utils/codebase";
+import {
+  CodebaseFile,
+  extractCodebase,
+  listCodebaseFileMetadata,
+} from "../../utils/codebase";
 import {
   dryRunSearchReplace,
   processFullResponseActions,
@@ -1733,7 +1737,21 @@ ${componentSnippet}
 
         let codebaseInfo = "";
         let files: Awaited<ReturnType<typeof extractCodebase>>["files"] = [];
-        if (!willUseLocalAgentStream) {
+        if (willUseLocalAgentStream) {
+          // Agent-backed modes inspect files on demand, but session diagnostics
+          // still need the lightweight app-size measurement. Metadata listing
+          // applies the same exclusions without reading file contents.
+          const { sizeStats } = await listCodebaseFileMetadata({
+            appPath,
+            chatContext,
+          });
+          if (sizeStats) {
+            recordAppSizeForSession({
+              appId: updatedChat.app.id,
+              ...sizeStats,
+            });
+          }
+        } else {
           const extractedCodebase = await extractCodebase({
             appPath,
             chatContext,

@@ -151,7 +151,8 @@ export function registerTokenCountHandlers() {
               frameworkType,
               supabaseProjectId: chat.app.supabaseProjectId,
               neonProjectId: chat.app.neonProjectId,
-              neonActiveBranchId: chat.app.neonActiveBranchId,
+              neonActiveBranchId:
+                chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
             })
           : 0;
       const systemPromptTokens =

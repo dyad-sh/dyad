@@ -97,7 +97,7 @@ export function SubagentSettings() {
       <SettingRow
         id={SETTING_IDS.enableAutoReview}
         label="Automatically review changes"
-        description="After completed turns that change code, run the read-only Reviewer."
+        description="After completed Agent turns that change code, run the read-only Reviewer."
         checked={!!settings.enableAutoReview}
         onCheckedChange={(checked) =>
           updateSettings({ enableAutoReview: checked })

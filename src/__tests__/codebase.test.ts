@@ -186,6 +186,7 @@ describe("extractCodebase", () => {
 
     expect(result.files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
     expect(result.totalFileCount).toBe(2);
+    expect(result.sizeStats).toEqual({ fileCount: 2, totalBytes: 26 });
     expect(readFileSpy).not.toHaveBeenCalled();
   });
 });

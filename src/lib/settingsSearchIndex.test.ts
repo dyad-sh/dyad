@@ -6,6 +6,29 @@ import {
 } from "./settingsSearchIndex";
 
 describe("SETTINGS_SEARCH_INDEX", () => {
+  it("describes shared Build and Agent permissions", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SECTION_IDS.agentPermissions,
+      ),
+    ).toEqual({
+      id: SECTION_IDS.agentPermissions,
+      label: "Build and Agent Permissions",
+      description: "Configure permissions for Build and Agent built-in tools",
+      keywords: [
+        "build",
+        "agent",
+        "permissions",
+        "tools",
+        "approve",
+        "allow",
+        "consent",
+      ],
+      sectionId: SECTION_IDS.agentPermissions,
+      sectionLabel: "Build and Agent Permissions",
+    });
+  });
+
   it("includes the cloud sandbox experiment", () => {
     expect(
       SETTINGS_SEARCH_INDEX.find(

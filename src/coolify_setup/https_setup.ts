@@ -262,12 +262,16 @@ export async function domainPointsAtServer(
   // this network answers to, which plain DNS cannot see and connectSsh
   // reaches anyway. Accepting there compared a user's domain against
   // nothing at all, which is the whole of what this function is for.
+  // Nothing on our side to hold the domain against, whatever the domain
+  // turned out to say. domainCheckVerdict answers about the domain first — a
+  // name with no records is a fact about it, true whatever the server's
+  // address is — so that answer arrives before it ever looks at ours, and
+  // reading it as agreement would compare against nothing at all.
+  if (expectedIps.length === 0) return "server-unresolved";
   if (verdict === "unknown") {
-    // Told apart because the remedies are not the same. One is a lookup for
-    // the domain that never came back; the other is the server answering to
-    // a name plain DNS cannot see, where the domain may be perfectly correct
-    // and there is simply nothing here to hold it against.
-    return expectedIps.length > 0 ? "different-families" : "server-unresolved";
+    // Both sides answered, in families that cannot meet. A different thing
+    // from either lookup coming back empty, and a different remedy.
+    return "different-families";
   }
   return "points-here";
 }

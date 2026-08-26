@@ -226,6 +226,19 @@ describe("domainPointsAtServer", () => {
     ).toBe("no-answer");
   });
 
+  it("says nothing is known when neither side resolved", async () => {
+    // The domain having no records is answered first, before ours is even
+    // looked at — so a server that does not resolve and a domain with none
+    // yet came back as agreement, having compared nothing at all.
+    const nothingAnywhere = async () => ({ addresses: [], failed: false });
+
+    expect(
+      await domainPointsAtServer("coolify.example.com", "box.internal", {
+        resolve: nothingAnywhere,
+      }),
+    ).toBe("server-unresolved");
+  });
+
   it("says it does not know when the records cannot be compared", async () => {
     // An IPv4 server and a domain carrying only an AAAA record. There is no
     // overlap to find by construction, so this is no more an answer about

@@ -68,6 +68,20 @@ const inspectedFingerprints = new Map<string, string>();
  */
 const readyHosts = new Set<string>();
 
+/**
+ * A token for an address that is not encrypted, waiting to be agreed to.
+ *
+ * Held rather than stored, because the screen that asks appears after the run
+ * has ended: writing it first and taking it back off if the answer was no
+ * meant closing the panel, quitting, or crashing left it on disk with nobody
+ * having agreed to anything. Kept in the process, so it is lost on a restart
+ * — which is the safe direction, and lands the user on the same screen a run
+ * whose token could not be minted already produces.
+ *
+ * One at a time, like the machine itself.
+ */
+let heldInsecureToken: { instanceUrl: string; token: string } | null = null;
+
 function broadcastState(state: SetupSnapshot) {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -289,15 +303,15 @@ function setupController(): CoolifySetupController {
                 },
                 // The address and token go together: an address stored without a
                 // token would read as an instance Dyad can talk to and cannot.
-                // Stored without the acknowledgement `coolify:save-token`
-                // demands for an unencrypted address. Not an oversight and
-                // not a decision this path can make honestly: whether HTTPS
-                // was possible is only known once the install has run, so
-                // asking here is asking after the fact. The finished screen
-                // says the server is not encrypted, and asking beforehand —
-                // for the addresses that can never have a certificate — is a
-                // change of its own rather than a line here.
-                ...(result.token
+                //
+                // Only when the address is encrypted. `coolify:save-token`
+                // will not store a token against a plain-HTTP address without
+                // the user saying so, and there is no honest reason this path
+                // should differ — whether HTTPS was possible is only known
+                // once the install has run, which says the question cannot be
+                // asked before, not that it can be skipped. So the token is
+                // held instead, and the finished screen asks.
+                ...(result.token && result.secure
                   ? {
                       instanceUrl: result.dashboardUrl,
                       accessToken: { value: result.token },
@@ -305,6 +319,12 @@ function setupController(): CoolifySetupController {
                   : {}),
               },
             });
+            // Nothing has agreed to this yet, so it waits where a restart
+            // loses it rather than where a restart finds it.
+            heldInsecureToken =
+              result.token && !result.secure
+                ? { instanceUrl: result.dashboardUrl, token: result.token }
+                : null;
           } catch (error) {
             // Same reason as the write above: the server is set up, a retry is
             // refused because Coolify is on it now, and the screen this
@@ -364,7 +384,12 @@ function sshPort(input: SetupServer): number | undefined {
 
 function targetFrom(input: SetupServer, privateKey: string) {
   return {
-    host: input.host.trim(),
+    // Unbracketed, the way ssh2 and node's isIP both want an address. A
+    // literal typed the way documentation writes it — [2001:db8::1] — is a
+    // hostname to both of them: ssh2 looks it up and fails, and urlHost sees
+    // something that is not an IP and hands it on without the brackets a URL
+    // does need. The same spelling serverKeyFor already reduces to.
+    host: input.host.trim().replace(/^\[|\]$/g, ""),
     port: sshPort(input),
     username: input.username.trim(),
     privateKey,
@@ -505,6 +530,8 @@ export function registerCoolifySetupHandlers() {
   );
 
   createTypedHandler(coolifySetupContracts.dismiss, async () => {
+    // Putting the screen away without having agreed is the answer being no.
+    heldInsecureToken = null;
     setupController().dismiss();
   });
 
@@ -536,15 +563,19 @@ export function registerCoolifySetupHandlers() {
     };
   });
 
-  createTypedHandler(coolifySetupContracts.declineInsecureToken, async () => {
-    // Only the two that make Dyad talk to the instance. The admin account is
-    // the way into a server that is running either way, and holding it sends
-    // nothing anywhere — the token is what would have crossed the network in
-    // the clear on every deploy.
-    const current = readSettings().coolify;
+  createTypedHandler(coolifySetupContracts.acceptInsecureToken, async () => {
+    // Nothing to write if nothing is being held: the screen only offers this
+    // where a run ended on an address that is not encrypted, and a run that
+    // ended any other way stored its token itself.
+    if (!heldInsecureToken) return;
     writeSettings({
-      coolify: { ...current, instanceUrl: undefined, accessToken: undefined },
+      coolify: {
+        ...readSettings().coolify,
+        instanceUrl: heldInsecureToken.instanceUrl,
+        accessToken: { value: heldInsecureToken.token },
+      },
     });
+    heldInsecureToken = null;
   });
 
   createTypedHandler(coolifySetupContracts.cancel, async () => {

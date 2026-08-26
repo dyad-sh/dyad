@@ -169,16 +169,16 @@ export function CoolifyServerSetup({
   /** Puts the finished screen away and lets the panel behind catch up. */
   const leaveResult = async (
     instanceUrl?: string,
-    { declineToken = false }: { declineToken?: boolean } = {},
+    { acceptToken = false }: { acceptToken?: boolean } = {},
   ) => {
-    // Before the queries are refreshed, so the panel behind never sees the
-    // token that is about to be taken back off.
-    if (declineToken) {
+    // Before the queries are refreshed, so the panel behind sees a token that
+    // has been agreed to rather than one on its way to being.
+    if (acceptToken) {
       // Not swallowed. Dismissing over a failure here would put the screen
-      // away with the token still stored — the one outcome the checkbox was
-      // there to prevent — and say nothing about it.
+      // away having agreed to something that was never stored, and the panel
+      // behind would read as unconnected with nothing said about why.
       try {
-        await ipc.coolifySetup.declineInsecureToken();
+        await ipc.coolifySetup.acceptInsecureToken();
       } catch (error) {
         showError(error);
         return;
@@ -274,8 +274,9 @@ export function CoolifyServerSetup({
         )}
         {result.tokenStored ? (
           <p className="text-sm text-muted-foreground">
-            Dyad created its own API token, so you can pick a server and project
-            next.
+            {result.secure
+              ? "Dyad created its own API token, so you can pick a server and project next."
+              : "Dyad created an API token for this server. It is not kept unless you say so above, because this address is not encrypted."}
           </p>
         ) : (
           // The install stands; only the last step did not. Saying so plainly
@@ -297,8 +298,8 @@ export function CoolifyServerSetup({
         <Button
           onClick={() =>
             void leaveResult(result.dashboardUrl, {
-              declineToken:
-                !result.secure && result.tokenStored && !acceptedInsecureToken,
+              acceptToken:
+                !result.secure && result.tokenStored && acceptedInsecureToken,
             })
           }
           data-testid="coolify-setup-continue"

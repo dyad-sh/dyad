@@ -242,15 +242,16 @@ export const coolifySetupContracts = {
   }),
 
   /**
-   * The user read the unencrypted-address warning and did not accept it.
+   * The user read the unencrypted-address warning and accepted it.
    *
-   * The token is stored when the run ends, before anyone has seen that
-   * warning, so this is how declining takes it back off. The account stays:
-   * it is the way into a server that exists either way, and the address it
-   * names is not what travels on every deploy.
+   * A token for an address that is not encrypted is held rather than stored
+   * when the run ends, so that closing the screen, quitting, or a crash
+   * leaves Dyad unconnected rather than connected to something nobody agreed
+   * to. This is the only way it reaches disk. Nothing to decline: not
+   * accepting is simply never calling it.
    */
-  declineInsecureToken: defineContract({
-    channel: "coolify-setup:decline-insecure-token",
+  acceptInsecureToken: defineContract({
+    channel: "coolify-setup:accept-insecure-token",
     input: z.void(),
     output: z.void(),
   }),

@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
   getServerKey: vi.fn(),
   snapshot: vi.fn(),
   dismiss: vi.fn(),
-  declineInsecureToken: vi.fn(),
+  acceptInsecureToken: vi.fn(),
   changedListeners: [] as Array<(state: unknown) => void>,
   inspect: vi.fn(),
   run: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock("@/ipc/types", () => ({
       cancel: h.cancel,
       snapshot: h.snapshot,
       dismiss: h.dismiss,
-      declineInsecureToken: h.declineInsecureToken,
+      acceptInsecureToken: h.acceptInsecureToken,
     },
     events: {
       coolifySetup: {
@@ -94,7 +94,7 @@ beforeEach(() => {
   h.changedListeners.length = 0;
   h.snapshot.mockResolvedValue(IDLE);
   h.dismiss.mockResolvedValue(undefined);
-  h.declineInsecureToken.mockResolvedValue(undefined);
+  h.acceptInsecureToken.mockResolvedValue(undefined);
   h.getServerKey.mockResolvedValue({ publicKey: PUBLIC_KEY });
   h.cancel.mockResolvedValue(undefined);
   h.inspect.mockResolvedValue({
@@ -785,8 +785,8 @@ describe("when it finishes", () => {
   });
 
   it("does not keep a token for an unencrypted address unless asked to", async () => {
-    // The token is written when the run ends, before anyone has read the
-    // warning. Continuing past it without a word is not agreement.
+    // The token is held rather than written when the run ends, so continuing
+    // past the warning without a word leaves it unkept.
     h.snapshot.mockResolvedValue(
       doneState({ secure: false, insecureReason: "No certificate arrived." }),
     );
@@ -798,22 +798,23 @@ describe("when it finishes", () => {
     );
     await user.click(screen.getByTestId("coolify-setup-continue"));
 
-    expect(h.declineInsecureToken).toHaveBeenCalled();
+    expect(h.acceptInsecureToken).not.toHaveBeenCalled();
   });
 
-  it("stays put when the token could not be taken back off", async () => {
-    // Dismissing here would put the screen away with the token still stored,
-    // which is the one outcome the checkbox exists to prevent.
+  it("stays put when the token could not be kept", async () => {
+    // Dismissing here would put the screen away having agreed to something
+    // that was never stored, and say nothing about why.
     h.snapshot.mockResolvedValue(
       doneState({ secure: false, insecureReason: "No certificate arrived." }),
     );
-    h.declineInsecureToken.mockRejectedValue(new Error("keychain locked"));
+    h.acceptInsecureToken.mockRejectedValue(new Error("keychain locked"));
     const user = userEvent.setup();
     renderPanel();
 
     await waitFor(() =>
-      expect(screen.getByTestId("coolify-setup-continue")).toBeTruthy(),
+      expect(screen.getByTestId("coolify-setup-accept-insecure")).toBeTruthy(),
     );
+    await user.click(screen.getByTestId("coolify-setup-accept-insecure"));
     await user.click(screen.getByTestId("coolify-setup-continue"));
 
     expect(h.showError).toHaveBeenCalled();
@@ -833,7 +834,7 @@ describe("when it finishes", () => {
     await user.click(screen.getByTestId("coolify-setup-accept-insecure"));
     await user.click(screen.getByTestId("coolify-setup-continue"));
 
-    expect(h.declineInsecureToken).not.toHaveBeenCalled();
+    expect(h.acceptInsecureToken).toHaveBeenCalled();
   });
 
   it("asks nothing when the address is encrypted", async () => {
@@ -848,7 +849,7 @@ describe("when it finishes", () => {
     expect(screen.queryByTestId("coolify-setup-accept-insecure")).toBeNull();
     await user.click(screen.getByTestId("coolify-setup-continue"));
 
-    expect(h.declineInsecureToken).not.toHaveBeenCalled();
+    expect(h.acceptInsecureToken).not.toHaveBeenCalled();
   });
 
   it("shows the details, since this is the moment they are needed", async () => {

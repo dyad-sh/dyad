@@ -281,9 +281,36 @@ describe("runServerSetup", () => {
       return original(command, options);
     }) as unknown as SshSession["run"];
 
+    const seen: string[] = [];
     await expect(
-      run(server, { recoveryProbeTimeoutMs: 20 }).promise,
+      run(server, {
+        recoveryProbeTimeoutMs: 20,
+        onAccountKnown: ({ credentials }) => seen.push(credentials.password),
+      }).promise,
     ).rejects.toThrow(/Installing Coolify failed/);
+    // A question that never came back is not an answer of "nothing was
+    // installed". install.sh may already have written this password into
+    // Coolify's .env, and dropping the only copy of it cannot be undone from
+    // here — preflight refuses to install over the container again.
+    expect(seen).toHaveLength(1);
+  });
+
+  it("hands the account over when the probe cannot tell either way", async () => {
+    // Docker is there but will not answer, so what it said about Coolify is
+    // not evidence. preflight reports that as the same "no Coolify here" as
+    // an empty server, and only one of those means the password is dead.
+    const server = fakeServer({
+      installExit: 1,
+      probeAfterInstall: "os=ubuntu\nmem=1967\ndockerok=no\nbusy=no",
+    });
+    const seen: string[] = [];
+    await expect(
+      run(server, {
+        onAccountKnown: ({ credentials }) => seen.push(credentials.password),
+      }).promise,
+    ).rejects.toThrow(/Installing Coolify failed/);
+
+    expect(seen).toHaveLength(1);
   });
 
   it("hands the account over when a failed install still left Coolify there", async () => {

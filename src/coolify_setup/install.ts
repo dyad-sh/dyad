@@ -26,6 +26,16 @@ export interface Preflight {
   /** Present when ready is false, phrased for the user. */
   reason?: string;
   alreadyInstalled: boolean;
+  /**
+   * Whether the probe actually settled the Coolify question.
+   *
+   * False means the evidence was unusable, not that the server is empty —
+   * docker wedged, or nothing read back at all. The two are the same
+   * `alreadyInstalled: false` and must not be treated alike: one of them is
+   * what stands between a user and installing over an instance that is
+   * already there, or dropping the only copy of a live admin password.
+   */
+  installedKnown: boolean;
   memoryMb: number | null;
 }
 
@@ -93,6 +103,7 @@ export async function preflight(
     return {
       ready: false,
       alreadyInstalled: false,
+      installedKnown: false,
       memoryMb: null,
       reason:
         "Dyad could not read anything back from this server. It answered the " +
@@ -107,6 +118,7 @@ export async function preflight(
     return {
       ready: false,
       alreadyInstalled: false,
+      installedKnown: false,
       memoryMb: null,
       reason:
         "Docker is installed on this server but not responding, so Dyad " +
@@ -124,6 +136,7 @@ export async function preflight(
     return {
       ready: false,
       alreadyInstalled,
+      installedKnown: true,
       memoryMb,
       reason:
         "This server is still finishing its own first-boot setup, which holds " +
@@ -135,6 +148,7 @@ export async function preflight(
     return {
       ready: false,
       alreadyInstalled,
+      installedKnown: true,
       memoryMb,
       reason:
         "This server already has Coolify on it. Connect to it with an API token " +
@@ -145,13 +159,14 @@ export async function preflight(
     return {
       ready: false,
       alreadyInstalled,
+      installedKnown: true,
       memoryMb,
       reason:
         `This server has ${memoryMb}MB of memory and Coolify needs about 2GB. ` +
         `Installing would finish and then fail to run.`,
     };
   }
-  return { ready: true, alreadyInstalled, memoryMb };
+  return { ready: true, alreadyInstalled, installedKnown: true, memoryMb };
 }
 
 /**

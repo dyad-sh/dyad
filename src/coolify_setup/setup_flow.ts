@@ -180,14 +180,25 @@ export async function runServerSetup({
             );
           }),
         ]);
-        if (after.alreadyInstalled) {
+        // Or could not tell. "Docker is wedged, I cannot say" comes back
+        // from preflight as the same `alreadyInstalled: false` as an empty
+        // server, and only one of those means the password opens nothing.
+        if (after.alreadyInstalled || !after.installedKnown) {
           onAccountKnown?.({
             credentials,
             dashboardUrl: plainUrlFor(target.host),
           });
         }
       } catch {
-        // Nothing to add: the installer's own error is the one that matters.
+        // The probe never answered — it timed out, or the connection went
+        // with it. That is not an answer of "nothing was installed", and
+        // treating it as one takes the account off. Keeping a password that
+        // opens nothing is a nuisance the user can sign out of; dropping the
+        // only copy of one that does is not recoverable from here.
+        onAccountKnown?.({
+          credentials,
+          dashboardUrl: plainUrlFor(target.host),
+        });
       } finally {
         clearTimeout(timer);
       }

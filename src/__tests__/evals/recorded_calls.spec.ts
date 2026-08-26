@@ -28,6 +28,14 @@ import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
 const CALLS_DIR = resolve(__dirname, "recorded_calls");
 const FIXTURES_DIR = resolve(__dirname, "fixtures");
 
+function normalizeNewlines(content: string): string {
+  return content.replace(/\r\n?/g, "\n");
+}
+
+function readRecordedText(path: string): string {
+  return normalizeNewlines(readFileSync(path, "utf8"));
+}
+
 interface RecordedCase {
   case: string;
   fixture: string;
@@ -78,12 +86,11 @@ function replayModel(
   };
 
   for (const entry of manifest[modelDir].cases) {
-    let content = readFileSync(resolve(FIXTURES_DIR, entry.fixture), "utf8");
+    let content = readRecordedText(resolve(FIXTURES_DIR, entry.fixture));
 
     for (const callFile of entry.calls) {
-      const operations = readFileSync(
+      const operations = readRecordedText(
         resolve(CALLS_DIR, modelDir, entry.case, callFile),
-        "utf8",
       );
       const [block] = parseSearchReplaceBlocks(operations);
       expect(block, `${callFile} should parse into one block`).toBeDefined();
@@ -143,6 +150,11 @@ const runCurrent = only !== "legacy";
 const runLegacy = only !== "current";
 
 describe("recorded search_replace calls", () => {
+  it("normalizes platform line endings before replay", () => {
+    expect(normalizeNewlines("first\nsecond\n")).toBe("first\nsecond\n");
+    expect(normalizeNewlines("first\r\nsecond\r\n")).toBe("first\nsecond\n");
+  });
+
   for (const [modelDir, expected] of Object.entries(EXPECTED)) {
     const label = manifest[modelDir].label;
 

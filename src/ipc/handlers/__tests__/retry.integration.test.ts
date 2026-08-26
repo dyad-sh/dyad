@@ -44,7 +44,9 @@ function commitWithTestIdentity(cwd: string, message: string) {
   );
 }
 
-async function waitForCleanGit(cwd: string) {
+async function waitForCleanGit(harness: HybridChatHarness) {
+  await harness.bridge.settleInFlight();
+  const cwd = harness.appDir;
   await waitFor(
     () => {
       expect(fs.existsSync(path.join(cwd, ".git", "index.lock"))).toBe(false);
@@ -155,7 +157,7 @@ describe("retry (hybrid)", () => {
     };
 
     await sendTurn("tc=write-index");
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
     const earlierManualPath = path.join(
       harness.appDir,
       "retry-earlier-manual-change.txt",
@@ -166,13 +168,13 @@ describe("retry (hybrid)", () => {
     });
     commitWithTestIdentity(harness.appDir, "Manual work before latest AI turn");
     await sendTurn("tc=write-index-2");
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
 
     const directRetryEnd = harness.waitForNextStreamEnd(harness.chatId);
     fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
     expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull();
     await directRetryEnd;
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
     expect(fs.existsSync(earlierManualPath)).toBe(true);
 
     const newerManualPath = path.join(
@@ -207,7 +209,7 @@ describe("retry (hybrid)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
     fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
     await retriedStreamEnd;
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
 
     expect(fs.existsSync(newerManualPath)).toBe(false);
     expect(fs.existsSync(earlierManualPath)).toBe(true);
@@ -227,7 +229,7 @@ describe("retry (hybrid)", () => {
     const { send } = await harness.typeInChat("tc=write-index");
     send();
     await end;
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
 
     const manualPath = path.join(
       harness.appDir,
@@ -248,7 +250,7 @@ describe("retry (hybrid)", () => {
     const retryEnd = harness.waitForNextStreamEnd(harness.chatId);
     fireEvent.click(screen.getByTestId("retry-from-current-code-button"));
     await retryEnd;
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
 
     expect(fs.existsSync(manualPath)).toBe(true);
     await waitFor(() =>
@@ -267,7 +269,7 @@ describe("retry (hybrid)", () => {
     const { send } = await harness.typeInChat("tc=write-index-2");
     send();
     await end;
-    await waitForCleanGit(harness.appDir);
+    await waitForCleanGit(harness);
 
     const uncommittedPath = path.join(
       harness.appDir,

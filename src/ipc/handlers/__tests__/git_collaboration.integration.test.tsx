@@ -376,10 +376,16 @@ describe("Git collaboration actions (integration)", () => {
 
     await harness.github.clearPushEvents();
     fireEvent.click(continueButton);
-    await within(screen.getByTestId("github-connected-repo")).findByText(
-      "Successfully pushed to GitHub!",
-      { exact: false },
-      { timeout: 20_000 },
+    await waitFor(
+      () => {
+        expect(
+          within(screen.getByTestId("github-connected-repo")).getByText(
+            "Successfully pushed to GitHub!",
+            { exact: false },
+          ),
+        ).toBeTruthy();
+      },
+      { timeout: 30_000 },
     );
     await harness.bridge.settleInFlight();
     expect(await harness.github.pushEvents()).toEqual(

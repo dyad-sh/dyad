@@ -31,6 +31,10 @@ function git(cwd: string, ...args: string[]) {
 test("completes the GitHub publish happy paths", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
+  // GitHub operations coordinate with app startup. Wait for the generated
+  // app's dependency install and runtime startup to release their claims before
+  // starting the publish flow; loaded Windows runners can take over a minute.
+  await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
   await po.appManagement.getTitleBarAppNameButton().click();
 
   await po.githubConnector.connect();

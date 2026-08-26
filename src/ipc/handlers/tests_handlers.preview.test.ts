@@ -392,7 +392,7 @@ describe("preview runs", () => {
     ).toBe(true);
     expect(
       testSpawns[0].args.some((arg: string) =>
-        /^--output=.*0001\/artifacts$/.test(arg),
+        /^--output=.*0001[\\/]artifacts$/.test(arg),
       ),
     ).toBe(true);
   });

@@ -112,17 +112,20 @@ test("installs Coolify onto a server and connects to it", async ({ po }) => {
   await fillAndInstall(po);
 
   // A loopback address can never be given a certificate, so the install ends
-  // on plain HTTP — and the screen stays up to say so, because the token it
-  // stored travels over that address on every deploy.
+  // on plain HTTP — and the screen stays up to ask, because the token it
+  // would keep travels over that address on every deploy.
   await expect(po.page.getByTestId("coolify-setup-done")).toBeVisible({
     timeout: Timeout.LONG,
   });
   await expect(po.page.getByTestId("coolify-setup-insecure")).toBeVisible();
   await expect(po.page.getByTestId("coolify-setup-done")).toContainText(
-    "Dyad created its own API token",
+    "It is not kept unless you say so",
   );
 
-  // Moving on hands the panel back with the token already stored.
+  // Saying so is what stores it. Ticking here is the whole of the difference
+  // between the picker below and the token form, which is what makes this the
+  // one place the agreement is proved end to end.
+  await po.page.getByTestId("coolify-setup-accept-insecure").click();
   await po.page.getByTestId("coolify-setup-continue").click();
   await expect(po.page.getByTestId("coolify-server-select")).toBeVisible({
     timeout: Timeout.MEDIUM,

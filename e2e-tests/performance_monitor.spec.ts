@@ -147,7 +147,14 @@ testWithConfig({})(
       settings.lastKnownPerformance.systemCpuPercent,
     ).toBeGreaterThanOrEqual(0);
     // statfs works on every platform we ship, so a real capture always has
-    // disk figures. Used never exceeds total; available can trail both.
+    // disk figures. The fields are dropped on a read failure, so assert
+    // presence up front: an absent field is the regression to catch.
+    expect(settings.lastKnownPerformance).toMatchObject({
+      diskTotalMB: expect.any(Number),
+      diskUsedMB: expect.any(Number),
+      diskAvailableMB: expect.any(Number),
+    });
+    // Used never exceeds total; available can trail both.
     expect(settings.lastKnownPerformance.diskTotalMB).toBeGreaterThan(0);
     expect(settings.lastKnownPerformance.diskUsedMB).toBeGreaterThan(0);
     expect(settings.lastKnownPerformance.diskUsedMB).toBeLessThanOrEqual(

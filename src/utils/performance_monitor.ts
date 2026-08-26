@@ -233,9 +233,13 @@ function capturePerformanceMetrics() {
         : 0;
     const kernelPeakRssMB = getKernelPeakRssMB();
     const activity = snapshotActivity();
-    // The user data volume, not the apps volume: writeSettings below already
-    // blocks on it every tick, so this adds no new main-thread exposure.
+    // The user data volume is the system volume, which is the disk we want
+    // to measure. The apps folder is user-configurable and can sit on a
+    // different drive entirely.
     const diskUsage = getDiskUsageMB(getUserDataPath());
+    if (!diskUsage) {
+      logger.debug("Disk usage unavailable; omitting disk fields");
+    }
 
     logger.debug(
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,

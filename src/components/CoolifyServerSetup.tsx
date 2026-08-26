@@ -272,23 +272,29 @@ export function CoolifyServerSetup({
             )}
           </div>
         )}
-        {result.tokenStored && (result.secure || acceptedInsecureToken) ? (
+        {result.tokenStored && (
           <p className="text-sm text-muted-foreground">
             {result.secure
               ? "Dyad created its own API token, so you can pick a server and project next."
               : "Dyad created an API token for this server. It is not kept unless you say so above, because this address is not encrypted."}
           </p>
-        ) : (
+        )}
+        {(!result.tokenStored ||
+          (!result.secure && !acceptedInsecureToken)) && (
           // The install stands; only the last step did not. Saying so plainly
-          // beats implying the whole thing failed.
+          // beats implying the whole thing failed. A token Dyad made but will
+          // not keep is not a token it failed to make, so the two say so
+          // differently.
           <div
             className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
             data-testid="coolify-setup-manual-token"
           >
             <p className="font-medium">One step left, in Coolify</p>
             <p className="text-muted-foreground">
-              {result.tokenUnavailableReason ??
-                "Dyad could not create an API token automatically."}{" "}
+              {result.tokenStored
+                ? "Unless you tick the box above, Dyad forgets the token it made."
+                : (result.tokenUnavailableReason ??
+                  "Dyad could not create an API token automatically.")}{" "}
               Open {result.dashboardUrl}, sign in with the details above, enable
               the API under Settings → Advanced, then create a token under
               Security → API Tokens and paste it in on the next screen.

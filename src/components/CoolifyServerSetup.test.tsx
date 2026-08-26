@@ -822,16 +822,23 @@ describe("when it finishes", () => {
   });
 
   it("says how to make a token by hand when the offered one is not kept", async () => {
-    // Declining leaves the token form pinned to that same address, where
-    // saving asks for the consent just refused — so the only way on is a
-    // token made in Coolify, and this is the only place that says how.
+    // Leaving the box unticked drops the token, and this is the only place
+    // that says how to make one instead.
     h.snapshot.mockResolvedValue(
       doneState({ secure: false, insecureReason: "No certificate arrived." }),
     );
     renderPanel();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("coolify-setup-manual-token")).toBeTruthy(),
+    const panel = await waitFor(() =>
+      screen.getByTestId("coolify-setup-manual-token"),
+    );
+    expect(panel.textContent).toContain("Security → API Tokens");
+    // A token Dyad made and will drop is not one it could not make. Saying
+    // the latter here would contradict the offer to keep it, directly above.
+    expect(panel.textContent).toContain("Unless you tick the box above");
+    expect(panel.textContent).not.toContain("could not create");
+    expect(screen.getByTestId("coolify-setup-done").textContent).toContain(
+      "It is not kept unless you say so",
     );
   });
 

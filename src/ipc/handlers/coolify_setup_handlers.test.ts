@@ -401,8 +401,10 @@ describe("run", () => {
   it("stores the account on the way out when the first attempt failed", async () => {
     // Coolify has the account either way, and preflight refuses to install
     // over it — so a password stored nowhere is a server nobody can sign into.
-    // The store is busy for the first write and free by the second.
-    h.writeFailures = 1;
+    // Two, not one: the record written on the way in is the first write, so
+    // failing only that leaves the account's own write to succeed and the
+    // retry below never runs.
+    h.writeFailures = 2;
     h.reportsAccount = true;
     h.setupError = new DyadError("exit 1", DyadErrorKind.External);
 
@@ -418,7 +420,9 @@ describe("run", () => {
     // The account is reported twice — once when it exists, and again once
     // HTTPS has settled where it answers. A copy kept from the first would
     // write the earlier address back over the later one on the way out.
-    h.writeFailures = 1;
+    // Two writes fail: the one on the way in, and the first of the two
+    // accounts — so the copy left behind is the one holding the old address.
+    h.writeFailures = 2;
     h.reportsAccount = true;
     h.reportsAccountTwice = true;
     h.setupError = new DyadError("exit 1", DyadErrorKind.External);
@@ -588,17 +592,50 @@ describe("run", () => {
     h.reportsAccount = false;
     h.setupError = new Error("boom");
     h.onRunStarted = () => {
-      // As another window connecting to a Coolify would leave it.
+      // As another window connecting to a Coolify would leave it. The admin
+      // record matters more than the token: clearing on the way out spreads
+      // what it read and names only admin, so a token would survive either
+      // way and prove nothing about the guard.
       h.settings.coolify = {
         instanceUrl: "https://elsewhere.example.com",
         accessToken: { value: "1|theirs" },
+        admin: {
+          email: "other@gmail.com",
+          password: { value: "Other123@xyz" },
+          instanceUrl: "https://elsewhere.example.com",
+        },
       };
     };
     await checkThenRun().catch(() => {});
 
-    // Untouched: what is there is newer than anything this run knows.
-    const coolify = h.settings.coolify as { accessToken?: { value: string } };
+    // Untouched: what is there is newer than anything this run knows, and it
+    // is the only copy of that server's password.
+    const coolify = h.settings.coolify as {
+      accessToken?: { value: string };
+      admin?: { password?: { value: string } };
+    };
     expect(coolify.accessToken?.value).toBe("1|theirs");
+    expect(coolify.admin?.password?.value).toBe("Other123@xyz");
+  });
+
+  it("takes its own record back off even if the keychain relocked meanwhile", async () => {
+    // readSettings drops a password it cannot decrypt and keeps the account,
+    // so this run's own record comes back without one. That is it gone
+    // unreadable rather than somebody else's writing — and leaving it behind
+    // holds a password that opens nothing, which is what refuses the next
+    // install.
+    h.reportsAccount = false;
+    h.setupError = new Error("boom");
+    h.onRunStarted = () => {
+      const coolify = h.settings.coolify as { admin?: Record<string, unknown> };
+      expect(coolify.admin).toBeTruthy();
+      delete coolify.admin!.password;
+    };
+    await checkThenRun().catch(() => {});
+
+    expect(
+      (h.settings.coolify as { admin?: unknown } | undefined)?.admin,
+    ).toBeUndefined();
   });
 
   it("refuses a second setup on a different machine", async () => {

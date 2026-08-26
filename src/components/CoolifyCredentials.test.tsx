@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +40,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.revealCredentials.mockResolvedValue(FULL);
 });
+
+/**
+ * Waits for the read to have answered, not merely to have been asked.
+ *
+ * This panel renders nothing while the question is in flight and nothing
+ * when the answer is empty, so asserting on the first of those proves only
+ * that a promise had not resolved yet — it holds just as well with the guard
+ * for the second one taken out.
+ */
+async function settle() {
+  await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
+  await act(async () => {});
+}
 
 async function renderAndSettle() {
   render(<CoolifyCredentials />);
@@ -135,7 +148,7 @@ describe("naming the section", () => {
     h.revealCredentials.mockResolvedValue({ instance: null, server: null });
     render(<CoolifyCredentials showTitle />);
 
-    await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
+    await settle();
     expect(screen.queryByText("Your Coolify server")).toBeNull();
   });
 });
@@ -244,7 +257,7 @@ describe("an instance Dyad did not set up", () => {
     h.revealCredentials.mockResolvedValue({ instance: null, server: null });
     const { container } = render(<CoolifyCredentials />);
 
-    await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
+    await settle();
     expect(screen.queryByTestId("coolify-credentials")).toBeNull();
     expect(container.textContent).toBe("");
   });

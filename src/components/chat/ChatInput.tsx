@@ -296,7 +296,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = messages.at(-1);
   const disableSendButton =
-    selectedMode !== "local-agent" &&
+    !isLocalAgentBackedMode(selectedMode) &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -941,8 +941,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingToolConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            selectedMode !== "ask" &&
-            selectedMode !== "local-agent" && (
+            !isLocalAgentBackedMode(selectedMode) && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}
@@ -1163,7 +1162,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           </div>
           <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
-              <ChatInputControls showContextFilesPicker={false} />
+              <ChatInputControls />
             </div>
 
             <AuxiliaryActionsMenu

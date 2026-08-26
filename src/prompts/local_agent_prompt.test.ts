@@ -289,6 +289,8 @@ describe("build agent prompt", () => {
     expect(prompt).toContain("`planning_questionnaire`");
     expect(prompt).toContain("`update_todos`");
     expect(prompt).toContain("write_app_blueprint");
+    expect(prompt).toContain("<git_context>");
+    expect(prompt).not.toContain("provided Git inspection tools");
     for (const unavailableTool of [
       "spawn_agent",
       "web_search",

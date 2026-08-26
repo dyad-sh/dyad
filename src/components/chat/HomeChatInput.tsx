@@ -283,7 +283,7 @@ export function HomeChatInput({
           </div>
           <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
-              <ChatInputControls showContextFilesPicker={false} />
+              <ChatInputControls />
               {canSelectApp && (
                 <Tooltip>
                   <TooltipTrigger
@@ -332,10 +332,7 @@ export function HomeChatInput({
               )}
             </div>
 
-            <AuxiliaryActionsMenu
-              onFileSelect={handleFileSelect}
-              hideContextFilesPicker
-            />
+            <AuxiliaryActionsMenu onFileSelect={handleFileSelect} />
           </div>
         </div>
       </div>

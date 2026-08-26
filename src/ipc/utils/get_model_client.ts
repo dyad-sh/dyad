@@ -133,19 +133,18 @@ export async function getModelClient(
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadEngineUrl) {
-      const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
+      // Native tool-backed modes select and edit files themselves. Retired
+      // engine-side Build options remain in stored settings only for backwards
+      // compatibility and must not affect requests.
+      const enableSmartFilesContext = false;
       const provider = createDyadEngine({
         apiKey: dyadApiKey,
         baseURL: getDyadEngineBaseUrl(),
         ...getModelClientFetchOption(),
         dyadOptions: {
-          enableLazyEdits:
-            settings.selectedChatMode === "ask"
-              ? false
-              : settings.enableProLazyEditsMode &&
-                settings.proLazyEditsMode !== "v2",
+          enableLazyEdits: false,
           enableSmartFilesContext,
-          enableWebSearch: settings.enableProWebSearch,
+          enableWebSearch: false,
         },
         settings,
         modelSelection,

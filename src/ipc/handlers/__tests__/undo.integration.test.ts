@@ -287,14 +287,15 @@ describe("undo (integration)", () => {
     await settleRendererActions();
   }, 60_000);
 
-  it("undo after assistant with no code", async () => {
+  it("undo after a text-only assistant checkpoint", async () => {
     harness.mount();
     await waitFor(
       () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
       { timeout: 15_000 },
     );
 
-    // First prompt - no code generated, so no commit on the assistant message.
+    // Agentic modes checkpoint any existing dirty app state after a completed
+    // turn, even when the response itself is text-only.
     await settleRendererActions();
     await sendTurn("tc=no-code-response");
     await waitFor(
@@ -317,7 +318,7 @@ describe("undo (integration)", () => {
     );
     expect(harness.readAppFile(INDEX_PATH)).toContain("Testing:write-index!");
 
-    // Undo should work even though the first assistant had no commit.
+    // Undo should target the later code-writing checkpoint.
     await clickUndo();
     await waitFor(() =>
       expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
@@ -328,8 +329,7 @@ describe("undo (integration)", () => {
     );
     expect(harness.appFileExists(INDEX_PATH)).toBe(false);
 
-    // Only the code-writing turn is deleted; the no-code turn remains (in the
-    // db and in the DOM).
+    // Only the code-writing turn is deleted; the text-only checkpoint remains.
     const remaining = await loadMessages();
     expect(remaining).toHaveLength(2);
     expect(remaining[0].content).toBe("tc=no-code-response");

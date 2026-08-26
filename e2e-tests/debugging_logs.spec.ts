@@ -7,7 +7,6 @@ testSkipIfWindows(
     await po.setUp();
 
     await po.sendPrompt("tc=console-logs");
-    await po.approveProposal();
 
     // Wait for app to run
     const picker = po.page.getByTestId("preview-pick-element-button");
@@ -90,7 +89,6 @@ testSkipIfWindows(
     await po.setUp();
 
     await po.sendPrompt("tc=network-requests");
-    await po.approveProposal();
 
     // Wait for app to run
     const picker = po.page.getByTestId("preview-pick-element-button");
@@ -186,7 +184,6 @@ testSkipIfWindows(
 
     // Create an app with console output using fixture
     await po.sendPrompt("tc=write-index");
-    await po.approveProposal();
 
     // Wait for app to run
     const picker = po.page.getByTestId("preview-pick-element-button");
@@ -221,7 +218,6 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
 
   // Create a basic app using fixture
   await po.sendPrompt("tc=write-index");
-  await po.approveProposal();
 
   // Wait for app to run
   await po.page
@@ -255,7 +251,6 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
 
   // Create an app with console logs
   await po.sendPrompt("tc=console-logs");
-  await po.approveProposal();
 
   // Wait for app to run
   const picker = po.page.getByTestId("preview-pick-element-button");

@@ -1,2 +1,0 @@
-=== src/pages/Index.tsx ===
-// FILE IS REPLACED WITH FALLBACK WRITE.

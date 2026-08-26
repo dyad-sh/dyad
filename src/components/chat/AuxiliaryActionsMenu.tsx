@@ -27,7 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ContextFilesPicker } from "@/components/ContextFilesPicker";
 import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
 import { useThemes } from "@/hooks/useThemes";
@@ -45,7 +44,6 @@ interface AuxiliaryActionsMenuProps {
   ) => void;
   showTokenBar?: boolean;
   toggleShowTokenBar?: () => void;
-  hideContextFilesPicker?: boolean;
   appId?: number;
   onGenerateImage?: () => void;
 }
@@ -54,7 +52,6 @@ export function AuxiliaryActionsMenu({
   onFileSelect,
   showTokenBar,
   toggleShowTokenBar,
-  hideContextFilesPicker,
   appId,
   onGenerateImage,
 }: AuxiliaryActionsMenuProps) {
@@ -145,7 +142,6 @@ export function AuxiliaryActionsMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {/* Codebase Context */}
-          {!hideContextFilesPicker && <ContextFilesPicker />}
 
           {/* Attach Files Submenu */}
           <DropdownMenuSub>

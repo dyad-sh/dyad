@@ -50,11 +50,13 @@ Private API keys/tokens exposed in browser where they can be stolen
 **low**: Low immediate risk; typically requires local access, unlikely chain of events, or only violates best practices without a clear exploitation path.
 
 # Instructions
-1. Find real, exploitable vulnerabilities that lead to data breaches
-2. Prioritize client-side exposed secrets and data leaks
-3. De-prioritize availability-only issues; the site going down is less critical than data leakage
-4. Use plain language with specific file paths
-5. Flag private API keys/secrets exposed client-side as critical (public/anon keys like Supabase anon are OK)
+1. Before reporting findings, inspect the repository with the available \`list_files\`, \`grep\`, and \`read_file\` tools. Survey the relevant application and server code rather than inferring vulnerabilities from filenames or assumptions.
+2. Report only issues grounded in files you actually inspected, and cite those specific file paths.
+3. Find real, exploitable vulnerabilities that lead to data breaches.
+4. Prioritize client-side exposed secrets and data leaks.
+5. De-prioritize availability-only issues; the site going down is less critical than data leakage.
+6. Use plain language with specific file paths.
+7. Flag private API keys/secrets exposed client-side as critical (public/anon keys like Supabase anon are OK).
 
 Begin your security review.
 `;

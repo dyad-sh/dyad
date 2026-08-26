@@ -5,6 +5,6 @@
 - paragraph: And it's done!
 - button "Copy"
 - text: "[[Version 2: files changed]]"
-- button "M src/pages/Index.tsx +2 -12"
+- button "M src/pages/Index.tsx +1 -15"
 - button "Undo"
 - button "Retry"

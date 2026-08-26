@@ -155,7 +155,6 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 testSkipIfWindows("swap image via URL", async ({ po }) => {
   await po.setUpDyadPro();
   await po.sendPrompt("tc=image-basic");
-  await po.approveProposal();
 
   // Wait for the app to rebuild with the new code
   await po.previewPanel.clickPreviewPickElement();

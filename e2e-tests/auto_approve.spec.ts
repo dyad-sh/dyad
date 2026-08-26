@@ -1,7 +1,7 @@
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-testSkipIfWindows("auto-approve", async ({ po }) => {
+testSkipIfWindows("agentic Build applies changes", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
   await po.snapshotMessages();

@@ -7,7 +7,7 @@ import { Request, Response } from "express";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
-import type { LocalAgentFixture, Turn } from "./localAgentTypes";
+import type { LocalAgentFixture, ToolCall, Turn } from "./localAgentTypes";
 import { resolveFixturesDir } from "./paths";
 import { fakeLlmLog } from "./log";
 
@@ -29,6 +29,139 @@ const connectionAttempts = new Map<string, number>();
 
 function normalizeFixtureText(text: string): string {
   return text.replace(/\r\n/g, "\n");
+}
+
+function parseTagAttributes(source: string): Record<string, string> {
+  return Object.fromEntries(
+    [...source.matchAll(/([\w-]+)="([^"]*)"/g)].map((match) => [
+      match[1],
+      match[2],
+    ]),
+  );
+}
+
+/**
+ * Convert the retired Build-mode XML fixture format into native tool turns.
+ * This keeps older E2E scenarios useful while ensuring they exercise the same
+ * tool-calling path as the application.
+ */
+export function convertLegacyFixtureToLocalAgent(
+  source: string,
+): LocalAgentFixture {
+  const normalized = normalizeFixtureText(source);
+  const turns: Turn[] = [];
+  const tagPattern =
+    /<dyad-(write|delete|rename|add-dependency|execute-sql|search-replace|add-integration|chat-summary)\b([^>]*)>([\s\S]*?)<\/dyad-\1>/g;
+  let precedingEnd = 0;
+
+  for (const match of normalized.matchAll(tagPattern)) {
+    const [fullMatch, tag, attributeSource, rawBody] = match;
+    const index = match.index ?? 0;
+    const text = normalized.slice(precedingEnd, index).trim();
+    const attributes = parseTagAttributes(attributeSource);
+    const body = rawBody.replace(/^\n|\n$/g, "");
+    let toolCall: ToolCall | undefined;
+
+    switch (tag) {
+      case "write":
+        toolCall = {
+          name: "write_file",
+          args: {
+            path: attributes.path,
+            content: body,
+            ...(attributes.description
+              ? { description: attributes.description }
+              : {}),
+          },
+        };
+        break;
+      case "delete":
+        toolCall = { name: "delete_file", args: { path: attributes.path } };
+        break;
+      case "rename":
+        toolCall = {
+          name: "rename_file",
+          args: { from: attributes.from, to: attributes.to },
+        };
+        break;
+      case "add-dependency":
+        toolCall = {
+          name: "add_dependency",
+          args: { packages: attributes.packages.split(/\s+/).filter(Boolean) },
+        };
+        break;
+      case "execute-sql":
+        toolCall = {
+          name: "execute_sql",
+          args: {
+            query: body.trim(),
+            ...(attributes.description
+              ? { description: attributes.description }
+              : {}),
+          },
+        };
+        break;
+      case "search-replace": {
+        const replacement = body.match(
+          /^<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE$/,
+        );
+        if (replacement) {
+          toolCall = {
+            name: "search_replace",
+            args: {
+              file_path: attributes.path,
+              old_string: replacement[1],
+              new_string: replacement[2],
+            },
+          };
+        }
+        break;
+      }
+      case "add-integration":
+        toolCall = { name: "add_integration", args: {} };
+        break;
+      case "chat-summary":
+        toolCall = {
+          name: "set_chat_summary",
+          args: { summary: body.trim() },
+        };
+        break;
+    }
+
+    if (toolCall) {
+      turns.push({ ...(text ? { text } : {}), toolCalls: [toolCall] });
+    }
+    precedingEnd = index + fullMatch.length;
+  }
+
+  const trailingText = normalized.slice(precedingEnd).trim();
+  if (trailingText || turns.length === 0) {
+    turns.push({ text: trailingText || normalized.trim() || "Done." });
+  }
+
+  return {
+    description: "Converted legacy Build-mode E2E fixture",
+    turns,
+  };
+}
+
+function findLegacyFixturePath(fixtureName: string): string | undefined {
+  for (const fixturePath of [
+    path.join(resolveFixturesDir(), `${fixtureName}.md`),
+    path.join(resolveFixturesDir(), "engine", `${fixtureName}.md`),
+  ]) {
+    if (fs.existsSync(fixturePath)) return fixturePath;
+  }
+  return undefined;
+}
+
+function hasLocalAgentFixture(fixtureName: string): boolean {
+  const fixtureDir = path.join(resolveFixturesDir(), "engine", "local-agent");
+  return (
+    fs.existsSync(path.join(fixtureDir, `${fixtureName}.ts`)) ||
+    fs.existsSync(path.join(fixtureDir, `${fixtureName}.js`)) ||
+    Boolean(findLegacyFixturePath(fixtureName))
+  );
 }
 
 /**
@@ -131,6 +264,28 @@ function extractAttachmentPath(messages: any[]): string | null {
   return null;
 }
 
+function extractSyntheticUsage(messages: any[]): Turn["usage"] | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role !== "user") continue;
+    const text = Array.isArray(message.content)
+      ? message.content.find((part: any) => part.type === "text")?.text
+      : typeof message.content === "string"
+        ? message.content
+        : null;
+    if (!text || text.startsWith("Summarize the following chat:")) continue;
+    const match = text.match(/\[high-tokens=(\d+)\]/);
+    if (!match) continue;
+    const totalTokens = Number(match[1]);
+    return {
+      prompt_tokens: Math.max(0, totalTokens - 100),
+      completion_tokens: Math.min(100, totalTokens),
+      total_tokens: totalTokens,
+    };
+  }
+  return undefined;
+}
+
 /**
  * Load a fixture file dynamically
  * Tries .ts first (for dev mode with ts-node), then .js
@@ -148,6 +303,18 @@ export async function loadLocalAgentFixture(
   let fixturePath = path.join(fixtureDir, `${fixtureName}.ts`);
   if (!fs.existsSync(fixturePath)) {
     fixturePath = path.join(fixtureDir, `${fixtureName}.js`);
+  }
+
+  if (!fs.existsSync(fixturePath)) {
+    const legacyFixturePath = findLegacyFixturePath(fixtureName);
+    if (!legacyFixturePath) {
+      throw new Error(`Local agent fixture not found: ${fixtureName}`);
+    }
+    const fixture = convertLegacyFixtureToLocalAgent(
+      fs.readFileSync(legacyFixturePath, "utf-8"),
+    );
+    fixtureCache.set(fixtureName, fixture);
+    return fixture;
   }
 
   try {
@@ -577,6 +744,10 @@ export async function handleLocalAgentFixture(
     }
 
     let turn = turns[turnIndex];
+    const syntheticUsage = extractSyntheticUsage(messages);
+    if (syntheticUsage && !turn.toolCalls?.length) {
+      turn = { ...turn, usage: syntheticUsage };
+    }
     fakeLlmLog(
       `[local-agent] Executing pass ${passIndex}, turn ${turnIndex}:`,
       {
@@ -730,7 +901,13 @@ export function extractLocalAgentFixture(content: string): string | null {
   ) {
     return "security-fix";
   }
-  // Match tc=local-agent/FIXTURE_NAME, allowing trailing whitespace
-  const match = content.trim().match(/^tc=local-agent\/([^\s[]+)/);
-  return match ? match[1] : null;
+  // Prefer the explicit tool-loop fixture namespace, then adapt an existing
+  // legacy fixture when a Build-mode E2E still uses tc=FIXTURE_NAME.
+  const explicitMatch = content.trim().match(/^tc=local-agent\/([^\s[]+)/);
+  if (explicitMatch) return explicitMatch[1];
+
+  const legacyMatch = content.trim().match(/^tc=([^\s[]+)/);
+  return legacyMatch && hasLocalAgentFixture(legacyMatch[1])
+    ? legacyMatch[1]
+    : null;
 }

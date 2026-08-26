@@ -176,11 +176,11 @@ export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 /**
- * Modes that stream through the local agent tool-calling path rather than
- * injecting full codebases into the prompt. Keep this
- * in sync with the chat-stream and token-count handlers: whenever a new mode
- * routes through the local agent, add it here so the token estimate matches
- * what's actually sent to the model.
+ * Modes that stream through the native tool-calling path rather than injecting
+ * full codebases into the prompt. Every current ChatMode is tool-backed. The
+ * shared predicate intentionally leaves compatibility branches easy to remove
+ * once stored legacy responses and actions no longer need migration support.
+ * Keep this in sync with the chat-stream and token-count handlers.
  */
 export function isLocalAgentBackedMode(mode: ChatMode | undefined): boolean {
   return (

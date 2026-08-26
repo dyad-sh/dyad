@@ -833,10 +833,20 @@ export default Index;
     }
 
     // Check for high token usage marker to simulate near context limit
-    const highTokensMatch =
-      typeof lastMessage?.content === "string" &&
-      !lastMessage?.content.startsWith("Summarize the following chat:") &&
-      lastMessage?.content?.match?.(/\[high-tokens=(\d+)\]/);
+    // A native tool turn ends with a tool-result message, so preserve synthetic
+    // usage requested by the most recent user message across the follow-up
+    // completion. Legacy single-completion fixtures still match the same path.
+    const highTokensMatch = [...messages]
+      .reverse()
+      .filter((message: any) => message?.role === "user")
+      .map((message: any) => message?.content)
+      .find(
+        (content: unknown) =>
+          typeof content === "string" &&
+          !content.startsWith("Summarize the following chat:") &&
+          /\[high-tokens=(\d+)\]/.test(content),
+      )
+      ?.match(/\[high-tokens=(\d+)\]/);
     const highTokensValue = highTokensMatch
       ? parseInt(highTokensMatch[1], 10)
       : null;

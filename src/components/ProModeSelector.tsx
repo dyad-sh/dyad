@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -12,50 +11,12 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
-import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import { hasDyadProKey } from "@/lib/schemas";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
-
-  const toggleWebSearch = () => {
-    updateSettings({
-      enableProWebSearch: !settings?.enableProWebSearch,
-    });
-  };
-
-  const handleTurboEditsChange = (newValue: "off" | "v1" | "v2") => {
-    updateSettings({
-      enableProLazyEditsMode: newValue !== "off",
-      proLazyEditsMode: newValue,
-    });
-  };
-
-  const handleSmartContextChange = (newValue: "off" | "deep" | "balanced") => {
-    if (newValue === "off") {
-      updateSettings({
-        enableProSmartFilesContextMode: false,
-        proSmartContextOption: undefined,
-      });
-    } else if (newValue === "deep") {
-      updateSettings({
-        enableProSmartFilesContextMode: true,
-        proSmartContextOption: "deep",
-      });
-    } else if (newValue === "balanced") {
-      updateSettings({
-        enableProSmartFilesContextMode: true,
-        proSmartContextOption: "balanced",
-      });
-    }
-  };
 
   const toggleProEnabled = () => {
     updateSettings({
@@ -64,7 +25,6 @@ export function ProModeSelector() {
   };
 
   const hasProKey = settings ? hasDyadProKey(settings) : false;
-  const proModeTogglable = hasProKey && Boolean(settings?.enableDyadPro);
 
   return (
     <Popover>
@@ -101,49 +61,14 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          <div className="flex flex-col gap-3">
-            <SelectorRow
-              id="pro-enabled"
-              label="Enable Dyad Pro"
-              tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
-              isTogglable={hasProKey}
-              settingEnabled={Boolean(settings?.enableDyadPro)}
-              toggle={toggleProEnabled}
-            />
-            <Accordion>
-              <AccordionItem
-                value="build-mode-settings"
-                className="rounded-lg border border-border/60 bg-muted/30 px-3 border-b-0"
-              >
-                <AccordionTrigger className="cursor-pointer py-2 text-foreground/80 hover:text-foreground hover:no-underline">
-                  Build mode settings
-                </AccordionTrigger>
-                <AccordionContent className="pb-3">
-                  <div className="flex flex-col gap-5 pt-2">
-                    <SelectorRow
-                      id="web-search"
-                      label="Web Access"
-                      tooltip="Allows Dyad to access the web (e.g. search for information)"
-                      isTogglable={proModeTogglable}
-                      settingEnabled={Boolean(settings?.enableProWebSearch)}
-                      toggle={toggleWebSearch}
-                    />
-
-                    <TurboEditsSelector
-                      isTogglable={proModeTogglable}
-                      settings={settings}
-                      onValueChange={handleTurboEditsChange}
-                    />
-                    <SmartContextSelector
-                      isTogglable={proModeTogglable}
-                      settings={settings}
-                      onValueChange={handleSmartContextChange}
-                    />
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </div>
+          <SelectorRow
+            id="pro-enabled"
+            label="Enable Dyad Pro"
+            tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
+            isTogglable={hasProKey}
+            settingEnabled={Boolean(settings?.enableDyadPro)}
+            toggle={toggleProEnabled}
+          />
         </div>
       </PopoverContent>
     </Popover>
@@ -187,206 +112,6 @@ function SelectorRow({
         onCheckedChange={toggle}
         disabled={!isTogglable}
       />
-    </div>
-  );
-}
-
-function TurboEditsSelector({
-  isTogglable,
-  settings,
-  onValueChange,
-}: {
-  isTogglable: boolean;
-  settings: UserSettings | null;
-  onValueChange: (value: "off" | "v1" | "v2") => void;
-}) {
-  // Determine current value based on settings
-  const getCurrentValue = (): "off" | "v1" | "v2" => {
-    if (!settings?.enableProLazyEditsMode) {
-      return "off";
-    }
-    if (settings?.proLazyEditsMode === "v1") {
-      return "v1";
-    }
-    if (settings?.proLazyEditsMode === "v2") {
-      return "v2";
-    }
-    // Keep in sync with getModelClient in get_model_client.ts
-    // If enabled but no option set (undefined/falsey), it's v1
-    return "v1";
-  };
-
-  const currentValue = getCurrentValue();
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5">
-        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
-          Turbo Edits
-        </Label>
-        <span title="Edits files efficiently without full rewrites. Classic: Uses a smaller model to complete edits. Search & replace: Find and replaces specific text blocks.">
-          <Info
-            className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-          />
-        </span>
-      </div>
-      <div
-        className="inline-flex rounded-md border border-input"
-        data-testid="turbo-edits-selector"
-      >
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={currentValue === "off" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onValueChange("off")}
-                disabled={!isTogglable}
-                className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-              />
-            }
-          >
-            Off
-          </TooltipTrigger>
-          <TooltipContent>Disable Turbo Edits</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={currentValue === "v1" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onValueChange("v1")}
-                disabled={!isTogglable}
-                className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-              />
-            }
-          >
-            Classic
-          </TooltipTrigger>
-          <TooltipContent>
-            Uses a smaller model to complete edits
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={currentValue === "v2" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onValueChange("v2")}
-                disabled={!isTogglable}
-                className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
-              />
-            }
-          >
-            Search & replace
-          </TooltipTrigger>
-          <TooltipContent>
-            Find and replaces specific text blocks
-          </TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
-  );
-}
-
-function SmartContextSelector({
-  isTogglable,
-  settings,
-  onValueChange,
-}: {
-  isTogglable: boolean;
-  settings: UserSettings | null;
-  onValueChange: (value: "off" | "balanced" | "deep") => void;
-}) {
-  // Determine current value based on settings
-  const getCurrentValue = (): "off" | "conservative" | "balanced" | "deep" => {
-    if (!settings?.enableProSmartFilesContextMode) {
-      return "off";
-    }
-    if (settings?.proSmartContextOption === "deep") {
-      return "deep";
-    }
-    if (settings?.proSmartContextOption === "balanced") {
-      return "balanced";
-    }
-    // Keep logic in sync with isDeepContextEnabled in chat_stream_handlers.ts
-    return "deep";
-  };
-
-  const currentValue = getCurrentValue();
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5">
-        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
-          Smart Context
-        </Label>
-        <span title="Selects the most relevant files as context to save credits working on large codebases.">
-          <Info
-            className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-          />
-        </span>
-      </div>
-      <div
-        className="inline-flex rounded-md border border-input"
-        data-testid="smart-context-selector"
-      >
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={currentValue === "off" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onValueChange("off")}
-                disabled={!isTogglable}
-                className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-              />
-            }
-          >
-            Off
-          </TooltipTrigger>
-          <TooltipContent>Disable Smart Context</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={currentValue === "balanced" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onValueChange("balanced")}
-                disabled={!isTogglable}
-                className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-              />
-            }
-          >
-            Balanced
-          </TooltipTrigger>
-          <TooltipContent>
-            Selects most relevant files with balanced context size
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={currentValue === "deep" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => onValueChange("deep")}
-                disabled={!isTogglable}
-                className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
-              />
-            }
-          >
-            Deep
-          </TooltipTrigger>
-          <TooltipContent>
-            Experimental: Keeps full conversation history for maximum context
-            and cache-optimized to control costs
-          </TooltipContent>
-        </Tooltip>
-      </div>
     </div>
   );
 }

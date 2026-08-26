@@ -14,10 +14,6 @@ export class Settings {
     private fakeLlmPort: number,
   ) {}
 
-  async toggleAutoApprove() {
-    await this.page.getByRole("switch", { name: "Auto-approve" }).click();
-  }
-
   async toggleLocalAgentMode() {
     await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
   }
@@ -36,6 +32,14 @@ export class Settings {
 
   async toggleAutoUpdate() {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
+  }
+
+  async disableAppBlueprint() {
+    await this.page.evaluate(async () => {
+      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+        enableAppBlueprint: false,
+      });
+    });
   }
 
   async enableChatEventNotifications() {

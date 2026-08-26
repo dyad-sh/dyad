@@ -137,6 +137,10 @@ export class PreviewPanel {
     return this.page.getByRole("button", { name: "Run all tests" });
   }
 
+  async openTestingOptions() {
+    await this.page.getByRole("button", { name: "Open test options" }).click();
+  }
+
   async clickEnableTesting() {
     await this.locateEnableTestingButton().click();
   }

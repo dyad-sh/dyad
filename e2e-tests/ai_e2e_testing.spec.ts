@@ -62,6 +62,7 @@ testSkipIfWindows(
     // round-trip) re-reads it as enabled rather than falling back to the gate.
     await po.previewPanel.selectPreviewMode("code");
     await po.previewPanel.selectPreviewMode("tests");
+    await po.previewPanel.openTestingOptions();
     await expect(po.previewPanel.locateDisableTestingButton()).toBeVisible({
       timeout: Timeout.MEDIUM,
     });

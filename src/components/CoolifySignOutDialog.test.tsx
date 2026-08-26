@@ -124,6 +124,14 @@ describe("nothing to look at yet", () => {
     expect(
       screen.queryAllByText(/could not read what it has stored/i),
     ).toHaveLength(1);
+    // And said after it. "Anyway" contrasts with a failure, so meeting it
+    // first leaves the user contrasting with nothing.
+    const cause = screen.getByText(/could not read what it has stored/i);
+    const addendum = screen.getByTestId("coolify-sign-out-unreadable");
+    expect(
+      cause.compareDocumentPosition(addendum) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("keeps the details on screen when only a later read failed", async () => {

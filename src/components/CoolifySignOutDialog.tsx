@@ -87,14 +87,6 @@ export function CoolifySignOutDialog({
             Looking up what Dyad has stored…
           </div>
         )}
-        {readFailed && (
-          <div
-            className="text-destructive text-sm"
-            data-testid="coolify-sign-out-unreadable"
-          >
-            Signing out forgets it anyway.
-          </div>
-        )}
         {passwordIsLocked && (
           <div
             className="text-destructive text-sm"
@@ -106,6 +98,15 @@ export function CoolifySignOutDialog({
         )}
 
         <CoolifyCredentials />
+
+        {readFailed && (
+          <div
+            className="text-destructive text-sm"
+            data-testid="coolify-sign-out-unreadable"
+          >
+            Signing out forgets it anyway.
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-sm">
           <Checkbox

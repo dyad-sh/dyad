@@ -99,7 +99,13 @@ export const SetupResultSchema = z.object({
    * revealCredentials — a password shown once is a password nobody can use.
    */
   adminPassword: z.string(),
-  /** Null when Coolify was installed but its API could not be opened. */
+  /**
+   * Whether Dyad ended up holding a token, which is not the same as one
+   * having been created: the address may be unencrypted with the offer to
+   * keep it not taken, or storing it may have failed on this computer.
+   * tokenUnavailableReason is what says Coolify's API was the thing that
+   * could not be opened.
+   */
   tokenStored: z.boolean(),
   tokenUnavailableReason: z.string().nullable(),
   version: z.string().nullable(),

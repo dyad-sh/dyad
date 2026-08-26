@@ -7,6 +7,10 @@ const testSetup = testWithConfig({
 
 testSetup("setup ai provider", async ({ po }) => {
   const dialog = await openAiSetupDialog(po);
+  const providerButtons = dialog.locator(".grid").getByRole("button");
+
+  await expect(providerButtons.nth(0)).toHaveAccessibleName(/OpenRouter/);
+  await expect(providerButtons.nth(1)).toHaveAccessibleName(/Google/);
 
   await dialog.getByRole("button", { name: /Google/ }).click();
   await expect(

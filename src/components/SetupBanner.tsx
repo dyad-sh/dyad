@@ -154,12 +154,6 @@ export function SetupBanner({
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <ProviderOptionButton
-              label="Google"
-              chip="Free"
-              onClick={handleGoogleSetupClick}
-              icon={<img src={googleIcon} alt="Google" className="size-4" />}
-            />
-            <ProviderOptionButton
               label="OpenRouter"
               chip="Free"
               onClick={handleOpenRouterSetupClick}
@@ -170,6 +164,12 @@ export function SetupBanner({
                   className="size-4 dark:invert"
                 />
               }
+            />
+            <ProviderOptionButton
+              label="Google"
+              chip="Free"
+              onClick={handleGoogleSetupClick}
+              icon={<img src={googleIcon} alt="Google" className="size-4" />}
             />
             <ProviderOptionButton
               label="Other providers"

@@ -46,16 +46,15 @@ describe("main chat flow (hybrid)", () => {
     );
 
     // Type + click the real Send button (the whole path is real from here).
-    const { send } = await harness.typeInChat("hi");
+    const prompt = "tc=local-agent/main-write";
+    const { send } = await harness.typeInChat(prompt);
     send();
 
     // The user's prompt renders first...
-    await waitFor(() => expect(screen.getByText("hi")).toBeTruthy(), {
+    await waitFor(() => expect(screen.getByText(prompt)).toBeTruthy(), {
       timeout: 15_000,
     });
-    // ...then the streamed assistant response. The canned response's dyad-write
-    // tag is parsed into a DyadWrite card; the trailing literal text ("EOM")
-    // renders directly and is what we can assert on in the DOM.
+    // ...then the streamed assistant response after the write tool completes.
     await waitFor(() => expect(screen.getByText(/EOM/)).toBeTruthy(), {
       timeout: 20_000,
     });
@@ -69,12 +68,11 @@ describe("main chat flow (hybrid)", () => {
     expect(messages).toHaveLength(2);
     const [userMessage, assistantMessage] = messages;
     expect(userMessage.role).toBe("user");
-    expect(userMessage.content).toBe("hi");
+    expect(userMessage.content).toBe(prompt);
     expect(assistantMessage.role).toBe("assistant");
-    expect(assistantMessage.content).toContain('<dyad-write path="file1.txt">');
     expect(assistantMessage.content).toContain("EOM");
 
-    // The dyad-write was applied and committed (auto-approve).
+    // The write tool was applied and committed.
     expect(harness.readAppFile("file1.txt").trim()).toBe("A file (2)");
     expect(assistantMessage.approvalState).toBe("approved");
     expect(assistantMessage.commitHash).toBeTruthy();
@@ -94,10 +92,11 @@ describe("main chat flow (hybrid)", () => {
       { timeout: 15_000 },
     );
 
-    const { send } = await harness.typeInChat("tc=basic");
+    const prompt = "tc=local-agent/basic-response";
+    const { send } = await harness.typeInChat(prompt);
     send();
 
-    await waitFor(() => expect(screen.getByText("tc=basic")).toBeTruthy(), {
+    await waitFor(() => expect(screen.getByText(prompt)).toBeTruthy(), {
       timeout: 15_000,
     });
     await waitFor(
@@ -117,7 +116,7 @@ describe("main chat flow (hybrid)", () => {
     const userMessage = messages[2];
     const assistantMessage = messages[3];
     expect(userMessage.role).toBe("user");
-    expect(userMessage.content).toBe("tc=basic");
+    expect(userMessage.content).toBe(prompt);
     expect(assistantMessage.role).toBe("assistant");
     expect(assistantMessage.content.trim()).toBe(
       "This is a simple basic response",

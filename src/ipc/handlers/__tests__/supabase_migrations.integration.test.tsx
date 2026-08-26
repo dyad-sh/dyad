@@ -17,7 +17,6 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "@/ipc/contracts/core";
-import type { ApproveProposalResult, ProposalResult } from "@/ipc/types";
 
 interface SentEvent {
   channel: string;
@@ -62,6 +61,7 @@ describe("supabase migrations (integration)", () => {
       settings: {
         isTestMode: true,
         autoApproveChanges: true,
+        agentToolConsents: { execute_sql: "always" },
         enableSupabaseWriteSqlMigration: false,
       },
     });
@@ -98,13 +98,12 @@ describe("supabase migrations (integration)", () => {
     harness.mount();
     await screen.findByTestId("chat-input-container");
 
-    await sendPrompt("tc=add-supabase");
     await invoke("supabase:fake-connect-and-set-project", {
       appId: harness.appId,
       fakeProjectId: "fake-project-id",
     });
 
-    await sendPrompt("tc=execute-sql-1");
+    await sendPrompt("tc=local-agent/execute-sql");
     // Drain any work still in flight after chat:response:end before asserting
     // absence, so a late (buggy) migration write fails this check instead of
     // slipping past it.
@@ -114,7 +113,7 @@ describe("supabase migrations (integration)", () => {
     writeSettings({ enableSupabaseWriteSqlMigration: true });
     expect(readSettings().enableSupabaseWriteSqlMigration).toBe(true);
 
-    await sendPrompt("tc=execute-sql-1");
+    await sendPrompt("tc=local-agent/execute-sql");
     await waitFor(() => expect(migrationFiles()).toHaveLength(1));
 
     let files = migrationFiles();
@@ -127,26 +126,7 @@ describe("supabase migrations (integration)", () => {
     ).toBe("CREATE TABLE users (id serial primary key);");
     expect(gitStatus()).toBe("");
 
-    await sendPrompt("tc=execute-sql-no-description");
-    const proposalResult = await invoke<ProposalResult>("get-proposal", {
-      chatId: harness.chatId,
-    });
-    expect(proposalResult?.proposal.type).toBe("code-proposal");
-    if (proposalResult?.proposal.type !== "code-proposal") {
-      throw new Error("Expected a code proposal");
-    }
-    expect(proposalResult.proposal.sqlQueries[0]).toEqual({
-      content: "DROP TABLE users;",
-      description: undefined,
-    });
-    const approvalResult = await invoke<ApproveProposalResult>(
-      "approve-proposal",
-      {
-        chatId: harness.chatId,
-        messageId: proposalResult.messageId,
-      },
-    );
-    expect(approvalResult.success).toBe(true);
+    await sendPrompt("tc=local-agent/execute-sql-no-description");
     await waitFor(() => expect(migrationFiles()).toHaveLength(2));
 
     files = migrationFiles();

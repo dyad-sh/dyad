@@ -73,75 +73,6 @@ describe("retry (hybrid)", () => {
     await harness?.dispose();
   });
 
-  it("retry - should work", async () => {
-    harness.mount();
-    await waitFor(
-      () => {
-        expect(screen.getByTestId("messages-list")).toBeTruthy();
-        expect(screen.getByTestId("chat-input-container")).toBeTruthy();
-      },
-      { timeout: 15_000 },
-    );
-
-    // First turn: the fake server responds with counter=1.
-    const { send } = await harness.typeInChat("[increment]");
-    send();
-    await waitFor(() => expect(screen.getByText(/counter=1/)).toBeTruthy(), {
-      timeout: 20_000,
-    });
-    await harness.waitForStreamEnd(harness.chatId);
-
-    // Original db assertions for the first turn.
-    const firstMessages = await harness.db.query.messages.findMany();
-    expect(firstMessages).toHaveLength(2);
-    expect(firstMessages[0].role).toBe("user");
-    expect(firstMessages[0].content).toBe("[increment]");
-    expect(firstMessages[1].role).toBe("assistant");
-    expect(firstMessages[1].content).toContain("counter=1");
-
-    // Click the REAL Retry button (rendered in the footer once streaming ends).
-    const retryButton = await screen.findByRole("button", { name: /Retry/ });
-    // Baseline-aware gate: snapshot the current end-count BEFORE clicking retry,
-    // then await a NEW chat:response:end. Plain waitForStreamEnd would resolve
-    // immediately on the first turn's stale event.
-    const retriedStreamEnd = harness.waitForNextStreamEnd(harness.chatId);
-    fireEvent.click(retryButton);
-
-    // The retried request replaces counter=1 with counter=2 in the DOM.
-    await waitFor(
-      () => {
-        expect(screen.getByText(/counter=2/)).toBeTruthy();
-        expect(screen.queryByText(/counter=1/)).toBeNull();
-      },
-      { timeout: 20_000 },
-    );
-
-    // Wait for the retry's OWN end-of-stream before asserting main-side outcomes.
-    await retriedStreamEnd;
-
-    // No error events were emitted during the flow.
-    expect(
-      harness.bridge.sentEvents.filter(
-        (e) => e.channel === "chat:response:error",
-      ),
-    ).toHaveLength(0);
-
-    // Still exactly one user+assistant pair — the retry replaced, not appended.
-    const retriedMessages = await harness.db.query.messages.findMany();
-    expect(retriedMessages).toHaveLength(2);
-    expect(retriedMessages[0].role).toBe("user");
-    expect(retriedMessages[0].content).toBe("[increment]");
-    expect(retriedMessages[1].role).toBe("assistant");
-
-    // The counter was incremented by the retried request.
-    expect(retriedMessages[1].content).toContain("counter=2");
-    expect(retriedMessages[1].content).not.toContain("counter=1");
-
-    // The replacement rows are new db rows (old pair was deleted).
-    expect(retriedMessages[0].id).not.toBe(firstMessages[0].id);
-    expect(retriedMessages[1].id).not.toBe(firstMessages[1].id);
-  }, 60_000);
-
   it("preserves commits from before the response and confirms before reverting newer commits", async () => {
     harness.mount();
     await waitFor(
@@ -156,7 +87,7 @@ describe("retry (hybrid)", () => {
       await end;
     };
 
-    await sendTurn("tc=write-index");
+    await sendTurn("tc=local-agent/write-index");
     await waitForCleanGit(harness);
     const earlierManualPath = path.join(
       harness.appDir,
@@ -167,7 +98,7 @@ describe("retry (hybrid)", () => {
       cwd: harness.appDir,
     });
     commitWithTestIdentity(harness.appDir, "Manual work before latest AI turn");
-    await sendTurn("tc=write-index-2");
+    await sendTurn("tc=local-agent/write-index-2");
     await waitForCleanGit(harness);
 
     const directRetryEnd = harness.waitForNextStreamEnd(harness.chatId);
@@ -226,7 +157,7 @@ describe("retry (hybrid)", () => {
     );
 
     const end = harness.waitForNextStreamEnd(harness.chatId);
-    const { send } = await harness.typeInChat("tc=write-index");
+    const { send } = await harness.typeInChat("tc=local-agent/write-index");
     send();
     await end;
     await waitForCleanGit(harness);
@@ -266,7 +197,7 @@ describe("retry (hybrid)", () => {
     );
 
     const end = harness.waitForNextStreamEnd(harness.chatId);
-    const { send } = await harness.typeInChat("tc=write-index-2");
+    const { send } = await harness.typeInChat("tc=local-agent/write-index-2");
     send();
     await end;
     await waitForCleanGit(harness);

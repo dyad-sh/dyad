@@ -3,7 +3,7 @@
 // Smoke test for setupChatFlowHarness — this is the converted feasibility
 // spike. It proves the full chat flow end-to-end: real chat:stream handler ->
 // real AI-SDK HTTP streaming -> in-process fake-LLM server (serving
-// e2e-tests/fixtures via tc=) -> real tag processor -> real file writes + git
+// e2e-tests/fixtures via tc=) -> real agent tool -> real file writes + git
 // commit -> real sqlite.
 //
 // The repo default vitest environment is happy-dom, whose fetch enforces
@@ -38,15 +38,15 @@ describe("chat flow harness (smoke)", () => {
     await harness?.dispose();
   });
 
-  it("streams dyad tags, writes files, commits, and records messages", async () => {
-    const { result, events, messages, eventsFor } = await harness.streamChat(
-      "tc=dyad-write-angle",
-    );
+  it("streams agent tools, writes files, commits, and records messages", async () => {
+    const prompt = "tc=local-agent/dyad-write-angle";
+    const { result, events, messages, eventsFor } =
+      await harness.streamChat(prompt);
 
-    // Handler resolves with the chat id on success.
-    expect(result).toBe(harness.chatId);
+    // The local-agent-backed handler completes without a legacy chat-id result.
+    expect(result).toBeUndefined();
 
-    // File write from the <dyad-write> tag in dyad-write-angle.md.
+    // File write from the agent fixture.
     expect(harness.appFileExists("src/foo/bar.tsx")).toBe(true);
     expect(harness.readAppFile("src/foo/bar.tsx")).toContain(
       "// BEGINNING OF FILE",
@@ -59,9 +59,8 @@ describe("chat flow harness (smoke)", () => {
     expect(messages).toHaveLength(2);
     const userMessage = messages.find((m) => m.role === "user")!;
     const assistantMessage = messages.find((m) => m.role === "assistant")!;
-    expect(userMessage.content).toBe("tc=dyad-write-angle");
-    expect(assistantMessage.content).toContain("<dyad-write");
-    expect(assistantMessage.content).toContain("AFTER TAG");
+    expect(userMessage.content).toBe(prompt);
+    expect(assistantMessage.content).toContain("AFTER TOOL");
     expect(assistantMessage.approvalState).toBe("approved");
     expect(assistantMessage.commitHash).toBeTruthy();
 
@@ -87,7 +86,7 @@ describe("chat flow harness (smoke)", () => {
   it("second turn reuses the same chat and appends messages", async () => {
     // The real fake server returns a monotonic counter for "[increment]".
     const { result, messages } = await harness.streamChat("[increment]");
-    expect(result).toBe(harness.chatId);
+    expect(result).toBeUndefined();
     expect(messages).toHaveLength(4);
     const lastAssistant = messages[messages.length - 1];
     expect(lastAssistant.role).toBe("assistant");

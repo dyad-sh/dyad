@@ -123,11 +123,8 @@ describe("supabase branch selection (integration)", () => {
       { timeout: 15_000 },
     );
 
-    // The e2e's first turn: the add-supabase fixture streams through the real
-    // chat flow, driven by the real Send button. (The node version asserted
-    // chat:stream's return value === chatId; here success for the same chat is
-    // the end event awaited below plus the absence of error events.)
-    const { send } = await harness.typeInChat("tc=add-supabase");
+    // Drive an ordinary Build turn before connecting Supabase.
+    const { send } = await harness.typeInChat("tc=local-agent/basic-response");
     send();
     await harness.waitForStreamEnd(harness.chatId);
     expect(
@@ -212,24 +209,23 @@ describe("supabase branch selection (integration)", () => {
     expect(updatedRow?.supabaseProjectId).toBe("test-branch-project-id");
     expect(updatedRow?.supabaseParentProjectId).toBe("fake-project-id");
 
-    // The test branch has a large context (800K chars ≈ 200K tokens) so the
-    // token bar hits the 100% limit — proving the right Supabase project is
-    // consulted for the selected branch.
+    // Agentic Build no longer eagerly inserts the branch's generated Supabase
+    // context. Switching branches therefore keeps the prompt comfortably
+    // within the model window; database inspection happens through tools.
     const after = await countTokens();
     expect(after.contextWindow).toBe(128_000);
-    expect(after.estimatedTotalTokens).toBeGreaterThanOrEqual(128_000);
-    expect(after.systemPromptTokens).toBeGreaterThan(before.systemPromptTokens);
+    expect(after.estimatedTotalTokens).toBeLessThan(0.2 * 128_000);
 
     // And the REAL token bar reflects it: toggle it off and back on (each
     // toggle invalidates the tokenCount query — the UI's own refresh path)
-    // and the rendered percentage caps at 100%.
+    // and the rendered percentage remains small.
     await toggleTokenBar(); // hide
     await waitFor(() => expect(screen.queryByTestId("token-bar")).toBeNull());
     await toggleTokenBar(); // show again -> refetch
     await waitFor(
       () => {
         expect(screen.getByTestId("token-bar")).toBeTruthy();
-        expect(tokenBarPercent()).toBe(100);
+        expect(tokenBarPercent()).toBeLessThan(20);
       },
       { timeout: 15_000 },
     );

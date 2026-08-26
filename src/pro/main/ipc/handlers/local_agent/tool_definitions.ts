@@ -407,6 +407,12 @@ function serializeActivityOutput(result: ToolResult): string {
 
 export interface BuildAgentToolSetOptions {
   /**
+   * Selects the fail-closed surface for the active writable mode. Build mode
+   * intentionally exposes only the tools needed to create an app without
+   * Agent-only orchestration, Engine, diagnostics, or verification tools.
+   */
+  toolProfile?: "agent" | "build";
+  /**
    * If true, exclude tools that modify state (files, database, etc.).
    * Used for read-only modes like "ask" mode.
    */
@@ -431,6 +437,31 @@ export interface BuildAgentToolSetOptions {
    */
   enableAppBlueprint?: boolean;
 }
+
+export const BUILD_MODE_TOOL_NAMES = [
+  "write_file",
+  "search_replace",
+  "copy_file",
+  "delete_file",
+  "rename_file",
+  "add_dependency",
+  "execute_sql",
+  "read_file",
+  "list_files",
+  "grep",
+  "get_supabase_project_info",
+  "get_neon_project_info",
+  "get_database_table_schema",
+  "set_chat_summary",
+  "add_integration",
+  "enable_nitro",
+  "update_todos",
+  "read_guide",
+  "planning_questionnaire",
+  "write_app_blueprint",
+] as const satisfies readonly AgentToolName[];
+
+const BUILD_MODE_TOOL_NAME_SET = new Set<AgentToolName>(BUILD_MODE_TOOL_NAMES);
 
 /**
  * Tools that should ONLY be available in plan mode (excluded from normal agent mode).
@@ -505,6 +536,12 @@ export function shouldIncludeTool(
   options: BuildAgentToolSetOptions = {},
 ): boolean {
   if (getAgentToolConsent(tool.name) === "never") {
+    return false;
+  }
+  if (
+    options.toolProfile === "build" &&
+    !BUILD_MODE_TOOL_NAME_SET.has(tool.name)
+  ) {
     return false;
   }
   // In plan mode, skip state-modifying tools unless they're planning-specific.

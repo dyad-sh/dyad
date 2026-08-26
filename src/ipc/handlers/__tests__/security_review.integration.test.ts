@@ -12,8 +12,8 @@
 //    same DOM surface the e2e asserted) and are parsed by the real
 //    get-latest-security-review handler;
 //  - the LLM request payload for the review turn (masked server dump);
-//  - project SECURITY_RULES.md is picked up both into the codebase context and
-//    appended to the (unmasked) system prompt;
+//  - project SECURITY_RULES.md is appended to the system prompt without
+//    sending Build mode's removed full-codebase context;
 //  - the "Fix Issue" / "Fix N Issues" prompts (built the same way
 //    SecurityPanel.tsx builds them) run in their own new chats and produce an
 //    approved, committed change ("Version 2" in the e2e UI == a new commit).
@@ -136,11 +136,12 @@ describe("security review (integration)", () => {
     const assistant = messages.find((m) => m.role === "assistant")!;
     expect(assistant.content).toContain("<dyad-security-finding");
 
-    // The request payload for the review turn: security system prompt (masked),
-    // fresh codebase context, and the raw "/security-review" prompt.
+    // The request payload for the review turn: security system prompt (masked)
+    // and the raw "/security-review" prompt. Agentic Build reads files through
+    // tools instead of eagerly sending the whole codebase.
     const dump = harness.getServerDump({ type: "all-messages" });
     expect(dump.text).toContain("message: [[SYSTEM_MESSAGE]]");
-    expect(dump.text).toContain("This is my codebase.");
+    expect(dump.text).not.toContain("This is my codebase.");
     expect(dump.text.trimEnd()).toMatch(
       /role: user\nmessage: \/security-review$/,
     );
@@ -380,11 +381,9 @@ ${finding.description}`;
     await reviewEnd;
 
     const dump = harness.getServerDump({ type: "all-messages" });
-    // The rules file shows up in the codebase context...
-    expect(dump.text).toContain('<dyad-file path="SECURITY_RULES.md">');
-    expect(dump.text).toContain("rules123");
-
-    // ...and is appended to the (unmasked) security system prompt.
+    // Agentic Build does not send full codebase context. The rules are instead
+    // appended to the unmasked security system prompt.
+    expect(dump.text).not.toContain('<dyad-file path="SECURITY_RULES.md">');
     const raw = JSON.parse(fs.readFileSync(dump.dumpPath, "utf-8"));
     const systemMessage = raw.body.messages.find(
       (m: { role: string }) => m.role === "system",

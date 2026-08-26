@@ -724,6 +724,12 @@ export async function handleLocalAgentFixture(
  */
 export function extractLocalAgentFixture(content: string): string | null {
   if (!content) return null;
+  if (
+    content.startsWith("Please fix the following security issue") ||
+    /^Please fix the following \d+ security issues/.test(content)
+  ) {
+    return "security-fix";
+  }
   // Match tc=local-agent/FIXTURE_NAME, allowing trailing whitespace
   const match = content.trim().match(/^tc=local-agent\/([^\s[]+)/);
   return match ? match[1] : null;

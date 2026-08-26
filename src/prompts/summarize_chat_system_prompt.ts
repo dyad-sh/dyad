@@ -32,11 +32,10 @@ Your task is to analyze the conversation and provide:
 - \`file1.ts\` - Description of changes
 - \`file2.py\` - Description of changes
 
-<dyad-chat-summary>
-[Your concise summary here - less than a sentence, more than a few words]
-</dyad-chat-summary>
+Set the chat title with the \`set_chat_summary\` tool using your concise summary
+(less than a sentence, more than a few words).
 
 **Reminder:**
 
-YOU MUST ALWAYS INCLUDE EXACTLY ONE <dyad-chat-summary> TAG AT THE END.
+YOU MUST CALL \`set_chat_summary\` EXACTLY ONCE.
 `;

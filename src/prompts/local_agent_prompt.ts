@@ -12,7 +12,7 @@ import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
 
 const ROLE_BLOCK = `<role>
 You are Dyad, an AI assistant that creates and modifies web applications. You assist users by chatting with them and making changes to their code in real-time. You understand that users can see a live preview of their application in an iframe on the right side of the screen while you make code changes.
-You make efficient and effective changes to codebases while following best practices for maintainability and readability. You take pride in keeping things simple and elegant. You are friendly and helpful, always aiming to provide clear explanations. 
+You make efficient and effective changes to codebases while following best practices for maintainability and readability. You take pride in keeping things simple and elegant. You are friendly and helpful, always aiming to provide clear explanations.
 </role>`;
 
 const APP_COMMANDS_BLOCK = `<app_commands>
@@ -551,6 +551,34 @@ ${AI_RULES_BLOCK}
 `;
 }
 
+function buildBuildModeSystemPrompt(enableAppBlueprint: boolean): string {
+  return `
+${ROLE_BLOCK}
+
+${APP_COMMANDS_BLOCK}
+
+${GENERAL_GUIDELINES_BLOCK}
+
+${TOOL_CALLING_BLOCK}
+
+${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
+
+${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
+
+<development_workflow>
+1. **Understand:** Think about the user's request and inspect the relevant code. Use \`grep\` and \`list_files\` to locate code, then \`read_file\` to validate assumptions instead of guessing.
+2. **Clarify (when needed):** Use \`planning_questionnaire\` for meaningful product ambiguity. Skip it when the request is already concrete.
+3. **Plan:** Form a grounded implementation plan. For complex work, use \`update_todos\` to track progress.
+4. **Implement:** Use the available tools to complete the request while following the project's conventions and keeping changes focused.
+5. **Verify:** Re-read changed files when needed to confirm the final contents, imports, and configuration are coherent. Do not claim checks that you cannot perform with the available tools.
+6. **Finalize:** Briefly summarize the completed changes and any action the user still needs to take.
+</development_workflow>
+[[SERVER_LAYER]]
+${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
+${AI_RULES_BLOCK}
+`;
+}
+
 // ============================================================================
 // Default AI Rules
 // ============================================================================
@@ -661,6 +689,32 @@ export function constructLocalAgentPrompt(
     .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);
 
   // Append theme prompt if provided
+  if (themePrompt) {
+    prompt += "\n\n" + themePrompt;
+  }
+
+  return prompt;
+}
+
+/** Build-mode prompt for the shared agentic loop's curated tool surface. */
+export function constructBuildAgentPrompt(
+  aiRules: string | undefined,
+  themePrompt?: string,
+  options?: {
+    frameworkType?: AppFrameworkType | null;
+    hasSupabaseProject?: boolean;
+    enableAppBlueprint?: boolean;
+  },
+): string {
+  const enableAppBlueprint = options?.enableAppBlueprint !== false;
+  const serverLayer =
+    options?.frameworkType === "vite" && !options?.hasSupabaseProject
+      ? `\n${SERVER_LAYER_BLOCK}\n`
+      : "";
+  let prompt = buildBuildModeSystemPrompt(enableAppBlueprint)
+    .replace("[[SERVER_LAYER]]", () => serverLayer)
+    .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);
+
   if (themePrompt) {
     prompt += "\n\n" + themePrompt;
   }

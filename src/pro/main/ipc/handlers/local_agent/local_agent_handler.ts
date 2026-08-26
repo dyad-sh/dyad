@@ -476,6 +476,7 @@ export async function handleLocalAgentStream(
     settingsOverride,
     modelSelectionOverride,
     freeModelMode,
+    toolProfile = "agent",
     preCommitHookAvailable = false,
     referencedApps = [],
     currentTurnHasOnDiskAttachment,
@@ -501,6 +502,8 @@ export async function handleLocalAgentStream(
     settingsOverride?: UserSettings;
     modelSelectionOverride?: ModelSelection;
     freeModelMode?: boolean;
+    /** Fail-closed tool and orchestration surface for this mode. */
+    toolProfile?: "agent" | "build";
     /** Snapshot shared by the prompt and toolset for this writable turn. */
     preCommitHookAvailable?: boolean;
     /**
@@ -515,6 +518,7 @@ export async function handleLocalAgentStream(
   },
 ): Promise<boolean> {
   const storedSettings = settingsOverride ?? readSettings();
+  const buildMode = toolProfile === "build";
   let settings: UserSettings = storedSettings;
   let selectedModel: ModelSelection;
   const maxToolCallSteps =
@@ -601,6 +605,7 @@ export async function handleLocalAgentStream(
   // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
   // Read-only mode (ask mode) is allowed for all users without Pro
   if (
+    !buildMode &&
     !readOnly &&
     !planModeOnly &&
     !isDyadProEnabled(settings) &&
@@ -858,16 +863,20 @@ export async function handleLocalAgentStream(
       testRunAttempts: new Map(),
       isDyadPro: isDyadProEnabled(settings),
       canUseExplorerSubagent:
+        !buildMode &&
         isDyadProEnabled(settings) &&
         settings.enableExplorerSubagent !== false &&
         settings.agentToolConsents?.spawn_agent !== "never",
       canUseImplementerSubagent:
+        !buildMode &&
         isDyadProEnabled(settings) &&
         isImplementerSubagentEnabled(settings) &&
         !readOnly &&
         !planModeOnly,
       canUseAdvancedSubagentTools:
-        isDyadProEnabled(settings) && settings.enableAdvancedSubagents === true,
+        !buildMode &&
+        isDyadProEnabled(settings) &&
+        settings.enableAdvancedSubagents === true,
       freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
@@ -934,6 +943,7 @@ export async function handleLocalAgentStream(
       },
       abortSignal: abortController.signal,
       reinstallAndRestartAppToolAvailable:
+        !buildMode &&
         !readOnly &&
         !planModeOnly &&
         settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never",
@@ -942,6 +952,7 @@ export async function handleLocalAgentStream(
     // Read-only mode includes only read-only tools (MCP tools are skipped since
     // we can't tell if they modify state); plan mode includes only planning tools.
     const buildOptions = {
+      toolProfile,
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
@@ -961,6 +972,7 @@ export async function handleLocalAgentStream(
     // search_mcp_tools.isEnabled reads this during the build, so set it up front
     // from the same predicate the builder uses. Off in read-only and plan mode.
     const mcpInSandboxEnabled =
+      !buildMode &&
       !readOnly &&
       !planModeOnly &&
       shouldIncludeTool(executeSandboxScriptTool, ctx, buildOptions);
@@ -1003,7 +1015,7 @@ export async function handleLocalAgentStream(
     // only advertise it in the description when it actually registered.
     const hasGetSchemaTool = agentTools.get_mcp_tool_schema != undefined;
     const mcpToolsForRegistration: ToolSet =
-      !readOnly && !planModeOnly && !mcpInSandboxEnabled
+      !buildMode && !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
     if (agentTools.execute_sandbox_script != undefined) {
@@ -2109,6 +2121,7 @@ export async function handleLocalAgentStream(
       !planModeOnly &&
       (workspaceChanged || ctx.mcpToolRan === true);
     const reviewBarrierRequested =
+      !buildMode &&
       workspaceChanged &&
       !hitStepLimit &&
       isDyadProEnabled(settings) &&

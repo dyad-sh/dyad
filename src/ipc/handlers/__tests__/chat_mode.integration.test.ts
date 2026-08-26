@@ -6,9 +6,8 @@
 // same LLM payload the node harness did.
 //
 // Behavior tests ported:
-//   - "default build mode": the LLM payload in build mode includes the
-//     codebase-priming user turn; the prompt is sent by clicking the real Send
-//     button, and the dump is asserted via getServerDump.
+//   - "default build mode": Build uses the local-agent request shape with a
+//     curated tool surface and no full-codebase priming turn.
 //   - "ask mode": the chat mode is switched to "ask" through the REAL
 //     ChatModeSelector dropdown (it lives in ChatInput -> ChatInputControls);
 //     the payload then omits the codebase-priming user turn and nothing is
@@ -48,6 +47,7 @@ describe("chat mode (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       settings: { isTestMode: true },
     });
   }, 60_000);
@@ -56,44 +56,128 @@ describe("chat mode (integration)", () => {
     await harness?.dispose();
   });
 
-  it("default build mode sends codebase context and applies changes", async () => {
-    harness.mount();
-    await waitFor(
-      () => {
-        expect(screen.getByTestId("messages-list")).toBeTruthy();
-        expect(screen.getByTestId("chat-input-container")).toBeTruthy();
-      },
-      { timeout: 15_000 },
-    );
-
-    const { send } = await harness.typeInChat("[dump] hi");
-    send();
-
-    await waitFor(() => expect(screen.getByText("[dump] hi")).toBeTruthy(), {
-      timeout: 15_000,
+  it("default build mode sends the curated agentic request", async () => {
+    const originalSettings = readSettings();
+    writeSettings({
+      enableDyadPro: true,
+      providerSettings: { auto: { apiKey: { value: "testdyadkey" } } },
     });
-    await harness.waitForStreamEnd(harness.chatId);
-    expect(errorEvents(harness)).toHaveLength(0);
+    try {
+      harness.mount();
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("messages-list")).toBeTruthy();
+          expect(screen.getByTestId("chat-input-container")).toBeTruthy();
+        },
+        { timeout: 15_000 },
+      );
 
-    const dump = harness.getServerDump({ type: "all-messages" });
-    expect(dump.text).toContain("message: [[SYSTEM_MESSAGE]]");
-    // Build mode primes the model with the codebase as a user turn.
-    expect(dump.text).toContain("This is my codebase.");
-    expect(dump.text.trimEnd()).toMatch(/role: user\nmessage: \[dump\] hi$/);
-    expect(dump.text).toMatchSnapshot("chat-mode-build-all-messages");
+      const { send } = await harness.typeInChat("[dump] hi");
+      send();
 
-    // Equivalent of snapshotMessages: user prompt + assistant response
-    // containing the (path-masked in UI) dump marker.
-    const messages = await harness.db.query.messages.findMany();
-    expect(messages).toHaveLength(2);
-    expect(messages[0].role).toBe("user");
-    expect(messages[0].content).toBe("[dump] hi");
-    expect(messages[1].role).toBe("assistant");
-    expect(messages[1].content).toContain("[[dyad-dump-path=");
-    const latchedChat = await harness.db.query.chats.findFirst({
-      where: (chats, { eq }) => eq(chats.id, harness.chatId),
+      await waitFor(() => expect(screen.getByText("[dump] hi")).toBeTruthy(), {
+        timeout: 15_000,
+      });
+      await harness.waitForStreamEnd(harness.chatId);
+      expect(errorEvents(harness)).toHaveLength(0);
+
+      const dump = harness.getServerDump({ type: "all-messages" });
+      expect(dump.text).toContain("message: [[SYSTEM_MESSAGE]]");
+      expect(dump.text).not.toContain("This is my codebase.");
+      expect(dump.text.trimEnd()).toMatch(/role: user\nmessage: \[dump\] hi$/);
+      expect(dump.text).toMatchSnapshot("chat-mode-build-all-messages");
+
+      // Equivalent of snapshotMessages: user prompt + assistant response
+      // containing the (path-masked in UI) dump marker.
+      const messages = await harness.db.query.messages.findMany();
+      expect(messages).toHaveLength(2);
+      expect(messages[0].role).toBe("user");
+      expect(messages[0].content).toBe("[dump] hi");
+      expect(messages[1].role).toBe("assistant");
+      expect(messages[1].content).toContain("[[dyad-dump-path=");
+      const request = harness.getServerDump({ type: "request" });
+      const tools = (request.parsed.body.tools ?? []) as Array<{
+        function?: { name: string };
+        name?: string;
+      }>;
+      const toolNames = tools.map((tool) => tool.function?.name ?? tool.name);
+      expect(toolNames).toEqual(
+        expect.arrayContaining([
+          "read_file",
+          "list_files",
+          "grep",
+          "write_file",
+          "search_replace",
+          "copy_file",
+          "delete_file",
+          "rename_file",
+          "add_dependency",
+          "set_chat_summary",
+          "planning_questionnaire",
+          "update_todos",
+          "read_guide",
+        ]),
+      );
+      for (const excludedTool of [
+        "spawn_agent",
+        "web_search",
+        "read_logs",
+        "run_build",
+        "run_type_checks",
+        "run_tests",
+        "run_pre_commit",
+        "execute_sandbox_script",
+        "search_mcp_tools",
+        "git_status",
+        "restart_app",
+      ]) {
+        expect(toolNames).not.toContain(excludedTool);
+      }
+      const latchedChat = await harness.db.query.chats.findFirst({
+        where: (chats, { eq }) => eq(chats.id, harness.chatId),
+      });
+      expect(latchedChat?.chatMode).toBe("build");
+    } finally {
+      writeSettings(originalSettings);
+    }
+  }, 60_000);
+
+  it("executes Build tools, commits changes, and skips auto-review", async () => {
+    const originalSettings = readSettings();
+    const buildChatId = await harness.createChat();
+    await harness.db
+      .update(chats)
+      .set({ chatMode: "build" })
+      .where(eq(chats.id, buildChatId));
+
+    writeSettings({
+      enableDyadPro: true,
+      enableAutoReview: true,
+      providerSettings: { auto: { apiKey: { value: "testdyadkey" } } },
     });
-    expect(latchedChat?.chatMode).toBe("build");
+    try {
+      const result = await harness.streamChat("tc=local-agent/basic-write", {
+        chatId: buildChatId,
+      });
+
+      expect(result.eventsFor("chat:response:error")).toEqual([]);
+      expect(
+        await fs.readFile(path.join(harness.appDir, "src/hello.ts"), "utf8"),
+      ).toContain('return "Hello, World!"');
+      const assistant = await harness.db.query.messages.findFirst({
+        where: (messages, { and, eq }) =>
+          and(eq(messages.chatId, buildChatId), eq(messages.role, "assistant")),
+      });
+      expect(assistant?.commitHash).toBeTruthy();
+      expect(
+        result.eventsFor("chat:response:end").at(-1)?.payload,
+      ).toMatchObject({
+        updatedFiles: true,
+        reviewBarrierRequested: undefined,
+      });
+    } finally {
+      writeSettings(originalSettings);
+    }
   }, 60_000);
 
   it("ask mode omits codebase context and does not apply changes", async () => {
@@ -101,6 +185,7 @@ describe("chat mode (integration)", () => {
     // creating a fresh chat and driving the REAL selector to "ask" (it persists
     // chatMode onto the chat row via ipc.chat.updateChat).
     const askChatId = await harness.createChat();
+    const gitCommitCountBeforeAsk = harness.gitLog().length;
     harness.mount({ chatId: askChatId });
     await waitFor(
       () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
@@ -139,10 +224,7 @@ describe("chat mode (integration)", () => {
     const assistant = askChatMessages[1];
     expect(assistant.role).toBe("assistant");
     expect(assistant.commitHash).toBeNull();
-    // No git commit was produced by either turn. A bare "[dump] hi" reply is
-    // only the dump-path marker (no dyad-write), so build mode above committed
-    // nothing either — only the fixture init commit exists.
-    expect(harness.gitLog()).toHaveLength(1);
+    expect(harness.gitLog()).toHaveLength(gitCommitCountBeforeAsk);
   }, 60_000);
 
   it("repairs a null mode when an accepted first turn is replayed", async () => {
@@ -161,7 +243,7 @@ describe("chat mode (integration)", () => {
       userInputRequestId,
     });
 
-    expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+    expect(result.eventsFor("chat:response:error")).toEqual([]);
     expect(result.eventsFor("chat:response:end")).toHaveLength(1);
     const repairedChat = await harness.db.query.chats.findFirst({
       where: eq(chats.id, replayChatId),
@@ -215,10 +297,10 @@ describe("chat mode (integration)", () => {
         userInputRequestId: "implicit-authoritative-build",
       });
 
-      expect(result.eventsFor("chat:response:error")).toHaveLength(0);
-      expect(harness.getServerDump({ type: "all-messages" }).text).toContain(
-        "This is my codebase.",
-      );
+      expect(result.eventsFor("chat:response:error")).toEqual([]);
+      expect(
+        harness.getServerDump({ type: "all-messages" }).text,
+      ).not.toContain("This is my codebase.");
       const unchangedChat = await harness.db.query.chats.findFirst({
         where: eq(chats.id, arbitrationChatId),
       });
@@ -533,7 +615,7 @@ describe("chat mode (integration)", () => {
       userInputRequestId: "google-implicit",
     });
 
-    expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+    expect(result.eventsFor("chat:response:error")).toEqual([]);
     const latchedChat = await harness.db.query.chats.findFirst({
       where: eq(chats.id, implicitChatId),
     });

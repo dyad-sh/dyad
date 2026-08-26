@@ -4,7 +4,6 @@ import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { ipc } from "@/ipc/types";
 import { showSuccess, showError } from "@/lib/toast";
-import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
@@ -480,13 +479,6 @@ export function WorkflowSettings() {
     >
       <div id={SETTING_IDS.defaultChatMode}>
         <DefaultChatModeSelector />
-      </div>
-
-      <div id={SETTING_IDS.autoApprove} className="space-y-1.5">
-        <AutoApproveSwitch showToast={false} />
-        <p className={hint}>
-          This will automatically approve code changes and run them.
-        </p>
       </div>
 
       <div id={SETTING_IDS.appBlueprint} className="space-y-1.5">

@@ -1,23 +1,21 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "Fix a security issue in the codebase",
+  description: "Write the main chat-flow smoke-test file",
   turns: [
     {
-      text: "I'll apply the security fix now.",
+      text: "I'll create the file.",
       toolCalls: [
         {
           name: "write_file",
           args: {
             path: "file1.txt",
-            content: "security fix\n",
-            description: "Fix security vulnerability",
+            content: "A file (2)\n",
+            description: "Create the test file",
           },
         },
       ],
     },
-    {
-      text: "I've applied and committed the security fix. EOM",
-    },
+    { text: "EOM" },
   ],
 };

@@ -2,7 +2,10 @@ import path from "node:path";
 import fs from "node:fs";
 import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
-import { constructLocalAgentPrompt } from "./local_agent_prompt";
+import {
+  constructBuildAgentPrompt,
+  constructLocalAgentPrompt,
+} from "./local_agent_prompt";
 import { constructPlanModePrompt } from "./plan_mode_prompt";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 
@@ -755,6 +758,14 @@ export const constructSystemPrompt = ({
       restartAppToolAvailable,
       reinstallAndRestartAppToolAvailable,
       runBuildToolAvailable,
+    });
+  }
+
+  if (chatMode === "build") {
+    return constructBuildAgentPrompt(aiRules, themePrompt, {
+      frameworkType,
+      hasSupabaseProject,
+      enableAppBlueprint,
     });
   }
 

@@ -40,6 +40,7 @@ describe("supabase migrations (integration)", () => {
       settings: {
         isTestMode: true,
         autoApproveChanges: true,
+        agentToolConsents: { execute_sql: "always" },
         enableSupabaseWriteSqlMigration: true,
       },
     });
@@ -60,7 +61,6 @@ describe("supabase migrations (integration)", () => {
     };
     const migrationsDir = path.join(harness.appDir, "supabase", "migrations");
 
-    await sendPrompt("tc=add-supabase");
     const handler = h.ipcHandlers.get("supabase:fake-connect-and-set-project");
     if (!handler) {
       throw new Error("supabase:fake-connect-and-set-project not registered");
@@ -70,7 +70,7 @@ describe("supabase migrations (integration)", () => {
       fakeProjectId: "fake-project-id",
     });
 
-    await sendPrompt("tc=execute-sql-1");
+    await sendPrompt("tc=local-agent/execute-sql");
     await waitFor(() => {
       expect(fs.readdirSync(migrationsDir)).toHaveLength(1);
     });

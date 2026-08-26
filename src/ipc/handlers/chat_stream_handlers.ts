@@ -1757,15 +1757,16 @@ ${componentSnippet}
           }
         }
 
+        const isBuildMode = selectedChatMode === "build";
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
         const willUseLocalAgentStream =
           isLocalAgentBackedMode(selectedChatMode);
 
-        // Agent/ask/plan modes reach referenced apps via tool calls (`app_name`
+        // Tool-backed modes reach referenced apps via tool calls (`app_name`
         // on read-only tools), so we only need name/path pairs — skip the heavy
-        // codebase extraction entirely. Build mode still injects full codebases.
+        // full referenced-app codebase extraction entirely.
         let mentionedAppsCodebases: MentionedAppCodebaseEntry[] = [];
         let referencedAppsForAgent: MentionedAppReference[] = [];
         if (willUseLocalAgentStream) {
@@ -1803,13 +1804,8 @@ ${componentSnippet}
             ? localAgentAiUserPrompt
             : defaultAiUserPrompt;
 
-        // The referenced-apps clause only ever fires for build mode: deep
-        // context suppresses `dyadFiles` in favor of `dyadVersionedFiles`, and
-        // the engine's deep pipeline does not read `dyadMentionedApps`, so a
-        // mentioned app's codebase would silently never reach the model. Agent
-        // modes populate `referencedAppsForAgent` from the sticky set, but they
-        // return via handleLocalAgentStream before this flag is read and pass
-        // no smart context mode at all — so stickiness never reaches here.
+        // This legacy full-context branch is retained for non-tool-backed
+        // callers. Active chat modes use referenced-app tool access instead.
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&
@@ -1974,11 +1970,10 @@ ${componentSnippet}
           runBuildToolAvailable,
         });
 
-        // Add information about mentioned apps for build mode only.
-        // Full codebase injection (build mode): full file contents already
-        // concatenated into `otherAppsCodebaseInfo`.
+        // Add information for any legacy caller that still injects full
+        // referenced-app codebases.
         //
-        // Agent/ask/plan modes don't need anything in the system prompt —
+        // Tool-backed modes don't need anything in the system prompt —
         // handleLocalAgentStream injects a `<system-reminder>` into the
         // user's latest message so the system prompt stays static.
         if (otherAppsCodebaseInfo) {
@@ -2024,7 +2019,7 @@ ${componentSnippet}
             getSupabaseAvailableSystemPrompt(supabaseClientCode) +
             "\n\n" +
             // For local agent, we will explicitly fetch the database context when needed.
-            (selectedChatMode === "local-agent"
+            (willUseLocalAgentStream
               ? ""
               : await getSupabaseContext({
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
@@ -2045,7 +2040,7 @@ ${componentSnippet}
             "\n\n";
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
-          selectedChatMode !== "local-agent" &&
+          !willUseLocalAgentStream &&
           // If in security review mode, we don't need to mention integrations are available.
           !isSecurityReviewIntent
         ) {
@@ -2450,6 +2445,33 @@ This conversation includes one or more image attachments. When the user uploads 
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment: false,
+            },
+          );
+          return;
+        }
+
+        // Build uses the same multi-step tool-calling loop as Agent, but with
+        // a fail-closed app-building tool profile: no sub-agents, Engine tools,
+        // logs, verification commands, sandbox scripts, or MCP servers.
+        if (isBuildMode) {
+          const readOnlyBuildTurn = isSecurityReviewIntent || isSummarizeIntent;
+          finishedNaturally = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+            {
+              placeholderMessageId: placeholderAssistantMessage.id,
+              systemPrompt,
+              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              readOnly: readOnlyBuildTurn,
+              toolProfile: "build",
+              messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              settingsOverride: settings,
+              modelSelectionOverride: selectedModel,
+              freeModelMode,
+              referencedApps: referencedAppsForAgent,
+              currentTurnHasOnDiskAttachment:
+                hasScriptReadableAttachment(storedAttachments),
             },
           );
           return;

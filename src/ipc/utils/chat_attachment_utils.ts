@@ -143,17 +143,19 @@ export function resolveAttachmentDeliveryConfig({
   hasUploadedAttachments: boolean;
 }): AttachmentDeliveryConfig {
   const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
-  const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
+  const useOnDiskAttachmentBlock =
+    mode === "build" || mode === "local-agent" || mode === "ask";
 
   return {
     inlineTextAttachments: !useOnDiskAttachmentBlock,
     includeImageParts: true,
     useOnDiskAttachmentBlock,
     includeSandboxScriptHint:
+      mode !== "build" &&
       useOnDiskAttachmentBlock &&
       isSandboxScriptExecutionEnabled(settings) &&
       isSandboxSupportedPlatform(),
-    includeCopyFileHint: mode === "local-agent",
+    includeCopyFileHint: mode === "build" || mode === "local-agent",
     addSystemCopyInstructions:
       !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
     addSystemVisionInstructions:

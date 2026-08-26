@@ -14,7 +14,10 @@ import {
   SLOW_CONSENT_TOOL,
 } from "./consentClassifier";
 import { matchAssertionCodePayload } from "./testAssertionsFixtures";
-import { loadLocalAgentFixture } from "./localAgentHandler";
+import {
+  extractLocalAgentFixture,
+  loadLocalAgentFixture,
+} from "./localAgentHandler";
 import type { ToolCall, Turn } from "./localAgentTypes";
 
 /**
@@ -293,9 +296,14 @@ export const createResponsesHandler =
     }
 
     // Load a fixture file when the prompt includes tc=<name>
-    const testCaseName = isCompactionRequest
+    const localAgentFixture = isCompactionRequest
       ? null
-      : extractTestCaseName(lastUserText);
+      : extractLocalAgentFixture(lastUserText);
+    const testCaseName = localAgentFixture
+      ? `local-agent/${localAgentFixture}`
+      : isCompactionRequest
+        ? null
+        : extractTestCaseName(lastUserText);
     const localAgentTurn = await responsesFixtureTurn(testCaseName, input);
     if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       const testFilePath = path.join(

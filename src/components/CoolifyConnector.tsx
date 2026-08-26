@@ -422,6 +422,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       return (
         <div className="space-y-3" data-testid="coolify-connector">
           {serverSetup}
+          {/* Installing again is refused while Dyad still holds an admin
+              password, and that refusal says to sign out first. Behind the
+              failure report is the one place it could be said without the way
+              to do it being on screen. */}
+          {status.serverUrl && signOut}
         </div>
       );
     }

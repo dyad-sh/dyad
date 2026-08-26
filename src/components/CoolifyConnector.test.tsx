@@ -391,7 +391,12 @@ describe("a server Dyad set up but has no token for", () => {
         screen.queryByTestId("coolify-server-setup-stub"),
       ),
       refusalCard: Boolean(screen.queryByTestId("coolify-already-has-server")),
-    }).toEqual({ failureVisible: true, refusalCard: false });
+      // Installing again is refused while the account is stored, and the
+      // refusal says to sign out first — which has to be doable from here.
+      signOut: Boolean(
+        screen.queryByRole("button", { name: "Sign out of Coolify" }),
+      ),
+    }).toEqual({ failureVisible: true, refusalCard: false, signOut: true });
   });
 
   it("can be connected to from the card that refuses a new install", async () => {

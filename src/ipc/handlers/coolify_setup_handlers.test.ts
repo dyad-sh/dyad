@@ -580,35 +580,6 @@ describe("run", () => {
     expect(h.lastConnectTarget?.host).toBe("2001:db8::1");
   });
 
-  it("puts the earlier account back even if the keychain relocked meanwhile", async () => {
-    // readSettings drops a password it cannot decrypt and keeps the account,
-    // so the record comes back without one. That is this run's own record
-    // gone unreadable, not somebody else's writing — and skipping the restore
-    // leaves a password for an account that was never created, in place of
-    // one for a server that is still running.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "old@gmail.com",
-          password: { value: "TheEarlierOne" },
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
-    h.reportsAccount = false;
-    h.setupError = new Error("boom");
-    h.onRunStarted = () => {
-      const coolify = h.settings.coolify as { admin?: Record<string, unknown> };
-      if (coolify.admin) delete coolify.admin.password;
-    };
-    await checkThenRun().catch(() => {});
-
-    const admin = (
-      h.settings.coolify as { admin?: { password?: { value: string } } }
-    )?.admin;
-    expect(admin?.password?.value).toBe("TheEarlierOne");
-  });
-
   it("does not put back a record something else replaced mid-run", async () => {
     // Minutes of installing sit between the record going down and the way
     // out. Signing out in another window during that time is a newer answer

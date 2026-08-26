@@ -365,6 +365,7 @@ export const ChatStreamRemoteSnapshotSchema = z
         chatSummary: z.string().optional(),
         pausePromptQueue: z.boolean().optional(),
         reviewBarrierRequested: z.boolean().optional(),
+        suppressAutoReview: z.boolean().optional(),
         updatedFiles: z.boolean().optional(),
         extraFiles: z.array(z.string()).optional(),
         extraFilesError: z.string().optional(),

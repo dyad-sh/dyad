@@ -41,6 +41,7 @@ export interface ChatStreamHostState {
     readonly chatSummary?: string;
     readonly pausePromptQueue?: boolean;
     readonly reviewBarrierRequested?: boolean;
+    readonly suppressAutoReview?: boolean;
     readonly updatedFiles?: boolean;
     readonly extraFiles?: string[];
     readonly extraFilesError?: string;

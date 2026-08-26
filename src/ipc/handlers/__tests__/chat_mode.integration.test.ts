@@ -174,6 +174,7 @@ describe("chat mode (integration)", () => {
       ).toMatchObject({
         updatedFiles: true,
         reviewBarrierRequested: undefined,
+        suppressAutoReview: true,
       });
     } finally {
       writeSettings(originalSettings);

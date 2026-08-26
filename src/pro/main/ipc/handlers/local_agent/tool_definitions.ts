@@ -73,6 +73,7 @@ import {
   gitStatusTool,
 } from "./tools/git";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
+import { asSchema } from "ai";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -94,6 +95,7 @@ import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { withTrackedMutation } from "./subagents/mutation_activity_tracker";
+import { estimateTokens } from "@/ipc/utils/token_utils";
 
 const logger = log.scope("local_agent_tools");
 
@@ -462,6 +464,49 @@ export const BUILD_MODE_TOOL_NAMES = [
 ] as const satisfies readonly AgentToolName[];
 
 const BUILD_MODE_TOOL_NAME_SET = new Set<AgentToolName>(BUILD_MODE_TOOL_NAMES);
+
+export async function estimateBuildModeToolTokens({
+  readOnly = false,
+  enableAppBlueprint,
+  isDyadPro,
+  frameworkType,
+  supabaseProjectId,
+  neonProjectId,
+  neonActiveBranchId,
+}: {
+  readOnly?: boolean;
+  enableAppBlueprint: boolean;
+  isDyadPro: boolean;
+  frameworkType: AgentContext["frameworkType"];
+  supabaseProjectId: string | null;
+  neonProjectId: string | null;
+  neonActiveBranchId: string | null;
+}): Promise<number> {
+  const estimateContext = {
+    isDyadPro,
+    frameworkType,
+    supabaseProjectId,
+    neonProjectId,
+    neonActiveBranchId,
+  } as AgentContext;
+  const options: BuildAgentToolSetOptions = {
+    toolProfile: "build",
+    readOnly,
+    enableAppBlueprint,
+  };
+  const declarations = await Promise.all(
+    TOOL_DEFINITIONS.filter((definition) =>
+      shouldIncludeTool(definition, estimateContext, options),
+    ).map(async (definition) => ({
+      type: "function" as const,
+      name: definition.name,
+      description: definition.description,
+      inputSchema: await asSchema(definition.inputSchema).jsonSchema,
+    })),
+  );
+
+  return estimateTokens(JSON.stringify(declarations));
+}
 
 /**
  * Tools that should ONLY be available in plan mode (excluded from normal agent mode).

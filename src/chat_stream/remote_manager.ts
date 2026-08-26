@@ -44,6 +44,7 @@ export interface StreamFinishedEvent {
   outcome: "completed" | "cancelled" | "errored";
   updatedFiles: boolean;
   reviewBarrierRequested: boolean;
+  suppressAutoReview?: boolean;
   wasCancelled: boolean;
   chatSummary?: string;
 }
@@ -842,6 +843,7 @@ export class ChatStreamRemoteManager {
         outcome: completion.outcome,
         updatedFiles: completion.updatedFiles === true,
         reviewBarrierRequested: completion.reviewBarrierRequested === true,
+        suppressAutoReview: completion.suppressAutoReview === true,
         wasCancelled: completion.outcome === "cancelled",
         chatSummary: completion.chatSummary,
       });

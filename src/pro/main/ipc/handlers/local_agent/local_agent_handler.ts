@@ -2142,6 +2142,7 @@ export async function handleLocalAgentStream(
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
       pausePromptQueue: hitStepLimit || reviewBarrierRequested || undefined,
       reviewBarrierRequested: reviewBarrierRequested || undefined,
+      suppressAutoReview: buildMode || undefined,
     } satisfies ChatResponseEnd);
 
     return true; // Success

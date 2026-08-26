@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
         outcome: "completed" | "cancelled" | "errored";
         updatedFiles: boolean;
         reviewBarrierRequested: boolean;
+        suppressAutoReview?: boolean;
         wasCancelled: boolean;
       }) => void)
     | undefined,
@@ -122,6 +123,23 @@ describe("sub-agent review orchestration", () => {
       outcome: "completed",
       updatedFiles: true,
       reviewBarrierRequested: true,
+      wasCancelled: false,
+    });
+
+    await Promise.resolve();
+    expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
+  });
+
+  it("does not start renderer auto-review when main suppresses it", async () => {
+    mocks.queue = [];
+    renderHook(() => useBackgroundAutoReview());
+
+    mocks.streamFinishedCallback?.({
+      chatId: 7,
+      outcome: "completed",
+      updatedFiles: true,
+      reviewBarrierRequested: false,
+      suppressAutoReview: true,
       wasCancelled: false,
     });
 

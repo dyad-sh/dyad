@@ -184,8 +184,8 @@ export default function SettingsPage() {
 
           <SettingsSection
             id={SECTION_IDS.agentPermissions}
-            title="Agent Permissions"
-            description="Control what the agent can do on your behalf. Requires Pro."
+            title="Build and Agent Permissions"
+            description="Control what Build and Agent tools can do on your behalf."
           >
             <AgentToolsSettings />
           </SettingsSection>

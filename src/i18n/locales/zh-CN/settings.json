@@ -144,8 +144,8 @@
     "title": "集成"
   },
   "agentPermissions": {
-    "title": "Agent 权限 (Pro)",
-    "description": "配置 Agent 内置工具的权限。",
+    "title": "Build 和 Agent 权限",
+    "description": "配置 Build 和 Agent 内置工具的权限。",
     "defaultAllowedTools": "默认允许的工具 ({{count}})",
     "ask": "询问",
     "alwaysAllow": "始终允许",

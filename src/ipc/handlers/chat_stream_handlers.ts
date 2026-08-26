@@ -1707,6 +1707,12 @@ ${componentSnippet}
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =
           await getModelClient(settings.selectedModel, settings, selectedModel);
 
+        const isBuildMode = selectedChatMode === "build";
+        const isLocalAgentMode = selectedChatMode === "local-agent";
+        const isAskMode = selectedChatMode === "ask";
+        const isPlanMode = selectedChatMode === "plan";
+        const willUseLocalAgentStream =
+          isLocalAgentBackedMode(selectedChatMode);
         const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
         // only include the selected components' files for codebase context.
@@ -1725,19 +1731,24 @@ ${componentSnippet}
               }
             : validateChatContext(updatedChat.app.chatContext);
 
-        // Extract codebase for current app
-        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
-          appPath,
-          chatContext,
-          // Recorded as soon as the file list is known rather than after the
-          // extract is built, so a turn that dies reading a large codebase
-          // still reports the size it died on.
-          onSizeStats: (sizeStats) =>
-            recordAppSizeForSession({
-              appId: updatedChat.app.id,
-              ...sizeStats,
-            }),
-        });
+        let codebaseInfo = "";
+        let files: Awaited<ReturnType<typeof extractCodebase>>["files"] = [];
+        if (!willUseLocalAgentStream) {
+          const extractedCodebase = await extractCodebase({
+            appPath,
+            chatContext,
+            // Recorded as soon as the file list is known rather than after the
+            // extract is built, so a turn that dies reading a large codebase
+            // still reports the size it died on.
+            onSizeStats: (sizeStats) =>
+              recordAppSizeForSession({
+                appId: updatedChat.app.id,
+                ...sizeStats,
+              }),
+          });
+          codebaseInfo = extractedCodebase.formattedOutput;
+          files = extractedCodebase.files;
+        }
 
         // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching
@@ -1756,13 +1767,6 @@ ${componentSnippet}
             }
           }
         }
-
-        const isBuildMode = selectedChatMode === "build";
-        const isLocalAgentMode = selectedChatMode === "local-agent";
-        const isAskMode = selectedChatMode === "ask";
-        const isPlanMode = selectedChatMode === "plan";
-        const willUseLocalAgentStream =
-          isLocalAgentBackedMode(selectedChatMode);
 
         // Tool-backed modes reach referenced apps via tool calls (`app_name`
         // on read-only tools), so we only need name/path pairs — skip the heavy

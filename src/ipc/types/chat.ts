@@ -290,6 +290,8 @@ export const ChatResponseEndSchema = z.object({
   pausePromptQueue: z.boolean().optional(),
   /** Indicates the queue pause was requested for the automatic review barrier. */
   reviewBarrierRequested: z.boolean().optional(),
+  /** Prevents renderer-owned background review for modes that forbid sub-agents. */
+  suppressAutoReview: z.boolean().optional(),
 });
 
 export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;

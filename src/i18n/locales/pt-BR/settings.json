@@ -144,8 +144,8 @@
     "title": "Integrações"
   },
   "agentPermissions": {
-    "title": "Permissões do Agente (Pro)",
-    "description": "Configure as permissões para as ferramentas integradas do Agente.",
+    "title": "Permissões do Build e do Agente",
+    "description": "Configure as permissões para as ferramentas integradas do Build e do Agente.",
     "defaultAllowedTools": "Ferramentas permitidas por padrão ({{count}})",
     "ask": "Perguntar",
     "alwaysAllow": "Sempre permitir",

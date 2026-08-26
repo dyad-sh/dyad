@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { BUILD_MODE_TOOL_NAMES, TOOL_DEFINITIONS } from "./tool_definitions";
+import {
+  BUILD_MODE_TOOL_NAMES,
+  estimateBuildModeToolTokens,
+  TOOL_DEFINITIONS,
+} from "./tool_definitions";
 
 describe("Build mode tool profile", () => {
   it("is an exact, engine-free, non-sub-agent allowlist", () => {
@@ -39,5 +43,25 @@ describe("Build mode tool profile", () => {
       expect(definition?.usesEngineEndpoint, name).not.toBe(true);
       expect(definition?.subagentOnly, name).not.toBe(true);
     }
+  });
+
+  it("accounts for serialized Build tool declarations", async () => {
+    const baseOptions = {
+      enableAppBlueprint: false,
+      isDyadPro: false,
+      frameworkType: "vite" as const,
+      supabaseProjectId: null,
+      neonProjectId: null,
+      neonActiveBranchId: null,
+    };
+
+    const withoutBlueprint = await estimateBuildModeToolTokens(baseOptions);
+    const withBlueprint = await estimateBuildModeToolTokens({
+      ...baseOptions,
+      enableAppBlueprint: true,
+    });
+
+    expect(withoutBlueprint).toBeGreaterThan(1_000);
+    expect(withBlueprint).toBeGreaterThan(withoutBlueprint);
   });
 });

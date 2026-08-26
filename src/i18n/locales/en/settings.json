@@ -149,8 +149,8 @@
     "title": "Integrations"
   },
   "agentPermissions": {
-    "title": "Agent Permissions (Pro)",
-    "description": "Configure permissions for Agent built-in tools.",
+    "title": "Build and Agent Permissions",
+    "description": "Configure permissions for built-in Build and Agent tools.",
     "defaultAllowedTools": "Default allowed tools ({{count}})",
     "ask": "Ask",
     "alwaysAllow": "Always allow",

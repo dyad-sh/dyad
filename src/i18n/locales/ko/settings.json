@@ -149,8 +149,8 @@
     "title": "연동"
   },
   "agentPermissions": {
-    "title": "에이전트 권한 (Pro)",
-    "description": "에이전트 내장 도구에 대한 권한을 설정합니다.",
+    "title": "Build 및 에이전트 권한",
+    "description": "Build 및 에이전트 내장 도구에 대한 권한을 설정합니다.",
     "defaultAllowedTools": "기본 허용 도구 ({{count}})",
     "ask": "물어보기",
     "alwaysAllow": "항상 허용",

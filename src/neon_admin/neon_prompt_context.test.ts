@@ -21,6 +21,15 @@ vi.mock("./neon_context", async () => {
   };
 });
 
+vi.mock("../paths/paths", () => ({
+  getDyadAppPath: (appPath: string) => appPath,
+}));
+
+vi.mock("../ipc/utils/framework_utils", () => ({
+  detectFrameworkType: () => "vite",
+  detectNextJsMajorVersion: () => null,
+}));
+
 describe("buildNeonPromptAdditions", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -85,6 +94,26 @@ describe("buildNeonPromptAdditions", () => {
     expect(additions).toContain("<neon-system-prompt>");
     expect(additions).toContain('guide="add-authentication"');
     expect(additions).not.toContain(addAuthenticationGuide);
+  });
+
+  it("treats Build as tool-backed and skips eager Neon context", async () => {
+    getCachedEmailPasswordConfig.mockResolvedValue({
+      require_email_verification: false,
+    });
+    getNeonContext.mockResolvedValue("# Neon Project Info");
+
+    const { buildNeonPromptForApp } = await import("./neon_prompt_context");
+
+    const additions = await buildNeonPromptForApp({
+      appPath: "/test-app",
+      neonProjectId: "project-123",
+      neonActiveBranchId: "branch-123",
+      selectedChatMode: "build",
+    });
+
+    expect(additions).toContain('guide="add-authentication"');
+    expect(additions).not.toContain("# Neon Project Info");
+    expect(getNeonContext).not.toHaveBeenCalled();
   });
 
   it("strips the Vite + Nitro section from the auth guide when frameworkType is nextjs", async () => {

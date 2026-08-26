@@ -530,6 +530,7 @@ export function transitionChatStreamHost(
               chatSummary: event.response.chatSummary,
               ...(pausePromptQueue ? { pausePromptQueue: true } : {}),
               reviewBarrierRequested: event.response.reviewBarrierRequested,
+              suppressAutoReview: event.response.suppressAutoReview,
               updatedFiles: event.response.updatedFiles,
               extraFiles: event.response.extraFiles,
               extraFilesError: event.response.extraFilesError,

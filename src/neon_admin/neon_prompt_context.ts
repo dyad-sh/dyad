@@ -7,6 +7,7 @@ import {
   detectNextJsMajorVersion,
 } from "../ipc/utils/framework_utils";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import { isLocalAgentBackedMode, type ChatMode } from "@/lib/schemas";
 
 interface BuildNeonPromptAdditionsParams {
   projectId: string;
@@ -82,20 +83,20 @@ export async function buildNeonPromptForApp({
   neonProjectId: string;
   neonActiveBranchId?: string | null;
   neonDevelopmentBranchId?: string | null;
-  selectedChatMode: string;
+  selectedChatMode: ChatMode;
 }): Promise<string> {
   const resolvedPath = getDyadAppPath(appPath);
   const frameworkType = detectFrameworkType(resolvedPath);
   const nextjsMajorVersion =
     frameworkType === "nextjs" ? detectNextJsMajorVersion(resolvedPath) : null;
   const branchId = neonActiveBranchId ?? neonDevelopmentBranchId;
-  const isLocalAgent = selectedChatMode === "local-agent";
+  const isToolBackedMode = isLocalAgentBackedMode(selectedChatMode);
   return buildNeonPromptAdditions({
     projectId: neonProjectId,
     branchId,
     frameworkType,
     nextjsMajorVersion,
-    includeContext: !isLocalAgent,
-    isLocalAgentMode: isLocalAgent,
+    includeContext: !isToolBackedMode,
+    isLocalAgentMode: isToolBackedMode,
   });
 }

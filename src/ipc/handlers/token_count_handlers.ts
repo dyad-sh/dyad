@@ -38,6 +38,7 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
+import { estimateBuildModeToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 
 const logger = log.scope("token_count_handlers");
 
@@ -95,6 +96,8 @@ export function registerTokenCountHandlers() {
       // Migration on read converts "agent" to "build", so no need to check for it here
       const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
       const frameworkType = detectFrameworkType(getDyadAppPath(chat.app.path));
+      const enableAppBlueprint =
+        settings.enableAppBlueprint === true && chat.app.needsAppBlueprint;
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode: selectedChatMode === "ask" ? "local-agent" : selectedChatMode,
@@ -108,6 +111,7 @@ export function registerTokenCountHandlers() {
           isDyadProEnabled(settings) &&
           isImplementerSubagentEnabled(settings),
         testingEnabled: !!chat.app?.testingEnabled,
+        enableAppBlueprint,
       });
       let supabaseContext = "";
 
@@ -139,7 +143,19 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 
-      const systemPromptTokens = estimateTokens(systemPrompt + supabaseContext);
+      const toolDefinitionTokens =
+        selectedChatMode === "build"
+          ? await estimateBuildModeToolTokens({
+              enableAppBlueprint,
+              isDyadPro: isDyadProEnabled(settings),
+              frameworkType,
+              supabaseProjectId: chat.app.supabaseProjectId,
+              neonProjectId: chat.app.neonProjectId,
+              neonActiveBranchId: chat.app.neonActiveBranchId,
+            })
+          : 0;
+      const systemPromptTokens =
+        estimateTokens(systemPrompt + supabaseContext) + toolDefinitionTokens;
 
       // Extract codebase information if app is associated with the chat
       let codebaseTokens = 0;

@@ -39,6 +39,23 @@ export function useCoolifySetupSnapshot() {
     return ipc.events.coolifySetup.onChanged((state) => {
       eventCount += 1;
       queryClient.setQueryData(queryKeys.coolify.setup, state);
+      // A run writes the account and the token in the main process, so what
+      // the rest of the panel believes about this Coolify is out of date the
+      // moment one settles. Only the way out of the finished screen refreshed
+      // it, which a failure never reaches — leaving the panel offering to
+      // install over a server whose password it is already holding.
+      if (state.type === "done" || state.type === "failed") {
+        // Everything about this Coolify except the snapshot itself, which
+        // was just handed to us. Refetching that would ask the main process
+        // to say again what it has already said, and a read still in flight
+        // from before is exactly how a finished run gets put back on a step
+        // it has left.
+        void queryClient.invalidateQueries({
+          predicate: (query) =>
+            query.queryKey[0] === queryKeys.coolify.all[0] &&
+            query.queryKey[1] !== queryKeys.coolify.setup[1],
+        });
+      }
     });
   }, [queryClient]);
 

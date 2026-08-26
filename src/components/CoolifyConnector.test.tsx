@@ -436,7 +436,12 @@ describe("a server Dyad set up but has no token for", () => {
     await user.click(
       screen.getByRole("button", { name: "I already have Coolify installed" }),
     );
-    expect(screen.getByTestId("coolify-no-instance")).toBeTruthy();
+    // Named for where it goes. Dyad set this server up, so offering to set
+    // one up "yet" describes somebody else's situation.
+    expect(screen.getByTestId("coolify-no-instance").textContent).toBe(
+      "Back to the installer",
+    );
+    expect(screen.queryByText(/No Coolify server yet/i)).toBeNull();
   });
 
   it("does not offer the installer as a way out of the token form", async () => {

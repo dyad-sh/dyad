@@ -562,16 +562,21 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         ) : (
           <div className="border-t pt-3">
             <p className="text-sm text-muted-foreground">
-              No Coolify server yet?{" "}
+              {/* The other way in here is a run that failed on a server Dyad
+                  did set up. Offering to set one up "yet" over the top of it
+                  describes somebody else's situation. */}
+              {status.serverUrl
+                ? "Dyad set up a server here and the run has something to say about it. "
+                : "No Coolify server yet? "}
               <button
                 type="button"
                 className="font-medium text-foreground underline underline-offset-4 hover:no-underline"
                 onClick={() => setIsEnteringToken(false)}
                 data-testid="coolify-no-instance"
               >
-                Set one up
-              </button>{" "}
-              on a server you already have.
+                {status.serverUrl ? "Back to the installer" : "Set one up"}
+              </button>
+              {status.serverUrl ? "." : " on a server you already have."}
             </p>
           </div>
         )}

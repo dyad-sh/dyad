@@ -272,7 +272,7 @@ export function CoolifyServerSetup({
             )}
           </div>
         )}
-        {result.tokenStored ? (
+        {result.tokenStored && (result.secure || acceptedInsecureToken) ? (
           <p className="text-sm text-muted-foreground">
             {result.secure
               ? "Dyad created its own API token, so you can pick a server and project next."

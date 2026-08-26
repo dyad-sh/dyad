@@ -234,7 +234,14 @@ export const coolifySetupContracts = {
     output: RevealedCredentialsSchema,
   }),
 
-  /** What is going on right now, asked on mount rather than remembered. */
+  /**
+   * What is going on right now, asked on mount rather than remembered.
+   *
+   * DO NOT LOG this handler. A finished run carries the admin password Dyad
+   * invented, the same secret `run` and `revealCredentials` are marked for —
+   * and this hands back the identical payload, as does the `changed` event
+   * that pushes it to every window.
+   */
   snapshot: defineContract({
     channel: "coolify-setup:snapshot",
     input: z.void(),
@@ -277,6 +284,8 @@ export const coolifySetupEvents = {
    * Sending the state instead of a delta is what lets a window that was not
    * there for the earlier events still show the install correctly.
    */
+  // DO NOT LOG. Carries the same finished-run payload as `snapshot`, admin
+  // password and all, to every window.
   changed: defineEvent({
     channel: "coolify-setup:changed",
     payload: SetupSnapshotSchema,

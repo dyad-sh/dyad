@@ -124,7 +124,6 @@ function setupController(): CoolifySetupController {
        * this record from anyone else's writing in the minutes since.
        */
       let provisional: NonNullable<Coolify["admin"]> | undefined;
-      let adminBeforeRun: Coolify["admin"];
       let unsavedAccount: {
         credentials: { email: string; password: string };
         dashboardUrl: string;
@@ -150,7 +149,6 @@ function setupController(): CoolifySetupController {
         onCredentialsBuilt: ({ credentials, dashboardUrl }) => {
           try {
             const current = readSettings().coolify;
-            adminBeforeRun = current?.admin;
             writeSettings({
               coolify: {
                 ...current,
@@ -222,10 +220,9 @@ function setupController(): CoolifySetupController {
             }
           } else if (provisional && !accountConfirmed) {
             // Nothing was ever seeded, so the password written on the way in
-            // opens nothing. Put back whatever stood before rather than
-            // clearing outright: a failure here can follow a server that was
-            // set up earlier, and that one's account is still the only copy
-            // of its own password.
+            // opens nothing and comes back off. Nothing stood here before it:
+            // a run cannot start while Dyad holds an account, which is what
+            // the gate above is for.
             try {
               const now = readSettings().coolify;
               // Minutes of installing sit between the record going down and
@@ -245,21 +242,10 @@ function setupController(): CoolifySetupController {
                 (now.admin.password === undefined ||
                   now.admin.password.value === provisional.password?.value);
               if (stillOurs) {
-                writeSettings({
-                  coolify: {
-                    ...now,
-                    // Named, not merely absent. A password readSettings could
-                    // not decrypt comes back with the key gone, and a key that
-                    // is gone reads to the write as one a consumer dropped —
-                    // so the ciphertext on disk is handed back, and by now
-                    // that ciphertext is this run's, filed under the earlier
-                    // server's name. Present and undefined is the clear.
-                    admin: adminBeforeRun && {
-                      ...adminBeforeRun,
-                      password: adminBeforeRun.password,
-                    },
-                  },
-                });
+                // Named, not merely absent: a key that is gone reads to the
+                // write as one a consumer dropped, and the ciphertext on disk
+                // is handed back rather than cleared.
+                writeSettings({ coolify: { ...now, admin: undefined } });
               }
             } catch (restoreError) {
               logger.error(
@@ -400,6 +386,10 @@ function targetFrom(input: SetupServer, privateKey: string) {
 export function resetCoolifySetupStateForTests(): void {
   inspectedFingerprints.clear();
   readyHosts.clear();
+  // The third thing this module owns across a process. A case that finishes
+  // an insecure run without accepting or dismissing leaves one here, and the
+  // next case could then accept a credential the previous one made.
+  heldInsecureToken = null;
   // Cancelled before disposed: disposing stops the controller talking, it does
   // not stop what it started, and a run left going would go on writing
   // settings while the next case is watching them.
@@ -491,6 +481,29 @@ export function registerCoolifySetupHandlers() {
         "Enter the domain on its own, with no port or path — for example " +
           "coolify.yourdomain.com.",
         DyadErrorKind.Validation,
+      );
+    }
+    // Not while one is going: a run in flight has already written a record of
+    // its own, and answering a second window with "sign out first" would name
+    // a remedy that does not apply. The machine's own refusal is the true one,
+    // and it comes when the run below is started.
+    if (
+      setupController().getState().type !== "running" &&
+      readSettings().coolify?.admin
+    ) {
+      // Dyad holds the only copy of one server's admin password, and a run
+      // writes its own over it before the installer starts. The screen that
+      // offers this refuses while an account is held, but not over a failure
+      // it is reporting — the message and the log live on that screen, so it
+      // stays up, and the form stays with it. Retrying the same server is
+      // already impossible by then, because preflight refuses a machine that
+      // has Coolify on it; what is left is installing a different one, which
+      // is this.
+      throw new DyadError(
+        "Dyad is holding the admin password for a server it set up. Sign out " +
+          "of Coolify first — that shows the password one last time and then " +
+          "forgets it — before setting up another.",
+        DyadErrorKind.Precondition,
       );
     }
     if (!readyHosts.has(serverKeyFor(input))) {

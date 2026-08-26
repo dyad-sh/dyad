@@ -226,12 +226,16 @@ export async function runServerSetup({
       signal,
     });
     if (!seeded.seeded) {
+      // The way out belongs in both, and the one with a reason is the one
+      // people reach — an address Coolify will not take is the ordinary cause.
+      // Saying only what it objected to leaves an installed server, no
+      // account, and a preflight that refuses to install again.
       throw new DyadError(
-        seeded.reason
-          ? `Coolify would not create its admin account: ${seeded.reason}`
-          : `Coolify has not created an admin account for ${credentials.email}. ` +
-              `The server is installed — sign in at the address below to finish ` +
-              `setting it up.`,
+        (seeded.reason
+          ? `Coolify would not create its admin account: ${seeded.reason} `
+          : `Coolify has not created an admin account for ${credentials.email}. `) +
+          `The server is installed — open ${plainUrlFor(target.host)} to ` +
+          `finish setting it up there.`,
         DyadErrorKind.External,
       );
     }

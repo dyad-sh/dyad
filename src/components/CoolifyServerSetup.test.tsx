@@ -821,6 +821,20 @@ describe("when it finishes", () => {
     expect(h.dismiss).not.toHaveBeenCalled();
   });
 
+  it("says how to make a token by hand when the offered one is not kept", async () => {
+    // Declining leaves the token form pinned to that same address, where
+    // saving asks for the consent just refused — so the only way on is a
+    // token made in Coolify, and this is the only place that says how.
+    h.snapshot.mockResolvedValue(
+      doneState({ secure: false, insecureReason: "No certificate arrived." }),
+    );
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-manual-token")).toBeTruthy(),
+    );
+  });
+
   it("keeps it when the address is agreed to", async () => {
     h.snapshot.mockResolvedValue(
       doneState({ secure: false, insecureReason: "No certificate arrived." }),

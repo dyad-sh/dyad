@@ -394,6 +394,16 @@ describe("runServerSetup", () => {
     );
   });
 
+  it("says where to finish when the account could not be seeded", async () => {
+    // Coolify is on the machine either way, and preflight refuses to install
+    // over it — so what it objected to is only half of what the user needs.
+    // The other half was only ever said when there was nothing to report.
+    const server = fakeServer({ seeded: "no" });
+    await expect(run(server).promise).rejects.toThrow(
+      /The server is installed — open http:\/\/203\.0\.113\.5:8000/,
+    );
+  });
+
   it("waits for an account that has not been created yet", async () => {
     // The dashboard answers before the startup service that seeds the account
     // has run, so the first answer is no on a perfectly healthy server.

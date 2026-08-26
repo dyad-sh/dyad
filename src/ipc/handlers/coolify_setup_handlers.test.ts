@@ -373,6 +373,7 @@ describe("run", () => {
     // That refusal comes from the machine declining to start, not from a run
     // it took on — so it has nothing on screen of its own, and the panel has
     // to say it. What keeps it unmarked is where start() sits.
+    h.reportsAccount = false;
     let release!: () => void;
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
@@ -579,93 +580,6 @@ describe("run", () => {
     expect(h.lastConnectTarget?.host).toBe("2001:db8::1");
   });
 
-  it("names the password when putting back a record that had none", async () => {
-    // An earlier account whose password already would not decrypt comes back
-    // from readSettings with the key gone. Writing it back that way reads as
-    // a key some consumer dropped, and the ciphertext on disk — this run's by
-    // now — is handed back under the earlier server's name.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "old@gmail.com",
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
-    h.reportsAccount = false;
-    h.setupError = new Error("boom");
-    h.onRunStarted = () => {
-      const coolify = h.settings.coolify as { admin?: Record<string, unknown> };
-      if (coolify.admin) delete coolify.admin.password;
-    };
-    await checkThenRun().catch(() => {});
-
-    const written = h.written.at(-1) as { coolify: { admin?: object } };
-    expect(written.coolify.admin).toBeDefined();
-    expect(
-      Object.prototype.hasOwnProperty.call(written.coolify.admin, "password"),
-    ).toBe(true);
-  });
-
-  it("tells this run's record from one for a different account", async () => {
-    // Same address, different admin email: another install's record is not
-    // this run's to undo, and with no readable password the email is what
-    // says so.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "old@gmail.com",
-          password: { value: "TheEarlierOne" },
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
-    h.reportsAccount = false;
-    h.setupError = new Error("boom");
-    h.onRunStarted = () => {
-      h.settings.coolify = {
-        admin: {
-          email: "someone-else@gmail.com",
-          instanceUrl: "http://203.0.113.5:8000",
-        },
-      };
-    };
-    await checkThenRun().catch(() => {});
-
-    const admin = (h.settings.coolify as { admin?: { email?: string } })?.admin;
-    expect(admin?.email).toBe("someone-else@gmail.com");
-  });
-
-  it("does not put back over another server set up mid-run", async () => {
-    // Same admin email, different machine, and a password that will not
-    // decrypt — so the password says nothing and the address is the only
-    // thing left that tells this run's record from another window's.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "old@gmail.com",
-          password: { value: "TheEarlierOne" },
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
-    h.reportsAccount = false;
-    h.setupError = new Error("boom");
-    h.onRunStarted = () => {
-      h.settings.coolify = {
-        admin: {
-          email: "me@gmail.com",
-          instanceUrl: "http://203.0.113.99:8000",
-        },
-      };
-    };
-    await checkThenRun().catch(() => {});
-
-    const admin = (h.settings.coolify as { admin?: { instanceUrl?: string } })
-      ?.admin;
-    expect(admin?.instanceUrl).toBe("http://203.0.113.99:8000");
-  });
-
   it("puts the earlier account back even if the keychain relocked meanwhile", async () => {
     // readSettings drops a password it cannot decrypt and keeps the account,
     // so the record comes back without one. That is this run's own record
@@ -698,86 +612,36 @@ describe("run", () => {
   it("does not put back a record something else replaced mid-run", async () => {
     // Minutes of installing sit between the record going down and the way
     // out. Signing out in another window during that time is a newer answer
-    // than the snapshot taken before the run started.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "me@gmail.com",
-          password: { value: "TheEarlierOne" },
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
+    // than anything this run knows, and clearing on the way out would write
+    // over whatever that left.
     h.reportsAccount = false;
     h.setupError = new Error("boom");
     h.onRunStarted = () => {
-      // As a sign-out in another window would leave it.
-      h.settings.coolify = {};
+      // As another window connecting to a Coolify would leave it.
+      h.settings.coolify = {
+        instanceUrl: "https://elsewhere.example.com",
+        accessToken: { value: "1|theirs" },
+      };
     };
     await checkThenRun().catch(() => {});
 
-    // Not the snapshot from before the run, which is older than the sign-out.
-    const admin = (
-      h.settings.coolify as { admin?: { password?: { value: string } } }
-    )?.admin;
-    expect(admin).toBeUndefined();
-  });
-
-  it("leaves an earlier server's account alone when the run never got that far", async () => {
-    // Connecting, a cancel and a preflight refusal all end the run before the
-    // password is handed over, so there is nothing of this run's to take back
-    // — and the account standing there belongs to a server that still has it.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "me@gmail.com",
-          password: { value: "TheEarlierOne" },
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
-    h.failsBeforeCredentials = true;
-    h.setupError = new DyadError("Cancelled.", DyadErrorKind.UserCancelled);
-    await checkThenRun().catch(() => {});
-
-    const admin = (
-      h.settings.coolify as { admin?: { password?: { value: string } } }
-    ).admin;
-    expect(admin?.password?.value).toBe("TheEarlierOne");
-  });
-
-  it("puts back an earlier server's account when this one never appeared", async () => {
-    // A failure here can follow a server set up before it, whose password is
-    // still the only copy of its own. Clearing outright would take that too.
-    h.settings = {
-      coolify: {
-        admin: {
-          email: "me@gmail.com",
-          password: { value: "TheEarlierOne" },
-          instanceUrl: "http://198.51.100.9:8000",
-        },
-      },
-    } as Record<string, unknown>;
-    h.reportsAccount = false;
-    h.setupError = new Error("boom");
-    await checkThenRun().catch(() => {});
-
-    const saved = h.written.at(-1) as {
-      coolify: { admin?: { password?: { value: string } } };
-    };
-    expect(saved.coolify.admin?.password?.value).toBe("TheEarlierOne");
+    // Untouched: what is there is newer than anything this run knows.
+    const coolify = h.settings.coolify as { accessToken?: { value: string } };
+    expect(coolify.accessToken?.value).toBe("1|theirs");
   });
 
   it("refuses a second setup on a different machine", async () => {
     // Two installs at once would interleave their output, and the second
     // machine's run has nothing to do with the first's.
+    h.reportsAccount = false;
     let release!: () => void;
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
     });
     const first = checkThenRun();
-    // Checked, so the refusal below is the one-at-a-time rule rather than the
-    // gate that asks for a check — both refuse the same way.
+    // No account seeded by the first run, so the refusal below is the
+    // one-at-a-time rule rather than the gate that asks for a check or the
+    // one that holds an account — all three refuse the same way.
     await call("coolify-setup:inspect", { ...TARGET, host: "198.51.100.7" });
     await expect(
       call("coolify-setup:run", { ...TARGET, host: "198.51.100.7" }),
@@ -790,6 +654,7 @@ describe("run", () => {
     // Nobody needs to press Install to get back to a run any more: the panel
     // asks what is going on and shows it. So a second press is a genuine
     // second request, and two installs on one machine would fight.
+    h.reportsAccount = false;
     let release!: () => void;
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
@@ -803,6 +668,7 @@ describe("run", () => {
   });
 
   it("hands back what is going on, so a panel can show it", async () => {
+    h.reportsAccount = false;
     let release!: () => void;
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);
@@ -833,7 +699,30 @@ describe("run", () => {
     ).toBe("idle");
   });
 
+  it("refuses to install over an account Dyad is holding", async () => {
+    // The screen that offers this stands aside while a failure is being
+    // reported, so its message and log stay reachable — and the form comes
+    // with it. Retrying that same server is refused by preflight once Coolify
+    // is on it, so what is left here is a different one, whose run would
+    // write its own account over the only copy of this one's password.
+    h.settings = {
+      coolify: {
+        admin: {
+          email: "me@gmail.com",
+          password: { value: "TheEarlierOne" },
+          instanceUrl: "http://198.51.100.9:8000",
+        },
+      },
+    } as Record<string, unknown>;
+
+    await expect(checkThenRun()).rejects.toThrow(/Sign out of Coolify first/);
+    expect(h.runCalls).toBe(0);
+  });
+
   it("frees the slot even when setup failed", async () => {
+    // No account seeded, so nothing is held afterwards and the next run is
+    // admitted — the slot is the machine's, not the account's.
+    h.reportsAccount = false;
     h.setupError = new Error("boom");
     await checkThenRun().catch(() => {});
     h.setupError = null;
@@ -873,6 +762,21 @@ describe("a token for an unencrypted address", () => {
     await checkThenRun();
     await call("coolify-setup:dismiss");
 
+    const before = h.written.length;
+    await call("coolify-setup:accept-insecure-token");
+
+    expect(h.written).toHaveLength(before);
+  });
+
+  it("is not left behind for the next case to accept", async () => {
+    // The third thing this module owns across a process. A case that ends an
+    // insecure run without accepting or dismissing would otherwise leave one
+    // here, and the next could store a credential the previous one made.
+    h.setupResult = { ...(RESULT as object), secure: false, token: "1|abc" };
+    await checkThenRun();
+
+    resetCoolifySetupStateForTests();
+    registerCoolifySetupHandlers();
     const before = h.written.length;
     await call("coolify-setup:accept-insecure-token");
 
@@ -1001,6 +905,7 @@ describe("revealCredentials", () => {
 
 describe("cancel", () => {
   it("aborts the running setup", async () => {
+    h.reportsAccount = false;
     let release!: () => void;
     h.setupResult = new Promise((resolve) => {
       release = () => resolve(RESULT);

@@ -243,6 +243,37 @@ describe("runServerSetup", () => {
     expect(result.apiEnabled).toBe(false);
   });
 
+  it("names the token step when the link dies making one", async () => {
+    // The API is already on by then, and the panel no longer tells the user
+    // to enable it — so blaming the API step would state a cause its own
+    // remedy contradicts.
+    const server = fakeServer();
+    const original = server.session.run as unknown as (
+      command: string,
+      options?: { input?: string },
+    ) => Promise<unknown>;
+    server.session.run = (async (
+      command: string,
+      options?: { input?: string },
+    ) => {
+      if ((options?.input ?? "").includes("createToken")) {
+        throw new SshError(
+          "timeout",
+          "the connection stopped answering",
+          DyadErrorKind.External,
+        );
+      }
+      return original(command, options);
+    }) as unknown as SshSession["run"];
+
+    const result = await run(server).promise;
+
+    expect(result.apiEnabled).toBe(true);
+    expect(result.tokenUnavailableReason).toBe(
+      "Coolify stopped answering while Dyad was making a token.",
+    );
+  });
+
   it("remembers the API was opened even when the token step then failed", async () => {
     // Opening the API and minting a token are two steps in that order, so a
     // mint that fails leaves the first done. Reporting otherwise sends the

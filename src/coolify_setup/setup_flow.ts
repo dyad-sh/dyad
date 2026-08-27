@@ -320,7 +320,13 @@ export async function runServerSetup({
       // is that the server stopped answering and the rest is theirs to do.
       result.tokenUnavailableReason =
         error instanceof SshError
-          ? "Coolify did not answer while Dyad was opening its API."
+          ? // Which step the link died on decides what to say. The API is
+            // opened first, so once that has taken effect the loss belongs to
+            // the token step — and naming the API would sit over guidance
+            // that rightly no longer mentions it.
+            result.apiEnabled
+            ? "Coolify stopped answering while Dyad was making a token."
+            : "Coolify did not answer while Dyad was opening its API."
           : error instanceof Error
             ? error.message
             : "Coolify's API could not be opened automatically.";

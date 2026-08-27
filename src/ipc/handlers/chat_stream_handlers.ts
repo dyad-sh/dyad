@@ -2722,6 +2722,9 @@ This conversation includes one or more image attachments. When the user uploads 
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),
+              supabaseProviderToolsAvailable:
+                initialSupabaseProviderToolsAvailable,
+              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
             },
           );
           return;

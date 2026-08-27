@@ -1,4 +1,7 @@
 import fs from "node:fs";
+import log from "electron-log";
+
+const logger = log.scope("disk-usage");
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -25,7 +28,8 @@ export function getDiskUsageMB(targetPath: string): DiskUsageMB | null {
       usedMB: toMB(stats.blocks - stats.bfree),
       availableMB: toMB(stats.bavail),
     };
-  } catch {
+  } catch (error) {
+    logger.error(`Failed to read disk usage for ${targetPath}:`, error);
     return null;
   }
 }

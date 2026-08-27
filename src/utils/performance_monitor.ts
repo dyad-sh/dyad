@@ -237,9 +237,6 @@ function capturePerformanceMetrics() {
     // to measure. The apps folder is user-configurable and can sit on a
     // different drive entirely.
     const diskUsage = getDiskUsageMB(getUserDataPath());
-    if (!diskUsage) {
-      logger.debug("Disk usage unavailable; omitting disk fields");
-    }
 
     logger.debug(
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,

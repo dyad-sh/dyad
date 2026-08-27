@@ -2,8 +2,6 @@ import { expect } from "@playwright/test";
 import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 
 async function finishPlanPresentation(po: any) {
-  await po.page.getByRole("button", { name: "Keep going" }).click();
-  await po.chatActions.waitForChatCompletion();
   await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });

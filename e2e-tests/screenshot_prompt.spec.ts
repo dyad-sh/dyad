@@ -72,7 +72,7 @@ test("file a bug report without a screenshot", async ({ po }) => {
 test("upload a chat session and report it with a screenshot", async ({
   po,
 }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
   await recordIssueUrls(po.electronApp);
   await stubScreenshotCapture(po.electronApp);

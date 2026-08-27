@@ -40,6 +40,12 @@ export interface McpToolDef {
   inputSchema: JSONSchema7;
 }
 
+let cachedMcpToolDefs: McpToolDef[] = [];
+
+export function getCachedMcpToolDefs(): McpToolDef[] {
+  return [...cachedMcpToolDefs];
+}
+
 /**
  * Convert sanitized MCP tool key to a JS-safe identifier.
  * MCP keys allow hyphens; JS identifiers do not.
@@ -60,6 +66,7 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
       .from(mcpServers)
       .where(eq(mcpServers.enabled, true as any))) as typeof servers;
   } catch {
+    cachedMcpToolDefs = [];
     return [];
   }
 
@@ -116,6 +123,7 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
       });
     }
   }
+  cachedMcpToolDefs = defs;
   return defs;
 }
 

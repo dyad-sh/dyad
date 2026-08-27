@@ -88,6 +88,13 @@ function formatButtonLine({
   return `${indent}- button "${name}"${state}`;
 }
 
+function isEnvironmentDependentFileDiffButton(name: string) {
+  return (
+    /^[AMD?] .+ \+\d+(?: -\d+)?$/.test(name) &&
+    !name.startsWith("M pnpm-lock.yaml ")
+  );
+}
+
 function shouldDropLine(line: string) {
   const trimmed = line.trim();
 
@@ -126,7 +133,9 @@ export function normalizeMessagesAriaSnapshot(
     const button = parseButtonLine(line);
 
     if (button) {
-      normalizedLines.push(formatButtonLine(button));
+      if (!isEnvironmentDependentFileDiffButton(button.name)) {
+        normalizedLines.push(formatButtonLine(button));
+      }
       const baseIndent = button.indent.length;
       while (i + 1 < lines.length && isMoreIndented(lines[i + 1], baseIndent)) {
         i++;

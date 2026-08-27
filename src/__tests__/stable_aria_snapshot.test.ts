@@ -34,6 +34,14 @@ describe("normalizeMessagesAriaSnapshot", () => {
     ).toBe(`- button "M pnpm-lock.yaml [[diff-stats]]"\n`);
   });
 
+  it("drops environment-dependent source file diff buttons", () => {
+    expect(
+      normalizeMessagesAriaSnapshot(
+        `- button "M src/pages/Index.tsx +8 -15"\n`,
+      ),
+    ).toBe("\n");
+  });
+
   it("elides nested button-card descendants", () => {
     expect(
       normalizeMessagesAriaSnapshot(`- 'button "math.ts src/utils/math.ts Edit Summary: Create math utilities"':

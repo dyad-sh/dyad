@@ -39,7 +39,7 @@ import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 import { estimateAgentToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 import { buildChatMessageHistory } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
-import { collectMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
+import { getCachedMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
 
 const logger = log.scope("token_count_handlers");
 
@@ -145,7 +145,7 @@ export function registerTokenCountHandlers() {
 
       const isDyadPro = isDyadProEnabled(settings);
       const mcpToolDefs =
-        selectedChatMode === "local-agent" ? await collectMcpToolDefs() : [];
+        selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
       const toolDefinitionTokens = await estimateAgentToolTokens({
         toolProfile: selectedChatMode === "build" ? "build" : "agent",
         readOnly: selectedChatMode === "ask",

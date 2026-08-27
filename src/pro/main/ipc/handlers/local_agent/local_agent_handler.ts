@@ -343,20 +343,32 @@ export function buildChatMessageHistory(
 
 /**
  * Append a `<system-reminder>` to the latest user message listing referenced
- * apps so the agent knows which `app_name` values it can pass to read-only
- * tools (`read_file`, `list_files`, `grep`, `code_search`). Mutates the last
- * user message in-place to avoid copying unrelated parts of the history.
+ * apps so the agent knows which registered read-only tools accept `app_name`.
+ * Mutates the last user message in-place to avoid copying unrelated parts of
+ * the history.
  */
 function injectReferencedAppsReminder(
   messageHistory: ModelMessage[],
   referencedApps: readonly { appName: string }[],
-  options: { codeExplorerAvailable: boolean },
+  options: {
+    codeExplorerAvailable: boolean;
+    registeredToolNames: ReadonlySet<string>;
+  },
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
+  const referencedAppToolNames = [
+    "read_file",
+    "list_files",
+    "grep",
+    "code_search",
+  ].filter((toolName) => options.registeredToolNames.has(toolName));
+  const toolGuidance = referencedAppToolNames
+    .map((toolName) => `\`${toolName}\``)
+    .join(", ");
   const explorerGuidance = options.codeExplorerAvailable
     ? " You may assign an Explorer to inspect a referenced app; name that app explicitly in the assignment, and the child must pass `app_name` to its read tools."
     : "";
-  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.${explorerGuidance}\n</system-reminder>`;
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to registered read-only tools (${toolGuidance}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.${explorerGuidance}\n</system-reminder>`;
 
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];
@@ -1067,6 +1079,7 @@ export async function handleLocalAgentStream(
     if (referencedApps.length > 0) {
       injectReferencedAppsReminder(messageHistory, referencedApps, {
         codeExplorerAvailable: agentTools.spawn_agent != undefined,
+        registeredToolNames,
       });
     }
 
@@ -1285,6 +1298,7 @@ export async function handleLocalAgentStream(
                       {
                         codeExplorerAvailable:
                           agentTools.spawn_agent != undefined,
+                        registeredToolNames,
                       },
                     );
                   }

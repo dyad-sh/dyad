@@ -51,7 +51,13 @@ export function prettifyDump(
               /\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g,
               "",
             );
-      return `===\nrole: ${message.role}\nmessage: ${content}`;
+      const normalizedContent = content.replace(/^[ \t]+(?=\n)/, "");
+      const separator =
+        normalizedContent === "" || normalizedContent.startsWith("\n")
+          ? ""
+          : " ";
+      const messageLine = `message:${separator}${normalizedContent}`;
+      return `===\nrole: ${message.role}\n${messageLine}`;
     })
     .join("\n\n");
 }

@@ -878,12 +878,14 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("referenced app reminders", () => {
-    it("does not advertise Explorer when spawn_agent is absent", async () => {
+    it("advertises only registered referenced-app tools", async () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([]);
-      vi.mocked(buildAgentToolSet).mockReturnValue({});
+      vi.mocked(buildAgentToolSet).mockReturnValue({
+        read_file: {} as any,
+      });
 
       await handleLocalAgentStream(
         event,
@@ -905,6 +907,10 @@ describe("handleLocalAgentStream", () => {
       expect(JSON.stringify(streamOptions.messages)).toContain("Reference App");
       expect(JSON.stringify(streamOptions.messages)).not.toContain(
         "You may assign an Explorer",
+      );
+      expect(JSON.stringify(streamOptions.messages)).toContain("read_file");
+      expect(JSON.stringify(streamOptions.messages)).not.toContain(
+        "code_search",
       );
     });
   });

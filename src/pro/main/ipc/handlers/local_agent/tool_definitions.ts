@@ -286,7 +286,6 @@ export async function requireAgentToolConsent(
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
-    consentOverride?: AgentToolConsent;
     abortSignal?: AbortSignal;
     subagent?: {
       threadId: string;
@@ -295,8 +294,7 @@ export async function requireAgentToolConsent(
     };
   },
 ): Promise<boolean> {
-  const current =
-    params.consentOverride ?? getAgentToolConsent(params.toolName);
+  const current = getAgentToolConsent(params.toolName);
 
   if (current === "always") return true;
   if (current === "never")

@@ -596,6 +596,7 @@
       "selectProjectDescription": "选择要连接到此应用的 Supabase 项目",
       "refreshProjects": "刷新项目",
       "addOrganization": "添加组织",
+      "organizationCredentialsMissing": "此项目所属组织的凭据不可用。请重新连接该组织，以恢复数据库和部署操作。",
       "errorLoadingProjects": "加载项目出错：{{message}}",
       "connectedOrganizations": "已连接的组织",
       "noProjectsFound": "在您已连接的 Supabase 组织中未找到项目。",

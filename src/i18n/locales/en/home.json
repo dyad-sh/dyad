@@ -622,6 +622,7 @@
       "selectProjectDescription": "Select a Supabase project to connect to this app",
       "refreshProjects": "Refresh projects",
       "addOrganization": "Add Organization",
+      "organizationCredentialsMissing": "Credentials for this project's organization are unavailable. Reconnect the organization to restore database and deployment operations.",
       "errorLoadingProjects": "Error loading projects: {{message}}",
       "connectedOrganizations": "Connected Organizations",
       "noProjectsFound": "No projects found in your connected Supabase organizations.",

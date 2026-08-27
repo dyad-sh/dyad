@@ -352,29 +352,37 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={handleAddAccount}
-            disabled={isFlowActive}
-            data-testid="reconnect-supabase-button"
-          >
-            {t("integrations.supabase.addOrganization")}
-          </Button>
-          <Button variant="destructive" onClick={handleUnsetProject}>
-            {t("integrations.supabase.disconnectProject")}
-          </Button>
-          {isFlowActive && "invocationRef" in flowState && (
+        <CardContent className="space-y-4">
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              {t("integrations.supabase.organizationCredentialsMissing")}
+            </AlertDescription>
+          </Alert>
+          <div className="flex flex-wrap gap-2">
             <Button
-              variant="ghost"
-              onClick={() =>
-                void cancelConnectionFlow("supabase", flowState.invocationRef)
-              }
-              data-testid="cancel-supabase-flow-button"
+              variant="outline"
+              onClick={handleAddAccount}
+              disabled={isFlowActive}
+              data-testid="reconnect-supabase-button"
             >
-              {t("integrations.supabase.cancelSignIn")}
+              {t("integrations.supabase.addOrganization")}
             </Button>
-          )}
+            <Button variant="destructive" onClick={handleUnsetProject}>
+              {t("integrations.supabase.disconnectProject")}
+            </Button>
+            {isFlowActive && "invocationRef" in flowState && (
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  void cancelConnectionFlow("supabase", flowState.invocationRef)
+                }
+                data-testid="cancel-supabase-flow-button"
+              >
+                {t("integrations.supabase.cancelSignIn")}
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     );

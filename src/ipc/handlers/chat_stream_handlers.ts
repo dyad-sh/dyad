@@ -2022,11 +2022,13 @@ ${componentSnippet}
             updatedChat.app.supabaseOrganizationSlug,
           ),
         );
+        const initialNeonCredentialsAvailable = Boolean(
+          updatedChat.app.neonProjectId && settings.neon?.accessToken?.value,
+        );
         const initialNeonProviderToolsAvailable = Boolean(
-          updatedChat.app.neonProjectId &&
+          initialNeonCredentialsAvailable &&
           (updatedChat.app.neonActiveBranchId ??
-            updatedChat.app.neonDevelopmentBranchId) &&
-          settings.neon?.accessToken?.value,
+            updatedChat.app.neonDevelopmentBranchId),
         );
         const implementerFallbackSystemPrompt = constructImplementerPrompt(
           aiRules,
@@ -2166,7 +2168,7 @@ ${componentSnippet}
           hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
           supabaseCredentialsAvailable: initialSupabaseProviderToolsAvailable,
           hasNeonProject: Boolean(updatedChat.app.neonProjectId),
-          neonCredentialsAvailable: initialNeonProviderToolsAvailable,
+          neonCredentialsAvailable: initialNeonCredentialsAvailable,
         });
         if (rootDatabasePromptState === "supabase") {
           const supabaseClientCode = await getSupabaseClientCode({

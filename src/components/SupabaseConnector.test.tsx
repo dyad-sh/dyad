@@ -207,6 +207,9 @@ it("shows recovery controls when linked organization credentials are missing", a
 
   expect(await screen.findByTestId("supabase-reconnect-card")).toBeTruthy();
   expect(screen.getByText("My Project")).toBeTruthy();
+  expect(
+    screen.getByText("integrations.supabase.organizationCredentialsMissing"),
+  ).toBeTruthy();
   expect(screen.getByTestId("reconnect-supabase-button")).toBeTruthy();
   fireEvent.click(screen.getByText("integrations.supabase.disconnectProject"));
   await waitFor(() => expect(unsetAppProjectMock).toHaveBeenCalledWith(7));

@@ -600,6 +600,7 @@
       "selectProjectDescription": "Selecciona un proyecto de Supabase para conectar a esta aplicación",
       "refreshProjects": "Actualizar proyectos",
       "addOrganization": "Añadir Organización",
+      "organizationCredentialsMissing": "Las credenciales de la organización de este proyecto no están disponibles. Vuelve a conectar la organización para restaurar las operaciones de base de datos y despliegue.",
       "errorLoadingProjects": "Error al cargar los proyectos: {{message}}",
       "connectedOrganizations": "Organizaciones Conectadas",
       "noProjectsFound": "No se encontraron proyectos en tus organizaciones de Supabase conectadas.",

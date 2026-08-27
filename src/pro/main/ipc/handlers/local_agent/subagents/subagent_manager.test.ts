@@ -317,11 +317,15 @@ describe("sub-agent manager status policy", () => {
     expect(prepared.systemPrompt).toBe("Refreshed implementer rules");
     expect(prepared.contextOverrides?.supabaseProjectId).toBe("project-1");
     expect(root.supabaseProjectId).toBe("project-1");
+    expect(root.supabaseProviderToolsAvailable).toBe(true);
+    expect(root.neonProviderToolsAvailable).toBe(false);
   });
 
   it("keeps the capability-aware fallback prompt when refresh fails", async () => {
     const root = {
       implementerFallbackSystemPrompt: "Fallback implementer rules",
+      supabaseProviderToolsAvailable: true,
+      neonProviderToolsAvailable: true,
       refreshImplementerContext: vi.fn(async () => {
         throw new Error("database unavailable");
       }),
@@ -334,6 +338,8 @@ describe("sub-agent manager status policy", () => {
         neonProviderToolsAvailable: false,
       },
     });
+    expect(root.supabaseProviderToolsAvailable).toBe(false);
+    expect(root.neonProviderToolsAvailable).toBe(false);
   });
 
   it("rejects finalization when its owning root is already cancelled", async () => {

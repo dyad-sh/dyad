@@ -769,6 +769,8 @@ describe("when it finishes", () => {
     adminEmail: "me@gmail.com",
     adminPassword: "Abc123@xyz",
     tokenStored: true,
+    // A token comes from a mint, and Dyad enables the API to reach one.
+    apiEnabled: true,
     tokenUnavailableReason: null,
     version: "4.3.2",
   };
@@ -912,16 +914,42 @@ describe("when it finishes", () => {
 
   it("says what is left to do when only the token step failed", async () => {
     h.snapshot.mockResolvedValue(
-      doneState({ tokenStored: false, tokenUnavailableReason: "too old" }),
+      doneState({
+        tokenStored: false,
+        apiEnabled: false,
+        tokenUnavailableReason: "too old",
+      }),
     );
     renderPanel();
 
     await waitFor(() =>
       expect(screen.getByTestId("coolify-setup-manual-token")).toBeTruthy(),
     );
-    expect(
-      screen.getByTestId("coolify-setup-manual-token").textContent,
-    ).toContain("too old");
+    const panel = screen.getByTestId("coolify-setup-manual-token");
+    expect(panel.textContent).toContain("too old");
+    // Nothing was switched on, so switching it on is still to do.
+    expect(panel.textContent).toContain("enable the API");
+  });
+
+  it("does not ask for the API step when the mint was what failed", async () => {
+    // Dyad turns the API on and then mints, so an account with no team, or a
+    // link that drops, leaves the API on and no token. Saying to go and
+    // enable it sends the user after something already done.
+    h.snapshot.mockResolvedValue(
+      doneState({
+        tokenStored: false,
+        apiEnabled: true,
+        tokenUnavailableReason: "This Coolify account has no team yet.",
+      }),
+    );
+    renderPanel();
+
+    const panel = await waitFor(() =>
+      screen.getByTestId("coolify-setup-manual-token"),
+    );
+    expect(panel.textContent).toContain("has no team yet");
+    expect(panel.textContent).toContain("Security → API Tokens");
+    expect(panel.textContent).not.toContain("enable the API");
   });
 
   it("puts the screen away and refreshes when the user moves on", async () => {

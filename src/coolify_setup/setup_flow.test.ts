@@ -227,6 +227,32 @@ describe("runServerSetup", () => {
     expect(result.tokenUnavailableReason).toBeTruthy();
     expect(result.dashboardUrl).toBe("https://203.0.113.5.sslip.io");
     expect(result.credentials.password).toBeTruthy();
+    // Too old to set up automatically, so nothing was switched on and
+    // switching it on is still the user's to do.
+    expect(result.apiEnabled).toBe(false);
+  });
+
+  it("does not claim the API was opened when opening it is what failed", async () => {
+    // Reported once the server has confirmed it, not when the attempt
+    // starts: saying it is on when it is not sends the user past the one
+    // step they still have to do by hand.
+    const server = fakeServer({ apiEnabled: "still-disabled" });
+    const result = await run(server).promise;
+
+    expect(result.token).toBeNull();
+    expect(result.apiEnabled).toBe(false);
+  });
+
+  it("remembers the API was opened even when the token step then failed", async () => {
+    // Opening the API and minting a token are two steps in that order, so a
+    // mint that fails leaves the first done. Reporting otherwise sends the
+    // user to turn on something that is already on.
+    const server = fakeServer({ token: "" });
+    const result = await run(server).promise;
+
+    expect(result.token).toBeNull();
+    expect(result.tokenUnavailableReason).toBeTruthy();
+    expect(result.apiEnabled).toBe(true);
   });
 
   it("keeps the install when HTTPS cannot even be attempted", async () => {
@@ -567,6 +593,9 @@ describe("runServerSetup", () => {
       "Coolify did not answer while Dyad was opening its API.",
     );
     expect(result.credentials.password).toBeTruthy();
+    // The step that would have opened it is the one that failed, so it is
+    // still the user's to do. Reported after it settles, not when it starts.
+    expect(result.apiEnabled).toBe(false);
   });
 
   it("passes cancellation through rather than reporting it as a token problem", async () => {

@@ -56,6 +56,14 @@ export interface SetupResult {
    * asks for a token by hand rather than throwing away a working install.
    */
   token: string | null;
+  /**
+   * Whether Coolify's API was switched on, which outlives a failed mint.
+   *
+   * Not the same question as whether a token came back: Dyad turns the API on
+   * first, so telling the user to go and enable it is wrong from that point
+   * onward whatever happens next.
+   */
+  apiEnabled: boolean;
   version: string | null;
   /** Present when token is null, phrased for the user. */
   tokenUnavailableReason?: string;
@@ -285,11 +293,15 @@ export async function runServerSetup({
       insecureReason: https.reason,
       credentials,
       token: null,
+      apiEnabled: false,
       version: null,
     };
     try {
       const access = await tryAutomaticAccess(session, credentials.email, {
         signal,
+        onApiEnabled: () => {
+          result.apiEnabled = true;
+        },
       });
       if (access) {
         result.token = access.token;

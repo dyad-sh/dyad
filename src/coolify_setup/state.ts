@@ -37,6 +37,8 @@ export interface SetupResult {
   adminEmail: string;
   adminPassword: string;
   tokenStored: boolean;
+  /** Whether Coolify's API was switched on, which outlives a failed mint. */
+  apiEnabled: boolean;
   tokenUnavailableReason: string | null;
   version: string | null;
 }

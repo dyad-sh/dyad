@@ -296,9 +296,9 @@ export function CoolifyServerSetup({
                 : (result.tokenUnavailableReason ??
                   "Dyad could not create an API token automatically.")}{" "}
               Open {result.dashboardUrl}, sign in with the details above,{" "}
-              {/* Dyad turns the API on to mint a token, so a token it made
-                  and will drop leaves that part already done. */}
-              {!result.tokenStored &&
+              {/* Dyad turns the API on before it mints, so this stays done
+                  even when the mint is what failed. */}
+              {!result.apiEnabled &&
                 "enable the API under Settings → Advanced, then "}
               create a token under Security → API Tokens and paste it in on the
               next screen.

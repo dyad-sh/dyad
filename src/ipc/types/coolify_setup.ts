@@ -107,6 +107,14 @@ export const SetupResultSchema = z.object({
    * could not be opened.
    */
   tokenStored: z.boolean(),
+  /**
+   * Whether Coolify's API was switched on before anything went wrong.
+   *
+   * Separate from tokenStored because Dyad enables the API first and mints
+   * afterwards: a mint that fails leaves the API on, so the guidance to go
+   * and enable it is wrong even though no token came back.
+   */
+  apiEnabled: z.boolean(),
   tokenUnavailableReason: z.string().nullable(),
   version: z.string().nullable(),
 });

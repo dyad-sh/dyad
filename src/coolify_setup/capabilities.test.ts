@@ -33,6 +33,7 @@ const RESULT: SetupResult = {
   adminEmail: "me@gmail.com",
   adminPassword: "Abc123@xyz",
   tokenStored: true,
+  apiEnabled: true,
   tokenUnavailableReason: null,
   version: "4.3.2",
 };

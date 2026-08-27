@@ -231,11 +231,18 @@ export interface AutomaticAccess {
 export async function tryAutomaticAccess(
   session: SshSession,
   adminEmail: string,
-  { signal }: { signal?: AbortSignal } = {},
+  {
+    signal,
+    onApiEnabled,
+  }: { signal?: AbortSignal; onApiEnabled?: () => void } = {},
 ): Promise<AutomaticAccess | null> {
   const version = await readCoolifyVersion(session, { signal });
   if (!supportsAutomaticToken(version)) return null;
   await enableApi(session, { signal });
+  // Said here rather than inferred from the token below, because minting is
+  // its own step and can fail on its own — an account with no team, a link
+  // that drops — long after this one has taken effect on the server.
+  onApiEnabled?.();
   const token = await mintApiToken(session, adminEmail, { signal });
   return { token, version };
 }

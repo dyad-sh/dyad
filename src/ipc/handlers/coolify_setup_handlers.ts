@@ -326,6 +326,7 @@ function setupController(): CoolifySetupController {
             adminEmail: result.credentials.email,
             adminPassword: result.credentials.password,
             tokenStored: stored && Boolean(result.token),
+            apiEnabled: result.apiEnabled,
             tokenUnavailableReason: stored
               ? (result.tokenUnavailableReason ?? null)
               : "Dyad could not save these details on this computer. Copy the " +

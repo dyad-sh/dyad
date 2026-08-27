@@ -9,7 +9,10 @@ import {
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
-import type { SupabaseOrganizationCredentials } from "../lib/schemas";
+import type {
+  SupabaseOrganizationCredentials,
+  UserSettings,
+} from "../lib/schemas";
 import {
   fetchWithRetry,
   RateLimitError,
@@ -21,6 +24,18 @@ import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
 const fsPromises = fs.promises;
 
 const logger = log.scope("supabase_management_client");
+
+export function hasSupabaseCredentialsForOrganization(
+  settings: Pick<UserSettings, "supabase">,
+  organizationSlug?: string | null,
+): boolean {
+  return organizationSlug
+    ? Boolean(
+        settings.supabase?.organizations?.[organizationSlug]?.accessToken
+          ?.value,
+      )
+    : Boolean(settings.supabase?.accessToken?.value);
+}
 
 // Supabase can briefly reject a newly issued OAuth token while it propagates
 // to the Management API. Keep this retry window short and limited to 401s.

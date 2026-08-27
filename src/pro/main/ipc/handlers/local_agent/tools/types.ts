@@ -114,8 +114,14 @@ export interface AgentContext {
     supabaseOrganizationSlug: string | null;
     neonProjectId: string | null;
     neonActiveBranchId: string | null;
+    supabaseProviderToolsAvailable: boolean;
+    neonProviderToolsAvailable: boolean;
     frameworkType: AppFrameworkType | null;
   }>;
+  /** Whether Supabase metadata/schema reads are currently authenticated. */
+  supabaseProviderToolsAvailable?: boolean;
+  /** Whether Neon metadata/schema reads are currently authenticated. */
+  neonProviderToolsAvailable?: boolean;
   /** Successful workspace-file mutations completed during this turn. */
   fileMutationCount?: number;
   /**

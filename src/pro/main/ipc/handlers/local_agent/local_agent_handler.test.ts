@@ -713,6 +713,8 @@ describe("handleLocalAgentStream", () => {
           supabaseOrganizationSlug: null,
           neonProjectId: null,
           neonActiveBranchId: null,
+          supabaseProviderToolsAvailable: false,
+          neonProviderToolsAvailable: false,
           frameworkType: null,
         }),
         dyadRequestId,

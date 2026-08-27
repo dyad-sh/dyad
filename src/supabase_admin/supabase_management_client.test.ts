@@ -4,6 +4,7 @@ import {
   classifyManagementApiError,
   getProjectApiKeys,
   getSupabaseProjectLogs,
+  hasSupabaseCredentialsForOrganization,
   listSupabaseOrganizations,
   refreshSupabaseToken,
 } from "./supabase_management_client";
@@ -14,6 +15,35 @@ vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
   writeSettings: vi.fn(),
 }));
+
+describe("hasSupabaseCredentialsForOrganization", () => {
+  const settings = {
+    supabase: {
+      accessToken: { value: "legacy" },
+      organizations: {
+        connected: {
+          accessToken: { value: "organization-token" },
+          refreshToken: { value: "organization-refresh-token" },
+          expiresIn: 3600,
+          tokenTimestamp: 1,
+        },
+      },
+    },
+  } as const;
+
+  it("uses the linked organization token when a slug is present", () => {
+    expect(hasSupabaseCredentialsForOrganization(settings, "connected")).toBe(
+      true,
+    );
+    expect(hasSupabaseCredentialsForOrganization(settings, "missing")).toBe(
+      false,
+    );
+  });
+
+  it("uses legacy credentials only for an unscoped app", () => {
+    expect(hasSupabaseCredentialsForOrganization(settings, null)).toBe(true);
+  });
+});
 
 describe("listSupabaseOrganizations", () => {
   beforeEach(() => {

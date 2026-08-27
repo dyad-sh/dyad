@@ -18,6 +18,7 @@ import {
   cancelAgentTool,
   exploreCodeTool,
   followupTaskTool,
+  isSubagentProviderToolAvailable,
   listAgentsTool,
   sendMessageTool,
   spawnAgentTool,
@@ -33,6 +34,28 @@ const advancedSubagentTools = [
   sendMessageTool,
   followupTaskTool,
 ];
+
+describe("sub-agent provider tool availability", () => {
+  it("hides disconnected provider reads despite retained app associations", () => {
+    const ctx = {
+      supabaseProjectId: "supabase-project",
+      neonProjectId: "neon-project",
+      neonActiveBranchId: "neon-branch",
+      supabaseProviderToolsAvailable: false,
+      neonProviderToolsAvailable: false,
+    };
+
+    expect(
+      isSubagentProviderToolAvailable("get_supabase_project_info", ctx),
+    ).toBe(false);
+    expect(isSubagentProviderToolAvailable("get_neon_project_info", ctx)).toBe(
+      false,
+    );
+    expect(
+      isSubagentProviderToolAvailable("get_database_table_schema", ctx),
+    ).toBe(false);
+  });
+});
 
 describe("spawn_agent schema", () => {
   beforeEach(() => {

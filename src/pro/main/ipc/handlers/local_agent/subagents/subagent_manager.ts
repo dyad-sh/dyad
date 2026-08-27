@@ -457,6 +457,7 @@ export async function spawnModelSubagent(params: {
   assignment: string;
   scope: string[];
   buildTools: (params: {
+    ctx: AgentContext;
     threadId: string;
     persona: "explorer" | "implementer";
     taskName: string;
@@ -541,8 +542,9 @@ export async function spawnModelSubagent(params: {
                 normalizedScope,
               ),
               params.ctx,
-              (abortSignal) =>
+              (abortSignal, effectiveCtx) =>
                 params.buildTools({
+                  ctx: effectiveCtx,
                   threadId: thread.id,
                   persona: params.persona,
                   taskName: params.taskName,
@@ -1145,6 +1147,7 @@ export async function followupSubagent(
   currentTurn?: {
     ctx: AgentContext;
     buildTools: (params: {
+      ctx: AgentContext;
       threadId: string;
       persona: "explorer" | "implementer";
       taskName: string;
@@ -1167,6 +1170,7 @@ async function followupSubagentAdmitted(
   currentTurn?: {
     ctx: AgentContext;
     buildTools: (params: {
+      ctx: AgentContext;
       threadId: string;
       persona: "explorer" | "implementer";
       taskName: string;
@@ -1233,8 +1237,9 @@ async function followupSubagentAdmitted(
             currentTurn.ctx.appId,
             nextAssignment,
             currentTurn.ctx,
-            (abortSignal) =>
+            (abortSignal, effectiveCtx) =>
               currentTurn.buildTools({
+                ctx: effectiveCtx,
                 threadId: thread.id,
                 persona,
                 taskName: thread.taskName,
@@ -1450,7 +1455,7 @@ async function runThread(
   appId: number,
   assignment: string,
   rootCtx: AgentContext,
-  buildTools: (abortSignal: AbortSignal) => ToolSet,
+  buildTools: (abortSignal: AbortSignal, effectiveCtx: AgentContext) => ToolSet,
   scope: string[],
   mutationOwner?: MutationActivityOwner,
   runActivity?: ActivityHandle,
@@ -1473,13 +1478,23 @@ async function runThread(
     if (controller.signal.aborted || cancelledThreadIds.has(threadId)) return;
     if (!(await updateStatus(threadId, "running"))) return;
     let implementerSystemPrompt: string | undefined;
+    let effectiveRootCtx = rootCtx;
     if (thread.persona === "implementer" && rootCtx.refreshImplementerContext) {
-      const { systemPrompt, ...refreshedContext } =
-        await rootCtx.refreshImplementerContext();
-      Object.assign(rootCtx, refreshedContext);
-      implementerSystemPrompt = systemPrompt;
+      try {
+        const { systemPrompt, ...refreshedContext } =
+          await rootCtx.refreshImplementerContext();
+        // Project refreshed provider state only into this child. The root turn
+        // retains the context that matches its already-constructed prompt.
+        effectiveRootCtx = { ...rootCtx, ...refreshedContext };
+        implementerSystemPrompt = systemPrompt;
+      } catch (error) {
+        logger.warn(
+          "Failed to refresh Implementer provider context; using baseline prompt and root context",
+          error,
+        );
+      }
     }
-    const tools = buildTools(controller.signal);
+    const tools = buildTools(controller.signal, effectiveRootCtx);
     let usedExplorerFallback = false;
     let explorerAssignment = assignment;
     if (thread.persona === "explorer") {
@@ -1509,7 +1524,7 @@ async function runThread(
             text: await runExploreCodeSubagent({
               args: { query: explorerAssignment, intent: "explain" },
               ctx: {
-                ...rootCtx,
+                ...effectiveRootCtx,
                 mutationActivityOwner: mutationOwner,
                 subagentThreadId: threadId,
                 subagentPersona: "explorer",

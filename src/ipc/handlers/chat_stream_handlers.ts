@@ -36,6 +36,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { hasSupabaseCredentialsForOrganization } from "../../supabase_admin/supabase_management_client";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import {
   buildNeonPromptForApp,
@@ -142,7 +143,6 @@ import {
   isBasicAgentMode,
   isDyadProEnabled,
   isLocalAgentBackedMode,
-  isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
 import { isFreeProModel } from "@/lib/freeProModel";
@@ -1996,13 +1996,13 @@ ${componentSnippet}
               where: eq(apps.id, updatedChat.app.id),
             })) ?? updatedChat.app;
           const latestSettings = readSettings();
-          const supabaseConnected = refreshedApp.supabaseOrganizationSlug
-            ? Boolean(
-                latestSettings.supabase?.organizations?.[
-                  refreshedApp.supabaseOrganizationSlug
-                ]?.accessToken?.value,
-              )
-            : Boolean(latestSettings.supabase?.accessToken?.value);
+          const supabaseConnected = hasSupabaseCredentialsForOrganization(
+            latestSettings,
+            refreshedApp.supabaseOrganizationSlug,
+          );
+          const neonConnected = Boolean(
+            latestSettings.neon?.accessToken?.value,
+          );
           const provider = resolveImplementerProvider({
             hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
             hasNeonProject: Boolean(refreshedApp.neonProjectId),
@@ -2024,7 +2024,7 @@ ${componentSnippet}
               provider,
               supabaseConnected,
               neonToolsAvailable: Boolean(
-                refreshedApp.neonProjectId && neonBranchId,
+                neonConnected && refreshedApp.neonProjectId && neonBranchId,
               ),
               neonEmailVerificationEnabled,
             }),
@@ -2032,6 +2032,12 @@ ${componentSnippet}
             supabaseOrganizationSlug: refreshedApp.supabaseOrganizationSlug,
             neonProjectId: refreshedApp.neonProjectId,
             neonActiveBranchId: neonBranchId,
+            supabaseProviderToolsAvailable: Boolean(
+              supabaseConnected && refreshedApp.supabaseProjectId,
+            ),
+            neonProviderToolsAvailable: Boolean(
+              neonConnected && refreshedApp.neonProjectId && neonBranchId,
+            ),
             frameworkType: detectFrameworkType(
               getDyadAppPath(refreshedApp.path),
             ),
@@ -2098,7 +2104,10 @@ ${componentSnippet}
 
         if (
           updatedChat.app?.supabaseProjectId &&
-          isSupabaseConnected(settings)
+          hasSupabaseCredentialsForOrganization(
+            settings,
+            updatedChat.app.supabaseOrganizationSlug,
+          )
         ) {
           const supabaseClientCode = await getSupabaseClientCode({
             projectId: updatedChat.app.supabaseProjectId,

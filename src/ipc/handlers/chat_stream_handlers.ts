@@ -34,6 +34,7 @@ import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
+  SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { hasSupabaseCredentialsForOrganization } from "../../supabase_admin/supabase_management_client";
@@ -1997,6 +1998,7 @@ ${componentSnippet}
               hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
               hasNeonProject: Boolean(updatedChat.app.neonProjectId),
             }),
+            frameworkType,
             // Refresh failure disables every provider tool for the child, so
             // the fallback prompt must not advertise live provider reads.
             supabaseConnected: false,
@@ -2024,6 +2026,9 @@ ${componentSnippet}
           const neonBranchId =
             refreshedApp.neonActiveBranchId ??
             refreshedApp.neonDevelopmentBranchId;
+          const refreshedFrameworkType = detectFrameworkType(
+            getDyadAppPath(refreshedApp.path),
+          );
           const neonEmailVerificationEnabled = Boolean(
             provider === "neon" &&
             refreshedApp.neonProjectId &&
@@ -2035,6 +2040,7 @@ ${componentSnippet}
           return {
             systemPrompt: constructImplementerPrompt(aiRules, {
               provider,
+              frameworkType: refreshedFrameworkType,
               supabaseConnected,
               neonToolsAvailable: Boolean(
                 neonConnected && refreshedApp.neonProjectId && neonBranchId,
@@ -2051,9 +2057,7 @@ ${componentSnippet}
             neonProviderToolsAvailable: Boolean(
               neonConnected && refreshedApp.neonProjectId && neonBranchId,
             ),
-            frameworkType: detectFrameworkType(
-              getDyadAppPath(refreshedApp.path),
-            ),
+            frameworkType: refreshedFrameworkType,
           };
         };
 
@@ -2138,6 +2142,8 @@ ${componentSnippet}
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
+        } else if (updatedChat.app?.supabaseProjectId) {
+          systemPrompt += "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
         } else if (updatedChat.app?.neonProjectId) {
           // Neon is connected — inject Neon prompt instead of Supabase
           systemPrompt +=

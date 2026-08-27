@@ -691,6 +691,7 @@ export function constructImplementerPrompt(
   aiRules: string | undefined,
   options?: {
     provider?: ImplementerProvider;
+    frameworkType?: AppFrameworkType | null;
     supabaseConnected?: boolean;
     neonToolsAvailable?: boolean;
     neonEmailVerificationEnabled?: boolean;
@@ -702,6 +703,12 @@ export function constructImplementerPrompt(
     options?.neonToolsAvailable === true,
     options?.neonEmailVerificationEnabled === true,
   );
+  const frameworkGuidance =
+    options?.frameworkType === "vite"
+      ? `<framework_invariants framework="vite">
+- This is a plain Vite app with no application server runtime. Do not create app-local API routes, server-only database clients, secret-handling code, or webhooks that require a server runtime. Supabase Edge Functions are the only exception when the assignment explicitly requires one. Otherwise report the need for a server layer to the root Agent, which owns enabling it.
+</framework_invariants>`
+      : "";
   return `<role>
 You are Dyad Implementer. Complete the focused assignment using only the provided tools. The root Agent has already chosen the approach and remains responsible for user communication, consequential provider operations, final review, and commit.
 </role>
@@ -734,6 +741,8 @@ ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 </workflow>
 
 ${providerGuidance}
+
+${frameworkGuidance}
 
 <ai_rules_meta>
 The \`<ai_rules>\` block is a snapshot from the start of the root turn. Before editing code, read AI_RULES.md when it exists; its current on-disk contents supersede this snapshot. Do not edit AI_RULES.md unless the assignment explicitly requires it.

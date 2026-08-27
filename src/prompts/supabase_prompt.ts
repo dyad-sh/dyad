@@ -12,6 +12,8 @@ export const SUPABASE_IMPLEMENTER_RLS_RULE =
   "RLS is mandatory for every table exposed through Supabase. Enable RLS and require appropriate policies for each operation the app uses (SELECT, INSERT, UPDATE, and DELETE); never propose grants to `anon` or `authenticated` without proper RLS policies.";
 export const SUPABASE_SERVICE_ROLE_BROWSER_RULE =
   "The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.";
+export const SUPABASE_DISCONNECTED_SYSTEM_PROMPT = `
+This app is already linked to a Supabase project, but credentials for its Supabase organization are unavailable. Do not offer to add another database integration. Tell the user to reconnect the linked Supabase organization before attempting provider operations.`;
 
 export function getSupabaseAvailableSystemPrompt(supabaseClientCode: string) {
   return `

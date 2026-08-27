@@ -146,6 +146,25 @@ describe("local_agent_prompt", () => {
     );
   });
 
+  it("warns a plain Vite Implementer that no app server runtime exists", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      frameworkType: "vite",
+    });
+
+    expect(prompt).toContain('framework="vite"');
+    expect(prompt).toContain("no application server runtime");
+    expect(prompt).toContain("report the need for a server layer");
+    expect(prompt).toContain("Supabase Edge Functions are the only exception");
+  });
+
+  it("does not add the no-server warning after Nitro is enabled", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      frameworkType: "vite-nitro",
+    });
+
+    expect(prompt).not.toContain("no application server runtime");
+  });
+
   it("gives Neon Implementers critical code-writing invariants", () => {
     const prompt = constructImplementerPrompt(undefined, {
       provider: "neon",

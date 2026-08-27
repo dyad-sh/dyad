@@ -477,6 +477,7 @@ const AGENT_RUN_TESTS_GUIDANCE = buildAgentRunTestsGuidance();
  */
 const buildAgentProactiveTestsGuidance = (
   audience: "root" | "implementer" = "root",
+  runTestsAvailable = true,
 ) => {
   const completionInstruction =
     audience === "root"
@@ -502,7 +503,11 @@ Use judgment about what DESERVES a test — don't test everything:
 - SKIP purely cosmetic or non-behavioral changes: styling/layout tweaks, copy/text edits, refactors that don't change behavior, config changes, and internal-only code. Don't add a test for these.
 - Keep it proportionate: ONE focused happy-path spec per feature/flow is usually enough. Don't bloat the suite with redundant or trivial tests.
 
-After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failures (see below) before you consider the task done. ${completionInstruction}.
+${
+  runTestsAvailable
+    ? `After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failures (see below) before you consider the task done. ${completionInstruction}.`
+    : `After writing or updating a spec, report the required verification to the root Agent because \`run_tests\` is unavailable for this assignment. ${completionInstruction}.`
+}
 
 If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; ${skipInstruction}.`;
 };
@@ -545,7 +550,7 @@ ${AGENT_RUN_TESTS_GUIDANCE}`;
 export function getImplementerTestWritingGuidance(
   runTestsAvailable: boolean,
 ): string {
-  return `${buildAgentProactiveTestsGuidance("implementer")}
+  return `${buildAgentProactiveTestsGuidance("implementer", runTestsAvailable)}
 
 ${buildTestWritingGuidance(
   `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`e2e-tests/\` (e.g. \`e2e-tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,

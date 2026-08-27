@@ -229,6 +229,25 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain("`run_tests` tool is unavailable");
     expect(prompt).not.toContain("VERIFY it with the `run_tests` tool");
+    expect(prompt).not.toContain("VERIFY it with `run_tests`");
+  });
+
+  it("renders Supabase provider invariants as separate bullets", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "supabase",
+      supabaseConnected: true,
+    });
+
+    for (const rule of [
+      SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+      SUPABASE_GRANTS_AND_RLS_RULE,
+      SUPABASE_IMPLEMENTER_RLS_RULE,
+      SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
+      SUPABASE_EDGE_FUNCTION_JWT_RULE,
+    ]) {
+      expect(rule).toMatch(/^- /);
+      expect(prompt).toContain(`\n${rule}`);
+    }
   });
 
   it("prefers a usable Neon project over disconnected Supabase", () => {

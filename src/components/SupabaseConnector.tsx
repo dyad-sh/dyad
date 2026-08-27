@@ -117,6 +117,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isLoadingProjects,
     isFetchingProjects,
     isLoadingOrganizations,
+    organizationsError,
     projectsError,
     isLoadingBranches,
     branchesError,
@@ -408,6 +409,23 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               {t("integrations.supabase.organizationCredentialsMissing")}
             </AlertDescription>
           </Alert>
+          {(organizationsError || projectsError) && (
+            <div className="text-red-500">
+              {t("integrations.supabase.errorLoadingProjects", {
+                message: (organizationsError || projectsError)?.message,
+              })}
+              <Button
+                variant="outline"
+                className="mt-2"
+                onClick={async () => {
+                  await refetchOrganizations();
+                  await refetchProjects();
+                }}
+              >
+                {t("common:retry")}
+              </Button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {isLoadingRelinkCandidate ? (
               <Button variant="outline" disabled>

@@ -25,6 +25,7 @@ const {
   appState,
   projectsState,
   providerLoadingState,
+  providerErrorState,
   unsolicitedReturnCallback,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
@@ -58,6 +59,10 @@ const {
   providerLoadingState: {
     organizations: false,
     projects: false,
+  },
+  providerErrorState: {
+    organizations: null as Error | null,
+    projects: null as Error | null,
   },
   unsolicitedReturnCallback: {
     current: null as null | (() => void),
@@ -130,7 +135,8 @@ vi.mock("@/hooks/useSupabase", () => ({
     isFetchingProjects: providerLoadingState.projects,
     isLoadingOrganizations: providerLoadingState.organizations,
     isFetchingOrganizations: providerLoadingState.organizations,
-    projectsError: null,
+    projectsError: providerErrorState.projects,
+    organizationsError: providerErrorState.organizations,
     isLoadingBranches: false,
     branchesError: null,
     isSettingAppProject: false,
@@ -191,6 +197,8 @@ beforeEach(() => {
   projectsState.current = [];
   providerLoadingState.organizations = false;
   providerLoadingState.projects = false;
+  providerErrorState.organizations = null;
+  providerErrorState.projects = null;
   unsolicitedReturnCallback.current = null;
   refreshSettingsMock.mockResolvedValue(undefined);
   refreshAppMock.mockResolvedValue(undefined);
@@ -315,6 +323,22 @@ it("shows a disabled relink action while provider projects are loading", async (
 
   const button = screen.getByText("integrations.supabase.relinkProject");
   expect(button.closest("button")?.hasAttribute("disabled")).toBe(true);
+});
+
+it("shows and retries provider load failures in the recovery card", async () => {
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  providerErrorState.projects = new Error("project lookup failed");
+
+  renderConnector();
+
+  expect(
+    screen.getByText("integrations.supabase.errorLoadingProjects"),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByText("common:retry"));
+  await waitFor(() => {
+    expect(refetchOrganizationsMock).toHaveBeenCalled();
+    expect(refetchProjectsMock).toHaveBeenCalled();
+  });
 });
 
 it("shows recovery controls when linked organization credentials are missing", async () => {

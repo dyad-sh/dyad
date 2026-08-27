@@ -8,6 +8,8 @@ export const SUPABASE_GRANTS_AND_RLS_RULE =
   "**IMPORTANT: GRANTS AND RLS ARE SEPARATE SECURITY LAYERS**\n\n- `GRANT` controls whether a Postgres role (`anon`, `authenticated`, or `service_role`) can access a table through the Data API at all.\n- RLS policies control which rows the role can read or modify after the table is accessible.";
 export const SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE =
   "Never create or edit files under `supabase/migrations/`. Report required schema or SQL changes to the root Agent for execution.";
+export const SUPABASE_IMPLEMENTER_RLS_RULE =
+  "RLS is mandatory for every table exposed through Supabase. Enable RLS and require appropriate policies for each operation the app uses (SELECT, INSERT, UPDATE, and DELETE); never propose grants to `anon` or `authenticated` without proper RLS policies.";
 export const SUPABASE_SERVICE_ROLE_BROWSER_RULE =
   "The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.";
 

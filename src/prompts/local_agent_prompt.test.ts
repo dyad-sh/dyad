@@ -8,6 +8,7 @@ import {
 import {
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_IMPLEMENTER_RLS_RULE,
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
 } from "@/prompts/supabase_prompt";
 import {
@@ -116,6 +117,7 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain('<provider_invariants provider="supabase">');
     expect(prompt).toContain(SUPABASE_SERVICE_ROLE_BROWSER_RULE);
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
+    expect(prompt).toContain(SUPABASE_IMPLEMENTER_RLS_RULE);
     expect(prompt).toContain(SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE);
     expect(prompt).toContain("SQL execution, dependency installation");
     expect(prompt).toContain("# App Rules\n- Use foo.");
@@ -157,8 +159,11 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain(NEON_NO_BROWSER_DATABASE_URL_RULE);
     expect(prompt).toContain(NEON_NO_BROWSER_SERVERLESS_RULE);
     expect(prompt).toContain(
-      "read the relevant available authentication guide",
+      '`read_guide` tool with guide="add-authentication"',
     );
+    expect(prompt).toContain('guide="add-email-verification"');
+    expect(prompt).toContain('guide="add-password-reset"');
+    expect(prompt).toContain("Never hand-roll a reset-token flow");
     expect(prompt).not.toContain("execute SQL");
     expect(prompt).not.toContain("dyad-execute-sql");
   });

@@ -1997,7 +1997,8 @@ ${componentSnippet}
           supabaseConnected: isSupabaseConnected(settings),
           neonToolsAvailable: Boolean(
             updatedChat.app?.neonProjectId &&
-            updatedChat.app?.neonActiveBranchId,
+            (updatedChat.app?.neonActiveBranchId ??
+              updatedChat.app?.neonDevelopmentBranchId),
           ),
         });
 

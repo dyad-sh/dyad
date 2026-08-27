@@ -8,6 +8,7 @@ import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
 import {
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_IMPLEMENTER_RLS_RULE,
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
 } from "./supabase_prompt";
 import {
@@ -662,6 +663,7 @@ function implementerProviderGuidance(
 - The app is associated with Supabase. Use its existing Supabase client and Supabase Auth conventions for database, authentication, and server-function code.
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
+${SUPABASE_IMPLEMENTER_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
 ${supabaseConnected ? "- You may inspect provider metadata and the live schema with the available read tools." : "- The Supabase account is disconnected, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
@@ -674,7 +676,9 @@ ${NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
 ${NEON_RLS_REQUIRES_JWT_RULE}
 ${NEON_NO_BROWSER_DATABASE_URL_RULE}
 ${NEON_NO_BROWSER_SERVERLESS_RULE}
-- Before changing authentication, sessions, sign-up UI, email verification, or password reset, read the relevant available authentication guide.
+- Before writing any authentication code, you MUST call the \`read_guide\` tool with guide="add-authentication".
+- Before writing sign-up or email-verification code, you MUST also call \`read_guide\` with guide="add-email-verification".
+- Before writing password-reset code, you MUST call \`read_guide\` with guide="add-password-reset". Never hand-roll a reset-token flow.
 ${neonToolsAvailable ? "- You may inspect provider metadata and the live schema with the available read tools." : "- Neon branch context is unavailable, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
   }

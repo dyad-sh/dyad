@@ -171,11 +171,18 @@ describe("nothing to look at yet", () => {
     });
     open();
 
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("coolify-sign-out-locked-password"),
-      ).toBeTruthy(),
+    const addendum = await waitFor(() =>
+      screen.getByTestId("coolify-sign-out-locked-password"),
     );
+    // Said once. The panel below states what Dyad is holding; this only adds
+    // what signing out does to it, so both saying it reads as a stutter.
+    expect(screen.queryAllByText(/holding an admin password/i)).toHaveLength(1);
+    // And said after it, for the same reason the read failure is.
+    const cause = screen.getByTestId("coolify-credentials-locked-password");
+    expect(
+      cause.compareDocumentPosition(addendum) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

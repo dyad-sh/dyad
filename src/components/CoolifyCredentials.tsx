@@ -93,6 +93,26 @@ function Field({
   );
 }
 
+/**
+ * Said rather than left blank.
+ *
+ * readSettings drops a password it cannot decrypt and keeps the account, so
+ * the absence is Dyad holding one it cannot open — not a server that never
+ * had one. Left to the row simply not appearing, the two look identical, and
+ * only one of them makes signing out a safe thing to do next.
+ */
+function LockedPassword() {
+  return (
+    <p
+      className="text-destructive text-sm"
+      data-testid="coolify-credentials-locked-password"
+    >
+      Dyad is holding an admin password for this server but cannot read it on
+      this machine.
+    </p>
+  );
+}
+
 export function CoolifyCredentials({
   showTitle,
 }: { showTitle?: boolean } = {}) {
@@ -147,12 +167,18 @@ export function CoolifyCredentials({
         <div className="border-t pt-3 font-semibold">Your Coolify server</div>
       )}
 
+      {/* A password Dyad holds but cannot decrypt comes back absent, which
+          renders as a server that never had one — and the way that reads,
+          the obvious next move is the sign-out that discards it for good.
+          The dialog says this; nowhere else did. */}
       {isOneServer ? (
         <>
           <Field label="Address" value={instance.url} />
           <Field label="Email" value={server.email} />
-          {server.password && (
+          {server.password ? (
             <Field label="Password" value={server.password} secret />
+          ) : (
+            <LockedPassword />
           )}
           {instance.apiToken && (
             <Field label="API token" value={instance.apiToken} secret />
@@ -177,13 +203,15 @@ export function CoolifyCredentials({
                 value={server.email}
                 idPrefix={showsBoth ? "server" : undefined}
               />
-              {server.password && (
+              {server.password ? (
                 <Field
                   label="Password"
                   value={server.password}
                   secret
                   idPrefix={showsBoth ? "server" : undefined}
                 />
+              ) : (
+                <LockedPassword />
               )}
             </div>
           )}

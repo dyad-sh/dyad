@@ -159,6 +159,49 @@ describe("naming the section", () => {
   });
 });
 
+describe("a password Dyad holds but cannot read", () => {
+  it("says so rather than showing a server that never had one", async () => {
+    // readSettings drops a password it cannot decrypt and keeps the account.
+    // Left as a missing row, that reads as there never having been one — and
+    // the obvious next move from there is the sign-out that discards it.
+    h.revealCredentials.mockResolvedValue({
+      instance: null,
+      server: {
+        url: "http://203.0.113.5:8000",
+        email: "me@gmail.com",
+        password: null,
+      },
+    });
+    render(<CoolifyCredentials />);
+
+    await settle();
+    expect(
+      screen.getByTestId("coolify-credentials-locked-password").textContent,
+    ).toContain("cannot read it on this machine");
+    expect(screen.queryByTestId("coolify-field-server-password")).toBeNull();
+  });
+
+  it("says it on the merged panel too", async () => {
+    // One address for both, so the fields are merged — the same gap, on the
+    // layout the connected view uses.
+    h.revealCredentials.mockResolvedValue({
+      instance: { url: "http://203.0.113.5:8000", apiToken: "1|abc" },
+      server: {
+        url: "http://203.0.113.5:8000",
+        email: "me@gmail.com",
+        password: null,
+      },
+    });
+    render(<CoolifyCredentials />);
+
+    await settle();
+    expect(
+      screen.getByTestId("coolify-credentials-locked-password"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("coolify-field-password")).toBeNull();
+  });
+});
+
 describe("two servers that are not the same server", () => {
   it("keeps each address with what it opens", async () => {
     // Installed a server whose token could not be minted, then connected to a

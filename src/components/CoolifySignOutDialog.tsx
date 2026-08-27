@@ -87,17 +87,17 @@ export function CoolifySignOutDialog({
             Looking up what Dyad has stored…
           </div>
         )}
+
+        <CoolifyCredentials />
+
         {passwordIsLocked && (
           <div
             className="text-destructive text-sm"
             data-testid="coolify-sign-out-locked-password"
           >
-            Dyad is holding an admin password for this server but cannot read it
-            on this machine, so it cannot show it to you before it goes.
+            It goes when you sign out, unread.
           </div>
         )}
-
-        <CoolifyCredentials />
 
         {readFailed && (
           <div

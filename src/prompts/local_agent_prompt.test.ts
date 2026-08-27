@@ -369,7 +369,7 @@ describe("local_agent_prompt", () => {
         hasSupabaseProject: true,
         hasNeonProject: true,
       }),
-    ).toBe("supabase");
+    ).toBe("neon");
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: false,

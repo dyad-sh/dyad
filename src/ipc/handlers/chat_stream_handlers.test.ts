@@ -81,7 +81,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonCredentialsAvailable: true,
+        neonProviderAvailable: true,
       }),
     ).toBe("neon");
   });
@@ -92,7 +92,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonCredentialsAvailable: true,
+        neonProviderAvailable: true,
       }),
     ).toBe("neon");
   });
@@ -103,7 +103,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonCredentialsAvailable: false,
+        neonProviderAvailable: false,
       }),
     ).toBe("neon-disconnected");
   });
@@ -114,9 +114,20 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: true,
         hasNeonProject: true,
-        neonCredentialsAvailable: true,
+        neonProviderAvailable: true,
       }),
-    ).toBe("supabase");
+    ).toBe("neon");
+  });
+
+  it("keeps a dual-linked Neon association when neither provider is usable", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: true,
+        supabaseCredentialsAvailable: false,
+        hasNeonProject: true,
+        neonProviderAvailable: false,
+      }),
+    ).toBe("neon-disconnected");
   });
 
   it("preserves a disconnected Supabase association", () => {
@@ -125,7 +136,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: false,
         hasNeonProject: false,
-        neonCredentialsAvailable: false,
+        neonProviderAvailable: false,
       }),
     ).toBe("supabase-disconnected");
   });
@@ -136,7 +147,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: false,
-        neonCredentialsAvailable: false,
+        neonProviderAvailable: false,
       }),
     ).toBe("none");
   });
@@ -198,6 +209,25 @@ describe("Implementer capability state", () => {
     expect(state.neonToolsAvailable).toBe(false);
     expect(state.providerMetadataReadAvailable).toBe(false);
     expect(state.databaseSchemaReadAvailable).toBe(false);
+  });
+
+  it("keeps root and Implementer on Neon when dual-linked providers are unavailable", () => {
+    const state = resolveImplementerCapabilityState(
+      {
+        ...app,
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: "missing-org",
+        neonProjectId: "neon-project",
+      },
+      {
+        supabase: { accessToken: { value: "legacy-token" } },
+        neon: { accessToken: { value: "token" } },
+      } as any,
+    );
+
+    expect(state.provider).toBe("neon");
+    expect(state.neonToolsAvailable).toBe(false);
+    expect(state.supabaseConnected).toBe(false);
   });
 });
 

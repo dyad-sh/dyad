@@ -98,10 +98,10 @@ describe("database provider tool routing", () => {
     await executeSqlTool.execute({ query: "select 1" }, ctx);
     await getDatabaseTableSchemaTool.execute({}, ctx);
 
-    expect(executeSupabaseSqlMock).toHaveBeenCalled();
-    expect(getSupabaseTableSchemaMock).toHaveBeenCalled();
-    expect(executeNeonSqlMock).not.toHaveBeenCalled();
-    expect(getNeonTableSchemaMock).not.toHaveBeenCalled();
+    expect(executeNeonSqlMock).toHaveBeenCalled();
+    expect(getNeonTableSchemaMock).toHaveBeenCalled();
+    expect(executeSupabaseSqlMock).not.toHaveBeenCalled();
+    expect(getSupabaseTableSchemaMock).not.toHaveBeenCalled();
   });
 
   it("routes SQL to an available Neon provider", async () => {
@@ -160,6 +160,22 @@ describe("database provider tool routing", () => {
     ).rejects.toMatchObject({
       kind: "precondition",
       message: expect.stringContaining("Reconnect the Supabase organization"),
+    });
+  });
+
+  it("uses the preferred dual-linked provider in unavailable guidance", async () => {
+    const ctx = {
+      ...dualProviderContext(),
+      supabaseProviderToolsAvailable: false,
+      neonActiveBranchId: null,
+      neonProviderToolsAvailable: false,
+    };
+
+    await expect(
+      executeSqlTool.execute({ query: "select 1" }, ctx),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Neon integration settings"),
     });
   });
 });

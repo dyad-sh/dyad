@@ -11,9 +11,9 @@ export function resolvePreferredDatabaseProvider({
   hasNeonProject: boolean;
   neonAvailable: boolean;
 }): DatabaseProvider | undefined {
-  if (hasSupabaseProject && supabaseAvailable) return "supabase";
   if (hasNeonProject && neonAvailable) return "neon";
-  if (hasSupabaseProject) return "supabase";
+  if (hasSupabaseProject && supabaseAvailable) return "supabase";
   if (hasNeonProject) return "neon";
+  if (hasSupabaseProject) return "supabase";
   return undefined;
 }

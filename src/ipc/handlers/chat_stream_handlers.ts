@@ -205,12 +205,12 @@ export function resolveRootDatabasePromptState({
   hasSupabaseProject,
   supabaseCredentialsAvailable,
   hasNeonProject,
-  neonCredentialsAvailable,
+  neonProviderAvailable,
 }: {
   hasSupabaseProject: boolean;
   supabaseCredentialsAvailable: boolean;
   hasNeonProject: boolean;
-  neonCredentialsAvailable: boolean;
+  neonProviderAvailable: boolean;
 }):
   | "supabase"
   | "supabase-disconnected"
@@ -221,13 +221,13 @@ export function resolveRootDatabasePromptState({
     hasSupabaseProject,
     supabaseAvailable: supabaseCredentialsAvailable,
     hasNeonProject,
-    neonAvailable: neonCredentialsAvailable,
+    neonAvailable: neonProviderAvailable,
   });
   if (provider === "supabase") {
     return supabaseCredentialsAvailable ? "supabase" : "supabase-disconnected";
   }
   if (provider === "neon") {
-    return neonCredentialsAvailable ? "neon" : "neon-disconnected";
+    return neonProviderAvailable ? "neon" : "neon-disconnected";
   }
   return "none";
 }
@@ -2242,7 +2242,7 @@ ${componentSnippet}
           hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
           supabaseCredentialsAvailable: initialSupabaseProviderToolsAvailable,
           hasNeonProject: Boolean(updatedChat.app.neonProjectId),
-          neonCredentialsAvailable: initialNeonCredentialsAvailable,
+          neonProviderAvailable: initialNeonProviderToolsAvailable,
         });
         if (rootDatabasePromptState === "supabase") {
           const supabaseClientCode = await getSupabaseClientCode({

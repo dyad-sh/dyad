@@ -9,6 +9,7 @@ import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
 import type { SubagentPersona } from "@/ipc/types";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { McpToolDef } from "./mcp_type_defs";
 import type { MutationActivityOwner } from "../subagents/mutation_activity_tracker";
@@ -357,13 +358,25 @@ export function getUnavailableDatabaseProviderMessage(
   >,
   operation: "SQL execution" | "schema inspection",
 ): string {
-  if (ctx.neonProjectId && !ctx.neonActiveBranchId) {
-    return `Neon is linked, but no active branch is configured for ${operation}. Select an active branch in the Neon integration settings.`;
-  }
-  if (ctx.neonProjectId && !ctx.neonProviderToolsAvailable) {
+  const provider = resolvePreferredDatabaseProvider({
+    hasSupabaseProject: Boolean(ctx.supabaseProjectId),
+    supabaseAvailable: Boolean(
+      ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable,
+    ),
+    hasNeonProject: Boolean(ctx.neonProjectId),
+    neonAvailable: Boolean(
+      ctx.neonProjectId &&
+      ctx.neonActiveBranchId &&
+      ctx.neonProviderToolsAvailable,
+    ),
+  });
+  if (provider === "neon") {
+    if (!ctx.neonActiveBranchId) {
+      return `Neon is linked, but no active branch is configured for ${operation}. Select an active branch in the Neon integration settings.`;
+    }
     return `Neon is linked, but its credentials are unavailable for ${operation}. Reconnect the Neon account.`;
   }
-  if (ctx.supabaseProjectId && !ctx.supabaseProviderToolsAvailable) {
+  if (provider === "supabase") {
     return `Supabase is linked, but its organization credentials are unavailable for ${operation}. Reconnect the Supabase organization.`;
   }
   return `No database provider is available for ${operation}`;

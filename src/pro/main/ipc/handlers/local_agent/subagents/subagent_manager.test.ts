@@ -17,6 +17,7 @@ import {
   isWaitCompleteStatus,
   prepareSubagentStepMessages,
   raceWithAbort,
+  resolveSubagentSystemPrompt,
   reviewFollowupAvailability,
   setSubagentEventTarget,
   shouldDrainMutationOnAbort,
@@ -280,6 +281,18 @@ describe("sub-agent manager status policy", () => {
     expect(shouldDrainMutationOnAbort("implementer")).toBe(true);
     expect(shouldDrainMutationOnAbort("reviewer")).toBe(false);
     expect(shouldDrainMutationOnAbort("explorer")).toBe(false);
+  });
+
+  it("uses the root-provided system prompt only for Implementers", () => {
+    expect(
+      resolveSubagentSystemPrompt("implementer", "App implementation rules"),
+    ).toBe("App implementation rules");
+    expect(resolveSubagentSystemPrompt("explorer", "Ignored")).toContain(
+      "Dyad Explorer",
+    );
+    expect(resolveSubagentSystemPrompt("reviewer", "Ignored")).toContain(
+      "Dyad Reviewer",
+    );
   });
 
   it("rejects finalization when its owning root is already cancelled", async () => {

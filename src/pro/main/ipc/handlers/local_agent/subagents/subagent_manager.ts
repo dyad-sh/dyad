@@ -1523,6 +1523,10 @@ async function runThread(
             assignment,
             tools,
             abortSignal: controller.signal,
+            systemPromptOverride:
+              thread.persona === "implementer"
+                ? rootCtx.implementerSystemPrompt
+                : undefined,
           });
     const durableResult = boundDurableReport(result.text).trim();
     if (!durableResult) {
@@ -1657,6 +1661,7 @@ async function runModel(params: {
   assignment: string;
   tools: ToolSet;
   abortSignal: AbortSignal;
+  systemPromptOverride?: string;
 }): Promise<{ text: string; hitStepLimit: boolean }> {
   assertPro(params.persona);
   const claimedRootMessageIds = new Set<number>();
@@ -1680,7 +1685,10 @@ async function runModel(params: {
         modelInfo.modelClient.reasoningEffortProviderId,
       modelSelection: settings.selectedModel,
     }),
-    system: systemPrompt(params.persona),
+    system: resolveSubagentSystemPrompt(
+      params.persona,
+      params.systemPromptOverride,
+    ),
     messages: history,
     tools: params.tools,
     prepareStep: async ({ messages: stepMessages }) => {
@@ -1893,6 +1901,15 @@ function systemPrompt(persona: SubagentPersona): string {
   if (persona === "implementer")
     return "You are Dyad Implementer. Complete the focused assignment using only provided tools. Treat assigned paths as the expected focus, but cross them when correctness requires it and report every changed file and unresolved issue.";
   return "You are Dyad Explorer. Investigate read-only, cite files and evidence, and return a concise report with confidence and recommended next action.";
+}
+
+export function resolveSubagentSystemPrompt(
+  persona: SubagentPersona,
+  implementerPrompt?: string,
+): string {
+  return persona === "implementer" && implementerPrompt
+    ? implementerPrompt
+    : systemPrompt(persona);
 }
 
 async function createThread(params: {

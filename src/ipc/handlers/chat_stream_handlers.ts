@@ -26,6 +26,7 @@ import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
+import { constructImplementerPrompt } from "../../prompts/local_agent_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
@@ -1983,6 +1984,15 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
+        const implementerProvider =
+          updatedChat.app?.supabaseProjectId && isSupabaseConnected(settings)
+            ? ("supabase" as const)
+            : updatedChat.app?.neonProjectId
+              ? ("neon" as const)
+              : undefined;
+        const implementerSystemPrompt = constructImplementerPrompt(aiRules, {
+          provider: implementerProvider,
+        });
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -2533,6 +2543,7 @@ This conversation includes one or more image attachments. When the user uploads 
               modelSelectionOverride: selectedModel,
               freeModelMode,
               preCommitHookAvailable,
+              implementerSystemPrompt,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   constructBuildAgentPrompt,
+  constructImplementerPrompt,
   constructLocalAgentPrompt,
 } from "@/prompts/local_agent_prompt";
 
@@ -90,6 +91,43 @@ describe("local_agent_prompt", () => {
     expect(enabled).toContain("These are advisory");
     expect(enabled).toContain("inspect the complete actual diff");
     expect(enabled).toContain("You remain responsible for the result");
+  });
+
+  it("builds a focused Implementer prompt with app and Supabase rules", () => {
+    const prompt = constructImplementerPrompt("# App Rules\n- Use foo.", {
+      provider: "supabase",
+    });
+
+    expect(prompt).toContain("You are Dyad Implementer");
+    expect(prompt).toContain('<provider_invariants provider="supabase">');
+    expect(prompt).toContain("Never expose the service-role key");
+    expect(prompt).toContain(
+      "Never create or edit files under `supabase/migrations/`",
+    );
+    expect(prompt).toContain("SQL execution, dependency installation");
+    expect(prompt).toContain("# App Rules\n- Use foo.");
+    expect(prompt).toContain("Address every MUST HOLD item");
+    expect(prompt).not.toContain("set_chat_summary");
+    expect(prompt).not.toContain("planning_questionnaire");
+    expect(prompt).not.toContain("execute_sql");
+    expect(prompt).not.toContain("add_integration");
+  });
+
+  it("gives Neon Implementers critical code-writing invariants", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "neon",
+    });
+
+    expect(prompt).toContain('<provider_invariants provider="neon">');
+    expect(prompt).toContain(
+      "Never implement custom JWT/password authentication",
+    );
+    expect(prompt).toContain("`DATABASE_URL` in browser-accessible code");
+    expect(prompt).toContain("`auth.user_id()`-based RLS");
+    expect(prompt).toContain(
+      "read the relevant available authentication guide",
+    );
+    expect(prompt).not.toContain("execute_sql");
   });
 
   it("agent mode system prompt (vite framework includes Nitro nudge)", () => {

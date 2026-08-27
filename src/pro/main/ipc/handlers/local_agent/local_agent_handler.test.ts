@@ -688,6 +688,29 @@ describe("handleLocalAgentStream", () => {
     mockRequireMcpToolConsent.mockResolvedValue({ approved: true });
   });
 
+  it("projects the capability-aware Implementer prompt into the root tool context", async () => {
+    const { event } = createFakeEvent();
+    mockSettings = buildTestSettings({ enableDyadPro: true });
+    mockChatData = buildTestChat();
+    vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+      expect(ctx.implementerSystemPrompt).toBe("Implementer rules");
+      return {};
+    });
+    mockStreamResult = createFakeStream([{ type: "text-delta", text: "Done" }]);
+
+    await handleLocalAgentStream(
+      event,
+      { chatId: 1, prompt: "test" },
+      new AbortController(),
+      {
+        placeholderMessageId: 10,
+        systemPrompt: "Root rules",
+        implementerSystemPrompt: "Implementer rules",
+        dyadRequestId,
+      },
+    );
+  });
+
   describe("provider-scoped tool-call ID normalization", () => {
     it.each([
       {

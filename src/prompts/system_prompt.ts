@@ -372,6 +372,10 @@ const buildTestWritingGuidance = (
     audience === "root"
       ? "build one (or an equivalent way to create a user) first. Say so clearly if you add it"
       : "report the missing signup prerequisite to the root Agent";
+  const missingLoginInstruction =
+    audience === "root"
+      ? "build one before writing the auth-gated test"
+      : "report the missing login prerequisite to the root Agent before writing the auth-gated test";
   return `# Writing end-to-end tests
 
 When writing an end-to-end (e2e) test for a feature or flow, write a Playwright test.
@@ -423,7 +427,7 @@ This section applies ONLY when the specific flow under test genuinely requires a
 
 When a flow requires a logged-in user, use the built-in auth fixture in \`e2e-tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
 - If \`e2e-tests/fixtures/test-user.ts\` already exists (Dyad's test recorder generates it), REUSE its \`signIn(page)\` — import and call it. Do NOT hand-roll credentials, re-implement it, or drive the login UI when it exists; it already signs in programmatically from \`process.env.DYAD_TEST_USER_*\`.
-- Otherwise, if \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user (for Supabase AND Neon Auth apps) — read the credentials from those env vars and sign that user in (via the fixture, or by driving the app's OWN login UI). Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, build one before writing the auth-gated test.
+- Otherwise, if \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user (for Supabase AND Neon Auth apps) — read the credentials from those env vars and sign that user in (via the fixture, or by driving the app's OWN login UI). Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, ${missingLoginInstruction}.
 - Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, ${missingSignupInstruction}.
 - Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.
 - If you sign in programmatically with \`page.request.*\` against the app's own auth endpoint, remember that \`page.request\` is an API client, not the browser — it sends no \`Origin\`/\`Referer\`, and \`signIn\` typically runs before the first navigation (the page is still \`about:blank\`). Auth servers with a CSRF / trusted-origin check (e.g. Better Auth) answer that with a 403. Pass the app's own origin explicitly: \`const origin = new URL(process.env.DYAD_TEST_BASE_URL || "http://localhost:32100").origin;\` then send \`headers: { origin, referer: origin + "/" }\`. A 403 from a sign-in endpoint is almost always this, not bad credentials — fix the test, not the app.`;

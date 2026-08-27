@@ -216,11 +216,70 @@ export function resolveRootDatabasePromptState({
   | "neon"
   | "neon-disconnected"
   | "none" {
+  // Current link handlers enforce one provider per app. Keep deterministic
+  // precedence for legacy or corrupted rows that still contain both links.
   if (hasSupabaseProject && supabaseCredentialsAvailable) return "supabase";
   if (hasNeonProject && neonCredentialsAvailable) return "neon";
   if (hasSupabaseProject) return "supabase-disconnected";
   if (hasNeonProject) return "neon-disconnected";
   return "none";
+}
+
+type ImplementerCapabilityApp = Pick<
+  typeof apps.$inferSelect,
+  | "supabaseProjectId"
+  | "supabaseOrganizationSlug"
+  | "neonProjectId"
+  | "neonActiveBranchId"
+  | "neonDevelopmentBranchId"
+>;
+
+export function resolveImplementerCapabilityState(
+  app: ImplementerCapabilityApp,
+  settings: ReturnType<typeof readSettings>,
+) {
+  const supabaseConnected = hasSupabaseCredentialsForOrganization(
+    settings,
+    app.supabaseOrganizationSlug,
+  );
+  const neonConnected = Boolean(settings.neon?.accessToken?.value);
+  const neonBranchId = app.neonActiveBranchId ?? app.neonDevelopmentBranchId;
+  const neonToolsAvailable = Boolean(
+    neonConnected && app.neonProjectId && neonBranchId,
+  );
+  const provider = resolveImplementerProvider({
+    hasSupabaseProject: Boolean(app.supabaseProjectId),
+    hasNeonProject: Boolean(app.neonProjectId),
+    supabaseAvailable: supabaseConnected,
+    neonAvailable: neonToolsAvailable,
+  });
+  const providerAvailable =
+    provider === "supabase"
+      ? supabaseConnected
+      : provider === "neon"
+        ? neonToolsAvailable
+        : false;
+  const providerMetadataToolName =
+    provider === "supabase"
+      ? "get_supabase_project_info"
+      : provider === "neon"
+        ? "get_neon_project_info"
+        : undefined;
+
+  return {
+    provider,
+    supabaseConnected,
+    neonToolsAvailable,
+    neonBranchId,
+    providerMetadataReadAvailable:
+      providerAvailable &&
+      providerMetadataToolName !== undefined &&
+      settings.agentToolConsents?.[providerMetadataToolName] !== "never",
+    databaseSchemaReadAvailable:
+      providerAvailable &&
+      settings.agentToolConsents?.["get_database_table_schema"] !== "never",
+    readGuideAvailable: settings.agentToolConsents?.["read_guide"] !== "never",
+  };
 }
 
 export interface ChatStreamExecutionObserver {
@@ -2060,48 +2119,22 @@ ${componentSnippet}
               where: eq(apps.id, updatedChat.app.id),
             })) ?? updatedChat.app;
           const latestSettings = readSettings();
-          const supabaseConnected = hasSupabaseCredentialsForOrganization(
+          const capabilityState = resolveImplementerCapabilityState(
+            refreshedApp,
             latestSettings,
-            refreshedApp.supabaseOrganizationSlug,
           );
-          const neonConnected = Boolean(
-            latestSettings.neon?.accessToken?.value,
-          );
-          const neonBranchId =
-            refreshedApp.neonActiveBranchId ??
-            refreshedApp.neonDevelopmentBranchId;
-          const neonToolsAvailable = Boolean(
-            neonConnected && refreshedApp.neonProjectId && neonBranchId,
-          );
-          const provider = resolveImplementerProvider({
-            hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
-            hasNeonProject: Boolean(refreshedApp.neonProjectId),
-            supabaseAvailable: supabaseConnected,
-            neonAvailable: neonToolsAvailable,
-          });
+          const {
+            provider,
+            supabaseConnected,
+            neonToolsAvailable,
+            neonBranchId,
+            providerMetadataReadAvailable,
+            databaseSchemaReadAvailable,
+            readGuideAvailable,
+          } = capabilityState;
           const refreshedFrameworkType = detectFrameworkType(
             getDyadAppPath(refreshedApp.path),
           );
-          const providerMetadataReadAvailable =
-            provider === "supabase"
-              ? supabaseConnected &&
-                latestSettings.agentToolConsents?.[
-                  "get_supabase_project_info"
-                ] !== "never"
-              : provider === "neon"
-                ? neonToolsAvailable &&
-                  latestSettings.agentToolConsents?.[
-                    "get_neon_project_info"
-                  ] !== "never"
-                : false;
-          const databaseSchemaReadAvailable =
-            (provider === "supabase"
-              ? supabaseConnected
-              : provider === "neon"
-                ? neonToolsAvailable
-                : false) &&
-            latestSettings.agentToolConsents?.["get_database_table_schema"] !==
-              "never";
           const neonEmailVerificationEnabled =
             provider === "neon" &&
             neonToolsAvailable &&
@@ -2125,8 +2158,7 @@ ${componentSnippet}
               neonEmailVerificationEnabled,
               providerMetadataReadAvailable,
               databaseSchemaReadAvailable,
-              readGuideAvailable:
-                latestSettings.agentToolConsents?.["read_guide"] !== "never",
+              readGuideAvailable,
             }),
             supabaseProjectId: refreshedApp.supabaseProjectId,
             supabaseOrganizationSlug: refreshedApp.supabaseOrganizationSlug,

@@ -324,6 +324,28 @@ export interface AgentContext {
   };
 }
 
+export function canUseSupabaseTools<
+  T extends Pick<
+    AgentContext,
+    "supabaseProjectId" | "supabaseProviderToolsAvailable"
+  >,
+>(ctx: T): ctx is T & { supabaseProjectId: string } {
+  return !!ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable === true;
+}
+
+export function canUseNeonTools<
+  T extends Pick<
+    AgentContext,
+    "neonProjectId" | "neonActiveBranchId" | "neonProviderToolsAvailable"
+  >,
+>(ctx: T): ctx is T & { neonProjectId: string; neonActiveBranchId: string } {
+  return (
+    !!ctx.neonProjectId &&
+    !!ctx.neonActiveBranchId &&
+    ctx.neonProviderToolsAvailable === true
+  );
+}
+
 /** Per-spec fix-loop state for the `run_tests` tool, tracked across one turn. */
 export interface TestRunAttemptState {
   /** Failed runs counted toward the per-spec cap (infra/flake runs excluded). */

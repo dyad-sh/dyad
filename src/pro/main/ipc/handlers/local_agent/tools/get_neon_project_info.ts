@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  canUseNeonTools,
+  escapeXmlContent,
+} from "./types";
 import { getNeonProjectInfo } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -21,15 +26,12 @@ export const getNeonProjectInfoTool: ToolDefinition<
     "Get Neon project overview: project ID, branches, and table names. Use this to discover what tables exist before fetching detailed schemas.",
   inputSchema: getNeonProjectInfoSchema,
   defaultConsent: "always",
-  isEnabled: (ctx) =>
-    !!ctx.neonProjectId &&
-    !!ctx.neonActiveBranchId &&
-    ctx.neonProviderToolsAvailable === true,
+  isEnabled: canUseNeonTools,
 
   getConsentPreview: () => "Get Neon project info",
 
   execute: async (_args, ctx: AgentContext) => {
-    if (!ctx.neonProjectId || !ctx.neonActiveBranchId) {
+    if (!canUseNeonTools(ctx)) {
       throw new DyadError(
         "Neon is not connected to this app",
         DyadErrorKind.Precondition,

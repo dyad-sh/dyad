@@ -32,14 +32,14 @@ vi.mock("../../../../../../ipc/utils/file_utils", () => ({
   writeMigrationFile: vi.fn(),
 }));
 
-function mixedProviderContext(): AgentContext {
+function supabaseContext(): AgentContext {
   return {
     appPath: "/tmp/app",
     supabaseProjectId: "supabase-project",
     supabaseOrganizationSlug: "supabase-org",
     supabaseProviderToolsAvailable: true,
-    neonProjectId: "neon-project",
-    neonActiveBranchId: "neon-branch",
+    neonProjectId: null,
+    neonActiveBranchId: null,
     neonProviderToolsAvailable: false,
     onXmlStream: vi.fn(),
     onXmlComplete: vi.fn(),
@@ -55,15 +55,15 @@ describe("database provider tool routing", () => {
     getNeonTableSchemaMock.mockResolvedValue("neon schema");
   });
 
-  it("routes SQL to an available Supabase provider instead of unavailable Neon", async () => {
-    await executeSqlTool.execute({ query: "select 1" }, mixedProviderContext());
+  it("routes SQL to an available Supabase provider", async () => {
+    await executeSqlTool.execute({ query: "select 1" }, supabaseContext());
 
     expect(executeSupabaseSqlMock).toHaveBeenCalled();
     expect(executeNeonSqlMock).not.toHaveBeenCalled();
   });
 
-  it("routes schema reads to an available Supabase provider instead of unavailable Neon", async () => {
-    await getDatabaseTableSchemaTool.execute({}, mixedProviderContext());
+  it("routes schema reads to an available Supabase provider", async () => {
+    await getDatabaseTableSchemaTool.execute({}, supabaseContext());
 
     expect(getSupabaseTableSchemaMock).toHaveBeenCalled();
     expect(getNeonTableSchemaMock).not.toHaveBeenCalled();

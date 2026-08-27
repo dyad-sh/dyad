@@ -101,6 +101,18 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     meta: { showErrorToast: true },
   });
 
+  // Background link recovery needs mutation pending-state tracking without a
+  // generic global error toast; the connector provides contextual feedback.
+  const recoverAppProjectMutation = useMutation<
+    void,
+    Error,
+    SetSupabaseAppProjectParams
+  >({
+    mutationFn: async (params) => {
+      await ipc.supabase.setAppProject(params);
+    },
+  });
+
   // Mutation: Remove a Supabase project association from an app
   const unsetAppProjectMutation = useMutation<void, Error, number>({
     mutationFn: async (appId) => {
@@ -244,7 +256,8 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
 
     // Mutation states
     isDeletingOrganization: deleteOrganizationMutation.isPending,
-    isSettingAppProject: setAppProjectMutation.isPending,
+    isSettingAppProject:
+      setAppProjectMutation.isPending || recoverAppProjectMutation.isPending,
     isUnsettingAppProject: unsetAppProjectMutation.isPending,
     isLoadingEdgeLogs: edgeLogsQuery.isFetching,
 
@@ -254,6 +267,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     refetchBranches: branchesQuery.refetch,
     deleteOrganization: deleteOrganizationMutation.mutateAsync,
     setAppProject: setAppProjectMutation.mutateAsync,
+    recoverAppProject: recoverAppProjectMutation.mutateAsync,
     unsetAppProject: unsetAppProjectMutation.mutateAsync,
   };
 }

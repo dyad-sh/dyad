@@ -222,6 +222,10 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("tell the user which flow");
     expect(prompt).toContain("report the required dev dependency");
     expect(prompt).toContain("report to the root Agent");
+    expect(prompt).toContain("report the missing login prerequisite");
+    expect(prompt).not.toContain(
+      "build one before writing the auth-gated test",
+    );
     expect(
       constructImplementerPrompt(undefined, { testingEnabled: false }),
     ).not.toContain("e2e-tests/");

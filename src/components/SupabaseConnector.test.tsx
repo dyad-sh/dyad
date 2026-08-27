@@ -17,6 +17,7 @@ const {
   hasSupabaseCredentialsForOrganizationMock,
   unsetAppProjectMock,
   setAppProjectMock,
+  recoverAppProjectMock,
   refetchOrganizationsMock,
   refetchProjectsMock,
   refreshSettingsMock,
@@ -38,6 +39,7 @@ const {
   hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
   unsetAppProjectMock: vi.fn(),
   setAppProjectMock: vi.fn(),
+  recoverAppProjectMock: vi.fn(),
   refetchOrganizationsMock: vi.fn(),
   refetchProjectsMock: vi.fn(),
   refreshSettingsMock: vi.fn(),
@@ -146,6 +148,7 @@ vi.mock("@/hooks/useSupabase", () => ({
     refetchOrganizations: refetchOrganizationsMock,
     refetchProjects: refetchProjectsMock,
     setAppProject: setAppProjectMock,
+    recoverAppProject: recoverAppProjectMock,
     unsetAppProject: unsetAppProjectMock,
     deleteOrganization: vi.fn(),
   }),
@@ -209,6 +212,7 @@ beforeEach(() => {
   refetchOrganizationsMock.mockResolvedValue({ data: [] });
   refetchProjectsMock.mockResolvedValue({ data: [] });
   setAppProjectMock.mockResolvedValue(undefined);
+  recoverAppProjectMock.mockResolvedValue(undefined);
 });
 
 it("migrates a legacy project link to the organization found after reconnect", async () => {
@@ -230,7 +234,7 @@ it("migrates a legacy project link to the organization found after reconnect", a
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(setAppProjectMock).toHaveBeenCalledWith({
+    expect(recoverAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "proj-1",
       parentProjectId: undefined,
@@ -259,7 +263,7 @@ it("uses the parent project to migrate a legacy branch link", async () => {
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(setAppProjectMock).toHaveBeenCalledWith({
+    expect(recoverAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "branch-1",
       parentProjectId: "proj-1",
@@ -306,14 +310,16 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
       },
     ],
   });
-  setAppProjectMock.mockRejectedValue(new Error("write failed"));
+  recoverAppProjectMock.mockRejectedValue(new Error("write failed"));
 
   renderConnector();
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
-  expect(setAppProjectMock).toHaveBeenCalled();
-  expect(toastErrorMock).not.toHaveBeenCalled();
+  expect(recoverAppProjectMock).toHaveBeenCalled();
+  expect(toastErrorMock).toHaveBeenCalledWith(
+    "integrations.supabase.failedConnectProject",
+  );
 });
 
 it("migrates a link whose stored organization is stale", async () => {
@@ -334,7 +340,7 @@ it("migrates a link whose stored organization is stale", async () => {
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(setAppProjectMock).toHaveBeenCalledWith({
+    expect(recoverAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "proj-1",
       parentProjectId: undefined,

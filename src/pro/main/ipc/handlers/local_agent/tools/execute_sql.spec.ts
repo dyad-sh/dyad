@@ -119,6 +119,7 @@ describe("executeSqlTool", () => {
         appPath: "/app",
         supabaseProjectId: "project",
         supabaseOrganizationSlug: "org",
+        supabaseProviderToolsAvailable: true,
       } as any,
     );
 
@@ -152,6 +153,7 @@ describe("executeSqlTool", () => {
         appPath: "/app",
         supabaseProjectId: "project",
         supabaseOrganizationSlug: null,
+        supabaseProviderToolsAvailable: true,
       } as any,
     );
 

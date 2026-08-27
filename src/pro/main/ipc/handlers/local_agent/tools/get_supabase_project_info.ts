@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  canUseSupabaseTools,
+  escapeXmlContent,
+} from "./types";
 import { getSupabaseProjectInfo } from "../../../../../../supabase_admin/supabase_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -20,13 +25,12 @@ export const getSupabaseProjectInfoTool: ToolDefinition<
     "Get Supabase project overview: project ID, publishable key, secret names, and table names. Use this to discover what tables exist before fetching detailed schemas. Optionally include database functions.",
   inputSchema: getSupabaseProjectInfoSchema,
   defaultConsent: "always",
-  isEnabled: (ctx) =>
-    !!ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable === true,
+  isEnabled: canUseSupabaseTools,
 
   getConsentPreview: () => "Get Supabase project info",
 
   execute: async (args, ctx: AgentContext) => {
-    if (!ctx.supabaseProjectId) {
+    if (!canUseSupabaseTools(ctx)) {
       throw new DyadError(
         "Supabase is not connected to this app",
         DyadErrorKind.Precondition,

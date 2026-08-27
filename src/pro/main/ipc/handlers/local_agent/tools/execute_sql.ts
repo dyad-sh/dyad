@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   ToolDefinition,
   AgentContext,
+  canUseNeonTools,
+  canUseSupabaseTools,
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
@@ -176,12 +178,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     inputSchema: executeSqlSchema,
     defaultConsent: "ask",
     modifiesState: true,
-    isEnabled: (ctx) =>
-      (!!ctx.supabaseProjectId &&
-        ctx.supabaseProviderToolsAvailable === true) ||
-      (!!ctx.neonProjectId &&
-        !!ctx.neonActiveBranchId &&
-        ctx.neonProviderToolsAvailable === true),
+    isEnabled: (ctx) => canUseSupabaseTools(ctx) || canUseNeonTools(ctx),
 
     getConsentPreview: (args) => args.query,
 
@@ -207,11 +204,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      if (
-        ctx.neonProjectId &&
-        ctx.neonActiveBranchId &&
-        ctx.neonProviderToolsAvailable === true
-      ) {
+      if (canUseNeonTools(ctx)) {
         const sqlResult = await executeNeonSql({
           projectId: ctx.neonProjectId,
           branchId: ctx.neonActiveBranchId,
@@ -220,10 +213,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
       }
 
-      if (
-        ctx.supabaseProjectId &&
-        ctx.supabaseProviderToolsAvailable === true
-      ) {
+      if (canUseSupabaseTools(ctx)) {
         const sqlResult = await executeSupabaseSql({
           supabaseProjectId: ctx.supabaseProjectId,
           query: args.query,

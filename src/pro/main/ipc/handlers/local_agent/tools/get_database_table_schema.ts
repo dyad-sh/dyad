@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   ToolDefinition,
   AgentContext,
+  canUseNeonTools,
+  canUseSupabaseTools,
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
@@ -26,11 +28,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
     "Get database table schema as PostgreSQL SQL/DDL. If tableName is provided, returns schema for that specific table and relevant constraints/indexes/triggers/policies. If omitted, returns schema for all public tables.",
   inputSchema: getDatabaseTableSchemaSchema,
   defaultConsent: "always",
-  isEnabled: (ctx) =>
-    (!!ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable === true) ||
-    (!!ctx.neonProjectId &&
-      !!ctx.neonActiveBranchId &&
-      ctx.neonProviderToolsAvailable === true),
+  isEnabled: (ctx) => canUseSupabaseTools(ctx) || canUseNeonTools(ctx),
 
   getConsentPreview: (args) =>
     args.tableName
@@ -42,11 +40,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
       ? ` table="${escapeXmlAttr(args.tableName)}"`
       : "";
 
-    if (
-      ctx.neonProjectId &&
-      ctx.neonActiveBranchId &&
-      ctx.neonProviderToolsAvailable === true
-    ) {
+    if (canUseNeonTools(ctx)) {
       ctx.onXmlStream(
         `<dyad-db-table-schema provider="Neon"${tableAttr}></dyad-db-table-schema>`,
       );
@@ -64,7 +58,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
       return schema;
     }
 
-    if (ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable === true) {
+    if (canUseSupabaseTools(ctx)) {
       ctx.onXmlStream(
         `<dyad-db-table-schema provider="Supabase"${tableAttr}></dyad-db-table-schema>`,
       );

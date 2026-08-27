@@ -126,6 +126,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     refetchProjects,
     deleteOrganization,
     setAppProject,
+    recoverAppProject,
     unsetAppProject,
   } = useSupabase({
     branchesProjectId,
@@ -154,7 +155,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         linkedProject.organizationSlug !== app.supabaseOrganizationSlug
       ) {
         try {
-          await setAppProject({
+          await recoverAppProject({
             appId,
             projectId: app.supabaseProjectId,
             parentProjectId: app.supabaseParentProjectId,
@@ -163,6 +164,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           toast.success(t("integrations.supabase.projectConnected"));
         } catch (error) {
           console.error("Failed to recover legacy Supabase link:", error);
+          toast.error(
+            t("integrations.supabase.failedConnectProject", {
+              error: String(error),
+            }),
+          );
         }
       }
     }

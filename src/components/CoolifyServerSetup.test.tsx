@@ -932,6 +932,31 @@ describe("when it finishes", () => {
     expect(panel.textContent).toContain("enable the API");
   });
 
+  it("points at the password it is asking to be copied", async () => {
+    // The one path where this screen holds the only copy: the install stood
+    // and the write did not. Sending the user the wrong way past it is how
+    // that copy gets lost.
+    h.snapshot.mockResolvedValue(
+      doneState({
+        tokenStored: false,
+        apiEnabled: true,
+        tokenUnavailableReason:
+          "Dyad could not save these details on this computer. Copy the " +
+          "password above before leaving this screen.",
+      }),
+    );
+    renderPanel();
+
+    const done = await waitFor(() => screen.getByTestId("coolify-setup-done"));
+    const text = done.textContent ?? "";
+    expect(text).toContain("Copy the password above");
+    // Above means above: the card carrying it is rendered over this panel.
+    expect(text.indexOf("Abc123@xyz")).toBeGreaterThan(-1);
+    expect(text.indexOf("Abc123@xyz")).toBeLessThan(
+      text.indexOf("Copy the password above"),
+    );
+  });
+
   it("does not ask for the API step when the mint was what failed", async () => {
     // Dyad turns the API on and then mints, so an account with no team, or a
     // link that drops, leaves the API on and no token. Saying to go and

@@ -329,8 +329,12 @@ function setupController(): CoolifySetupController {
             apiEnabled: result.apiEnabled,
             tokenUnavailableReason: stored
               ? (result.tokenUnavailableReason ?? null)
-              : "Dyad could not save these details on this computer. Copy the " +
-                "password below before leaving this screen.",
+              : // Above, not below: the credentials card sits over this
+                // panel, and the sentence the screen appends after this one
+                // already says "the details above". On this path the screen
+                // is the only copy of that password.
+                "Dyad could not save these details on this computer. Copy the " +
+                "password above before leaving this screen.",
             version: result.version,
           };
         });

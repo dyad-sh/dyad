@@ -297,7 +297,7 @@ describe("sub-agent manager status policy", () => {
     );
   });
 
-  it("prepares refreshed provider overrides without mutating the root context", async () => {
+  it("refreshes root finalization identity while returning child overrides", async () => {
     const root = {
       supabaseProjectId: null,
       refreshImplementerContext: vi.fn(async () => ({
@@ -316,7 +316,7 @@ describe("sub-agent manager status policy", () => {
 
     expect(prepared.systemPrompt).toBe("Refreshed implementer rules");
     expect(prepared.contextOverrides?.supabaseProjectId).toBe("project-1");
-    expect(root.supabaseProjectId).toBeNull();
+    expect(root.supabaseProjectId).toBe("project-1");
   });
 
   it("keeps the capability-aware fallback prompt when refresh fails", async () => {
@@ -329,6 +329,10 @@ describe("sub-agent manager status policy", () => {
 
     await expect(prepareImplementerRunContext(root)).resolves.toEqual({
       systemPrompt: "Fallback implementer rules",
+      contextOverrides: {
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: false,
+      },
     });
   });
 

@@ -18,7 +18,6 @@ import {
   cancelAgentTool,
   exploreCodeTool,
   followupTaskTool,
-  isSubagentProviderToolAvailable,
   listAgentsTool,
   sendMessageTool,
   spawnAgentTool,
@@ -26,6 +25,9 @@ import {
 } from "./subagent_tools";
 import type { AgentContext } from "./types";
 import { trackAppMutation } from "./tool_invocation";
+import { getSupabaseProjectInfoTool } from "./get_supabase_project_info";
+import { getNeonProjectInfoTool } from "./get_neon_project_info";
+import { getDatabaseTableSchemaTool } from "./get_database_table_schema";
 
 const advancedSubagentTools = [
   listAgentsTool,
@@ -35,25 +37,19 @@ const advancedSubagentTools = [
   followupTaskTool,
 ];
 
-describe("sub-agent provider tool availability", () => {
-  it("hides disconnected provider reads despite retained app associations", () => {
+describe("provider tool enablement", () => {
+  it("fails closed for retained associations with unavailable credentials", () => {
     const ctx = {
       supabaseProjectId: "supabase-project",
       neonProjectId: "neon-project",
       neonActiveBranchId: "neon-branch",
       supabaseProviderToolsAvailable: false,
       neonProviderToolsAvailable: false,
-    };
+    } as unknown as AgentContext;
 
-    expect(
-      isSubagentProviderToolAvailable("get_supabase_project_info", ctx),
-    ).toBe(false);
-    expect(isSubagentProviderToolAvailable("get_neon_project_info", ctx)).toBe(
-      false,
-    );
-    expect(
-      isSubagentProviderToolAvailable("get_database_table_schema", ctx),
-    ).toBe(false);
+    expect(getSupabaseProjectInfoTool.isEnabled?.(ctx)).toBe(false);
+    expect(getNeonProjectInfoTool.isEnabled?.(ctx)).toBe(false);
+    expect(getDatabaseTableSchemaTool.isEnabled?.(ctx)).toBe(false);
   });
 });
 

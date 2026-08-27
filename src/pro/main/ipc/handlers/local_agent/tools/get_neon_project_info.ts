@@ -21,7 +21,10 @@ export const getNeonProjectInfoTool: ToolDefinition<
     "Get Neon project overview: project ID, branches, and table names. Use this to discover what tables exist before fetching detailed schemas.",
   inputSchema: getNeonProjectInfoSchema,
   defaultConsent: "always",
-  isEnabled: (ctx) => !!ctx.neonProjectId && !!ctx.neonActiveBranchId,
+  isEnabled: (ctx) =>
+    !!ctx.neonProjectId &&
+    !!ctx.neonActiveBranchId &&
+    ctx.neonProviderToolsAvailable !== false,
 
   getConsentPreview: () => "Get Neon project info",
 

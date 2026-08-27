@@ -1467,13 +1467,29 @@ export async function prepareImplementerRunContext(
   try {
     const { systemPrompt, ...contextOverrides } =
       await rootCtx.refreshImplementerContext();
+    // Root-owned finalization (notably deferred provider deployments) must use
+    // the same provider identity that the child just refreshed. Keep mutation
+    // bookkeeping on rootCtx; only these provider identity fields are updated.
+    Object.assign(rootCtx, {
+      supabaseProjectId: contextOverrides.supabaseProjectId,
+      supabaseOrganizationSlug: contextOverrides.supabaseOrganizationSlug,
+      neonProjectId: contextOverrides.neonProjectId,
+      neonActiveBranchId: contextOverrides.neonActiveBranchId,
+      frameworkType: contextOverrides.frameworkType,
+    });
     return { systemPrompt, contextOverrides };
   } catch (error) {
     logger.warn(
       "Failed to refresh Implementer provider context; using the capability-aware fallback prompt",
       error,
     );
-    return { systemPrompt: rootCtx.implementerFallbackSystemPrompt };
+    return {
+      systemPrompt: rootCtx.implementerFallbackSystemPrompt,
+      contextOverrides: {
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: false,
+      },
+    };
   }
 }
 

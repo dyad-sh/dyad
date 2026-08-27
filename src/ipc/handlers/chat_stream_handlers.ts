@@ -1990,8 +1990,22 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
-        const implementerFallbackSystemPrompt =
-          constructImplementerPrompt(aiRules);
+        const initialSupabaseConnected = hasSupabaseCredentialsForOrganization(
+          settings,
+          updatedChat.app.supabaseOrganizationSlug,
+        );
+        const implementerFallbackSystemPrompt = constructImplementerPrompt(
+          aiRules,
+          {
+            provider: resolveImplementerProvider({
+              hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
+              hasNeonProject: Boolean(updatedChat.app.neonProjectId),
+            }),
+            supabaseConnected: initialSupabaseConnected,
+            neonToolsAvailable: false,
+            neonEmailVerificationEnabled: false,
+          },
+        );
         const refreshImplementerContext = async () => {
           const refreshedApp =
             (await db.query.apps.findFirst({
@@ -2008,7 +2022,6 @@ ${componentSnippet}
           const provider = resolveImplementerProvider({
             hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
             hasNeonProject: Boolean(refreshedApp.neonProjectId),
-            supabaseConnected,
           });
           const neonBranchId =
             refreshedApp.neonActiveBranchId ??
@@ -2104,29 +2117,31 @@ ${componentSnippet}
           }
         }
 
-        if (
-          updatedChat.app?.supabaseProjectId &&
-          hasSupabaseCredentialsForOrganization(
-            settings,
-            updatedChat.app.supabaseOrganizationSlug,
-          )
-        ) {
-          const supabaseClientCode = await getSupabaseClientCode({
-            projectId: updatedChat.app.supabaseProjectId,
-            organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
-          });
-          systemPrompt +=
-            "\n\n" +
-            getSupabaseAvailableSystemPrompt(supabaseClientCode) +
-            "\n\n" +
-            // For local agent, we will explicitly fetch the database context when needed.
-            (willUseLocalAgentStream
-              ? ""
-              : await getSupabaseContext({
-                  supabaseProjectId: updatedChat.app.supabaseProjectId,
-                  organizationSlug:
-                    updatedChat.app.supabaseOrganizationSlug ?? null,
-                }));
+        if (updatedChat.app?.supabaseProjectId) {
+          if (
+            hasSupabaseCredentialsForOrganization(
+              settings,
+              updatedChat.app.supabaseOrganizationSlug,
+            )
+          ) {
+            const supabaseClientCode = await getSupabaseClientCode({
+              projectId: updatedChat.app.supabaseProjectId,
+              organizationSlug:
+                updatedChat.app.supabaseOrganizationSlug ?? null,
+            });
+            systemPrompt +=
+              "\n\n" +
+              getSupabaseAvailableSystemPrompt(supabaseClientCode) +
+              "\n\n" +
+              // For local agent, we will explicitly fetch the database context when needed.
+              (willUseLocalAgentStream
+                ? ""
+                : await getSupabaseContext({
+                    supabaseProjectId: updatedChat.app.supabaseProjectId,
+                    organizationSlug:
+                      updatedChat.app.supabaseOrganizationSlug ?? null,
+                  }));
+          }
         } else if (updatedChat.app?.neonProjectId) {
           // Neon is connected — inject Neon prompt instead of Supabase
           systemPrompt +=

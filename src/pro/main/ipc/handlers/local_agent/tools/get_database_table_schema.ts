@@ -27,8 +27,10 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
   inputSchema: getDatabaseTableSchemaSchema,
   defaultConsent: "always",
   isEnabled: (ctx) =>
-    !!ctx.supabaseProjectId ||
-    (!!ctx.neonProjectId && !!ctx.neonActiveBranchId),
+    (!!ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable !== false) ||
+    (!!ctx.neonProjectId &&
+      !!ctx.neonActiveBranchId &&
+      ctx.neonProviderToolsAvailable !== false),
 
   getConsentPreview: (args) =>
     args.tableName

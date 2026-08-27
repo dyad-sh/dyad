@@ -205,35 +205,24 @@ describe("local_agent_prompt", () => {
       resolveImplementerProvider({
         hasSupabaseProject: true,
         hasNeonProject: false,
-        supabaseConnected: false,
       }),
     ).toBe("supabase");
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: true,
         hasNeonProject: true,
-        supabaseConnected: true,
       }),
     ).toBe("supabase");
-    expect(
-      resolveImplementerProvider({
-        hasSupabaseProject: true,
-        hasNeonProject: true,
-        supabaseConnected: false,
-      }),
-    ).toBe("neon");
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: false,
         hasNeonProject: true,
-        supabaseConnected: false,
       }),
     ).toBe("neon");
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: false,
         hasNeonProject: false,
-        supabaseConnected: false,
       }),
     ).toBeUndefined();
   });

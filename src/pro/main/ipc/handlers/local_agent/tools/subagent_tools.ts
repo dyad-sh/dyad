@@ -179,30 +179,6 @@ const SUBAGENT_ALLOWED_TOOL_NAMES = [
 ] as const;
 const SUBAGENT_ALLOWED_TOOLS = new Set<string>(SUBAGENT_ALLOWED_TOOL_NAMES);
 
-export function isSubagentProviderToolAvailable(
-  name: string,
-  ctx: Pick<
-    AgentContext,
-    | "supabaseProjectId"
-    | "neonProjectId"
-    | "neonActiveBranchId"
-    | "supabaseProviderToolsAvailable"
-    | "neonProviderToolsAvailable"
-  >,
-): boolean {
-  const supabaseToolsAvailable =
-    ctx.supabaseProviderToolsAvailable ?? Boolean(ctx.supabaseProjectId);
-  const neonToolsAvailable =
-    ctx.neonProviderToolsAvailable ??
-    Boolean(ctx.neonProjectId && ctx.neonActiveBranchId);
-  if (name === "get_supabase_project_info") return supabaseToolsAvailable;
-  if (name === "get_neon_project_info") return neonToolsAvailable;
-  if (name === "get_database_table_schema") {
-    return supabaseToolsAvailable || neonToolsAvailable;
-  }
-  return true;
-}
-
 export function validateSubagentAllowedToolNames(
   allowedNames: readonly string[],
   registeredTools: readonly Pick<ToolDefinition, "name">[],
@@ -233,10 +209,9 @@ export function buildSubagentToolSet(
     freeModelMode: ctx.freeModelMode,
   });
   return Object.fromEntries(
-    Object.entries(allTools).filter(([name]) => {
-      if (!SUBAGENT_ALLOWED_TOOLS.has(name)) return false;
-      return isSubagentProviderToolAvailable(name, childCtx);
-    }),
+    Object.entries(allTools).filter(([name]) =>
+      SUBAGENT_ALLOWED_TOOLS.has(name),
+    ),
   );
 }
 

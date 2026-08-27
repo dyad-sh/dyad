@@ -640,15 +640,11 @@ export type ImplementerProvider = "supabase" | "neon";
 export function resolveImplementerProvider({
   hasSupabaseProject,
   hasNeonProject,
-  supabaseConnected,
 }: {
   hasSupabaseProject: boolean;
   hasNeonProject: boolean;
-  supabaseConnected: boolean;
 }): ImplementerProvider | undefined {
-  if (hasSupabaseProject && (supabaseConnected || !hasNeonProject)) {
-    return "supabase";
-  }
+  if (hasSupabaseProject) return "supabase";
   if (hasNeonProject) return "neon";
   return undefined;
 }

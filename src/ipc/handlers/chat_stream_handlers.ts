@@ -1645,6 +1645,12 @@ ${componentSnippet}
         dyadRequestId = uuidv4();
       }
       const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
+      if (!willUseLocalAgentStream) {
+        throw new DyadError(
+          `Chat mode ${selectedChatMode} is not backed by the local agent stream`,
+          DyadErrorKind.Internal,
+        );
+      }
 
       // Add a placeholder assistant message immediately
       const [placeholderAssistantMessage] = await db

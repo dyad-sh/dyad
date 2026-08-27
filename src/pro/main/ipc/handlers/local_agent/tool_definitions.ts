@@ -60,9 +60,17 @@ import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
-import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
+import {
+  buildExecuteSandboxScriptDescription,
+  executeSandboxScriptTool,
+} from "./tools/execute_sandbox_script";
 import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { getMcpToolSchemaTool } from "./tools/get_mcp_tool_schema";
+import {
+  estimateMcpInlineTokens,
+  getMcpInlineTokenThreshold,
+  type McpToolDef,
+} from "./tools/mcp_type_defs";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import {
   gitDiffTool,
@@ -278,6 +286,7 @@ export async function requireAgentToolConsent(
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
+    consentOverride?: AgentToolConsent;
     abortSignal?: AbortSignal;
     subagent?: {
       threadId: string;
@@ -286,7 +295,8 @@ export async function requireAgentToolConsent(
     };
   },
 ): Promise<boolean> {
-  const current = getAgentToolConsent(params.toolName);
+  const current =
+    params.consentOverride ?? getAgentToolConsent(params.toolName);
 
   if (current === "always") return true;
   if (current === "never")
@@ -485,6 +495,7 @@ export async function estimateAgentToolTokens({
   canUseAdvancedSubagentTools = false,
   preCommitHookAvailable = false,
   reinstallAndRestartAppToolAvailable = true,
+  mcpToolDefs = [],
 }: {
   toolProfile?: "agent" | "build";
   readOnly?: boolean;
@@ -503,6 +514,7 @@ export async function estimateAgentToolTokens({
   canUseAdvancedSubagentTools?: boolean;
   preCommitHookAvailable?: boolean;
   reinstallAndRestartAppToolAvailable?: boolean;
+  mcpToolDefs?: McpToolDef[];
 }): Promise<number> {
   const estimateContext = {
     isDyadPro,
@@ -527,7 +539,19 @@ export async function estimateAgentToolTokens({
     freeModelMode,
     enableAppBlueprint,
   };
-  const declarations = await Promise.all(
+  const mcpInSandboxEnabled =
+    toolProfile !== "build" &&
+    !readOnly &&
+    !planModeOnly &&
+    shouldIncludeTool(executeSandboxScriptTool, estimateContext, options);
+  estimateContext.mcpToolsEnabled = mcpInSandboxEnabled;
+  estimateContext.mcpToolDefs = mcpToolDefs;
+  estimateContext.isMcpToolSearchAvailable =
+    mcpInSandboxEnabled &&
+    !!readSettings().enableMcpToolSearch &&
+    estimateMcpInlineTokens(mcpToolDefs) > getMcpInlineTokenThreshold();
+
+  let declarations = await Promise.all(
     TOOL_DEFINITIONS.filter((definition) =>
       shouldIncludeTool(definition, estimateContext, options),
     ).map(async (definition) => ({
@@ -537,6 +561,52 @@ export async function estimateAgentToolTokens({
       inputSchema: await asSchema(definition.inputSchema).jsonSchema,
     })),
   );
+
+  let useMcpToolSearch = estimateContext.isMcpToolSearchAvailable;
+  if (
+    useMcpToolSearch &&
+    !declarations.some((declaration) => declaration.name === "search_mcp_tools")
+  ) {
+    useMcpToolSearch = false;
+    declarations = declarations.filter(
+      (declaration) => declaration.name !== "get_mcp_tool_schema",
+    );
+  }
+  const hasGetSchemaTool = declarations.some(
+    (declaration) => declaration.name === "get_mcp_tool_schema",
+  );
+  const sandboxDeclaration = declarations.find(
+    (declaration) => declaration.name === "execute_sandbox_script",
+  );
+  if (sandboxDeclaration) {
+    sandboxDeclaration.description = await buildExecuteSandboxScriptDescription(
+      mcpToolDefs,
+      {
+        useSearch: useMcpToolSearch,
+        hasGetSchemaTool,
+        includeWriteFile: !!estimateContext.sandboxWriteFileHostEnabled,
+      },
+    );
+  }
+
+  if (
+    toolProfile !== "build" &&
+    !readOnly &&
+    !planModeOnly &&
+    !mcpInSandboxEnabled
+  ) {
+    const uniqueMcpTools = new Map(
+      mcpToolDefs.map((definition) => [definition.toolKey, definition]),
+    );
+    declarations.push(
+      ...[...uniqueMcpTools.values()].map((definition) => ({
+        type: "function" as const,
+        name: definition.toolKey,
+        description: definition.description ?? "",
+        inputSchema: definition.inputSchema,
+      })),
+    );
+  }
 
   return estimateTokens(JSON.stringify(declarations));
 }

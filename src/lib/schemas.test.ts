@@ -118,7 +118,7 @@ describe("migrateStoredSettings", () => {
     });
   });
 
-  it("migrates disabled legacy auto-approve into per-tool approval gates", () => {
+  it("does not migrate Build auto-approve into global Agent consent settings", () => {
     const stored = StoredUserSettingsSchema.parse({
       ...baseSettings,
       autoApproveChanges: false,
@@ -127,36 +127,11 @@ describe("migrateStoredSettings", () => {
 
     expect(migrateStoredSettings(stored).agentToolConsents).toEqual({
       write_file: "never",
-      search_replace: "ask",
-      copy_file: "ask",
-      delete_file: "ask",
-      rename_file: "ask",
-      add_dependency: "ask",
-      execute_sql: "ask",
-      add_integration: "ask",
-      enable_nitro: "ask",
-      restart_app: "ask",
-      reinstall_and_restart_app: "ask",
     });
   });
 
-  it("requires approval for mutating tools when legacy auto-approve is unset", () => {
+  it("preserves Agent defaults when legacy Build auto-approve is unset", () => {
     const stored = StoredUserSettingsSchema.parse(baseSettings);
-
-    expect(migrateStoredSettings(stored).agentToolConsents).toMatchObject({
-      write_file: "ask",
-      search_replace: "ask",
-      delete_file: "ask",
-      execute_sql: "ask",
-      restart_app: "ask",
-    });
-  });
-
-  it("preserves the new defaults when legacy auto-approve was enabled", () => {
-    const stored = StoredUserSettingsSchema.parse({
-      ...baseSettings,
-      autoApproveChanges: true,
-    });
 
     expect(migrateStoredSettings(stored).agentToolConsents).toBeUndefined();
   });

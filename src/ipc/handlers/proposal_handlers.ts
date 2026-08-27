@@ -142,8 +142,17 @@ const getProposalHandler = async (
           id: true, // Fetch the ID
           content: true, // Fetch the content to parse
           approvalState: true,
+          aiMessagesJson: true,
         },
       });
+
+      // Local Agent stores its structured transcript here. Its XML is a
+      // renderer projection of tool calls that already executed, not a legacy
+      // proposal awaiting approval. This also protects interrupted Agent turns
+      // created before agentic messages were eagerly marked approved.
+      if (latestAssistantMessage?.aiMessagesJson) {
+        return null;
+      }
 
       if (
         latestAssistantMessage?.content &&

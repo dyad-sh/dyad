@@ -101,8 +101,8 @@ describe("chat mode (integration)", () => {
         name?: string;
       }>;
       const toolNames = tools.map((tool) => tool.function?.name ?? tool.name);
-      expect(toolNames).toEqual(
-        expect.arrayContaining([
+      expect(toolNames.sort()).toEqual(
+        [
           "read_file",
           "list_files",
           "grep",
@@ -112,27 +112,16 @@ describe("chat mode (integration)", () => {
           "delete_file",
           "rename_file",
           "add_dependency",
+          "add_integration",
+          "enable_nitro",
           "set_chat_summary",
           "planning_questionnaire",
           "update_todos",
           "read_guide",
-        ]),
+          "restart_app",
+          "reinstall_and_restart_app",
+        ].sort(),
       );
-      for (const excludedTool of [
-        "spawn_agent",
-        "web_search",
-        "read_logs",
-        "run_build",
-        "run_type_checks",
-        "run_tests",
-        "run_pre_commit",
-        "execute_sandbox_script",
-        "search_mcp_tools",
-        "git_status",
-        "restart_app",
-      ]) {
-        expect(toolNames).not.toContain(excludedTool);
-      }
       const latchedChat = await harness.db.query.chats.findFirst({
         where: (chats, { eq }) => eq(chats.id, harness.chatId),
       });

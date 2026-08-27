@@ -88,4 +88,38 @@ describe("Build mode tool profile", () => {
       0,
     );
   });
+
+  it("accounts for connected MCP tool declarations in Agent mode", async () => {
+    const baseOptions = {
+      enableAppBlueprint: false,
+      isDyadPro: false,
+      frameworkType: "vite" as const,
+      supabaseProjectId: null,
+      neonProjectId: null,
+      neonActiveBranchId: null,
+    };
+    const withoutMcp = await estimateAgentToolTokens(baseOptions);
+    const withMcp = await estimateAgentToolTokens({
+      ...baseOptions,
+      mcpToolDefs: [
+        {
+          jsName: "test_server__large_tool",
+          toolKey: "test-server__large-tool",
+          serverId: 1,
+          serverName: "test-server",
+          toolName: "large-tool",
+          description: "A connected MCP tool with a declaration to count.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query" },
+            },
+            required: ["query"],
+          },
+        },
+      ],
+    });
+
+    expect(withMcp).toBeGreaterThan(withoutMcp);
+  });
 });

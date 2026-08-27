@@ -94,4 +94,54 @@ describe("chat input validation (integration)", () => {
     });
     expect(harness.appFileExists("src/rejected.txt")).toBe(false);
   });
+
+  it("does not expose legacy proposal actions for a stored agentic transcript", async () => {
+    const chatId = await harness.createChat();
+    await harness.db.insert(messages).values({
+      chatId,
+      role: "assistant",
+      content:
+        '<dyad-write path="src/already-applied.txt" description="Already applied">applied</dyad-write>',
+      aiMessagesJson: {
+        sdkVersion: "ai@v6",
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "tool-call",
+                toolCallId: "stored-agentic-write",
+                toolName: "write_file",
+                input: { path: "src/already-applied.txt", content: "applied" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: "stored-agentic-write",
+                toolName: "write_file",
+                output: { type: "text", value: "File written" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    harness.mount({ chatId });
+    await screen.findByText("already-applied.txt", { exact: true });
+    await waitFor(() => {
+      expect(
+        harness.bridge.invokeLog.some(
+          (entry) =>
+            entry.channel === "get-proposal" && entry.status !== "pending",
+        ),
+      ).toBe(true);
+    });
+    expect(screen.queryByTestId("approve-proposal-button")).toBeNull();
+    expect(screen.queryByTestId("reject-proposal-button")).toBeNull();
+  });
 });

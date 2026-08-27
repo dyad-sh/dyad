@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows(
   "console logs should appear in the console",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
 
     await po.sendPrompt("tc=console-logs");
 
@@ -86,7 +86,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "network requests and responses should appear in the console",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
 
     await po.sendPrompt("tc=network-requests");
 
@@ -180,7 +180,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "clicking send to chat button adds log to chat input",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
 
     // Create an app with console output using fixture
     await po.sendPrompt("tc=write-index");
@@ -214,7 +214,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows("clear filters button works", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
 
   // Create a basic app using fixture
   await po.sendPrompt("tc=write-index");
@@ -247,7 +247,7 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
 });
 
 testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
 
   // Create an app with console logs
   await po.sendPrompt("tc=console-logs");

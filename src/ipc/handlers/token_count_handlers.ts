@@ -38,6 +38,8 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 import { estimateAgentToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import { buildChatMessageHistory } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { collectMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
 
 const logger = log.scope("token_count_handlers");
 
@@ -67,12 +69,6 @@ export function registerTokenCountHandlers() {
         );
       }
 
-      // Prepare message history for token counting
-      const messageHistory = chat.messages
-        .map((message) => message.content)
-        .join("");
-      const messageHistoryTokens = estimateTokens(messageHistory);
-
       // Count input tokens
       const inputTokens = estimateTokens(req.input);
 
@@ -90,6 +86,11 @@ export function registerTokenCountHandlers() {
         selectedChatMode,
       };
       const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
+      const messageHistoryTokens = willUseLocalAgentStream
+        ? estimateTokens(JSON.stringify(buildChatMessageHistory(chat.messages)))
+        : estimateTokens(
+            chat.messages.map((message) => message.content).join(""),
+          );
 
       // Count system prompt tokens
       // Migration on read converts "agent" to "build", so no need to check for it here
@@ -143,6 +144,8 @@ export function registerTokenCountHandlers() {
       }
 
       const isDyadPro = isDyadProEnabled(settings);
+      const mcpToolDefs =
+        selectedChatMode === "local-agent" ? await collectMcpToolDefs() : [];
       const toolDefinitionTokens = await estimateAgentToolTokens({
         toolProfile: selectedChatMode === "build" ? "build" : "agent",
         readOnly: selectedChatMode === "ask",
@@ -165,6 +168,7 @@ export function registerTokenCountHandlers() {
           selectedChatMode === "local-agent" &&
           isDyadPro &&
           isImplementerSubagentEnabled(settings),
+        mcpToolDefs,
         canUseAdvancedSubagentTools:
           selectedChatMode === "local-agent" &&
           isDyadPro &&

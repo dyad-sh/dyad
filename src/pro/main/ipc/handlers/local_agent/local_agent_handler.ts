@@ -167,6 +167,19 @@ export function clearPendingLocalAgentInputsForChat(chatId: number): void {
 }
 
 const logger = log.scope("local_agent_handler");
+const LEGACY_BUILD_APPROVAL_TOOL_NAMES = new Set<AgentToolName>([
+  "write_file",
+  "search_replace",
+  "copy_file",
+  "delete_file",
+  "rename_file",
+  "add_dependency",
+  "execute_sql",
+  "add_integration",
+  "enable_nitro",
+  "restart_app",
+  "reinstall_and_restart_app",
+]);
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
 const MAX_TERMINATED_STREAM_RETRIES = 3;
 const MAX_ERROR_RESPONSE_BODY_DEPTH = 5;
@@ -916,12 +929,21 @@ export async function handleLocalAgentStream(
           taskName: string;
         };
       }) => {
+        const latestSettings = readSettings();
+        const useLegacyBuildApprovalGate =
+          buildMode &&
+          latestSettings.autoApproveChanges !== true &&
+          latestSettings.agentToolConsents?.[params.toolName] === undefined &&
+          LEGACY_BUILD_APPROVAL_TOOL_NAMES.has(
+            params.toolName as AgentToolName,
+          );
         return requireAgentToolConsent(event, {
           chatId: chat.id,
           toolName: params.toolName as AgentToolName,
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
           metadata: params.metadata,
+          consentOverride: useLegacyBuildApprovalGate ? "ask" : undefined,
           subagent: params.subagent,
           abortSignal: params.abortSignal ?? abortController.signal,
         });

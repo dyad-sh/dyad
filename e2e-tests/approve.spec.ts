@@ -2,7 +2,7 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 testSkipIfWindows("write to index and check preview", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
   await po.snapshotMessages();
 

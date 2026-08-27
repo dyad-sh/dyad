@@ -6,7 +6,6 @@ import {
   getAllAgentToolConsents,
   setAgentToolConsent,
   TOOL_DEFINITIONS,
-  getDefaultConsent,
   type AgentToolName,
 } from "./tool_definitions";
 import { createLoggedTypedHandler } from "@/ipc/handlers/base";
@@ -40,7 +39,7 @@ export function registerAgentToolHandlers() {
     ).map((tool) => ({
       name: tool.name,
       description: tool.description,
-      isAllowedByDefault: getDefaultConsent(tool.name) === "always",
+      isAllowedByDefault: consents[tool.name] === "always",
       consent: consents[tool.name],
     }));
   });

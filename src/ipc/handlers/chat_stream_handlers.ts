@@ -1990,6 +1990,8 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
+        const implementerFallbackSystemPrompt =
+          constructImplementerPrompt(aiRules);
         const refreshImplementerContext = async () => {
           const refreshedApp =
             (await db.query.apps.findFirst({
@@ -2597,6 +2599,7 @@ This conversation includes one or more image attachments. When the user uploads 
               freeModelMode,
               preCommitHookAvailable,
               refreshImplementerContext,
+              implementerFallbackSystemPrompt,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),

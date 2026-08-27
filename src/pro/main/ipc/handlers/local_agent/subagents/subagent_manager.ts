@@ -458,6 +458,7 @@ export async function spawnModelSubagent(params: {
   scope: string[];
   buildTools: (params: {
     ctx: AgentContext;
+    contextOverrides?: Partial<AgentContext>;
     threadId: string;
     persona: "explorer" | "implementer";
     taskName: string;
@@ -542,9 +543,10 @@ export async function spawnModelSubagent(params: {
                 normalizedScope,
               ),
               params.ctx,
-              (abortSignal, effectiveCtx) =>
+              (abortSignal, contextOverrides) =>
                 params.buildTools({
-                  ctx: effectiveCtx,
+                  ctx: params.ctx,
+                  contextOverrides,
                   threadId: thread.id,
                   persona: params.persona,
                   taskName: params.taskName,
@@ -1148,6 +1150,7 @@ export async function followupSubagent(
     ctx: AgentContext;
     buildTools: (params: {
       ctx: AgentContext;
+      contextOverrides?: Partial<AgentContext>;
       threadId: string;
       persona: "explorer" | "implementer";
       taskName: string;
@@ -1171,6 +1174,7 @@ async function followupSubagentAdmitted(
     ctx: AgentContext;
     buildTools: (params: {
       ctx: AgentContext;
+      contextOverrides?: Partial<AgentContext>;
       threadId: string;
       persona: "explorer" | "implementer";
       taskName: string;
@@ -1237,9 +1241,10 @@ async function followupSubagentAdmitted(
             currentTurn.ctx.appId,
             nextAssignment,
             currentTurn.ctx,
-            (abortSignal, effectiveCtx) =>
+            (abortSignal, contextOverrides) =>
               currentTurn.buildTools({
-                ctx: effectiveCtx,
+                ctx: currentTurn.ctx,
+                contextOverrides,
                 threadId: thread.id,
                 persona,
                 taskName: thread.taskName,
@@ -1450,12 +1455,37 @@ export function isAcceptableImplementerJoinStatus(status: string): boolean {
   return status === "completed" || status === "partial";
 }
 
+export async function prepareImplementerRunContext(
+  rootCtx: AgentContext,
+): Promise<{
+  systemPrompt?: string;
+  contextOverrides?: Partial<AgentContext>;
+}> {
+  if (!rootCtx.refreshImplementerContext) {
+    return { systemPrompt: rootCtx.implementerFallbackSystemPrompt };
+  }
+  try {
+    const { systemPrompt, ...contextOverrides } =
+      await rootCtx.refreshImplementerContext();
+    return { systemPrompt, contextOverrides };
+  } catch (error) {
+    logger.warn(
+      "Failed to refresh Implementer provider context; using the capability-aware fallback prompt",
+      error,
+    );
+    return { systemPrompt: rootCtx.implementerFallbackSystemPrompt };
+  }
+}
+
 async function runThread(
   threadId: string,
   appId: number,
   assignment: string,
   rootCtx: AgentContext,
-  buildTools: (abortSignal: AbortSignal, effectiveCtx: AgentContext) => ToolSet,
+  buildTools: (
+    abortSignal: AbortSignal,
+    contextOverrides?: Partial<AgentContext>,
+  ) => ToolSet,
   scope: string[],
   mutationOwner?: MutationActivityOwner,
   runActivity?: ActivityHandle,
@@ -1477,24 +1507,14 @@ async function runThread(
     );
     if (controller.signal.aborted || cancelledThreadIds.has(threadId)) return;
     if (!(await updateStatus(threadId, "running"))) return;
-    let implementerSystemPrompt: string | undefined;
-    let effectiveRootCtx = rootCtx;
-    if (thread.persona === "implementer" && rootCtx.refreshImplementerContext) {
-      try {
-        const { systemPrompt, ...refreshedContext } =
-          await rootCtx.refreshImplementerContext();
-        // Project refreshed provider state only into this child. The root turn
-        // retains the context that matches its already-constructed prompt.
-        effectiveRootCtx = { ...rootCtx, ...refreshedContext };
-        implementerSystemPrompt = systemPrompt;
-      } catch (error) {
-        logger.warn(
-          "Failed to refresh Implementer provider context; using baseline prompt and root context",
-          error,
-        );
-      }
-    }
-    const tools = buildTools(controller.signal, effectiveRootCtx);
+    const implementerRunContext =
+      thread.persona === "implementer"
+        ? await prepareImplementerRunContext(rootCtx)
+        : {};
+    const tools = buildTools(
+      controller.signal,
+      implementerRunContext.contextOverrides,
+    );
     let usedExplorerFallback = false;
     let explorerAssignment = assignment;
     if (thread.persona === "explorer") {
@@ -1524,7 +1544,7 @@ async function runThread(
             text: await runExploreCodeSubagent({
               args: { query: explorerAssignment, intent: "explain" },
               ctx: {
-                ...effectiveRootCtx,
+                ...rootCtx,
                 mutationActivityOwner: mutationOwner,
                 subagentThreadId: threadId,
                 subagentPersona: "explorer",
@@ -1545,7 +1565,7 @@ async function runThread(
             assignment,
             tools,
             abortSignal: controller.signal,
-            systemPromptOverride: implementerSystemPrompt,
+            systemPromptOverride: implementerRunContext.systemPrompt,
           });
     const durableResult = boundDurableReport(result.text).trim();
     if (!durableResult) {

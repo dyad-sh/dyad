@@ -1,5 +1,6 @@
 import type { WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
+import type { AgentContext } from "../tools/types";
 
 import {
   buildAllExcludedReviewResult,
@@ -16,6 +17,7 @@ import {
   isTerminalSubagentStatus,
   isWaitCompleteStatus,
   prepareSubagentStepMessages,
+  prepareImplementerRunContext,
   raceWithAbort,
   resolveSubagentSystemPrompt,
   reviewFollowupAvailability,
@@ -293,6 +295,41 @@ describe("sub-agent manager status policy", () => {
     expect(resolveSubagentSystemPrompt("reviewer", "Ignored")).toContain(
       "Dyad Reviewer",
     );
+  });
+
+  it("prepares refreshed provider overrides without mutating the root context", async () => {
+    const root = {
+      supabaseProjectId: null,
+      refreshImplementerContext: vi.fn(async () => ({
+        systemPrompt: "Refreshed implementer rules",
+        supabaseProjectId: "project-1",
+        supabaseOrganizationSlug: "org-1",
+        neonProjectId: null,
+        neonActiveBranchId: null,
+        supabaseProviderToolsAvailable: true,
+        neonProviderToolsAvailable: false,
+        frameworkType: "vite" as const,
+      })),
+    } as unknown as AgentContext;
+
+    const prepared = await prepareImplementerRunContext(root);
+
+    expect(prepared.systemPrompt).toBe("Refreshed implementer rules");
+    expect(prepared.contextOverrides?.supabaseProjectId).toBe("project-1");
+    expect(root.supabaseProjectId).toBeNull();
+  });
+
+  it("keeps the capability-aware fallback prompt when refresh fails", async () => {
+    const root = {
+      implementerFallbackSystemPrompt: "Fallback implementer rules",
+      refreshImplementerContext: vi.fn(async () => {
+        throw new Error("database unavailable");
+      }),
+    } as unknown as AgentContext;
+
+    await expect(prepareImplementerRunContext(root)).resolves.toEqual({
+      systemPrompt: "Fallback implementer rules",
+    });
   });
 
   it("rejects finalization when its owning root is already cancelled", async () => {

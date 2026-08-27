@@ -118,6 +118,8 @@ export interface AgentContext {
     neonProviderToolsAvailable: boolean;
     frameworkType: AppFrameworkType | null;
   }>;
+  /** Capability-aware provider-less prompt used if context refresh fails. */
+  implementerFallbackSystemPrompt?: string;
   /** Whether Supabase metadata/schema reads are currently authenticated. */
   supabaseProviderToolsAvailable?: boolean;
   /** Whether Neon metadata/schema reads are currently authenticated. */

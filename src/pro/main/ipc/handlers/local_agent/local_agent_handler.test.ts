@@ -717,6 +717,7 @@ describe("handleLocalAgentStream", () => {
           neonProviderToolsAvailable: false,
           frameworkType: null,
         }),
+        implementerFallbackSystemPrompt: "Fallback implementer rules",
         dyadRequestId,
       },
     );

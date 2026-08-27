@@ -60,6 +60,7 @@ const spawnFallbackSchema = z.object({
 
 interface SubagentToolContextParams {
   ctx: AgentContext;
+  contextOverrides?: Partial<AgentContext>;
   threadId: string;
   persona: "explorer" | "implementer";
   taskName: string;
@@ -79,9 +80,11 @@ export function buildSubagentContext(
     scope,
     abortSignal,
     mutationActivityOwner,
+    contextOverrides,
   } = params;
   return {
     ...ctx,
+    ...contextOverrides,
     subagentThreadId: threadId,
     subagentPersona: persona,
     subagentPathScope: scope.map(normalizeMutationScope),
@@ -232,7 +235,7 @@ export function buildSubagentToolSet(
   return Object.fromEntries(
     Object.entries(allTools).filter(([name]) => {
       if (!SUBAGENT_ALLOWED_TOOLS.has(name)) return false;
-      return isSubagentProviderToolAvailable(name, ctx);
+      return isSubagentProviderToolAvailable(name, childCtx);
     }),
   );
 }
@@ -285,9 +288,10 @@ export const spawnAgentTool: ToolDefinition<
       taskName: args.task_name,
       assignment: args.assignment,
       scope: args.scope,
-      buildTools: ({ ctx: childCtx, ...child }) =>
+      buildTools: ({ ctx: childCtx, contextOverrides, ...child }) =>
         buildSubagentToolSet({
           ctx: childCtx,
+          contextOverrides,
           ...child,
         }),
     });
@@ -465,9 +469,10 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       args.message,
       {
         ctx,
-        buildTools: ({ ctx: childCtx, ...child }) =>
+        buildTools: ({ ctx: childCtx, contextOverrides, ...child }) =>
           buildSubagentToolSet({
             ctx: childCtx,
+            contextOverrides,
             ...child,
           }),
       },

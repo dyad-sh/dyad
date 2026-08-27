@@ -99,6 +99,7 @@ describe("spawn_agent schema", () => {
 
   it("propagates successful child mutations to the root turn", () => {
     const root = {
+      supabaseProjectId: null,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
       referencedApps: new Map(),
@@ -111,14 +112,22 @@ describe("spawn_agent schema", () => {
       taskName: "Edit auth flow",
       scope: ["src/auth"],
       abortSignal: new AbortController().signal,
+      contextOverrides: {
+        supabaseProjectId: "refreshed-project",
+        supabaseProviderToolsAvailable: true,
+      },
     });
 
     trackAppMutation(child, "write_file", true, true);
+    child.onSharedServerModuleChange?.("supabase/functions/_shared/auth.ts");
 
+    expect(child.supabaseProjectId).toBe("refreshed-project");
+    expect(root.supabaseProjectId).toBeNull();
     expect(child.mutationCount).toBe(1);
     expect(root.mutationCount).toBe(1);
     expect(root.fileMutationCount).toBe(1);
     expect(root.workspaceMutated).toBe(true);
+    expect(root.isSharedModulesChanged).toBe(true);
   });
 
   it("queues child function deletions for root finalization", () => {

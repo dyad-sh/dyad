@@ -66,38 +66,16 @@ describe("getDiskUsageMB", () => {
     expect(getDiskUsageMB("/missing")).toBeNull();
   });
 
-  it("logs a failure once rather than on every call", async () => {
-    // Fresh module so the once-per-process flag starts unset.
-    vi.resetModules();
-    const { getDiskUsageMB: freshGetDiskUsageMB } =
-      await import("@/utils/disk_usage");
+  it("logs every failure, not just the first", () => {
     statfsSync.mockImplementation(() => {
       throw new Error("ENOENT");
     });
 
-    freshGetDiskUsageMB("/missing");
-    freshGetDiskUsageMB("/missing");
-    freshGetDiskUsageMB("/missing");
+    getDiskUsageMB("/missing");
+    getDiskUsageMB("/missing");
 
-    expect(errorLog).toHaveBeenCalledTimes(1);
-  });
-
-  it("stays quiet on a later failure even after a reading succeeds", async () => {
-    vi.resetModules();
-    const { getDiskUsageMB: freshGetDiskUsageMB } =
-      await import("@/utils/disk_usage");
-    const throwENOENT = () => {
-      throw new Error("ENOENT");
-    };
-
-    statfsSync.mockImplementation(throwENOENT);
-    freshGetDiskUsageMB("/missing");
-    statfsSync.mockReturnValue(statfsResult());
-    freshGetDiskUsageMB("/some/path");
-    statfsSync.mockImplementation(throwENOENT);
-    freshGetDiskUsageMB("/missing");
-
-    // A volume that flaps would otherwise re-arm the log on every recovery.
-    expect(errorLog).toHaveBeenCalledTimes(1);
+    // A repeating failure is itself diagnostic, and only a recent line
+    // survives in the last-N-lines view that bug reports include.
+    expect(errorLog).toHaveBeenCalledTimes(2);
   });
 });

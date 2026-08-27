@@ -1995,6 +1995,10 @@ ${componentSnippet}
         const implementerSystemPrompt = constructImplementerPrompt(aiRules, {
           provider: implementerProvider,
           supabaseConnected: isSupabaseConnected(settings),
+          neonToolsAvailable: Boolean(
+            updatedChat.app?.neonProjectId &&
+            updatedChat.app?.neonActiveBranchId,
+          ),
         });
 
         // Migration on read converts "agent" to "build", so no need to check for it here

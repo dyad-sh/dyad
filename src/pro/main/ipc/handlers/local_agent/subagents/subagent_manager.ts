@@ -1516,17 +1516,14 @@ async function runThread(
             }),
             hitStepLimit: false,
           }
-        : await runModel({
+        : await runThreadModel({
             threadId,
             appId,
             persona: thread.persona,
             assignment,
             tools,
             abortSignal: controller.signal,
-            systemPromptOverride:
-              thread.persona === "implementer"
-                ? rootCtx.implementerSystemPrompt
-                : undefined,
+            rootCtx,
           });
     const durableResult = boundDurableReport(result.text).trim();
     if (!durableResult) {
@@ -1654,7 +1651,7 @@ async function runReview(
   }
 }
 
-async function runModel(params: {
+type RunModelParams = {
   threadId: string;
   appId: number;
   persona: SubagentPersona;
@@ -1662,7 +1659,29 @@ async function runModel(params: {
   tools: ToolSet;
   abortSignal: AbortSignal;
   systemPromptOverride?: string;
-}): Promise<{ text: string; hitStepLimit: boolean }> {
+};
+
+export async function runThreadModel(
+  params: Omit<RunModelParams, "systemPromptOverride"> & {
+    rootCtx: Pick<AgentContext, "implementerSystemPrompt">;
+  },
+  execute: (
+    params: RunModelParams,
+  ) => Promise<{ text: string; hitStepLimit: boolean }> = runModel,
+): Promise<{ text: string; hitStepLimit: boolean }> {
+  const { rootCtx, ...modelParams } = params;
+  return execute({
+    ...modelParams,
+    systemPromptOverride:
+      params.persona === "implementer"
+        ? rootCtx.implementerSystemPrompt
+        : undefined,
+  });
+}
+
+async function runModel(
+  params: RunModelParams,
+): Promise<{ text: string; hitStepLimit: boolean }> {
   assertPro(params.persona);
   const claimedRootMessageIds = new Set<number>();
   const settings = personaModelSettings(params.persona);

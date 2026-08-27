@@ -19,6 +19,7 @@ import {
   raceWithAbort,
   resolveSubagentSystemPrompt,
   reviewFollowupAvailability,
+  runThreadModel,
   setSubagentEventTarget,
   shouldDrainMutationOnAbort,
   SUBAGENT_NONTERMINAL_STATUSES,
@@ -292,6 +293,37 @@ describe("sub-agent manager status policy", () => {
     );
     expect(resolveSubagentSystemPrompt("reviewer", "Ignored")).toContain(
       "Dyad Reviewer",
+    );
+  });
+
+  it("forwards the root prompt from a thread only for Implementers", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      text: "done",
+      hitStepLimit: false,
+    });
+    const common = {
+      threadId: "thread-1",
+      appId: 1,
+      assignment: "Implement the change",
+      tools: {},
+      abortSignal: new AbortController().signal,
+      rootCtx: { implementerSystemPrompt: "App implementation rules" },
+    };
+
+    await runThreadModel({ ...common, persona: "implementer" }, execute);
+    expect(execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        persona: "implementer",
+        systemPromptOverride: "App implementation rules",
+      }),
+    );
+
+    await runThreadModel({ ...common, persona: "reviewer" }, execute);
+    expect(execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        persona: "reviewer",
+        systemPromptOverride: undefined,
+      }),
     );
   });
 

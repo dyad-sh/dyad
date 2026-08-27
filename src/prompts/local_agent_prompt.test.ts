@@ -147,6 +147,7 @@ describe("local_agent_prompt", () => {
   it("gives Neon Implementers critical code-writing invariants", () => {
     const prompt = constructImplementerPrompt(undefined, {
       provider: "neon",
+      neonToolsAvailable: true,
     });
 
     expect(prompt).toContain('<provider_invariants provider="neon">');
@@ -160,6 +161,18 @@ describe("local_agent_prompt", () => {
     );
     expect(prompt).not.toContain("execute SQL");
     expect(prompt).not.toContain("dyad-execute-sql");
+  });
+
+  it("does not promise Neon provider tools without branch context", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "neon",
+      neonToolsAvailable: false,
+    });
+
+    expect(prompt).toContain("Neon branch context is unavailable");
+    expect(prompt).not.toContain(
+      "You may inspect provider metadata and the live schema",
+    );
   });
 
   it("keeps root-owned operation boundaries without a provider", () => {

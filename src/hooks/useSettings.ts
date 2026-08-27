@@ -136,10 +136,13 @@ export function useSettings() {
     [],
   );
 
-  const refreshSettings = useCallback(() => {
-    return queryClient.invalidateQueries({
+  const refreshSettings = useCallback(async () => {
+    await queryClient.invalidateQueries({
       queryKey: queryKeys.settings.all,
     });
+    return (
+      queryClient.getQueryData<UserSettings>(queryKeys.settings.user) ?? null
+    );
   }, [queryClient]);
 
   const loading = settingsQuery.isLoading || envVarsQuery.isLoading;

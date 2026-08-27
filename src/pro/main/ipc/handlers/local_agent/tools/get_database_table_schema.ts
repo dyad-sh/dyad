@@ -11,6 +11,7 @@ import {
 import { getSupabaseTableSchema } from "../../../../../../supabase_admin/supabase_context";
 import { getNeonTableSchema } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
 
 const getDatabaseTableSchemaSchema = z.object({
   tableName: z
@@ -41,25 +42,14 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
       ? ` table="${escapeXmlAttr(args.tableName)}"`
       : "";
 
-    if (canUseNeonTools(ctx)) {
-      ctx.onXmlStream(
-        `<dyad-db-table-schema provider="Neon"${tableAttr}></dyad-db-table-schema>`,
-      );
+    const provider = resolvePreferredDatabaseProvider({
+      hasSupabaseProject: Boolean(ctx.supabaseProjectId),
+      supabaseAvailable: canUseSupabaseTools(ctx),
+      hasNeonProject: Boolean(ctx.neonProjectId),
+      neonAvailable: canUseNeonTools(ctx),
+    });
 
-      const schema = await getNeonTableSchema({
-        projectId: ctx.neonProjectId,
-        branchId: ctx.neonActiveBranchId,
-        tableName: args.tableName,
-      });
-
-      ctx.onXmlComplete(
-        `<dyad-db-table-schema provider="Neon"${tableAttr}>\n${escapeXmlContent(schema)}\n</dyad-db-table-schema>`,
-      );
-
-      return schema;
-    }
-
-    if (canUseSupabaseTools(ctx)) {
+    if (provider === "supabase" && canUseSupabaseTools(ctx)) {
       ctx.onXmlStream(
         `<dyad-db-table-schema provider="Supabase"${tableAttr}></dyad-db-table-schema>`,
       );
@@ -72,6 +62,24 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
 
       ctx.onXmlComplete(
         `<dyad-db-table-schema provider="Supabase"${tableAttr}>\n${escapeXmlContent(schema)}\n</dyad-db-table-schema>`,
+      );
+
+      return schema;
+    }
+
+    if (provider === "neon" && canUseNeonTools(ctx)) {
+      ctx.onXmlStream(
+        `<dyad-db-table-schema provider="Neon"${tableAttr}></dyad-db-table-schema>`,
+      );
+
+      const schema = await getNeonTableSchema({
+        projectId: ctx.neonProjectId,
+        branchId: ctx.neonActiveBranchId,
+        tableName: args.tableName,
+      });
+
+      ctx.onXmlComplete(
+        `<dyad-db-table-schema provider="Neon"${tableAttr}>\n${escapeXmlContent(schema)}\n</dyad-db-table-schema>`,
       );
 
       return schema;

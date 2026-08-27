@@ -60,6 +60,15 @@ function neonContext(): AgentContext {
   } as unknown as AgentContext;
 }
 
+function dualProviderContext(): AgentContext {
+  return {
+    ...supabaseContext(),
+    neonProjectId: "neon-project",
+    neonActiveBranchId: "neon-branch",
+    neonProviderToolsAvailable: true,
+  } as AgentContext;
+}
+
 describe("database provider tool routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,6 +89,18 @@ describe("database provider tool routing", () => {
     await getDatabaseTableSchemaTool.execute({}, supabaseContext());
 
     expect(getSupabaseTableSchemaMock).toHaveBeenCalled();
+    expect(getNeonTableSchemaMock).not.toHaveBeenCalled();
+  });
+
+  it("routes SQL and schema reads consistently for a dual-linked app", async () => {
+    const ctx = dualProviderContext();
+
+    await executeSqlTool.execute({ query: "select 1" }, ctx);
+    await getDatabaseTableSchemaTool.execute({}, ctx);
+
+    expect(executeSupabaseSqlMock).toHaveBeenCalled();
+    expect(getSupabaseTableSchemaMock).toHaveBeenCalled();
+    expect(executeNeonSqlMock).not.toHaveBeenCalled();
     expect(getNeonTableSchemaMock).not.toHaveBeenCalled();
   });
 

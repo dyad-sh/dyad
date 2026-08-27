@@ -5,6 +5,10 @@
 
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import {
+  resolvePreferredDatabaseProvider,
+  type DatabaseProvider,
+} from "@/shared/database_provider";
+import {
   AGENT_TEST_WRITING_GUIDANCE,
   getImplementerTestWritingGuidance,
 } from "./system_prompt";
@@ -21,7 +25,7 @@ import {
   NEON_NO_CUSTOM_AUTH_RULE,
   NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   NEON_RLS_REQUIRES_JWT_RULE,
-} from "./neon_prompt";
+} from "./neon_prompt_rules";
 
 // ============================================================================
 // Shared Prompt Blocks (used by both Pro and Basic Agent modes)
@@ -639,7 +643,7 @@ Available packages and libraries:
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 `;
 
-export type ImplementerProvider = "supabase" | "neon";
+export type ImplementerProvider = DatabaseProvider;
 
 export function resolveImplementerProvider({
   hasSupabaseProject,
@@ -652,11 +656,12 @@ export function resolveImplementerProvider({
   supabaseAvailable?: boolean;
   neonAvailable?: boolean;
 }): ImplementerProvider | undefined {
-  if (hasSupabaseProject && supabaseAvailable) return "supabase";
-  if (hasNeonProject && neonAvailable) return "neon";
-  if (hasSupabaseProject) return "supabase";
-  if (hasNeonProject) return "neon";
-  return undefined;
+  return resolvePreferredDatabaseProvider({
+    hasSupabaseProject,
+    supabaseAvailable: supabaseAvailable === true,
+    hasNeonProject,
+    neonAvailable: neonAvailable === true,
+  });
 }
 
 function implementerProviderGuidance(

@@ -1512,10 +1512,6 @@ export async function prepareImplementerRunContext(
         supabaseProviderToolsAvailable: false,
         neonProviderToolsAvailable: false,
       },
-      rootContextOverrides: {
-        supabaseProviderToolsAvailable: false,
-        neonProviderToolsAvailable: false,
-      },
     };
   }
 }

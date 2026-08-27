@@ -407,33 +407,27 @@ import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
 import type { AiMessagesJsonV6 } from "@/db/schema";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 
-type LocalAgentStreamOptions = Parameters<typeof handleLocalAgentStreamImpl>[3];
+type LocalAgentStreamParameters = Parameters<typeof handleLocalAgentStreamImpl>;
+type LocalAgentStreamOptions = LocalAgentStreamParameters[3];
 const handleLocalAgentStream = (
-  ...args: [
-    ...(Parameters<typeof handleLocalAgentStreamImpl> extends [
-      infer Event,
-      infer Request,
-      infer Controller,
-      unknown,
-    ]
-      ? [Event, Request, Controller]
-      : never),
-    Omit<
-      LocalAgentStreamOptions,
-      "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
-    > &
-      Partial<
-        Pick<
-          LocalAgentStreamOptions,
-          "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
-        >
-      >,
-  ]
+  event: LocalAgentStreamParameters[0],
+  request: LocalAgentStreamParameters[1],
+  abortController: LocalAgentStreamParameters[2],
+  options: Omit<
+    LocalAgentStreamOptions,
+    "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
+  > &
+    Partial<
+      Pick<
+        LocalAgentStreamOptions,
+        "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
+      >
+    >,
 ) =>
-  handleLocalAgentStreamImpl(args[0], args[1], args[2], {
-    supabaseProviderToolsAvailable: false,
-    neonProviderToolsAvailable: false,
-    ...args[3],
+  handleLocalAgentStreamImpl(event, request, abortController, {
+    supabaseProviderToolsAvailable: true,
+    neonProviderToolsAvailable: true,
+    ...options,
   });
 
 // ============================================================================

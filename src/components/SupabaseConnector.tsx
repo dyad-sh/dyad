@@ -141,10 +141,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const refreshAfterConnectRef = useRef<() => Promise<void>>(async () => {});
   refreshAfterConnectRef.current = async () => {
-    await refreshSettings();
+    const refreshedSettings = await refreshSettings();
     await refetchOrganizations();
     const refreshedProjects = await refetchProjects();
-    if (app?.supabaseProjectId) {
+    if (app?.supabaseProjectId && !refreshedProjects.isError) {
       const linkedProject = findLinkedSupabaseProject(
         refreshedProjects.data ?? [],
         app.supabaseProjectId,
@@ -152,7 +152,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       );
       if (
         linkedProject &&
-        linkedProject.organizationSlug !== app.supabaseOrganizationSlug
+        linkedProject.organizationSlug !== app.supabaseOrganizationSlug &&
+        hasSupabaseCredentialsForOrganization(
+          refreshedSettings,
+          linkedProject.organizationSlug,
+        )
       ) {
         try {
           await recoverAppProject({

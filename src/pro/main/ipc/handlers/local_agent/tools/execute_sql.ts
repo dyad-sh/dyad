@@ -13,6 +13,7 @@ import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
 import {
   doesSqlDeleteData,
   doesSqlMutateSchema,
@@ -205,16 +206,14 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      if (canUseNeonTools(ctx)) {
-        const sqlResult = await executeNeonSql({
-          projectId: ctx.neonProjectId,
-          branchId: ctx.neonActiveBranchId,
-          query: args.query,
-        });
-        return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
-      }
+      const provider = resolvePreferredDatabaseProvider({
+        hasSupabaseProject: Boolean(ctx.supabaseProjectId),
+        supabaseAvailable: canUseSupabaseTools(ctx),
+        hasNeonProject: Boolean(ctx.neonProjectId),
+        neonAvailable: canUseNeonTools(ctx),
+      });
 
-      if (canUseSupabaseTools(ctx)) {
+      if (provider === "supabase" && canUseSupabaseTools(ctx)) {
         const sqlResult = await executeSupabaseSql({
           supabaseProjectId: ctx.supabaseProjectId,
           query: args.query,
@@ -238,6 +237,15 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         return migrationFileWritten
           ? `Successfully executed SQL query and wrote a migration file.\n\nSQL result:\n${sqlResult}`
           : `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
+      }
+
+      if (provider === "neon" && canUseNeonTools(ctx)) {
+        const sqlResult = await executeNeonSql({
+          projectId: ctx.neonProjectId,
+          branchId: ctx.neonActiveBranchId,
+          query: args.query,
+        });
+        return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
       }
 
       throw new DyadError(

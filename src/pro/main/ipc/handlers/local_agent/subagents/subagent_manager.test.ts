@@ -326,7 +326,7 @@ describe("sub-agent manager status policy", () => {
     expect(prepared.contextOverrides?.testingEnabled).toBe(true);
   });
 
-  it("keeps the capability-aware fallback prompt when refresh fails", async () => {
+  it("fails child tools closed without changing root capabilities when refresh fails", async () => {
     const root = {
       implementerFallbackSystemPrompt: "Fallback implementer rules",
       supabaseProviderToolsAvailable: true,
@@ -343,16 +343,12 @@ describe("sub-agent manager status policy", () => {
         supabaseProviderToolsAvailable: false,
         neonProviderToolsAvailable: false,
       },
-      rootContextOverrides: {
-        supabaseProviderToolsAvailable: false,
-        neonProviderToolsAvailable: false,
-      },
     });
     expect(root.supabaseProviderToolsAvailable).toBe(true);
     expect(root.neonProviderToolsAvailable).toBe(true);
     syncRootImplementerProviderContext(root, prepared.rootContextOverrides);
-    expect(root.supabaseProviderToolsAvailable).toBe(false);
-    expect(root.neonProviderToolsAvailable).toBe(false);
+    expect(root.supabaseProviderToolsAvailable).toBe(true);
+    expect(root.neonProviderToolsAvailable).toBe(true);
   });
 
   it("fails child provider tools closed when context refresh is unavailable", async () => {

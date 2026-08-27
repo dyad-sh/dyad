@@ -50,6 +50,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
 import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
+import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import type {
   ChatStreamChunkPayload,
@@ -216,12 +217,18 @@ export function resolveRootDatabasePromptState({
   | "neon"
   | "neon-disconnected"
   | "none" {
-  // Current link handlers enforce one provider per app. Keep deterministic
-  // precedence for legacy or corrupted rows that still contain both links.
-  if (hasSupabaseProject && supabaseCredentialsAvailable) return "supabase";
-  if (hasNeonProject && neonCredentialsAvailable) return "neon";
-  if (hasSupabaseProject) return "supabase-disconnected";
-  if (hasNeonProject) return "neon-disconnected";
+  const provider = resolvePreferredDatabaseProvider({
+    hasSupabaseProject,
+    supabaseAvailable: supabaseCredentialsAvailable,
+    hasNeonProject,
+    neonAvailable: neonCredentialsAvailable,
+  });
+  if (provider === "supabase") {
+    return supabaseCredentialsAvailable ? "supabase" : "supabase-disconnected";
+  }
+  if (provider === "neon") {
+    return neonCredentialsAvailable ? "neon" : "neon-disconnected";
+  }
   return "none";
 }
 

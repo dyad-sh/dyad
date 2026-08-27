@@ -126,6 +126,13 @@ description and JSON schema. After changing any of those inputs, rebuild the
 app and regenerate every affected request-dump snapshot; editing only the
 visibly related schema block can leave unrelated stale prompt text behind.
 
+Keep modules reachable from Node-side E2E helpers Node-loadable. In particular,
+`dump-prettifier.ts` reaches the system and Local Agent prompt modules, so those
+modules must not import Vite-only assets such as Markdown `?raw` imports. Put
+shared prompt constants in a raw-free module instead. Otherwise Playwright can
+fail while collecting every spec with `Cannot find module '*.md?raw'` before a
+single test runs.
+
 Snapshots must be **deterministic** and **platform-agnostic**. They must not contain:
 
 - Timestamps

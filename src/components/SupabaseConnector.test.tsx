@@ -29,6 +29,7 @@ const {
   settingsLoadingState,
   appLoadingState,
   unsolicitedReturnCallback,
+  refreshedSettings,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -73,6 +74,7 @@ const {
   unsolicitedReturnCallback: {
     current: null as null | (() => void),
   },
+  refreshedSettings: { refreshed: true },
   redeployState: {
     progress: null as null | { completed: number; total: number },
     isPending: false,
@@ -213,7 +215,7 @@ beforeEach(() => {
   settingsLoadingState.current = false;
   appLoadingState.current = false;
   unsolicitedReturnCallback.current = null;
-  refreshSettingsMock.mockResolvedValue(undefined);
+  refreshSettingsMock.mockResolvedValue(refreshedSettings);
   refreshAppMock.mockResolvedValue(undefined);
   refetchOrganizationsMock.mockResolvedValue({ data: [] });
   refetchProjectsMock.mockResolvedValue({ data: [] });
@@ -223,7 +225,10 @@ beforeEach(() => {
 
 it("migrates a legacy project link to the organization found after reconnect", async () => {
   appState.supabaseOrganizationSlug = null;
-  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  hasSupabaseCredentialsForOrganizationMock.mockImplementation(
+    (settings, organizationSlug) =>
+      settings === refreshedSettings && organizationSlug === "org-reconnected",
+  );
   refetchProjectsMock.mockResolvedValue({
     data: [
       {
@@ -253,7 +258,10 @@ it("uses the parent project to migrate a legacy branch link", async () => {
   appState.supabaseProjectId = "branch-1";
   appState.supabaseParentProjectId = "proj-1";
   appState.supabaseOrganizationSlug = null;
-  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  hasSupabaseCredentialsForOrganizationMock.mockImplementation(
+    (settings, organizationSlug) =>
+      settings === refreshedSettings && organizationSlug === "org-reconnected",
+  );
   refetchProjectsMock.mockResolvedValue({
     data: [
       {
@@ -323,7 +331,10 @@ it("does not offer relinking from stale cached projects", () => {
 
 it("refreshes app state when automatic legacy relinking fails", async () => {
   appState.supabaseOrganizationSlug = null;
-  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  hasSupabaseCredentialsForOrganizationMock.mockImplementation(
+    (settings, organizationSlug) =>
+      settings === refreshedSettings && organizationSlug === "org-reconnected",
+  );
   refetchProjectsMock.mockResolvedValue({
     data: [
       {
@@ -348,7 +359,10 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
 
 it("migrates a link whose stored organization is stale", async () => {
   appState.supabaseOrganizationSlug = "org-old";
-  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  hasSupabaseCredentialsForOrganizationMock.mockImplementation(
+    (settings, organizationSlug) =>
+      settings === refreshedSettings && organizationSlug === "org-new",
+  );
   refetchProjectsMock.mockResolvedValue({
     data: [
       {
@@ -374,6 +388,49 @@ it("migrates a link whose stored organization is stale", async () => {
   expect(toastSuccessMock).toHaveBeenCalledWith(
     "integrations.supabase.projectConnected",
   );
+});
+
+it("does not recover a legacy link from stale project data after a failed refetch", async () => {
+  appState.supabaseOrganizationSlug = null;
+  refetchProjectsMock.mockResolvedValue({
+    data: [
+      {
+        id: "proj-1",
+        name: "Stale Project",
+        region: "us-east-1",
+        organizationSlug: "org-stale",
+      },
+    ],
+    isError: true,
+  });
+
+  renderConnector();
+  unsolicitedReturnCallback.current?.();
+
+  await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
+  expect(recoverAppProjectMock).not.toHaveBeenCalled();
+});
+
+it("does not recover a legacy link without refreshed organization credentials", async () => {
+  appState.supabaseOrganizationSlug = null;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  refetchProjectsMock.mockResolvedValue({
+    data: [
+      {
+        id: "proj-1",
+        name: "Disconnected Project",
+        region: "us-east-1",
+        organizationSlug: "org-disconnected",
+      },
+    ],
+    isError: false,
+  });
+
+  renderConnector();
+  unsolicitedReturnCallback.current?.();
+
+  await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
+  expect(recoverAppProjectMock).not.toHaveBeenCalled();
 });
 
 it("shows a disabled relink action while provider projects are loading", async () => {

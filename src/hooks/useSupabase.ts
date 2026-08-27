@@ -80,11 +80,16 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     mutationFn: async (params) => {
       await ipc.supabase.deleteOrganization(params);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.supabase.organizations,
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.supabase.projects });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.settings.user }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.supabase.organizations,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.supabase.projects,
+        }),
+      ]);
     },
     meta: { showErrorToast: true },
   });

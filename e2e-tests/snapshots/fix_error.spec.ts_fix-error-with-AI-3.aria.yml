@@ -2,6 +2,7 @@
 - paragraph: tc=create-error
 - paragraph: I will intentionally add an error
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"'
+- paragraph: Task completed.
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Restore to this point"
@@ -10,11 +11,10 @@
   - link "http://localhost:[[port]]/src/pages/Index.tsx:6:6":
     - /url: http://localhost:[[port]]/src/pages/Index.tsx:6:6
   - text: )
-- button "Copy"
-- code: Fixing the error...
-- button "Index.tsx src/pages/Index.tsx Edit"
+- paragraph: Fixing the error...
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: Fix the runtime error"'
+- paragraph: The runtime error is fixed.
 - button "Copy"
 - text: "[[Version 3: files changed]]"
-- button "M src/pages/Index.tsx +8 -15"
 - button "Undo"
 - button "Retry"

@@ -147,6 +147,22 @@ describe("sub-agent review orchestration", () => {
     expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
   });
 
+  it("does not resume a paused queue when a suppressed turn is cancelled", async () => {
+    renderHook(() => useBackgroundAutoReview());
+
+    mocks.streamFinishedCallback?.({
+      chatId: 7,
+      outcome: "cancelled",
+      updatedFiles: false,
+      reviewBarrierRequested: false,
+      suppressAutoReview: true,
+      wasCancelled: true,
+    });
+
+    await Promise.resolve();
+    expect(mocks.dispatchQueueEvent).not.toHaveBeenCalled();
+  });
+
   it("leaves queued turns to the queue review barrier", () => {
     expect(
       shouldStartBackgroundAutoReview({

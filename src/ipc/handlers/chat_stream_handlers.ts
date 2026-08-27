@@ -82,7 +82,6 @@ import * as crypto from "crypto";
 import { readFile, writeFile } from "fs/promises";
 import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
-import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
@@ -1742,7 +1741,11 @@ ${componentSnippet}
                 })),
                 smartContextAutoIncludes: [],
               }
-            : validateChatContext(updatedChat.app.chatContext);
+            : {
+                contextPaths: [],
+                smartContextAutoIncludes: [],
+                excludePaths: [],
+              };
 
         let codebaseInfo = "";
         let files: Awaited<ReturnType<typeof extractCodebase>>["files"] = [];

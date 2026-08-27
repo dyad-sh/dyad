@@ -8,8 +8,6 @@ testSkipIfWindows(
     await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
     await po.chatActions.selectChatMode("build");
     await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
-    await po.sendPrompt("tc=add-neon");
-
     await po.appManagement.startDatabaseIntegrationSetup("neon");
     await po.appManagement.clickConnectNeonButton();
     // Reaching the project picker proves the OAuth return advanced through

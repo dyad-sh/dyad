@@ -169,7 +169,7 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
 });
 
 testSkipIfWindows("select component next.js", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
 
   await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
   await po.chatActions.selectChatMode("build");

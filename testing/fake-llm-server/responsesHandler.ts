@@ -152,10 +152,11 @@ async function responsesFixtureTurn(
   testCaseName: string | null,
   input: unknown,
 ): Promise<Turn | undefined> {
-  if (!testCaseName?.startsWith("local-agent/")) return undefined;
-  const fixture = await loadLocalAgentFixture(
-    testCaseName.slice("local-agent/".length),
+  const fixtureName = extractLocalAgentFixture(
+    testCaseName ? `tc=${testCaseName}` : "",
   );
+  if (!fixtureName) return undefined;
+  const fixture = await loadLocalAgentFixture(fixtureName);
   return fixture.turns?.[countFunctionCallOutputs(input)];
 }
 

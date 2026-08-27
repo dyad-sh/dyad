@@ -3,16 +3,15 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
-- text: "[[Version 2: files changed]]"
 - button "Restore to this point"
-- paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
+- paragraph: tc=local-agent/upload-image-to-codebase [[UPLOAD_IMAGE_TO_CODEBASE]]
 - 'button "Expand image: logo.png"'
-- paragraph: Uploading image to codebase
+- paragraph: I'll upload your image to the codebase.
 - text: file.png Copy
-- text: "Copied To: new/image/file.png Uploaded image to codebase"
-- paragraph: "[[dyad-dump-path=*]]"
+- text: "Copied From: attachments:logo.png To: new/image/file.png Copy uploaded image to codebase"
+- paragraph: I've copied the image to new/image/file.png.
 - button "Copy"
-- text: "[[Version 3: files changed]]"
+- text: "[[Version 2: files changed]]"
 - button "A new/image/file.png"
 - button "Undo"
 - button "Retry"

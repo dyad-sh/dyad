@@ -895,6 +895,15 @@ export async function handleLocalAgentFixture(
  */
 export function extractLocalAgentFixture(content: string): string | null {
   if (!content) return null;
+  if (content.startsWith("Fix error: Error Line 6 error")) {
+    return "fix-runtime-error";
+  }
+  if (content.startsWith("Fix all of the following errors:")) {
+    return "fix-all-runtime-errors";
+  }
+  if (content.includes("TypeScript compile-time error")) {
+    return "fix-typescript-errors";
+  }
   if (
     content.startsWith("Please fix the following security issue") ||
     /^Please fix the following \d+ security issues/.test(content)

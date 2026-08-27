@@ -1,5 +1,7 @@
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
+import fs from "fs";
+import path from "path";
 
 testSkipIfWindows(
   "preview loading screen shows spinner and server logs",
@@ -39,7 +41,14 @@ testSkipIfWindows(
     // The next `npm run dev` will exit non-zero with "Missing script: dev",
     // producing server-level error entries that should flow into the
     // loading screen's error banner.
-    await po.sendPrompt("tc=break-package-json");
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const packageJsonPath = path.join(appPath, "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    delete packageJson.scripts.dev;
+    fs.writeFileSync(
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
 
     await po.clickRestart();
 

@@ -138,14 +138,13 @@ export function useBackgroundAutoReview(): void {
   useStreamFinished((event) => {
     const currentSettings = settingsRef.current;
     const snapshot = manager.ensure(event.chatId).getSnapshot();
-    const suppressAutoReview =
-      event.suppressAutoReview ||
-      remediationChatIdsRef.current.has(event.chatId);
+    const isRemediationTurn = remediationChatIdsRef.current.has(event.chatId);
+    const suppressAutoReview = event.suppressAutoReview || isRemediationTurn;
     const hasPendingContinuation = hasPendingReviewContinuation(event.chatId);
 
     if (event.wasCancelled) {
       clearPendingReviewContinuation(event.chatId);
-      if (suppressAutoReview || hasPendingContinuation) {
+      if (isRemediationTurn || hasPendingContinuation) {
         void resumeQueue(event.chatId).catch(showError);
       }
       return;

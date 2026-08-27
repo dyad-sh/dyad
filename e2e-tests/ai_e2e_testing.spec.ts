@@ -99,8 +99,6 @@ testSkipIfWindows(
     await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
     await po.chatActions.selectChatMode("build");
     await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
-    await po.sendPrompt("tc=add-neon");
-
     // Connect a Neon project so runs get an isolated branch copy.
     await po.appManagement.startDatabaseIntegrationSetup("neon");
     await po.appManagement.clickConnectNeonButton();

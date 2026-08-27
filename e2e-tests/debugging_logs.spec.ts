@@ -103,6 +103,17 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
+    // The first render can issue requests before the preview service worker
+    // takes control. Reload once it is ready so request/response events are
+    // deterministically observed by the recorder.
+    await iframeFrame.locator("body").evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    await po.previewPanel.clickPreviewRefresh();
+    await expect(
+      iframeFrame.getByText("Network Requests Test App"),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+
     // Wait for service worker to be ready
     // Service worker registration is async, so we wait for it to be active
     // We check by waiting for network request logs to appear, which indicates SW is ready

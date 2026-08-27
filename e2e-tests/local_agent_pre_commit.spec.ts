@@ -72,7 +72,7 @@ async function setUpAppWithHook(
   po: PageObject,
   mode: "fix-then-pass" | "always-fail",
 ) {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpDyadPro({ localAgent: true, autoApprove: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
   await po.appManagement.configureGitUser();

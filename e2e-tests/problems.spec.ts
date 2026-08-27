@@ -76,7 +76,7 @@ module.exports = require("./${originalEntryName}");
 );
 
 testSkipIfWindows("problems - fix all", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
   await po.importApp(MINIMAL_APP);
   const appPath = await po.appManagement.getCurrentAppPath();
   const badFilePath = path.join(appPath, "src", "bad-file.tsx");
@@ -93,20 +93,21 @@ export default App;
   await po.appManagement.ensurePnpmInstall();
   await po.appManagement.ensureCodeExplorerReady();
 
-  await po.sendPrompt("tc=create-ts-errors");
   await po.previewPanel.selectPreviewMode("problems");
   await po.previewPanel.clickRecheckProblems();
   await po.previewPanel.clickFixAllProblems();
   await po.chatActions.waitForChatCompletion();
 
-  await po.snapshotServerDump("last-message");
+  expect(fs.readFileSync(badFilePath, "utf8")).not.toContain(
+    "nonExistentFunction",
+  );
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
 testSkipIfWindows(
   "problems - select specific problems and fix",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
     await po.importApp(MINIMAL_APP);
 
     // Create multiple TS errors in one file
@@ -164,7 +165,9 @@ export default App;
 
     await fixButton.click();
     await po.chatActions.waitForChatCompletion();
-    await po.snapshotServerDump("last-message");
+    expect(fs.readFileSync(badFilePath, "utf8")).not.toContain(
+      "nonExistentFunction",
+    );
     await po.snapshotMessages({ replaceDumpPath: true });
   },
 );

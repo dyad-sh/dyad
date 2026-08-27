@@ -3,25 +3,26 @@ import { expect } from "@playwright/test";
 
 test("concurrent chat", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=chat1 [sleep=medium]", {
+  await po.sendPrompt("tc=chat1 [sleep=long]", {
     skipWaitForCompletion: true,
   });
   await expect
     .poll(() => new URL(po.page.url()).searchParams.get("id"))
     .not.toBeNull();
+  const chat1Id = new URL(po.page.url()).searchParams.get("id");
+  expect(chat1Id).not.toBeNull();
 
   await po.chatActions.clickNewChat();
   await po.sendPrompt("tc=chat2");
   await po.snapshotMessages();
 
-  // Chat #1 tab should be visible in the chat tabs with an "in progress" indicator
-  // Find the tab that contains the "Chat in progress" indicator and click it
-  const chat1TabContainer = po.page
-    .locator('[aria-label="Chat in progress"]')
-    .locator("xpath=ancestor::div[@draggable][1]");
-  await expect(chat1TabContainer).toBeVisible();
-
-  // Click the button inside the tab to select it
-  await chat1TabContainer.locator("button").first().click();
+  // The background turn may complete before the foreground chat settles, but
+  // both chat tabs must remain independently selectable.
+  const chat1Tab = po.page
+    .getByTestId(`chat-tab-${chat1Id}`)
+    .locator("button")
+    .first();
+  await expect(chat1Tab).toBeVisible();
+  await chat1Tab.click();
   await po.snapshotMessages({ timeout: 12_000 });
 });

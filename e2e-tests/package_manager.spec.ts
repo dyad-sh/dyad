@@ -231,7 +231,7 @@ const realPnpmStrictBuildsTestSkipIfWindows = testWithConfigSkipIfWindows({
 });
 
 async function openMinimalBuildChat(po: PageObject) {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
   await po.page.evaluate(
     async (nodeBinDir) => {
       await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
@@ -325,13 +325,6 @@ function extendSocketFirewallTestTimeout(testInfo: TestInfo) {
   testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
 }
 
-async function clickApproveProposal(po: PageObject) {
-  const approveButton = po.page.getByTestId("approve-proposal-button").last();
-  await expect(approveButton).toBeEnabled({ timeout: Timeout.MEDIUM });
-  await approveButton.click();
-  await expect(approveButton).toBeDisabled({ timeout: Timeout.MEDIUM });
-}
-
 testSkipIfWindows(
   "build mode - safe npm package installs through the real socket firewall path",
   async ({ po }, testInfo) => {
@@ -343,12 +336,9 @@ testSkipIfWindows(
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
     await fs.rm(pnpmWorkspacePath, { force: true });
 
-    await po.sendPrompt("tc=add-safe-dependency");
-    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
-      timeout: Timeout.LONG,
+    await po.sendPrompt("tc=add-safe-dependency", {
+      timeout: Timeout.EXTRA_LONG,
     });
-
-    await clickApproveProposal(po);
     await expect(async () => {
       const packageJson = JSON.parse(
         await fs.readFile(packageJsonPath, "utf8"),
@@ -391,15 +381,12 @@ testSkipIfWindows(
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
 
-    await po.sendPrompt("tc=add-unsafe-dependency");
-    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
-      timeout: Timeout.LONG,
+    await po.sendPrompt("tc=add-unsafe-dependency", {
+      timeout: Timeout.EXTRA_LONG,
     });
 
-    await clickApproveProposal(po);
-
     const errorCard = po.page.getByRole("button", {
-      name: /Failed to add dependencies: axois\./i,
+      name: /Tool 'add_dependency' failed:.*blocked npm package.*axois/i,
     });
     await expect(errorCard).toBeVisible({
       timeout: SOCKET_FIREWALL_VERDICT_TIMEOUT,

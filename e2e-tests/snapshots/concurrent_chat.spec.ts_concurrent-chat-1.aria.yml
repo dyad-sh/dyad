@@ -1,6 +1,6 @@
 - button "Restore to this point"
 - paragraph: tc=chat2
-- paragraph: chat2
+- paragraph: chat2Task completed.
 - button "Copy"
 - button "Undo"
 - button "Retry"

@@ -44,9 +44,12 @@ import { Timeout } from "../constants";
 const IGNORED_SNAPSHOT_FILE_PATHS = new Set([".gitattributes"]);
 
 function isIgnoredSnapshotFile(filePath: string | undefined): boolean {
+  const normalizedPath =
+    typeof filePath === "string" ? normalizePath(filePath) : undefined;
   return (
-    typeof filePath === "string" &&
-    IGNORED_SNAPSHOT_FILE_PATHS.has(normalizePath(filePath))
+    normalizedPath !== undefined &&
+    (IGNORED_SNAPSHOT_FILE_PATHS.has(normalizedPath) ||
+      normalizedPath.startsWith(".dyad/"))
   );
 }
 

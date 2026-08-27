@@ -4,6 +4,7 @@
 
 import {
   getAllAgentToolConsents,
+  getDefaultConsent,
   setAgentToolConsent,
   TOOL_DEFINITIONS,
   type AgentToolName,
@@ -39,7 +40,8 @@ export function registerAgentToolHandlers() {
     ).map((tool) => ({
       name: tool.name,
       description: tool.description,
-      isAllowedByDefault: consents[tool.name] === "always",
+      isAllowedByDefault:
+        getDefaultConsent(tool.name as AgentToolName) === "always",
       consent: consents[tool.name],
     }));
   });

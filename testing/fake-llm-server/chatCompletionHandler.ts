@@ -87,6 +87,17 @@ function hasTool(req: Request, toolName: string): boolean {
   );
 }
 
+function isToolResultMessage(message: any): boolean {
+  return (
+    message?.role === "tool" ||
+    (Array.isArray(message?.content) &&
+      message.content.some(
+        (part: any) =>
+          part?.type === "tool-result" || part?.type === "tool_result",
+      ))
+  );
+}
+
 function sendToolCallJson(
   res: Response,
   toolName: string,
@@ -281,7 +292,8 @@ export const createChatCompletionHandler =
     // fixture trigger.
     if (
       !localAgentFixture &&
-      (userTextContent.includes("incomplete todo(s)") ||
+      (isToolResultMessage(lastUserMessage) ||
+        userTextContent.includes("incomplete todo(s)") ||
         userTextContent.includes("previous response stream was interrupted") ||
         userTextContent.includes("did not finish completely"))
     ) {

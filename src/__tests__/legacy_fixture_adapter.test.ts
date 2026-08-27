@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { convertLegacyFixtureToLocalAgent } from "../../testing/fake-llm-server/localAgentHandler";
+import {
+  convertLegacyFixtureToLocalAgent,
+  extractLocalAgentFixture,
+} from "../../testing/fake-llm-server/localAgentHandler";
 
 describe("legacy Build fixture adapter", () => {
   it("converts ordered file and SQL tags into native tool turns", () => {
@@ -75,5 +78,21 @@ Done`);
         ],
       },
     ]);
+  });
+
+  it("routes generated fix prompts through native tool fixtures", () => {
+    expect(
+      extractLocalAgentFixture("Fix error: Error Line 6 error Stack trace"),
+    ).toBe("fix-runtime-error");
+    expect(
+      extractLocalAgentFixture(
+        "Fix all of the following errors:\n- First error\n- Second error",
+      ),
+    ).toBe("fix-all-runtime-errors");
+    expect(
+      extractLocalAgentFixture(
+        "Fix these 2 TypeScript compile-time errors in a concise way.",
+      ),
+    ).toBe("fix-typescript-errors");
   });
 });

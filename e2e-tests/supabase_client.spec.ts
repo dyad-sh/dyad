@@ -4,8 +4,6 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 testSkipIfWindows("supabase client is generated", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
-  await po.sendPrompt("tc=add-supabase");
-
   // Connect to Supabase
   await po.appManagement.startDatabaseIntegrationSetup("supabase");
   await po.appManagement.clickConnectSupabaseButton();

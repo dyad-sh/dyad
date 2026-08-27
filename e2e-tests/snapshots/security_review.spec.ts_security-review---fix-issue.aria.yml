@@ -25,8 +25,9 @@
   - strong: Relevant Files
   - text: ":"
   - code: "`src/api/users.ts`"
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: I'll apply the security fix now.
+- 'button "file1.txt file1.txt Edit Summary: Fix security vulnerability"'
+- paragraph: I've applied and committed the security fix. EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "A file1.txt +1"

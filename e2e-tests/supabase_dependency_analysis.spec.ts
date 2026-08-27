@@ -17,7 +17,7 @@ async function writeAppFile(
 test("local-agent deploys affected Supabase functions using packaged dependency analysis", async ({
   po,
 }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpDyadPro({ localAgent: true, autoApprove: true });
   await po.importApp("minimal");
   await po.chatActions.waitForChatCompletion();
   await po.chatActions.clickNewChat();

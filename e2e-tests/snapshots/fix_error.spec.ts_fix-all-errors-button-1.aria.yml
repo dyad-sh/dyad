@@ -16,8 +16,9 @@
   - listitem: First error in Index
   - listitem: Second error in ErrorComponent
   - listitem: Third error in helper
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: Fixing all reported errors.
+- 'button "file1.txt file1.txt Edit Summary: Record the runtime error fix"'
+- paragraph: All reported errors are fixed.
 - button "Copy"
 - text: "[[Version 3: files changed]]"
 - button "A file1.txt +1"

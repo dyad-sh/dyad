@@ -207,7 +207,11 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      if (ctx.neonProjectId && ctx.neonActiveBranchId) {
+      if (
+        ctx.neonProjectId &&
+        ctx.neonActiveBranchId &&
+        ctx.neonProviderToolsAvailable === true
+      ) {
         const sqlResult = await executeNeonSql({
           projectId: ctx.neonProjectId,
           branchId: ctx.neonActiveBranchId,
@@ -216,14 +220,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
       }
 
-      if (ctx.neonProjectId && !ctx.neonActiveBranchId) {
-        throw new DyadError(
-          "Neon active branch not configured. Please select a branch in the Neon integration settings.",
-          DyadErrorKind.Precondition,
-        );
-      }
-
-      if (ctx.supabaseProjectId) {
+      if (
+        ctx.supabaseProjectId &&
+        ctx.supabaseProviderToolsAvailable === true
+      ) {
         const sqlResult = await executeSupabaseSql({
           supabaseProjectId: ctx.supabaseProjectId,
           query: args.query,
@@ -250,7 +250,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       }
 
       throw new DyadError(
-        "No database is connected to this app",
+        "No database provider is available for SQL execution",
         DyadErrorKind.Precondition,
       );
     },

@@ -17,7 +17,6 @@ const {
   hasSupabaseCredentialsForOrganizationMock,
   unsetAppProjectMock,
   setAppProjectMock,
-  ipcSetAppProjectMock,
   refetchOrganizationsMock,
   refetchProjectsMock,
   refreshSettingsMock,
@@ -26,6 +25,7 @@ const {
   projectsState,
   providerLoadingState,
   providerErrorState,
+  settingsLoadingState,
   unsolicitedReturnCallback,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
@@ -38,7 +38,6 @@ const {
   hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
   unsetAppProjectMock: vi.fn(),
   setAppProjectMock: vi.fn(),
-  ipcSetAppProjectMock: vi.fn(),
   refetchOrganizationsMock: vi.fn(),
   refetchProjectsMock: vi.fn(),
   refreshSettingsMock: vi.fn(),
@@ -64,6 +63,7 @@ const {
     organizations: null as Error | null,
     projects: null as Error | null,
   },
+  settingsLoadingState: { current: false },
   unsolicitedReturnCallback: {
     current: null as null | (() => void),
   },
@@ -78,7 +78,6 @@ vi.mock("@/ipc/types", () => ({
     supabase: {
       detectLegacyAppKey: detectLegacyAppKeyMock,
       switchAppToPublishableKey: switchAppToPublishableKeyMock,
-      setAppProject: ipcSetAppProjectMock,
     },
     system: { openExternalUrl: vi.fn() },
   },
@@ -101,7 +100,11 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: {}, refreshSettings: refreshSettingsMock }),
+  useSettings: () => ({
+    settings: {},
+    refreshSettings: refreshSettingsMock,
+    loading: settingsLoadingState.current,
+  }),
 }));
 
 vi.mock("@/hooks/useLoadApp", () => ({
@@ -199,13 +202,13 @@ beforeEach(() => {
   providerLoadingState.projects = false;
   providerErrorState.organizations = null;
   providerErrorState.projects = null;
+  settingsLoadingState.current = false;
   unsolicitedReturnCallback.current = null;
   refreshSettingsMock.mockResolvedValue(undefined);
   refreshAppMock.mockResolvedValue(undefined);
   refetchOrganizationsMock.mockResolvedValue({ data: [] });
   refetchProjectsMock.mockResolvedValue({ data: [] });
   setAppProjectMock.mockResolvedValue(undefined);
-  ipcSetAppProjectMock.mockResolvedValue(undefined);
 });
 
 it("migrates a legacy project link to the organization found after reconnect", async () => {
@@ -227,7 +230,7 @@ it("migrates a legacy project link to the organization found after reconnect", a
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(ipcSetAppProjectMock).toHaveBeenCalledWith({
+    expect(setAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "proj-1",
       parentProjectId: undefined,
@@ -256,7 +259,7 @@ it("uses the parent project to migrate a legacy branch link", async () => {
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(ipcSetAppProjectMock).toHaveBeenCalledWith({
+    expect(setAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "branch-1",
       parentProjectId: "proj-1",
@@ -303,14 +306,43 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
       },
     ],
   });
-  ipcSetAppProjectMock.mockRejectedValue(new Error("write failed"));
+  setAppProjectMock.mockRejectedValue(new Error("write failed"));
 
   renderConnector();
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
-  expect(toastErrorMock).toHaveBeenCalledWith(
-    "integrations.supabase.failedConnectProject",
+  expect(setAppProjectMock).toHaveBeenCalled();
+  expect(toastErrorMock).not.toHaveBeenCalled();
+});
+
+it("migrates a link whose stored organization is stale", async () => {
+  appState.supabaseOrganizationSlug = "org-old";
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  refetchProjectsMock.mockResolvedValue({
+    data: [
+      {
+        id: "proj-1",
+        name: "My Project",
+        region: "us-east-1",
+        organizationSlug: "org-new",
+      },
+    ],
+  });
+
+  renderConnector();
+  unsolicitedReturnCallback.current?.();
+
+  await waitFor(() =>
+    expect(setAppProjectMock).toHaveBeenCalledWith({
+      appId: 7,
+      projectId: "proj-1",
+      parentProjectId: undefined,
+      organizationSlug: "org-new",
+    }),
+  );
+  expect(toastSuccessMock).toHaveBeenCalledWith(
+    "integrations.supabase.projectConnected",
   );
 });
 
@@ -358,6 +390,16 @@ it("shows recovery controls when linked organization credentials are missing", a
     {},
     "org-1",
   );
+});
+
+it("waits for settings before showing missing-credential recovery", () => {
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  settingsLoadingState.current = true;
+
+  renderConnector();
+
+  expect(screen.getByTestId("supabase-settings-loading")).toBeTruthy();
+  expect(screen.queryByTestId("supabase-reconnect-card")).toBeNull();
 });
 
 describe("SupabaseConnector — edge function redeployment", () => {

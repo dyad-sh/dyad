@@ -42,7 +42,11 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
       ? ` table="${escapeXmlAttr(args.tableName)}"`
       : "";
 
-    if (ctx.neonProjectId && ctx.neonActiveBranchId) {
+    if (
+      ctx.neonProjectId &&
+      ctx.neonActiveBranchId &&
+      ctx.neonProviderToolsAvailable === true
+    ) {
       ctx.onXmlStream(
         `<dyad-db-table-schema provider="Neon"${tableAttr}></dyad-db-table-schema>`,
       );
@@ -60,7 +64,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
       return schema;
     }
 
-    if (ctx.supabaseProjectId) {
+    if (ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable === true) {
       ctx.onXmlStream(
         `<dyad-db-table-schema provider="Supabase"${tableAttr}></dyad-db-table-schema>`,
       );
@@ -79,7 +83,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
     }
 
     throw new DyadError(
-      "No database is connected to this app",
+      "No database provider is available for schema inspection",
       DyadErrorKind.Precondition,
     );
   },

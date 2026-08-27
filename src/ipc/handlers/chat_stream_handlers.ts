@@ -2048,7 +2048,8 @@ ${componentSnippet}
             supabaseConnected: false,
             neonToolsAvailable: false,
             neonEmailVerificationEnabled: undefined,
-            providerReadToolsAvailable: false,
+            providerMetadataReadAvailable: false,
+            databaseSchemaReadAvailable: false,
             readGuideAvailable:
               settings.agentToolConsents?.["read_guide"] !== "never",
           },
@@ -2081,24 +2082,26 @@ ${componentSnippet}
           const refreshedFrameworkType = detectFrameworkType(
             getDyadAppPath(refreshedApp.path),
           );
-          const providerReadToolsAvailable =
+          const providerMetadataReadAvailable =
             provider === "supabase"
               ? supabaseConnected &&
                 latestSettings.agentToolConsents?.[
                   "get_supabase_project_info"
-                ] !== "never" &&
-                latestSettings.agentToolConsents?.[
-                  "get_database_table_schema"
                 ] !== "never"
               : provider === "neon"
                 ? neonToolsAvailable &&
                   latestSettings.agentToolConsents?.[
                     "get_neon_project_info"
-                  ] !== "never" &&
-                  latestSettings.agentToolConsents?.[
-                    "get_database_table_schema"
                   ] !== "never"
                 : false;
+          const databaseSchemaReadAvailable =
+            (provider === "supabase"
+              ? supabaseConnected
+              : provider === "neon"
+                ? neonToolsAvailable
+                : false) &&
+            latestSettings.agentToolConsents?.["get_database_table_schema"] !==
+              "never";
           const neonEmailVerificationEnabled =
             provider === "neon" &&
             neonToolsAvailable &&
@@ -2120,7 +2123,8 @@ ${componentSnippet}
               supabaseConnected,
               neonToolsAvailable,
               neonEmailVerificationEnabled,
-              providerReadToolsAvailable,
+              providerMetadataReadAvailable,
+              databaseSchemaReadAvailable,
               readGuideAvailable:
                 latestSettings.agentToolConsents?.["read_guide"] !== "never",
             }),

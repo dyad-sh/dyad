@@ -10,6 +10,10 @@ export const SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE =
   "- **No manual migrations:** Never create or edit files under `supabase/migrations/`. Report required schema or SQL changes to the root Agent for execution.";
 export const SUPABASE_IMPLEMENTER_RLS_RULE =
   "- **RLS is mandatory:** Enable RLS for every table exposed through Supabase and require appropriate policies for each operation the app uses (SELECT, INSERT, UPDATE, and DELETE); never propose grants to `anon` or `authenticated` without proper RLS policies.";
+export const SUPABASE_ROOT_RLS_RULE =
+  "- **RLS is mandatory:** Enable RLS for every table exposed through Supabase and require appropriate policies for each operation the app uses (SELECT, INSERT, UPDATE, and DELETE); never grant `anon` or `authenticated` access without proper RLS policies.";
+export const SUPABASE_ROOT_NO_MANUAL_MIGRATIONS_RULE =
+  "- **No manual migrations:** Never create or edit files under `supabase/migrations/`; reconnect the linked Supabase organization before attempting schema changes.";
 export const SUPABASE_SERVICE_ROLE_BROWSER_RULE =
   "- **Keep the service role server-side:** The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.";
 export const SUPABASE_EDGE_FUNCTION_JWT_RULE =
@@ -21,9 +25,8 @@ Continue to preserve these Supabase code-safety invariants while disconnected:
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
 ${SUPABASE_EDGE_FUNCTION_JWT_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
-${SUPABASE_IMPLEMENTER_RLS_RULE}
-${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
-Reconnect Supabase before attempting schema changes.`;
+${SUPABASE_ROOT_RLS_RULE}
+${SUPABASE_ROOT_NO_MANUAL_MIGRATIONS_RULE}`;
 
 export function getSupabaseAvailableSystemPrompt(supabaseClientCode: string) {
   return `

@@ -11,6 +11,8 @@ import {
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_IMPLEMENTER_RLS_RULE,
+  SUPABASE_ROOT_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_ROOT_RLS_RULE,
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
 } from "@/prompts/supabase_prompt";
 import {
@@ -40,10 +42,13 @@ describe("local_agent_prompt", () => {
       SUPABASE_GRANTS_AND_RLS_RULE,
     );
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
-      SUPABASE_IMPLEMENTER_RLS_RULE,
+      SUPABASE_ROOT_RLS_RULE,
     );
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
-      "Never create or edit files under `supabase/migrations/`",
+      SUPABASE_ROOT_NO_MANUAL_MIGRATIONS_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).not.toContain(
+      "Report required schema or SQL changes to the root Agent",
     );
   });
 
@@ -176,8 +181,9 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
     expect(prompt).toContain(
-      "Provider metadata and live-schema read tools are unavailable",
+      "Supabase project metadata inspection is unavailable",
     );
+    expect(prompt).toContain("Live-schema inspection is unavailable");
     expect(prompt).not.toContain("The app is connected to Supabase");
     expect(prompt).not.toContain(
       "You may inspect provider metadata and the live schema",
@@ -310,26 +316,25 @@ describe("local_agent_prompt", () => {
       neonToolsAvailable: false,
     });
 
-    expect(prompt).toContain(
-      "Provider metadata and live-schema read tools are unavailable",
-    );
-    expect(prompt).not.toContain(
-      "You may inspect provider metadata and the live schema",
-    );
+    expect(prompt).toContain("Neon project metadata inspection is unavailable");
+    expect(prompt).toContain("Live-schema inspection is unavailable");
   });
 
-  it("does not promise consent-disabled provider or guide tools", () => {
+  it("describes provider read-tool consent independently", () => {
     const prompt = constructImplementerPrompt(undefined, {
       provider: "neon",
       neonToolsAvailable: true,
       neonEmailVerificationEnabled: true,
-      providerReadToolsAvailable: false,
+      providerMetadataReadAvailable: true,
+      databaseSchemaReadAvailable: false,
       readGuideAvailable: false,
     });
 
     expect(prompt).toContain("read_guide` tool is unavailable");
-    expect(prompt).toContain("read tools are unavailable");
-    expect(prompt).not.toContain("You may inspect provider metadata");
+    expect(prompt).toContain(
+      "`get_neon_project_info` metadata tool is available",
+    );
+    expect(prompt).toContain("Live-schema inspection is unavailable");
     expect(prompt).not.toContain("MUST call the `read_guide`");
   });
 

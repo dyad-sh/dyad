@@ -81,7 +81,7 @@ function findLinkedSupabaseProject(
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
-  const { settings, refreshSettings } = useSettings();
+  const { settings, refreshSettings, loading: settingsLoading } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
   const { isDarkMode } = useTheme();
 
@@ -143,27 +143,26 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     await refreshSettings();
     await refetchOrganizations();
     const refreshedProjects = await refetchProjects();
-    if (app?.supabaseProjectId && !app.supabaseOrganizationSlug) {
+    if (app?.supabaseProjectId) {
       const linkedProject = findLinkedSupabaseProject(
         refreshedProjects.data ?? [],
         app.supabaseProjectId,
         app.supabaseParentProjectId,
       );
-      if (linkedProject) {
+      if (
+        linkedProject &&
+        linkedProject.organizationSlug !== app.supabaseOrganizationSlug
+      ) {
         try {
-          await ipc.supabase.setAppProject({
+          await setAppProject({
             appId,
             projectId: app.supabaseProjectId,
             parentProjectId: app.supabaseParentProjectId,
             organizationSlug: linkedProject.organizationSlug,
           });
+          toast.success(t("integrations.supabase.projectConnected"));
         } catch (error) {
           console.error("Failed to recover legacy Supabase link:", error);
-          toast.error(
-            t("integrations.supabase.failedConnectProject", {
-              error: String(error),
-            }),
-          );
         }
       }
     }
@@ -386,6 +385,15 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       );
     }
   };
+
+  if (settingsLoading) {
+    return (
+      <Skeleton
+        className="h-24 w-full"
+        data-testid="supabase-settings-loading"
+      />
+    );
+  }
 
   // Keep recovery controls available when the app still points at a project
   // whose organization token has been removed. Hiding the association here

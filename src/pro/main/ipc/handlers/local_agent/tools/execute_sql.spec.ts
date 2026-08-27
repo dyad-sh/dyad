@@ -36,15 +36,6 @@ describe("executeSqlTool", () => {
     });
   });
 
-  it("stays registered when a root turn can connect a provider mid-turn", () => {
-    expect(
-      executeSqlTool.isEnabled?.({
-        refreshImplementerContext: vi.fn(),
-      } as any),
-    ).toBe(true);
-    expect(executeSqlTool.isEnabled?.({} as any)).toBe(false);
-  });
-
   it("marks mutating SQL in consent metadata", () => {
     expect(
       executeSqlTool.getConsentMetadata?.({

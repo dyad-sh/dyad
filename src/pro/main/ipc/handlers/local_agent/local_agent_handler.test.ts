@@ -694,8 +694,12 @@ describe("handleLocalAgentStream", () => {
     mockSettings = buildTestSettings({ enableDyadPro: true });
     mockChatData = buildTestChat();
     let seenContextFactory: AgentContext["refreshImplementerContext"];
+    let seenSupabaseProviderToolsAvailable: boolean | undefined;
+    let seenNeonProviderToolsAvailable: boolean | undefined;
     vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
       seenContextFactory = ctx.refreshImplementerContext;
+      seenSupabaseProviderToolsAvailable = ctx.supabaseProviderToolsAvailable;
+      seenNeonProviderToolsAvailable = ctx.neonProviderToolsAvailable;
       return {};
     });
     mockStreamResult = createFakeStream([{ type: "text-delta", text: "Done" }]);
@@ -718,6 +722,8 @@ describe("handleLocalAgentStream", () => {
           frameworkType: null,
         }),
         implementerFallbackSystemPrompt: "Fallback implementer rules",
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: true,
         dyadRequestId,
       },
     );
@@ -727,6 +733,8 @@ describe("handleLocalAgentStream", () => {
     expect((await seenContextFactory?.())?.systemPrompt).toBe(
       "Implementer rules",
     );
+    expect(seenSupabaseProviderToolsAvailable).toBe(false);
+    expect(seenNeonProviderToolsAvailable).toBe(true);
   });
 
   describe("provider-scoped tool-call ID normalization", () => {

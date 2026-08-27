@@ -178,11 +178,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     modifiesState: true,
     isEnabled: (ctx) =>
       !!ctx.supabaseProjectId ||
-      (!!ctx.neonProjectId && !!ctx.neonActiveBranchId) ||
-      // A root turn can connect a provider and refresh these IDs after its
-      // static tool map is built. Keep the root-owned operation registered so
-      // the same turn can execute SQL after an Implementer reports it.
-      !!ctx.refreshImplementerContext,
+      (!!ctx.neonProjectId && !!ctx.neonActiveBranchId),
 
     getConsentPreview: (args) => args.query,
 

@@ -197,6 +197,22 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 
 const logger = log.scope("chat_stream_handlers");
 
+export function resolveRootDatabasePromptState({
+  hasSupabaseProject,
+  supabaseCredentialsAvailable,
+  hasNeonProject,
+}: {
+  hasSupabaseProject: boolean;
+  supabaseCredentialsAvailable: boolean;
+  hasNeonProject: boolean;
+}): "supabase" | "supabase-disconnected" | "neon" | "none" {
+  if (hasSupabaseProject) {
+    return supabaseCredentialsAvailable ? "supabase" : "supabase-disconnected";
+  }
+  if (hasNeonProject) return "neon";
+  return "none";
+}
+
 export interface ChatStreamExecutionObserver {
   intent: SerializableChatTurnIntent;
   sessionQueued: boolean;
@@ -1991,6 +2007,19 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
+        const initialSupabaseProviderToolsAvailable = Boolean(
+          updatedChat.app.supabaseProjectId &&
+          hasSupabaseCredentialsForOrganization(
+            settings,
+            updatedChat.app.supabaseOrganizationSlug,
+          ),
+        );
+        const initialNeonProviderToolsAvailable = Boolean(
+          updatedChat.app.neonProjectId &&
+          (updatedChat.app.neonActiveBranchId ??
+            updatedChat.app.neonDevelopmentBranchId) &&
+          settings.neon?.accessToken?.value,
+        );
         const implementerFallbackSystemPrompt = constructImplementerPrompt(
           aiRules,
           {
@@ -2119,15 +2148,14 @@ ${componentSnippet}
           }
         }
 
-        if (
-          updatedChat.app?.supabaseProjectId &&
-          hasSupabaseCredentialsForOrganization(
-            settings,
-            updatedChat.app.supabaseOrganizationSlug,
-          )
-        ) {
+        const rootDatabasePromptState = resolveRootDatabasePromptState({
+          hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
+          supabaseCredentialsAvailable: initialSupabaseProviderToolsAvailable,
+          hasNeonProject: Boolean(updatedChat.app.neonProjectId),
+        });
+        if (rootDatabasePromptState === "supabase") {
           const supabaseClientCode = await getSupabaseClientCode({
-            projectId: updatedChat.app.supabaseProjectId,
+            projectId: updatedChat.app.supabaseProjectId!,
             organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
           });
           systemPrompt +=
@@ -2138,13 +2166,13 @@ ${componentSnippet}
             (willUseLocalAgentStream
               ? ""
               : await getSupabaseContext({
-                  supabaseProjectId: updatedChat.app.supabaseProjectId,
+                  supabaseProjectId: updatedChat.app.supabaseProjectId!,
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
-        } else if (updatedChat.app?.supabaseProjectId) {
+        } else if (rootDatabasePromptState === "supabase-disconnected") {
           systemPrompt += "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
-        } else if (updatedChat.app?.neonProjectId) {
+        } else if (rootDatabasePromptState === "neon") {
           // Neon is connected — inject Neon prompt instead of Supabase
           systemPrompt +=
             "\n\n" +
@@ -2489,7 +2517,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Ask mode does not consume free agent quota
         if (isAskMode) {
           // Reconstruct system prompt for local-agent read-only mode
-          const readOnlySystemPrompt = constructSystemPrompt({
+          let readOnlySystemPrompt = constructSystemPrompt({
             aiRules,
             chatMode: "local-agent",
             enableTurboEditsV2: false,
@@ -2499,6 +2527,10 @@ This conversation includes one or more image attachments. When the user uploads 
             codeExplorerAvailable,
             historyExplorerAvailable,
           });
+          if (rootDatabasePromptState === "supabase-disconnected") {
+            readOnlySystemPrompt +=
+              "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
+          }
 
           // Return value indicates success/failure for quota tracking.
           // Ask mode doesn't consume quota, but we still capture it for
@@ -2525,6 +2557,9 @@ This conversation includes one or more image attachments. When the user uploads 
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),
+              supabaseProviderToolsAvailable:
+                initialSupabaseProviderToolsAvailable,
+              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
             },
           );
           if (!streamSuccess) {
@@ -2563,6 +2598,9 @@ This conversation includes one or more image attachments. When the user uploads 
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment: false,
+              supabaseProviderToolsAvailable:
+                initialSupabaseProviderToolsAvailable,
+              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
             },
           );
           return;
@@ -2617,6 +2655,9 @@ This conversation includes one or more image attachments. When the user uploads 
               preCommitHookAvailable,
               refreshImplementerContext,
               implementerFallbackSystemPrompt,
+              supabaseProviderToolsAvailable:
+                initialSupabaseProviderToolsAvailable,
+              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),

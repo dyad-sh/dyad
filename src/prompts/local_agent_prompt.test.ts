@@ -6,6 +6,7 @@ import {
   resolveImplementerProvider,
 } from "@/prompts/local_agent_prompt";
 import {
+  SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_IMPLEMENTER_RLS_RULE,
@@ -25,6 +26,21 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain("<dyad-git-context>");
     expect(prompt).toContain('source_commit="..." no_commit="true"');
   };
+
+  it("keeps Supabase safety invariants in the disconnected root prompt", () => {
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      SUPABASE_GRANTS_AND_RLS_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      SUPABASE_IMPLEMENTER_RLS_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      "Never create or edit files under `supabase/migrations/`",
+    );
+  });
 
   it("agent mode system prompt", () => {
     const prompt = constructLocalAgentPrompt(undefined);

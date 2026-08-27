@@ -16,6 +16,7 @@ import {
   setPartialResponseForStream,
   hasUnclosedDyadWrite,
   processStreamChunks,
+  resolveRootDatabasePromptState,
   takePartialResponseForStream,
 } from "@/ipc/handlers/chat_stream_handlers";
 import type { AsyncIterableStream, TextStreamPart, ToolSet } from "ai";
@@ -69,6 +70,28 @@ describe("stream invocation tracking", () => {
     expect(takePartialResponseForStream(newerStream)).toBe(
       "newer partial response",
     );
+  });
+});
+
+describe("root database prompt selection", () => {
+  it("preserves the linked Supabase identity when its credentials are missing", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: true,
+        supabaseCredentialsAvailable: false,
+        hasNeonProject: true,
+      }),
+    ).toBe("supabase-disconnected");
+  });
+
+  it("selects Neon only when the app is not linked to Supabase", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: false,
+        supabaseCredentialsAvailable: false,
+        hasNeonProject: true,
+      }),
+    ).toBe("neon");
   });
 });
 

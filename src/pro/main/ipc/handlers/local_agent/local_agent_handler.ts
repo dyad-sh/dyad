@@ -494,6 +494,8 @@ export async function handleLocalAgentStream(
     currentTurnHasOnDiskAttachment,
     refreshImplementerContext,
     implementerFallbackSystemPrompt,
+    supabaseProviderToolsAvailable,
+    neonProviderToolsAvailable,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -533,6 +535,10 @@ export async function handleLocalAgentStream(
     refreshImplementerContext?: AgentContext["refreshImplementerContext"];
     /** Provider-less capability-aware prompt used if refresh fails. */
     implementerFallbackSystemPrompt?: string;
+    /** Whether the root and read-only children can authenticate Supabase reads. */
+    supabaseProviderToolsAvailable?: boolean;
+    /** Whether the root and read-only children can authenticate Neon reads. */
+    neonProviderToolsAvailable?: boolean;
   },
 ): Promise<boolean> {
   const storedSettings = settingsOverride ?? readSettings();
@@ -878,6 +884,8 @@ export async function handleLocalAgentStream(
       fileEditTracker,
       refreshImplementerContext,
       implementerFallbackSystemPrompt,
+      supabaseProviderToolsAvailable,
+      neonProviderToolsAvailable,
       preCommitHookAvailable,
       testingEnabled: Boolean(chat.app.testingEnabled),
       testRunAttempts: new Map(),

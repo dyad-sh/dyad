@@ -64,7 +64,10 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
-import { isSupabaseConnected } from "@/lib/schemas";
+import {
+  hasSupabaseCredentialsForOrganization,
+  isSupabaseConnected,
+} from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
@@ -73,8 +76,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { app, refreshApp } = useLoadApp(appId);
   const { isDarkMode } = useTheme();
 
-  // Check if there are any connected organizations
-  const isConnected = isSupabaseConnected(settings);
+  // A linked app must be authenticated to its own organization. Before a
+  // project is selected, any connected organization can populate the picker.
+  const isConnected = app?.supabaseProjectId
+    ? hasSupabaseCredentialsForOrganization(
+        settings,
+        app.supabaseOrganizationSlug,
+      )
+    : isSupabaseConnected(settings);
 
   // Gates the update offer: true only when the app's generated client is
   // holding this project's legacy key and a publishable key exists to replace

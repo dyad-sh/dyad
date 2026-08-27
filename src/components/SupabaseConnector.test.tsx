@@ -14,6 +14,7 @@ const {
   redeployAllFunctionsMock,
   redeployState,
   showErrorMock,
+  hasSupabaseCredentialsForOrganizationMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   toastInfoMock: vi.fn(),
   redeployAllFunctionsMock: vi.fn(),
   showErrorMock: vi.fn(),
+  hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
   redeployState: {
     progress: null as null | { completed: number; total: number },
     isPending: false,
@@ -73,7 +75,11 @@ vi.mock("@/contexts/ThemeContext", () => ({
   useTheme: () => ({ isDarkMode: false }),
 }));
 
-vi.mock("@/lib/schemas", () => ({ isSupabaseConnected: () => true }));
+vi.mock("@/lib/schemas", () => ({
+  isSupabaseConnected: () => true,
+  hasSupabaseCredentialsForOrganization:
+    hasSupabaseCredentialsForOrganizationMock,
+}));
 
 vi.mock("@/hooks/useSupabase", () => ({
   useSupabase: () => ({
@@ -133,6 +139,20 @@ beforeEach(() => {
   });
   redeployState.progress = null;
   redeployState.isPending = false;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(true);
+});
+
+it("shows reconnect UI when the linked organization credentials are missing", async () => {
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+
+  renderConnector();
+
+  expect(await screen.findByTestId("connect-supabase-button")).toBeTruthy();
+  expect(screen.queryByText("My Project")).toBeNull();
+  expect(hasSupabaseCredentialsForOrganizationMock).toHaveBeenCalledWith(
+    {},
+    "org-1",
+  );
 });
 
 describe("SupabaseConnector — edge function redeployment", () => {

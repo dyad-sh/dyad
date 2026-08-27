@@ -650,6 +650,19 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
   );
 }
 
+export function hasSupabaseCredentialsForOrganization(
+  settings: Pick<UserSettings, "supabase"> | null,
+  organizationSlug?: string | null,
+): boolean {
+  if (!settings) return false;
+  return organizationSlug
+    ? Boolean(
+        settings.supabase?.organizations?.[organizationSlug]?.accessToken
+          ?.value,
+      )
+    : Boolean(settings.supabase?.accessToken?.value);
+}
+
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
   return Boolean(
     isDyadProEnabled(settings) &&

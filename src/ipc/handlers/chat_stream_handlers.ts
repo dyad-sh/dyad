@@ -2041,7 +2041,7 @@ ${componentSnippet}
             // the fallback prompt must not advertise live provider reads.
             supabaseConnected: false,
             neonToolsAvailable: false,
-            neonEmailVerificationEnabled: false,
+            neonEmailVerificationEnabled: undefined,
           },
         );
         const refreshImplementerContext = async () => {
@@ -2072,15 +2072,17 @@ ${componentSnippet}
           const refreshedFrameworkType = detectFrameworkType(
             getDyadAppPath(refreshedApp.path),
           );
-          const neonEmailVerificationEnabled = Boolean(
+          const neonEmailVerificationEnabled =
             provider === "neon" &&
             neonToolsAvailable &&
-            refreshedApp.neonProjectId &&
-            (await getNeonEmailVerificationEnabled(
-              refreshedApp.neonProjectId,
-              neonBranchId,
-            )),
-          );
+            refreshedApp.neonProjectId
+              ? await getNeonEmailVerificationEnabled(
+                  refreshedApp.neonProjectId,
+                  neonBranchId,
+                )
+              : provider === "neon"
+                ? undefined
+                : false;
           return {
             systemPrompt: constructImplementerPrompt(aiRules, {
               provider,

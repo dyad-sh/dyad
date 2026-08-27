@@ -497,6 +497,15 @@ ${AGENT_RECORDED_TEST_GUIDANCE}
 
 ${AGENT_RUN_TESTS_GUIDANCE}`;
 
+/** Test-writing guidance safe for children without user-facing recorder tools. */
+export const IMPLEMENTER_TEST_WRITING_GUIDANCE = `${AGENT_PROACTIVE_TESTS_GUIDANCE}
+
+${buildTestWritingGuidance(
+  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`e2e-tests/\` (e.g. \`e2e-tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
+)}
+
+${AGENT_RUN_TESTS_GUIDANCE}`;
+
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]

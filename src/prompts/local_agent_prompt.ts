@@ -4,7 +4,10 @@
  */
 
 import type { AppFrameworkType } from "@/lib/framework_constants";
-import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
+import {
+  AGENT_TEST_WRITING_GUIDANCE,
+  IMPLEMENTER_TEST_WRITING_GUIDANCE,
+} from "./system_prompt";
 import {
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
   SUPABASE_GRANTS_AND_RLS_RULE,
@@ -660,7 +663,7 @@ function implementerProviderGuidance(
   provider: ImplementerProvider | undefined,
   supabaseConnected: boolean,
   neonToolsAvailable: boolean,
-  neonEmailVerificationEnabled: boolean,
+  neonEmailVerificationEnabled: boolean | undefined,
 ): string {
   if (provider === "supabase") {
     return `<provider_invariants provider="supabase">
@@ -682,7 +685,7 @@ ${NEON_RLS_REQUIRES_JWT_RULE}
 ${NEON_NO_BROWSER_DATABASE_URL_RULE}
 ${NEON_NO_BROWSER_SERVERLESS_RULE}
 - Before writing any authentication code, you MUST call the \`read_guide\` tool with guide="add-authentication".
-${neonEmailVerificationEnabled ? '- Email verification is enabled. Before writing sign-up or email-verification code, you MUST also call `read_guide` with guide="add-email-verification".' : ""}
+${neonEmailVerificationEnabled === true ? '- Email verification is enabled. Before writing sign-up or email-verification code, you MUST also call `read_guide` with guide="add-email-verification".' : neonEmailVerificationEnabled === undefined ? "- Email-verification state is unavailable. Before writing sign-up or email-verification code, do not assume it is disabled; report the provider access requirement to the root Agent." : ""}
 - Before writing password-reset code, you MUST call \`read_guide\` with guide="add-password-reset". Never hand-roll a reset-token flow.
 ${neonToolsAvailable ? "- You may inspect provider metadata and the live schema with the available read tools." : "- Neon branch context is unavailable, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
@@ -710,7 +713,7 @@ export function constructImplementerPrompt(
     options?.provider,
     options?.supabaseConnected === true,
     options?.neonToolsAvailable === true,
-    options?.neonEmailVerificationEnabled === true,
+    options?.neonEmailVerificationEnabled,
   );
   const frameworkGuidance =
     options?.frameworkType === "vite"
@@ -742,7 +745,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${options?.testingEnabled ? AGENT_TEST_WRITING_GUIDANCE : ""}
+${options?.testingEnabled ? IMPLEMENTER_TEST_WRITING_GUIDANCE : ""}
 
 <workflow>
 1. Inspect the assignment's relevant files and confirm the requested behavior is not already present.

@@ -205,6 +205,7 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain("e2e-tests/");
     expect(prompt).toContain(".spec.ts");
+    expect(prompt).not.toContain("generate_test_assertions");
     expect(
       constructImplementerPrompt(undefined, { testingEnabled: false }),
     ).not.toContain("e2e-tests/");
@@ -252,6 +253,16 @@ describe("local_agent_prompt", () => {
     });
 
     expect(prompt).not.toContain('guide="add-email-verification"');
+  });
+
+  it("does not treat unknown Neon email verification as disabled", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "neon",
+      neonToolsAvailable: false,
+    });
+
+    expect(prompt).toContain("Email-verification state is unavailable");
+    expect(prompt).toContain("do not assume it is disabled");
   });
 
   it("does not promise Neon provider tools without branch context", () => {

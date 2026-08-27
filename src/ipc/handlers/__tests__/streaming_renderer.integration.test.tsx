@@ -1,7 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { cleanup, screen } from "@testing-library/react";
+import { and, desc, eq } from "drizzle-orm";
 
+import { messages } from "@/db/schema";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -64,6 +66,13 @@ describe("streaming renderer (integration)", () => {
     ]) {
       expect(screen.getByText(name, { exact: true })).toBeTruthy();
     }
+    const assistantMessage = await harness.db.query.messages.findFirst({
+      where: and(eq(messages.chatId, chatId), eq(messages.role, "assistant")),
+      orderBy: [desc(messages.id)],
+    });
+    expect(assistantMessage?.approvalState).toBe("approved");
+    expect(screen.queryByTestId("approve-proposal-button")).toBeNull();
+    expect(screen.queryByTestId("reject-proposal-button")).toBeNull();
   }, 60_000);
 
   it("echoes one invocation ref through registration, chunks, and completion", async () => {

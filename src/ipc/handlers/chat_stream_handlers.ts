@@ -1644,6 +1644,7 @@ ${componentSnippet}
         // Generate requestId early so it can be saved with the message
         dyadRequestId = uuidv4();
       }
+      const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
 
       // Add a placeholder assistant message immediately
       const [placeholderAssistantMessage] = await db
@@ -1652,6 +1653,10 @@ ${componentSnippet}
           chatId: req.chatId,
           role: "assistant",
           content: "", // Start with empty content
+          // Agentic tools apply their mutations as they run. Mark their
+          // messages as already handled so legacy proposal actions cannot
+          // replay tool XML after an error or cancellation.
+          approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
           model: settings.selectedModel.name,
           sourceCommitHash: await getCurrentCommitHash({
@@ -1715,8 +1720,6 @@ ${componentSnippet}
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
-        const willUseLocalAgentStream =
-          isLocalAgentBackedMode(selectedChatMode);
         const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
         // only include the selected components' files for codebase context.

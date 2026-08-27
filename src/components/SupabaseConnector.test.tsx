@@ -126,9 +126,9 @@ vi.mock("@/hooks/useSupabase", () => ({
     organizations: [],
     projects: projectsState.current,
     branches: [],
-    isLoadingProjects: false,
+    isLoadingProjects: providerLoadingState.projects,
     isFetchingProjects: providerLoadingState.projects,
-    isLoadingOrganizations: false,
+    isLoadingOrganizations: providerLoadingState.organizations,
     isFetchingOrganizations: providerLoadingState.organizations,
     projectsError: null,
     isLoadingBranches: false,
@@ -301,6 +301,9 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
+  expect(toastErrorMock).toHaveBeenCalledWith(
+    "integrations.supabase.failedConnectProject",
+  );
 });
 
 it("shows a disabled relink action while provider projects are loading", async () => {

@@ -117,7 +117,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isLoadingProjects,
     isFetchingProjects,
     isLoadingOrganizations,
-    isFetchingOrganizations,
     projectsError,
     isLoadingBranches,
     branchesError,
@@ -159,6 +158,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           });
         } catch (error) {
           console.error("Failed to recover legacy Supabase link:", error);
+          toast.error(
+            t("integrations.supabase.failedConnectProject", {
+              error: String(error),
+            }),
+          );
         }
       }
     }
@@ -361,11 +365,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         app.supabaseParentProjectId,
       )
     : undefined;
-  const isLoadingRelinkCandidate =
-    isLoadingOrganizations ||
-    isFetchingOrganizations ||
-    isLoadingProjects ||
-    isFetchingProjects;
+  const isLoadingRelinkCandidate = isLoadingOrganizations || isLoadingProjects;
   const handleRelinkProject = async () => {
     if (!app?.supabaseProjectId || !linkedProjectForRelink) return;
     try {

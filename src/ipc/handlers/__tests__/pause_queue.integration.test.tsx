@@ -301,7 +301,13 @@ describe("pause queue (integration)", () => {
         payload !== null &&
         (payload as { chatId?: number }).chatId === chatId,
     );
-    await harness.pressEnterInChat("submitted after stop", { chatId });
+    // Cancellation re-renders the composer while its local acceptance latch
+    // settles. Wait for the current Send control to be enabled instead of
+    // firing Enter at a Lexical root that may be replaced during that render.
+    const { send } = await harness.typeInChat("submitted after stop", {
+      chatId,
+    });
+    send();
 
     await waitFor(() => expect(screen.queryByText("Paused")).toBeNull(), {
       timeout: 15_000,

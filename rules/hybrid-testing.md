@@ -174,6 +174,11 @@ invalidation, await the exact control with `findByRole` before interacting.
 Finding separate page text first does not guarantee a later `getByRole` is
 synchronous or race-free.
 
+After cancelling a chat stream, do not immediately submit through a previously
+captured Lexical root: cancellation can re-render the composer while its local
+acceptance latch settles. Use `typeInChat()` and invoke the enabled Send control
+it returns so the test targets the current composer instance.
+
 When a renderer action awaits IPC post-effects that can outlive the first
 observable DOM or database update, call `await harness.bridge.settleInFlight()`
 before ending the test. Otherwise provider teardown can dispose the owning state

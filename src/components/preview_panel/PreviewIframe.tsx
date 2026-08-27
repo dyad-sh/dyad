@@ -1587,14 +1587,15 @@ export const PreviewIframe = ({
       />
 
       <div className="relative flex-grow overflow-hidden">
-        {!loading && (
+        {!loading && errorMessage && (
           <PreviewErrorBanner
+            key={`${errorMessage.source}:${errorMessage.message}`}
             error={errorMessage}
             onDismiss={() => sendIframeEvent({ type: "DISMISS" })}
             onAIFix={() => {
               if (selectedChatId) {
                 streamMessage({
-                  prompt: `Fix error: ${errorMessage?.message}`,
+                  prompt: `Fix error: ${errorMessage.message}`,
                   chatId: selectedChatId,
                 });
               }

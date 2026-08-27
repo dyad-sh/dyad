@@ -83,4 +83,40 @@ describe("PreviewErrorBanner", () => {
     expect(screen.getByText(/Stack trace/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide details" })).toBeTruthy();
   });
+
+  it("resets disclosure state when a different error arrives", () => {
+    const { rerender } = render(
+      <PreviewErrorBanner
+        key={`${previewError.source}:${previewError.message}`}
+        error={previewError}
+        onDismiss={vi.fn()}
+        onAIFix={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse error banner" }),
+    );
+
+    const nextError = {
+      message: "Error A different failure",
+      source: "preview-app" as const,
+    };
+    rerender(
+      <PreviewErrorBanner
+        key={`${nextError.source}:${nextError.message}`}
+        error={nextError}
+        onDismiss={vi.fn()}
+        onAIFix={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Collapse error banner" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Try restarting the app.")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Fix error with AI" }),
+    ).toBeTruthy();
+  });
 });

@@ -9,14 +9,10 @@ import {
 } from "lucide-react";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import type { PreviewError } from "@/preview_iframe/state";
 
 interface PreviewErrorBannerProps {
-  error:
-    | {
-        message: string;
-        source: "preview-app" | "dyad-app" | "dyad-sync";
-      }
-    | undefined;
+  error: PreviewError;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -29,8 +25,6 @@ export function PreviewErrorBanner({
   const [isBannerCollapsed, setIsBannerCollapsed] = useState(false);
   const [areErrorDetailsVisible, setAreErrorDetailsVisible] = useState(false);
   const { isStreaming } = useStreamChat();
-
-  if (!error) return null;
 
   const isDockerError = error.message.includes("Cannot connect to the Docker");
   const isInternalDyadError = error.source === "dyad-app";

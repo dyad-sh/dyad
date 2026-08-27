@@ -198,4 +198,25 @@ describe("buildNeonPromptAdditions", () => {
     expect(getCachedEmailPasswordConfig).not.toHaveBeenCalled();
     expect(getNeonContext).not.toHaveBeenCalled();
   });
+
+  it("preserves unknown email-verification state after a lookup failure", async () => {
+    getCachedEmailPasswordConfig.mockRejectedValue(new Error("unavailable"));
+
+    const { buildNeonPromptAdditions, getNeonEmailVerificationEnabled } =
+      await import("./neon_prompt_context");
+
+    await expect(
+      getNeonEmailVerificationEnabled("project-123", "branch-123"),
+    ).resolves.toBeUndefined();
+
+    const additions = await buildNeonPromptAdditions({
+      projectId: "project-123",
+      branchId: "branch-123",
+      frameworkType: "vite",
+      includeContext: false,
+      isLocalAgentMode: true,
+    });
+    expect(additions).toContain("Email-verification state could not be read");
+    expect(additions).toContain("Do not assume it is disabled");
+  });
 });

@@ -43,6 +43,10 @@ export async function buildNeonPromptAdditions({
     },
   );
 
+  if (emailVerificationEnabled === undefined) {
+    neonPromptAddition += `\n\n<neon-provider-state>\nEmail-verification state could not be read. Do not assume it is disabled; inspect the live Neon Auth configuration before changing sign-up or verification behavior.\n</neon-provider-state>`;
+  }
+
   if (includeContext && branchId) {
     try {
       neonPromptAddition +=
@@ -62,14 +66,15 @@ export async function buildNeonPromptAdditions({
 export async function getNeonEmailVerificationEnabled(
   projectId: string,
   branchId?: string | null,
-): Promise<boolean> {
-  if (!branchId) return false;
+): Promise<boolean | undefined> {
+  if (!branchId) return undefined;
   try {
     const emailConfig = await getCachedEmailPasswordConfig(projectId, branchId);
     return emailConfig.require_email_verification;
   } catch {
-    // Best-effort: proceed without email verification guidance.
-    return false;
+    // Preserve the distinction between disabled and unavailable. Callers must
+    // not build a non-verification flow from a failed provider lookup.
+    return undefined;
   }
 }
 

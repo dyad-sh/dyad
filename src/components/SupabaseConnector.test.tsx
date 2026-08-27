@@ -15,6 +15,7 @@ const {
   redeployState,
   showErrorMock,
   hasSupabaseCredentialsForOrganizationMock,
+  unsetAppProjectMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -24,6 +25,7 @@ const {
   redeployAllFunctionsMock: vi.fn(),
   showErrorMock: vi.fn(),
   hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
+  unsetAppProjectMock: vi.fn(),
   redeployState: {
     progress: null as null | { completed: number; total: number },
     isPending: false,
@@ -94,7 +96,7 @@ vi.mock("@/hooks/useSupabase", () => ({
     isSettingAppProject: false,
     refetchOrganizations: vi.fn(),
     setAppProject: vi.fn(),
-    unsetAppProject: vi.fn(),
+    unsetAppProject: unsetAppProjectMock,
     deleteOrganization: vi.fn(),
   }),
   useRedeploySupabaseFunctions: () => ({
@@ -142,13 +144,16 @@ beforeEach(() => {
   hasSupabaseCredentialsForOrganizationMock.mockReturnValue(true);
 });
 
-it("shows reconnect UI when the linked organization credentials are missing", async () => {
+it("shows recovery controls when linked organization credentials are missing", async () => {
   hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
 
   renderConnector();
 
-  expect(await screen.findByTestId("connect-supabase-button")).toBeTruthy();
-  expect(screen.queryByText("My Project")).toBeNull();
+  expect(await screen.findByTestId("supabase-reconnect-card")).toBeTruthy();
+  expect(screen.getByText("My Project")).toBeTruthy();
+  expect(screen.getByTestId("reconnect-supabase-button")).toBeTruthy();
+  fireEvent.click(screen.getByText("integrations.supabase.disconnectProject"));
+  await waitFor(() => expect(unsetAppProjectMock).toHaveBeenCalledWith(7));
   expect(hasSupabaseCredentialsForOrganizationMock).toHaveBeenCalledWith(
     {},
     "org-1",

@@ -2200,17 +2200,7 @@ ${componentSnippet}
             })) +
             "\n\n";
         } else if (rootDatabasePromptState === "neon-disconnected") {
-          systemPrompt +=
-            "\n\n" +
-            (await buildNeonPromptForApp({
-              appPath: updatedChat.app.path,
-              neonProjectId: updatedChat.app.neonProjectId!,
-              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
-              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
-              selectedChatMode,
-            })) +
-            "\n\n" +
-            NEON_DISCONNECTED_SYSTEM_PROMPT;
+          systemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
           !willUseLocalAgentStream &&

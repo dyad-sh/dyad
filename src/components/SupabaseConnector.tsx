@@ -324,6 +324,49 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
+  // Keep recovery controls available when the app still points at a project
+  // whose organization token has been removed. Hiding the association here
+  // would strand the user on a generic account-connect screen.
+  if (app?.supabaseProjectId && !isConnected) {
+    return (
+      <Card className="mt-1" data-testid="supabase-reconnect-card">
+        <CardHeader>
+          <CardTitle>{t("integrations.supabase.project")}</CardTitle>
+          <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+            {t("integrations.supabase.connectedToProject")}
+            <Badge variant="secondary" className="w-fit text-base font-bold">
+              {app.supabaseProjectName || app.supabaseProjectId}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={handleAddAccount}
+            disabled={isFlowActive}
+            data-testid="reconnect-supabase-button"
+          >
+            {t("integrations.supabase.addOrganization")}
+          </Button>
+          <Button variant="destructive" onClick={handleUnsetProject}>
+            {t("integrations.supabase.disconnectProject")}
+          </Button>
+          {isFlowActive && "invocationRef" in flowState && (
+            <Button
+              variant="ghost"
+              onClick={() =>
+                void cancelConnectionFlow("supabase", flowState.invocationRef)
+              }
+              data-testid="cancel-supabase-flow-button"
+            >
+              {t("integrations.supabase.cancelSignIn")}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Connected and has project set
   if (isConnected && app?.supabaseProjectName) {
     return (

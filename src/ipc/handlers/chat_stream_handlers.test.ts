@@ -85,7 +85,7 @@ describe("root database prompt selection", () => {
     ).toBe("neon");
   });
 
-  it("selects Neon only when the app is not linked to Supabase", () => {
+  it("selects usable Neon when the app is not linked to Supabase", () => {
     expect(
       resolveRootDatabasePromptState({
         hasSupabaseProject: false,
@@ -105,6 +105,39 @@ describe("root database prompt selection", () => {
         neonCredentialsAvailable: false,
       }),
     ).toBe("neon-disconnected");
+  });
+
+  it("selects Supabase when its linked project has credentials", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: true,
+        supabaseCredentialsAvailable: true,
+        hasNeonProject: true,
+        neonCredentialsAvailable: true,
+      }),
+    ).toBe("supabase");
+  });
+
+  it("preserves a disconnected Supabase association", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: true,
+        supabaseCredentialsAvailable: false,
+        hasNeonProject: false,
+        neonCredentialsAvailable: false,
+      }),
+    ).toBe("supabase-disconnected");
+  });
+
+  it("returns none when the app has no provider association", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: false,
+        supabaseCredentialsAvailable: false,
+        hasNeonProject: false,
+        neonCredentialsAvailable: false,
+      }),
+    ).toBe("none");
   });
 });
 

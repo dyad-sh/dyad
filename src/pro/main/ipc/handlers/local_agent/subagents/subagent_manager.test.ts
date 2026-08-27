@@ -23,6 +23,7 @@ import {
   reviewFollowupAvailability,
   setSubagentEventTarget,
   shouldDrainMutationOnAbort,
+  syncRootImplementerProviderContext,
   SUBAGENT_NONTERMINAL_STATUSES,
   waitForAbortableDelay,
   withFinalizationAdmission,
@@ -317,6 +318,8 @@ describe("sub-agent manager status policy", () => {
 
     expect(prepared.systemPrompt).toBe("Refreshed implementer rules");
     expect(prepared.contextOverrides?.supabaseProjectId).toBe("project-1");
+    expect(root.supabaseProjectId).toBeNull();
+    syncRootImplementerProviderContext(root, prepared.rootContextOverrides);
     expect(root.supabaseProjectId).toBe("project-1");
     expect(root.supabaseProviderToolsAvailable).toBe(true);
     expect(root.neonProviderToolsAvailable).toBe(false);
@@ -333,6 +336,32 @@ describe("sub-agent manager status policy", () => {
       }),
     } as unknown as AgentContext;
 
+    const prepared = await prepareImplementerRunContext(root);
+    expect(prepared).toEqual({
+      systemPrompt: "Fallback implementer rules",
+      contextOverrides: {
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: false,
+      },
+      rootContextOverrides: {
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: false,
+      },
+    });
+    expect(root.supabaseProviderToolsAvailable).toBe(true);
+    expect(root.neonProviderToolsAvailable).toBe(true);
+    syncRootImplementerProviderContext(root, prepared.rootContextOverrides);
+    expect(root.supabaseProviderToolsAvailable).toBe(false);
+    expect(root.neonProviderToolsAvailable).toBe(false);
+  });
+
+  it("fails child provider tools closed when context refresh is unavailable", async () => {
+    const root = {
+      implementerFallbackSystemPrompt: "Fallback implementer rules",
+      supabaseProviderToolsAvailable: true,
+      neonProviderToolsAvailable: true,
+    } as unknown as AgentContext;
+
     await expect(prepareImplementerRunContext(root)).resolves.toEqual({
       systemPrompt: "Fallback implementer rules",
       contextOverrides: {
@@ -340,8 +369,6 @@ describe("sub-agent manager status policy", () => {
         neonProviderToolsAvailable: false,
       },
     });
-    expect(root.supabaseProviderToolsAvailable).toBe(true);
-    expect(root.neonProviderToolsAvailable).toBe(true);
   });
 
   it("rejects finalization when its owning root is already cancelled", async () => {

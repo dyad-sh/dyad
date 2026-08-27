@@ -21,6 +21,8 @@ export const NEON_NO_BROWSER_SERVERLESS_RULE =
 export const NEON_DISCONNECTED_SYSTEM_PROMPT = `
 This app is already linked to a Neon project, but Neon credentials or active branch context are unavailable. Do not offer to add another database integration. Tell the user to reconnect Neon or select an active branch before attempting provider operations. Any preceding claim that live Neon operations or inspection tools are available is superseded by this notice.
 
+The project's email-verification setting is unknown while Neon is disconnected. Do not change authentication or sign-up behavior until Neon is reconnected, the setting is confirmed, and the applicable authentication and email-verification guidance has been followed. Never assume the default AuthView sign-up flow is compatible with the project.
+
 Continue to preserve these Neon code-safety invariants while disconnected:
 ${NEON_NO_CUSTOM_AUTH_RULE}
 ${NEON_RLS_REQUIRES_JWT_RULE}

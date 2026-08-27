@@ -6,6 +6,7 @@ import {
   canUseSupabaseTools,
   escapeXmlAttr,
   escapeXmlContent,
+  getUnavailableDatabaseProviderMessage,
 } from "./types";
 import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
 import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
@@ -240,7 +241,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       }
 
       throw new DyadError(
-        "No database provider is available for SQL execution",
+        getUnavailableDatabaseProviderMessage(ctx, "SQL execution"),
         DyadErrorKind.Precondition,
       );
     },

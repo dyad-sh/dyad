@@ -64,6 +64,12 @@ describe("local_agent_prompt", () => {
       NEON_NO_BROWSER_SERVERLESS_RULE,
     );
     expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain("reconnect Neon");
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      "email-verification setting is unknown",
+    );
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      "Do not change authentication or sign-up behavior",
+    );
   });
 
   it("agent mode system prompt", () => {

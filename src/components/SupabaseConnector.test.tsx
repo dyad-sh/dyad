@@ -27,6 +27,7 @@ const {
   providerLoadingState,
   providerErrorState,
   settingsLoadingState,
+  appLoadingState,
   unsolicitedReturnCallback,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
@@ -68,6 +69,7 @@ const {
     projects: null as Error | null,
   },
   settingsLoadingState: { current: false },
+  appLoadingState: { current: false },
   unsolicitedReturnCallback: {
     current: null as null | (() => void),
   },
@@ -119,6 +121,7 @@ vi.mock("@/hooks/useLoadApp", () => ({
       supabaseProjectName: "My Project",
       supabaseOrganizationSlug: appState.supabaseOrganizationSlug,
     },
+    loading: appLoadingState.current,
     refreshApp: refreshAppMock,
   }),
 }));
@@ -208,6 +211,7 @@ beforeEach(() => {
   providerErrorState.organizations = null;
   providerErrorState.projects = null;
   settingsLoadingState.current = false;
+  appLoadingState.current = false;
   unsolicitedReturnCallback.current = null;
   refreshSettingsMock.mockResolvedValue(undefined);
   refreshAppMock.mockResolvedValue(undefined);
@@ -421,6 +425,16 @@ it("shows recovery controls when linked organization credentials are missing", a
 it("waits for settings before showing missing-credential recovery", () => {
   hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
   settingsLoadingState.current = true;
+
+  renderConnector();
+
+  expect(screen.getByTestId("supabase-settings-loading")).toBeTruthy();
+  expect(screen.queryByTestId("supabase-reconnect-card")).toBeNull();
+});
+
+it("waits for the app before choosing the Supabase connection state", () => {
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  appLoadingState.current = true;
 
   renderConnector();
 

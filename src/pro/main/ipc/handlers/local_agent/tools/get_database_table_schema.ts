@@ -6,6 +6,7 @@ import {
   canUseSupabaseTools,
   escapeXmlAttr,
   escapeXmlContent,
+  getUnavailableDatabaseProviderMessage,
 } from "./types";
 import { getSupabaseTableSchema } from "../../../../../../supabase_admin/supabase_context";
 import { getNeonTableSchema } from "../../../../../../neon_admin/neon_context";
@@ -77,7 +78,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
     }
 
     throw new DyadError(
-      "No database provider is available for schema inspection",
+      getUnavailableDatabaseProviderMessage(ctx, "schema inspection"),
       DyadErrorKind.Precondition,
     );
   },

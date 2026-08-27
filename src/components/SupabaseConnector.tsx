@@ -82,7 +82,7 @@ function findLinkedSupabaseProject(
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings, loading: settingsLoading } = useSettings();
-  const { app, refreshApp } = useLoadApp(appId);
+  const { app, loading: appLoading, refreshApp } = useLoadApp(appId);
   const { isDarkMode } = useTheme();
 
   // A linked app must be authenticated to its own organization. Before a
@@ -400,7 +400,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  if (settingsLoading) {
+  if (settingsLoading || appLoading) {
     return (
       <Skeleton
         className="h-24 w-full"

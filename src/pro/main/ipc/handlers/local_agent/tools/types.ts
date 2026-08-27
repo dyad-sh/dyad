@@ -346,6 +346,29 @@ export function canUseNeonTools<
   );
 }
 
+export function getUnavailableDatabaseProviderMessage(
+  ctx: Pick<
+    AgentContext,
+    | "supabaseProjectId"
+    | "neonProjectId"
+    | "neonActiveBranchId"
+    | "supabaseProviderToolsAvailable"
+    | "neonProviderToolsAvailable"
+  >,
+  operation: "SQL execution" | "schema inspection",
+): string {
+  if (ctx.neonProjectId && !ctx.neonActiveBranchId) {
+    return `Neon is linked, but no active branch is configured for ${operation}. Select an active branch in the Neon integration settings.`;
+  }
+  if (ctx.neonProjectId && !ctx.neonProviderToolsAvailable) {
+    return `Neon is linked, but its credentials are unavailable for ${operation}. Reconnect the Neon account.`;
+  }
+  if (ctx.supabaseProjectId && !ctx.supabaseProviderToolsAvailable) {
+    return `Supabase is linked, but its organization credentials are unavailable for ${operation}. Reconnect the Supabase organization.`;
+  }
+  return `No database provider is available for ${operation}`;
+}
+
 /** Per-spec fix-loop state for the `run_tests` tool, tracked across one turn. */
 export interface TestRunAttemptState {
   /** Failed runs counted toward the per-spec cap (infra/flake runs excluded). */

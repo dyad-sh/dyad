@@ -96,4 +96,49 @@ describe("database provider tool routing", () => {
     expect(getNeonTableSchemaMock).toHaveBeenCalled();
     expect(getSupabaseTableSchemaMock).not.toHaveBeenCalled();
   });
+
+  it("guides the user to select a missing Neon branch", async () => {
+    const ctx = {
+      ...neonContext(),
+      neonActiveBranchId: null,
+      neonProviderToolsAvailable: false,
+    };
+
+    await expect(
+      executeSqlTool.execute({ query: "select 1" }, ctx),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Select an active branch"),
+    });
+    await expect(
+      getDatabaseTableSchemaTool.execute({}, ctx),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Select an active branch"),
+    });
+  });
+
+  it("guides the user to reconnect retained provider associations", async () => {
+    const neon = {
+      ...neonContext(),
+      neonProviderToolsAvailable: false,
+    };
+    const supabase = {
+      ...supabaseContext(),
+      supabaseProviderToolsAvailable: false,
+    };
+
+    await expect(
+      executeSqlTool.execute({ query: "select 1" }, neon),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Reconnect the Neon account"),
+    });
+    await expect(
+      getDatabaseTableSchemaTool.execute({}, supabase),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Reconnect the Supabase organization"),
+    });
+  });
 });

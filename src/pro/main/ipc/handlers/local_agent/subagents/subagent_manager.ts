@@ -1455,32 +1455,52 @@ export function isAcceptableImplementerJoinStatus(status: string): boolean {
   return status === "completed" || status === "partial";
 }
 
+type RootImplementerProviderContext = Partial<
+  Pick<
+    AgentContext,
+    | "supabaseProjectId"
+    | "supabaseOrganizationSlug"
+    | "neonProjectId"
+    | "neonActiveBranchId"
+    | "supabaseProviderToolsAvailable"
+    | "neonProviderToolsAvailable"
+    | "frameworkType"
+  >
+>;
+
 export async function prepareImplementerRunContext(
   rootCtx: AgentContext,
 ): Promise<{
   systemPrompt?: string;
   contextOverrides?: Partial<AgentContext>;
+  rootContextOverrides?: RootImplementerProviderContext;
 }> {
   if (!rootCtx.refreshImplementerContext) {
-    return { systemPrompt: rootCtx.implementerFallbackSystemPrompt };
+    return {
+      systemPrompt: rootCtx.implementerFallbackSystemPrompt,
+      contextOverrides: {
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: false,
+      },
+    };
   }
   try {
     const { systemPrompt, ...contextOverrides } =
       await rootCtx.refreshImplementerContext();
-    // Root-owned finalization (notably deferred provider deployments) must use
-    // the same provider identity that the child just refreshed. Keep mutation
-    // bookkeeping on rootCtx; only these provider identity fields are updated.
-    Object.assign(rootCtx, {
-      supabaseProjectId: contextOverrides.supabaseProjectId,
-      supabaseOrganizationSlug: contextOverrides.supabaseOrganizationSlug,
-      neonProjectId: contextOverrides.neonProjectId,
-      neonActiveBranchId: contextOverrides.neonActiveBranchId,
-      supabaseProviderToolsAvailable:
-        contextOverrides.supabaseProviderToolsAvailable,
-      neonProviderToolsAvailable: contextOverrides.neonProviderToolsAvailable,
-      frameworkType: contextOverrides.frameworkType,
-    });
-    return { systemPrompt, contextOverrides };
+    return {
+      systemPrompt,
+      contextOverrides,
+      rootContextOverrides: {
+        supabaseProjectId: contextOverrides.supabaseProjectId,
+        supabaseOrganizationSlug: contextOverrides.supabaseOrganizationSlug,
+        neonProjectId: contextOverrides.neonProjectId,
+        neonActiveBranchId: contextOverrides.neonActiveBranchId,
+        supabaseProviderToolsAvailable:
+          contextOverrides.supabaseProviderToolsAvailable,
+        neonProviderToolsAvailable: contextOverrides.neonProviderToolsAvailable,
+        frameworkType: contextOverrides.frameworkType,
+      },
+    };
   } catch (error) {
     logger.warn(
       "Failed to refresh Implementer provider context; using the capability-aware fallback prompt",
@@ -1492,8 +1512,23 @@ export async function prepareImplementerRunContext(
         supabaseProviderToolsAvailable: false,
         neonProviderToolsAvailable: false,
       },
+      rootContextOverrides: {
+        supabaseProviderToolsAvailable: false,
+        neonProviderToolsAvailable: false,
+      },
     };
   }
+}
+
+export function syncRootImplementerProviderContext(
+  rootCtx: AgentContext,
+  rootContextOverrides: RootImplementerProviderContext | undefined,
+): void {
+  if (!rootContextOverrides) return;
+  // Root-owned finalization (notably deferred provider deployments) must use
+  // the same provider identity and availability that the child just refreshed.
+  // Mutation bookkeeping remains owned by rootCtx.
+  Object.assign(rootCtx, rootContextOverrides);
 }
 
 async function runThread(
@@ -1530,6 +1565,10 @@ async function runThread(
       thread.persona === "implementer"
         ? await prepareImplementerRunContext(rootCtx)
         : {};
+    syncRootImplementerProviderContext(
+      rootCtx,
+      implementerRunContext.rootContextOverrides,
+    );
     const tools = buildTools(
       controller.signal,
       implementerRunContext.contextOverrides,

@@ -177,8 +177,11 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     defaultConsent: "ask",
     modifiesState: true,
     isEnabled: (ctx) =>
-      !!ctx.supabaseProjectId ||
-      (!!ctx.neonProjectId && !!ctx.neonActiveBranchId),
+      (!!ctx.supabaseProjectId &&
+        ctx.supabaseProviderToolsAvailable !== false) ||
+      (!!ctx.neonProjectId &&
+        !!ctx.neonActiveBranchId &&
+        ctx.neonProviderToolsAvailable !== false),
 
     getConsentPreview: (args) => args.query,
 

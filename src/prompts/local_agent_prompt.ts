@@ -640,10 +640,16 @@ export type ImplementerProvider = "supabase" | "neon";
 export function resolveImplementerProvider({
   hasSupabaseProject,
   hasNeonProject,
+  supabaseAvailable,
+  neonAvailable,
 }: {
   hasSupabaseProject: boolean;
   hasNeonProject: boolean;
+  supabaseAvailable?: boolean;
+  neonAvailable?: boolean;
 }): ImplementerProvider | undefined {
+  if (hasSupabaseProject && supabaseAvailable) return "supabase";
+  if (hasNeonProject && neonAvailable) return "neon";
   if (hasSupabaseProject) return "supabase";
   if (hasNeonProject) return "neon";
   return undefined;
@@ -692,6 +698,7 @@ export function constructImplementerPrompt(
   options?: {
     provider?: ImplementerProvider;
     frameworkType?: AppFrameworkType | null;
+    testingEnabled?: boolean;
     supabaseConnected?: boolean;
     neonToolsAvailable?: boolean;
     neonEmailVerificationEnabled?: boolean;
@@ -732,6 +739,8 @@ ${IMPLEMENTATION_SIMPLICITY_GUIDANCE}
 ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
+
+${options?.testingEnabled ? AGENT_TEST_WRITING_GUIDANCE : ""}
 
 <workflow>
 1. Inspect the assignment's relevant files and confirm the requested behavior is not already present.

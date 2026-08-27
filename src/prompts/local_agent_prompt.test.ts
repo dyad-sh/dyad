@@ -13,6 +13,7 @@ import {
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
 } from "@/prompts/supabase_prompt";
 import {
+  NEON_DISCONNECTED_SYSTEM_PROMPT,
   NEON_NO_BROWSER_DATABASE_URL_RULE,
   NEON_NO_BROWSER_SERVERLESS_RULE,
   NEON_NO_CUSTOM_AUTH_RULE,
@@ -40,6 +41,20 @@ describe("local_agent_prompt", () => {
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
       "Never create or edit files under `supabase/migrations/`",
     );
+  });
+
+  it("keeps Neon safety invariants in the disconnected root prompt", () => {
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain(NEON_NO_CUSTOM_AUTH_RULE);
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      NEON_RLS_REQUIRES_JWT_RULE,
+    );
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      NEON_NO_BROWSER_DATABASE_URL_RULE,
+    );
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      NEON_NO_BROWSER_SERVERLESS_RULE,
+    );
+    expect(NEON_DISCONNECTED_SYSTEM_PROMPT).toContain("reconnect Neon");
   });
 
   it("agent mode system prompt", () => {
@@ -179,6 +194,29 @@ describe("local_agent_prompt", () => {
     });
 
     expect(prompt).not.toContain("no application server runtime");
+  });
+
+  it("includes test-writing conventions for testing-enabled apps", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      testingEnabled: true,
+    });
+
+    expect(prompt).toContain("e2e-tests/");
+    expect(prompt).toContain(".spec.ts");
+    expect(
+      constructImplementerPrompt(undefined, { testingEnabled: false }),
+    ).not.toContain("e2e-tests/");
+  });
+
+  it("prefers a usable Neon project over disconnected Supabase", () => {
+    expect(
+      resolveImplementerProvider({
+        hasSupabaseProject: true,
+        hasNeonProject: true,
+        supabaseAvailable: false,
+        neonAvailable: true,
+      }),
+    ).toBe("neon");
   });
 
   it("gives Neon Implementers critical code-writing invariants", () => {

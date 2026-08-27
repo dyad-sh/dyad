@@ -43,6 +43,7 @@ import {
   buildNeonPromptForApp,
   getNeonEmailVerificationEnabled,
 } from "../../neon_admin/neon_prompt_context";
+import { NEON_DISCONNECTED_SYSTEM_PROMPT } from "../../prompts/neon_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
@@ -201,15 +202,22 @@ export function resolveRootDatabasePromptState({
   hasSupabaseProject,
   supabaseCredentialsAvailable,
   hasNeonProject,
+  neonCredentialsAvailable,
 }: {
   hasSupabaseProject: boolean;
   supabaseCredentialsAvailable: boolean;
   hasNeonProject: boolean;
-}): "supabase" | "supabase-disconnected" | "neon" | "none" {
-  if (hasSupabaseProject) {
-    return supabaseCredentialsAvailable ? "supabase" : "supabase-disconnected";
-  }
-  if (hasNeonProject) return "neon";
+  neonCredentialsAvailable: boolean;
+}):
+  | "supabase"
+  | "supabase-disconnected"
+  | "neon"
+  | "neon-disconnected"
+  | "none" {
+  if (hasSupabaseProject && supabaseCredentialsAvailable) return "supabase";
+  if (hasNeonProject && neonCredentialsAvailable) return "neon";
+  if (hasSupabaseProject) return "supabase-disconnected";
+  if (hasNeonProject) return "neon-disconnected";
   return "none";
 }
 
@@ -2028,6 +2036,7 @@ ${componentSnippet}
               hasNeonProject: Boolean(updatedChat.app.neonProjectId),
             }),
             frameworkType,
+            testingEnabled: Boolean(updatedChat.app.testingEnabled),
             // Refresh failure disables every provider tool for the child, so
             // the fallback prompt must not advertise live provider reads.
             supabaseConnected: false,
@@ -2048,18 +2057,24 @@ ${componentSnippet}
           const neonConnected = Boolean(
             latestSettings.neon?.accessToken?.value,
           );
-          const provider = resolveImplementerProvider({
-            hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
-            hasNeonProject: Boolean(refreshedApp.neonProjectId),
-          });
           const neonBranchId =
             refreshedApp.neonActiveBranchId ??
             refreshedApp.neonDevelopmentBranchId;
+          const neonToolsAvailable = Boolean(
+            neonConnected && refreshedApp.neonProjectId && neonBranchId,
+          );
+          const provider = resolveImplementerProvider({
+            hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
+            hasNeonProject: Boolean(refreshedApp.neonProjectId),
+            supabaseAvailable: supabaseConnected,
+            neonAvailable: neonToolsAvailable,
+          });
           const refreshedFrameworkType = detectFrameworkType(
             getDyadAppPath(refreshedApp.path),
           );
           const neonEmailVerificationEnabled = Boolean(
             provider === "neon" &&
+            neonToolsAvailable &&
             refreshedApp.neonProjectId &&
             (await getNeonEmailVerificationEnabled(
               refreshedApp.neonProjectId,
@@ -2070,10 +2085,9 @@ ${componentSnippet}
             systemPrompt: constructImplementerPrompt(aiRules, {
               provider,
               frameworkType: refreshedFrameworkType,
+              testingEnabled: Boolean(refreshedApp.testingEnabled),
               supabaseConnected,
-              neonToolsAvailable: Boolean(
-                neonConnected && refreshedApp.neonProjectId && neonBranchId,
-              ),
+              neonToolsAvailable,
               neonEmailVerificationEnabled,
             }),
             supabaseProjectId: refreshedApp.supabaseProjectId,
@@ -2083,9 +2097,7 @@ ${componentSnippet}
             supabaseProviderToolsAvailable: Boolean(
               supabaseConnected && refreshedApp.supabaseProjectId,
             ),
-            neonProviderToolsAvailable: Boolean(
-              neonConnected && refreshedApp.neonProjectId && neonBranchId,
-            ),
+            neonProviderToolsAvailable: neonToolsAvailable,
             frameworkType: refreshedFrameworkType,
           };
         };
@@ -2152,6 +2164,7 @@ ${componentSnippet}
           hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
           supabaseCredentialsAvailable: initialSupabaseProviderToolsAvailable,
           hasNeonProject: Boolean(updatedChat.app.neonProjectId),
+          neonCredentialsAvailable: initialNeonProviderToolsAvailable,
         });
         if (rootDatabasePromptState === "supabase") {
           const supabaseClientCode = await getSupabaseClientCode({
@@ -2184,6 +2197,8 @@ ${componentSnippet}
               selectedChatMode,
             })) +
             "\n\n";
+        } else if (rootDatabasePromptState === "neon-disconnected") {
+          systemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
           !willUseLocalAgentStream &&
@@ -2530,6 +2545,8 @@ This conversation includes one or more image attachments. When the user uploads 
           if (rootDatabasePromptState === "supabase-disconnected") {
             readOnlySystemPrompt +=
               "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
+          } else if (rootDatabasePromptState === "neon-disconnected") {
+            readOnlySystemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
           }
 
           // Return value indicates success/failure for quota tracking.

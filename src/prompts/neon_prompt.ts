@@ -18,6 +18,15 @@ export const NEON_NO_BROWSER_DATABASE_URL_RULE =
   "- **no-db-url-client-side**: NEVER place `DATABASE_URL` in client-side or browser-accessible code. It gives full read/write database access and must only be used in server-side code.";
 export const NEON_NO_BROWSER_SERVERLESS_RULE =
   "- **no-serverless-in-browser**: NEVER import `@neondatabase/serverless` in React components or browser code.";
+export const NEON_DISCONNECTED_SYSTEM_PROMPT = `
+This app is already linked to a Neon project, but Neon credentials or active branch context are unavailable. Do not offer to add another database integration. Tell the user to reconnect Neon or select an active branch before attempting provider operations.
+
+Continue to preserve these Neon code-safety invariants while disconnected:
+${NEON_NO_CUSTOM_AUTH_RULE}
+${NEON_RLS_REQUIRES_JWT_RULE}
+${NEON_NO_BROWSER_DATABASE_URL_RULE}
+${NEON_NO_BROWSER_SERVERLESS_RULE}
+- **no-manual-migrations**: NEVER write SQL migration files manually; reconnect Neon before attempting schema changes.`;
 
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,

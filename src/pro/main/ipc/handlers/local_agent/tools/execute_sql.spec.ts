@@ -36,6 +36,22 @@ describe("executeSqlTool", () => {
     });
   });
 
+  it("fails closed when retained provider associations are unauthenticated", () => {
+    expect(
+      executeSqlTool.isEnabled?.({
+        supabaseProjectId: "project",
+        supabaseProviderToolsAvailable: false,
+      } as any),
+    ).toBe(false);
+    expect(
+      executeSqlTool.isEnabled?.({
+        neonProjectId: "project",
+        neonActiveBranchId: "branch",
+        neonProviderToolsAvailable: false,
+      } as any),
+    ).toBe(false);
+  });
+
   it("marks mutating SQL in consent metadata", () => {
     expect(
       executeSqlTool.getConsentMetadata?.({

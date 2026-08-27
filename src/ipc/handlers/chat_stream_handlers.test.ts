@@ -74,14 +74,15 @@ describe("stream invocation tracking", () => {
 });
 
 describe("root database prompt selection", () => {
-  it("preserves the linked Supabase identity when its credentials are missing", () => {
+  it("prefers usable Neon when a linked Supabase account is disconnected", () => {
     expect(
       resolveRootDatabasePromptState({
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
+        neonCredentialsAvailable: true,
       }),
-    ).toBe("supabase-disconnected");
+    ).toBe("neon");
   });
 
   it("selects Neon only when the app is not linked to Supabase", () => {
@@ -90,8 +91,20 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
+        neonCredentialsAvailable: true,
       }),
     ).toBe("neon");
+  });
+
+  it("reports a retained Neon association as disconnected without credentials", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: false,
+        supabaseCredentialsAvailable: false,
+        hasNeonProject: true,
+        neonCredentialsAvailable: false,
+      }),
+    ).toBe("neon-disconnected");
   });
 });
 

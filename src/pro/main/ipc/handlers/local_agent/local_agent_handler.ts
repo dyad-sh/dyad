@@ -492,7 +492,7 @@ export async function handleLocalAgentStream(
     preCommitHookAvailable = false,
     referencedApps = [],
     currentTurnHasOnDiskAttachment,
-    implementerSystemPrompt,
+    getImplementerSystemPrompt,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -528,8 +528,8 @@ export async function handleLocalAgentStream(
       appPath: string;
     }[];
     currentTurnHasOnDiskAttachment?: boolean;
-    /** Capability-aware prompt inherited by writable Implementer children. */
-    implementerSystemPrompt?: string;
+    /** Lazily refreshed capability-aware prompt for writable Implementers. */
+    getImplementerSystemPrompt?: () => Promise<string | undefined>;
   },
 ): Promise<boolean> {
   const storedSettings = settingsOverride ?? readSettings();
@@ -873,7 +873,7 @@ export async function handleLocalAgentStream(
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
-      implementerSystemPrompt,
+      getImplementerSystemPrompt,
       preCommitHookAvailable,
       testingEnabled: Boolean(chat.app.testingEnabled),
       testRunAttempts: new Map(),

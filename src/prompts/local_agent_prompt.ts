@@ -657,6 +657,7 @@ function implementerProviderGuidance(
   provider: ImplementerProvider | undefined,
   supabaseConnected: boolean,
   neonToolsAvailable: boolean,
+  neonEmailVerificationEnabled: boolean,
 ): string {
   if (provider === "supabase") {
     return `<provider_invariants provider="supabase">
@@ -677,7 +678,7 @@ ${NEON_RLS_REQUIRES_JWT_RULE}
 ${NEON_NO_BROWSER_DATABASE_URL_RULE}
 ${NEON_NO_BROWSER_SERVERLESS_RULE}
 - Before writing any authentication code, you MUST call the \`read_guide\` tool with guide="add-authentication".
-- Before writing sign-up or email-verification code, you MUST also call \`read_guide\` with guide="add-email-verification".
+${neonEmailVerificationEnabled ? '- Email verification is enabled. Before writing sign-up or email-verification code, you MUST also call `read_guide` with guide="add-email-verification".' : ""}
 - Before writing password-reset code, you MUST call \`read_guide\` with guide="add-password-reset". Never hand-roll a reset-token flow.
 ${neonToolsAvailable ? "- You may inspect provider metadata and the live schema with the available read tools." : "- Neon branch context is unavailable, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
@@ -696,12 +697,14 @@ export function constructImplementerPrompt(
     provider?: ImplementerProvider;
     supabaseConnected?: boolean;
     neonToolsAvailable?: boolean;
+    neonEmailVerificationEnabled?: boolean;
   },
 ): string {
   const providerGuidance = implementerProviderGuidance(
     options?.provider,
     options?.supabaseConnected === true,
     options?.neonToolsAvailable === true,
+    options?.neonEmailVerificationEnabled === true,
   );
   return `<role>
 You are Dyad Implementer. Complete the focused assignment using only the provided tools. The root Agent has already chosen the approach and remains responsible for user communication, consequential provider operations, final review, and commit.

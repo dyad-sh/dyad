@@ -150,6 +150,7 @@ describe("local_agent_prompt", () => {
     const prompt = constructImplementerPrompt(undefined, {
       provider: "neon",
       neonToolsAvailable: true,
+      neonEmailVerificationEnabled: true,
     });
 
     expect(prompt).toContain('<provider_invariants provider="neon">');
@@ -166,6 +167,16 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain("Never hand-roll a reset-token flow");
     expect(prompt).not.toContain("execute SQL");
     expect(prompt).not.toContain("dyad-execute-sql");
+  });
+
+  it("omits the Neon email-verification guide when it is disabled", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "neon",
+      neonToolsAvailable: true,
+      neonEmailVerificationEnabled: false,
+    });
+
+    expect(prompt).not.toContain('guide="add-email-verification"');
   });
 
   it("does not promise Neon provider tools without branch context", () => {

@@ -1523,7 +1523,7 @@ async function runThread(
             assignment,
             tools,
             abortSignal: controller.signal,
-            systemPromptOverride: rootCtx.implementerSystemPrompt,
+            systemPromptOverride: await rootCtx.getImplementerSystemPrompt?.(),
           });
     const durableResult = boundDurableReport(result.text).trim();
     if (!durableResult) {

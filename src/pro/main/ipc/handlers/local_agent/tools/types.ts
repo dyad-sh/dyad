@@ -107,8 +107,8 @@ export interface AgentContext {
   workspaceMutated?: boolean;
   /** True after any directly registered or sandbox-hosted MCP tool succeeds. */
   mcpToolRan?: boolean;
-  /** Capability-aware system prompt used by writable Implementer children. */
-  implementerSystemPrompt?: string;
+  /** Lazily refreshes the capability-aware prompt for writable Implementers. */
+  getImplementerSystemPrompt?: () => Promise<string | undefined>;
   /** Successful workspace-file mutations completed during this turn. */
   fileMutationCount?: number;
   /**

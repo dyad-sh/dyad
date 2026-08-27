@@ -28,18 +28,10 @@ export async function buildNeonPromptAdditions({
 }: BuildNeonPromptAdditionsParams): Promise<string> {
   const neonClientCode = getNeonClientCode(frameworkType);
 
-  let emailVerificationEnabled = false;
-  if (branchId) {
-    try {
-      const emailConfig = await getCachedEmailPasswordConfig(
-        projectId,
-        branchId,
-      );
-      emailVerificationEnabled = emailConfig.require_email_verification;
-    } catch {
-      // Best-effort: proceed without email verification guidance.
-    }
-  }
+  const emailVerificationEnabled = await getNeonEmailVerificationEnabled(
+    projectId,
+    branchId,
+  );
 
   let neonPromptAddition = getNeonAvailableSystemPrompt(
     neonClientCode,
@@ -65,6 +57,20 @@ export async function buildNeonPromptAdditions({
   }
 
   return neonPromptAddition;
+}
+
+export async function getNeonEmailVerificationEnabled(
+  projectId: string,
+  branchId?: string | null,
+): Promise<boolean> {
+  if (!branchId) return false;
+  try {
+    const emailConfig = await getCachedEmailPasswordConfig(projectId, branchId);
+    return emailConfig.require_email_verification;
+  } catch {
+    // Best-effort: proceed without email verification guidance.
+    return false;
+  }
 }
 
 /**

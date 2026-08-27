@@ -18,7 +18,7 @@ import {
 } from "ai";
 
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { apps, chats, messages } from "../../db/schema";
 import { scheduleChatSearchIndexing } from "../../pro/main/ipc/handlers/local_agent/chat_search_indexer";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
@@ -37,7 +37,10 @@ import {
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { registerTrustedIpcHandler } from "./trusted_handle";
-import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
+import {
+  buildNeonPromptForApp,
+  getNeonEmailVerificationEnabled,
+} from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
@@ -1987,20 +1990,38 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
-        const implementerProvider = resolveImplementerProvider({
-          hasSupabaseProject: Boolean(updatedChat.app?.supabaseProjectId),
-          hasNeonProject: Boolean(updatedChat.app?.neonProjectId),
-          supabaseConnected: isSupabaseConnected(settings),
-        });
-        const implementerSystemPrompt = constructImplementerPrompt(aiRules, {
-          provider: implementerProvider,
-          supabaseConnected: isSupabaseConnected(settings),
-          neonToolsAvailable: Boolean(
-            updatedChat.app?.neonProjectId &&
-            (updatedChat.app?.neonActiveBranchId ??
-              updatedChat.app?.neonDevelopmentBranchId),
-          ),
-        });
+        const getImplementerSystemPrompt = async () => {
+          const refreshedApp =
+            (await db.query.apps.findFirst({
+              where: eq(apps.id, updatedChat.app.id),
+            })) ?? updatedChat.app;
+          const latestSettings = readSettings();
+          const supabaseConnected = isSupabaseConnected(latestSettings);
+          const provider = resolveImplementerProvider({
+            hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
+            hasNeonProject: Boolean(refreshedApp.neonProjectId),
+            supabaseConnected,
+          });
+          const neonBranchId =
+            refreshedApp.neonActiveBranchId ??
+            refreshedApp.neonDevelopmentBranchId;
+          const neonEmailVerificationEnabled = Boolean(
+            provider === "neon" &&
+            refreshedApp.neonProjectId &&
+            (await getNeonEmailVerificationEnabled(
+              refreshedApp.neonProjectId,
+              neonBranchId,
+            )),
+          );
+          return constructImplementerPrompt(aiRules, {
+            provider,
+            supabaseConnected,
+            neonToolsAvailable: Boolean(
+              refreshedApp.neonProjectId && neonBranchId,
+            ),
+            neonEmailVerificationEnabled,
+          });
+        };
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -2551,7 +2572,7 @@ This conversation includes one or more image attachments. When the user uploads 
               modelSelectionOverride: selectedModel,
               freeModelMode,
               preCommitHookAvailable,
-              implementerSystemPrompt,
+              getImplementerSystemPrompt,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),

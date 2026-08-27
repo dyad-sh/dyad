@@ -2039,6 +2039,8 @@ ${componentSnippet}
             }),
             frameworkType,
             testingEnabled: Boolean(updatedChat.app.testingEnabled),
+            runTestsAvailable:
+              settings.agentToolConsents?.["run_tests"] !== "never",
             // Refresh failure disables every provider tool for the child, so
             // the fallback prompt must not advertise live provider reads.
             supabaseConnected: false,
@@ -2090,6 +2092,8 @@ ${componentSnippet}
               provider,
               frameworkType: refreshedFrameworkType,
               testingEnabled: Boolean(refreshedApp.testingEnabled),
+              runTestsAvailable:
+                latestSettings.agentToolConsents?.["run_tests"] !== "never",
               supabaseConnected,
               neonToolsAvailable,
               neonEmailVerificationEnabled,

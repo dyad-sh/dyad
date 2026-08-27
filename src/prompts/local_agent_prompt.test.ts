@@ -219,6 +219,16 @@ describe("local_agent_prompt", () => {
     ).not.toContain("e2e-tests/");
   });
 
+  it("reports verification to root when run_tests is unavailable", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      testingEnabled: true,
+      runTestsAvailable: false,
+    });
+
+    expect(prompt).toContain("`run_tests` tool is unavailable");
+    expect(prompt).not.toContain("VERIFY it with the `run_tests` tool");
+  });
+
   it("prefers a usable Neon project over disconnected Supabase", () => {
     expect(
       resolveImplementerProvider({

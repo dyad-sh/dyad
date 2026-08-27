@@ -116,6 +116,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     branches,
     isLoadingProjects,
     isFetchingProjects,
+    isLoadingOrganizations,
+    isFetchingOrganizations,
     projectsError,
     isLoadingBranches,
     branchesError,
@@ -149,7 +151,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       );
       if (linkedProject) {
         try {
-          await setAppProject({
+          await ipc.supabase.setAppProject({
             appId,
             projectId: app.supabaseProjectId,
             parentProjectId: app.supabaseParentProjectId,
@@ -359,6 +361,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         app.supabaseParentProjectId,
       )
     : undefined;
+  const isLoadingRelinkCandidate =
+    isLoadingOrganizations ||
+    isFetchingOrganizations ||
+    isLoadingProjects ||
+    isFetchingProjects;
   const handleRelinkProject = async () => {
     if (!app?.supabaseProjectId || !linkedProjectForRelink) return;
     try {
@@ -402,7 +409,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </AlertDescription>
           </Alert>
           <div className="flex flex-wrap gap-2">
-            {linkedProjectForRelink && (
+            {isLoadingRelinkCandidate ? (
+              <Button variant="outline" disabled>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("integrations.supabase.relinkProject")}
+              </Button>
+            ) : linkedProjectForRelink ? (
               <Button
                 variant="outline"
                 onClick={handleRelinkProject}
@@ -411,7 +423,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               >
                 {t("integrations.supabase.relinkProject")}
               </Button>
-            )}
+            ) : null}
             <Button
               variant="outline"
               onClick={handleAddAccount}

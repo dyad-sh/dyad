@@ -6,7 +6,7 @@
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import {
   AGENT_TEST_WRITING_GUIDANCE,
-  IMPLEMENTER_TEST_WRITING_GUIDANCE,
+  getImplementerTestWritingGuidance,
 } from "./system_prompt";
 import {
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
@@ -704,6 +704,7 @@ export function constructImplementerPrompt(
     provider?: ImplementerProvider;
     frameworkType?: AppFrameworkType | null;
     testingEnabled?: boolean;
+    runTestsAvailable?: boolean;
     supabaseConnected?: boolean;
     neonToolsAvailable?: boolean;
     neonEmailVerificationEnabled?: boolean;
@@ -745,7 +746,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${options?.testingEnabled ? IMPLEMENTER_TEST_WRITING_GUIDANCE : ""}
+${options?.testingEnabled ? getImplementerTestWritingGuidance(options.runTestsAvailable !== false) : ""}
 
 <workflow>
 1. Inspect the assignment's relevant files and confirm the requested behavior is not already present.

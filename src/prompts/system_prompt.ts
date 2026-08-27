@@ -356,15 +356,30 @@ This only applies to Vite apps. Next.js apps have built-in API routes, so handle
  * to verify it. The `emitInstruction` argument is the bullet describing how to
  * emit the spec file.
  */
-const buildTestWritingGuidance = (emitInstruction: string) =>
-  `# Writing end-to-end tests
+const buildTestWritingGuidance = (
+  emitInstruction: string,
+  audience: "root" | "implementer" = "root",
+) => {
+  const dependencyInstruction =
+    audience === "root"
+      ? "Make sure `@playwright/test` is installed as a dev dependency. If it isn't already in `package.json`, install it (Playwright is required to run the test)."
+      : "If `@playwright/test` is missing from `package.json`, report the required dev dependency to the root Agent for installation.";
+  const missingAuthInstruction =
+    audience === "root"
+      ? "say so and ask the user before building auth"
+      : "report the missing auth prerequisite to the root Agent";
+  const missingSignupInstruction =
+    audience === "root"
+      ? "build one (or an equivalent way to create a user) first. Say so clearly if you add it"
+      : "report the missing signup prerequisite to the root Agent";
+  return `# Writing end-to-end tests
 
 When writing an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
 - FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`e2e-tests/\` folder, named after the flow (e.g. \`e2e-tests/signup.spec.ts\`).
 ${emitInstruction}
-- Make sure \`@playwright/test\` is installed as a dev dependency. If it isn't already in \`package.json\`, install it (Playwright is required to run the test).
+- ${dependencyInstruction}
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
 - Do NOT create or edit \`playwright-dyad.config.ts\`. Dyad generates and owns that file, and every test run uses it: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. You do NOT need to write a Playwright config at all — just write specs under \`e2e-tests/\`.
 - Do NOT create or edit \`e2e-tests/tsconfig.json\` or anything under \`e2e-tests/fixtures/dyad/\` either. Dyad may generate and own those so tests can run inside its preview panel; they are regenerated automatically. Your own fixtures go directly in \`e2e-tests/fixtures/\`, never in that subfolder.
@@ -404,20 +419,32 @@ When asked to improve a test Dyad's recorder generated, PRESERVE its recorded in
 
 ### Authenticated tests (signing in a test user)
 
-This section applies ONLY when the specific flow under test genuinely requires a logged-in user. If the flow is reachable without signing in, or the user asked for a test that doesn't need authentication (or explicitly doesn't want auth), skip everything below — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, say so and ask the user before building auth — don't add it silently.
+This section applies ONLY when the specific flow under test genuinely requires a logged-in user. If the flow is reachable without signing in, or the user asked for a test that doesn't need authentication (or explicitly doesn't want auth), skip everything below — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, ${missingAuthInstruction} — don't add it silently.
 
 When a flow requires a logged-in user, use the built-in auth fixture in \`e2e-tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
 - If \`e2e-tests/fixtures/test-user.ts\` already exists (Dyad's test recorder generates it), REUSE its \`signIn(page)\` — import and call it. Do NOT hand-roll credentials, re-implement it, or drive the login UI when it exists; it already signs in programmatically from \`process.env.DYAD_TEST_USER_*\`.
 - Otherwise, if \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user (for Supabase AND Neon Auth apps) — read the credentials from those env vars and sign that user in (via the fixture, or by driving the app's OWN login UI). Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, build one before writing the auth-gated test.
-- Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, build one (or an equivalent way to create a user) first. Say so clearly if you add it.
+- Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, ${missingSignupInstruction}.
 - Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.
 - If you sign in programmatically with \`page.request.*\` against the app's own auth endpoint, remember that \`page.request\` is an API client, not the browser — it sends no \`Origin\`/\`Referer\`, and \`signIn\` typically runs before the first navigation (the page is still \`about:blank\`). Auth servers with a CSRF / trusted-origin check (e.g. Better Auth) answer that with a 403. Pass the app's own origin explicitly: \`const origin = new URL(process.env.DYAD_TEST_BASE_URL || "http://localhost:32100").origin;\` then send \`headers: { origin, referer: origin + "/" }\`. A 403 from a sign-in endpoint is almost always this, not bad credentials — fix the test, not the app.`;
+};
 
 /**
  * Guidance for running tests and iterating on failures with the `run_tests`
  * tool. Appended to the agent test-writing guidance.
  */
-const AGENT_RUN_TESTS_GUIDANCE = `## Running tests and fixing failures
+const buildAgentRunTestsGuidance = (
+  audience: "root" | "implementer" = "root",
+) => {
+  const serverUnavailableInstruction =
+    audience === "root"
+      ? "ask the user to start it with the Run button in the preview panel"
+      : "report to the root Agent that the dev server must be started with the Run button";
+  const attemptLimitInstruction =
+    audience === "root"
+      ? "summarize for the user what the test covers, what still fails, what you tried, and what you recommend"
+      : "report to the root Agent what the test covers, what still fails, what you tried, and what you recommend";
+  return `## Running tests and fixing failures
 
 After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
 
@@ -427,7 +454,7 @@ Use the EXACT path of a spec that exists under e2e-tests/ — don't guess it. If
 
 Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
 
-The tool needs the app's dev server to be running; if it reports the app isn't running, ask the user to start it with the Run button in the preview panel.
+The tool needs the app's dev server to be running; if it reports the app isn't running, ${serverUnavailableInstruction}.
 
 When \`run_tests\` reports a failure, work the fix loop:
 1. READ the \`error-context.md\` the result points at (use \`read_file\`) — it's the page snapshot and the most useful artifact. The failure screenshot is attached as an image; look at it too. Only read the artifacts from the CURRENT run's directory.
@@ -436,16 +463,30 @@ When \`run_tests\` reports a failure, work the fix loop:
 4. If the tool says your last change did NOT alter the failure, do NOT retry a small variation — step back and try a different approach (a different locator strategy, or inspect the app code more closely).
 5. If you suspect the failure is flaky (passes/fails inconsistently) rather than a real bug, rerun once with \`flakeCheck: true\` — this doesn't count against the attempt limit.
 
-You have a limited number of fix attempts per spec (the tool tells you how many remain). When it says the limit is reached, STOP editing and running: summarize for the user what the test covers, what still fails, what you tried, and what you recommend.
+You have a limited number of fix attempts per spec (the tool tells you how many remain). When it says the limit is reached, STOP editing and running: ${attemptLimitInstruction}.
 
 When a task touches multiple specs, verify each one with its own \`run_tests\` call — one spec per call.`;
+};
+
+const AGENT_RUN_TESTS_GUIDANCE = buildAgentRunTestsGuidance();
 
 /**
  * Proactive test-maintenance policy for the local agent. Only injected when the
  * app has opted into testing, so the agent keeps the e2e suite in sync with
  * feature work by default — without waiting to be asked.
  */
-const AGENT_PROACTIVE_TESTS_GUIDANCE = `# Keeping end-to-end tests up to date
+const buildAgentProactiveTestsGuidance = (
+  audience: "root" | "implementer" = "root",
+) => {
+  const completionInstruction =
+    audience === "root"
+      ? "Briefly tell the user which flow you added or updated a test for"
+      : "Briefly report to the root Agent which flow you added or updated a test for";
+  const skipInstruction =
+    audience === "root"
+      ? "skip it (and say so) for trivial changes"
+      : "skip it for trivial changes and report that decision to the root Agent";
+  return `# Keeping end-to-end tests up to date
 
 This app has end-to-end testing enabled, so treat test coverage as PART OF THE WORK, not a separate favor to wait for. Whenever you finish implementing or changing app behavior, keep the \`e2e-tests/\` suite in sync in the SAME turn:
 
@@ -461,9 +502,12 @@ Use judgment about what DESERVES a test — don't test everything:
 - SKIP purely cosmetic or non-behavioral changes: styling/layout tweaks, copy/text edits, refactors that don't change behavior, config changes, and internal-only code. Don't add a test for these.
 - Keep it proportionate: ONE focused happy-path spec per feature/flow is usually enough. Don't bloat the suite with redundant or trivial tests.
 
-After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failures (see below) before you consider the task done. Briefly tell the user which flow you added or updated a test for.
+After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failures (see below) before you consider the task done. ${completionInstruction}.
 
-If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; skip it (and say so) for trivial changes.`;
+If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; ${skipInstruction}.`;
+};
+
+const AGENT_PROACTIVE_TESTS_GUIDANCE = buildAgentProactiveTestsGuidance();
 
 /**
  * Guidance for the recorder's test proposal, which goes through the
@@ -497,44 +541,23 @@ ${AGENT_RECORDED_TEST_GUIDANCE}
 
 ${AGENT_RUN_TESTS_GUIDANCE}`;
 
-/** Adapt shared test guidance to the Implementer's tools and root-only channel. */
-function buildImplementerTestWritingGuidance(): string {
-  return `${AGENT_PROACTIVE_TESTS_GUIDANCE}
+/** Test-writing guidance adapted to child tools and the root-only channel. */
+export function getImplementerTestWritingGuidance(
+  runTestsAvailable: boolean,
+): string {
+  return `${buildAgentProactiveTestsGuidance("implementer")}
 
 ${buildTestWritingGuidance(
   `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`e2e-tests/\` (e.g. \`e2e-tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
+  "implementer",
 )}
 
-${AGENT_RUN_TESTS_GUIDANCE}`
-    .replace(
-      "Make sure `@playwright/test` is installed as a dev dependency. If it isn't already in `package.json`, install it (Playwright is required to run the test).",
-      "If `@playwright/test` is missing from `package.json`, report the required dev dependency to the root Agent for installation.",
-    )
-    .replace(
-      "say so and ask the user before building auth",
-      "report the missing auth prerequisite to the root Agent",
-    )
-    .replace(
-      "Say so clearly if you add it",
-      "Report that prerequisite to the root Agent",
-    )
-    .replace(
-      "ask the user to start it with the Run button in the preview panel",
-      "report to the root Agent that the dev server must be started with the Run button",
-    )
-    .replace(
-      "summarize for the user what the test covers, what still fails, what you tried, and what you recommend",
-      "report to the root Agent what the test covers, what still fails, what you tried, and what you recommend",
-    )
-    .replace(
-      "Briefly tell the user which flow you added or updated a test for",
-      "Briefly report to the root Agent which flow you added or updated a test for",
-    );
+${
+  runTestsAvailable
+    ? buildAgentRunTestsGuidance("implementer")
+    : "The `run_tests` tool is unavailable for this assignment. Report the required verification to the root Agent; do not attempt to call the unavailable tool."
+}`;
 }
-
-/** Test-writing guidance safe for children without user-facing recorder tools. */
-export const IMPLEMENTER_TEST_WRITING_GUIDANCE =
-  buildImplementerTestWritingGuidance();
 
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 

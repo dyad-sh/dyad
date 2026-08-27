@@ -45,7 +45,9 @@ export async function buildNeonPromptAdditions({
   );
 
   if (emailVerificationEnabled === undefined) {
-    neonPromptAddition += `\n\n<neon-provider-state>\nEmail-verification state could not be read. Do not assume it is disabled; inspect the live Neon Auth configuration before changing sign-up or verification behavior.\n</neon-provider-state>`;
+    neonPromptAddition += branchId
+      ? `\n\n<neon-provider-state>\nEmail-verification state could not be read. Do not assume it is disabled; inspect the live Neon Auth configuration before changing sign-up or verification behavior.\n</neon-provider-state>`
+      : `\n\n<neon-provider-state>\nEmail-verification state is unavailable until a Neon branch is selected. Do not assume it is disabled; report the missing branch context before changing sign-up or verification behavior.\n</neon-provider-state>`;
   }
 
   if (includeContext && branchId) {

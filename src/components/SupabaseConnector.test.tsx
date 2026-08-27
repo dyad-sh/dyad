@@ -17,12 +17,14 @@ const {
   hasSupabaseCredentialsForOrganizationMock,
   unsetAppProjectMock,
   setAppProjectMock,
+  ipcSetAppProjectMock,
   refetchOrganizationsMock,
   refetchProjectsMock,
   refreshSettingsMock,
   refreshAppMock,
   appState,
   projectsState,
+  providerLoadingState,
   unsolicitedReturnCallback,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
@@ -35,6 +37,7 @@ const {
   hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
   unsetAppProjectMock: vi.fn(),
   setAppProjectMock: vi.fn(),
+  ipcSetAppProjectMock: vi.fn(),
   refetchOrganizationsMock: vi.fn(),
   refetchProjectsMock: vi.fn(),
   refreshSettingsMock: vi.fn(),
@@ -52,6 +55,10 @@ const {
       organizationSlug: string;
     }>,
   },
+  providerLoadingState: {
+    organizations: false,
+    projects: false,
+  },
   unsolicitedReturnCallback: {
     current: null as null | (() => void),
   },
@@ -66,6 +73,7 @@ vi.mock("@/ipc/types", () => ({
     supabase: {
       detectLegacyAppKey: detectLegacyAppKeyMock,
       switchAppToPublishableKey: switchAppToPublishableKeyMock,
+      setAppProject: ipcSetAppProjectMock,
     },
     system: { openExternalUrl: vi.fn() },
   },
@@ -119,7 +127,9 @@ vi.mock("@/hooks/useSupabase", () => ({
     projects: projectsState.current,
     branches: [],
     isLoadingProjects: false,
-    isFetchingProjects: false,
+    isFetchingProjects: providerLoadingState.projects,
+    isLoadingOrganizations: false,
+    isFetchingOrganizations: providerLoadingState.organizations,
     projectsError: null,
     isLoadingBranches: false,
     branchesError: null,
@@ -179,12 +189,15 @@ beforeEach(() => {
   appState.supabaseProjectId = "proj-1";
   appState.supabaseParentProjectId = undefined;
   projectsState.current = [];
+  providerLoadingState.organizations = false;
+  providerLoadingState.projects = false;
   unsolicitedReturnCallback.current = null;
   refreshSettingsMock.mockResolvedValue(undefined);
   refreshAppMock.mockResolvedValue(undefined);
   refetchOrganizationsMock.mockResolvedValue({ data: [] });
   refetchProjectsMock.mockResolvedValue({ data: [] });
   setAppProjectMock.mockResolvedValue(undefined);
+  ipcSetAppProjectMock.mockResolvedValue(undefined);
 });
 
 it("migrates a legacy project link to the organization found after reconnect", async () => {
@@ -206,7 +219,7 @@ it("migrates a legacy project link to the organization found after reconnect", a
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(setAppProjectMock).toHaveBeenCalledWith({
+    expect(ipcSetAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "proj-1",
       parentProjectId: undefined,
@@ -235,7 +248,7 @@ it("uses the parent project to migrate a legacy branch link", async () => {
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() =>
-    expect(setAppProjectMock).toHaveBeenCalledWith({
+    expect(ipcSetAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "branch-1",
       parentProjectId: "proj-1",
@@ -282,12 +295,23 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
       },
     ],
   });
-  setAppProjectMock.mockRejectedValue(new Error("write failed"));
+  ipcSetAppProjectMock.mockRejectedValue(new Error("write failed"));
 
   renderConnector();
   unsolicitedReturnCallback.current?.();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
+});
+
+it("shows a disabled relink action while provider projects are loading", async () => {
+  appState.supabaseOrganizationSlug = null;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  providerLoadingState.organizations = true;
+
+  renderConnector();
+
+  const button = screen.getByText("integrations.supabase.relinkProject");
+  expect(button.closest("button")?.hasAttribute("disabled")).toBe(true);
 });
 
 it("shows recovery controls when linked organization credentials are missing", async () => {

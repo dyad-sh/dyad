@@ -26,7 +26,10 @@ import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
-import { constructImplementerPrompt } from "../../prompts/local_agent_prompt";
+import {
+  constructImplementerPrompt,
+  resolveImplementerProvider,
+} from "../../prompts/local_agent_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
@@ -1984,12 +1987,10 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
-        const implementerProvider =
-          updatedChat.app?.supabaseProjectId && isSupabaseConnected(settings)
-            ? ("supabase" as const)
-            : updatedChat.app?.neonProjectId
-              ? ("neon" as const)
-              : undefined;
+        const implementerProvider = resolveImplementerProvider({
+          hasSupabaseProject: Boolean(updatedChat.app?.supabaseProjectId),
+          hasNeonProject: Boolean(updatedChat.app?.neonProjectId),
+        });
         const implementerSystemPrompt = constructImplementerPrompt(aiRules, {
           provider: implementerProvider,
         });

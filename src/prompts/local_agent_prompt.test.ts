@@ -3,6 +3,7 @@ import {
   constructBuildAgentPrompt,
   constructImplementerPrompt,
   constructLocalAgentPrompt,
+  resolveImplementerProvider,
 } from "@/prompts/local_agent_prompt";
 
 describe("local_agent_prompt", () => {
@@ -128,6 +129,33 @@ describe("local_agent_prompt", () => {
       "read the relevant available authentication guide",
     );
     expect(prompt).not.toContain("execute_sql");
+  });
+
+  it("selects Implementer safety guidance from the app provider association", () => {
+    expect(
+      resolveImplementerProvider({
+        hasSupabaseProject: true,
+        hasNeonProject: false,
+      }),
+    ).toBe("supabase");
+    expect(
+      resolveImplementerProvider({
+        hasSupabaseProject: true,
+        hasNeonProject: true,
+      }),
+    ).toBe("supabase");
+    expect(
+      resolveImplementerProvider({
+        hasSupabaseProject: false,
+        hasNeonProject: true,
+      }),
+    ).toBe("neon");
+    expect(
+      resolveImplementerProvider({
+        hasSupabaseProject: false,
+        hasNeonProject: false,
+      }),
+    ).toBeUndefined();
   });
 
   it("agent mode system prompt (vite framework includes Nitro nudge)", () => {

@@ -12,6 +12,8 @@ In a fresh worktree, also run `npm --prefix testing/fake-llm-server install` bef
 
 If `npm run ts` crashes with a Go `SIGSEGV`/segmentation fault inside `tsgo` instead of reporting TypeScript diagnostics, remove the stale incremental build cache and retry: `rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo && npm run ts`. This can happen after package/alias changes and is not necessarily a source type error.
 
+The same stale cache can produce repo-wide `TS2875` errors claiming `react/jsx-runtime` cannot be found even when Node resolves that file and it exists under `node_modules/react/`. Clear `node_modules/.tmp/tsconfig.app.tsbuildinfo` and rerun `npm run ts` before reinstalling packages or changing source.
+
 ## `import.meta.env` is not typed in renderer source
 
 `import.meta.env?.DEV` in `src/` fails `npm run ts` with `TS2339: Property 'env' does not exist on type 'ImportMeta'` (tsconfig.app.json does not load Vite client types; `renderer.tsx` uses `// @ts-ignore` for its one access). For dev/prod branching use `process.env.NODE_ENV !== "production"` instead — Vite statically replaces it in renderer builds and it works in vitest. Also note `npx tsc --noEmit -p tsconfig.json` can pass while `npm run ts` fails; only `npm run ts` is authoritative.

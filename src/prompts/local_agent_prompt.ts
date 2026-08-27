@@ -624,6 +624,18 @@ Available packages and libraries:
 
 export type ImplementerProvider = "supabase" | "neon";
 
+export function resolveImplementerProvider({
+  hasSupabaseProject,
+  hasNeonProject,
+}: {
+  hasSupabaseProject: boolean;
+  hasNeonProject: boolean;
+}): ImplementerProvider | undefined {
+  if (hasSupabaseProject) return "supabase";
+  if (hasNeonProject) return "neon";
+  return undefined;
+}
+
 function implementerProviderGuidance(
   provider: ImplementerProvider | undefined,
 ): string {

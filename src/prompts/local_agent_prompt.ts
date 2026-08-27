@@ -664,6 +664,8 @@ function implementerProviderGuidance(
   supabaseConnected: boolean,
   neonToolsAvailable: boolean,
   neonEmailVerificationEnabled: boolean | undefined,
+  providerReadToolsAvailable: boolean,
+  readGuideAvailable: boolean,
 ): string {
   if (provider === "supabase") {
     return `<provider_invariants provider="supabase">
@@ -673,7 +675,7 @@ ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
 ${SUPABASE_EDGE_FUNCTION_JWT_RULE}
-${supabaseConnected ? "- You may inspect provider metadata and the live schema with the available read tools." : "- The Supabase account is disconnected, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
+${supabaseConnected && providerReadToolsAvailable ? "- You may inspect provider metadata and the live schema with the available read tools." : "- Provider metadata and live-schema read tools are unavailable for this assignment. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
   }
   if (provider === "neon") {
@@ -684,10 +686,10 @@ ${NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
 ${NEON_RLS_REQUIRES_JWT_RULE}
 ${NEON_NO_BROWSER_DATABASE_URL_RULE}
 ${NEON_NO_BROWSER_SERVERLESS_RULE}
-- Before writing any authentication code, you MUST call the \`read_guide\` tool with guide="add-authentication".
-${neonEmailVerificationEnabled === true ? '- Email verification is enabled. Before writing sign-up or email-verification code, you MUST also call `read_guide` with guide="add-email-verification".' : neonEmailVerificationEnabled === undefined ? "- Email-verification state is unavailable. Before writing sign-up or email-verification code, do not assume it is disabled; report the provider access requirement to the root Agent." : ""}
-- Before writing password-reset code, you MUST call \`read_guide\` with guide="add-password-reset". Never hand-roll a reset-token flow.
-${neonToolsAvailable ? "- You may inspect provider metadata and the live schema with the available read tools." : "- Neon branch context is unavailable, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
+${readGuideAvailable ? '- Before writing any authentication code, you MUST call the `read_guide` tool with guide="add-authentication".' : "- The `read_guide` tool is unavailable for this assignment. Do not hand-roll Neon Auth; report the required authentication guidance to the root Agent before writing auth code."}
+${neonEmailVerificationEnabled === true ? (readGuideAvailable ? '- Email verification is enabled. Before writing sign-up or email-verification code, you MUST also call `read_guide` with guide="add-email-verification".' : "- Email verification is enabled. Report the required email-verification guidance to the root Agent before writing that flow.") : neonEmailVerificationEnabled === undefined ? "- Email-verification state is unavailable. Before writing sign-up or email-verification code, do not assume it is disabled; report the provider access requirement to the root Agent." : ""}
+${readGuideAvailable ? '- Before writing password-reset code, you MUST call `read_guide` with guide="add-password-reset". Never hand-roll a reset-token flow.' : "- Do not hand-roll a password-reset token flow; report the required password-reset guidance to the root Agent."}
+${neonToolsAvailable && providerReadToolsAvailable ? "- You may inspect provider metadata and the live schema with the available read tools." : "- Provider metadata and live-schema read tools are unavailable for this assignment. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
   }
   return "";
@@ -708,6 +710,8 @@ export function constructImplementerPrompt(
     supabaseConnected?: boolean;
     neonToolsAvailable?: boolean;
     neonEmailVerificationEnabled?: boolean;
+    providerReadToolsAvailable?: boolean;
+    readGuideAvailable?: boolean;
   },
 ): string {
   const providerGuidance = implementerProviderGuidance(
@@ -715,6 +719,8 @@ export function constructImplementerPrompt(
     options?.supabaseConnected === true,
     options?.neonToolsAvailable === true,
     options?.neonEmailVerificationEnabled,
+    options?.providerReadToolsAvailable !== false,
+    options?.readGuideAvailable !== false,
   );
   const frameworkGuidance =
     options?.frameworkType === "vite"

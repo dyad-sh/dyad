@@ -4,10 +4,10 @@ import {
   classifyManagementApiError,
   getProjectApiKeys,
   getSupabaseProjectLogs,
-  hasSupabaseCredentialsForOrganization,
   listSupabaseOrganizations,
   refreshSupabaseToken,
 } from "./supabase_management_client";
+import { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 

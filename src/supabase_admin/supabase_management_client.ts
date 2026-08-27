@@ -10,7 +10,6 @@ import {
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import type { SupabaseOrganizationCredentials } from "../lib/schemas";
-export { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import {
   fetchWithRetry,
   RateLimitError,

@@ -21,7 +21,10 @@ import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { scheduleChatSearchIndexing } from "../../pro/main/ipc/handlers/local_agent/chat_search_indexer";
 import { and, eq, isNull } from "drizzle-orm";
-import type { SmartContextMode } from "../../lib/schemas";
+import {
+  hasSupabaseCredentialsForOrganization,
+  type SmartContextMode,
+} from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -37,7 +40,6 @@ import {
   SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { hasSupabaseCredentialsForOrganization } from "../../supabase_admin/supabase_management_client";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import {
   buildNeonPromptForApp,
@@ -2046,6 +2048,9 @@ ${componentSnippet}
             supabaseConnected: false,
             neonToolsAvailable: false,
             neonEmailVerificationEnabled: undefined,
+            providerReadToolsAvailable: false,
+            readGuideAvailable:
+              settings.agentToolConsents?.["read_guide"] !== "never",
           },
         );
         const refreshImplementerContext = async () => {
@@ -2076,6 +2081,24 @@ ${componentSnippet}
           const refreshedFrameworkType = detectFrameworkType(
             getDyadAppPath(refreshedApp.path),
           );
+          const providerReadToolsAvailable =
+            provider === "supabase"
+              ? supabaseConnected &&
+                latestSettings.agentToolConsents?.[
+                  "get_supabase_project_info"
+                ] !== "never" &&
+                latestSettings.agentToolConsents?.[
+                  "get_database_table_schema"
+                ] !== "never"
+              : provider === "neon"
+                ? neonToolsAvailable &&
+                  latestSettings.agentToolConsents?.[
+                    "get_neon_project_info"
+                  ] !== "never" &&
+                  latestSettings.agentToolConsents?.[
+                    "get_database_table_schema"
+                  ] !== "never"
+                : false;
           const neonEmailVerificationEnabled =
             provider === "neon" &&
             neonToolsAvailable &&
@@ -2097,6 +2120,9 @@ ${componentSnippet}
               supabaseConnected,
               neonToolsAvailable,
               neonEmailVerificationEnabled,
+              providerReadToolsAvailable,
+              readGuideAvailable:
+                latestSettings.agentToolConsents?.["read_guide"] !== "never",
             }),
             supabaseProjectId: refreshedApp.supabaseProjectId,
             supabaseOrganizationSlug: refreshedApp.supabaseOrganizationSlug,

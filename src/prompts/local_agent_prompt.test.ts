@@ -175,7 +175,9 @@ describe("local_agent_prompt", () => {
     });
 
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
-    expect(prompt).toContain("The Supabase account is disconnected");
+    expect(prompt).toContain(
+      "Provider metadata and live-schema read tools are unavailable",
+    );
     expect(prompt).not.toContain("The app is connected to Supabase");
     expect(prompt).not.toContain(
       "You may inspect provider metadata and the live schema",
@@ -289,10 +291,27 @@ describe("local_agent_prompt", () => {
       neonToolsAvailable: false,
     });
 
-    expect(prompt).toContain("Neon branch context is unavailable");
+    expect(prompt).toContain(
+      "Provider metadata and live-schema read tools are unavailable",
+    );
     expect(prompt).not.toContain(
       "You may inspect provider metadata and the live schema",
     );
+  });
+
+  it("does not promise consent-disabled provider or guide tools", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "neon",
+      neonToolsAvailable: true,
+      neonEmailVerificationEnabled: true,
+      providerReadToolsAvailable: false,
+      readGuideAvailable: false,
+    });
+
+    expect(prompt).toContain("read_guide` tool is unavailable");
+    expect(prompt).toContain("read tools are unavailable");
+    expect(prompt).not.toContain("You may inspect provider metadata");
+    expect(prompt).not.toContain("MUST call the `read_guide`");
   });
 
   it("keeps root-owned operation boundaries without a provider", () => {

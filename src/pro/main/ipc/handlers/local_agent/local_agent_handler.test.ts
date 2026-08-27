@@ -395,7 +395,7 @@ import {
   buildChatMessageHistory,
   buildExplorerSynthesisMessage,
   buildImplementerOutcomeNotices,
-  handleLocalAgentStream,
+  handleLocalAgentStream as handleLocalAgentStreamImpl,
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
@@ -406,6 +406,35 @@ import {
 import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
 import type { AiMessagesJsonV6 } from "@/db/schema";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+
+type LocalAgentStreamOptions = Parameters<typeof handleLocalAgentStreamImpl>[3];
+const handleLocalAgentStream = (
+  ...args: [
+    ...(Parameters<typeof handleLocalAgentStreamImpl> extends [
+      infer Event,
+      infer Request,
+      infer Controller,
+      unknown,
+    ]
+      ? [Event, Request, Controller]
+      : never),
+    Omit<
+      LocalAgentStreamOptions,
+      "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
+    > &
+      Partial<
+        Pick<
+          LocalAgentStreamOptions,
+          "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
+        >
+      >,
+  ]
+) =>
+  handleLocalAgentStreamImpl(args[0], args[1], args[2], {
+    supabaseProviderToolsAvailable: false,
+    neonProviderToolsAvailable: false,
+    ...args[3],
+  });
 
 // ============================================================================
 // Tests

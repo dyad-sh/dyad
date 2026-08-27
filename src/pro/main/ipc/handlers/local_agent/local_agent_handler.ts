@@ -536,9 +536,9 @@ export async function handleLocalAgentStream(
     /** Provider-less capability-aware prompt used if refresh fails. */
     implementerFallbackSystemPrompt?: string;
     /** Whether the root and read-only children can authenticate Supabase reads. */
-    supabaseProviderToolsAvailable?: boolean;
+    supabaseProviderToolsAvailable: boolean;
     /** Whether the root and read-only children can authenticate Neon reads. */
-    neonProviderToolsAvailable?: boolean;
+    neonProviderToolsAvailable: boolean;
   },
 ): Promise<boolean> {
   const storedSettings = settingsOverride ?? readSettings();

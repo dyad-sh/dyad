@@ -321,6 +321,33 @@ export class PageObject {
     await this.githubConnector.resetRepos();
   }
 
+  private async setAgentToolAutoApprove(autoApprove: boolean) {
+    const consent = autoApprove ? "always" : "ask";
+    await this.page.evaluate(
+      async ({ consent }) => {
+        const mutatingToolNames = [
+          "write_file",
+          "search_replace",
+          "copy_file",
+          "delete_file",
+          "rename_file",
+          "add_dependency",
+          "execute_sql",
+          "add_integration",
+          "enable_nitro",
+          "restart_app",
+          "reinstall_and_restart_app",
+        ];
+        await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+          agentToolConsents: Object.fromEntries(
+            mutatingToolNames.map((toolName) => [toolName, consent]),
+          ),
+        });
+      },
+      { consent },
+    );
+  }
+
   async pinBuildChatModeForSetup() {
     await this.page.evaluate(async () => {
       await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
@@ -351,9 +378,7 @@ export class PageObject {
   } = {}) {
     await this.baseSetup();
     await this.navigation.goToSettingsTab();
-    // Retained as a setup-call compatibility option. Build now applies agent
-    // tools immediately, so there is no Auto-approve control to toggle.
-    void autoApprove;
+    await this.setAgentToolAutoApprove(autoApprove);
     await this.settings.setUpTestProvider();
     await this.settings.setUpTestModel();
     if (!enableBasicAgent) {
@@ -383,7 +408,7 @@ export class PageObject {
   } = {}) {
     await this.baseSetup();
     await this.navigation.goToSettingsTab();
-    void autoApprove;
+    await this.setAgentToolAutoApprove(autoApprove);
     await this.settings.setUpDyadProvider();
     if (!localAgent) {
       await this.settings.disableAppBlueprint();
@@ -409,7 +434,7 @@ export class PageObject {
   async setUpAzure({ autoApprove = false }: { autoApprove?: boolean } = {}) {
     await this.githubConnector.clearPushEvents();
     await this.navigation.goToSettingsTab();
-    void autoApprove;
+    await this.setAgentToolAutoApprove(autoApprove);
     await this.settings.disableAppBlueprint();
     // Azure should already be configured via environment variables
     // so we don't need additional setup steps like setUpDyadProvider

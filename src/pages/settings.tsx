@@ -5,7 +5,6 @@ import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { ipc } from "@/ipc/types";
 import { showSuccess, showError } from "@/lib/toast";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
-import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
@@ -531,10 +530,6 @@ export function AISettings() {
       title="AI"
       description="Control conversation context and agent limits."
     >
-      <div id={SETTING_IDS.maxChatTurns}>
-        <MaxChatTurnsSelector />
-      </div>
-
       <div id={SETTING_IDS.maxToolCallSteps}>
         <MaxToolCallStepsSelector />
       </div>

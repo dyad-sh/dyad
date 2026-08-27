@@ -26,7 +26,6 @@ export const SETTING_IDS = {
   appBlueprint: "setting-app-blueprint",
   testingForNewApps: "setting-testing-for-new-apps",
   chatEventNotification: "setting-chat-event-notification",
-  maxChatTurns: "setting-max-chat-turns",
   maxToolCallSteps: "setting-max-tool-call-steps",
   contextCompaction: "setting-context-compaction",
   telemetry: "setting-telemetry",
@@ -221,14 +220,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 
   // AI Settings
-  {
-    id: SETTING_IDS.maxChatTurns,
-    label: "Max Chat Turns",
-    description: "Set the maximum number of conversation turns",
-    keywords: ["turns", "max", "conversation", "limit", "chat"],
-    sectionId: SECTION_IDS.ai,
-    sectionLabel: "AI",
-  },
   {
     id: SETTING_IDS.maxToolCallSteps,
     label: "Max Tool Calls (Agent)",

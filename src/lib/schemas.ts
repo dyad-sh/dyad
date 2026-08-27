@@ -555,9 +555,17 @@ export function migrateStoredSettings(
   delete activeSettings.enableNativeGit;
   delete activeSettings.enableAutoFixProblems;
   delete activeSettings.thinkingBudget;
-  if (stored.agentToolConsents || stored.autoApproveChanges === false) {
+  if (stored.agentToolConsents || stored.autoApproveChanges !== true) {
     const agentToolConsents = { ...stored.agentToolConsents };
-    if (stored.autoApproveChanges === false) {
+    if (
+      agentToolConsents.reinstall_and_restart_app === undefined &&
+      agentToolConsents.rebuild_app !== undefined
+    ) {
+      agentToolConsents.reinstall_and_restart_app =
+        agentToolConsents.rebuild_app;
+    }
+    delete agentToolConsents.rebuild_app;
+    if (stored.autoApproveChanges !== true) {
       for (const toolName of [
         "write_file",
         "search_replace",
@@ -574,14 +582,6 @@ export function migrateStoredSettings(
         agentToolConsents[toolName] ??= "ask";
       }
     }
-    if (
-      agentToolConsents.reinstall_and_restart_app === undefined &&
-      agentToolConsents.rebuild_app !== undefined
-    ) {
-      agentToolConsents.reinstall_and_restart_app =
-        agentToolConsents.rebuild_app;
-    }
-    delete agentToolConsents.rebuild_app;
     activeSettings.agentToolConsents = agentToolConsents;
   }
 

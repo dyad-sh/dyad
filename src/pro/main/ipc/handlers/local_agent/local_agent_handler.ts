@@ -341,21 +341,6 @@ export function buildChatMessageHistory(
   });
 }
 
-export function limitModelMessageHistoryByTurns(
-  messageHistory: ModelMessage[],
-  maxTurns: number,
-): ModelMessage[] {
-  const userMessageIndexes = messageHistory.flatMap((message, index) =>
-    message.role === "user" ? [index] : [],
-  );
-  if (userMessageIndexes.length <= maxTurns) {
-    return messageHistory;
-  }
-  return messageHistory.slice(
-    userMessageIndexes[userMessageIndexes.length - maxTurns],
-  );
-}
-
 /**
  * Append a `<system-reminder>` to the latest user message listing referenced
  * apps so the agent knows which `app_name` values it can pass to read-only
@@ -488,7 +473,6 @@ export async function handleLocalAgentStream(
     readOnly = false,
     planModeOnly = false,
     messageOverride,
-    messageHistoryOverride,
     settingsOverride,
     modelSelectionOverride,
     freeModelMode,
@@ -515,8 +499,6 @@ export async function handleLocalAgentStream(
      * Used for summarization where messages need to be transformed.
      */
     messageOverride?: ModelMessage[];
-    /** Turn-limited persisted history for normal (non-summarization) runs. */
-    messageHistoryOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
     modelSelectionOverride?: ModelSelection;
     freeModelMode?: boolean;
@@ -1068,9 +1050,7 @@ export async function handleLocalAgentStream(
     // If a compaction summary exists, only include messages from that point onward
     // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
     const messageHistory: ModelMessage[] =
-      messageOverride ??
-      messageHistoryOverride ??
-      buildChatMessageHistory(chat.messages);
+      messageOverride ?? buildChatMessageHistory(chat.messages);
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");

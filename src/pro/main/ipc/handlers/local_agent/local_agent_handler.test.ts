@@ -395,7 +395,6 @@ import {
   buildExplorerSynthesisMessage,
   buildImplementerOutcomeNotices,
   handleLocalAgentStream,
-  limitModelMessageHistoryByTurns,
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
@@ -418,30 +417,6 @@ describe("Implementer outcome notices", () => {
     expect(buildImplementerOutcomeNotices([], ["Fix auth"])).toEqual([
       '<dyad-status title="Implementer cancelled" state="warning">Cancelled before completion: Fix auth. Partial changes may have been preserved; the root agent remains responsible for reviewing the final diff and choosing appropriate verification.</dyad-status>',
     ]);
-  });
-});
-
-describe("limitModelMessageHistoryByTurns", () => {
-  it("keeps complete structured tool turns within the configured limit", () => {
-    const history = [
-      { role: "user" as const, content: "first" },
-      {
-        role: "assistant" as const,
-        content: [{ type: "tool-call" as const, toolCallId: "1" }],
-      },
-      {
-        role: "tool" as const,
-        content: [{ type: "tool-result" as const, toolCallId: "1" }],
-      },
-      { role: "assistant" as const, content: "first done" },
-      { role: "user" as const, content: "second" },
-      { role: "assistant" as const, content: "second done" },
-      { role: "user" as const, content: "third" },
-    ] as ModelMessage[];
-
-    expect(limitModelMessageHistoryByTurns(history, 2)).toEqual(
-      history.slice(4),
-    );
   });
 });
 
@@ -1737,6 +1712,91 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Context compaction setting", () => {
+    it("builds model history from the refreshed chat after pending compaction", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          {
+            id: 1,
+            role: "user",
+            content: "old context user",
+            createdAt: new Date("2025-01-01T00:00:00Z"),
+          },
+          {
+            id: 2,
+            role: "assistant",
+            content: "old context assistant",
+            createdAt: new Date("2025-01-01T00:01:00Z"),
+          },
+          {
+            id: 3,
+            role: "user",
+            content: "current task",
+            createdAt: new Date("2025-01-01T00:03:00Z"),
+          },
+          {
+            id: 10,
+            role: "assistant",
+            content: "",
+            createdAt: new Date("2025-01-01T00:04:00Z"),
+          },
+        ],
+      });
+      mockIsChatPendingCompaction.mockResolvedValue(true);
+      mockPerformCompaction.mockImplementation(async () => {
+        if (!mockChatData) {
+          return { success: false, error: "missing chat" };
+        }
+        mockChatData = {
+          ...mockChatData,
+          messages: [
+            mockChatData.messages[0],
+            mockChatData.messages[1],
+            {
+              id: 20,
+              role: "assistant",
+              content:
+                '<dyad-compaction title="Conversation compacted" state="finished">refreshed summary</dyad-compaction>',
+              isCompactionSummary: true,
+              createdAt: new Date("2025-01-01T00:02:00Z"),
+            },
+            mockChatData.messages[2],
+            mockChatData.messages[3],
+          ],
+        } as any;
+        return {
+          success: true,
+          summary: "refreshed summary",
+          backupPath: ".dyad/chats/1/compaction-test.md",
+        };
+      });
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "done" },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "current task" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const modelMessages = vi.mocked(streamText).mock.calls[0][0].messages;
+      expect(modelMessages).toEqual([
+        {
+          role: "assistant",
+          content:
+            '<dyad-compaction title="Conversation compacted" state="finished">refreshed summary</dyad-compaction>',
+        },
+        { role: "user", content: "current task" },
+      ]);
+    });
+
     it("should not run pending compaction when context compaction is disabled", async () => {
       // Arrange
       const { event } = createFakeEvent();

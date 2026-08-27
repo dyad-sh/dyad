@@ -17,7 +17,6 @@ import {
   ExternalLink,
   Cloud,
   Cog,
-  X,
   ChevronDown,
   MousePointerClick,
   Power,

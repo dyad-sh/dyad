@@ -117,4 +117,26 @@ describe("migrateStoredSettings", () => {
       reinstall_and_restart_app: "always",
     });
   });
+
+  it("migrates disabled legacy auto-approve into per-tool approval gates", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      autoApproveChanges: false,
+      agentToolConsents: { write_file: "never" },
+    });
+
+    expect(migrateStoredSettings(stored).agentToolConsents).toEqual({
+      write_file: "never",
+      search_replace: "ask",
+      copy_file: "ask",
+      delete_file: "ask",
+      rename_file: "ask",
+      add_dependency: "ask",
+      execute_sql: "ask",
+      add_integration: "ask",
+      enable_nitro: "ask",
+      restart_app: "ask",
+      reinstall_and_restart_app: "ask",
+    });
+  });
 });

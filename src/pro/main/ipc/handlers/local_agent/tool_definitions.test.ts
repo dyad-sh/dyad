@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BUILD_MODE_TOOL_NAMES,
+  estimateAgentToolTokens,
   estimateBuildModeToolTokens,
   TOOL_DEFINITIONS,
 } from "./tool_definitions";
@@ -25,6 +26,8 @@ describe("Build mode tool profile", () => {
       "set_chat_summary",
       "add_integration",
       "enable_nitro",
+      "restart_app",
+      "reinstall_and_restart_app",
       "update_todos",
       "read_guide",
       "planning_questionnaire",
@@ -63,5 +66,26 @@ describe("Build mode tool profile", () => {
 
     expect(withoutBlueprint).toBeGreaterThan(1_000);
     expect(withBlueprint).toBeGreaterThan(withoutBlueprint);
+  });
+
+  it("accounts for tool declarations in every agent-backed mode", async () => {
+    const baseOptions = {
+      enableAppBlueprint: false,
+      isDyadPro: false,
+      frameworkType: "vite" as const,
+      supabaseProjectId: null,
+      neonProjectId: null,
+      neonActiveBranchId: null,
+    };
+
+    await expect(
+      estimateAgentToolTokens({ ...baseOptions, readOnly: true }),
+    ).resolves.toBeGreaterThan(0);
+    await expect(
+      estimateAgentToolTokens({ ...baseOptions, planModeOnly: true }),
+    ).resolves.toBeGreaterThan(0);
+    await expect(estimateAgentToolTokens(baseOptions)).resolves.toBeGreaterThan(
+      0,
+    );
   });
 });

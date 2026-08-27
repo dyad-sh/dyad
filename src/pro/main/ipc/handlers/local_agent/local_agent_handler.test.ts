@@ -395,6 +395,7 @@ import {
   buildExplorerSynthesisMessage,
   buildImplementerOutcomeNotices,
   handleLocalAgentStream,
+  limitModelMessageHistoryByTurns,
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
@@ -417,6 +418,30 @@ describe("Implementer outcome notices", () => {
     expect(buildImplementerOutcomeNotices([], ["Fix auth"])).toEqual([
       '<dyad-status title="Implementer cancelled" state="warning">Cancelled before completion: Fix auth. Partial changes may have been preserved; the root agent remains responsible for reviewing the final diff and choosing appropriate verification.</dyad-status>',
     ]);
+  });
+});
+
+describe("limitModelMessageHistoryByTurns", () => {
+  it("keeps complete structured tool turns within the configured limit", () => {
+    const history = [
+      { role: "user" as const, content: "first" },
+      {
+        role: "assistant" as const,
+        content: [{ type: "tool-call" as const, toolCallId: "1" }],
+      },
+      {
+        role: "tool" as const,
+        content: [{ type: "tool-result" as const, toolCallId: "1" }],
+      },
+      { role: "assistant" as const, content: "first done" },
+      { role: "user" as const, content: "second" },
+      { role: "assistant" as const, content: "second done" },
+      { role: "user" as const, content: "third" },
+    ] as ModelMessage[];
+
+    expect(limitModelMessageHistoryByTurns(history, 2)).toEqual(
+      history.slice(4),
+    );
   });
 });
 

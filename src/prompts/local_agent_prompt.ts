@@ -560,11 +560,17 @@ ${AI_RULES_BLOCK}
 `;
 }
 
-function buildBuildModeSystemPrompt(enableAppBlueprint: boolean): string {
+function buildBuildModeSystemPrompt(
+  enableAppBlueprint: boolean,
+  restartAppToolAvailable: boolean,
+  reinstallAndRestartAppToolAvailable: boolean,
+): string {
   return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
+
+${appLifecycleBlock({ restartAppToolAvailable, reinstallAndRestartAppToolAvailable })}
 
 ${GENERAL_GUIDELINES_BLOCK}
 
@@ -715,6 +721,8 @@ export function constructBuildAgentPrompt(
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
+    restartAppToolAvailable?: boolean;
+    reinstallAndRestartAppToolAvailable?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
@@ -722,7 +730,11 @@ export function constructBuildAgentPrompt(
     options?.frameworkType === "vite" && !options?.hasSupabaseProject
       ? `\n${SERVER_LAYER_BLOCK}\n`
       : "";
-  let prompt = buildBuildModeSystemPrompt(enableAppBlueprint)
+  let prompt = buildBuildModeSystemPrompt(
+    enableAppBlueprint,
+    options?.restartAppToolAvailable !== false,
+    options?.reinstallAndRestartAppToolAvailable !== false,
+  )
     .replace("[[SERVER_LAYER]]", () => serverLayer)
     .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);
 

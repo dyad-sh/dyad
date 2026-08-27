@@ -766,6 +766,8 @@ export const constructSystemPrompt = ({
       frameworkType,
       hasSupabaseProject,
       enableAppBlueprint,
+      restartAppToolAvailable,
+      reinstallAndRestartAppToolAvailable,
     });
   }
 

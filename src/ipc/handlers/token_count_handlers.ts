@@ -14,7 +14,6 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { detectFrameworkType } from "../utils/framework_utils";
 import log from "electron-log";
-import { extractCodebase } from "../../utils/codebase";
 import {
   getSupabaseContext,
   getSupabaseClientCode,
@@ -23,7 +22,6 @@ import {
 import { TokenCountParams, TokenCountResult } from "@/ipc/types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
-import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import {
   normalizeModelSelection,
@@ -32,13 +30,14 @@ import {
 import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
 import {
   isDyadProEnabled,
+  isBasicAgentMode,
   isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
-import { estimateBuildModeToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import { estimateAgentToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 
 const logger = log.scope("token_count_handlers");
 
@@ -143,46 +142,40 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 
-      const toolDefinitionTokens =
-        selectedChatMode === "build"
-          ? await estimateBuildModeToolTokens({
-              enableAppBlueprint,
-              isDyadPro: isDyadProEnabled(settings),
-              frameworkType,
-              supabaseProjectId: chat.app.supabaseProjectId,
-              neonProjectId: chat.app.neonProjectId,
-              neonActiveBranchId:
-                chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
-            })
-          : 0;
+      const isDyadPro = isDyadProEnabled(settings);
+      const toolDefinitionTokens = await estimateAgentToolTokens({
+        toolProfile: selectedChatMode === "build" ? "build" : "agent",
+        readOnly: selectedChatMode === "ask",
+        planModeOnly: selectedChatMode === "plan",
+        basicAgentMode:
+          selectedChatMode === "local-agent" && isBasicAgentMode(settings),
+        enableAppBlueprint,
+        isDyadPro,
+        frameworkType,
+        supabaseProjectId: chat.app.supabaseProjectId,
+        neonProjectId: chat.app.neonProjectId,
+        neonActiveBranchId:
+          chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
+        testingEnabled: !!chat.app.testingEnabled,
+        canUseExplorerSubagent:
+          selectedChatMode !== "build" &&
+          isDyadPro &&
+          settings.enableExplorerSubagent !== false,
+        canUseImplementerSubagent:
+          selectedChatMode === "local-agent" &&
+          isDyadPro &&
+          isImplementerSubagentEnabled(settings),
+        canUseAdvancedSubagentTools:
+          selectedChatMode === "local-agent" &&
+          isDyadPro &&
+          settings.enableAdvancedSubagents === true,
+      });
       const systemPromptTokens =
         estimateTokens(systemPrompt + supabaseContext) + toolDefinitionTokens;
 
-      // Extract codebase information if app is associated with the chat
-      let codebaseTokens = 0;
-
-      if (chat.app && !willUseLocalAgentStream) {
-        const appPath = getDyadAppPath(chat.app.path);
-        const { formattedOutput, files } = await extractCodebase({
-          appPath,
-          chatContext: validateChatContext(chat.app.chatContext),
-        });
-        if (settings.enableDyadPro && settings.enableProSmartFilesContextMode) {
-          codebaseTokens = estimateTokens(
-            files
-              // It doesn't need to be the exact format but it's just to get a token estimate
-              .map(
-                (file) => `<dyad-file=${file.path}>${file.content}</dyad-file>`,
-              )
-              .join("\n\n"),
-          );
-        } else {
-          codebaseTokens = estimateTokens(formattedOutput);
-        }
-        logger.debug(
-          `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`,
-        );
-      }
+      // Tool-backed modes inspect the current app on demand, so they do not
+      // inject the full codebase into the initial request.
+      const codebaseTokens = 0;
 
       // Tool-backed modes reach referenced apps via tool calls rather than
       // injecting full codebases into the prompt, so mentioned apps contribute

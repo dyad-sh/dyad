@@ -215,6 +215,14 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("reinstall_and_restart_app");
   });
 
+  it("includes lifecycle guidance in the Build prompt", () => {
+    const prompt = constructBuildAgentPrompt(undefined);
+
+    expect(prompt).toContain("<app_lifecycle>");
+    expect(prompt).toContain("restart_app");
+    expect(prompt).toContain("reinstall_and_restart_app");
+  });
+
   it("omits production-build guidance when run_build is unavailable", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       runBuildToolAvailable: false,
@@ -301,7 +309,6 @@ describe("build agent prompt", () => {
       "run_pre_commit",
       "execute_sandbox_script",
       "search_chats",
-      "restart_app",
       "generate_image",
     ]) {
       expect(prompt).not.toContain(unavailableTool);

@@ -238,6 +238,8 @@ describe("retry (hybrid)", () => {
     const { send } = await harness.typeInChat("[increment]");
     send();
     await firstEnd;
+    expect(screen.getByText("counter=1")).toBeTruthy();
+    const messagesBeforeRetry = await harness.db.query.messages.findMany();
 
     const uncommittedPath = path.join(
       harness.appDir,
@@ -251,5 +253,10 @@ describe("retry (hybrid)", () => {
     await retryEnd;
 
     expect(fs.existsSync(uncommittedPath)).toBe(true);
+    await waitFor(() => expect(screen.getByText("counter=2")).toBeTruthy());
+    expect(screen.queryByText("counter=1")).toBeNull();
+    expect(await harness.db.query.messages.findMany()).toHaveLength(
+      messagesBeforeRetry.length,
+    );
   }, 60_000);
 });

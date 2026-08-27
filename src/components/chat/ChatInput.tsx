@@ -296,7 +296,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = messages.at(-1);
   const disableSendButton =
-    !isLocalAgentBackedMode(selectedMode) &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -940,8 +939,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
           {!pendingToolConsent &&
             proposal &&
-            proposalResult?.chatId === chatId &&
-            !isLocalAgentBackedMode(selectedMode) && (
+            proposalResult?.chatId === chatId && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}

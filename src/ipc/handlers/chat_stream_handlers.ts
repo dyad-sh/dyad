@@ -87,8 +87,10 @@ import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import {
+  buildChatMessageHistory,
   clearPendingLocalAgentInputsForChat,
   handleLocalAgentStream,
+  limitModelMessageHistoryByTurns,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { isPreCommitHookAvailable } from "../services/pre_commit_service";
 import { userInputRegistry } from "../../user_input/main";
@@ -1826,8 +1828,10 @@ ${componentSnippet}
             ? localAgentAiUserPrompt
             : defaultAiUserPrompt;
 
-        // This legacy full-context branch is retained for non-tool-backed
-        // callers. Active chat modes use referenced-app tool access instead.
+        // Every currently selectable chat mode returns through the tool-backed
+        // handlers below. This legacy full-context path is intentionally
+        // dormant during the stored-response protocol migration; none of its
+        // auto-approval or destructive-SQL checks are live safety boundaries.
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&
@@ -2194,6 +2198,22 @@ This conversation includes one or more image attachments. When the user uploads 
           );
         }
 
+        const localAgentMessageHistory = limitModelMessageHistoryByTurns(
+          buildChatMessageHistory(updatedChat.messages),
+          maxChatTurns,
+        );
+        const preparedCurrentUserMessage = [...chatMessages]
+          .reverse()
+          .find((message) => message.role === "user");
+        if (preparedCurrentUserMessage) {
+          for (let i = localAgentMessageHistory.length - 1; i >= 0; i--) {
+            if (localAgentMessageHistory[i].role === "user") {
+              localAgentMessageHistory[i] = preparedCurrentUserMessage;
+              break;
+            }
+          }
+        }
+
         if (isSummarizeIntent) {
           const previousChat = await db.query.chats.findFirst({
             where: eq(chats.id, parseInt(req.prompt.split("=")[1])),
@@ -2423,6 +2443,7 @@ This conversation includes one or more image attachments. When the user uploads 
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              messageHistoryOverride: localAgentMessageHistory,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               freeModelMode,
@@ -2462,6 +2483,7 @@ This conversation includes one or more image attachments. When the user uploads 
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               planModeOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              messageHistoryOverride: localAgentMessageHistory,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               freeModelMode,
@@ -2488,6 +2510,7 @@ This conversation includes one or more image attachments. When the user uploads 
               readOnly: readOnlyBuildTurn,
               toolProfile: "build",
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              messageHistoryOverride: localAgentMessageHistory,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               freeModelMode,
@@ -2515,6 +2538,7 @@ This conversation includes one or more image attachments. When the user uploads 
               systemPrompt,
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              messageHistoryOverride: localAgentMessageHistory,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               freeModelMode,

@@ -457,6 +457,8 @@ export const BUILD_MODE_TOOL_NAMES = [
   "set_chat_summary",
   "add_integration",
   "enable_nitro",
+  "restart_app",
+  "reinstall_and_restart_app",
   "update_todos",
   "read_guide",
   "planning_questionnaire",
@@ -465,22 +467,42 @@ export const BUILD_MODE_TOOL_NAMES = [
 
 const BUILD_MODE_TOOL_NAME_SET = new Set<AgentToolName>(BUILD_MODE_TOOL_NAMES);
 
-export async function estimateBuildModeToolTokens({
+export async function estimateAgentToolTokens({
+  toolProfile = "agent",
   readOnly = false,
+  planModeOnly = false,
+  basicAgentMode = false,
+  freeModelMode = false,
   enableAppBlueprint,
   isDyadPro,
   frameworkType,
   supabaseProjectId,
   neonProjectId,
   neonActiveBranchId,
+  testingEnabled = false,
+  canUseExplorerSubagent = false,
+  canUseImplementerSubagent = false,
+  canUseAdvancedSubagentTools = false,
+  preCommitHookAvailable = false,
+  reinstallAndRestartAppToolAvailable = true,
 }: {
+  toolProfile?: "agent" | "build";
   readOnly?: boolean;
+  planModeOnly?: boolean;
+  basicAgentMode?: boolean;
+  freeModelMode?: boolean;
   enableAppBlueprint: boolean;
   isDyadPro: boolean;
   frameworkType: AgentContext["frameworkType"];
   supabaseProjectId: string | null;
   neonProjectId: string | null;
   neonActiveBranchId: string | null;
+  testingEnabled?: boolean;
+  canUseExplorerSubagent?: boolean;
+  canUseImplementerSubagent?: boolean;
+  canUseAdvancedSubagentTools?: boolean;
+  preCommitHookAvailable?: boolean;
+  reinstallAndRestartAppToolAvailable?: boolean;
 }): Promise<number> {
   const estimateContext = {
     isDyadPro,
@@ -488,10 +510,21 @@ export async function estimateBuildModeToolTokens({
     supabaseProjectId,
     neonProjectId,
     neonActiveBranchId,
+    referencedApps: new Map(),
+    testingEnabled,
+    canUseExplorerSubagent,
+    canUseImplementerSubagent,
+    canUseAdvancedSubagentTools,
+    preCommitHookAvailable,
+    reinstallAndRestartAppToolAvailable,
+    sandboxWriteFileHostEnabled: !readOnly && !planModeOnly,
   } as AgentContext;
   const options: BuildAgentToolSetOptions = {
-    toolProfile: "build",
+    toolProfile,
     readOnly,
+    planModeOnly,
+    basicAgentMode,
+    freeModelMode,
     enableAppBlueprint,
   };
   const declarations = await Promise.all(
@@ -506,6 +539,12 @@ export async function estimateBuildModeToolTokens({
   );
 
   return estimateTokens(JSON.stringify(declarations));
+}
+
+export function estimateBuildModeToolTokens(
+  options: Omit<Parameters<typeof estimateAgentToolTokens>[0], "toolProfile">,
+): Promise<number> {
+  return estimateAgentToolTokens({ ...options, toolProfile: "build" });
 }
 
 /**

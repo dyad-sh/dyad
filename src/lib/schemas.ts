@@ -555,8 +555,25 @@ export function migrateStoredSettings(
   delete activeSettings.enableNativeGit;
   delete activeSettings.enableAutoFixProblems;
   delete activeSettings.thinkingBudget;
-  if (stored.agentToolConsents) {
+  if (stored.agentToolConsents || stored.autoApproveChanges === false) {
     const agentToolConsents = { ...stored.agentToolConsents };
+    if (stored.autoApproveChanges === false) {
+      for (const toolName of [
+        "write_file",
+        "search_replace",
+        "copy_file",
+        "delete_file",
+        "rename_file",
+        "add_dependency",
+        "execute_sql",
+        "add_integration",
+        "enable_nitro",
+        "restart_app",
+        "reinstall_and_restart_app",
+      ]) {
+        agentToolConsents[toolName] ??= "ask";
+      }
+    }
     if (
       agentToolConsents.reinstall_and_restart_app === undefined &&
       agentToolConsents.rebuild_app !== undefined

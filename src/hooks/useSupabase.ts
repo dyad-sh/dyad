@@ -17,13 +17,26 @@ import {
   SupabaseProject,
   SupabaseBranch,
   SupabaseRedeployProgress,
+  CreateSupabaseProjectParams,
+  SupabaseProjectStatus,
+  SUPABASE_PROJECT_STATUS_PROVISIONING,
 } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
+import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
+
+/**
+ * Did a create fail *after* the project was created? The handler reports only
+ * that case as `Internal`, and `kind` survives IPC, so this needs no message
+ * matching.
+ */
+function isCreatedButUnlinkedError(error: unknown): boolean {
+  return isDyadError(error) && error.kind === DyadErrorKind.Internal;
+}
 
 export interface UseSupabaseOptions {
   branchesProjectId?: string | null;
@@ -92,6 +105,36 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       ]);
     },
     meta: { showErrorToast: true },
+  });
+
+  // Mutation: Create a Supabase project and link it to an app.
+  // The handler does both, so a success here means the app is already
+  // connected; callers only need to refresh.
+  const createProjectMutation = useMutation<
+    SupabaseProject,
+    Error,
+    CreateSupabaseProjectParams
+  >({
+    mutationFn: async (params) => {
+      return ipc.supabase.createProject(params);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.supabase.projects });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    },
+    // Only for the created-but-unlinked case, whose error tells the user to
+    // pick the project from a list that is still the pre-create snapshot.
+    // Refetching after an ordinary failure would be worse than nothing:
+    // `listAllProjects` returns a partial list as a success, so an offline
+    // create would also replace a good cached list with an empty one.
+    onError: (error) => {
+      if (!isCreatedButUnlinkedError(error)) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.supabase.projects });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    },
+    // The connector renders the failure inline next to the form, and a toast on
+    // top of that would say the same thing twice.
+    meta: { showErrorToast: false },
   });
 
   // Mutation: Associate a Supabase project with an app
@@ -260,6 +303,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     branchesError: branchesQuery.error,
 
     // Mutation states
+    isCreatingProject: createProjectMutation.isPending,
+    // Which app the in-flight create belongs to. Some navigations swap the
+    // connector's `appId` without remounting it, so callers must not read the
+    // pending flag as "this app is being created".
+    creatingProjectAppId: createProjectMutation.variables?.appId ?? null,
     isDeletingOrganization: deleteOrganizationMutation.isPending,
     isSettingAppProject:
       setAppProjectMutation.isPending || recoverAppProjectMutation.isPending,
@@ -271,9 +319,73 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     refetchProjects: projectsQuery.refetch,
     refetchBranches: branchesQuery.refetch,
     deleteOrganization: deleteOrganizationMutation.mutateAsync,
+    createProject: createProjectMutation.mutateAsync,
     setAppProject: setAppProjectMutation.mutateAsync,
     recoverAppProject: recoverAppProjectMutation.mutateAsync,
     unsetAppProject: unsetAppProjectMutation.mutateAsync,
+  };
+}
+
+const PROJECT_STATUS_POLL_INTERVAL_MS = 5_000;
+
+/**
+ * Whether a project is still being provisioned, asked of Supabase on each mount
+ * rather than remembered from the create — so it survives navigating away, and
+ * covers projects provisioned outside Dyad. Costs one request per mount, and
+ * polls only while the answer is `COMING_UP`.
+ */
+export function useSupabaseProjectStatus({
+  projectId,
+  organizationSlug,
+  enabled = true,
+}: {
+  projectId: string | null | undefined;
+  organizationSlug: string | null | undefined;
+  enabled?: boolean;
+}) {
+  const query = useQuery<SupabaseProjectStatus, Error>({
+    queryKey: queryKeys.supabase.projectStatus({
+      projectId: projectId ?? null,
+      organizationSlug: organizationSlug ?? null,
+    }),
+    queryFn: async () => {
+      return ipc.supabase.getProjectStatus({
+        projectId: projectId!,
+        organizationSlug: organizationSlug ?? null,
+      });
+    },
+    enabled: enabled && !!projectId,
+    // Opting out of the app-wide 60s staleTime is what makes a failed tick
+    // recoverable: a cached COMING_UP would otherwise be served to the next
+    // mount with no request, leaving the banner down for the rest of the
+    // provision. No renderer retry either — the main process already retries,
+    // and a cancelled one lands in terminal `error` after a single failure.
+    staleTime: 0,
+    retry: false,
+    refetchInterval: (query) => {
+      // A terminal error is the bound. React Query retains the last successful
+      // data, so reading `data.status` alone would see COMING_UP forever once
+      // the endpoint goes dark, and poll for as long as the panel is mounted.
+      if (query.state.status === "error") {
+        return false;
+      }
+      return query.state.data?.status === SUPABASE_PROJECT_STATUS_PROVISIONING
+        ? PROJECT_STATUS_POLL_INTERVAL_MS
+        : false;
+    },
+    // A failed poll says nothing the user can act on, and this runs on every
+    // mount for every connected app — a toast per tick would be noise.
+    meta: { showErrorToast: false },
+  });
+
+  return {
+    status: query.data?.status ?? null,
+    // A retained COMING_UP is no evidence once the endpoint is failing, so the
+    // banner drops on the same signal that stops the poll. Only COMING_UP: a
+    // paused or restoring project reading "still setting up" would be wrong.
+    isProvisioning:
+      !query.isError &&
+      query.data?.status === SUPABASE_PROJECT_STATUS_PROVISIONING,
   };
 }
 

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -862,6 +863,142 @@ export async function listSupabaseFunctions({
     `Found ${functions.length} functions for project: ${supabaseProjectId}`,
   );
   return functions;
+}
+
+export interface CreatedSupabaseProjectResponse {
+  id: string;
+  name: string;
+  region: string;
+  organizationSlug: string;
+  status: string | null;
+}
+
+/**
+ * Generated and deliberately never surfaced or stored: Dyad reaches projects
+ * through the Management API and their API keys, so nothing needs it, and
+ * holding a Postgres superuser password would be a liability. Users reset it
+ * from the Supabase dashboard for direct access.
+ */
+function generateDatabasePassword(): string {
+  // Base64url of 24 random bytes: 32 chars, no characters Supabase's connection
+  // strings would need escaped.
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+/**
+ * Creates a project in a connected organization. It comes back `COMING_UP` and
+ * is unusable for a minute or two, so callers should poll
+ * `getSupabaseProjectStatus` before doing anything with it.
+ */
+export async function createSupabaseProject({
+  name,
+  organizationSlug,
+  region,
+}: {
+  name: string;
+  organizationSlug: string;
+  region: string;
+}): Promise<CreatedSupabaseProjectResponse> {
+  if (IS_TEST_BUILD) {
+    return {
+      // Not `fake-project-id`, which the fake project list and connect flow
+      // both use: an E2E test has to tell a created project apart from the one
+      // that already existed.
+      id: "fake-created-project-id",
+      name,
+      region,
+      organizationSlug,
+      status: "ACTIVE_HEALTHY",
+    };
+  }
+
+  logger.info(
+    `Creating Supabase project "${name}" in organization ${organizationSlug} (${region})`,
+  );
+  const supabase = await getSupabaseClientForOrganization(organizationSlug);
+
+  const response = await fetchWithRetry(
+    "https://api.supabase.com/v1/projects",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        organization_id: organizationSlug,
+        region,
+        db_pass: generateDatabasePassword(),
+      }),
+    },
+    `Create Supabase project ${name}`,
+  );
+
+  // Not `SupabaseManagementAPI.createProject()`: it discards the response body
+  // on failure, and the body is where Supabase explains the failures users
+  // actually hit — project limit reached, quota exhausted, name rejected.
+  if (response.status !== 201 && response.status !== 200) {
+    throw await createResponseError(response, "create project");
+  }
+
+  const project = await response.json();
+  if (!project?.id) {
+    throw new DyadError(
+      `Supabase created a project but returned no project ref: ${JSON.stringify(project)}`,
+      DyadErrorKind.External,
+    );
+  }
+
+  logger.info(`Created Supabase project ${project.id} ("${project.name}")`);
+  return {
+    id: project.id,
+    name: project.name ?? name,
+    region: project.region ?? region,
+    // The slug we sent, not the one echoed back under `organization_id`.
+    // Credentials are keyed by slug, so storing a canonical id would make every
+    // later call fail with "organization not found" at an authenticated user.
+    organizationSlug,
+    status: project.status ?? null,
+  };
+}
+
+/**
+ * Supabase's raw project status, passed through for callers to interpret.
+ * `ACTIVE_HEALTHY` is the only one where the database and API are serving;
+ * `COMING_UP` is a project still being built. Null if the response omitted it.
+ */
+export async function getSupabaseProjectStatus({
+  projectId,
+  organizationSlug,
+}: {
+  projectId: string;
+  organizationSlug: string | null;
+}): Promise<{ projectId: string; status: string | null }> {
+  if (IS_TEST_BUILD) {
+    return { projectId, status: "ACTIVE_HEALTHY" };
+  }
+
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${encodeURIComponent(projectId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+    `Get Supabase project ${projectId}`,
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "get project");
+  }
+
+  const project = await response.json();
+  const status: string | null = project?.status ?? null;
+  return { projectId, status };
 }
 
 export async function listSupabaseBranches({

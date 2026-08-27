@@ -3,7 +3,9 @@ import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
 import {
+  createSupabaseProject,
   getSupabaseClientForOrganization,
+  getSupabaseProjectStatus,
   listSupabaseBranches,
   getSupabaseProjectLogs,
   getOrganizationDetails,
@@ -32,9 +34,75 @@ import { assertNoNeonProject } from "../utils/neon_utils";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { safeSend } from "../utils/safe_sender";
+import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
+import { isRateLimitError } from "../utils/retryWithRateLimit";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
+
+/**
+ * A 4xx here is the user's to fix — most often an organization out of project
+ * slots — and carries Supabase's own explanation, so it must not be reported as
+ * an upstream exception. `classifyManagementApiError` would call every 403 an
+ * auth problem and tell them to reconnect their account. See
+ * `rules/dyad-errors.md` for which kinds reach PostHog.
+ */
+function classifyCreateProjectError(error: unknown): unknown {
+  if (isDyadError(error)) {
+    return error;
+  }
+  // Before the SupabaseManagementAPIError branch: an exhausted 429 is rethrown
+  // as a RateLimitError, so a status check inside that branch never sees it.
+  if (isRateLimitError(error)) {
+    return new DyadError(
+      error instanceof Error ? error.message : String(error),
+      DyadErrorKind.RateLimited,
+    );
+  }
+  if (error instanceof SupabaseManagementAPIError) {
+    const status = error.response.status;
+    if (status === 401) {
+      return classifyManagementApiError(error, "create a Supabase project");
+    }
+    if (status >= 400 && status < 500) {
+      return new DyadError(error.message, DyadErrorKind.Precondition);
+    }
+  }
+  return new DyadError(
+    `Couldn't create the Supabase project: ${error instanceof Error ? error.message : error}`,
+    DyadErrorKind.External,
+  );
+}
+
+/**
+ * This runs on a poll for every connected app, so an unclassified failure is
+ * never a one-off: a project deleted from the dashboard would report an
+ * exception on every mount and every tick, and none of these are product bugs.
+ */
+function classifyProjectStatusError(error: unknown): unknown {
+  if (isDyadError(error)) {
+    return error;
+  }
+  if (isRateLimitError(error)) {
+    return new DyadError(
+      error instanceof Error ? error.message : String(error),
+      DyadErrorKind.RateLimited,
+    );
+  }
+  if (error instanceof SupabaseManagementAPIError) {
+    const status = error.response.status;
+    if (status === 404) {
+      return new DyadError(error.message, DyadErrorKind.NotFound);
+    }
+    if (status === 401 || status === 403) {
+      return classifyManagementApiError(error, "check this project's status");
+    }
+    if (status >= 400 && status < 500) {
+      return new DyadError(error.message, DyadErrorKind.Precondition);
+    }
+  }
+  return error;
+}
 
 export function registerSupabaseHandlers() {
   // List all connected Supabase organizations with details
@@ -136,12 +204,11 @@ export function registerSupabaseHandlers() {
               id: project.id,
               name: project.name,
               region: project.region,
-              organizationSlug:
-                // The supabase management API typedef is out of date and there's
-                // actually an organization_slug field.
-                // Just in case it's not there, we fallback to organization_id
-                // which in practice is the same value as the slug.
-                (project as any).organization_slug || project.organization_id,
+              // The slug being iterated, not the one the response carries:
+              // credentials are keyed by slug, and this gets written to the app
+              // when a project is picked. A canonical id here would leave the
+              // app unable to authenticate against its own project.
+              organizationSlug,
             });
           }
         }
@@ -155,6 +222,91 @@ export function registerSupabaseHandlers() {
     }
 
     return allProjects;
+  });
+
+  // Holds `provider` for the same reason setAppProject does: the link it writes
+  // is what the key switch reads. That also covers a double-submit — the second
+  // call reads an app row that already has a project and is refused below.
+  createTypedHandler(
+    supabaseContracts.createProject,
+    createAppOperationHandler(
+      "create-supabase-project",
+      ["provider"],
+      async (_, params) => {
+        const { appId, name, organizationSlug, region } = params;
+        // Fail before creating, rather than orphaning a project the user then
+        // has to go delete.
+        await assertNoNeonProject(appId);
+
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+        if (!app) {
+          throw new DyadError(
+            `App ${appId} not found.`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        // Repointing is the selector's job; creating on top of an existing link
+        // would strand the project the user already had. Neon's create guards
+        // against its own provider the same way.
+        if (app.supabaseProjectId) {
+          throw new DyadError(
+            "This app is already connected to a Supabase project. Disconnect it first.",
+            DyadErrorKind.Precondition,
+          );
+        }
+
+        let project;
+        try {
+          project = await createSupabaseProject({
+            name: name.trim(),
+            organizationSlug,
+            region,
+          });
+        } catch (error) {
+          throw classifyCreateProjectError(error);
+        }
+
+        // The project exists by now, so a failure here leaves it unlinked
+        // rather than uncreated — the next click should be "select it", not
+        // "create another".
+        try {
+          await db
+            .update(apps)
+            .set({
+              supabaseProjectId: project.id,
+              supabaseParentProjectId: null,
+              supabaseOrganizationSlug: project.organizationSlug,
+            })
+            .where(eq(apps.id, appId));
+        } catch (error) {
+          throw new DyadError(
+            `Created Supabase project ${project.id} but couldn't link it to this app: ${error instanceof Error ? error.message : error}. Select it from the project list to finish connecting.`,
+            DyadErrorKind.Internal,
+          );
+        }
+
+        logger.info(
+          `Created Supabase project ${project.id} (${project.status}) and associated it with app ${appId}`,
+        );
+        return project;
+      },
+      "create a Supabase project",
+    ),
+  );
+
+  // Polled while a just-created project is still coming up.
+  createTypedHandler(supabaseContracts.getProjectStatus, async (_, params) => {
+    const { projectId, organizationSlug } = params;
+    try {
+      return await getSupabaseProjectStatus({
+        projectId,
+        organizationSlug: organizationSlug ?? null,
+      });
+    } catch (error) {
+      throw classifyProjectStatusError(error);
+    }
   });
 
   // List branches for a Supabase project (database branches)

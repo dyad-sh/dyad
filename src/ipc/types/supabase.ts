@@ -98,6 +98,74 @@ export type SupabaseRedeployProgress = z.infer<
   typeof SupabaseRedeployProgressSchema
 >;
 
+/**
+ * Regions offered in the create-project picker. Hard-coded because the
+ * Management API has no endpoint that lists them. Supabase stays the authority
+ * on what is actually valid — see `SupabaseRegionSchema` — so a stale list only
+ * means a newly added region is missing from the dropdown.
+ */
+export const SUPABASE_REGIONS = [
+  { id: "us-east-1", label: "East US (North Virginia)" },
+  { id: "us-east-2", label: "East US (Ohio)" },
+  { id: "us-west-1", label: "West US (North California)" },
+  { id: "us-west-2", label: "West US (Oregon)" },
+  { id: "ca-central-1", label: "Canada (Central)" },
+  { id: "sa-east-1", label: "South America (Sao Paulo)" },
+  { id: "eu-west-1", label: "West EU (Ireland)" },
+  { id: "eu-west-2", label: "West EU (London)" },
+  { id: "eu-west-3", label: "West EU (Paris)" },
+  { id: "eu-central-1", label: "Central EU (Frankfurt)" },
+  { id: "eu-central-2", label: "Central EU (Zurich)" },
+  { id: "eu-north-1", label: "North EU (Stockholm)" },
+  { id: "ap-south-1", label: "South Asia (Mumbai)" },
+  { id: "ap-southeast-1", label: "Southeast Asia (Singapore)" },
+  { id: "ap-northeast-1", label: "Northeast Asia (Tokyo)" },
+  { id: "ap-northeast-2", label: "Northeast Asia (Seoul)" },
+  { id: "ap-southeast-2", label: "Oceania (Sydney)" },
+  { id: "ap-east-1", label: "East Asia (Hong Kong)" },
+] as const;
+
+export const DEFAULT_SUPABASE_REGION = "us-east-1";
+
+export type SupabaseRegionId = (typeof SUPABASE_REGIONS)[number]["id"];
+
+/**
+ * Deliberately not an enum over `SUPABASE_REGIONS`: that would make the local
+ * list a second gate, so a region Supabase added would be rejected here before
+ * it could ever be sent. Supabase rejects a bad region with an explanation the
+ * create path already surfaces.
+ */
+export const SupabaseRegionSchema = z.string().min(1);
+
+export const CreateSupabaseProjectParamsSchema = z.object({
+  appId: z.number(),
+  name: z.string().min(1).max(64),
+  organizationSlug: z.string().min(1),
+  region: SupabaseRegionSchema,
+});
+
+export type CreateSupabaseProjectParams = z.infer<
+  typeof CreateSupabaseProjectParamsSchema
+>;
+
+/**
+ * One of the ~15 project statuses in Supabase's Management API (see the
+ * `V1ProjectResponse` union in `@dyad-sh/supabase-management-js`). A project
+ * reports this for a minute or two after creation, while its database still
+ * refuses connections.
+ */
+export const SUPABASE_PROJECT_STATUS_PROVISIONING = "COMING_UP";
+
+export const SupabaseProjectStatusSchema = z.object({
+  projectId: z.string(),
+  // Supabase's raw status, passed through rather than mapped so callers pick
+  // the ones they care about. Null when the response omitted it, which is
+  // distinct from Supabase reporting its own "UNKNOWN".
+  status: z.string().nullable(),
+});
+
+export type SupabaseProjectStatus = z.infer<typeof SupabaseProjectStatusSchema>;
+
 // =============================================================================
 // Supabase Contracts
 // =============================================================================
@@ -121,6 +189,37 @@ export const supabaseContracts = {
     output: z.array(SupabaseProjectSchema),
   }),
 
+  /**
+   * Creating and linking are one contract on purpose: a project created but not
+   * linked would be an orphan the user has to clean up in the dashboard, which
+   * is the trip this feature exists to avoid.
+   */
+  createProject: defineContract({
+    channel: "supabase:create-project",
+    input: CreateSupabaseProjectParamsSchema,
+    output: SupabaseProjectSchema,
+    // The mutation's onSuccess refreshes only the window that fired it, and the
+    // same app can be open in another. `apps` as well as `app` because the list
+    // decides which provider connector a window renders.
+    invalidates: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.appId },
+    ],
+  }),
+
+  /**
+   * Provisioning status of a project, used to poll a just-created one until its
+   * database accepts connections.
+   */
+  getProjectStatus: defineContract({
+    channel: "supabase:get-project-status",
+    input: z.object({
+      projectId: z.string(),
+      organizationSlug: z.string().nullable().optional(),
+    }),
+    output: SupabaseProjectStatusSchema,
+  }),
+
   listBranches: defineContract({
     channel: "supabase:list-branches",
     input: ListSupabaseBranchesParamsSchema,
@@ -133,16 +232,27 @@ export const supabaseContracts = {
     output: z.array(ConsoleEntrySchema),
   }),
 
+  // Same scopes as createProject and the Neon equivalents: these repoint an
+  // app's provider too, and a peer window that misses it keeps offering the
+  // other provider for an app that now has one.
   setAppProject: defineContract({
     channel: "supabase:set-app-project",
     input: SetSupabaseAppProjectParamsSchema,
     output: z.void(),
+    invalidates: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.appId },
+    ],
   }),
 
   unsetAppProject: defineContract({
     channel: "supabase:unset-app-project",
     input: z.object({ app: z.number() }),
     output: z.void(),
+    invalidates: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.app },
+    ],
   }),
 
   /**

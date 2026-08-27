@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
@@ -14,7 +14,12 @@ import { Label } from "@/components/ui/label";
 import { ipc, type SupabaseProject } from "@/ipc/types";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
-import { useRedeploySupabaseFunctions, useSupabase } from "@/hooks/useSupabase";
+import {
+  useRedeploySupabaseFunctions,
+  useSupabase,
+  useSupabaseProjectStatus,
+} from "@/hooks/useSupabase";
+import { CreateSupabaseProjectForm } from "@/components/CreateSupabaseProjectForm";
 import {
   Select,
   SelectContent,
@@ -122,8 +127,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isLoadingBranches,
     branchesError,
     isSettingAppProject,
+    isCreatingProject,
+    creatingProjectAppId,
     refetchOrganizations,
     refetchProjects,
+    createProject,
     deleteOrganization,
     setAppProject,
     recoverAppProject,
@@ -131,6 +139,21 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   } = useSupabase({
     branchesProjectId,
     branchesOrganizationSlug: app?.supabaseOrganizationSlug,
+  });
+
+  // Which app the form is open for, not a bare "is it open". Some navigations
+  // (Copy App) swap `appId` without remounting, so a boolean would leave the
+  // previous app's half-typed form standing over the new one.
+  const [createFormAppId, setCreateFormAppId] = useState<number | null>(null);
+  const isCreateFormOpen = createFormAppId === appId;
+
+  // Asked of Supabase rather than remembered from the create that started it,
+  // so the banner survives leaving this panel mid-provision and also covers a
+  // project provisioned outside Dyad.
+  const { isProvisioning } = useSupabaseProjectStatus({
+    projectId: app?.supabaseProjectId,
+    organizationSlug: app?.supabaseOrganizationSlug,
+    enabled: isConnected,
   });
 
   // The connection flow lives in the main process; this component only
@@ -232,6 +255,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         }),
       );
     }
+  };
+
+  // No setAppProject or refetch here: the handler links the app itself, and the
+  // mutation's onSuccess already invalidates. A create can settle after the
+  // panel has moved to another app, so the functional updater closes only the
+  // form it belongs to, and the toast names the project rather than "this app".
+  const handleProjectCreated = (
+    createdForAppId: number,
+    project: SupabaseProject,
+  ) => {
+    setCreateFormAppId((open) => (open === createdForAppId ? null : open));
+    toast.success(
+      t("integrations.supabase.projectCreated", { name: project.name }),
+    );
   };
 
   // Group projects by organization for display
@@ -418,7 +455,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // would strand the user on a generic account-connect screen.
   if (app?.supabaseProjectId && !isConnected) {
     return (
-      <Card className="mt-1" data-testid="supabase-reconnect-card">
+      <Card
+        key="supabase-reconnect"
+        className="mt-1"
+        data-testid="supabase-reconnect-card"
+      >
         <CardHeader>
           <CardTitle>{t("integrations.supabase.project")}</CardTitle>
           <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
@@ -496,10 +537,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     );
   }
 
-  // Connected and has project set
+  // Connected and has project set.
+  //
+  // Each variant below carries a key. They are all a bare <Card> returned from
+  // the same position, so without one React reconciles a card for the previous
+  // app into the next and the Base UI selects keep its displayed value.
   if (isConnected && app?.supabaseProjectName) {
     return (
-      <Card className="mt-1">
+      <Card key="supabase-connected" className="mt-1">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             {t("integrations.supabase.project")}{" "}
@@ -532,6 +577,19 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* A project Dyad just created reports COMING_UP for a minute or
+            two, during which its database refuses connections. Say so, rather
+            than letting the first schema change fail with a connection error
+            that doesn't explain itself. */}
+            {isProvisioning && (
+              <Alert data-testid="supabase-project-provisioning">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>
+                  {t("integrations.supabase.projectProvisioning")}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="supabase-branch-select">
                 {t("integrations.supabase.databaseBranch")}
@@ -666,7 +724,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         : "";
 
     return (
-      <Card className="mt-1">
+      <Card key="supabase-selector" className="mt-1">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             {t("integrations.supabase.projects")}
@@ -724,7 +782,27 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingProjects || isFetchingProjects ? (
+          {/* The create form is checked before the loading and error branches:
+          a background refetch of the project list (window focus past the 60s
+          staleTime is enough) would otherwise unmount the form mid-edit and
+          discard what the user had typed. */}
+          {isCreateFormOpen ? (
+            <CreateSupabaseProjectForm
+              appId={appId}
+              organizations={organizations}
+              // Seeding the name from the app is what makes this a one-click
+              // path for the common case of one database per app.
+              defaultName={app?.name ?? ""}
+              createProject={createProject}
+              // Scoped to this app: a create still running for the app the user
+              // just navigated away from must not disable this app's form.
+              isCreatingProject={
+                isCreatingProject && creatingProjectAppId === appId
+              }
+              onCreated={handleProjectCreated}
+              onCancel={() => setCreateFormAppId(null)}
+            />
+          ) : isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />
@@ -827,6 +905,18 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   </Select>
                 </div>
               )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => setCreateFormAppId(appId)}
+                disabled={organizations.length === 0}
+                data-testid="supabase-create-project-button"
+              >
+                <Plus className="h-4 w-4" />
+                {t("integrations.supabase.createProject")}
+              </Button>
             </div>
           )}
         </CardContent>

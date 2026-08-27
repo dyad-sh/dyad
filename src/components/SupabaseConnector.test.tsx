@@ -30,6 +30,10 @@ const {
   appLoadingState,
   unsolicitedReturnCallback,
   refreshedSettings,
+  organizationsState,
+  createState,
+  projectStatusState,
+  projectStatusMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -49,10 +53,30 @@ const {
   refreshSettingsMock: vi.fn(),
   refreshAppMock: vi.fn(),
   appState: {
-    supabaseProjectId: "proj-1",
+    name: "My App",
+    supabaseProjectId: "proj-1" as string | null,
     supabaseParentProjectId: undefined as string | undefined,
+    supabaseProjectName: "My Project" as string | null,
     supabaseOrganizationSlug: "org-1" as string | null,
   },
+  organizationsState: {
+    current: [] as Array<{ organizationSlug: string; name?: string }>,
+  },
+  createState: {
+    createProject: vi.fn(),
+    isCreatingProject: false,
+    // Mirrors the real hook's `createProjectMutation.variables?.appId ?? null`.
+    // Omitting it would make the connector's app-scoping gate false no matter
+    // what, so a test of that scoping would pass without exercising it.
+    creatingProjectAppId: null as number | null,
+  },
+  // The provisioning banner is the user-facing point of the status hook, so the
+  // stub has to be varyable rather than a constant.
+  projectStatusState: {
+    status: null as string | null,
+    isProvisioning: false,
+  },
+  projectStatusMock: vi.fn(),
   projectsState: {
     current: [] as Array<{
       id: string;
@@ -89,6 +113,11 @@ vi.mock("@/ipc/types", () => ({
     },
     system: { openExternalUrl: vi.fn() },
   },
+  // The create form reads these at render time; without them it crashes on its
+  // region default.
+  SUPABASE_REGIONS: [{ id: "us-east-1", label: "East US (North Virginia)" }],
+  DEFAULT_SUPABASE_REGION: "us-east-1",
+  SUPABASE_PROJECT_STATUS_PROVISIONING: "COMING_UP",
 }));
 
 vi.mock("sonner", () => ({
@@ -104,7 +133,12 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    // Interpolation values are appended rather than dropped, so a test can tell
+    // `t("...projectCreated", { name })` from a bare `t("...projectCreated")`.
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts ? `${key}:${JSON.stringify(opts)}` : key,
+  }),
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -118,9 +152,10 @@ vi.mock("@/hooks/useSettings", () => ({
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({
     app: {
+      name: appState.name,
       supabaseProjectId: appState.supabaseProjectId,
       supabaseParentProjectId: appState.supabaseParentProjectId,
-      supabaseProjectName: "My Project",
+      supabaseProjectName: appState.supabaseProjectName,
       supabaseOrganizationSlug: appState.supabaseOrganizationSlug,
     },
     loading: appLoadingState.current,
@@ -140,7 +175,7 @@ vi.mock("@/lib/schemas", () => ({
 
 vi.mock("@/hooks/useSupabase", () => ({
   useSupabase: () => ({
-    organizations: [],
+    organizations: organizationsState.current,
     projects: projectsState.current,
     branches: [],
     isLoadingProjects: providerLoadingState.projects,
@@ -152,6 +187,9 @@ vi.mock("@/hooks/useSupabase", () => ({
     isLoadingBranches: false,
     branchesError: null,
     isSettingAppProject: false,
+    isCreatingProject: createState.isCreatingProject,
+    creatingProjectAppId: createState.creatingProjectAppId,
+    createProject: createState.createProject,
     refetchOrganizations: refetchOrganizationsMock,
     refetchProjects: refetchProjectsMock,
     setAppProject: setAppProjectMock,
@@ -159,6 +197,7 @@ vi.mock("@/hooks/useSupabase", () => ({
     unsetAppProject: unsetAppProjectMock,
     deleteOrganization: vi.fn(),
   }),
+  useSupabaseProjectStatus: projectStatusMock,
   useRedeploySupabaseFunctions: () => ({
     redeployAllFunctions: redeployAllFunctionsMock,
     redeployProgress: redeployState.progress,
@@ -207,6 +246,15 @@ beforeEach(() => {
   appState.supabaseOrganizationSlug = "org-1";
   appState.supabaseProjectId = "proj-1";
   appState.supabaseParentProjectId = undefined;
+  appState.name = "My App";
+  appState.supabaseProjectName = "My Project";
+  organizationsState.current = [];
+  createState.createProject = vi.fn();
+  createState.isCreatingProject = false;
+  createState.creatingProjectAppId = null;
+  projectStatusState.status = null;
+  projectStatusState.isProvisioning = false;
+  projectStatusMock.mockImplementation(() => projectStatusState);
   projectsState.current = [];
   providerLoadingState.organizations = false;
   providerLoadingState.projects = false;
@@ -353,7 +401,7 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
   expect(recoverAppProjectMock).toHaveBeenCalled();
   expect(toastErrorMock).toHaveBeenCalledWith(
-    "integrations.supabase.failedConnectProject",
+    expect.stringContaining("integrations.supabase.failedConnectProject:"),
   );
 });
 
@@ -451,7 +499,7 @@ it("shows and retries provider load failures in the recovery card", async () => 
   renderConnector();
 
   expect(
-    screen.getByText("integrations.supabase.errorLoadingProjects"),
+    screen.getByText(/integrations\.supabase\.errorLoadingProjects/),
   ).toBeTruthy();
   fireEvent.click(screen.getByText("common:retry"));
   await waitFor(() => {
@@ -508,7 +556,7 @@ describe("SupabaseConnector — edge function redeployment", () => {
 
     await waitFor(() => expect(redeployAllFunctionsMock).toHaveBeenCalled());
     expect(toastSuccessMock).toHaveBeenCalledWith(
-      "integrations.supabase.redeploySucceeded",
+      expect.stringContaining("integrations.supabase.redeploySucceeded:"),
     );
   });
 
@@ -554,7 +602,7 @@ describe("SupabaseConnector — edge function redeployment", () => {
 
     await waitFor(() =>
       expect(toastSuccessMock).toHaveBeenCalledWith(
-        "integrations.supabase.redeployPrunedOnly",
+        expect.stringContaining("integrations.supabase.redeployPrunedOnly:"),
       ),
     );
     expect(toastInfoMock).not.toHaveBeenCalled();
@@ -572,7 +620,7 @@ describe("SupabaseConnector — edge function redeployment", () => {
 
     await waitFor(() =>
       expect(showErrorMock).toHaveBeenCalledWith(
-        "integrations.supabase.redeployFailed",
+        expect.stringContaining("integrations.supabase.redeployFailed:"),
       ),
     );
     expect(toastSuccessMock).not.toHaveBeenCalled();
@@ -662,5 +710,204 @@ describe("SupabaseConnector — app API key", () => {
     fireEvent.click(await screen.findByTestId(BUTTON));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
+  });
+});
+
+describe("SupabaseConnector — provisioning banner", () => {
+  const BANNER = "supabase-project-provisioning";
+
+  it("warns while the new project's database is still coming up", async () => {
+    projectStatusState.status = "COMING_UP";
+    projectStatusState.isProvisioning = true;
+
+    renderConnector();
+
+    expect(await screen.findByTestId(BANNER)).toBeTruthy();
+  });
+
+  it("says nothing once the project is serving", async () => {
+    projectStatusState.status = "ACTIVE_HEALTHY";
+
+    renderConnector();
+
+    await screen.findByTestId("supabase-branch-select");
+    expect(screen.queryByTestId(BANNER)).toBeNull();
+  });
+
+  // Guards the wiring, not just the rendering: pointing the hook at the wrong
+  // id (a branch ref, say) would leave the banner permanently silent.
+  it("asks about the app's own project", async () => {
+    renderConnector();
+
+    await screen.findByTestId("supabase-branch-select");
+    expect(projectStatusMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      }),
+    );
+  });
+});
+
+describe("SupabaseConnector — creating a project", () => {
+  // The selector state: connected to Supabase, but this app has no project yet.
+  const showSelector = () => {
+    appState.supabaseProjectId = null;
+    appState.supabaseProjectName = null;
+    appState.supabaseOrganizationSlug = null;
+    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
+  };
+
+  it("offers project creation when the organization has no projects", async () => {
+    showSelector();
+
+    renderConnector();
+
+    expect(
+      await screen.findByTestId("supabase-create-project-button"),
+    ).toBeTruthy();
+  });
+
+  it("keeps the open form and its input while the project list refetches", async () => {
+    showSelector();
+
+    const { rerender } = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.change(await screen.findByTestId("supabase-new-project-name"), {
+      target: { value: "half-typed-name" },
+    });
+
+    // A background refetch used to render the loading skeleton over the form,
+    // unmounting it and discarding whatever the user had typed.
+    providerLoadingState.projects = true;
+    rerender(<SupabaseConnector appId={7} />);
+
+    const stillThere = (await screen.findByTestId(
+      "supabase-new-project-name",
+    )) as HTMLInputElement;
+    expect(stillThere.value).toBe("half-typed-name");
+  });
+
+  // Some navigations (Copy App) swap `appId` without remounting this panel.
+  it("does not carry an open form across an app switch", async () => {
+    showSelector();
+
+    const { rerender } = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.change(await screen.findByTestId("supabase-new-project-name"), {
+      target: { value: "half-typed-name" },
+    });
+
+    appState.name = "Other App";
+    rerender(<SupabaseConnector appId={8} />);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("supabase-new-project-name")).toBeNull(),
+    );
+
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    const reopened = (await screen.findByTestId(
+      "supabase-new-project-name",
+    )) as HTMLInputElement;
+    expect(reopened.value).toBe("Other App");
+  });
+
+  // A create settles seconds later, by which time the user may have switched
+  // apps and opened a form for the new one. Closing that form would throw away
+  // what they just typed.
+  it("leaves another app's newly opened form alone when an earlier create settles", async () => {
+    showSelector();
+    let finishCreate: (project: {
+      id: string;
+      name: string;
+    }) => void = () => {};
+    createState.createProject = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finishCreate = resolve as typeof finishCreate;
+        }),
+    );
+
+    const { rerender } = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+    await waitFor(() => expect(createState.createProject).toHaveBeenCalled());
+
+    appState.name = "Other App";
+    rerender(<SupabaseConnector appId={8} />);
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.change(await screen.findByTestId("supabase-new-project-name"), {
+      target: { value: "app-8-name" },
+    });
+
+    finishCreate({ id: "proj-new", name: "app-7-project" });
+
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled());
+    const survivor = (await screen.findByTestId(
+      "supabase-new-project-name",
+    )) as HTMLInputElement;
+    expect(survivor.value).toBe("app-8-name");
+  });
+
+  // The message names the project so it stays true wherever it lands.
+  it("names the created project in the success message", async () => {
+    showSelector();
+    createState.createProject = vi
+      .fn()
+      .mockResolvedValue({ id: "proj-new", name: "app-7-project" });
+
+    renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith(
+        expect.stringContaining("app-7-project"),
+      ),
+    );
+  });
+
+  it("does not lock this app's form for another app's in-flight create", async () => {
+    showSelector();
+    createState.isCreatingProject = true;
+    createState.creatingProjectAppId = 999;
+
+    renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+
+    const submit = await screen.findByTestId("supabase-create-project-submit");
+    expect(submit.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("locks the form while this app's own create is in flight", async () => {
+    showSelector();
+    createState.isCreatingProject = true;
+    createState.creatingProjectAppId = 7;
+
+    renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+
+    const submit = await screen.findByTestId("supabase-create-project-submit");
+    expect(submit.hasAttribute("disabled")).toBe(true);
   });
 });

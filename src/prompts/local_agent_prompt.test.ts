@@ -7,14 +7,14 @@ import {
 } from "@/prompts/local_agent_prompt";
 import {
   SUPABASE_GRANTS_AND_RLS_RULE,
-  SUPABASE_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
 } from "@/prompts/supabase_prompt";
 import {
   NEON_NO_BROWSER_DATABASE_URL_RULE,
   NEON_NO_BROWSER_SERVERLESS_RULE,
   NEON_NO_CUSTOM_AUTH_RULE,
-  NEON_NO_MANUAL_MIGRATIONS_RULE,
+  NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   NEON_RLS_REQUIRES_JWT_RULE,
 } from "@/prompts/neon_prompt";
 
@@ -115,7 +115,7 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain('<provider_invariants provider="supabase">');
     expect(prompt).toContain(SUPABASE_SERVICE_ROLE_BROWSER_RULE);
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
-    expect(prompt).toContain(SUPABASE_NO_MANUAL_MIGRATIONS_RULE);
+    expect(prompt).toContain(SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE);
     expect(prompt).toContain("SQL execution, dependency installation");
     expect(prompt).toContain("# App Rules\n- Use foo.");
     expect(prompt).toContain(
@@ -124,7 +124,8 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain("Address every MUST HOLD item");
     expect(prompt).not.toContain("set_chat_summary");
     expect(prompt).not.toContain("planning_questionnaire");
-    expect(prompt).not.toContain("execute_sql");
+    expect(prompt).not.toContain("execute SQL");
+    expect(prompt).not.toContain("dyad-execute-sql");
     expect(prompt).not.toContain("add_integration");
   });
 
@@ -135,14 +136,24 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain('<provider_invariants provider="neon">');
     expect(prompt).toContain(NEON_NO_CUSTOM_AUTH_RULE);
-    expect(prompt).toContain(NEON_NO_MANUAL_MIGRATIONS_RULE);
+    expect(prompt).toContain(NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE);
     expect(prompt).toContain(NEON_RLS_REQUIRES_JWT_RULE);
     expect(prompt).toContain(NEON_NO_BROWSER_DATABASE_URL_RULE);
     expect(prompt).toContain(NEON_NO_BROWSER_SERVERLESS_RULE);
     expect(prompt).toContain(
       "read the relevant available authentication guide",
     );
-    expect(prompt).not.toContain("execute_sql");
+    expect(prompt).not.toContain("execute SQL");
+    expect(prompt).not.toContain("dyad-execute-sql");
+  });
+
+  it("keeps root-owned operation boundaries without a provider", () => {
+    const prompt = constructImplementerPrompt(undefined);
+
+    expect(prompt).toContain(
+      "SQL execution, dependency installation, provider configuration, and deployment are root-owned operations",
+    );
+    expect(prompt).not.toContain("<provider_invariants");
   });
 
   it("selects Implementer safety guidance from the app provider association", () => {
@@ -150,24 +161,35 @@ describe("local_agent_prompt", () => {
       resolveImplementerProvider({
         hasSupabaseProject: true,
         hasNeonProject: false,
+        supabaseConnected: false,
       }),
     ).toBe("supabase");
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: true,
         hasNeonProject: true,
+        supabaseConnected: true,
       }),
     ).toBe("supabase");
     expect(
       resolveImplementerProvider({
+        hasSupabaseProject: true,
+        hasNeonProject: true,
+        supabaseConnected: false,
+      }),
+    ).toBe("neon");
+    expect(
+      resolveImplementerProvider({
         hasSupabaseProject: false,
         hasNeonProject: true,
+        supabaseConnected: false,
       }),
     ).toBe("neon");
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: false,
         hasNeonProject: false,
+        supabaseConnected: false,
       }),
     ).toBeUndefined();
   });

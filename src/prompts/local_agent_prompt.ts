@@ -7,14 +7,14 @@ import type { AppFrameworkType } from "@/lib/framework_constants";
 import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
 import {
   SUPABASE_GRANTS_AND_RLS_RULE,
-  SUPABASE_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
 } from "./supabase_prompt";
 import {
   NEON_NO_BROWSER_DATABASE_URL_RULE,
   NEON_NO_BROWSER_SERVERLESS_RULE,
   NEON_NO_CUSTOM_AUTH_RULE,
-  NEON_NO_MANUAL_MIGRATIONS_RULE,
+  NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   NEON_RLS_REQUIRES_JWT_RULE,
 } from "./neon_prompt";
 
@@ -639,11 +639,15 @@ export type ImplementerProvider = "supabase" | "neon";
 export function resolveImplementerProvider({
   hasSupabaseProject,
   hasNeonProject,
+  supabaseConnected,
 }: {
   hasSupabaseProject: boolean;
   hasNeonProject: boolean;
+  supabaseConnected: boolean;
 }): ImplementerProvider | undefined {
-  if (hasSupabaseProject) return "supabase";
+  if (hasSupabaseProject && (supabaseConnected || !hasNeonProject)) {
+    return "supabase";
+  }
   if (hasNeonProject) return "neon";
   return undefined;
 }
@@ -656,20 +660,20 @@ function implementerProviderGuidance(
 - The app is connected to Supabase. Use its existing Supabase client and Supabase Auth conventions for database, authentication, and server-function code.
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
-${SUPABASE_NO_MANUAL_MIGRATIONS_RULE}
-- You may inspect provider metadata and the live schema with the available read tools. SQL execution, dependency installation, provider configuration, and deployment remain owned by the root Agent. If the assignment requires one of those operations, do not invent a workaround: complete any independent code work you safely can and report the exact root-owned operation still required.
+${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
+- You may inspect provider metadata and the live schema with the available read tools.
 </provider_invariants>`;
   }
   if (provider === "neon") {
     return `<provider_invariants provider="neon">
 - The app is connected to Neon. Reuse its existing Neon database and Neon Auth conventions.
 ${NEON_NO_CUSTOM_AUTH_RULE}
-${NEON_NO_MANUAL_MIGRATIONS_RULE}
+${NEON_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
 ${NEON_RLS_REQUIRES_JWT_RULE}
 ${NEON_NO_BROWSER_DATABASE_URL_RULE}
 ${NEON_NO_BROWSER_SERVERLESS_RULE}
 - Before changing authentication, sessions, sign-up UI, email verification, or password reset, read the relevant available authentication guide.
-- You may inspect provider metadata and the live schema with the available read tools. SQL execution, dependency installation, provider configuration, and deployment remain owned by the root Agent. If the assignment requires one of those operations, do not invent a workaround: complete any independent code work you safely can and report the exact root-owned operation still required.
+- You may inspect provider metadata and the live schema with the available read tools.
 </provider_invariants>`;
   }
   return "";
@@ -694,6 +698,7 @@ You are Dyad Implementer. Complete the focused assignment using only the provide
 - Treat assigned paths as the expected focus, but cross them when correctness requires it and report every changed file outside that focus.
 - Do not ask the user to resolve ambiguity or make architectural decisions. If the assignment is not sufficiently settled, preserve a coherent workspace and report the blocker to the root Agent.
 - Use only tools that are actually provided. If completion requires an unavailable or root-owned operation, do not substitute a workaround; report exactly what remains.
+- SQL execution, dependency installation, provider configuration, and deployment are root-owned operations. Complete independent code work you safely can, then report the exact operation the root Agent must perform.
 </assignment_contract>
 
 <implementation_guidelines>

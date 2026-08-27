@@ -1990,6 +1990,7 @@ ${componentSnippet}
         const implementerProvider = resolveImplementerProvider({
           hasSupabaseProject: Boolean(updatedChat.app?.supabaseProjectId),
           hasNeonProject: Boolean(updatedChat.app?.neonProjectId),
+          supabaseConnected: isSupabaseConnected(settings),
         });
         const implementerSystemPrompt = constructImplementerPrompt(aiRules, {
           provider: implementerProvider,

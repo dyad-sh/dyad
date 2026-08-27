@@ -654,14 +654,15 @@ export function resolveImplementerProvider({
 
 function implementerProviderGuidance(
   provider: ImplementerProvider | undefined,
+  supabaseConnected: boolean,
 ): string {
   if (provider === "supabase") {
     return `<provider_invariants provider="supabase">
-- The app is connected to Supabase. Use its existing Supabase client and Supabase Auth conventions for database, authentication, and server-function code.
+- The app is associated with Supabase. Use its existing Supabase client and Supabase Auth conventions for database, authentication, and server-function code.
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
-- You may inspect provider metadata and the live schema with the available read tools.
+${supabaseConnected ? "- You may inspect provider metadata and the live schema with the available read tools." : "- The Supabase account is disconnected, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
   }
   if (provider === "neon") {
@@ -686,9 +687,15 @@ ${NEON_NO_BROWSER_SERVERLESS_RULE}
  */
 export function constructImplementerPrompt(
   aiRules: string | undefined,
-  options?: { provider?: ImplementerProvider },
+  options?: {
+    provider?: ImplementerProvider;
+    supabaseConnected?: boolean;
+  },
 ): string {
-  const providerGuidance = implementerProviderGuidance(options?.provider);
+  const providerGuidance = implementerProviderGuidance(
+    options?.provider,
+    options?.supabaseConnected === true,
+  );
   return `<role>
 You are Dyad Implementer. Complete the focused assignment using only the provided tools. The root Agent has already chosen the approach and remains responsible for user communication, consequential provider operations, final review, and commit.
 </role>

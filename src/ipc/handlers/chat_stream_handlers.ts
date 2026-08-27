@@ -1994,6 +1994,7 @@ ${componentSnippet}
         });
         const implementerSystemPrompt = constructImplementerPrompt(aiRules, {
           provider: implementerProvider,
+          supabaseConnected: isSupabaseConnected(settings),
         });
 
         // Migration on read converts "agent" to "build", so no need to check for it here

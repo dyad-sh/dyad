@@ -109,6 +109,7 @@ describe("local_agent_prompt", () => {
   it("builds a focused Implementer prompt with app and Supabase rules", () => {
     const prompt = constructImplementerPrompt("# App Rules\n- Use foo.", {
       provider: "supabase",
+      supabaseConnected: true,
     });
 
     expect(prompt).toContain("You are Dyad Implementer");
@@ -127,6 +128,20 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("execute SQL");
     expect(prompt).not.toContain("dyad-execute-sql");
     expect(prompt).not.toContain("add_integration");
+  });
+
+  it("keeps Supabase safety rules without claiming disconnected tools work", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "supabase",
+      supabaseConnected: false,
+    });
+
+    expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
+    expect(prompt).toContain("The Supabase account is disconnected");
+    expect(prompt).not.toContain("The app is connected to Supabase");
+    expect(prompt).not.toContain(
+      "You may inspect provider metadata and the live schema",
+    );
   });
 
   it("gives Neon Implementers critical code-writing invariants", () => {

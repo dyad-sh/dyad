@@ -122,8 +122,6 @@ Supabase Data API access requires explicit Postgres grants. This applies to Supa
 
 ${SUPABASE_GRANTS_AND_RLS_RULE}
 
-- \`GRANT\` controls whether a Postgres role (\`anon\`, \`authenticated\`, or \`service_role\`) can access a table through the Data API at all.
-- RLS policies control which rows the role can read or modify after the table is accessible.
 - If grants are missing, requests can fail with \`permission denied for table ...\` before RLS policies are evaluated.
 
 When creating a \`public\` application table intended for Supabase API access, ALWAYS include explicit grants in the same SQL batch as table creation, RLS, and policies.

@@ -692,13 +692,14 @@ describe("handleLocalAgentStream", () => {
     const { event } = createFakeEvent();
     mockSettings = buildTestSettings({ enableDyadPro: true });
     mockChatData = buildTestChat();
+    let seenPrompt: string | undefined;
     vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
-      expect(ctx.implementerSystemPrompt).toBe("Implementer rules");
+      seenPrompt = ctx.implementerSystemPrompt;
       return {};
     });
     mockStreamResult = createFakeStream([{ type: "text-delta", text: "Done" }]);
 
-    await handleLocalAgentStream(
+    const succeeded = await handleLocalAgentStream(
       event,
       { chatId: 1, prompt: "test" },
       new AbortController(),
@@ -709,6 +710,10 @@ describe("handleLocalAgentStream", () => {
         dyadRequestId,
       },
     );
+
+    expect(succeeded).toBe(true);
+    expect(buildAgentToolSet).toHaveBeenCalledOnce();
+    expect(seenPrompt).toBe("Implementer rules");
   });
 
   describe("provider-scoped tool-call ID normalization", () => {

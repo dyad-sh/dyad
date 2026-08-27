@@ -5,6 +5,18 @@ import {
   constructLocalAgentPrompt,
   resolveImplementerProvider,
 } from "@/prompts/local_agent_prompt";
+import {
+  SUPABASE_GRANTS_AND_RLS_RULE,
+  SUPABASE_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+} from "@/prompts/supabase_prompt";
+import {
+  NEON_NO_BROWSER_DATABASE_URL_RULE,
+  NEON_NO_BROWSER_SERVERLESS_RULE,
+  NEON_NO_CUSTOM_AUTH_RULE,
+  NEON_NO_MANUAL_MIGRATIONS_RULE,
+  NEON_RLS_REQUIRES_JWT_RULE,
+} from "@/prompts/neon_prompt";
 
 describe("local_agent_prompt", () => {
   const expectGitContextGuidance = (prompt: string) => {
@@ -101,12 +113,14 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain("You are Dyad Implementer");
     expect(prompt).toContain('<provider_invariants provider="supabase">');
-    expect(prompt).toContain("Never expose the service-role key");
-    expect(prompt).toContain(
-      "Never create or edit files under `supabase/migrations/`",
-    );
+    expect(prompt).toContain(SUPABASE_SERVICE_ROLE_BROWSER_RULE);
+    expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
+    expect(prompt).toContain(SUPABASE_NO_MANUAL_MIGRATIONS_RULE);
     expect(prompt).toContain("SQL execution, dependency installation");
     expect(prompt).toContain("# App Rules\n- Use foo.");
+    expect(prompt).toContain(
+      "its current on-disk contents supersede this snapshot",
+    );
     expect(prompt).toContain("Address every MUST HOLD item");
     expect(prompt).not.toContain("set_chat_summary");
     expect(prompt).not.toContain("planning_questionnaire");
@@ -120,11 +134,11 @@ describe("local_agent_prompt", () => {
     });
 
     expect(prompt).toContain('<provider_invariants provider="neon">');
-    expect(prompt).toContain(
-      "Never implement custom JWT/password authentication",
-    );
-    expect(prompt).toContain("`DATABASE_URL` in browser-accessible code");
-    expect(prompt).toContain("`auth.user_id()`-based RLS");
+    expect(prompt).toContain(NEON_NO_CUSTOM_AUTH_RULE);
+    expect(prompt).toContain(NEON_NO_MANUAL_MIGRATIONS_RULE);
+    expect(prompt).toContain(NEON_RLS_REQUIRES_JWT_RULE);
+    expect(prompt).toContain(NEON_NO_BROWSER_DATABASE_URL_RULE);
+    expect(prompt).toContain(NEON_NO_BROWSER_SERVERLESS_RULE);
     expect(prompt).toContain(
       "read the relevant available authentication guide",
     );

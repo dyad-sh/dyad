@@ -5,6 +5,18 @@
 
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
+import {
+  SUPABASE_GRANTS_AND_RLS_RULE,
+  SUPABASE_NO_MANUAL_MIGRATIONS_RULE,
+  SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+} from "./supabase_prompt";
+import {
+  NEON_NO_BROWSER_DATABASE_URL_RULE,
+  NEON_NO_BROWSER_SERVERLESS_RULE,
+  NEON_NO_CUSTOM_AUTH_RULE,
+  NEON_NO_MANUAL_MIGRATIONS_RULE,
+  NEON_RLS_REQUIRES_JWT_RULE,
+} from "./neon_prompt";
 
 // ============================================================================
 // Shared Prompt Blocks (used by both Pro and Basic Agent modes)
@@ -642,18 +654,20 @@ function implementerProviderGuidance(
   if (provider === "supabase") {
     return `<provider_invariants provider="supabase">
 - The app is connected to Supabase. Use its existing Supabase client and Supabase Auth conventions for database, authentication, and server-function code.
-- Never expose the service-role key or another privileged credential in browser-accessible code.
-- Treat Postgres grants and row-level-security policies as separate authorization layers. Do not broaden either layer beyond the assignment.
-- Never create or edit files under \`supabase/migrations/\`; Dyad manages schema changes through its database tooling.
+${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
+${SUPABASE_GRANTS_AND_RLS_RULE}
+${SUPABASE_NO_MANUAL_MIGRATIONS_RULE}
 - You may inspect provider metadata and the live schema with the available read tools. SQL execution, dependency installation, provider configuration, and deployment remain owned by the root Agent. If the assignment requires one of those operations, do not invent a workaround: complete any independent code work you safely can and report the exact root-owned operation still required.
 </provider_invariants>`;
   }
   if (provider === "neon") {
     return `<provider_invariants provider="neon">
 - The app is connected to Neon. Reuse its existing Neon database and Neon Auth conventions.
-- Never implement custom JWT/password authentication, place \`DATABASE_URL\` in browser-accessible code, or import \`@neondatabase/serverless\` from client code.
-- Do not assume \`auth.user_id()\`-based RLS works over a plain \`DATABASE_URL\`; identity-based RLS requires a JWT-backed access path.
-- Never create SQL migration files manually; Dyad manages schema changes through its database tooling.
+${NEON_NO_CUSTOM_AUTH_RULE}
+${NEON_NO_MANUAL_MIGRATIONS_RULE}
+${NEON_RLS_REQUIRES_JWT_RULE}
+${NEON_NO_BROWSER_DATABASE_URL_RULE}
+${NEON_NO_BROWSER_SERVERLESS_RULE}
 - Before changing authentication, sessions, sign-up UI, email verification, or password reset, read the relevant available authentication guide.
 - You may inspect provider metadata and the live schema with the available read tools. SQL execution, dependency installation, provider configuration, and deployment remain owned by the root Agent. If the assignment requires one of those operations, do not invent a workaround: complete any independent code work you safely can and report the exact root-owned operation still required.
 </provider_invariants>`;
@@ -703,7 +717,13 @@ ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${providerGuidance}
 
-${AI_RULES_BLOCK_READONLY.replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES)}`;
+<ai_rules_meta>
+The \`<ai_rules>\` block is a snapshot from the start of the root turn. Before editing code, read AI_RULES.md when it exists; its current on-disk contents supersede this snapshot. Do not edit AI_RULES.md unless the assignment explicitly requires it.
+</ai_rules_meta>
+
+<ai_rules>
+${aiRules ?? DEFAULT_AI_RULES}
+</ai_rules>`;
 }
 
 // ============================================================================

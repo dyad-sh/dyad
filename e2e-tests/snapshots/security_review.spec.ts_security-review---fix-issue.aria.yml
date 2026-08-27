@@ -30,6 +30,5 @@
 - paragraph: I've applied and committed the security fix. EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
-- button "A file1.txt +1"
 - button "Undo"
 - button "Retry"

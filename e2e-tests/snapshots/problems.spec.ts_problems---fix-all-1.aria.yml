@@ -18,7 +18,5 @@
 - paragraph: The selected TypeScript errors are fixed.
 - button "Copy"
 - text: "[[Version 2: files changed]]"
-- button "M .gitignore +1"
-- button "A src/bad-file.tsx +3"
 - button "Undo"
 - button "Retry"

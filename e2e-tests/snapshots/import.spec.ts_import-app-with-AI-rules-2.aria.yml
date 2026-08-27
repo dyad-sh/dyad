@@ -3,6 +3,5 @@
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy"
 - text: "[[Version 2: files changed]]"
-- button "M .gitignore +1"
 - button "Undo"
 - button "Retry"

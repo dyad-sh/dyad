@@ -19,6 +19,7 @@ This app is already linked to a Supabase project, but credentials for its Supaba
 
 Continue to preserve these Supabase code-safety invariants while disconnected:
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
+${SUPABASE_EDGE_FUNCTION_JWT_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_RLS_RULE}
 Never create or edit files under \`supabase/migrations/\`; reconnect Supabase before attempting schema changes.`;

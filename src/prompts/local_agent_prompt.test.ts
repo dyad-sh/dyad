@@ -34,6 +34,9 @@ describe("local_agent_prompt", () => {
       SUPABASE_SERVICE_ROLE_BROWSER_RULE,
     );
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      SUPABASE_EDGE_FUNCTION_JWT_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
       SUPABASE_GRANTS_AND_RLS_RULE,
     );
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(

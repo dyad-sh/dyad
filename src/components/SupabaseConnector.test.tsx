@@ -16,6 +16,13 @@ const {
   showErrorMock,
   hasSupabaseCredentialsForOrganizationMock,
   unsetAppProjectMock,
+  setAppProjectMock,
+  refetchOrganizationsMock,
+  refetchProjectsMock,
+  refreshSettingsMock,
+  refreshAppMock,
+  appState,
+  unsolicitedReturnCallback,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -26,6 +33,17 @@ const {
   showErrorMock: vi.fn(),
   hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
   unsetAppProjectMock: vi.fn(),
+  setAppProjectMock: vi.fn(),
+  refetchOrganizationsMock: vi.fn(),
+  refetchProjectsMock: vi.fn(),
+  refreshSettingsMock: vi.fn(),
+  refreshAppMock: vi.fn(),
+  appState: {
+    supabaseOrganizationSlug: "org-1" as string | null,
+  },
+  unsolicitedReturnCallback: {
+    current: null as null | (() => void),
+  },
   redeployState: {
     progress: null as null | { completed: number; total: number },
     isPending: false,
@@ -59,7 +77,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: {}, refreshSettings: vi.fn() }),
+  useSettings: () => ({ settings: {}, refreshSettings: refreshSettingsMock }),
 }));
 
 vi.mock("@/hooks/useLoadApp", () => ({
@@ -67,9 +85,9 @@ vi.mock("@/hooks/useLoadApp", () => ({
     app: {
       supabaseProjectId: "proj-1",
       supabaseProjectName: "My Project",
-      supabaseOrganizationSlug: "org-1",
+      supabaseOrganizationSlug: appState.supabaseOrganizationSlug,
     },
-    refreshApp: vi.fn(),
+    refreshApp: refreshAppMock,
   }),
 }));
 
@@ -94,8 +112,9 @@ vi.mock("@/hooks/useSupabase", () => ({
     isLoadingBranches: false,
     branchesError: null,
     isSettingAppProject: false,
-    refetchOrganizations: vi.fn(),
-    setAppProject: vi.fn(),
+    refetchOrganizations: refetchOrganizationsMock,
+    refetchProjects: refetchProjectsMock,
+    setAppProject: setAppProjectMock,
     unsetAppProject: unsetAppProjectMock,
     deleteOrganization: vi.fn(),
   }),
@@ -111,7 +130,9 @@ vi.mock("@/hooks/useConnectionFlow", () => ({
     flowState: { status: "idle" },
     isFlowActive: false,
   }),
-  useUnsolicitedConnectionReturn: vi.fn(),
+  useUnsolicitedConnectionReturn: (_provider: string, callback: () => void) => {
+    unsolicitedReturnCallback.current = callback;
+  },
   acknowledgeConnectionFlow: vi.fn(),
   cancelConnectionFlow: vi.fn(),
   startConnectionFlow: vi.fn(),
@@ -142,6 +163,41 @@ beforeEach(() => {
   redeployState.progress = null;
   redeployState.isPending = false;
   hasSupabaseCredentialsForOrganizationMock.mockReturnValue(true);
+  appState.supabaseOrganizationSlug = "org-1";
+  unsolicitedReturnCallback.current = null;
+  refreshSettingsMock.mockResolvedValue(undefined);
+  refreshAppMock.mockResolvedValue(undefined);
+  refetchOrganizationsMock.mockResolvedValue({ data: [] });
+  refetchProjectsMock.mockResolvedValue({ data: [] });
+  setAppProjectMock.mockResolvedValue(undefined);
+});
+
+it("migrates a legacy project link to the organization found after reconnect", async () => {
+  appState.supabaseOrganizationSlug = null;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  refetchProjectsMock.mockResolvedValue({
+    data: [
+      {
+        id: "proj-1",
+        name: "My Project",
+        region: "us-east-1",
+        organizationSlug: "org-reconnected",
+      },
+    ],
+  });
+
+  renderConnector();
+  expect(unsolicitedReturnCallback.current).not.toBeNull();
+  unsolicitedReturnCallback.current?.();
+
+  await waitFor(() =>
+    expect(setAppProjectMock).toHaveBeenCalledWith({
+      appId: 7,
+      projectId: "proj-1",
+      parentProjectId: undefined,
+      organizationSlug: "org-reconnected",
+    }),
+  );
 });
 
 it("shows recovery controls when linked organization credentials are missing", async () => {

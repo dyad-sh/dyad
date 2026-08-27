@@ -131,7 +131,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   refreshAfterConnectRef.current = async () => {
     await refreshSettings();
     await refetchOrganizations();
-    await refetchProjects();
+    const refreshedProjects = await refetchProjects();
+    if (app?.supabaseProjectId && !app.supabaseOrganizationSlug) {
+      const linkedProject = refreshedProjects.data?.find(
+        (project) => project.id === app.supabaseProjectId,
+      );
+      if (linkedProject) {
+        await setAppProject({
+          appId,
+          projectId: app.supabaseProjectId,
+          parentProjectId: app.supabaseParentProjectId,
+          organizationSlug: linkedProject.organizationSlug,
+        });
+      }
+    }
     await refreshApp();
   };
 

@@ -5,6 +5,10 @@ const logger = log.scope("disk-usage");
 
 const BYTES_PER_MB = 1024 * 1024;
 
+// This runs every 30s, and getSystemDebugInfo shows only the last 20 warn+
+// lines, so a repeating error would push the crash warnings out of view.
+let hasLoggedFailure = false;
+
 export interface DiskUsageMB {
   totalMB: number;
   usedMB: number;
@@ -29,7 +33,10 @@ export function getDiskUsageMB(targetPath: string): DiskUsageMB | null {
       availableMB: toMB(stats.bavail),
     };
   } catch (error) {
-    logger.error(`Failed to read disk usage for ${targetPath}:`, error);
+    if (!hasLoggedFailure) {
+      hasLoggedFailure = true;
+      logger.error(`Failed to read disk usage for ${targetPath}:`, error);
+    }
     return null;
   }
 }

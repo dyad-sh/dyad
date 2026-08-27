@@ -39,6 +39,8 @@ const {
   refreshSettingsMock: vi.fn(),
   refreshAppMock: vi.fn(),
   appState: {
+    supabaseProjectId: "proj-1",
+    supabaseParentProjectId: undefined as string | undefined,
     supabaseOrganizationSlug: "org-1" as string | null,
   },
   unsolicitedReturnCallback: {
@@ -83,7 +85,8 @@ vi.mock("@/hooks/useSettings", () => ({
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({
     app: {
-      supabaseProjectId: "proj-1",
+      supabaseProjectId: appState.supabaseProjectId,
+      supabaseParentProjectId: appState.supabaseParentProjectId,
       supabaseProjectName: "My Project",
       supabaseOrganizationSlug: appState.supabaseOrganizationSlug,
     },
@@ -164,6 +167,8 @@ beforeEach(() => {
   redeployState.isPending = false;
   hasSupabaseCredentialsForOrganizationMock.mockReturnValue(true);
   appState.supabaseOrganizationSlug = "org-1";
+  appState.supabaseProjectId = "proj-1";
+  appState.supabaseParentProjectId = undefined;
   unsolicitedReturnCallback.current = null;
   refreshSettingsMock.mockResolvedValue(undefined);
   refreshAppMock.mockResolvedValue(undefined);
@@ -195,6 +200,35 @@ it("migrates a legacy project link to the organization found after reconnect", a
       appId: 7,
       projectId: "proj-1",
       parentProjectId: undefined,
+      organizationSlug: "org-reconnected",
+    }),
+  );
+});
+
+it("uses the parent project to migrate a legacy branch link", async () => {
+  appState.supabaseProjectId = "branch-1";
+  appState.supabaseParentProjectId = "proj-1";
+  appState.supabaseOrganizationSlug = null;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  refetchProjectsMock.mockResolvedValue({
+    data: [
+      {
+        id: "proj-1",
+        name: "Parent Project",
+        region: "us-east-1",
+        organizationSlug: "org-reconnected",
+      },
+    ],
+  });
+
+  renderConnector();
+  unsolicitedReturnCallback.current?.();
+
+  await waitFor(() =>
+    expect(setAppProjectMock).toHaveBeenCalledWith({
+      appId: 7,
+      projectId: "branch-1",
+      parentProjectId: "proj-1",
       organizationSlug: "org-reconnected",
     }),
   );

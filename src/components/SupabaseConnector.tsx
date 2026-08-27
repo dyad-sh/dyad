@@ -133,8 +133,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     await refetchOrganizations();
     const refreshedProjects = await refetchProjects();
     if (app?.supabaseProjectId && !app.supabaseOrganizationSlug) {
+      const organizationLookupProjectId =
+        app.supabaseParentProjectId ?? app.supabaseProjectId;
       const linkedProject = refreshedProjects.data?.find(
-        (project) => project.id === app.supabaseProjectId,
+        (project) => project.id === organizationLookupProjectId,
       );
       if (linkedProject) {
         await setAppProject({

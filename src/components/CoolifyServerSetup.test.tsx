@@ -837,6 +837,8 @@ describe("when it finishes", () => {
     // the latter here would contradict the offer to keep it, directly above.
     expect(panel.textContent).toContain("Unless you tick the box above");
     expect(panel.textContent).not.toContain("could not create");
+    // Minting the token turned the API on, so this is not still to do.
+    expect(panel.textContent).not.toContain("enable the API");
     expect(screen.getByTestId("coolify-setup-done").textContent).toContain(
       "It is not kept unless you say so",
     );

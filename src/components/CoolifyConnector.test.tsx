@@ -399,6 +399,24 @@ describe("a server Dyad set up but has no token for", () => {
     }).toEqual({ failureVisible: true, refusalCard: false, signOut: true });
   });
 
+  it("has nothing to sign out of when the run never got that far", async () => {
+    // A failure before the account was written leaves Dyad holding nothing,
+    // so the way to forget it is an offer to forget what does not exist.
+    deploy.value = NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      message: "boom",
+      cancelled: false,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-server-setup-stub")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Sign out of Coolify" }),
+    ).toBeNull();
+  });
+
   it("can be connected to from the card that refuses a new install", async () => {
     // The address cannot be typed into here, so a form that never filled it
     // in would leave signing out — which forgets the password Dyad is the

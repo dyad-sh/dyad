@@ -309,6 +309,7 @@ describe("sub-agent manager status policy", () => {
         supabaseProviderToolsAvailable: true,
         neonProviderToolsAvailable: false,
         frameworkType: "vite" as const,
+        testingEnabled: true,
       })),
     } as unknown as AgentContext;
 
@@ -319,6 +320,7 @@ describe("sub-agent manager status policy", () => {
     expect(root.supabaseProjectId).toBe("project-1");
     expect(root.supabaseProviderToolsAvailable).toBe(true);
     expect(root.neonProviderToolsAvailable).toBe(false);
+    expect(prepared.contextOverrides?.testingEnabled).toBe(true);
   });
 
   it("keeps the capability-aware fallback prompt when refresh fails", async () => {

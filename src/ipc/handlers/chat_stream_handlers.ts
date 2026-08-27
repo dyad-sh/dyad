@@ -2107,6 +2107,7 @@ ${componentSnippet}
             ),
             neonProviderToolsAvailable: neonToolsAvailable,
             frameworkType: refreshedFrameworkType,
+            testingEnabled: Boolean(refreshedApp.testingEnabled),
           };
         };
 

@@ -117,6 +117,7 @@ export interface AgentContext {
     supabaseProviderToolsAvailable: boolean;
     neonProviderToolsAvailable: boolean;
     frameworkType: AppFrameworkType | null;
+    testingEnabled: boolean;
   }>;
   /** Capability-aware provider-less prompt used if context refresh fails. */
   implementerFallbackSystemPrompt?: string;

@@ -720,6 +720,7 @@ describe("handleLocalAgentStream", () => {
           supabaseProviderToolsAvailable: false,
           neonProviderToolsAvailable: false,
           frameworkType: null,
+          testingEnabled: false,
         }),
         implementerFallbackSystemPrompt: "Fallback implementer rules",
         supabaseProviderToolsAvailable: false,

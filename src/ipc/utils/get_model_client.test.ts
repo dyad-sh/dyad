@@ -11,6 +11,7 @@ import {
   OPENROUTER_APP_REFERER,
   OPENROUTER_APP_TITLE,
 } from "./openrouter_attribution";
+import { getLanguageModels } from "../shared/language_model_helpers";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -102,6 +103,7 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 describe("getModelClient", () => {
   afterEach(() => {
     setModelClientFetchForTesting(undefined);
+    vi.mocked(getLanguageModels).mockResolvedValue([]);
   });
 
   test("keeps the Anthropic gateway prefix for Dyad Engine models", async () => {
@@ -156,6 +158,71 @@ describe("getModelClient", () => {
       "gpt-5.5",
       "anthropic/claude-sonnet-4-20250514",
       "gemini/gemini-3.5-flash",
+    ]);
+  });
+
+  test("builds catalog-derived call options in fallback-model order", async () => {
+    vi.mocked(getLanguageModels).mockImplementation(async ({ providerId }) => {
+      const catalogEntries = {
+        openai: [
+          {
+            apiName: "gpt-5.5",
+            temperature: 1,
+            maxOutputTokens: 64_000,
+          },
+        ],
+        anthropic: [
+          {
+            apiName: "claude-sonnet-4-20250514",
+            temperature: undefined,
+            maxOutputTokens: 32_000,
+          },
+        ],
+        google: [
+          {
+            apiName: "gemini-3.5-flash",
+            temperature: 0.7,
+            maxOutputTokens: 16_000,
+          },
+        ],
+      } as const;
+      return [
+        ...(catalogEntries[providerId as keyof typeof catalogEntries] ?? []),
+      ] as any;
+    });
+
+    const { modelClient } = await getModelClient(
+      { provider: "auto", name: "auto" },
+      {
+        enableDyadPro: true,
+        selectedChatMode: "local-agent",
+        providerSettings: {
+          auto: { apiKey: { value: "dyad-pro-key" } },
+        },
+      } as unknown as UserSettings,
+    );
+
+    const fallbackSettings = (
+      modelClient.model as unknown as {
+        settings: {
+          models: Array<{ modelId: string }>;
+          modelCallOptions: Array<{
+            temperature?: number;
+            maxOutputTokens?: number;
+          }>;
+        };
+      }
+    ).settings;
+
+    expect(fallbackSettings.models.map((model) => model.modelId)).toEqual([
+      "gpt-5.5",
+      "anthropic/claude-sonnet-4-20250514",
+      "gemini/gemini-3.5-flash",
+    ]);
+    expect(fallbackSettings.modelCallOptions).toEqual([
+      { temperature: 1, maxOutputTokens: 64_000 },
+      { temperature: undefined, maxOutputTokens: 32_000 },
+      { temperature: 0.7, maxOutputTokens: 16_000 },
     ]);
   });
 

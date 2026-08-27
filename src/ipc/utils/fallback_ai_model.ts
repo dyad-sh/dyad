@@ -29,8 +29,8 @@ interface FallbackSettings {
    * options are computed for the PRIMARY selection and encode that model's
    * constraints; an entry here expresses what the model at the same index
    * would have received had it been selected as primary. Models without an
-   * entry get the conservative default on failover: `temperature` stripped
-   * (valid on every provider), everything else forwarded.
+   * entry get the conservative default on cross-provider failover:
+   * `temperature` and `maxOutputTokens` stripped, everything else forwarded.
    */
   modelCallOptions?: Array<FallbackModelCallOptions | undefined>;
 }
@@ -176,11 +176,11 @@ class FallbackModel implements LanguageModelV3 {
     return this.getUnderlyingModel().supportedUrls;
   }
 
-  private getUnderlyingModel(): LanguageModelV3 {
-    const model = this.settings.models[this.currentModelIndex];
+  private getModelAtIndex(index: number): LanguageModelV3 {
+    const model = this.settings.models[index];
     if (!model) {
       throw new DyadError(
-        `Model at index ${this.currentModelIndex} not found`,
+        `Model at index ${index} not found`,
         DyadErrorKind.Internal,
       );
     }
@@ -198,6 +198,10 @@ class FallbackModel implements LanguageModelV3 {
     return model;
   }
 
+  private getUnderlyingModel(): LanguageModelV3 {
+    return this.getModelAtIndex(this.currentModelIndex);
+  }
+
   /**
    * Call options are resolved for the PRIMARY model before the request is made
    * (e.g. `getTemperature(settings.selectedModel)`), so they encode that
@@ -207,35 +211,42 @@ class FallbackModel implements LanguageModelV3 {
    * `temperature` ("`temperature` may only be set to 1 when thinking is
    * enabled"), converting a recoverable blip into a fatal stream error.
    *
-   * When calling any model other than the primary, apply that model's
-   * `modelCallOptions` entry — the options it would have received as the
-   * primary selection, computed at chain-build time where catalog access
-   * exists. Without an entry, fall back to stripping `temperature` (an absent
-   * temperature is valid on every provider). Applies to sticky-index first
-   * attempts too — after a failover, `currentModelIndex` stays non-zero for
-   * `modelResetInterval`, so a fresh request's first call can already target a
-   * fallback model.
+   * Apply the current model's `modelCallOptions` entry — including for index 0
+   * when a pseudo-model such as Auto supplied the request's original options.
+   * Without an entry, same-provider fallbacks keep the caller's options. A
+   * cross-provider fallback strips `temperature` and `maxOutputTokens`, whose
+   * accepted values vary by model/provider. This also applies to sticky-index
+   * first attempts after a previous failover.
    */
   private optionsForCurrentModel(
     options: LanguageModelV3CallOptions,
   ): LanguageModelV3CallOptions {
-    if (this.currentModelIndex === 0) return options;
     const overrides = this.settings.modelCallOptions?.[this.currentModelIndex];
     if (!overrides) {
-      // No per-model knowledge: strip temperature (an absent temperature is
-      // valid on every provider) and forward the rest.
-      if (options.temperature === undefined) return options;
-      const { temperature: _dropped, ...rest } = options;
+      if (
+        this.currentModelIndex === 0 ||
+        this.getUnderlyingModel().provider === this.getModelAtIndex(0).provider
+      ) {
+        return options;
+      }
+      // No per-model knowledge on a cross-provider fallback: omit constraints
+      // whose accepted values and caps differ between providers.
+      const {
+        temperature: _droppedTemperature,
+        maxOutputTokens: _droppedMaxOutputTokens,
+        ...rest
+      } = options;
       return rest;
     }
     // Rebuild the model-derived subset as if this model had been primary.
-    // temperature is REPLACED (undefined in the overrides means "unset", not
-    // "keep the primary's"); maxOutputTokens falls back to the caller's when
-    // the catalog had none; providerOptions merge at the provider-family key —
-    // request-scoped keys (e.g. dyad-engine) pass through, the fallback's
-    // family entry is added, and a stale foreign family key is inert because
-    // providers only read their own key.
-    const { temperature: _replaced, ...rest } = options;
+    // Both scalar values are replaced: undefined means "unset", not "inherit
+    // the primary's". Request-scoped provider options pass through, with any
+    // explicit per-model provider options merged on top.
+    const {
+      temperature: _replacedTemperature,
+      maxOutputTokens: _replacedMaxOutputTokens,
+      ...rest
+    } = options;
     return {
       ...rest,
       ...(overrides.temperature !== undefined
@@ -244,10 +255,14 @@ class FallbackModel implements LanguageModelV3 {
       ...(overrides.maxOutputTokens !== undefined
         ? { maxOutputTokens: overrides.maxOutputTokens }
         : {}),
-      providerOptions: {
-        ...options.providerOptions,
-        ...(overrides.providerOptions ?? {}),
-      } as LanguageModelV3CallOptions["providerOptions"],
+      ...(overrides.providerOptions
+        ? {
+            providerOptions: {
+              ...options.providerOptions,
+              ...overrides.providerOptions,
+            } as LanguageModelV3CallOptions["providerOptions"],
+          }
+        : {}),
     };
   }
 

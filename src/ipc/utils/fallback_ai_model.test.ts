@@ -3,9 +3,21 @@ import type {
   LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createFallback } from "./fallback_ai_model";
+
+vi.mock("electron-log", () => ({
+  default: {
+    scope: () => ({
+      debug: vi.fn(),
+      info: vi.fn(),
+      log: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    }),
+  },
+}));
 
 /**
  * The regression under test: call options (temperature) are resolved for the
@@ -28,12 +40,13 @@ function textStream(): ReadableStream<LanguageModelV3StreamPart> {
 
 function fakeModel(params: {
   modelId: string;
+  provider?: string;
   behavior: "succeed" | "reject-retryable";
   seen: LanguageModelV3CallOptions[];
 }): LanguageModelV3 {
   return {
     specificationVersion: "v3",
-    provider: "fake",
+    provider: params.provider ?? "fake",
     modelId: params.modelId,
     supportedUrls: {},
     async doGenerate() {
@@ -81,11 +94,13 @@ describe("fallback model call options", () => {
       models: [
         fakeModel({
           modelId: "primary",
+          provider: "primary-provider",
           behavior: "reject-retryable",
           seen: primarySeen,
         }),
         fakeModel({
           modelId: "fallback",
+          provider: "fallback-provider",
           behavior: "succeed",
           seen: fallbackSeen,
         }),
@@ -106,6 +121,64 @@ describe("fallback model call options", () => {
     expect(fallbackSeen[0].temperature).toBeUndefined();
     // Everything else survives the strip.
     expect(fallbackSeen[0].prompt).toEqual([]);
+  });
+
+  it("keeps model-derived options on a same-provider fallback without overrides", async () => {
+    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const model = createFallback({
+      models: [
+        fakeModel({
+          modelId: "primary",
+          provider: "openrouter",
+          behavior: "reject-retryable",
+          seen: [],
+        }),
+        fakeModel({
+          modelId: "fallback",
+          provider: "openrouter",
+          behavior: "succeed",
+          seen: fallbackSeen,
+        }),
+      ],
+    }) as unknown as LanguageModelV3;
+
+    const result = await model.doStream({
+      prompt: [],
+      temperature: 0,
+      maxOutputTokens: 32_000,
+    } as unknown as LanguageModelV3CallOptions);
+    await drain(result.stream);
+
+    expect(fallbackSeen[0]).toMatchObject({
+      temperature: 0,
+      maxOutputTokens: 32_000,
+    });
+  });
+
+  it("applies the primary chain entry's own options", async () => {
+    const primarySeen: LanguageModelV3CallOptions[] = [];
+    const model = createFallback({
+      models: [
+        fakeModel({
+          modelId: "resolved-primary",
+          behavior: "succeed",
+          seen: primarySeen,
+        }),
+      ],
+      modelCallOptions: [{ temperature: 1, maxOutputTokens: 64_000 }],
+    }) as unknown as LanguageModelV3;
+
+    const result = await model.doStream({
+      prompt: [],
+      temperature: 0,
+      maxOutputTokens: 32_000,
+    } as unknown as LanguageModelV3CallOptions);
+    await drain(result.stream);
+
+    expect(primarySeen[0]).toMatchObject({
+      temperature: 1,
+      maxOutputTokens: 64_000,
+    });
   });
 
   it("applies a fallback model's own call options as if it were primary", async () => {
@@ -162,7 +235,7 @@ describe("fallback model call options", () => {
     expect(seen.prompt).toEqual([]);
   });
 
-  it("unsets temperature when the fallback's own options have none", async () => {
+  it("unsets scalar options when the fallback's own options have none", async () => {
     const fallbackSeen: LanguageModelV3CallOptions[] = [];
     const model = createFallback({
       models: [
@@ -188,11 +261,13 @@ describe("fallback model call options", () => {
     const result = await model.doStream({
       prompt: [],
       temperature: 0.2,
+      maxOutputTokens: 128_000,
     } as unknown as LanguageModelV3CallOptions);
     await drain(result.stream);
 
     expect(fallbackSeen).toHaveLength(1);
     expect(fallbackSeen[0].temperature).toBeUndefined();
+    expect(fallbackSeen[0].maxOutputTokens).toBeUndefined();
   });
 
   it("drops temperature on a sticky non-primary index without a same-request failover", async () => {
@@ -205,11 +280,13 @@ describe("fallback model call options", () => {
       models: [
         fakeModel({
           modelId: "primary",
+          provider: "primary-provider",
           behavior: "reject-retryable",
           seen: primarySeen,
         }),
         fakeModel({
           modelId: "fallback",
+          provider: "fallback-provider",
           behavior: "succeed",
           seen: fallbackSeen,
         }),

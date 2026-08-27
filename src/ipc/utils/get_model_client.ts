@@ -16,7 +16,6 @@ import type {
   AzureProviderSetting,
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
-import { getModelScopedProviderOptions } from "./provider_options";
 import { getMaxTokens, getTemperature } from "./token_utils";
 import log from "electron-log";
 import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
@@ -343,11 +342,11 @@ async function getProModelClient({
 
         // The stream's call options are computed for the PRIMARY selection, so
         // give each chain entry the options it would have received had IT been
-        // selected: its own temperature and output cap from the catalog, and
-        // its provider family's thinking/reasoning options at the user's
-        // chosen effort. Without this, a cross-provider failover ran with the
-        // primary's options — an Anthropic fallback got no adaptive-thinking
-        // config plus a temperature that is invalid without it (hard 400).
+        // selected: its own temperature and output cap from the catalog.
+        // Provider-family thinking options are already injected by the Dyad
+        // Engine fetch wrapper from this entry's providerId; adding e.g.
+        // providerOptions.google here would be ignored because these AI SDK
+        // model instances read the dyad-engine provider-options key.
         const chainModelSelection = {
           provider: resolvedModel.providerId,
           name: resolvedModel.apiName,
@@ -361,11 +360,6 @@ async function getProModelClient({
           callOptions: {
             temperature,
             maxOutputTokens,
-            providerOptions: getModelScopedProviderOptions({
-              providerId: resolvedModel.providerId,
-              modelName: resolvedModel.apiName,
-              modelSelection: model,
-            }),
           },
         };
       }),

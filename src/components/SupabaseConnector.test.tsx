@@ -36,7 +36,9 @@ const {
   toastInfoMock: vi.fn(),
   redeployAllFunctionsMock: vi.fn(),
   showErrorMock: vi.fn(),
-  hasSupabaseCredentialsForOrganizationMock: vi.fn(() => true),
+  hasSupabaseCredentialsForOrganizationMock: vi.fn(
+    (_settings: unknown, _organizationSlug?: string | null) => true,
+  ),
   unsetAppProjectMock: vi.fn(),
   setAppProjectMock: vi.fn(),
   recoverAppProjectMock: vi.fn(),
@@ -274,7 +276,9 @@ it("uses the parent project to migrate a legacy branch link", async () => {
 
 it("relinks without OAuth when the owning organization is already connected", async () => {
   appState.supabaseOrganizationSlug = null;
-  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  hasSupabaseCredentialsForOrganizationMock.mockImplementation(
+    (_settings, organizationSlug) => organizationSlug === "org-connected",
+  );
   projectsState.current = [
     {
       id: "proj-1",
@@ -288,13 +292,29 @@ it("relinks without OAuth when the owning organization is already connected", as
   fireEvent.click(await screen.findByTestId("relink-supabase-project-button"));
 
   await waitFor(() =>
-    expect(setAppProjectMock).toHaveBeenCalledWith({
+    expect(recoverAppProjectMock).toHaveBeenCalledWith({
       appId: 7,
       projectId: "proj-1",
       parentProjectId: undefined,
       organizationSlug: "org-connected",
     }),
   );
+});
+
+it("does not offer relinking from stale cached projects", () => {
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  projectsState.current = [
+    {
+      id: "proj-1",
+      name: "My Project",
+      region: "us-east-1",
+      organizationSlug: "org-disconnected",
+    },
+  ];
+
+  renderConnector();
+
+  expect(screen.queryByTestId("relink-supabase-project-button")).toBeNull();
 });
 
 it("refreshes app state when automatic legacy relinking fails", async () => {

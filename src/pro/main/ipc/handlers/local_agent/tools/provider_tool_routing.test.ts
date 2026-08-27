@@ -46,6 +46,20 @@ function supabaseContext(): AgentContext {
   } as unknown as AgentContext;
 }
 
+function neonContext(): AgentContext {
+  return {
+    appPath: "/tmp/app",
+    supabaseProjectId: null,
+    supabaseOrganizationSlug: null,
+    supabaseProviderToolsAvailable: false,
+    neonProjectId: "neon-project",
+    neonActiveBranchId: "neon-branch",
+    neonProviderToolsAvailable: true,
+    onXmlStream: vi.fn(),
+    onXmlComplete: vi.fn(),
+  } as unknown as AgentContext;
+}
+
 describe("database provider tool routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,5 +81,19 @@ describe("database provider tool routing", () => {
 
     expect(getSupabaseTableSchemaMock).toHaveBeenCalled();
     expect(getNeonTableSchemaMock).not.toHaveBeenCalled();
+  });
+
+  it("routes SQL to an available Neon provider", async () => {
+    await executeSqlTool.execute({ query: "select 1" }, neonContext());
+
+    expect(executeNeonSqlMock).toHaveBeenCalled();
+    expect(executeSupabaseSqlMock).not.toHaveBeenCalled();
+  });
+
+  it("routes schema reads to an available Neon provider", async () => {
+    await getDatabaseTableSchemaTool.execute({}, neonContext());
+
+    expect(getNeonTableSchemaMock).toHaveBeenCalled();
+    expect(getSupabaseTableSchemaMock).not.toHaveBeenCalled();
   });
 });

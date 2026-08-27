@@ -364,18 +364,26 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  const linkedProjectForRelink = app?.supabaseProjectId
+  const linkedProjectCandidate = app?.supabaseProjectId
     ? findLinkedSupabaseProject(
         projects,
         app.supabaseProjectId,
         app.supabaseParentProjectId,
       )
     : undefined;
+  const linkedProjectForRelink =
+    linkedProjectCandidate &&
+    hasSupabaseCredentialsForOrganization(
+      settings,
+      linkedProjectCandidate.organizationSlug,
+    )
+      ? linkedProjectCandidate
+      : undefined;
   const isLoadingRelinkCandidate = isLoadingOrganizations || isLoadingProjects;
   const handleRelinkProject = async () => {
     if (!app?.supabaseProjectId || !linkedProjectForRelink) return;
     try {
-      await setAppProject({
+      await recoverAppProject({
         appId,
         projectId: app.supabaseProjectId,
         parentProjectId: app.supabaseParentProjectId,

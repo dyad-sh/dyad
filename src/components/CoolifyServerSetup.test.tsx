@@ -445,6 +445,7 @@ describe("catching up with a run this window did not start", () => {
         adminEmail: "me@gmail.com",
         adminPassword: "Abc123@xyz",
         tokenStored: true,
+        apiEnabled: true,
         tokenUnavailableReason: null,
         version: "4.3.2",
       },

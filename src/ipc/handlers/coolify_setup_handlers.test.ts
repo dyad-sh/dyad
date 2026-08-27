@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The mocked class, so the handler recognises what it is handed.
 import { SshError } from "../utils/ssh_client";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { SETUP_MACHINE_REPORTED } from "@/ipc/types/coolify_setup";
+import {
+  SETUP_MACHINE_REPORTED,
+  SetupResultSchema,
+} from "@/ipc/types/coolify_setup";
 
 const h = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -185,6 +188,8 @@ const RESULT = {
     password: "Abc123@xyz",
   },
   token: "1|abc",
+  // A token comes from a mint, and Dyad opens the API to reach one.
+  apiEnabled: true,
   version: "4.3.2",
 };
 
@@ -499,6 +504,16 @@ describe("run", () => {
     const result = (await checkThenRun()) as Record<string, unknown>;
     expect(result.adminPassword).toBe("Abc123@xyz");
     expect(result.tokenStored).toBe(true);
+  });
+
+  it("answers in the shape the channel says it will", async () => {
+    // These cases mock the wrapper that parses this on the way out, so
+    // nothing else here would notice the answer drifting from the contract,
+    // or the fixture above drifting from what the flow now returns.
+    const result = await checkThenRun();
+    expect(SetupResultSchema.safeParse(result)).toMatchObject({
+      success: true,
+    });
   });
 
   it("keeps the install when no token could be created", async () => {

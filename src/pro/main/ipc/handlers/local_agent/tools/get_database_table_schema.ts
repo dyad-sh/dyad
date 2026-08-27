@@ -11,7 +11,7 @@ import {
 import { getSupabaseTableSchema } from "../../../../../../supabase_admin/supabase_context";
 import { getNeonTableSchema } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
+import { resolveLinkedDatabaseProvider } from "@/shared/database_provider";
 
 const getDatabaseTableSchemaSchema = z.object({
   tableName: z
@@ -42,11 +42,9 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
       ? ` table="${escapeXmlAttr(args.tableName)}"`
       : "";
 
-    const provider = resolvePreferredDatabaseProvider({
+    const provider = resolveLinkedDatabaseProvider({
       hasSupabaseProject: Boolean(ctx.supabaseProjectId),
-      supabaseAvailable: canUseSupabaseTools(ctx),
       hasNeonProject: Boolean(ctx.neonProjectId),
-      neonAvailable: canUseNeonTools(ctx),
     });
 
     if (provider === "supabase" && canUseSupabaseTools(ctx)) {

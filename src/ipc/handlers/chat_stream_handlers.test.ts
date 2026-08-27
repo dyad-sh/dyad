@@ -108,7 +108,7 @@ describe("root database prompt selection", () => {
     ).toBe("neon-disconnected");
   });
 
-  it("selects Supabase when its linked project has credentials", () => {
+  it("prefers usable Neon even when Supabase credentials exist", () => {
     expect(
       resolveRootDatabasePromptState({
         hasSupabaseProject: true,
@@ -117,6 +117,17 @@ describe("root database prompt selection", () => {
         neonProviderAvailable: true,
       }),
     ).toBe("neon");
+  });
+
+  it("selects usable Supabase for prompts when dual-linked Neon is unavailable", () => {
+    expect(
+      resolveRootDatabasePromptState({
+        hasSupabaseProject: true,
+        supabaseCredentialsAvailable: true,
+        hasNeonProject: true,
+        neonProviderAvailable: false,
+      }),
+    ).toBe("supabase");
   });
 
   it("keeps a dual-linked Neon association when neither provider is usable", () => {

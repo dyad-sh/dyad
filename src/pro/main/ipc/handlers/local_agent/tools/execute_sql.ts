@@ -13,7 +13,7 @@ import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
+import { resolveLinkedDatabaseProvider } from "@/shared/database_provider";
 import {
   doesSqlDeleteData,
   doesSqlMutateSchema,
@@ -206,11 +206,9 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      const provider = resolvePreferredDatabaseProvider({
+      const provider = resolveLinkedDatabaseProvider({
         hasSupabaseProject: Boolean(ctx.supabaseProjectId),
-        supabaseAvailable: canUseSupabaseTools(ctx),
         hasNeonProject: Boolean(ctx.neonProjectId),
-        neonAvailable: canUseNeonTools(ctx),
       });
 
       if (provider === "supabase" && canUseSupabaseTools(ctx)) {

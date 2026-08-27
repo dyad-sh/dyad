@@ -178,4 +178,26 @@ describe("database provider tool routing", () => {
       message: expect.stringContaining("Neon integration settings"),
     });
   });
+
+  it("fails closed instead of switching a dual-linked database to Supabase", async () => {
+    const ctx = {
+      ...dualProviderContext(),
+      neonProviderToolsAvailable: false,
+    };
+
+    await expect(
+      executeSqlTool.execute({ query: "select 1" }, ctx),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Reconnect the Neon account"),
+    });
+    await expect(
+      getDatabaseTableSchemaTool.execute({}, ctx),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: expect.stringContaining("Reconnect the Neon account"),
+    });
+    expect(executeSupabaseSqlMock).not.toHaveBeenCalled();
+    expect(getSupabaseTableSchemaMock).not.toHaveBeenCalled();
+  });
 });

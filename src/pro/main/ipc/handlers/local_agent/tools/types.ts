@@ -9,7 +9,7 @@ import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
 import type { SubagentPersona } from "@/ipc/types";
 import type { AppFrameworkType } from "@/lib/framework_constants";
-import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
+import { resolveLinkedDatabaseProvider } from "@/shared/database_provider";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { McpToolDef } from "./mcp_type_defs";
 import type { MutationActivityOwner } from "../subagents/mutation_activity_tracker";
@@ -358,17 +358,9 @@ export function getUnavailableDatabaseProviderMessage(
   >,
   operation: "SQL execution" | "schema inspection",
 ): string {
-  const provider = resolvePreferredDatabaseProvider({
+  const provider = resolveLinkedDatabaseProvider({
     hasSupabaseProject: Boolean(ctx.supabaseProjectId),
-    supabaseAvailable: Boolean(
-      ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable,
-    ),
     hasNeonProject: Boolean(ctx.neonProjectId),
-    neonAvailable: Boolean(
-      ctx.neonProjectId &&
-      ctx.neonActiveBranchId &&
-      ctx.neonProviderToolsAvailable,
-    ),
   });
   if (provider === "neon") {
     if (!ctx.neonActiveBranchId) {

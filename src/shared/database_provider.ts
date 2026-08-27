@@ -1,5 +1,17 @@
 export type DatabaseProvider = "supabase" | "neon";
 
+export function resolveLinkedDatabaseProvider({
+  hasSupabaseProject,
+  hasNeonProject,
+}: {
+  hasSupabaseProject: boolean;
+  hasNeonProject: boolean;
+}): DatabaseProvider | undefined {
+  if (hasNeonProject) return "neon";
+  if (hasSupabaseProject) return "supabase";
+  return undefined;
+}
+
 export function resolvePreferredDatabaseProvider({
   hasSupabaseProject,
   supabaseAvailable,
@@ -13,7 +25,8 @@ export function resolvePreferredDatabaseProvider({
 }): DatabaseProvider | undefined {
   if (hasNeonProject && neonAvailable) return "neon";
   if (hasSupabaseProject && supabaseAvailable) return "supabase";
-  if (hasNeonProject) return "neon";
-  if (hasSupabaseProject) return "supabase";
-  return undefined;
+  return resolveLinkedDatabaseProvider({
+    hasSupabaseProject,
+    hasNeonProject,
+  });
 }

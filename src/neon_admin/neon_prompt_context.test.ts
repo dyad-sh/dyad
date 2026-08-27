@@ -195,6 +195,8 @@ describe("buildNeonPromptAdditions", () => {
     });
 
     expect(additions).toContain("<neon-system-prompt>");
+    expect(additions).not.toContain("<dyad-execute-sql>");
+    expect(additions).toContain("reconnect or select a Neon branch");
     expect(getCachedEmailPasswordConfig).not.toHaveBeenCalled();
     expect(getNeonContext).not.toHaveBeenCalled();
   });

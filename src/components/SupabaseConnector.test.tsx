@@ -22,6 +22,7 @@ const {
   refreshSettingsMock,
   refreshAppMock,
   appState,
+  projectsState,
   unsolicitedReturnCallback,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
@@ -42,6 +43,14 @@ const {
     supabaseProjectId: "proj-1",
     supabaseParentProjectId: undefined as string | undefined,
     supabaseOrganizationSlug: "org-1" as string | null,
+  },
+  projectsState: {
+    current: [] as Array<{
+      id: string;
+      name: string;
+      region: string;
+      organizationSlug: string;
+    }>,
   },
   unsolicitedReturnCallback: {
     current: null as null | (() => void),
@@ -107,7 +116,7 @@ vi.mock("@/lib/schemas", () => ({
 vi.mock("@/hooks/useSupabase", () => ({
   useSupabase: () => ({
     organizations: [],
-    projects: [],
+    projects: projectsState.current,
     branches: [],
     isLoadingProjects: false,
     isFetchingProjects: false,
@@ -169,6 +178,7 @@ beforeEach(() => {
   appState.supabaseOrganizationSlug = "org-1";
   appState.supabaseProjectId = "proj-1";
   appState.supabaseParentProjectId = undefined;
+  projectsState.current = [];
   unsolicitedReturnCallback.current = null;
   refreshSettingsMock.mockResolvedValue(undefined);
   refreshAppMock.mockResolvedValue(undefined);
@@ -232,6 +242,52 @@ it("uses the parent project to migrate a legacy branch link", async () => {
       organizationSlug: "org-reconnected",
     }),
   );
+});
+
+it("relinks without OAuth when the owning organization is already connected", async () => {
+  appState.supabaseOrganizationSlug = null;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  projectsState.current = [
+    {
+      id: "proj-1",
+      name: "My Project",
+      region: "us-east-1",
+      organizationSlug: "org-connected",
+    },
+  ];
+
+  renderConnector();
+  fireEvent.click(await screen.findByTestId("relink-supabase-project-button"));
+
+  await waitFor(() =>
+    expect(setAppProjectMock).toHaveBeenCalledWith({
+      appId: 7,
+      projectId: "proj-1",
+      parentProjectId: undefined,
+      organizationSlug: "org-connected",
+    }),
+  );
+});
+
+it("refreshes app state when automatic legacy relinking fails", async () => {
+  appState.supabaseOrganizationSlug = null;
+  hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+  refetchProjectsMock.mockResolvedValue({
+    data: [
+      {
+        id: "proj-1",
+        name: "My Project",
+        region: "us-east-1",
+        organizationSlug: "org-reconnected",
+      },
+    ],
+  });
+  setAppProjectMock.mockRejectedValue(new Error("write failed"));
+
+  renderConnector();
+  unsolicitedReturnCallback.current?.();
+
+  await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
 });
 
 it("shows recovery controls when linked organization credentials are missing", async () => {

@@ -338,8 +338,8 @@ describe("sub-agent manager status policy", () => {
         neonProviderToolsAvailable: false,
       },
     });
-    expect(root.supabaseProviderToolsAvailable).toBe(false);
-    expect(root.neonProviderToolsAvailable).toBe(false);
+    expect(root.supabaseProviderToolsAvailable).toBe(true);
+    expect(root.neonProviderToolsAvailable).toBe(true);
   });
 
   it("rejects finalization when its owning root is already cancelled", async () => {

@@ -70,6 +70,15 @@ import {
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
+function findLinkedSupabaseProject(
+  projects: SupabaseProject[],
+  projectId: string,
+  parentProjectId?: string | null,
+) {
+  const organizationLookupProjectId = parentProjectId ?? projectId;
+  return projects.find((project) => project.id === organizationLookupProjectId);
+}
+
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings } = useSettings();
@@ -133,18 +142,22 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     await refetchOrganizations();
     const refreshedProjects = await refetchProjects();
     if (app?.supabaseProjectId && !app.supabaseOrganizationSlug) {
-      const organizationLookupProjectId =
-        app.supabaseParentProjectId ?? app.supabaseProjectId;
-      const linkedProject = refreshedProjects.data?.find(
-        (project) => project.id === organizationLookupProjectId,
+      const linkedProject = findLinkedSupabaseProject(
+        refreshedProjects.data ?? [],
+        app.supabaseProjectId,
+        app.supabaseParentProjectId,
       );
       if (linkedProject) {
-        await setAppProject({
-          appId,
-          projectId: app.supabaseProjectId,
-          parentProjectId: app.supabaseParentProjectId,
-          organizationSlug: linkedProject.organizationSlug,
-        });
+        try {
+          await setAppProject({
+            appId,
+            projectId: app.supabaseProjectId,
+            parentProjectId: app.supabaseParentProjectId,
+            organizationSlug: linkedProject.organizationSlug,
+          });
+        } catch (error) {
+          console.error("Failed to recover legacy Supabase link:", error);
+        }
       }
     }
     await refreshApp();
@@ -339,6 +352,33 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
+  const linkedProjectForRelink = app?.supabaseProjectId
+    ? findLinkedSupabaseProject(
+        projects,
+        app.supabaseProjectId,
+        app.supabaseParentProjectId,
+      )
+    : undefined;
+  const handleRelinkProject = async () => {
+    if (!app?.supabaseProjectId || !linkedProjectForRelink) return;
+    try {
+      await setAppProject({
+        appId,
+        projectId: app.supabaseProjectId,
+        parentProjectId: app.supabaseParentProjectId,
+        organizationSlug: linkedProjectForRelink.organizationSlug,
+      });
+      toast.success(t("integrations.supabase.projectConnected"));
+      await refreshApp();
+    } catch (error) {
+      toast.error(
+        t("integrations.supabase.failedConnectProject", {
+          error: String(error),
+        }),
+      );
+    }
+  };
+
   // Keep recovery controls available when the app still points at a project
   // whose organization token has been removed. Hiding the association here
   // would strand the user on a generic account-connect screen.
@@ -362,6 +402,16 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </AlertDescription>
           </Alert>
           <div className="flex flex-wrap gap-2">
+            {linkedProjectForRelink && (
+              <Button
+                variant="outline"
+                onClick={handleRelinkProject}
+                disabled={isSettingAppProject}
+                data-testid="relink-supabase-project-button"
+              >
+                {t("integrations.supabase.relinkProject")}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleAddAccount}

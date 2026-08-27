@@ -601,6 +601,7 @@
       "refreshProjects": "Actualizar proyectos",
       "addOrganization": "Añadir Organización",
       "organizationCredentialsMissing": "Las credenciales de la organización de este proyecto no están disponibles. Vuelve a conectar la organización para restaurar las operaciones de base de datos y despliegue.",
+      "relinkProject": "Volver a conectar el proyecto vinculado",
       "errorLoadingProjects": "Error al cargar los proyectos: {{message}}",
       "connectedOrganizations": "Organizaciones Conectadas",
       "noProjectsFound": "No se encontraron proyectos en tus organizaciones de Supabase conectadas.",

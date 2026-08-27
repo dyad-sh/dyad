@@ -497,14 +497,44 @@ ${AGENT_RECORDED_TEST_GUIDANCE}
 
 ${AGENT_RUN_TESTS_GUIDANCE}`;
 
-/** Test-writing guidance safe for children without user-facing recorder tools. */
-export const IMPLEMENTER_TEST_WRITING_GUIDANCE = `${AGENT_PROACTIVE_TESTS_GUIDANCE}
+/** Adapt shared test guidance to the Implementer's tools and root-only channel. */
+function buildImplementerTestWritingGuidance(): string {
+  return `${AGENT_PROACTIVE_TESTS_GUIDANCE}
 
 ${buildTestWritingGuidance(
   `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`e2e-tests/\` (e.g. \`e2e-tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
 )}
 
-${AGENT_RUN_TESTS_GUIDANCE}`;
+${AGENT_RUN_TESTS_GUIDANCE}`
+    .replace(
+      "Make sure `@playwright/test` is installed as a dev dependency. If it isn't already in `package.json`, install it (Playwright is required to run the test).",
+      "If `@playwright/test` is missing from `package.json`, report the required dev dependency to the root Agent for installation.",
+    )
+    .replace(
+      "say so and ask the user before building auth",
+      "report the missing auth prerequisite to the root Agent",
+    )
+    .replace(
+      "Say so clearly if you add it",
+      "Report that prerequisite to the root Agent",
+    )
+    .replace(
+      "ask the user to start it with the Run button in the preview panel",
+      "report to the root Agent that the dev server must be started with the Run button",
+    )
+    .replace(
+      "summarize for the user what the test covers, what still fails, what you tried, and what you recommend",
+      "report to the root Agent what the test covers, what still fails, what you tried, and what you recommend",
+    )
+    .replace(
+      "Briefly tell the user which flow you added or updated a test for",
+      "Briefly report to the root Agent which flow you added or updated a test for",
+    );
+}
+
+/** Test-writing guidance safe for children without user-facing recorder tools. */
+export const IMPLEMENTER_TEST_WRITING_GUIDANCE =
+  buildImplementerTestWritingGuidance();
 
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 

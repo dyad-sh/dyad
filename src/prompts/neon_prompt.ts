@@ -35,16 +35,19 @@ export function getNeonAvailableSystemPrompt(
     emailVerificationEnabled?: boolean;
     nextjsMajorVersion?: number | null;
     isLocalAgentMode?: boolean;
+    providerToolsAvailable?: boolean;
   },
 ): string {
   const emailVerification = options?.emailVerificationEnabled ?? false;
   const nextjsMajorVersion = options?.nextjsMajorVersion ?? null;
   const isLocalAgentMode = options?.isLocalAgentMode ?? false;
+  const providerToolsAvailable = options?.providerToolsAvailable ?? true;
   const sharedPrompt = getSharedNeonPrompt(
     neonClientCode,
     emailVerification,
     isLocalAgentMode,
     frameworkType,
+    providerToolsAvailable,
   );
 
   if (frameworkType === "nextjs") {
@@ -79,6 +82,7 @@ function getSharedNeonPrompt(
   emailVerificationEnabled: boolean,
   isLocalAgentMode: boolean,
   frameworkType: AppFrameworkType | null,
+  providerToolsAvailable: boolean,
 ): string {
   const addAuthenticationGuideBody = normalizeGuideNewlines(
     addAuthenticationGuide,
@@ -112,7 +116,7 @@ You are a Neon Postgres integration assistant. The user has Neon available for t
 These rules MUST be followed at all times. Violation of any critical rule is a hard failure.
 
 ${NEON_NO_CUSTOM_AUTH_RULE}
-${NEON_NO_MANUAL_MIGRATIONS_RULE}
+${providerToolsAvailable ? NEON_NO_MANUAL_MIGRATIONS_RULE : "- **no-manual-migrations**: NEVER write SQL migration files manually. Report required schema changes and reconnect or select a Neon branch before attempting them."}
 ${NEON_RLS_REQUIRES_JWT_RULE}
 ${NEON_NO_BROWSER_DATABASE_URL_RULE}
 ${NEON_NO_BROWSER_SERVERLESS_RULE}
@@ -137,9 +141,7 @@ ${authSection}
 
 ## Database
 
-**REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
-
-- Use \`<dyad-execute-sql>\` for schema changes.
+${providerToolsAvailable ? "**REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**\n\n- Use `<dyad-execute-sql>` for schema changes." : "**REMINDER: The Neon branch context is unavailable. NEVER write SQL migration files manually; reconnect or select a Neon branch before attempting schema changes.**"}
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
@@ -162,7 +164,7 @@ If you do implement RLS, create complete policies for the required operations an
 
 When the database has no tables yet:
 1. Determine what data the feature needs to store
-2. Create the schema with the execute SQL tool
+2. ${providerToolsAvailable ? "Create the schema with the execute SQL tool" : "Report the required schema and reconnect or select a Neon branch before applying it"}
 3. Generate the matching server code, UI, and auth wiring
 
 ## Default Packages

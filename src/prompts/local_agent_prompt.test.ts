@@ -209,6 +209,11 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain("e2e-tests/");
     expect(prompt).toContain(".spec.ts");
     expect(prompt).not.toContain("generate_test_assertions");
+    expect(prompt).not.toContain("install it (Playwright is required");
+    expect(prompt).not.toContain("ask the user to start it");
+    expect(prompt).not.toContain("tell the user which flow");
+    expect(prompt).toContain("report the required dev dependency");
+    expect(prompt).toContain("report to the root Agent");
     expect(
       constructImplementerPrompt(undefined, { testingEnabled: false }),
     ).not.toContain("e2e-tests/");

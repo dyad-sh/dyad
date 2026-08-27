@@ -1486,10 +1486,6 @@ export async function prepareImplementerRunContext(
       "Failed to refresh Implementer provider context; using the capability-aware fallback prompt",
       error,
     );
-    Object.assign(rootCtx, {
-      supabaseProviderToolsAvailable: false,
-      neonProviderToolsAvailable: false,
-    });
     return {
       systemPrompt: rootCtx.implementerFallbackSystemPrompt,
       contextOverrides: {

@@ -40,6 +40,7 @@ export async function buildNeonPromptAdditions({
       emailVerificationEnabled,
       nextjsMajorVersion,
       isLocalAgentMode,
+      providerToolsAvailable: Boolean(branchId),
     },
   );
 

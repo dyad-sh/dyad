@@ -603,6 +603,7 @@
       "refreshProjects": "프로젝트 새로고침",
       "addOrganization": "조직 추가",
       "organizationCredentialsMissing": "이 프로젝트 조직의 자격 증명을 사용할 수 없습니다. 데이터베이스 및 배포 작업을 복원하려면 조직을 다시 연결하세요.",
+      "relinkProject": "연결된 프로젝트 다시 연결",
       "errorLoadingProjects": "프로젝트 불러오기 오류: {{message}}",
       "connectedOrganizations": "연결된 조직",
       "noProjectsFound": "연결된 Supabase 조직에서 프로젝트를 찾을 수 없습니다.",

@@ -178,10 +178,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     modifiesState: true,
     isEnabled: (ctx) =>
       (!!ctx.supabaseProjectId &&
-        ctx.supabaseProviderToolsAvailable !== false) ||
+        ctx.supabaseProviderToolsAvailable === true) ||
       (!!ctx.neonProjectId &&
         !!ctx.neonActiveBranchId &&
-        ctx.neonProviderToolsAvailable !== false),
+        ctx.neonProviderToolsAvailable === true),
 
     getConsentPreview: (args) => args.query,
 

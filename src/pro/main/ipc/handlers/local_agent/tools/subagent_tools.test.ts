@@ -38,6 +38,18 @@ const advancedSubagentTools = [
 ];
 
 describe("provider tool enablement", () => {
+  it("fails closed when provider availability is omitted", () => {
+    const ctx = {
+      supabaseProjectId: "supabase-project",
+      neonProjectId: "neon-project",
+      neonActiveBranchId: "neon-branch",
+    } as unknown as AgentContext;
+
+    expect(getSupabaseProjectInfoTool.isEnabled?.(ctx)).toBe(false);
+    expect(getNeonProjectInfoTool.isEnabled?.(ctx)).toBe(false);
+    expect(getDatabaseTableSchemaTool.isEnabled?.(ctx)).toBe(false);
+  });
+
   it("fails closed for retained associations with unavailable credentials", () => {
     const ctx = {
       supabaseProjectId: "supabase-project",

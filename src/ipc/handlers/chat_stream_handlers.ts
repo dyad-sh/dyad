@@ -2198,7 +2198,17 @@ ${componentSnippet}
             })) +
             "\n\n";
         } else if (rootDatabasePromptState === "neon-disconnected") {
-          systemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
+          systemPrompt +=
+            "\n\n" +
+            (await buildNeonPromptForApp({
+              appPath: updatedChat.app.path,
+              neonProjectId: updatedChat.app.neonProjectId!,
+              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
+              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
+              selectedChatMode,
+            })) +
+            "\n\n" +
+            NEON_DISCONNECTED_SYSTEM_PROMPT;
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
           !willUseLocalAgentStream &&
@@ -2592,13 +2602,19 @@ This conversation includes one or more image attachments. When the user uploads 
         // Plan mode is for requirements gathering and creating implementation plans
         if (isPlanMode) {
           // Reconstruct system prompt for plan mode
-          const planModeSystemPrompt = constructSystemPrompt({
+          let planModeSystemPrompt = constructSystemPrompt({
             aiRules,
             chatMode: "plan",
             enableTurboEditsV2: false,
             themePrompt,
             freeModelMode,
           });
+          if (rootDatabasePromptState === "supabase-disconnected") {
+            planModeSystemPrompt +=
+              "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
+          } else if (rootDatabasePromptState === "neon-disconnected") {
+            planModeSystemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
+          }
 
           finishedNaturally = await handleLocalAgentStream(
             event,

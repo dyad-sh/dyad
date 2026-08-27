@@ -6,6 +6,7 @@
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
 import {
+  SUPABASE_EDGE_FUNCTION_JWT_RULE,
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_IMPLEMENTER_RLS_RULE,
@@ -668,6 +669,7 @@ ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
+${SUPABASE_EDGE_FUNCTION_JWT_RULE}
 ${supabaseConnected ? "- You may inspect provider metadata and the live schema with the available read tools." : "- The Supabase account is disconnected, so provider metadata and live-schema tools may be unavailable. Preserve the code-safety invariants above and report any provider access required to the root Agent."}
 </provider_invariants>`;
   }

@@ -19,7 +19,7 @@ export const NEON_NO_BROWSER_DATABASE_URL_RULE =
 export const NEON_NO_BROWSER_SERVERLESS_RULE =
   "- **no-serverless-in-browser**: NEVER import `@neondatabase/serverless` in React components or browser code.";
 export const NEON_DISCONNECTED_SYSTEM_PROMPT = `
-This app is already linked to a Neon project, but Neon credentials or active branch context are unavailable. Do not offer to add another database integration. Tell the user to reconnect Neon or select an active branch before attempting provider operations.
+This app is already linked to a Neon project, but Neon credentials or active branch context are unavailable. Do not offer to add another database integration. Tell the user to reconnect Neon or select an active branch before attempting provider operations. Any preceding claim that live Neon operations or inspection tools are available is superseded by this notice.
 
 Continue to preserve these Neon code-safety invariants while disconnected:
 ${NEON_NO_CUSTOM_AUTH_RULE}

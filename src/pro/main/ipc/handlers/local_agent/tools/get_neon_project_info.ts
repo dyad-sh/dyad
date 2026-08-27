@@ -24,7 +24,7 @@ export const getNeonProjectInfoTool: ToolDefinition<
   isEnabled: (ctx) =>
     !!ctx.neonProjectId &&
     !!ctx.neonActiveBranchId &&
-    ctx.neonProviderToolsAvailable !== false,
+    ctx.neonProviderToolsAvailable === true,
 
   getConsentPreview: () => "Get Neon project info",
 

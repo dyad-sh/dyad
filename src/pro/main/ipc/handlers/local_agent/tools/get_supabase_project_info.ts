@@ -21,7 +21,7 @@ export const getSupabaseProjectInfoTool: ToolDefinition<
   inputSchema: getSupabaseProjectInfoSchema,
   defaultConsent: "always",
   isEnabled: (ctx) =>
-    !!ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable !== false,
+    !!ctx.supabaseProjectId && ctx.supabaseProviderToolsAvailable === true,
 
   getConsentPreview: () => "Get Supabase project info",
 

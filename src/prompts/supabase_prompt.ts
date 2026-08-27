@@ -12,6 +12,8 @@ export const SUPABASE_IMPLEMENTER_RLS_RULE =
   "RLS is mandatory for every table exposed through Supabase. Enable RLS and require appropriate policies for each operation the app uses (SELECT, INSERT, UPDATE, and DELETE); never propose grants to `anon` or `authenticated` without proper RLS policies.";
 export const SUPABASE_SERVICE_ROLE_BROWSER_RULE =
   "The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.";
+export const SUPABASE_EDGE_FUNCTION_JWT_RULE =
+  "Supabase Edge Functions deploy with `verify_jwt: false`. For authenticated or privileged operations, explicitly verify and decode the caller's JWT in function code; checking only that an Authorization header exists is not authentication.";
 export const SUPABASE_DISCONNECTED_SYSTEM_PROMPT = `
 This app is already linked to a Supabase project, but credentials for its Supabase organization are unavailable. Do not offer to add another database integration. Tell the user to reconnect the linked Supabase organization before attempting provider operations.
 
@@ -403,6 +405,7 @@ if (req.method === 'OPTIONS') {
 - Authentication must be handled manually in your user code
 - The JWT token will NOT be automatically verified by the edge function runtime
 - You must explicitly verify and decode JWT tokens if authentication is required
+${SUPABASE_EDGE_FUNCTION_JWT_RULE}
 - Example authentication handling:
 
 \`\`\`

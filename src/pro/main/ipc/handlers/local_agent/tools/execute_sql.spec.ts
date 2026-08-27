@@ -40,6 +40,11 @@ describe("executeSqlTool", () => {
     expect(
       executeSqlTool.isEnabled?.({
         supabaseProjectId: "project",
+      } as any),
+    ).toBe(false);
+    expect(
+      executeSqlTool.isEnabled?.({
+        supabaseProjectId: "project",
         supabaseProviderToolsAvailable: false,
       } as any),
     ).toBe(false);

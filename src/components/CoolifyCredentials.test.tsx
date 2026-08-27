@@ -51,7 +51,13 @@ beforeEach(() => {
  */
 async function settle() {
   await waitFor(() => expect(h.revealCredentials).toHaveBeenCalled());
-  await act(async () => {});
+  // A turn of the event loop, not just the microtask queue: react-query
+  // carries a resolved read through to a render on a macrotask, so flushing
+  // microtasks alone lands back here with the panel still pending — which
+  // looks exactly like the empty answer these assertions are about.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 async function renderAndSettle() {

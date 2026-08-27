@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertCapabilityTransitionConsistency } from "@/state_machines/testing";
 import { selectCoolifySetupCapabilities } from "./capabilities";
 import { coolifySetupTransition } from "./transition";
 import { IDLE, type CoolifySetupState } from "./state";
@@ -8,6 +9,12 @@ const REF = {
   kind: "coolify-setup" as const,
   entityKey: "203.0.113.5",
   operationId: "op-1",
+};
+
+const OTHER = {
+  kind: "coolify-setup" as const,
+  entityKey: "198.51.100.9",
+  operationId: "op-9",
 };
 
 const running = (stopping = false): CoolifySetupState => ({
@@ -71,31 +78,41 @@ describe("what the panel may offer", () => {
 });
 
 describe("against what the machine would actually do", () => {
-  it("offers a start exactly when the transition would take one", () => {
-    // Two statements of one rule, in two files. Offering a start the machine
-    // refuses turns a button into an error message; refusing one it would
-    // take strands the user on a screen with nothing to press. The gate that
-    // guards installing again reads this selector too, so drift here is not
-    // only cosmetic.
-    for (const state of [IDLE, running(), running(true), done(), failed()]) {
-      const taken =
-        coolifySetupTransition(state, {
-          type: "start-requested",
-          invocationRef: {
-            kind: "coolify-setup",
-            entityKey: "198.51.100.9",
-            operationId: "op-9",
+  it("keeps every enabled control consistent with the transition", () => {
+    // Two statements of one rule, in two files. Offering a control the
+    // machine refuses turns a button into an error message; refusing one it
+    // would take strands the user on a screen with nothing to press. The
+    // gate that guards installing again reads this selector too, so drift
+    // here is not only cosmetic.
+    expect(() =>
+      assertCapabilityTransitionConsistency({
+        states: [IDLE, running(), running(true), done(), failed()],
+        selectCapabilities: selectCoolifySetupCapabilities,
+        transition: coolifySetupTransition,
+        cases: {
+          canStart: {
+            representativeEvents: () => ({
+              valid: [
+                {
+                  type: "start-requested" as const,
+                  invocationRef: OTHER,
+                  target: {
+                    host: "198.51.100.9",
+                    username: "root",
+                    adminEmail: "me@gmail.com",
+                  },
+                },
+              ],
+            }),
+            disabledReason: "already-running",
           },
-          target: {
-            host: "198.51.100.9",
-            username: "root",
-            adminEmail: "me@gmail.com",
+          canCancel: {
+            representativeEvents: () => ({
+              valid: [{ type: "cancel-requested" as const }],
+            }),
           },
-        }).kind === "applied";
-      expect({
-        state: state.type,
-        canStart: selectCoolifySetupCapabilities(state).canStart,
-      }).toEqual({ state: state.type, canStart: taken });
-    }
+        },
+      }),
+    ).not.toThrow();
   });
 });

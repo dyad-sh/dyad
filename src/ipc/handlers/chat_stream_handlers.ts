@@ -1990,13 +1990,19 @@ ${componentSnippet}
           settings.agentToolConsents?.["reinstall_and_restart_app"] !== "never";
         const runBuildToolAvailable =
           settings.agentToolConsents?.["run_build"] !== "never";
-        const getImplementerSystemPrompt = async () => {
+        const refreshImplementerContext = async () => {
           const refreshedApp =
             (await db.query.apps.findFirst({
               where: eq(apps.id, updatedChat.app.id),
             })) ?? updatedChat.app;
           const latestSettings = readSettings();
-          const supabaseConnected = isSupabaseConnected(latestSettings);
+          const supabaseConnected = refreshedApp.supabaseOrganizationSlug
+            ? Boolean(
+                latestSettings.supabase?.organizations?.[
+                  refreshedApp.supabaseOrganizationSlug
+                ]?.accessToken?.value,
+              )
+            : Boolean(latestSettings.supabase?.accessToken?.value);
           const provider = resolveImplementerProvider({
             hasSupabaseProject: Boolean(refreshedApp.supabaseProjectId),
             hasNeonProject: Boolean(refreshedApp.neonProjectId),
@@ -2013,14 +2019,23 @@ ${componentSnippet}
               neonBranchId,
             )),
           );
-          return constructImplementerPrompt(aiRules, {
-            provider,
-            supabaseConnected,
-            neonToolsAvailable: Boolean(
-              refreshedApp.neonProjectId && neonBranchId,
+          return {
+            systemPrompt: constructImplementerPrompt(aiRules, {
+              provider,
+              supabaseConnected,
+              neonToolsAvailable: Boolean(
+                refreshedApp.neonProjectId && neonBranchId,
+              ),
+              neonEmailVerificationEnabled,
+            }),
+            supabaseProjectId: refreshedApp.supabaseProjectId,
+            supabaseOrganizationSlug: refreshedApp.supabaseOrganizationSlug,
+            neonProjectId: refreshedApp.neonProjectId,
+            neonActiveBranchId: neonBranchId,
+            frameworkType: detectFrameworkType(
+              getDyadAppPath(refreshedApp.path),
             ),
-            neonEmailVerificationEnabled,
-          });
+          };
         };
 
         // Migration on read converts "agent" to "build", so no need to check for it here
@@ -2572,7 +2587,7 @@ This conversation includes one or more image attachments. When the user uploads 
               modelSelectionOverride: selectedModel,
               freeModelMode,
               preCommitHookAvailable,
-              getImplementerSystemPrompt,
+              refreshImplementerContext,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),

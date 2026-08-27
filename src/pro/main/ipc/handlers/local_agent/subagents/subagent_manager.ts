@@ -1472,6 +1472,13 @@ async function runThread(
     );
     if (controller.signal.aborted || cancelledThreadIds.has(threadId)) return;
     if (!(await updateStatus(threadId, "running"))) return;
+    let implementerSystemPrompt: string | undefined;
+    if (thread.persona === "implementer" && rootCtx.refreshImplementerContext) {
+      const { systemPrompt, ...refreshedContext } =
+        await rootCtx.refreshImplementerContext();
+      Object.assign(rootCtx, refreshedContext);
+      implementerSystemPrompt = systemPrompt;
+    }
     const tools = buildTools(controller.signal);
     let usedExplorerFallback = false;
     let explorerAssignment = assignment;
@@ -1523,7 +1530,7 @@ async function runThread(
             assignment,
             tools,
             abortSignal: controller.signal,
-            systemPromptOverride: await rootCtx.getImplementerSystemPrompt?.(),
+            systemPromptOverride: implementerSystemPrompt,
           });
     const durableResult = boundDurableReport(result.text).trim();
     if (!durableResult) {

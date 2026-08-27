@@ -107,8 +107,15 @@ export interface AgentContext {
   workspaceMutated?: boolean;
   /** True after any directly registered or sandbox-hosted MCP tool succeeds. */
   mcpToolRan?: boolean;
-  /** Lazily refreshes the capability-aware prompt for writable Implementers. */
-  getImplementerSystemPrompt?: () => Promise<string | undefined>;
+  /** Lazily refreshes provider context and prompt for writable Implementers. */
+  refreshImplementerContext?: () => Promise<{
+    systemPrompt: string;
+    supabaseProjectId: string | null;
+    supabaseOrganizationSlug: string | null;
+    neonProjectId: string | null;
+    neonActiveBranchId: string | null;
+    frameworkType: AppFrameworkType | null;
+  }>;
   /** Successful workspace-file mutations completed during this turn. */
   fileMutationCount?: number;
   /**

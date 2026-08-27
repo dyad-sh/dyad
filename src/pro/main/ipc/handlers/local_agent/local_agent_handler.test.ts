@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
+import type { AgentContext } from "./tools/types";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -692,9 +693,9 @@ describe("handleLocalAgentStream", () => {
     const { event } = createFakeEvent();
     mockSettings = buildTestSettings({ enableDyadPro: true });
     mockChatData = buildTestChat();
-    let seenPromptFactory: (() => Promise<string | undefined>) | undefined;
+    let seenContextFactory: AgentContext["refreshImplementerContext"];
     vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
-      seenPromptFactory = ctx.getImplementerSystemPrompt;
+      seenContextFactory = ctx.refreshImplementerContext;
       return {};
     });
     mockStreamResult = createFakeStream([{ type: "text-delta", text: "Done" }]);
@@ -706,14 +707,23 @@ describe("handleLocalAgentStream", () => {
       {
         placeholderMessageId: 10,
         systemPrompt: "Root rules",
-        getImplementerSystemPrompt: async () => "Implementer rules",
+        refreshImplementerContext: async () => ({
+          systemPrompt: "Implementer rules",
+          supabaseProjectId: null,
+          supabaseOrganizationSlug: null,
+          neonProjectId: null,
+          neonActiveBranchId: null,
+          frameworkType: null,
+        }),
         dyadRequestId,
       },
     );
 
     expect(succeeded).toBe(true);
     expect(buildAgentToolSet).toHaveBeenCalledOnce();
-    expect(await seenPromptFactory?.()).toBe("Implementer rules");
+    expect((await seenContextFactory?.())?.systemPrompt).toBe(
+      "Implementer rules",
+    );
   });
 
   describe("provider-scoped tool-call ID normalization", () => {

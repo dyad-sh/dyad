@@ -312,6 +312,14 @@ describe("run", () => {
       tokenStored: false,
       tokenUnavailableReason: expect.stringContaining("could not save"),
     });
+
+    // Where the password actually is. The screen puts the card above this
+    // message, and on this path it is the only copy — so the direction is
+    // the part that matters, and it is written here rather than there.
+    const { tokenUnavailableReason } = (await checkThenRun()) as {
+      tokenUnavailableReason: string;
+    };
+    expect(tokenUnavailableReason).toContain("password above");
   });
 
   it("refuses a server it has not looked at", async () => {

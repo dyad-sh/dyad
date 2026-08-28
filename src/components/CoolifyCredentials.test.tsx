@@ -178,7 +178,7 @@ describe("a password Dyad holds but cannot read", () => {
     expect(
       screen.getByTestId("coolify-credentials-locked-password").textContent,
     ).toContain("cannot read it on this machine");
-    expect(screen.queryByTestId("coolify-field-server-password")).toBeNull();
+    expect(screen.queryByTestId("coolify-field-password")).toBeNull();
   });
 
   it("says it on the merged panel too", async () => {

@@ -147,10 +147,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // previous app's half-typed form standing over the new one.
   const [createFormAppId, setCreateFormAppId] = useState<number | null>(null);
   const isCreateFormOpen = createFormAppId === appId;
-  const [createError, setCreateError] = useState<{
-    appId: number;
-    message: string;
-  } | null>(null);
+  // Keyed by app rather than a single slot: creates for two apps can be in
+  // flight at once, and for a project created but not linked this message is
+  // the only record it was minted and left orphaned.
+  const [createErrors, setCreateErrors] = useState<Record<number, string>>({});
 
   // Asked of Supabase rather than remembered from the create that started it,
   // so the banner survives leaving this panel mid-provision and also covers a
@@ -285,20 +285,19 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     createdForAppId: number,
     error: unknown,
   ) => {
-    setCreateError({ appId: createdForAppId, message: getErrorMessage(error) });
+    setCreateErrors((current) => ({
+      ...current,
+      [createdForAppId]: getErrorMessage(error),
+    }));
     if (isCreatedButUnlinkedError(error)) {
       setCreateFormAppId((open) => (open === createdForAppId ? null : open));
     }
   };
 
-  const createErrorForThisApp =
-    createError?.appId === appId ? createError.message : null;
+  const createErrorForThisApp = createErrors[appId] ?? null;
 
-  // Scoped like the read above: another app's failure is not this app's to
-  // discard, and for a created-but-unlinked project it is the only record that
-  // a project was minted and left orphaned.
   const clearCreateError = () =>
-    setCreateError((current) => (current?.appId === appId ? null : current));
+    setCreateErrors(({ [appId]: _cleared, ...rest }) => rest);
 
   // Group projects by organization for display
   const groupedProjects = projects.reduce(

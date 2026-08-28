@@ -1030,3 +1030,70 @@ describe("SupabaseConnector — a create that fails", () => {
     ).toContain("couldn't link it to this app");
   });
 });
+
+describe("SupabaseConnector — clearing a create failure", () => {
+  const showSelector = () => {
+    appState.supabaseProjectId = null;
+    appState.supabaseProjectName = null;
+    appState.supabaseOrganizationSlug = null;
+    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
+  };
+
+  const submitFailingCreate = async (error: Error) => {
+    showSelector();
+    createState.createProject = vi.fn().mockRejectedValue(error);
+    const rendered = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+    return rendered;
+  };
+
+  // The scoping tests pass even if the clear never fires, which would strand a
+  // failure over inputs the user has since retyped.
+  it("clears the failure once the same app edits its form", async () => {
+    await submitFailingCreate(new Error("You have reached your project limit"));
+    await screen.findByRole("alert");
+
+    fireEvent.change(screen.getByTestId("supabase-new-project-name"), {
+      target: { value: "edited" },
+    });
+
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  // Two creates can be in flight at once, so one app's failure must not
+  // overwrite the record belonging to another.
+  it("keeps both apps' failures when two creates fail", async () => {
+    const unlinked = new DyadError(
+      "Created Supabase project abc123 but couldn't link it to this app.",
+      DyadErrorKind.Internal,
+    );
+    const { rerender } = await submitFailingCreate(unlinked);
+    await screen.findByTestId("supabase-create-project-error");
+
+    appState.name = "Other App";
+    createState.createProject = vi
+      .fn()
+      .mockRejectedValue(new Error("network unreachable"));
+    rerender(<SupabaseConnector appId={8} />);
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "network unreachable",
+    );
+
+    rerender(<SupabaseConnector appId={7} />);
+    expect(
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
+    ).toContain("couldn't link it to this app");
+  });
+});

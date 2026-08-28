@@ -47,18 +47,17 @@ sub-agent admission with `blockSubagentAdmissionsForChat(chatId)` before the
 first await, then hold both the sub-agent settlement release and admission
 release until the destructive mutation commits or aborts.
 
-For runtime start/restart, spawning the long-lived install/dev child is not the
-end of startup. Retain path, repository, and runtime-config admission until the
-preview is ready so install and self-heal work cannot race Git mutations. Any
-later background callback that writes the working tree must acquire its own
-coordinator operation.
+Spawning the long-lived install/dev child is not the end of runtime startup.
+Retain app-path and runtime-config admission until the preview is ready. Explicit
+restart/rebuild also retains repository admission so its install and self-heal
+work cannot race other Git mutations.
 
-Before an automatic preview starts a new runtime, let any active chat actor for
-that app finish its repository-writing checkpoint. Otherwise startup can retain
-a repository read claim during a slow dependency install while chat finalization
-queues for the writer, delaying the visible `Retry` completion state indefinitely.
-Stop, restart, and app cleanup must synchronously supersede a start waiting at
-this boundary so a later lifecycle request cannot be followed by a delayed launch.
+Automatic start intentionally does not claim the repository. Its dependency
+setup may race a chat checkpoint, so preview-generated tracked changes such as
+lockfiles or `pnpm-workspace.yaml` may land in the current checkpoint, a later
+checkpoint, or remain uncommitted. This tradeoff keeps chat completion independent
+from preview readiness. Any later background callback that needs deterministic
+working-tree state must acquire its own coordinator operation.
 
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old

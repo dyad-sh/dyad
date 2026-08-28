@@ -77,7 +77,6 @@ import {
   getPackageManagerSignal,
   signalPrefersPnpm,
 } from "@/ipc/utils/package_manager_selection";
-import { waitForAppChatActorsIdle } from "@/ipc/services/chat_actor_service";
 
 const logger = log.scope("app_runtime_service");
 const pnpmVersionMigrationNotifiedAppIds = new Set<number>();
@@ -1454,7 +1453,6 @@ interface RuntimeAppRecord {
 }
 
 export interface AppRuntimeServiceDependencies {
-  waitForAppChatActorsIdle(appId: number): Promise<boolean>;
   runSerialized<T>(
     appId: number,
     lifecycle: AppRuntimeLifecycle,
@@ -1510,6 +1508,13 @@ export function getAppRuntimeOperationResources(
   lifecycle: AppRuntimeLifecycle,
 ): AppOperationRequest["resources"] {
   if (lifecycle === "stop") return ["runtime"];
+  if (lifecycle === "start") {
+    return [
+      readAppResource("app-path"),
+      "runtime",
+      readAppResource("runtime-config"),
+    ];
+  }
   return [
     readAppResource("app-path"),
     readAppResource("repository"),
@@ -1569,35 +1574,11 @@ export class AppRuntimeService {
   private readonly cancellationTombstones = new CancellationTombstones(
     MAX_RUNTIME_CANCELLATION_TOMBSTONES,
   );
-  private readonly pendingStartTokens = new Map<number, symbol>();
 
   constructor(private readonly dependencies: AppRuntimeServiceDependencies) {}
 
   async start(options: StartAppRuntimeOptions): Promise<void> {
     const { appId, output, invocationRef } = options;
-    // A newly selected app can request its automatic preview while the chat
-    // turn that created it is still finalizing. Startup retains a repository
-    // read claim until the preview is ready, while the turn needs a repository
-    // write claim for its final checkpoint. Let the existing turn finish
-    // before admitting the runtime so a slow dependency install cannot hold
-    // chat completion behind itself. Existing runtimes stay on the fast path.
-    if (!this.dependencies.getRunningApp(appId)) {
-      const pendingStartToken = Symbol(`app-runtime-start:${appId}`);
-      this.pendingStartTokens.set(appId, pendingStartToken);
-      try {
-        await this.dependencies.waitForAppChatActorsIdle(appId);
-        if (this.pendingStartTokens.get(appId) !== pendingStartToken) {
-          logger.debug(
-            `Skipping app ${appId} start because a later lifecycle request superseded it.`,
-          );
-          return;
-        }
-      } finally {
-        if (this.pendingStartTokens.get(appId) === pendingStartToken) {
-          this.pendingStartTokens.delete(appId);
-        }
-      }
-    }
     return this.dependencies.runSerialized(appId, "start", async () => {
       const existing = this.dependencies.getRunningApp(appId);
       if (existing) {
@@ -1652,7 +1633,6 @@ export class AppRuntimeService {
       recreateSandbox = false,
       clearRuntimeLogs = false,
     } = options;
-    this.pendingStartTokens.delete(appId);
     logger.log(`Restarting app ${appId}`);
     return this.dependencies.runSerialized(appId, "restart", async () => {
       const app = await this.requireApp(appId);
@@ -1708,7 +1688,6 @@ export class AppRuntimeService {
   }
 
   async stop(appId: number): Promise<void> {
-    this.pendingStartTokens.delete(appId);
     logger.log(
       `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
     );
@@ -1862,7 +1841,6 @@ export class AppRuntimeService {
    * recognized by bounded tombstones and cannot settle a replacement claim.
    */
   cleanup(appId: number): void {
-    this.pendingStartTokens.delete(appId);
     for (const claim of this.externalClaimsByApp.get(appId)?.values() ?? []) {
       this.cancellationTombstones.add(claim.invocationRef);
       this.externalClaims.delete(invocationRegistryKey(claim.invocationRef));
@@ -2003,7 +1981,6 @@ async function waitForAppReady(
 }
 
 export const appRuntimeService = new AppRuntimeService({
-  waitForAppChatActorsIdle,
   runSerialized: (appId, lifecycle, operation) =>
     appOperationCoordinator.run(
       {

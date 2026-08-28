@@ -34,7 +34,6 @@ function createHarness() {
   let runtimeMode: RuntimeMode2 = "host";
   let id = 0;
   const dependencies: AppRuntimeServiceDependencies = {
-    waitForAppChatActorsIdle: vi.fn(async () => true),
     runSerialized: async (_appId, lifecycle, operation) => {
       calls.push(`lock:${lifecycle}`);
       try {
@@ -115,13 +114,15 @@ describe("AppRuntimeService", () => {
     expect(getAppRuntimeOperationResources("stop")).toEqual(["runtime"]);
     expect(getAppRuntimeOperationResources("start")).toEqual([
       { resource: "app-path", mode: "read" },
+      "runtime",
+      { resource: "runtime-config", mode: "read" },
+    ]);
+    expect(getAppRuntimeOperationResources("restart")).toEqual([
+      { resource: "app-path", mode: "read" },
       { resource: "repository", mode: "read" },
       "runtime",
       { resource: "runtime-config", mode: "read" },
     ]);
-    expect(getAppRuntimeOperationResources("restart")).toEqual(
-      getAppRuntimeOperationResources("start"),
-    );
   });
 
   it("serializes start, restart, and stop through one lifecycle seam", async () => {
@@ -158,7 +159,7 @@ describe("AppRuntimeService", () => {
     ]);
   });
 
-  it("holds repository coordination until startup becomes ready", async () => {
+  it("allows repository writers while automatic startup becomes ready", async () => {
     const harness = createHarness();
     const coordinator = new AppOperationCoordinator();
     const { output } = createOutput();
@@ -193,89 +194,11 @@ describe("AppRuntimeService", () => {
       },
       async () => repositoryWriter(),
     );
-    await Promise.resolve();
-    expect(repositoryWriter).not.toHaveBeenCalled();
+    await write;
+    expect(repositoryWriter).toHaveBeenCalledOnce();
 
     releaseReady();
-    await Promise.all([start, write]);
-    expect(repositoryWriter).toHaveBeenCalledOnce();
-  });
-
-  it("lets an active chat finalizer checkpoint before startup takes repository admission", async () => {
-    const harness = createHarness();
-    const { output } = createOutput();
-    let releaseChat!: () => void;
-    const chatIdle = new Promise<boolean>((resolve) => {
-      releaseChat = () => resolve(true);
-    });
-    vi.mocked(harness.dependencies.waitForAppChatActorsIdle).mockReturnValue(
-      chatIdle,
-    );
-
-    const start = harness.service.start({ appId: APP_ID, output });
-    await vi.waitFor(() =>
-      expect(
-        harness.dependencies.waitForAppChatActorsIdle,
-      ).toHaveBeenCalledWith(APP_ID),
-    );
-    expect(harness.calls).toEqual([]);
-    expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
-
-    releaseChat();
     await start;
-
-    expect(harness.calls).toEqual([
-      "lock:start",
-      "clean-port",
-      "start:legacy",
-      "ready",
-      "unlock:start",
-    ]);
-  });
-
-  it("does not wait on chat finalization when the app is already running", async () => {
-    const harness = createHarness();
-    const { output } = createOutput();
-    harness.setRunning({
-      process: null,
-      processId: 1,
-      mode: "host",
-      output,
-      lastViewedAt: 0,
-    });
-
-    await harness.service.start({ appId: APP_ID, output });
-
-    expect(
-      harness.dependencies.waitForAppChatActorsIdle,
-    ).not.toHaveBeenCalled();
-    expect(harness.calls).toEqual(["lock:start", "unlock:start"]);
-  });
-
-  it("does not launch a pending start after stop supersedes it", async () => {
-    const harness = createHarness();
-    const { output } = createOutput();
-    let releaseChat!: () => void;
-    const chatIdle = new Promise<boolean>((resolve) => {
-      releaseChat = () => resolve(true);
-    });
-    vi.mocked(harness.dependencies.waitForAppChatActorsIdle).mockReturnValue(
-      chatIdle,
-    );
-
-    const start = harness.service.start({ appId: APP_ID, output });
-    await vi.waitFor(() =>
-      expect(
-        harness.dependencies.waitForAppChatActorsIdle,
-      ).toHaveBeenCalledWith(APP_ID),
-    );
-
-    await harness.service.stop(APP_ID);
-    releaseChat();
-    await start;
-
-    expect(harness.calls).toEqual(["lock:stop", "unlock:stop"]);
-    expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
   });
 
   it("keeps a spawned process tracked when readiness times out", async () => {

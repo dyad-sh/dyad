@@ -518,6 +518,33 @@ describe("tryEnableHttps", () => {
     expect(oneLine).toContain("return 'applied'");
   });
 
+  it("does not call a vetoed save applied", async () => {
+    // Eloquent answers false rather than throwing when a model event stops
+    // the write, so a run that reported success would go on to probe for a
+    // certificate against a domain Coolify never took.
+    const { session } = fakeSession();
+    session.run = (async () => ({
+      code: 0,
+      stdout: transcript("not-saved"),
+      stderr: "",
+    })) as unknown as SshSession["run"];
+
+    await expect(
+      applyInstanceDomain(session, "coolify.example.com"),
+    ).rejects.toThrow();
+  });
+
+  it("asks whether the save was taken, not only whether it threw", async () => {
+    // The answer above only matters if the script can produce it. Eloquent
+    // returns false rather than throwing when a model event stops the write,
+    // which the one-statement form does not catch on its own.
+    const { session, scripts } = fakeSession();
+    await applyInstanceDomain(session, "coolify.example.com");
+
+    expect(scripts[0]).toContain("if (!$s->save())");
+    expect(scripts[0]).toContain("return 'not-saved'");
+  });
+
   it("says so when the domain will not come back off", async () => {
     // The state the revert exists to avoid, arrived at anyway. Left silent,
     // the last thing said was that the domain was being removed — which

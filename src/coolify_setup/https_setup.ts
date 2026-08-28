@@ -167,7 +167,9 @@ export async function applyInstanceDomain(
       (domain === null
         ? `$s->fqdn = null; `
         : `$s->fqdn = 'https://' . getenv('DYAD_INSTANCE_DOMAIN'); `) +
-      `$s->save(); ` +
+      // Eloquent answers false rather than throwing when something vetoes
+      // the write, so the throw-safety above is not enough on its own.
+      `if (!$s->save()) { return 'not-saved'; } ` +
       `\\App\\Models\\Server::find(0)->setupDynamicProxyConfiguration(); ` +
       `return 'applied'; })();`,
     {

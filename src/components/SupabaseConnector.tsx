@@ -128,8 +128,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isLoadingBranches,
     branchesError,
     isSettingAppProject,
-    isCreatingProject,
-    creatingProjectAppId,
+    isCreatingProjectForApp,
     refetchOrganizations,
     refetchProjects,
     createProject,
@@ -162,6 +161,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     organizationSlug: app?.supabaseOrganizationSlug,
     enabled: isConnected,
   });
+
+  // `branchesProjectId` falls back to the parent, so only an app without one is
+  // listing branches against the project that is still provisioning.
+  const isBranchListUnavailable =
+    isProvisioning && !app?.supabaseParentProjectId;
 
   // The connection flow lives in the main process; this component only
   // projects it. Timeouts (Supabase historically had none — a closed
@@ -625,71 +629,79 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="supabase-branch-select">
-                {t("integrations.supabase.databaseBranch")}
-              </Label>
-              {branchesError ? (
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>
-                    {getErrorMessage(branchesError)}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <Select
-                  value={app.supabaseProjectId || ""}
-                  onValueChange={async (supabaseBranchProjectId) => {
-                    try {
-                      const branch = branches.find(
-                        (b) => b.projectRef === supabaseBranchProjectId,
-                      );
-                      if (!branch) {
-                        throw new Error(
-                          t("integrations.supabase.branchNotFound"),
+            {/* Hidden only when the project the branch query targets is itself
+            coming up: listing branches against it fails, and the error would
+            contradict the banner above. A branch of a healthy parent still
+            lists fine, because that query targets the parent. */}
+            {!isBranchListUnavailable && (
+              <div className="space-y-2">
+                <Label htmlFor="supabase-branch-select">
+                  {t("integrations.supabase.databaseBranch")}
+                </Label>
+                {branchesError ? (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      {getErrorMessage(branchesError)}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Select
+                    value={app.supabaseProjectId || ""}
+                    onValueChange={async (supabaseBranchProjectId) => {
+                      try {
+                        const branch = branches.find(
+                          (b) => b.projectRef === supabaseBranchProjectId,
+                        );
+                        if (!branch) {
+                          throw new Error(
+                            t("integrations.supabase.branchNotFound"),
+                          );
+                        }
+                        // Keep the same organizationSlug from the app
+                        await setAppProject({
+                          projectId: branch.projectRef,
+                          parentProjectId: branch.parentProjectRef,
+                          appId,
+                          organizationSlug: app.supabaseOrganizationSlug,
+                        });
+                        toast.success(
+                          t("integrations.supabase.branchSelected"),
+                        );
+                        await refreshApp();
+                      } catch (error) {
+                        toast.error(
+                          t("integrations.supabase.failedSetBranch", {
+                            error: String(error),
+                          }),
                         );
                       }
-                      // Keep the same organizationSlug from the app
-                      await setAppProject({
-                        projectId: branch.projectRef,
-                        parentProjectId: branch.parentProjectRef,
-                        appId,
-                        organizationSlug: app.supabaseOrganizationSlug,
-                      });
-                      toast.success(t("integrations.supabase.branchSelected"));
-                      await refreshApp();
-                    } catch (error) {
-                      toast.error(
-                        t("integrations.supabase.failedSetBranch", {
-                          error: String(error),
-                        }),
-                      );
-                    }
-                  }}
-                  disabled={isLoadingBranches || isSettingAppProject}
-                >
-                  <SelectTrigger
-                    id="supabase-branch-select"
-                    data-testid="supabase-branch-select"
+                    }}
+                    disabled={isLoadingBranches || isSettingAppProject}
                   >
-                    <SelectValue
-                      placeholder={t("integrations.supabase.selectBranch")}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map((branch) => (
-                      <SelectItem
-                        key={branch.projectRef}
-                        value={branch.projectRef}
-                      >
-                        {branch.name}
-                        {branch.isDefault && " (Default)"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+                    <SelectTrigger
+                      id="supabase-branch-select"
+                      data-testid="supabase-branch-select"
+                    >
+                      <SelectValue
+                        placeholder={t("integrations.supabase.selectBranch")}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches.map((branch) => (
+                        <SelectItem
+                          key={branch.projectRef}
+                          value={branch.projectRef}
+                        >
+                          {branch.name}
+                          {branch.isDefault && " (Default)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
 
             {/* Shown only once the app's client is confirmed to hold this
             project's legacy key — an app already on a publishable key has
@@ -829,11 +841,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               // path for the common case of one database per app.
               defaultName={app?.name ?? ""}
               createProject={createProject}
-              // Scoped to this app: a create still running for the app the user
-              // just navigated away from must not disable this app's form.
-              isCreatingProject={
-                isCreatingProject && creatingProjectAppId === appId
-              }
+              // Scoped to this app: a create still running for the app the
+              // user just navigated away from must not disable this app's form.
+              isCreatingProject={isCreatingProjectForApp(appId)}
               error={createErrorForThisApp}
               onClearError={clearCreateError}
               onCreated={handleProjectCreated}

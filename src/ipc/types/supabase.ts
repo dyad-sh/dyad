@@ -220,6 +220,17 @@ export const supabaseContracts = {
     invalidates: (input) => [
       { family: "apps" },
       { family: "app", appId: input.appId },
+      // The project list itself gained an entry, so a peer window with the
+      // selector open would otherwise not offer the new project.
+      { family: "provider-status", provider: "supabase" },
+    ],
+    // The acting window already refreshes these in the mutation's onSuccess.
+    // Without this it would refetch the project list a second time, cancelling
+    // the one in flight, and invalidate settings for good measure.
+    originHandles: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.appId },
+      { family: "provider-status", provider: "supabase" },
     ],
   }),
 
@@ -248,9 +259,10 @@ export const supabaseContracts = {
     output: z.array(ConsoleEntrySchema),
   }),
 
-  // Same scopes as createProject and the Neon equivalents: these repoint an
-  // app's provider too, and a peer window that misses it keeps offering the
-  // other provider for an app that now has one.
+  // Same scopes as the Neon equivalents: these repoint an app's provider too,
+  // and a peer window that misses it keeps offering the other provider for an
+  // app that now has one. No `provider-status` here — repointing an app does
+  // not change the project list.
   setAppProject: defineContract({
     channel: "supabase:set-app-project",
     input: SetSupabaseAppProjectParamsSchema,

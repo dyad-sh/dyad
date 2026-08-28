@@ -71,11 +71,9 @@ const {
   },
   createState: {
     createProject: vi.fn(),
-    isCreatingProject: false,
-    // Mirrors the real hook's `createProjectMutation.variables?.appId ?? null`.
-    // Omitting it would make the connector's app-scoping gate false no matter
-    // what, so a test of that scoping would pass without exercising it.
-    creatingProjectAppId: null as number | null,
+    // Mirrors the real hook, which tracks in-flight creates per app so two
+    // running at once cannot be mistaken for each other.
+    creatingAppIds: new Set<number>(),
   },
   // The provisioning banner is the user-facing point of the status hook, so the
   // stub has to be varyable rather than a constant.
@@ -195,8 +193,7 @@ vi.mock("@/hooks/useSupabase", () => ({
     isLoadingBranches: false,
     branchesError: null,
     isSettingAppProject: false,
-    isCreatingProject: createState.isCreatingProject,
-    creatingProjectAppId: createState.creatingProjectAppId,
+    isCreatingProjectForApp: (id: number) => createState.creatingAppIds.has(id),
     createProject: createState.createProject,
     refetchOrganizations: refetchOrganizationsMock,
     refetchProjects: refetchProjectsMock,
@@ -260,8 +257,7 @@ beforeEach(() => {
   appState.supabaseProjectName = "My Project";
   organizationsState.current = [];
   createState.createProject = vi.fn();
-  createState.isCreatingProject = false;
-  createState.creatingProjectAppId = null;
+  createState.creatingAppIds = new Set();
   projectStatusState.status = null;
   projectStatusState.isProvisioning = false;
   projectStatusMock.mockImplementation(() => projectStatusState);
@@ -557,6 +553,23 @@ it("waits for the app before choosing the Supabase connection state", () => {
   expect(screen.queryByTestId("supabase-reconnect-card")).toBeNull();
 });
 
+// The selector state: connected to Supabase, but this app has no project yet.
+function showSelector() {
+  appState.supabaseProjectId = null;
+  appState.supabaseProjectName = null;
+  appState.supabaseOrganizationSlug = null;
+  organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
+}
+
+async function submitFailingCreate(error: Error) {
+  showSelector();
+  createState.createProject = vi.fn().mockRejectedValue(error);
+  const rendered = renderConnector();
+  fireEvent.click(await screen.findByTestId("supabase-create-project-button"));
+  fireEvent.click(await screen.findByTestId("supabase-create-project-submit"));
+  return rendered;
+}
+
 describe("SupabaseConnector — edge function redeployment", () => {
   const REDEPLOY_BUTTON = "supabase-redeploy-functions-button";
 
@@ -733,6 +746,22 @@ describe("SupabaseConnector — provisioning banner", () => {
     renderConnector();
 
     expect(await screen.findByTestId(BANNER)).toBeTruthy();
+    // Listing branches against a project that is still coming up fails, and
+    // that error would contradict the banner.
+    expect(screen.queryByTestId("supabase-branch-select")).toBeNull();
+  });
+
+  // The branch query targets the parent on a branched app, so it succeeds even
+  // while the branch itself is provisioning.
+  it("still offers branches when only a branch of a healthy project is coming up", async () => {
+    projectStatusState.status = "COMING_UP";
+    projectStatusState.isProvisioning = true;
+    appState.supabaseParentProjectId = "proj-parent";
+
+    renderConnector();
+
+    expect(await screen.findByTestId(BANNER)).toBeTruthy();
+    expect(await screen.findByTestId("supabase-branch-select")).toBeTruthy();
   });
 
   it("says nothing once the project is serving", async () => {
@@ -760,14 +789,6 @@ describe("SupabaseConnector — provisioning banner", () => {
 });
 
 describe("SupabaseConnector — creating a project", () => {
-  // The selector state: connected to Supabase, but this app has no project yet.
-  const showSelector = () => {
-    appState.supabaseProjectId = null;
-    appState.supabaseProjectName = null;
-    appState.supabaseOrganizationSlug = null;
-    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
-  };
-
   it("offers project creation when the organization has no projects", async () => {
     showSelector();
 
@@ -895,8 +916,7 @@ describe("SupabaseConnector — creating a project", () => {
 
   it("does not lock this app's form for another app's in-flight create", async () => {
     showSelector();
-    createState.isCreatingProject = true;
-    createState.creatingProjectAppId = 999;
+    createState.creatingAppIds = new Set([999]);
 
     renderConnector();
     fireEvent.click(
@@ -909,8 +929,7 @@ describe("SupabaseConnector — creating a project", () => {
 
   it("locks the form while this app's own create is in flight", async () => {
     showSelector();
-    createState.isCreatingProject = true;
-    createState.creatingProjectAppId = 7;
+    createState.creatingAppIds = new Set([7]);
 
     renderConnector();
     fireEvent.click(
@@ -923,26 +942,6 @@ describe("SupabaseConnector — creating a project", () => {
 });
 
 describe("SupabaseConnector — a create that fails", () => {
-  const showSelector = () => {
-    appState.supabaseProjectId = null;
-    appState.supabaseProjectName = null;
-    appState.supabaseOrganizationSlug = null;
-    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
-  };
-
-  const submitFailingCreate = async (error: Error) => {
-    showSelector();
-    createState.createProject = vi.fn().mockRejectedValue(error);
-    const rendered = renderConnector();
-    fireEvent.click(
-      await screen.findByTestId("supabase-create-project-button"),
-    );
-    fireEvent.click(
-      await screen.findByTestId("supabase-create-project-submit"),
-    );
-    return rendered;
-  };
-
   it("shows an ordinary failure inline, leaving the form open to retry", async () => {
     await submitFailingCreate(new Error("You have reached your project limit"));
 
@@ -1032,26 +1031,6 @@ describe("SupabaseConnector — a create that fails", () => {
 });
 
 describe("SupabaseConnector — clearing a create failure", () => {
-  const showSelector = () => {
-    appState.supabaseProjectId = null;
-    appState.supabaseProjectName = null;
-    appState.supabaseOrganizationSlug = null;
-    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
-  };
-
-  const submitFailingCreate = async (error: Error) => {
-    showSelector();
-    createState.createProject = vi.fn().mockRejectedValue(error);
-    const rendered = renderConnector();
-    fireEvent.click(
-      await screen.findByTestId("supabase-create-project-button"),
-    );
-    fireEvent.click(
-      await screen.findByTestId("supabase-create-project-submit"),
-    );
-    return rendered;
-  };
-
   // The scoping tests pass even if the clear never fires, which would strand a
   // failure over inputs the user has since retyped.
   it("clears the failure once the same app edits its form", async () => {

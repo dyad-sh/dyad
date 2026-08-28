@@ -130,7 +130,10 @@ export function CreateSupabaseProjectForm({
           <Select
             value={organizationSlug}
             onValueChange={(value) => {
-              setOrganizationSlug(value ?? "");
+              // Same null handling as the region select below: keeping the
+              // current organization beats storing "" and disabling submit
+              // with nothing on screen explaining why.
+              if (value) setOrganizationSlug(value);
               clearError();
             }}
             disabled={isCreatingProject}

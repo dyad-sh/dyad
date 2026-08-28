@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
 import { coolifyContracts } from "@/ipc/types/coolify";
+import { supabaseContracts } from "@/ipc/types/supabase";
 import { queryInvalidationScopeKey, type WindowSessionId } from "./types";
 import { RendererQueryInvalidationConsumer } from "./renderer_query_invalidation";
 
@@ -204,5 +205,52 @@ describe("Coolify contracts and the window that acted", () => {
   it("publishes project creation so other windows see the new project", () => {
     const { publishes } = handled("createProject", { name: "x" });
     expect(publishes).toContain("coolify");
+  });
+});
+
+/**
+ * What the Supabase create contract publishes and claims.
+ *
+ * Creating a project adds an entry to the project list, which peer windows
+ * render in their selector, so the provider scope has to be published. The
+ * acting window refreshes the same keys in the mutation's own onSuccess, so it
+ * claims them back — otherwise it refetches the list a second time and cancels
+ * the one already in flight.
+ */
+describe("Supabase create-project invalidation", () => {
+  const scopes = (
+    pick: (contract: {
+      originHandles?: (input: unknown) => Array<{ family: string }>;
+      invalidates?: (input: unknown) => Array<{ family: string }>;
+    }) => Array<{ family: string }> | undefined,
+  ) =>
+    (
+      pick(supabaseContracts.createProject as Parameters<typeof pick>[0]) ?? []
+    ).map((scope) => scope.family);
+
+  it("publishes the provider scope so peers see the new project", () => {
+    expect(scopes((c) => c.invalidates?.({ appId: 7 }))).toContain(
+      "provider-status",
+    );
+  });
+
+  it("claims back what the mutation already refreshes locally", () => {
+    expect(scopes((c) => c.originHandles?.({ appId: 7 }))).toContain(
+      "provider-status",
+    );
+  });
+
+  // Repointing an app does not change the project list, so these must not
+  // carry the provider scope.
+  it("does not publish the provider scope when only the link changes", () => {
+    for (const channel of ["setAppProject", "unsetAppProject"] as const) {
+      const contract = supabaseContracts[channel] as {
+        invalidates?: (input: unknown) => Array<{ family: string }>;
+      };
+      const families = (contract.invalidates?.({ appId: 7, app: 7 }) ?? []).map(
+        (scope) => scope.family,
+      );
+      expect(families, `${channel}`).not.toContain("provider-status");
+    }
   });
 });

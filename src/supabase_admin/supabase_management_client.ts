@@ -901,9 +901,9 @@ export async function createSupabaseProject({
 }): Promise<CreatedSupabaseProjectResponse> {
   if (IS_TEST_BUILD) {
     return {
-      // Not `fake-project-id`, which the fake project list and connect flow
-      // both use: an E2E test has to tell a created project apart from the one
-      // that already existed.
+      // Distinct from the `fake-project-id` the fake project list and connect
+      // flow use, so a test can tell a created project from a pre-existing one.
+      // No E2E covers this path yet.
       id: "fake-created-project-id",
       name,
       region,

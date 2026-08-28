@@ -107,6 +107,15 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     meta: { showErrorToast: true },
   });
 
+  // Tracked per app rather than read off the mutation: a single observer only
+  // reports its most recent call, so with creates running for two apps the
+  // second one's variables would describe the first app's pending state.
+  // Counted rather than a membership set, so two creates for one app do not
+  // unlock the form as soon as the first settles.
+  const [creatingProjectAppIds, setCreatingProjectAppIds] = useState<
+    ReadonlyMap<number, number>
+  >(new Map());
+
   // Mutation: Create a Supabase project and link it to an app.
   // The handler does both, so a success here means the app is already
   // connected; callers only need to refresh.
@@ -117,6 +126,20 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   >({
     mutationFn: async (params) => {
       return ipc.supabase.createProject(params);
+    },
+    onMutate: ({ appId }) => {
+      setCreatingProjectAppIds((current) =>
+        new Map(current).set(appId, (current.get(appId) ?? 0) + 1),
+      );
+    },
+    onSettled: (_project, _error, { appId }) => {
+      setCreatingProjectAppIds((current) => {
+        const remaining = (current.get(appId) ?? 0) - 1;
+        const next = new Map(current);
+        if (remaining > 0) next.set(appId, remaining);
+        else next.delete(appId);
+        return next;
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.supabase.projects });
@@ -303,11 +326,8 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     branchesError: branchesQuery.error,
 
     // Mutation states
-    isCreatingProject: createProjectMutation.isPending,
-    // Which app the in-flight create belongs to. Some navigations swap the
-    // connector's `appId` without remounting it, so callers must not read the
-    // pending flag as "this app is being created".
-    creatingProjectAppId: createProjectMutation.variables?.appId ?? null,
+    isCreatingProjectForApp: (appId: number) =>
+      (creatingProjectAppIds.get(appId) ?? 0) > 0,
     isDeletingOrganization: deleteOrganizationMutation.isPending,
     isSettingAppProject:
       setAppProjectMutation.isPending || recoverAppProjectMutation.isPending,

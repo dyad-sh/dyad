@@ -53,6 +53,11 @@ preview is ready so install and self-heal work cannot race Git mutations. Any
 later background callback that writes the working tree must acquire its own
 coordinator operation.
 
+Before an automatic preview starts a new runtime, let any active chat actor for
+that app finish its repository-writing checkpoint. Otherwise startup can retain
+a repository read claim during a slow dependency install while chat finalization
+queues for the writer, delaying the visible `Retry` completion state indefinitely.
+
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old
 global `withLock(appId, ...)` pattern from returning.

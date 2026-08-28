@@ -77,6 +77,7 @@ import {
   getPackageManagerSignal,
   signalPrefersPnpm,
 } from "@/ipc/utils/package_manager_selection";
+import { waitForAppChatActorsIdle } from "@/ipc/services/chat_actor_service";
 
 const logger = log.scope("app_runtime_service");
 const pnpmVersionMigrationNotifiedAppIds = new Set<number>();
@@ -1453,6 +1454,7 @@ interface RuntimeAppRecord {
 }
 
 export interface AppRuntimeServiceDependencies {
+  waitForAppChatActorsIdle(appId: number): Promise<boolean>;
   runSerialized<T>(
     appId: number,
     lifecycle: AppRuntimeLifecycle,
@@ -1572,6 +1574,15 @@ export class AppRuntimeService {
 
   async start(options: StartAppRuntimeOptions): Promise<void> {
     const { appId, output, invocationRef } = options;
+    // A newly selected app can request its automatic preview while the chat
+    // turn that created it is still finalizing. Startup retains a repository
+    // read claim until the preview is ready, while the turn needs a repository
+    // write claim for its final checkpoint. Let the existing turn finish
+    // before admitting the runtime so a slow dependency install cannot hold
+    // chat completion behind itself. Existing runtimes stay on the fast path.
+    if (!this.dependencies.getRunningApp(appId)) {
+      await this.dependencies.waitForAppChatActorsIdle(appId);
+    }
     return this.dependencies.runSerialized(appId, "start", async () => {
       const existing = this.dependencies.getRunningApp(appId);
       if (existing) {
@@ -1974,6 +1985,7 @@ async function waitForAppReady(
 }
 
 export const appRuntimeService = new AppRuntimeService({
+  waitForAppChatActorsIdle,
   runSerialized: (appId, lifecycle, operation) =>
     appOperationCoordinator.run(
       {

@@ -34,6 +34,7 @@ function createHarness() {
   let runtimeMode: RuntimeMode2 = "host";
   let id = 0;
   const dependencies: AppRuntimeServiceDependencies = {
+    waitForAppChatActorsIdle: vi.fn(async () => true),
     runSerialized: async (_appId, lifecycle, operation) => {
       calls.push(`lock:${lifecycle}`);
       try {
@@ -198,6 +199,57 @@ describe("AppRuntimeService", () => {
     releaseReady();
     await Promise.all([start, write]);
     expect(repositoryWriter).toHaveBeenCalledOnce();
+  });
+
+  it("lets an active chat finalizer checkpoint before startup takes repository admission", async () => {
+    const harness = createHarness();
+    const { output } = createOutput();
+    let releaseChat!: () => void;
+    const chatIdle = new Promise<boolean>((resolve) => {
+      releaseChat = () => resolve(true);
+    });
+    vi.mocked(harness.dependencies.waitForAppChatActorsIdle).mockReturnValue(
+      chatIdle,
+    );
+
+    const start = harness.service.start({ appId: APP_ID, output });
+    await vi.waitFor(() =>
+      expect(
+        harness.dependencies.waitForAppChatActorsIdle,
+      ).toHaveBeenCalledWith(APP_ID),
+    );
+    expect(harness.calls).toEqual([]);
+    expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
+
+    releaseChat();
+    await start;
+
+    expect(harness.calls).toEqual([
+      "lock:start",
+      "clean-port",
+      "start:legacy",
+      "ready",
+      "unlock:start",
+    ]);
+  });
+
+  it("does not wait on chat finalization when the app is already running", async () => {
+    const harness = createHarness();
+    const { output } = createOutput();
+    harness.setRunning({
+      process: null,
+      processId: 1,
+      mode: "host",
+      output,
+      lastViewedAt: 0,
+    });
+
+    await harness.service.start({ appId: APP_ID, output });
+
+    expect(
+      harness.dependencies.waitForAppChatActorsIdle,
+    ).not.toHaveBeenCalled();
+    expect(harness.calls).toEqual(["lock:start", "unlock:start"]);
   });
 
   it("keeps a spawned process tracked when readiness times out", async () => {

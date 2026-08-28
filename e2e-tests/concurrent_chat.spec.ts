@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("concurrent chat", async ({ po }) => {
@@ -24,5 +24,6 @@ test("concurrent chat", async ({ po }) => {
     .first();
   await expect(chat1Tab).toBeVisible();
   await chat1Tab.click();
-  await po.snapshotMessages({ timeout: 12_000 });
+  await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
+  await po.snapshotMessages();
 });

@@ -113,8 +113,28 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { redeployAllFunctions, redeployProgress, isRedeployingFunctions } =
     useRedeploySupabaseFunctions(appId);
 
-  const branchesProjectId =
-    app?.supabaseParentProjectId || app?.supabaseProjectId;
+  // Asked of Supabase rather than remembered from the create that started it,
+  // so the banner survives leaving this panel mid-provision and also covers a
+  // project provisioned outside Dyad.
+  // Deliberately the app's own ref, not the branch target below: on a branched
+  // app that is the branch, which provisions separately from its parent.
+  const { isProvisioning } = useSupabaseProjectStatus({
+    projectId: app?.supabaseProjectId,
+    organizationSlug: app?.supabaseOrganizationSlug,
+    enabled: isConnected,
+  });
+
+  // The branch target falls back to the parent, so only an app without one is
+  // listing branches against the project that is still provisioning.
+  const isBranchListUnavailable =
+    isProvisioning && !app?.supabaseParentProjectId;
+
+  // Null while the target is coming up, so the query never runs: listing
+  // branches against it fails, and React Query caches that failure without
+  // retrying, so it would surface the moment the banner cleared.
+  const branchesProjectId = isBranchListUnavailable
+    ? null
+    : app?.supabaseParentProjectId || app?.supabaseProjectId;
 
   const {
     organizations,
@@ -150,22 +170,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // flight at once, and for a project created but not linked this message is
   // the only record it was minted and left orphaned.
   const [createErrors, setCreateErrors] = useState<Record<number, string>>({});
-
-  // Asked of Supabase rather than remembered from the create that started it,
-  // so the banner survives leaving this panel mid-provision and also covers a
-  // project provisioned outside Dyad.
-  // Deliberately the app's own ref, not `branchesProjectId`: on a branched app
-  // that is the branch, which provisions separately from its parent.
-  const { isProvisioning } = useSupabaseProjectStatus({
-    projectId: app?.supabaseProjectId,
-    organizationSlug: app?.supabaseOrganizationSlug,
-    enabled: isConnected,
-  });
-
-  // `branchesProjectId` falls back to the parent, so only an app without one is
-  // listing branches against the project that is still provisioning.
-  const isBranchListUnavailable =
-    isProvisioning && !app?.supabaseParentProjectId;
 
   // The connection flow lives in the main process; this component only
   // projects it. Timeouts (Supabase historically had none — a closed
@@ -829,6 +833,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Above the branches below, not inside one of them: a
+          created-but-unlinked failure closes the form and refetches the
+          project list, so an alert further down would be replaced by that
+          refetch's skeleton, or lost entirely if the refetch then errored.
+          The form renders its own copy, so this is only for when it is shut. */}
+          {!isCreateFormOpen && createErrorForThisApp && (
+            <Alert className="mb-4" data-testid="supabase-create-project-error">
+              <Info className="h-4 w-4" />
+              <AlertDescription role="alert">
+                {createErrorForThisApp}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* The create form is checked before the loading and error branches:
           a background refetch of the project list (window focus past the 60s
           staleTime is enough) would otherwise unmount the form mid-edit and
@@ -873,17 +891,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* A create that failed after its form closed — the app switched,
-              or the project was created but not linked. */}
-              {createErrorForThisApp && (
-                <Alert data-testid="supabase-create-project-error">
-                  <Info className="h-4 w-4" />
-                  <AlertDescription role="alert">
-                    {createErrorForThisApp}
-                  </AlertDescription>
-                </Alert>
-              )}
-
               {/* Connected organizations list */}
               <div className="space-y-2">
                 <Label>

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SupabaseConnector } from "./SupabaseConnector";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types";
 
 const {
   detectLegacyAppKeyMock,
@@ -41,6 +42,7 @@ const {
   createState,
   projectStatusState,
   projectStatusMock,
+  supabaseOptionsState,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -82,6 +84,11 @@ const {
     isProvisioning: false,
   },
   projectStatusMock: vi.fn(),
+  // What the connector asked the data hook for. The branch query is gated by
+  // the argument it passes, not by anything it renders.
+  supabaseOptionsState: {
+    last: null as { branchesProjectId?: string | null } | null,
+  },
   projectsState: {
     current: [] as Array<{
       id: string;
@@ -124,6 +131,8 @@ vi.mock("@/ipc/types", () => ({
   DEFAULT_SUPABASE_REGION: "us-east-1",
   SUPABASE_PROJECT_NAME_MAX_LENGTH: 64,
   SUPABASE_PROJECT_STATUS_PROVISIONING: "COMING_UP",
+  SUPABASE_PROJECT_CREATED_BUT_UNLINKED:
+    "supabase_project_created_but_unlinked",
 }));
 
 vi.mock("sonner", () => ({
@@ -180,31 +189,38 @@ vi.mock("@/lib/schemas", () => ({
 }));
 
 vi.mock("@/hooks/useSupabase", () => ({
-  useSupabase: () => ({
-    organizations: organizationsState.current,
-    projects: projectsState.current,
-    branches: [],
-    isLoadingProjects: providerLoadingState.projects,
-    isFetchingProjects: providerLoadingState.projects,
-    isLoadingOrganizations: providerLoadingState.organizations,
-    isFetchingOrganizations: providerLoadingState.organizations,
-    projectsError: providerErrorState.projects,
-    organizationsError: providerErrorState.organizations,
-    isLoadingBranches: false,
-    branchesError: null,
-    isSettingAppProject: false,
-    isCreatingProjectForApp: (id: number) => createState.creatingAppIds.has(id),
-    createProject: createState.createProject,
-    refetchOrganizations: refetchOrganizationsMock,
-    refetchProjects: refetchProjectsMock,
-    setAppProject: setAppProjectMock,
-    recoverAppProject: recoverAppProjectMock,
-    unsetAppProject: unsetAppProjectMock,
-    deleteOrganization: vi.fn(),
-  }),
+  useSupabase: (options: { branchesProjectId?: string | null }) => {
+    supabaseOptionsState.last = options;
+    return {
+      organizations: organizationsState.current,
+      projects: projectsState.current,
+      branches: [],
+      isLoadingProjects: providerLoadingState.projects,
+      isFetchingProjects: providerLoadingState.projects,
+      isLoadingOrganizations: providerLoadingState.organizations,
+      isFetchingOrganizations: providerLoadingState.organizations,
+      projectsError: providerErrorState.projects,
+      organizationsError: providerErrorState.organizations,
+      isLoadingBranches: false,
+      branchesError: null,
+      isSettingAppProject: false,
+      isCreatingProjectForApp: (id: number) =>
+        createState.creatingAppIds.has(id),
+      createProject: createState.createProject,
+      refetchOrganizations: refetchOrganizationsMock,
+      refetchProjects: refetchProjectsMock,
+      setAppProject: setAppProjectMock,
+      recoverAppProject: recoverAppProjectMock,
+      unsetAppProject: unsetAppProjectMock,
+      deleteOrganization: vi.fn(),
+    };
+  },
   useSupabaseProjectStatus: projectStatusMock,
+  // Mirrors the real predicate: matched on the code the handler attaches, not
+  // on the error kind.
   isCreatedButUnlinkedError: (error: unknown) =>
-    error instanceof DyadError && error.kind === DyadErrorKind.Internal,
+    (error as { code?: unknown } | null)?.code ===
+    SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
   useRedeploySupabaseFunctions: () => ({
     redeployAllFunctions: redeployAllFunctionsMock,
     redeployProgress: redeployState.progress,
@@ -261,6 +277,7 @@ beforeEach(() => {
   projectStatusState.status = null;
   projectStatusState.isProvisioning = false;
   projectStatusMock.mockImplementation(() => projectStatusState);
+  supabaseOptionsState.last = null;
   projectsState.current = [];
   providerLoadingState.organizations = false;
   providerLoadingState.projects = false;
@@ -561,6 +578,19 @@ function showSelector() {
   organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
 }
 
+// Mirrors what the handler throws when the project exists but the link failed.
+// The code is the marker; the kind is the catch-all it happens to share with
+// every other unclassified failure.
+function createdButUnlinkedError() {
+  const error = new DyadError(
+    "Created Supabase project abc123 but couldn't link it to this app.",
+    DyadErrorKind.Internal,
+  );
+  (error as DyadError & { code: string }).code =
+    SUPABASE_PROJECT_CREATED_BUT_UNLINKED;
+  return error;
+}
+
 async function submitFailingCreate(error: Error) {
   showSelector();
   createState.createProject = vi.fn().mockRejectedValue(error);
@@ -751,6 +781,19 @@ describe("SupabaseConnector — provisioning banner", () => {
     expect(screen.queryByTestId("supabase-branch-select")).toBeNull();
   });
 
+  // Hiding the branch section is not enough: the query would still run, fail,
+  // and stay cached with retries off, so its error would appear the moment the
+  // banner cleared.
+  it("does not ask for branches of a project that is coming up", async () => {
+    projectStatusState.status = "COMING_UP";
+    projectStatusState.isProvisioning = true;
+
+    renderConnector();
+
+    await screen.findByTestId(BANNER);
+    expect(supabaseOptionsState.last?.branchesProjectId).toBeNull();
+  });
+
   // The branch query targets the parent on a branched app, so it succeeds even
   // while the branch itself is provisioning.
   it("still offers branches when only a branch of a healthy project is coming up", async () => {
@@ -762,6 +805,7 @@ describe("SupabaseConnector — provisioning banner", () => {
 
     expect(await screen.findByTestId(BANNER)).toBeTruthy();
     expect(await screen.findByTestId("supabase-branch-select")).toBeTruthy();
+    expect(supabaseOptionsState.last?.branchesProjectId).toBe("proj-parent");
   });
 
   it("says nothing once the project is serving", async () => {
@@ -954,15 +998,54 @@ describe("SupabaseConnector — a create that fails", () => {
   // second Create that would mint another one. The message has to move out of
   // the form to survive it closing.
   it("closes the form and keeps reporting when the project was created but not linked", async () => {
-    const unlinked = new DyadError(
-      "Created Supabase project abc123 but couldn't link it to this app.",
-      DyadErrorKind.Internal,
-    );
+    const unlinked = createdButUnlinkedError();
     await submitFailingCreate(unlinked);
 
     await waitFor(() =>
       expect(screen.queryByTestId("supabase-new-project-name")).toBeNull(),
     );
+    expect(
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
+    ).toContain("couldn't link it to this app");
+  });
+
+  // `Internal` is the kind for any unclassified bug, so a failure that carries
+  // it without the code never created a project. Treating it as one would tell
+  // the user to go clean up something that does not exist.
+  it("does not claim a project exists for an unmarked internal failure", async () => {
+    await submitFailingCreate(
+      new DyadError("Renderer is not trusted", DyadErrorKind.Internal),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "not trusted",
+    );
+    // The form stays open, which is what an ordinary failure gets.
+    expect(screen.getByTestId("supabase-new-project-name")).toBeTruthy();
+  });
+
+  // The mutation refetches the project list on this failure, so an alert placed
+  // below that branch would be swapped for the refetch's skeleton just as the
+  // only record of the orphan appeared.
+  it("keeps reporting the orphan while the project list reloads", async () => {
+    const { rerender } = await submitFailingCreate(createdButUnlinkedError());
+    await screen.findByTestId("supabase-create-project-error");
+
+    providerLoadingState.projects = true;
+    rerender(<SupabaseConnector appId={7} />);
+
+    expect(
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
+    ).toContain("couldn't link it to this app");
+  });
+
+  it("keeps reporting the orphan when that reload fails", async () => {
+    const { rerender } = await submitFailingCreate(createdButUnlinkedError());
+    await screen.findByTestId("supabase-create-project-error");
+
+    providerErrorState.projects = new Error("offline");
+    rerender(<SupabaseConnector appId={7} />);
+
     expect(
       (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
@@ -1007,10 +1090,7 @@ describe("SupabaseConnector — a create that fails", () => {
   // project was minted and left orphaned, so another app's create must not
   // discard it.
   it("keeps one app's failure when another app starts its own create", async () => {
-    const unlinked = new DyadError(
-      "Created Supabase project abc123 but couldn't link it to this app.",
-      DyadErrorKind.Internal,
-    );
+    const unlinked = createdButUnlinkedError();
     const { rerender } = await submitFailingCreate(unlinked);
     await screen.findByTestId("supabase-create-project-error");
 
@@ -1048,10 +1128,7 @@ describe("SupabaseConnector — clearing a create failure", () => {
   // Two creates can be in flight at once, so one app's failure must not
   // overwrite the record belonging to another.
   it("keeps both apps' failures when two creates fail", async () => {
-    const unlinked = new DyadError(
-      "Created Supabase project abc123 but couldn't link it to this app.",
-      DyadErrorKind.Internal,
-    );
+    const unlinked = createdButUnlinkedError();
     const { rerender } = await submitFailingCreate(unlinked);
     await screen.findByTestId("supabase-create-project-error");
 

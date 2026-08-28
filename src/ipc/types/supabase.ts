@@ -182,6 +182,14 @@ export const SupabaseProjectStatusSchema = z.object({
 
 export type SupabaseProjectStatus = z.infer<typeof SupabaseProjectStatusSchema>;
 
+/**
+ * Set as the `code` on the create failure that leaves a real project behind,
+ * unlinked. `code` survives IPC, so the renderer can tell that one failure
+ * apart from every other way a create can fail.
+ */
+export const SUPABASE_PROJECT_CREATED_BUT_UNLINKED =
+  "supabase_project_created_but_unlinked";
+
 // =============================================================================
 // Supabase Contracts
 // =============================================================================

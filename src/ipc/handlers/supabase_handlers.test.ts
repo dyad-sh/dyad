@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apps } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types";
 import { activeRecordings } from "@/ipc/services/recording_registry";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { RateLimitError } from "@/ipc/utils/retryWithRateLimit";
@@ -316,6 +317,25 @@ describe("Supabase handlers", () => {
     // An exhausted project quota is the likeliest failure here. It is the
     // user's to fix, so it must not be reported as an upstream exception, and
     // Supabase's own explanation has to survive to the message.
+    // The project exists by now, and the renderer tells the user so. It matches
+    // on this code rather than the kind, which is the catch-all every other
+    // unclassified failure also carries.
+    it("marks a create that could not be linked with a stable code", async () => {
+      insertApp();
+      vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
+        throw new Error("database is locked");
+      });
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.Internal,
+        code: SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
+        message: expect.stringContaining("proj-new"),
+      });
+      expect(readApp()).toMatchObject({ supabaseProjectId: null });
+    });
+
     it("classifies a rejected create as user-fixable and keeps Supabase's reason", async () => {
       insertApp();
       mocks.createSupabaseProject.mockRejectedValue(

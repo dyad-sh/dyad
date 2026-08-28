@@ -18,6 +18,10 @@ vi.mock("@/ipc/types", () => ({
     },
     events: { supabase: { onRedeployProgress: () => () => {} } },
   },
+  // The hook compares the failure's code against this. Left out of the mock it
+  // would be undefined, and every code-less failure would match.
+  SUPABASE_PROJECT_CREATED_BUT_UNLINKED:
+    "supabase_project_created_but_unlinked",
 }));
 
 vi.mock("./useSettings", () => ({
@@ -34,7 +38,8 @@ vi.mock("@/app_run/AppRunRemoteProvider", () => ({
   }),
 }));
 
-import { useSupabase } from "./useSupabase";
+import { isCreatedButUnlinkedError, useSupabase } from "./useSupabase";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 function renderSupabase() {
   const queryClient = new QueryClient({
@@ -190,5 +195,28 @@ describe("useSupabase — in-flight creates", () => {
     await waitFor(() =>
       expect(result.current.isCreatingProjectForApp(7)).toBe(false),
     );
+  });
+});
+
+describe("isCreatedButUnlinkedError", () => {
+  // The message tells the user a real project is sitting orphaned in their
+  // Supabase account, so it must only fire for the failure that made one.
+  it("matches the failure the handler marks, and nothing else", () => {
+    const unlinked = new DyadError(
+      "Created but not linked",
+      DyadErrorKind.Internal,
+    ) as DyadError & { code: string };
+    unlinked.code = "supabase_project_created_but_unlinked";
+
+    expect(isCreatedButUnlinkedError(unlinked)).toBe(true);
+    // Same kind, no marker: nothing was created.
+    expect(
+      isCreatedButUnlinkedError(
+        new DyadError("Renderer is not trusted", DyadErrorKind.Internal),
+      ),
+    ).toBe(false);
+    expect(isCreatedButUnlinkedError(new Error("offline"))).toBe(false);
+    expect(isCreatedButUnlinkedError(null)).toBe(false);
+    expect(isCreatedButUnlinkedError(undefined)).toBe(false);
   });
 });

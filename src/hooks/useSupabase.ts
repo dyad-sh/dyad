@@ -20,22 +20,26 @@ import {
   CreateSupabaseProjectParams,
   SupabaseProjectStatus,
   SUPABASE_PROJECT_STATUS_PROVISIONING,
+  SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
 } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
-import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
 
 /**
- * Did a create fail *after* the project was created? The handler reports only
- * that case as `Internal`, and `kind` survives IPC, so this needs no message
- * matching.
+ * Did a create fail *after* the project was created? Matched on the code the
+ * handler sets, which survives IPC. Not on the kind: `Internal` is the
+ * catch-all for bugs, so anything else raised on this path would otherwise
+ * tell the user a project was minted when none was.
  */
 export function isCreatedButUnlinkedError(error: unknown): boolean {
-  return isDyadError(error) && error.kind === DyadErrorKind.Internal;
+  return (
+    (error as { code?: unknown } | null)?.code ===
+    SUPABASE_PROJECT_CREATED_BUT_UNLINKED
+  );
 }
 
 export interface UseSupabaseOptions {

@@ -28,7 +28,10 @@ import {
 } from "../services/app_operation_coordinator";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { readSettings, writeSettings } from "../../main/settings";
-import { supabaseContracts } from "../types/supabase";
+import {
+  SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
+  supabaseContracts,
+} from "../types/supabase";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { assertNoNeonProject } from "../utils/neon_utils";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
@@ -286,10 +289,15 @@ export function registerSupabaseHandlers() {
             })
             .where(eq(apps.id, appId));
         } catch (error) {
-          throw new DyadError(
+          const unlinked = new DyadError(
             `Created Supabase project ${project.id} but couldn't link it to this app: ${error instanceof Error ? error.message : error}. Select it from the project list to finish connecting.`,
             DyadErrorKind.Internal,
           );
+          // The kind is the catch-all for bugs, so it cannot identify this
+          // failure on its own. The code is what the renderer matches on.
+          (unlinked as DyadError & { code: string }).code =
+            SUPABASE_PROJECT_CREATED_BUT_UNLINKED;
+          throw unlinked;
         }
 
         logger.info(

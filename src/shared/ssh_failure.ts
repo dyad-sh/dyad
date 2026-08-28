@@ -1,13 +1,13 @@
 /**
  * What went wrong on an SSH attempt, and how to ask about it from anywhere.
  *
- * Separate from the client because the client value-imports `ssh2`, and the
- * main process reaches this from its startup path: telemetry is pulled in by
- * `main.ts` and by every typed handler, so importing the error class there
- * would put `ssh2` and its optional native probe on the boot of every app,
- * including for people who never open the Coolify panel — and would turn a
- * packaging miss into a process that does not start rather than one feature
- * that does not work.
+ * Separate from the client so that asking costs nothing: telemetry is reached
+ * from `main.ts` and from every typed handler, and it only ever needs to know
+ * which failure an error carries. The client itself is a large module whose
+ * one job is to talk to a server, and nothing on the startup path has any use
+ * for that. `connectSsh` loads `ssh2` when it actually connects, which is what
+ * keeps it off the boot; this keeps the question askable without reaching for
+ * the client at all.
  */
 export type SshFailure =
   | "auth-rejected"

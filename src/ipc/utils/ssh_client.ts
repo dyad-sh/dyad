@@ -1,4 +1,4 @@
-import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
+import type { ClientChannel, ConnectConfig } from "ssh2";
 import type { SshFailure } from "@/shared/ssh_failure";
 import { createHash } from "crypto";
 import log from "electron-log";
@@ -186,6 +186,13 @@ export async function connectSsh(
   verifyHostKey: HostKeyVerifier,
   { signal }: { signal?: AbortSignal } = {},
 ): Promise<SshSession> {
+  // Loaded when someone actually connects, not when this module is imported.
+  // The setup handlers are registered during boot, so a value import here put
+  // ssh2 — and the optional native probe it runs on load — on the startup of
+  // every app, whether or not anyone ever set a server up. That also turned a
+  // packaging miss into a process that does not start, rather than one
+  // feature that does not work.
+  const { Client } = await import("ssh2");
   const conn = new Client();
   /**
    * Why the connection died, for commands that were in flight when it did.

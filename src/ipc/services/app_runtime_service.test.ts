@@ -129,6 +129,7 @@ vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
   },
   createCloudSandbox: vi.fn(),
   destroyCloudSandbox: vi.fn(),
+  queueCloudSandboxSnapshotSync: vi.fn(),
   registerRunningCloudSandbox: vi.fn(),
   restartCloudSandbox: vi.fn(),
   setCloudSandboxSyncUpdateListener: vi.fn(),
@@ -148,7 +149,14 @@ import {
   startCloudSandboxLogStream,
   type AppRuntimeOutput,
 } from "./app_runtime_service";
-import { streamCloudSandboxLogs } from "@/ipc/utils/cloud_sandbox_provider";
+import {
+  buildCloudSandboxFileMap,
+  createCloudSandbox,
+  queueCloudSandboxSnapshotSync,
+  registerRunningCloudSandbox,
+  streamCloudSandboxLogs,
+  uploadCloudSandboxFiles,
+} from "@/ipc/utils/cloud_sandbox_provider";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -497,6 +505,40 @@ describe("executeApp", () => {
         },
       );
     });
+  });
+
+  it("queues a catch-up sync after registering a new cloud sandbox", async () => {
+    readSettingsMock.mockReturnValue({ runtimeMode2: "cloud" });
+    vi.mocked(createCloudSandbox).mockResolvedValueOnce({
+      sandboxId: "sb-1",
+      previewUrl: "https://preview.example.test",
+      previewAuthToken: "preview-token",
+    });
+    vi.mocked(buildCloudSandboxFileMap).mockResolvedValueOnce({});
+    vi.mocked(uploadCloudSandboxFiles).mockResolvedValueOnce({});
+
+    await executeApp({
+      appPath: "/tmp/cloud-app",
+      appId: 7,
+      output: createOutput(),
+      isNeon: false,
+    });
+
+    expect(registerRunningCloudSandbox).toHaveBeenCalledWith({
+      appId: 7,
+      appPath: "/tmp/cloud-app",
+      sandboxId: "sb-1",
+    });
+    expect(queueCloudSandboxSnapshotSync).toHaveBeenCalledWith({
+      appId: 7,
+      fullSync: true,
+      immediate: true,
+    });
+    expect(
+      vi.mocked(registerRunningCloudSandbox).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(queueCloudSandboxSnapshotSync).mock.invocationCallOrder[0],
+    );
   });
 
   it("does not warn about old pnpm for apps that explicitly use npm", async () => {

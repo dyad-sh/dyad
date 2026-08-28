@@ -51,8 +51,9 @@ Spawning the long-lived install/dev child is not the end of runtime startup.
 Retain app-path and runtime-config admission until the preview is ready. Start,
 restart, and rebuild intentionally do not claim the repository, so repository-only
 writers may interleave throughout install and readiness. This includes chat
-checkpoints, commit/discard operations, and agent or test file writes; operations
-such as restore/checkout that write runtime-config remain excluded.
+checkpoints, commit/discard operations, switch/pull/merge/rebase, and agent or
+test file writes; operations such as restore/checkout that write runtime-config
+remain excluded.
 
 Dependency setup may therefore race a chat checkpoint, so preview-generated
 tracked changes such as lockfiles or `pnpm-workspace.yaml` may land in the current
@@ -61,6 +62,11 @@ also be overwritten from a stale read during the allow-builds lookup. These
 tradeoffs keep chat completion independent from every preview lifecycle command.
 Any later background callback that needs deterministic working-tree state must
 acquire its own coordinator operation.
+
+Cloud startup registers file synchronization only after its initial full upload.
+Because repository writers remain admitted during that upload, queue a non-blocking
+full sync immediately after registration to catch changes whose earlier incremental
+sync notifications had no registered sandbox.
 
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old

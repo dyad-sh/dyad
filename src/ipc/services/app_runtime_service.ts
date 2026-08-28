@@ -1509,6 +1509,14 @@ export function getAppRuntimeOperationResources(
 ): AppOperationRequest["resources"] {
   if (lifecycle === "stop") return ["runtime"];
   if (lifecycle === "start") {
+    // Start intentionally omits repository admission. Its install phase may
+    // update tracked runtime files, and ensurePnpmAllowBuildsConfigured can
+    // replace pnpm-workspace.yaml from a stale read if another writer changes
+    // that exact file during the allow-builds lookup (normally a narrow
+    // cache-hit/filesystem window, but up to the 5-second cold-fetch timeout).
+    // We accept that rare overwrite risk and nondeterministic checkpoint
+    // inclusion so preview install/readiness cannot block chat completion.
+    // Explicit restart/rebuild retains repository admission below.
     return [
       readAppResource("app-path"),
       "runtime",

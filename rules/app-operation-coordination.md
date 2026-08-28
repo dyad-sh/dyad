@@ -48,16 +48,19 @@ first await, then hold both the sub-agent settlement release and admission
 release until the destructive mutation commits or aborts.
 
 Spawning the long-lived install/dev child is not the end of runtime startup.
-Retain app-path and runtime-config admission until the preview is ready. Explicit
-restart/rebuild also retains repository admission so its install and self-heal
-work cannot race other Git mutations.
+Retain app-path and runtime-config admission until the preview is ready. Start,
+restart, and rebuild intentionally do not claim the repository, so repository-only
+writers may interleave throughout install and readiness. This includes chat
+checkpoints, commit/discard operations, and agent or test file writes; operations
+such as restore/checkout that write runtime-config remain excluded.
 
-Automatic start intentionally does not claim the repository. Its dependency
-setup may race a chat checkpoint, so preview-generated tracked changes such as
-lockfiles or `pnpm-workspace.yaml` may land in the current checkpoint, a later
-checkpoint, or remain uncommitted. This tradeoff keeps chat completion independent
-from preview readiness. Any later background callback that needs deterministic
-working-tree state must acquire its own coordinator operation.
+Dependency setup may therefore race a chat checkpoint, so preview-generated
+tracked changes such as lockfiles or `pnpm-workspace.yaml` may land in the current
+checkpoint, a later checkpoint, or remain uncommitted. A same-file writer may
+also be overwritten from a stale read during the allow-builds lookup. These
+tradeoffs keep chat completion independent from every preview lifecycle command.
+Any later background callback that needs deterministic working-tree state must
+acquire its own coordinator operation.
 
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old

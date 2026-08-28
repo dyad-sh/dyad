@@ -61,8 +61,9 @@ export function CoolifySignOutDialog({
   // hand. A failed refetch over details it can still show is not one, and the
   // line below would then hang off nothing.
   const readFailed = isError && !credentials;
-  // Held but unreadable, which the panel below cannot show because there is
-  // no value to put on screen. Saying so beats a silently missing row.
+  // Held but unreadable. The panel below names it; this adds only what
+  // signing out does to it, so the two read as one thought rather than as
+  // the same sentence twice.
   const passwordIsLocked =
     credentials?.server !== null &&
     credentials?.server !== undefined &&

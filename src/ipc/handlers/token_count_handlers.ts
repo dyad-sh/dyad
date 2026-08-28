@@ -8,9 +8,11 @@ import {
 import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
+  SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
+import { NEON_DISCONNECTED_SYSTEM_PROMPT } from "../../prompts/neon_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import { detectFrameworkType } from "../utils/framework_utils";
 import log from "electron-log";
@@ -33,6 +35,7 @@ import {
   isBasicAgentMode,
   isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
+  hasSupabaseCredentialsForOrganization,
 } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
@@ -40,6 +43,7 @@ import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 import { estimateAgentToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 import { buildChatMessageHistory } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { getCachedMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
+import { resolveRootDatabasePromptState } from "@/shared/database_provider";
 
 const logger = log.scope("token_count_handlers");
 
@@ -114,21 +118,44 @@ export function registerTokenCountHandlers() {
         enableAppBlueprint,
       });
       let supabaseContext = "";
+      const supabaseProviderToolsAvailable = Boolean(
+        chat.app.supabaseProjectId &&
+        hasSupabaseCredentialsForOrganization(
+          settings,
+          chat.app.supabaseOrganizationSlug,
+        ),
+      );
+      const neonCredentialsAvailable = Boolean(
+        chat.app.neonProjectId && settings.neon?.accessToken?.value,
+      );
+      const neonActiveBranchId =
+        chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId;
+      const neonProviderToolsAvailable = Boolean(
+        neonCredentialsAvailable && neonActiveBranchId,
+      );
+      const rootDatabasePromptState = resolveRootDatabasePromptState({
+        hasSupabaseProject: Boolean(chat.app.supabaseProjectId),
+        supabaseCredentialsAvailable: supabaseProviderToolsAvailable,
+        hasNeonProject: Boolean(chat.app.neonProjectId),
+        neonCredentialsAvailable,
+      });
 
-      if (chat.app?.supabaseProjectId) {
+      if (rootDatabasePromptState === "supabase") {
         const supabaseClientCode = await getSupabaseClientCode({
-          projectId: chat.app.supabaseProjectId,
+          projectId: chat.app.supabaseProjectId!,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
         systemPrompt +=
           "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);
         if (!willUseLocalAgentStream) {
           supabaseContext = await getSupabaseContext({
-            supabaseProjectId: chat.app.supabaseProjectId,
+            supabaseProjectId: chat.app.supabaseProjectId!,
             organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
           });
         }
-      } else if (chat.app?.neonProjectId) {
+      } else if (rootDatabasePromptState === "supabase-disconnected") {
+        systemPrompt += "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
+      } else if (rootDatabasePromptState === "neon") {
         systemPrompt +=
           "\n\n" +
           (await buildNeonPromptForApp({
@@ -138,6 +165,8 @@ export function registerTokenCountHandlers() {
             neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
             selectedChatMode,
           }));
+      } else if (rootDatabasePromptState === "neon-disconnected") {
+        systemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
       } else if (!willUseLocalAgentStream) {
         // Neon projects don't need Supabase (already handled above).
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
@@ -156,9 +185,10 @@ export function registerTokenCountHandlers() {
         isDyadPro,
         frameworkType,
         supabaseProjectId: chat.app.supabaseProjectId,
+        supabaseProviderToolsAvailable,
         neonProjectId: chat.app.neonProjectId,
-        neonActiveBranchId:
-          chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
+        neonActiveBranchId,
+        neonProviderToolsAvailable,
         testingEnabled: !!chat.app.testingEnabled,
         canUseExplorerSubagent:
           selectedChatMode !== "build" &&

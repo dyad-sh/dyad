@@ -12,21 +12,33 @@ export function resolveLinkedDatabaseProvider({
   return undefined;
 }
 
-export function resolvePreferredDatabaseProvider({
+export type DatabasePromptState =
+  | "supabase"
+  | "supabase-disconnected"
+  | "neon"
+  | "neon-disconnected"
+  | "none";
+
+export function resolveRootDatabasePromptState({
   hasSupabaseProject,
-  supabaseAvailable,
+  supabaseCredentialsAvailable,
   hasNeonProject,
-  neonAvailable,
+  neonCredentialsAvailable,
 }: {
   hasSupabaseProject: boolean;
-  supabaseAvailable: boolean;
+  supabaseCredentialsAvailable: boolean;
   hasNeonProject: boolean;
-  neonAvailable: boolean;
-}): DatabaseProvider | undefined {
-  if (hasNeonProject && neonAvailable) return "neon";
-  if (hasSupabaseProject && supabaseAvailable) return "supabase";
-  return resolveLinkedDatabaseProvider({
+  neonCredentialsAvailable: boolean;
+}): DatabasePromptState {
+  const provider = resolveLinkedDatabaseProvider({
     hasSupabaseProject,
     hasNeonProject,
   });
+  if (provider === "neon") {
+    return neonCredentialsAvailable ? "neon" : "neon-disconnected";
+  }
+  if (provider === "supabase") {
+    return supabaseCredentialsAvailable ? "supabase" : "supabase-disconnected";
+  }
+  return "none";
 }

@@ -5,7 +5,7 @@
 
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import {
-  resolvePreferredDatabaseProvider,
+  resolveLinkedDatabaseProvider,
   type DatabaseProvider,
 } from "@/shared/database_provider";
 import {
@@ -648,19 +648,13 @@ export type ImplementerProvider = DatabaseProvider;
 export function resolveImplementerProvider({
   hasSupabaseProject,
   hasNeonProject,
-  supabaseAvailable,
-  neonAvailable,
 }: {
   hasSupabaseProject: boolean;
   hasNeonProject: boolean;
-  supabaseAvailable?: boolean;
-  neonAvailable?: boolean;
 }): ImplementerProvider | undefined {
-  return resolvePreferredDatabaseProvider({
+  return resolveLinkedDatabaseProvider({
     hasSupabaseProject,
-    supabaseAvailable: supabaseAvailable === true,
     hasNeonProject,
-    neonAvailable: neonAvailable === true,
   });
 }
 

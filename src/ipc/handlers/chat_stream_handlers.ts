@@ -50,7 +50,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
 import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
-import { resolvePreferredDatabaseProvider } from "@/shared/database_provider";
+import { resolveRootDatabasePromptState } from "@/shared/database_provider";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import type {
   ChatStreamChunkPayload,
@@ -201,37 +201,6 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 
 const logger = log.scope("chat_stream_handlers");
 
-export function resolveRootDatabasePromptState({
-  hasSupabaseProject,
-  supabaseCredentialsAvailable,
-  hasNeonProject,
-  neonProviderAvailable,
-}: {
-  hasSupabaseProject: boolean;
-  supabaseCredentialsAvailable: boolean;
-  hasNeonProject: boolean;
-  neonProviderAvailable: boolean;
-}):
-  | "supabase"
-  | "supabase-disconnected"
-  | "neon"
-  | "neon-disconnected"
-  | "none" {
-  const provider = resolvePreferredDatabaseProvider({
-    hasSupabaseProject,
-    supabaseAvailable: supabaseCredentialsAvailable,
-    hasNeonProject,
-    neonAvailable: neonProviderAvailable,
-  });
-  if (provider === "supabase") {
-    return supabaseCredentialsAvailable ? "supabase" : "supabase-disconnected";
-  }
-  if (provider === "neon") {
-    return neonProviderAvailable ? "neon" : "neon-disconnected";
-  }
-  return "none";
-}
-
 type ImplementerCapabilityApp = Pick<
   typeof apps.$inferSelect,
   | "supabaseProjectId"
@@ -257,8 +226,6 @@ export function resolveImplementerCapabilityState(
   const provider = resolveImplementerProvider({
     hasSupabaseProject: Boolean(app.supabaseProjectId),
     hasNeonProject: Boolean(app.neonProjectId),
-    supabaseAvailable: supabaseConnected,
-    neonAvailable: neonToolsAvailable,
   });
   const providerAvailable =
     provider === "supabase"
@@ -2242,7 +2209,7 @@ ${componentSnippet}
           hasSupabaseProject: Boolean(updatedChat.app.supabaseProjectId),
           supabaseCredentialsAvailable: initialSupabaseProviderToolsAvailable,
           hasNeonProject: Boolean(updatedChat.app.neonProjectId),
-          neonProviderAvailable: initialNeonProviderToolsAvailable,
+          neonCredentialsAvailable: initialNeonCredentialsAvailable,
         });
         if (rootDatabasePromptState === "supabase") {
           const supabaseClientCode = await getSupabaseClientCode({

@@ -199,5 +199,7 @@ describe("database provider tool routing", () => {
     });
     expect(executeSupabaseSqlMock).not.toHaveBeenCalled();
     expect(getSupabaseTableSchemaMock).not.toHaveBeenCalled();
+    expect(executeSqlTool.isEnabled?.(ctx)).toBe(false);
+    expect(getDatabaseTableSchemaTool.isEnabled?.(ctx)).toBe(false);
   });
 });

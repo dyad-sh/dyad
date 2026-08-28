@@ -17,9 +17,9 @@ import {
   hasUnclosedDyadWrite,
   processStreamChunks,
   resolveImplementerCapabilityState,
-  resolveRootDatabasePromptState,
   takePartialResponseForStream,
 } from "@/ipc/handlers/chat_stream_handlers";
+import { resolveRootDatabasePromptState } from "@/shared/database_provider";
 import type { AsyncIterableStream, TextStreamPart, ToolSet } from "ai";
 import fs from "node:fs";
 import path from "node:path";
@@ -81,7 +81,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonProviderAvailable: true,
+        neonCredentialsAvailable: true,
       }),
     ).toBe("neon");
   });
@@ -92,7 +92,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonProviderAvailable: true,
+        neonCredentialsAvailable: true,
       }),
     ).toBe("neon");
   });
@@ -103,7 +103,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonProviderAvailable: false,
+        neonCredentialsAvailable: false,
       }),
     ).toBe("neon-disconnected");
   });
@@ -114,20 +114,20 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: true,
         hasNeonProject: true,
-        neonProviderAvailable: true,
+        neonCredentialsAvailable: true,
       }),
     ).toBe("neon");
   });
 
-  it("selects usable Supabase for prompts when dual-linked Neon is unavailable", () => {
+  it("keeps dual-linked prompts on disconnected Neon instead of usable Supabase", () => {
     expect(
       resolveRootDatabasePromptState({
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: true,
         hasNeonProject: true,
-        neonProviderAvailable: false,
+        neonCredentialsAvailable: false,
       }),
-    ).toBe("supabase");
+    ).toBe("neon-disconnected");
   });
 
   it("keeps a dual-linked Neon association when neither provider is usable", () => {
@@ -136,7 +136,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: false,
         hasNeonProject: true,
-        neonProviderAvailable: false,
+        neonCredentialsAvailable: false,
       }),
     ).toBe("neon-disconnected");
   });
@@ -147,7 +147,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: true,
         supabaseCredentialsAvailable: false,
         hasNeonProject: false,
-        neonProviderAvailable: false,
+        neonCredentialsAvailable: false,
       }),
     ).toBe("supabase-disconnected");
   });
@@ -158,7 +158,7 @@ describe("root database prompt selection", () => {
         hasSupabaseProject: false,
         supabaseCredentialsAvailable: false,
         hasNeonProject: false,
-        neonProviderAvailable: false,
+        neonCredentialsAvailable: false,
       }),
     ).toBe("none");
   });

@@ -266,13 +266,11 @@ describe("local_agent_prompt", () => {
     }
   });
 
-  it("prefers a usable Neon project over disconnected Supabase", () => {
+  it("keeps Neon identity over disconnected Supabase", () => {
     expect(
       resolveImplementerProvider({
         hasSupabaseProject: true,
         hasNeonProject: true,
-        supabaseAvailable: false,
-        neonAvailable: true,
       }),
     ).toBe("neon");
   });

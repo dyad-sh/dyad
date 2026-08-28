@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ToolDefinition,
   AgentContext,
+  canUseLinkedDatabaseTools,
   canUseNeonTools,
   canUseSupabaseTools,
   escapeXmlAttr,
@@ -180,7 +181,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     inputSchema: executeSqlSchema,
     defaultConsent: "ask",
     modifiesState: true,
-    isEnabled: (ctx) => canUseSupabaseTools(ctx) || canUseNeonTools(ctx),
+    isEnabled: canUseLinkedDatabaseTools,
 
     getConsentPreview: (args) => args.query,
 

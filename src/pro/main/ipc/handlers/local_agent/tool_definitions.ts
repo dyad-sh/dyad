@@ -485,8 +485,10 @@ export async function estimateAgentToolTokens({
   isDyadPro,
   frameworkType,
   supabaseProjectId,
+  supabaseProviderToolsAvailable = false,
   neonProjectId,
   neonActiveBranchId,
+  neonProviderToolsAvailable = false,
   testingEnabled = false,
   canUseExplorerSubagent = false,
   canUseImplementerSubagent = false,
@@ -504,8 +506,10 @@ export async function estimateAgentToolTokens({
   isDyadPro: boolean;
   frameworkType: AgentContext["frameworkType"];
   supabaseProjectId: string | null;
+  supabaseProviderToolsAvailable?: boolean;
   neonProjectId: string | null;
   neonActiveBranchId: string | null;
+  neonProviderToolsAvailable?: boolean;
   testingEnabled?: boolean;
   canUseExplorerSubagent?: boolean;
   canUseImplementerSubagent?: boolean;
@@ -518,8 +522,10 @@ export async function estimateAgentToolTokens({
     isDyadPro,
     frameworkType,
     supabaseProjectId,
+    supabaseProviderToolsAvailable,
     neonProjectId,
     neonActiveBranchId,
+    neonProviderToolsAvailable,
     referencedApps: new Map(),
     testingEnabled,
     canUseExplorerSubagent,

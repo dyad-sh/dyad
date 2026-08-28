@@ -122,4 +122,27 @@ describe("Build mode tool profile", () => {
 
     expect(withMcp).toBeGreaterThan(withoutMcp);
   });
+
+  it("uses runtime provider-tool availability when estimating declarations", async () => {
+    const baseOptions = {
+      enableAppBlueprint: false,
+      isDyadPro: false,
+      frameworkType: "vite" as const,
+      supabaseProjectId: "supabase-project",
+      supabaseProviderToolsAvailable: true,
+      neonProjectId: "neon-project",
+      neonActiveBranchId: "neon-branch",
+    };
+
+    const linkedNeonUnavailable = await estimateAgentToolTokens({
+      ...baseOptions,
+      neonProviderToolsAvailable: false,
+    });
+    const linkedNeonAvailable = await estimateAgentToolTokens({
+      ...baseOptions,
+      neonProviderToolsAvailable: true,
+    });
+
+    expect(linkedNeonAvailable).toBeGreaterThan(linkedNeonUnavailable);
+  });
 });

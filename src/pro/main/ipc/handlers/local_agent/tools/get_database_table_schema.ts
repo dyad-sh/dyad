@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ToolDefinition,
   AgentContext,
+  canUseLinkedDatabaseTools,
   canUseNeonTools,
   canUseSupabaseTools,
   escapeXmlAttr,
@@ -30,7 +31,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
     "Get database table schema as PostgreSQL SQL/DDL. If tableName is provided, returns schema for that specific table and relevant constraints/indexes/triggers/policies. If omitted, returns schema for all public tables.",
   inputSchema: getDatabaseTableSchemaSchema,
   defaultConsent: "always",
-  isEnabled: (ctx) => canUseSupabaseTools(ctx) || canUseNeonTools(ctx),
+  isEnabled: canUseLinkedDatabaseTools,
 
   getConsentPreview: (args) =>
     args.tableName

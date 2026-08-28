@@ -347,6 +347,27 @@ export function canUseNeonTools<
   );
 }
 
+export function canUseLinkedDatabaseTools(
+  ctx: Pick<
+    AgentContext,
+    | "supabaseProjectId"
+    | "supabaseProviderToolsAvailable"
+    | "neonProjectId"
+    | "neonActiveBranchId"
+    | "neonProviderToolsAvailable"
+  >,
+): boolean {
+  const provider = resolveLinkedDatabaseProvider({
+    hasSupabaseProject: Boolean(ctx.supabaseProjectId),
+    hasNeonProject: Boolean(ctx.neonProjectId),
+  });
+  return provider === "neon"
+    ? canUseNeonTools(ctx)
+    : provider === "supabase"
+      ? canUseSupabaseTools(ctx)
+      : false;
+}
+
 export function getUnavailableDatabaseProviderMessage(
   ctx: Pick<
     AgentContext,

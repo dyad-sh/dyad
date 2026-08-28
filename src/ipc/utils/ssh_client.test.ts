@@ -201,12 +201,42 @@ describe("classifying a failed connection", () => {
       kind: "external",
     },
     {
+      name: "two ends that cannot agree on ciphers",
+      raw: {
+        level: "handshake",
+        message: "Handshake failed: no matching key exchange algorithm",
+      },
+      failure: "handshake-failed",
+      kind: "external",
+    },
+    {
       name: "anything else",
       raw: { level: "client-socket", message: "kernel exploded" },
       failure: "unknown",
       kind: "external",
     },
   ];
+
+  it("does not call a failed negotiation a changed identity", async () => {
+    // The key being turned down is answered before this is reached, where
+    // the verifier said no. What is left is an old or hardened sshd with no
+    // algorithm in common — and telling that user their machine may have
+    // been swapped is a false alarm about the one thing this checks for.
+    h.nextFailure = Object.assign(
+      new Error("Handshake failed: no matching host key format"),
+      { level: "handshake" },
+    );
+    const error = (await connectSsh(
+      TARGET,
+      trustOnFirstUse(() => {}),
+    ).catch((e) => e)) as SshError;
+
+    expect(error.failure).not.toBe("host-key-rejected");
+    expect(error.message).not.toMatch(/different host key/);
+    expect(error.message).toMatch(/could not agree on how to connect/);
+    // What the server said, so the real cause is not lost.
+    expect(error.message).toMatch(/no matching host key format/);
+  });
 
   it.each(CASES)("reads $name as $failure", async ({ raw, failure, kind }) => {
     h.nextFailure = Object.assign(new Error(String(raw.message)), raw);

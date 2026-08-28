@@ -31,6 +31,15 @@ export const SSH_FAILURES = [
    * a wait that had minutes left in it.
    */
   "command-timeout",
+  /**
+   * The handshake failed for a reason that is not the key being turned down.
+   *
+   * Key exchange or host-key algorithms with nothing in common, or a
+   * protocol error. Kept apart from "host-key-rejected" because that one
+   * says the server may not be the machine it was — which is alarming, and
+   * wrong for an old or hardened sshd that simply cannot agree on ciphers.
+   */
+  "handshake-failed",
   /** Nothing here recognised it. */
   "unknown",
 ] as const;

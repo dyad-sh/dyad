@@ -102,10 +102,17 @@ function classify(
     );
   }
   if (level === "handshake") {
+    // Not the key being turned down: that is answered before this is asked,
+    // where the verifier said no. What is left is the two ends failing to
+    // agree — so this must not say the machine may have been swapped, which
+    // is what a user with an old sshd would otherwise be told.
     return new SshError(
-      "host-key-rejected",
-      "The server presented a different host key than the one expected.",
-      DyadErrorKind.Precondition,
+      "handshake-failed",
+      `Dyad and this server could not agree on how to connect${
+        err.message ? `: ${err.message}` : ""
+      }. That usually means the server's SSH is older or more restricted ` +
+        `than Dyad's defaults.`,
+      DyadErrorKind.External,
     );
   }
   if (level === "client-timeout") {

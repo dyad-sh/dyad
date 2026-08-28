@@ -356,6 +356,22 @@ describe("runServerSetup", () => {
     expect(result.insecureReason).toContain("restart. Coolify");
   });
 
+  it("does not leave a stop stranded after the message's own punctuation", async () => {
+    // Coolify's refusals end in a colon before whatever it printed, and an
+    // empty answer leaves that colon last.
+    const server = fakeServer();
+    const result = await run(server, {
+      tryEnableHttpsImpl: async () => {
+        throw Object.assign(new Error("Coolify did not apply the domain:"), {
+          warning: "Coolify may still be configured for x.sslip.io.",
+        });
+      },
+    }).promise;
+
+    expect(result.insecureReason).toContain("domain. Coolify");
+    expect(result.insecureReason).not.toContain(":.");
+  });
+
   it("still stops when the user cancels during HTTPS", async () => {
     // Cancelling is the user asking for the work to stop, which is not the
     // same as a step that could not be done.

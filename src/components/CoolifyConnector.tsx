@@ -1006,6 +1006,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
   return (
     <div className="space-y-3" data-testid="coolify-connector">
+      {leftBehind}
       {coolifySection}
 
       <div className="border-t pt-3 text-sm font-semibold">

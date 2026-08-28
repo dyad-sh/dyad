@@ -47,11 +47,17 @@ vi.mock("@/components/CoolifyServerSetup", () => ({
   CoolifyServerSetup: ({
     children,
     onUseExisting,
+    heldServerUrl,
   }: {
     children?: React.ReactNode;
     onUseExisting?: (url?: string) => void;
+    heldServerUrl?: string | null;
   }) => (
     <div data-testid="coolify-server-setup-stub">
+      {/* Shown so the wiring is observable. The panel refuses to install
+          while this is set, and nothing else here would notice it being
+          dropped on the way in. */}
+      <span data-testid="stub-held-server">{heldServerUrl ?? ""}</span>
       <button
         type="button"
         onClick={() => onUseExisting?.("https://installed.example.com")}
@@ -489,6 +495,23 @@ describe("a server Dyad set up but has no token for", () => {
     expect(dismissMock).toHaveBeenCalled();
   });
 
+  it("tells the installer which server it is already holding", async () => {
+    // The panel cannot ask: it never receives coolify status. Without this
+    // it offers an install the handler answers only with "sign out first".
+    deploy.value = SERVER_NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      message: "boom",
+      cancelled: false,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("stub-held-server").textContent).toBe(
+      "http://203.0.113.5:8000",
+    );
+  });
+
   it("has nothing to sign out of when the run never got that far", async () => {
     // A failure before the account was written leaves Dyad holding nothing,
     // so the way to forget it is an offer to forget what does not exist.
@@ -901,6 +924,37 @@ describe("naming the target in the connected view", () => {
     appUrl: "https://demo.example.com",
     lastDeployedAt: 1,
   };
+
+  it("still says what a cancelled run left behind", () => {
+    // The run belongs to the machine, not to a window or to one app. An app
+    // that already has somewhere to deploy is the easiest tab to be sitting
+    // on when a cancel lands, and it is the same server underneath.
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "",
+      cancelled: true,
+      warning: "Coolify may still be configured for 203.0.113.5.sslip.io.",
+    };
+    deploy.value = {
+      status: CONNECTED,
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "production-box" }],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-setup-warning").textContent).toContain(
+      "may still be configured",
+    );
+  });
 
   it("names the server and project once discovery has answered", () => {
     deploy.value = {

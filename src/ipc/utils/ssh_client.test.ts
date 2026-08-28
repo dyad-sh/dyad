@@ -236,6 +236,8 @@ describe("classifying a failed connection", () => {
     expect(error.message).toMatch(/could not agree on how to connect/);
     // What the server said, so the real cause is not lost.
     expect(error.message).toMatch(/no matching host key format/);
+    // Said once: the sentence above already reports a handshake that failed.
+    expect(error.message).not.toMatch(/connect: Handshake failed/i);
   });
 
   it.each(CASES)("reads $name as $failure", async ({ raw, failure, kind }) => {

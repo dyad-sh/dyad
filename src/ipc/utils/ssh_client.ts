@@ -108,8 +108,12 @@ function classify(
     // is what a user with an old sshd would otherwise be told.
     return new SshError(
       "handshake-failed",
+      // The library's own words, with its "Handshake failed:" preamble taken
+      // off — this sentence has already said that much.
       `Dyad and this server could not agree on how to connect${
-        err.message ? `: ${err.message}` : ""
+        err.message
+          ? `: ${err.message.replace(/^handshake failed:\s*/i, "")}`
+          : ""
       }. That usually means the server's SSH is older or more restricted ` +
         `than Dyad's defaults.`,
       DyadErrorKind.External,

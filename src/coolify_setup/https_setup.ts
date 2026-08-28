@@ -157,17 +157,19 @@ export async function applyInstanceDomain(
   }
   const answer = await runTinker(
     session,
-    [
-      `$s = \\App\\Models\\InstanceSettings::get();`,
-      domain === null
-        ? `$s->fqdn = null;`
-        : `$s->fqdn = 'https://' . getenv('DYAD_INSTANCE_DOMAIN');`,
-      `$s->save();`,
-      // Server 0 is the machine Coolify runs on, which is the one serving the
-      // dashboard this domain points at.
-      `\\App\\Models\\Server::find(0)->setupDynamicProxyConfiguration();`,
-      `echo 'applied';`,
-    ].join("\n"),
+    // One statement, so nothing after a throw runs. Tinker carries on to the
+    // next line when a statement fails, which for a marker on its own line
+    // means the write can fail and still report success — and this marker is
+    // what the caller reads to decide the domain went on, or came back off.
+    // Server 0 is the machine Coolify runs on, which is the one serving the
+    // dashboard this domain points at.
+    `echo (function () { $s = \\App\\Models\\InstanceSettings::get(); ` +
+      (domain === null
+        ? `$s->fqdn = null; `
+        : `$s->fqdn = 'https://' . getenv('DYAD_INSTANCE_DOMAIN'); `) +
+      `$s->save(); ` +
+      `\\App\\Models\\Server::find(0)->setupDynamicProxyConfiguration(); ` +
+      `return 'applied'; })();`,
     {
       env: domain === null ? {} : { DYAD_INSTANCE_DOMAIN: domain },
       signal,

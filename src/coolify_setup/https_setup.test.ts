@@ -491,6 +491,33 @@ describe("tryEnableHttps", () => {
     expect(said.join("")).toMatch(/Removing the temporary domain/);
   });
 
+  it("only says applied if the write and the proxy rebuild both ran", async () => {
+    // Tinker goes on to the next line when a statement throws, so a marker
+    // standing on its own would report a domain that was never set. One
+    // statement means a throw takes the marker with it.
+    const { session } = fakeSession();
+    const scripts: string[] = [];
+    session.run = (async (_command: string, options?: { input?: string }) => {
+      scripts.push(options?.input ?? "");
+      return { code: 0, stdout: transcript("applied"), stderr: "" };
+    }) as unknown as SshSession["run"];
+
+    await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      check: async () => true,
+    });
+
+    const applying = scripts.find((script) => script.includes("fqdn")) ?? "";
+    // The save, the proxy rebuild and the marker are one statement, so the
+    // marker cannot be reached without them.
+    expect(applying).toContain("return 'applied'");
+    expect(applying).not.toMatch(/echo 'applied'/);
+    const oneLine = applying.split("\n").find((line) => line.includes("fqdn"))!;
+    expect(oneLine).toContain("save()");
+    expect(oneLine).toContain("setupDynamicProxyConfiguration()");
+    expect(oneLine).toContain("return 'applied'");
+  });
+
   it("says so when the domain will not come back off", async () => {
     // The state the revert exists to avoid, arrived at anyway. Left silent,
     // the last thing said was that the domain was being removed — which

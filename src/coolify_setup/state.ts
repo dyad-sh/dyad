@@ -100,6 +100,14 @@ export interface CoolifySetupFailed {
   log: string;
   /** Cancelling is the user's decision, not a fault of the install. */
   cancelled: boolean;
+  /**
+   * Something the run changed and could not change back.
+   *
+   * Kept apart from `message`, which says why the run ended: this is what is
+   * left for the user to do about it, and it outlives a cancel — where the
+   * panel says nothing about the ending itself.
+   */
+  warning?: string;
 }
 
 export type CoolifySetupState =
@@ -148,6 +156,8 @@ export type CoolifySetupEvent =
       invocationRef: CoolifySetupInvocationRef;
       message: string;
       cancelled: boolean;
+      /** Something the run changed and could not change back. */
+      warning?: string;
     }
   /** The user has read the terminal screen and moved on. */
   | { type: "dismissed" };

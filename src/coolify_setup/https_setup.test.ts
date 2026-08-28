@@ -529,6 +529,44 @@ describe("tryEnableHttps", () => {
     expect(result.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
+  it("puts what is left to undo on a cancellation as it leaves", async () => {
+    // The panel says nothing about a cancelled run, so a domain that would
+    // not come back off would otherwise be reported only into a log the user
+    // is never shown.
+    const { session } = fakeSession();
+    const answering = session.run as unknown as (
+      command: string,
+      options?: { input?: string },
+    ) => Promise<unknown>;
+    const controller = new AbortController();
+    let domainWrites = 0;
+    session.run = (async (command: string, options?: { input?: string }) => {
+      if ((options?.input ?? "").includes("fqdn")) {
+        domainWrites += 1;
+        // The domain goes on, then the user cancels, then taking it back off
+        // is what fails.
+        if (domainWrites === 1) {
+          const answer = await answering(command, options);
+          controller.abort();
+          return answer;
+        }
+        throw new Error("tinker is wedged");
+      }
+      return answering(command, options);
+    }) as unknown as SshSession["run"];
+
+    const error = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      check: async () => false,
+      signal: controller.signal,
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error & { warning?: string }).warning).toMatch(
+      /may still be configured for/,
+    );
+  });
+
   it("gives the revert the full budget when nobody is waiting on a cancel", async () => {
     // The short bound exists so "Stopping…" cannot hang. On the ordinary
     // no-certificate path there is no cancel, and the domain still has to

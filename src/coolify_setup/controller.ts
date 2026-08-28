@@ -194,6 +194,11 @@ export class CoolifySetupController {
           invocationRef,
           message: error instanceof Error ? error.message : String(error),
           cancelled,
+          // Set by whatever could not put the server back as it found it.
+          warning:
+            error instanceof Error
+              ? (error as Error & { warning?: string }).warning
+              : undefined,
         });
         throw error;
       })

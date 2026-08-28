@@ -565,6 +565,63 @@ describe("pressing Install", () => {
     );
   });
 
+  it("says what is left to undo even when the run was cancelled", async () => {
+    // Stopping was the user's decision, so the panel stays quiet about the
+    // ending — but a domain the run put on and could not take back off is
+    // theirs to clear, and saying nothing leaves a server answering at a
+    // name it has no certificate for.
+    h.snapshot.mockResolvedValue({
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "",
+      cancelled: true,
+      warning: "Coolify may still be configured for 203.0.113.5.sslip.io.",
+    });
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-warning").textContent).toContain(
+        "may still be configured",
+      ),
+    );
+    // Still quiet about the cancellation itself.
+    expect(screen.queryByTestId("coolify-setup-failure")).toBeNull();
+  });
+
+  it("will not install against a verdict a new check has replaced", async () => {
+    // Checking again is how the user reacts to changing the address or
+    // suspecting the machine moved. Until the new answer lands there is no
+    // fingerprint on screen to have agreed to, and installing would hand
+    // root and a fresh password to whatever now answers.
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
+    expect(
+      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    // A second check that has not answered yet.
+    h.inspect.mockReturnValue(new Promise(() => {}));
+    await user.click(screen.getByTestId("coolify-setup-inspect"));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
+    expect(screen.queryByTestId("coolify-setup-inspection")).toBeNull();
+  });
+
   it("says the press landed while the first connect is still going", async () => {
     // Disabled on its own reads as the button having refused. The connect
     // behind it can take seconds with nothing else on screen moving, and

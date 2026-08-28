@@ -440,6 +440,9 @@ export async function tryEnableHttps(
   // the domain comes back off before anyone is told what happened.
   let keepDomain = false;
   let settled: HttpsOutcome | null = null;
+  // Held so the revert below can add to whatever is on its way out. A cancel
+  // leaves by throwing, and its message is all the panel keeps.
+  let thrown: unknown;
   try {
     await applyInstanceDomain(session, domain, { signal });
 
@@ -469,6 +472,9 @@ export async function tryEnableHttps(
           `everyone using it, and it can run out.`,
     };
     return settled;
+  } catch (error) {
+    thrown = error;
+    throw error;
   } finally {
     // Without the signal, which by this point may be the reason we are here.
     // Bounded by the tinker call's own timeout, so a wedged server cannot
@@ -496,6 +502,15 @@ export async function tryEnableHttps(
           `Could not remove the temporary domain ${domain}. Coolify may ` +
             `still be set to answer at it.\n`,
         );
+        // A cancel leaves this way, and the panel shows nothing for a
+        // cancelled run — so without this the one thing the user has to act
+        // on would be said only into a log nobody is shown.
+        if (thrown instanceof Error) {
+          (thrown as Error & { warning?: string }).warning =
+            `Coolify may still be configured for ${domain}; clear the ` +
+            `instance domain in its settings if the dashboard does not ` +
+            `answer at ${plainUrlFor(host)}.`;
+        }
         if (settled) {
           // Wrapped, so the trim applies to the joined sentence rather than
           // binding to the last piece of it.

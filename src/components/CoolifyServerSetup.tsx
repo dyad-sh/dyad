@@ -481,6 +481,18 @@ export function CoolifyServerSetup({
       {/* One block, so Dismiss sits beside the message rather than inside the
           log — a connection or preflight refusal carries no output, and would
           otherwise have nothing to clear it. */}
+      {/* Shown whether or not the run was cancelled. The block below stays
+          quiet about a cancel, because stopping was the user's decision and
+          not a fault — but something the run changed and could not change
+          back is theirs to undo either way. */}
+      {setup.type === "failed" && setup.warning && (
+        <p
+          className="text-sm text-amber-600 dark:text-amber-400"
+          data-testid="coolify-setup-warning"
+        >
+          {setup.warning}
+        </p>
+      )}
       {setup.type === "failed" && !setup.cancelled && (
         <div className="space-y-1" data-testid="coolify-setup-failure">
           <div className="flex items-center justify-between gap-2">

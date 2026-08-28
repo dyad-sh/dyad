@@ -187,6 +187,12 @@ export function CoolifyServerSetup({
     // Refreshed before the screen is put away. Dismissing first hands the
     // panel back to a connector that still believes there is no token, so the
     // empty install form flashes up before the right screen arrives.
+    //
+    // All of it, including the setup key, unlike the narrower predicate in
+    // useCoolifySetupSnapshot — deliberately, not by oversight. There the
+    // snapshot has just been pushed and re-reading it is how a finished run
+    // gets put back on a step it has left; here the screen is going away and
+    // the connector behind it needs everything current. Keep them apart.
     await queryClient.invalidateQueries({ queryKey: queryKeys.coolify.all });
     // Told where to go before the screen is cleared. Dismissing first puts the
     // machine back to idle while the panel above still believes there is
@@ -586,6 +592,10 @@ export function CoolifyServerSetup({
           onClick={() => run.mutate()}
           data-testid="coolify-setup-install"
         >
+          {/* The gap between pressing this and the machine's first broadcast
+              is a slow SSH connect, and nothing else on screen moves for it.
+              Check server already says so; this said nothing. */}
+          {run.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Install Coolify
         </Button>
       </div>

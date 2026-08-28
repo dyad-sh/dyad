@@ -565,6 +565,27 @@ describe("pressing Install", () => {
     );
   });
 
+  it("says the press landed while the first connect is still going", async () => {
+    // Disabled on its own reads as the button having refused. The connect
+    // behind it can take seconds with nothing else on screen moving, and
+    // Check server already says so for the same wait.
+    h.run.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    renderPanel();
+    await user.type(screen.getByTestId("coolify-setup-host"), "203.0.113.5");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
+    await user.click(screen.getByTestId("coolify-setup-install"));
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("coolify-setup-install")
+          .querySelector(".animate-spin"),
+      ).toBeTruthy(),
+    );
+  });
+
   it("does not start when the key could not be read", async () => {
     // The key is what the server trusts; without it the install cannot work,
     // and the panel already says so.

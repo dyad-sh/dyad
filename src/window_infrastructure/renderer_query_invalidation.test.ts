@@ -227,6 +227,30 @@ describe("Coolify contracts and the window that acted", () => {
     // that started it.
   });
 
+  it("tells other windows when an unencrypted token is kept", () => {
+    // The same write saveToken makes: it is what turns every app connected.
+    // Without it a second window that watched the install finish goes on
+    // offering to set a server up, and pressing Install there is refused for
+    // holding an account it does not know about.
+    const contract = coolifySetupContracts.acceptInsecureToken as {
+      originHandles?: (input: unknown) => Array<{ family: string }>;
+      invalidates?: (input: unknown) => Array<{ family: string }>;
+    };
+    const claims = (contract.originHandles?.(undefined) ?? []).map(
+      (s) => s.family,
+    );
+    const publishes = (contract.invalidates?.(undefined) ?? []).map(
+      (s) => s.family,
+    );
+
+    expect(publishes).toContain("apps");
+    expect(publishes).toContain("coolify");
+    // As with run: the finished screen refreshes coolify on its own way out,
+    // in the order it needs, so it is not handed back mid-write.
+    expect(claims).toContain("coolify");
+    expect(claims).not.toContain("apps");
+  });
+
   it("publishes project creation so other windows see the new project", () => {
     const { publishes } = handled("createProject", { name: "x" });
     expect(publishes).toContain("coolify");

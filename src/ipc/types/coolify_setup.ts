@@ -186,6 +186,8 @@ export const SetupSnapshotSchema = z.discriminatedUnion("type", [
     message: z.string(),
     log: z.string(),
     cancelled: z.boolean(),
+    /** Left behind on the server, and still the user's to undo. */
+    warning: z.string().optional(),
   }),
 ]);
 
@@ -275,6 +277,13 @@ export const coolifySetupContracts = {
     channel: "coolify-setup:accept-insecure-token",
     input: z.void(),
     output: z.void(),
+    // The same write `coolify:save-token` makes, so the same reach: a window
+    // that watched this install finish is otherwise still offering to set a
+    // server up, and pressing it there is refused for holding an account.
+    invalidates: () => [{ family: "apps" }, { family: "coolify" }],
+    // The finished screen refreshes on its own way out, in the order it needs
+    // — the panel behind it must not be handed back before the token lands.
+    originHandles: () => [{ family: "coolify" }],
   }),
 
   /** The user has read the finished screen; put the panel back to the form. */

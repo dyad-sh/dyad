@@ -74,9 +74,12 @@ interface FakeServerState extends FakeServerBehaviour {
  *
  * tinker echoes every line it is fed with a "> " prompt, and the output of a
  * statement lands on the line after the prompt that produced it — so the
- * opening marker arrives with a prompt attached, which is exactly what
- * distinguishes it from the echo of the line that printed it. Getting this
- * wrong is not cosmetic: the parser matches on that prefix.
+ * opening marker arrives with a prompt attached.
+ *
+ * The prompt is emitted because a real transcript carries one, not because
+ * the parser demands it: that tolerates the prompt being absent or repeated,
+ * since which of those psysh prints is its own business. A fake that dropped
+ * it would simply stop modelling what a real one sends.
  */
 function transcript(script: string, output: string): string {
   const echoed = script

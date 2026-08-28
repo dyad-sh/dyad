@@ -17,7 +17,9 @@ import type { SshSession } from "@/ipc/utils/ssh_client";
  * tinker echoes every line it is fed, prefixed `> `, and the first line of real
  * output lands on the same line as the last prompt. So the transcript contains
  * the marker twice: once in the echo of the line that prints it, once as the
- * output itself. Anchoring on `> MARKER` alone would match the echo.
+ * output itself. Looking for the marker anywhere on a line would take the
+ * echo, so the match is anchored to a whole line — which the echo cannot be,
+ * because it carries the script around the marker.
  */
 const START = "__DYAD_OUT_START__";
 const END = "__DYAD_OUT_END__";

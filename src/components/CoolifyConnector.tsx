@@ -183,23 +183,44 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     setupState.type === "failed" && !setupState.cancelled;
 
   /**
-   * What a run changed on the server and could not change back.
+   * What a terminal run left for the user to know about.
    *
-   * Here rather than in the installer panel: this only ever arrives with a
-   * cancel, and a cancelled run hands the screen back to the card below
-   * instead of to that panel — so said there, it would never be seen. It
-   * carries its own way out because the panel's Dismiss goes with it, and
-   * until something dismisses, the machine stays on the cancelled run.
+   * Two things, and the panel would otherwise say neither. A domain the run
+   * put on and could not take back off is theirs to clear; and a cancel that
+   * got as far as running the installer may have left Docker and Coolify on
+   * the server, which is why checking it again can answer that Coolify is
+   * already there.
+   *
+   * Here rather than in the installer panel because a cancelled run hands the
+   * screen back to the card below instead of to that panel, and above the
+   * status guards because this belongs to the machine rather than to one
+   * app's view of it. It carries its own way out: the panel's Dismiss goes
+   * with the panel, and nothing else clears a cancelled run.
    */
-  const leftBehind =
-    setupState.type === "failed" && setupState.warning ? (
+  const stoppedAfterInstalling =
+    setupState.type === "failed" &&
+    setupState.cancelled &&
+    // The log only takes output from the installer onwards, so an empty one
+    // is a run that stopped before it could change anything. Saying Docker
+    // might be on the server would be a new untruth.
+    setupState.log.trim() !== "";
+  const terminalNotice =
+    setupState.type === "failed" &&
+    (setupState.warning || stoppedAfterInstalling) ? (
       <div
         className="flex items-start justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3"
         data-testid="coolify-setup-warning"
       >
-        <p className="text-sm text-amber-600 dark:text-amber-400">
-          {setupState.warning}
-        </p>
+        <div className="space-y-1 text-sm text-amber-600 dark:text-amber-400">
+          {stoppedAfterInstalling && (
+            <p>
+              Setting up Coolify was stopped. The installer had already started,
+              so Docker and Coolify may be on the server — if checking it again
+              says Coolify is already there, that is why.
+            </p>
+          )}
+          {setupState.warning && <p>{setupState.warning}</p>}
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -263,8 +284,14 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // one. It is waiting, so it shows as waiting.
   if (appId === null || isStatusLoading || (!status && !statusError)) {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+      <div className="space-y-3">
+        {/* Above the two guards below, not inside the branches after them: a
+            run that ended belongs to the machine, and this app's status
+            being slow or unreadable is no reason to take back what it said. */}
+        {terminalNotice}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+        </div>
       </div>
     );
   }
@@ -274,20 +301,23 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     // so the panel stayed empty until a remount. The discovery query beside
     // it has said so properly all along.
     return (
-      <div
-        className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
-        data-testid="coolify-status-error"
-      >
-        <p className="font-medium">Could not read this app's Coolify setup</p>
-        <p className="mt-1">{getErrorMessage(statusError)}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-2"
-          onClick={() => refetchStatus()}
+      <div className="space-y-3">
+        {terminalNotice}
+        <div
+          className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+          data-testid="coolify-status-error"
         >
-          Try again
-        </Button>
+          <p className="font-medium">Could not read this app's Coolify setup</p>
+          <p className="mt-1">{getErrorMessage(statusError)}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => refetchStatus()}
+          >
+            Try again
+          </Button>
+        </div>
       </div>
     );
   }
@@ -437,7 +467,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       if (status.serverUrl && !isReportingFailure) {
         return (
           <div className="space-y-3" data-testid="coolify-connector">
-            {leftBehind}
+            {terminalNotice}
             <div
               className="rounded-md border p-3 text-sm"
               data-testid="coolify-already-has-server"
@@ -458,7 +488,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       }
       return (
         <div className="space-y-3" data-testid="coolify-connector">
-          {leftBehind}
+          {terminalNotice}
           {serverSetup}
           {/* Installing again is refused while Dyad still holds an admin
               password, and that refusal says to sign out first. Behind the
@@ -487,7 +517,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     const isInsecure = hasUsableScheme && !isSecureInstanceUrl(trimmedUrl);
     return (
       <div className="space-y-3" data-testid="coolify-connector">
-        {leftBehind}
+        {terminalNotice}
         <p className="text-sm text-muted-foreground">
           Deploy this app to a Coolify instance you run. In Coolify, enable the
           API under Settings → Advanced → API Access, then create a token under
@@ -649,7 +679,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     );
     return (
       <div className="space-y-3" data-testid="coolify-connector">
-        {leftBehind}
+        {terminalNotice}
         {coolifySection}
 
         <div className="border-t pt-3 text-sm font-semibold">
@@ -1006,7 +1036,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
   return (
     <div className="space-y-3" data-testid="coolify-connector">
-      {leftBehind}
+      {terminalNotice}
       {coolifySection}
 
       <div className="border-t pt-3 text-sm font-semibold">

@@ -378,6 +378,7 @@ describe("a server Dyad set up but has no token for", () => {
       host: "203.0.113.5",
       message: "Cancelled",
       cancelled: true,
+      log: "",
     };
     render(<CoolifyConnector appId={1} />);
 
@@ -395,6 +396,7 @@ describe("a server Dyad set up but has no token for", () => {
       host: "203.0.113.5",
       message: "boom",
       cancelled: false,
+      log: "",
     };
     render(<CoolifyConnector appId={1} />);
     expect({
@@ -408,6 +410,77 @@ describe("a server Dyad set up but has no token for", () => {
         screen.queryByRole("button", { name: "Sign out of Coolify" }),
       ),
     }).toEqual({ failureVisible: true, refusalCard: false, signOut: true });
+  });
+
+  it("says a cancelled install may have left something behind", async () => {
+    // Cancel reads as an undo, and it is not one: the installer may already
+    // have put Docker and Coolify on the server, which is why checking it
+    // again can answer that Coolify is already there. Saying nothing leaves
+    // that refusal looking like it came from nowhere.
+    deploy.value = NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "3/6 Pulling coolify...",
+      cancelled: true,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-setup-warning").textContent).toContain(
+      "Docker and Coolify may be on the server",
+    );
+  });
+
+  it("says nothing about a cancel that never got started", async () => {
+    // No output means the installer never ran, so the server is as it was.
+    // Telling that user Docker might be on it would be a new untruth.
+    deploy.value = NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "",
+      cancelled: true,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByTestId("coolify-setup-warning")).toBeNull();
+  });
+
+  it("keeps a terminal run's notice when this app's status cannot be read", async () => {
+    // The run belongs to the machine. A status query that fails is about one
+    // app, and must not take the only note about what the run left behind.
+    deploy.value = {
+      status: undefined,
+      statusError: new Error("could not read the app"),
+    };
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "3/6 Pulling coolify...",
+      cancelled: true,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByTestId("coolify-status-error")).toBeTruthy();
+    expect(screen.getByTestId("coolify-setup-warning")).toBeTruthy();
   });
 
   it("says what a cancelled run left on the server", async () => {
@@ -504,6 +577,7 @@ describe("a server Dyad set up but has no token for", () => {
       host: "203.0.113.5",
       message: "boom",
       cancelled: false,
+      log: "",
     };
     render(<CoolifyConnector appId={1} />);
 
@@ -521,6 +595,7 @@ describe("a server Dyad set up but has no token for", () => {
       host: "203.0.113.5",
       message: "boom",
       cancelled: false,
+      log: "",
     };
     render(<CoolifyConnector appId={1} />);
 
@@ -560,6 +635,7 @@ describe("a server Dyad set up but has no token for", () => {
       host: "203.0.113.5",
       message: "boom",
       cancelled: false,
+      log: "",
     };
     const user = userEvent.setup();
     render(<CoolifyConnector appId={1} />);

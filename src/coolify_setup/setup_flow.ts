@@ -287,7 +287,11 @@ export async function runServerSetup({
       https = {
         instanceUrl: plainUrlFor(target.host),
         secure: false,
-        reason: leftBehind ? `${said} ${leftBehind}` : said,
+        // Two sentences, not a run-on: the message is the library's or
+        // Coolify's and may or may not end in a stop of its own.
+        reason: leftBehind
+          ? `${said.replace(/\s*\.?\s*$/, "")}. ${leftBehind}`
+          : said,
       };
     }
     onAccountKnown?.({ credentials, dashboardUrl: https.instanceUrl });

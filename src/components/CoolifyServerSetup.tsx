@@ -70,6 +70,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 
 export function CoolifyServerSetup({
   onUseExisting,
+  heldServerUrl,
   children,
 }: {
   /**
@@ -80,6 +81,14 @@ export function CoolifyServerSetup({
    * built — and leaving it blank means typing from memory.
    */
   onUseExisting: (instanceUrl?: string) => void;
+  /**
+   * The server Dyad already holds an account for, if it holds one.
+   *
+   * Installing is refused outright while it does — Dyad has the only copy of
+   * that password — so without this the button is live for a press that can
+   * only come back as an error.
+   */
+  heldServerUrl?: string | null;
   /** Sits under the form. Not under the run or the result, which have their
       own next step and nothing to add to. */
   children?: ReactNode;
@@ -587,7 +596,10 @@ export function CoolifyServerSetup({
             // whatever answers the address with the admin password and a
             // token. It also catches an existing Coolify, too little memory
             // and a held package lock, which is a failed install either way.
-            inspectionForHost?.ready !== true
+            inspectionForHost?.ready !== true ||
+            // Refused by the handler while Dyad holds an account, so offering
+            // it here only produces a toast.
+            Boolean(heldServerUrl)
           }
           onClick={() => run.mutate()}
           data-testid="coolify-setup-install"
@@ -599,6 +611,16 @@ export function CoolifyServerSetup({
           Install Coolify
         </Button>
       </div>
+      {heldServerUrl && (
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="coolify-setup-holds-account"
+        >
+          Dyad is holding the admin password for {heldServerUrl}, and it has the
+          only copy. Sign out of Coolify to set up another — that shows the
+          password one last time before forgetting it.
+        </p>
+      )}
       {!inspectionForHost && host.trim() && (
         <p className="text-sm text-muted-foreground">
           Check the server first. Dyad shows you its fingerprint, and installs

@@ -351,6 +351,9 @@ describe("runServerSetup", () => {
     expect(result.secure).toBe(false);
     expect(result.insecureReason).toContain("proxy would not restart");
     expect(result.insecureReason).toContain("may still be configured");
+    // Two sentences. The library's message may or may not end in a stop of
+    // its own, and neither spelling should run the two together.
+    expect(result.insecureReason).toContain("restart. Coolify");
   });
 
   it("still stops when the user cancels during HTTPS", async () => {

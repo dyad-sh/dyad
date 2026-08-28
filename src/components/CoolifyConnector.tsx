@@ -217,6 +217,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
   const serverSetup = (
     <CoolifyServerSetup
+      // Installing is refused while this is set, so the panel needs it to
+      // avoid offering a press that can only come back as an error.
+      heldServerUrl={status?.serverUrl ?? null}
       onUseExisting={(url) => {
         if (url) setInstanceUrl(url);
         setIsEnteringToken(true);
@@ -484,6 +487,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     const isInsecure = hasUsableScheme && !isSecureInstanceUrl(trimmedUrl);
     return (
       <div className="space-y-3" data-testid="coolify-connector">
+        {leftBehind}
         <p className="text-sm text-muted-foreground">
           Deploy this app to a Coolify instance you run. In Coolify, enable the
           API under Settings → Advanced → API Access, then create a token under
@@ -645,6 +649,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     );
     return (
       <div className="space-y-3" data-testid="coolify-connector">
+        {leftBehind}
         {coolifySection}
 
         <div className="border-t pt-3 text-sm font-semibold">

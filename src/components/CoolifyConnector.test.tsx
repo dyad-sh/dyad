@@ -434,6 +434,34 @@ describe("a server Dyad set up but has no token for", () => {
     expect(screen.queryByTestId("coolify-server-setup-stub")).toBeNull();
   });
 
+  it("says it on the token form too, where another window may be sitting", async () => {
+    // The run belongs to the machine, not to a window. One that had already
+    // moved on to entering a token still needs to know what was left behind.
+    deploy.value = NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "",
+      cancelled: true,
+      warning: "Coolify may still be configured for 203.0.113.5.sslip.io.",
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "I already have Coolify installed" }),
+    );
+    expect(screen.getByTestId("coolify-setup-warning").textContent).toContain(
+      "may still be configured",
+    );
+  });
+
   it("gives a cancelled run's warning a way off the screen", async () => {
     // Nothing else dismisses a cancelled run — the panel's own Dismiss went
     // with the panel — so without this it would sit there for good.

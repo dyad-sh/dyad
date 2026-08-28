@@ -70,7 +70,10 @@ vi.mock("@/ipc/types", () => ({
 
 const { CoolifyServerSetup } = await import("./CoolifyServerSetup");
 
-function renderPanel(onUseExisting = vi.fn()) {
+function renderPanel(
+  onUseExisting = vi.fn(),
+  props: { heldServerUrl?: string | null } = {},
+) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -79,7 +82,7 @@ function renderPanel(onUseExisting = vi.fn()) {
     invalidate,
     ...render(
       <QueryClientProvider client={client}>
-        <CoolifyServerSetup onUseExisting={onUseExisting}>
+        <CoolifyServerSetup onUseExisting={onUseExisting} {...props}>
           <div data-testid="beneath" />
         </CoolifyServerSetup>
       </QueryClientProvider>,
@@ -563,6 +566,26 @@ describe("pressing Install", () => {
           .disabled,
       ).toBe(true),
     );
+  });
+
+  it("does not offer an install the handler will refuse", async () => {
+    // A run that failed after the account was written leaves this panel up,
+    // and a fresh check would otherwise re-enable Install — for a press that
+    // can only come back as "sign out first".
+    const user = userEvent.setup();
+    renderPanel(vi.fn(), { heldServerUrl: "http://203.0.113.5:8000" });
+    await user.type(screen.getByTestId("coolify-setup-host"), "198.51.100.9");
+    await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
+    await checkServer(user);
+
+    expect(
+      (screen.getByTestId("coolify-setup-install") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    // And says why, next to the way out of it.
+    expect(
+      screen.getByTestId("coolify-setup-holds-account").textContent,
+    ).toContain("Sign out of Coolify");
   });
 
   it("will not install against a verdict a new check has replaced", async () => {

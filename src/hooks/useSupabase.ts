@@ -34,7 +34,7 @@ const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
  * that case as `Internal`, and `kind` survives IPC, so this needs no message
  * matching.
  */
-function isCreatedButUnlinkedError(error: unknown): boolean {
+export function isCreatedButUnlinkedError(error: unknown): boolean {
   return isDyadError(error) && error.kind === DyadErrorKind.Internal;
 }
 
@@ -361,6 +361,11 @@ export function useSupabaseProjectStatus({
     // provision. No renderer retry either — the main process already retries,
     // and a cancelled one lands in terminal `error` after a single failure.
     staleTime: 0,
+    // `staleTime: 0` would otherwise let React Query's focus and reconnect
+    // refetches through unthrottled, one request per event against a
+    // rate-limited API. Mount is the recovery path that matters.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
     refetchInterval: (query) => {
       // A terminal error is the bound. React Query retains the last successful

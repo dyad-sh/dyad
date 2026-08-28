@@ -101,7 +101,12 @@ function classifyProjectStatusError(error: unknown): unknown {
       return new DyadError(error.message, DyadErrorKind.Precondition);
     }
   }
-  return error;
+  // 5xx and transport failures are genuinely upstream, but they still have to
+  // cross IPC classified or they arrive as unclassified product exceptions.
+  return new DyadError(
+    `Couldn't read the Supabase project's status: ${error instanceof Error ? error.message : error}`,
+    DyadErrorKind.External,
+  );
 }
 
 export function registerSupabaseHandlers() {

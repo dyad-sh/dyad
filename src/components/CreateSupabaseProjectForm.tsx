@@ -13,13 +13,13 @@ import {
 import { Loader2 } from "lucide-react";
 import {
   DEFAULT_SUPABASE_REGION,
+  SUPABASE_PROJECT_NAME_MAX_LENGTH,
   SUPABASE_REGIONS,
   type CreateSupabaseProjectParams,
   type SupabaseOrganizationInfo,
   type SupabaseProject,
   type SupabaseRegionId,
 } from "@/ipc/types";
-import { getErrorMessage } from "@/lib/errors";
 
 /**
  * Creates a Supabase project from inside an app. The organization picker
@@ -32,7 +32,10 @@ export function CreateSupabaseProjectForm({
   defaultName,
   createProject,
   isCreatingProject,
+  error,
   onCreated,
+  onFailed,
+  onClearError,
   onCancel,
 }: {
   appId: number;
@@ -51,25 +54,37 @@ export function CreateSupabaseProjectForm({
     createdForAppId: number,
     project: SupabaseProject,
   ) => void | Promise<void>;
+  // Owned by the connector so it outlives this form, which unmounts on an app
+  // switch and is closed deliberately when a project was created but not
+  // linked to the app.
+  error: string | null;
+  onFailed: (createdForAppId: number, error: unknown) => void;
+  onClearError: () => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation(["home", "common"]);
 
-  const [name, setName] = useState(defaultName);
+  // App names have no length limit, and `maxLength` on the input only stops
+  // typing — a longer seeded name would enable submit and then be rejected by
+  // the contract.
+  const [name, setName] = useState(() =>
+    defaultName.slice(0, SUPABASE_PROJECT_NAME_MAX_LENGTH),
+  );
   const [organizationSlug, setOrganizationSlug] = useState(
     organizations[0]?.organizationSlug ?? "",
   );
   const [region, setRegion] = useState<SupabaseRegionId>(
     DEFAULT_SUPABASE_REGION,
   );
-  const [error, setError] = useState<string | null>(null);
+  // The error describes the values that were submitted, so any edit stales it.
+  const clearError = onClearError;
 
   const trimmedName = name.trim();
   const canSubmit = !!trimmedName && !!organizationSlug && !isCreatingProject;
 
   const handleCreate = async () => {
     if (!canSubmit) return;
-    setError(null);
+    clearError();
     try {
       const project = await createProject({
         appId,
@@ -79,7 +94,7 @@ export function CreateSupabaseProjectForm({
       });
       await onCreated(appId, project);
     } catch (err) {
-      setError(getErrorMessage(err));
+      onFailed(appId, err);
     }
   };
 
@@ -95,10 +110,10 @@ export function CreateSupabaseProjectForm({
           value={name}
           onChange={(e) => {
             setName(e.target.value);
-            if (error) setError(null);
+            clearError();
           }}
           placeholder="my-app"
-          maxLength={64}
+          maxLength={SUPABASE_PROJECT_NAME_MAX_LENGTH}
           autoFocus
           disabled={isCreatingProject}
           onKeyDown={(e) => {
@@ -114,7 +129,10 @@ export function CreateSupabaseProjectForm({
           </Label>
           <Select
             value={organizationSlug}
-            onValueChange={(value) => setOrganizationSlug(value ?? "")}
+            onValueChange={(value) => {
+              setOrganizationSlug(value ?? "");
+              clearError();
+            }}
             disabled={isCreatingProject}
           >
             <SelectTrigger
@@ -146,7 +164,12 @@ export function CreateSupabaseProjectForm({
         </Label>
         <Select
           value={region}
-          onValueChange={(value) => setRegion(value as SupabaseRegionId)}
+          onValueChange={(value) => {
+            // Base UI hands back null when a selection is cleared; keep the
+            // current region rather than storing null and failing validation.
+            if (value) setRegion(value as SupabaseRegionId);
+            clearError();
+          }}
           disabled={isCreatingProject}
         >
           <SelectTrigger

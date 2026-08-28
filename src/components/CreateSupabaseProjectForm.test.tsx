@@ -13,6 +13,7 @@ vi.mock("@/ipc/types", () => ({
     { id: "eu-west-2", label: "West EU (London)" },
   ],
   DEFAULT_SUPABASE_REGION: "us-east-1",
+  SUPABASE_PROJECT_NAME_MAX_LENGTH: 64,
 }));
 
 const ONE_ORG = [{ organizationSlug: "org-1", name: "Acme" }];
@@ -35,7 +36,10 @@ function renderForm(
       organizationSlug: "org-1",
     }),
     isCreatingProject: false,
+    error: null as string | null,
     onCreated: vi.fn(),
+    onFailed: vi.fn(),
+    onClearError: vi.fn(),
     onCancel: vi.fn(),
     ...overrides,
   };
@@ -96,15 +100,13 @@ describe("CreateSupabaseProjectForm", () => {
     expect(props.createProject).not.toHaveBeenCalled();
   });
 
-  it("shows the failure next to the fields and keeps what was typed", async () => {
-    // Supabase's own explanation — an exhausted free-tier project slot is the
-    // likeliest failure here — has to survive to the user.
+  // Reporting is the connector's job, since the failure has to outlive this
+  // form. Supabase's own explanation — an exhausted project slot being the
+  // likeliest — is what gets handed over.
+  it("hands a failure to the connector and keeps what was typed", async () => {
+    const failure = new Error("You have reached your project limit");
     const { props } = renderForm({
-      createProject: vi
-        .fn()
-        .mockRejectedValue(
-          new Error("You have reached your project limit for this plan"),
-        ),
+      createProject: vi.fn().mockRejectedValue(failure),
     });
 
     fireEvent.change(screen.getByTestId("supabase-new-project-name"), {
@@ -112,14 +114,42 @@ describe("CreateSupabaseProjectForm", () => {
     });
     fireEvent.click(screen.getByTestId("supabase-create-project-submit"));
 
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("reached your project limit");
+    await waitFor(() =>
+      expect(props.onFailed).toHaveBeenCalledWith(7, failure),
+    );
     expect(props.onCreated).not.toHaveBeenCalled();
 
     const input = screen.getByTestId(
       "supabase-new-project-name",
     ) as HTMLInputElement;
     expect(input.value).toBe("over-quota");
+  });
+
+  it("renders the failure the connector hands back", () => {
+    renderForm({ error: "You have reached your project limit" });
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "reached your project limit",
+    );
+  });
+
+  it("stales the error as soon as a field changes", () => {
+    const { props } = renderForm({ error: "something went wrong" });
+
+    fireEvent.change(screen.getByTestId("supabase-new-project-name"), {
+      target: { value: "retry-name" },
+    });
+
+    expect(props.onClearError).toHaveBeenCalled();
+  });
+
+  it("clamps a seeded name longer than the contract allows", () => {
+    renderForm({ defaultName: "x".repeat(120) });
+
+    const input = screen.getByTestId(
+      "supabase-new-project-name",
+    ) as HTMLInputElement;
+    expect(input.value).toHaveLength(64);
   });
 
   it("locks the form down while a create is in flight", () => {

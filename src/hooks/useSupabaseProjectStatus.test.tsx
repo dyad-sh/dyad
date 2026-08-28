@@ -76,6 +76,13 @@ describe("useSupabaseProjectStatus", () => {
     const { result } = renderStatus();
     await waitFor(() => expect(result.current.isProvisioning).toBe(true));
 
+    // The scoping this hook exists for: a dropped or swapped payload would
+    // otherwise poll about the wrong project and still look green.
+    expect(mocks.getProjectStatus).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    });
+
     const afterFirst = mocks.getProjectStatus.mock.calls.length;
     await advanceTicks(2);
     expect(mocks.getProjectStatus.mock.calls.length).toBeGreaterThan(
@@ -167,6 +174,10 @@ describe("useSupabaseProjectStatus", () => {
         beforeRemount,
       ),
     );
+    expect(mocks.getProjectStatus).toHaveBeenLastCalledWith({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    });
     await waitFor(() =>
       expect(second.result.current.isProvisioning).toBe(true),
     );

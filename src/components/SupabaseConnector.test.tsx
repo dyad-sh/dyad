@@ -4,6 +4,7 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SupabaseConnector } from "./SupabaseConnector";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const {
   detectLegacyAppKeyMock,
@@ -117,6 +118,7 @@ vi.mock("@/ipc/types", () => ({
   // region default.
   SUPABASE_REGIONS: [{ id: "us-east-1", label: "East US (North Virginia)" }],
   DEFAULT_SUPABASE_REGION: "us-east-1",
+  SUPABASE_PROJECT_NAME_MAX_LENGTH: 64,
   SUPABASE_PROJECT_STATUS_PROVISIONING: "COMING_UP",
 }));
 
@@ -198,6 +200,8 @@ vi.mock("@/hooks/useSupabase", () => ({
     deleteOrganization: vi.fn(),
   }),
   useSupabaseProjectStatus: projectStatusMock,
+  isCreatedButUnlinkedError: (error: unknown) =>
+    error instanceof DyadError && error.kind === DyadErrorKind.Internal,
   useRedeploySupabaseFunctions: () => ({
     redeployAllFunctions: redeployAllFunctionsMock,
     redeployProgress: redeployState.progress,
@@ -909,5 +913,87 @@ describe("SupabaseConnector — creating a project", () => {
 
     const submit = await screen.findByTestId("supabase-create-project-submit");
     expect(submit.hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("SupabaseConnector — a create that fails", () => {
+  const showSelector = () => {
+    appState.supabaseProjectId = null;
+    appState.supabaseProjectName = null;
+    appState.supabaseOrganizationSlug = null;
+    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
+  };
+
+  const submitFailingCreate = async (error: Error) => {
+    showSelector();
+    createState.createProject = vi.fn().mockRejectedValue(error);
+    const rendered = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+    return rendered;
+  };
+
+  it("shows an ordinary failure inline, leaving the form open to retry", async () => {
+    await submitFailingCreate(new Error("You have reached your project limit"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("reached your project limit");
+    expect(screen.getByTestId("supabase-new-project-name")).toBeTruthy();
+  });
+
+  // The project exists but is unlinked, so leaving the form open invites a
+  // second Create that would mint another one. The message has to move out of
+  // the form to survive it closing.
+  it("closes the form and keeps reporting when the project was created but not linked", async () => {
+    const unlinked = new DyadError(
+      "Created Supabase project abc123 but couldn't link it to this app.",
+      DyadErrorKind.Internal,
+    );
+    await submitFailingCreate(unlinked);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("supabase-new-project-name")).toBeNull(),
+    );
+    expect(
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
+    ).toContain("couldn't link it to this app");
+  });
+
+  it("reports a failure whose form has gone with the app switch", async () => {
+    showSelector();
+    let failCreate: (error: Error) => void = () => {};
+    createState.createProject = vi.fn(
+      () =>
+        new Promise((_resolve, reject) => {
+          failCreate = reject as typeof failCreate;
+        }),
+    );
+
+    const { rerender } = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+    await waitFor(() => expect(createState.createProject).toHaveBeenCalled());
+
+    rerender(<SupabaseConnector appId={8} />);
+    failCreate(new Error("network unreachable"));
+
+    // App 8 is on screen and never asked for this, so nothing is shown here.
+    await waitFor(() =>
+      expect(screen.queryByTestId("supabase-create-project-error")).toBeNull(),
+    );
+
+    // Returning to the app that asked surfaces it, in the form it left open.
+    rerender(<SupabaseConnector appId={7} />);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "network unreachable",
+    );
   });
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CreateProjectRequestBody } from "@dyad-sh/supabase-management-js";
 import {
   defineContract,
   defineEvent,
@@ -127,7 +128,20 @@ export const SUPABASE_REGIONS = [
 
 export const DEFAULT_SUPABASE_REGION = "us-east-1";
 
+export const SUPABASE_PROJECT_NAME_MAX_LENGTH = 64;
+
 export type SupabaseRegionId = (typeof SUPABASE_REGIONS)[number]["id"];
+
+// Type-only, so nothing from the SDK reaches the renderer bundle. Fails the
+// typecheck naming the offender if the list above and the region enum in the
+// Management API spec ever diverge, in either direction.
+type AssertNever<T extends never> = T;
+type _EveryApiRegionIsOffered = AssertNever<
+  Exclude<CreateProjectRequestBody["region"], SupabaseRegionId>
+>;
+type _NoRegionOfferedThatTheApiRejects = AssertNever<
+  Exclude<SupabaseRegionId, CreateProjectRequestBody["region"]>
+>;
 
 /**
  * Deliberately not an enum over `SUPABASE_REGIONS`: that would make the local
@@ -139,7 +153,9 @@ export const SupabaseRegionSchema = z.string().min(1);
 
 export const CreateSupabaseProjectParamsSchema = z.object({
   appId: z.number(),
-  name: z.string().min(1).max(64),
+  // Trimmed here too, not just in the form: a non-UI caller sending "   " would
+  // otherwise pass validation and reach Supabase as an empty name.
+  name: z.string().trim().min(1).max(SUPABASE_PROJECT_NAME_MAX_LENGTH),
   organizationSlug: z.string().min(1),
   region: SupabaseRegionSchema,
 });

@@ -18,6 +18,7 @@ import {
   useRedeploySupabaseFunctions,
   useSupabase,
   useSupabaseProjectStatus,
+  isCreatedButUnlinkedError,
 } from "@/hooks/useSupabase";
 import { CreateSupabaseProjectForm } from "@/components/CreateSupabaseProjectForm";
 import {
@@ -146,10 +147,16 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // previous app's half-typed form standing over the new one.
   const [createFormAppId, setCreateFormAppId] = useState<number | null>(null);
   const isCreateFormOpen = createFormAppId === appId;
+  const [createError, setCreateError] = useState<{
+    appId: number;
+    message: string;
+  } | null>(null);
 
   // Asked of Supabase rather than remembered from the create that started it,
   // so the banner survives leaving this panel mid-provision and also covers a
   // project provisioned outside Dyad.
+  // Deliberately the app's own ref, not `branchesProjectId`: on a branched app
+  // that is the branch, which provisions separately from its parent.
   const { isProvisioning } = useSupabaseProjectStatus({
     projectId: app?.supabaseProjectId,
     organizationSlug: app?.supabaseOrganizationSlug,
@@ -270,6 +277,22 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       t("integrations.supabase.projectCreated", { name: project.name }),
     );
   };
+
+  // The failure is held here rather than inside the form so it outlives it:
+  // the form unmounts on an app switch, and for a created-but-unlinked project
+  // we close it deliberately so a second Create cannot mint another project.
+  const handleProjectCreateFailed = (
+    createdForAppId: number,
+    error: unknown,
+  ) => {
+    setCreateError({ appId: createdForAppId, message: getErrorMessage(error) });
+    if (isCreatedButUnlinkedError(error)) {
+      setCreateFormAppId((open) => (open === createdForAppId ? null : open));
+    }
+  };
+
+  const createErrorForThisApp =
+    createError?.appId === appId ? createError.message : null;
 
   // Group projects by organization for display
   const groupedProjects = projects.reduce(
@@ -799,8 +822,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               isCreatingProject={
                 isCreatingProject && creatingProjectAppId === appId
               }
+              error={createErrorForThisApp}
+              onClearError={() => setCreateError(null)}
               onCreated={handleProjectCreated}
-              onCancel={() => setCreateFormAppId(null)}
+              onFailed={handleProjectCreateFailed}
+              onCancel={() => {
+                setCreateFormAppId(null);
+                setCreateError(null);
+              }}
             />
           ) : isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">
@@ -822,6 +851,17 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* A create that failed after its form closed — the app switched,
+              or the project was created but not linked. */}
+              {createErrorForThisApp && (
+                <Alert data-testid="supabase-create-project-error">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription role="alert">
+                    {createErrorForThisApp}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Connected organizations list */}
               <div className="space-y-2">
                 <Label>
@@ -910,7 +950,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 variant="outline"
                 size="sm"
                 className="gap-1"
-                onClick={() => setCreateFormAppId(appId)}
+                onClick={() => {
+                  setCreateFormAppId(appId);
+                  setCreateError(null);
+                }}
                 disabled={organizations.length === 0}
                 data-testid="supabase-create-project-button"
               >

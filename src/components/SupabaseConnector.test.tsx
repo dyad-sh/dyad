@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -986,14 +992,41 @@ describe("SupabaseConnector — a create that fails", () => {
     failCreate(new Error("network unreachable"));
 
     // App 8 is on screen and never asked for this, so nothing is shown here.
-    await waitFor(() =>
-      expect(screen.queryByTestId("supabase-create-project-error")).toBeNull(),
-    );
+    // Flushed rather than polled: waitFor returns on its first successful check,
+    // which for an absence is satisfied before the rejection even lands.
+    await act(async () => {});
+    expect(screen.queryByTestId("supabase-create-project-error")).toBeNull();
 
     // Returning to the app that asked surfaces it, in the form it left open.
     rerender(<SupabaseConnector appId={7} />);
     expect((await screen.findByRole("alert")).textContent).toContain(
       "network unreachable",
     );
+  });
+
+  // For a created-but-unlinked project this message is the only record that a
+  // project was minted and left orphaned, so another app's create must not
+  // discard it.
+  it("keeps one app's failure when another app starts its own create", async () => {
+    const unlinked = new DyadError(
+      "Created Supabase project abc123 but couldn't link it to this app.",
+      DyadErrorKind.Internal,
+    );
+    const { rerender } = await submitFailingCreate(unlinked);
+    await screen.findByTestId("supabase-create-project-error");
+
+    appState.name = "Other App";
+    rerender(<SupabaseConnector appId={8} />);
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.change(await screen.findByTestId("supabase-new-project-name"), {
+      target: { value: "app-8-name" },
+    });
+
+    rerender(<SupabaseConnector appId={7} />);
+    expect(
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
+    ).toContain("couldn't link it to this app");
   });
 });

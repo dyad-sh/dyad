@@ -294,6 +294,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const createErrorForThisApp =
     createError?.appId === appId ? createError.message : null;
 
+  // Scoped like the read above: another app's failure is not this app's to
+  // discard, and for a created-but-unlinked project it is the only record that
+  // a project was minted and left orphaned.
+  const clearCreateError = () =>
+    setCreateError((current) => (current?.appId === appId ? null : current));
+
   // Group projects by organization for display
   const groupedProjects = projects.reduce(
     (acc, project) => {
@@ -823,12 +829,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 isCreatingProject && creatingProjectAppId === appId
               }
               error={createErrorForThisApp}
-              onClearError={() => setCreateError(null)}
+              onClearError={clearCreateError}
               onCreated={handleProjectCreated}
               onFailed={handleProjectCreateFailed}
               onCancel={() => {
                 setCreateFormAppId(null);
-                setCreateError(null);
+                clearCreateError();
               }}
             />
           ) : isLoadingProjects || isFetchingProjects ? (
@@ -952,7 +958,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 className="gap-1"
                 onClick={() => {
                   setCreateFormAppId(appId);
-                  setCreateError(null);
+                  clearCreateError();
                 }}
                 disabled={organizations.length === 0}
                 data-testid="supabase-create-project-button"

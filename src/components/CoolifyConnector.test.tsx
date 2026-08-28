@@ -110,10 +110,14 @@ vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({ app: loadedApp.value, loading: false }),
 }));
 const setup = vi.hoisted(() => ({ state: { type: "idle" } as unknown }));
+const dismissMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("@/ipc/types", () => ({
   ipc: {
     system: { openExternalUrl: vi.fn() },
-    coolifySetup: { snapshot: () => Promise.resolve(setup.state) },
+    coolifySetup: {
+      snapshot: () => Promise.resolve(setup.state),
+      dismiss: dismissMock,
+    },
     events: { coolifySetup: { onChanged: () => () => {} } },
   },
 }));
@@ -124,6 +128,7 @@ const { CoolifyConnector: Panel } = await import("./CoolifyConnector");
 // each case has to say what it is, or it inherits the last one's.
 beforeEach(() => {
   setup.state = { type: "idle" };
+  dismissMock.mockClear();
 });
 
 function CoolifyConnector(props: { appId: number | null }) {
@@ -397,6 +402,63 @@ describe("a server Dyad set up but has no token for", () => {
         screen.queryByRole("button", { name: "Sign out of Coolify" }),
       ),
     }).toEqual({ failureVisible: true, refusalCard: false, signOut: true });
+  });
+
+  it("says what a cancelled run left on the server", async () => {
+    // A cancel hands the screen back to the card below rather than to the
+    // installer, so the panel that would otherwise carry this is not on
+    // screen at all. The domain is still pointing at the server either way.
+    deploy.value = SERVER_NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "",
+      cancelled: true,
+      warning: "Coolify may still be configured for 203.0.113.5.sslip.io.",
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-warning").textContent).toContain(
+        "may still be configured",
+      ),
+    );
+    // The card a cancel lands on, not the installer panel.
+    expect(screen.getByTestId("coolify-already-has-server")).toBeTruthy();
+    expect(screen.queryByTestId("coolify-server-setup-stub")).toBeNull();
+  });
+
+  it("gives a cancelled run's warning a way off the screen", async () => {
+    // Nothing else dismisses a cancelled run — the panel's own Dismiss went
+    // with the panel — so without this it would sit there for good.
+    deploy.value = SERVER_NO_TOKEN;
+    setup.state = {
+      type: "failed",
+      host: "203.0.113.5",
+      invocationRef: {
+        kind: "coolify-setup",
+        entityKey: "203.0.113.5",
+        operationId: "op-1",
+      },
+      message: "Cancelled.",
+      log: "",
+      cancelled: true,
+      warning: "Coolify may still be configured for 203.0.113.5.sslip.io.",
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("coolify-setup-dismiss-warning")).toBeTruthy(),
+    );
+    await user.click(screen.getByTestId("coolify-setup-dismiss-warning"));
+    expect(dismissMock).toHaveBeenCalled();
   });
 
   it("has nothing to sign out of when the run never got that far", async () => {

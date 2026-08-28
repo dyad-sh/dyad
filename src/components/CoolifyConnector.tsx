@@ -182,6 +182,39 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   const isReportingFailure =
     setupState.type === "failed" && !setupState.cancelled;
 
+  /**
+   * What a run changed on the server and could not change back.
+   *
+   * Here rather than in the installer panel: this only ever arrives with a
+   * cancel, and a cancelled run hands the screen back to the card below
+   * instead of to that panel — so said there, it would never be seen. It
+   * carries its own way out because the panel's Dismiss goes with it, and
+   * until something dismisses, the machine stays on the cancelled run.
+   */
+  const leftBehind =
+    setupState.type === "failed" && setupState.warning ? (
+      <div
+        className="flex items-start justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3"
+        data-testid="coolify-setup-warning"
+      >
+        <p className="text-sm text-amber-600 dark:text-amber-400">
+          {setupState.warning}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            void ipc.coolifySetup
+              .dismiss()
+              .catch((error) => toast.error(getErrorMessage(error)))
+          }
+          data-testid="coolify-setup-dismiss-warning"
+        >
+          Dismiss
+        </Button>
+      </div>
+    ) : null;
+
   const serverSetup = (
     <CoolifyServerSetup
       onUseExisting={(url) => {
@@ -401,6 +434,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       if (status.serverUrl && !isReportingFailure) {
         return (
           <div className="space-y-3" data-testid="coolify-connector">
+            {leftBehind}
             <div
               className="rounded-md border p-3 text-sm"
               data-testid="coolify-already-has-server"
@@ -421,6 +455,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       }
       return (
         <div className="space-y-3" data-testid="coolify-connector">
+          {leftBehind}
           {serverSetup}
           {/* Installing again is refused while Dyad still holds an admin
               password, and that refusal says to sign out first. Behind the

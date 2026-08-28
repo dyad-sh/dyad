@@ -222,6 +222,41 @@ describe("answers from a run nobody is watching any more", () => {
   });
 });
 
+describe("what a run could not put back", () => {
+  it("reaches the state a panel reads, not just the error", async () => {
+    // The whole hop: an error carrying it, the dispatch that reads it off,
+    // and the transition that has to carry it onto the state. Asserting on
+    // either end alone leaves the middle free to drop it, which is what
+    // happened.
+    const { controller } = harness(async () => {
+      throw Object.assign(
+        new DyadError("Cancelled.", DyadErrorKind.UserCancelled),
+        { warning: "Coolify may still be configured for x.sslip.io." },
+      );
+    });
+
+    await controller.start(TARGET).result.catch(() => {});
+
+    expect(controller.getState()).toMatchObject({
+      type: "failed",
+      cancelled: true,
+      warning: "Coolify may still be configured for x.sslip.io.",
+    });
+  });
+
+  it("says nothing when a run had nothing to put back", async () => {
+    const { controller } = harness(async () => {
+      throw new DyadError("boom", DyadErrorKind.External);
+    });
+
+    await controller.start(TARGET).result.catch(() => {});
+
+    expect(
+      (controller.getState() as { warning?: string }).warning,
+    ).toBeUndefined();
+  });
+});
+
 describe("telling anyone who is listening", () => {
   it("reports each change once, so windows can follow along", async () => {
     const { controller, states } = harness(async (_t, hooks) => {

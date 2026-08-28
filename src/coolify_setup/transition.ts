@@ -132,6 +132,9 @@ export function coolifySetupTransition(
         message: event.message,
         log: running.log,
         cancelled: event.cancelled,
+        // Carried, not derived: what a run could not put back is not
+        // recoverable from why it ended, and a cancel says nothing else.
+        warning: event.warning,
       });
     }
 

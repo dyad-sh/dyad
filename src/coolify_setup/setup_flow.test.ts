@@ -335,6 +335,24 @@ describe("runServerSetup", () => {
     expect(result.credentials.password).toBeTruthy();
   });
 
+  it("carries what a failed HTTPS attempt left behind onto the screen", async () => {
+    // The run goes on and succeeds from here, so the failed state that would
+    // otherwise carry this is never reached — the finished screen is the only
+    // place left to say a domain is still pointing at the server.
+    const server = fakeServer();
+    const result = await run(server, {
+      tryEnableHttpsImpl: async () => {
+        throw Object.assign(new Error("proxy would not restart"), {
+          warning: "Coolify may still be configured for x.sslip.io.",
+        });
+      },
+    }).promise;
+
+    expect(result.secure).toBe(false);
+    expect(result.insecureReason).toContain("proxy would not restart");
+    expect(result.insecureReason).toContain("may still be configured");
+  });
+
   it("still stops when the user cancels during HTTPS", async () => {
     // Cancelling is the user asking for the work to stop, which is not the
     // same as a step that could not be done.

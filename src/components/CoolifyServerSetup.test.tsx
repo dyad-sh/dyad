@@ -565,35 +565,6 @@ describe("pressing Install", () => {
     );
   });
 
-  it("says what is left to undo even when the run was cancelled", async () => {
-    // Stopping was the user's decision, so the panel stays quiet about the
-    // ending — but a domain the run put on and could not take back off is
-    // theirs to clear, and saying nothing leaves a server answering at a
-    // name it has no certificate for.
-    h.snapshot.mockResolvedValue({
-      type: "failed",
-      host: "203.0.113.5",
-      invocationRef: {
-        kind: "coolify-setup",
-        entityKey: "203.0.113.5",
-        operationId: "op-1",
-      },
-      message: "Cancelled.",
-      log: "",
-      cancelled: true,
-      warning: "Coolify may still be configured for 203.0.113.5.sslip.io.",
-    });
-    renderPanel();
-
-    await waitFor(() =>
-      expect(screen.getByTestId("coolify-setup-warning").textContent).toContain(
-        "may still be configured",
-      ),
-    );
-    // Still quiet about the cancellation itself.
-    expect(screen.queryByTestId("coolify-setup-failure")).toBeNull();
-  });
-
   it("will not install against a verdict a new check has replaced", async () => {
     // Checking again is how the user reacts to changing the address or
     // suspecting the machine moved. Until the new answer lands there is no

@@ -274,6 +274,25 @@ describe("answers from a run that is no longer the one in hand", () => {
     ).toBe(state);
   });
 
+  it("keeps what the run could not put back", () => {
+    // Separate from the message, which says why it ended. A cancel says
+    // nothing about the ending, so this is the only thing the panel has to
+    // show for a domain that would not come back off.
+    expect(
+      next(running(), {
+        type: "failed",
+        invocationRef: REF,
+        message: "Cancelled.",
+        cancelled: true,
+        warning: "Coolify may still be configured for x.sslip.io.",
+      }),
+    ).toMatchObject({
+      type: "failed",
+      cancelled: true,
+      warning: "Coolify may still be configured for x.sslip.io.",
+    });
+  });
+
   it("ignores a result that arrives after the screen was dismissed", () => {
     // Exactly the shape that put a finished install over a panel the user had
     // already moved on from.

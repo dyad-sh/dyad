@@ -275,13 +275,19 @@ export async function runServerSetup({
       // throw one away. A domain left set with no certificate still leaves
       // port 8000 serving.
       if ((error as { kind?: string }).kind === "user_cancelled") throw error;
+      // Whatever it could not put back comes with it. The run goes on and
+      // succeeds from here, so this is the only place that note can still
+      // reach the finished screen — the failed state it would otherwise
+      // travel on is never reached.
+      const leftBehind = (error as Error & { warning?: string }).warning;
+      const said =
+        error instanceof Error
+          ? error.message
+          : "HTTPS could not be set up on this server.";
       https = {
         instanceUrl: plainUrlFor(target.host),
         secure: false,
-        reason:
-          error instanceof Error
-            ? error.message
-            : "HTTPS could not be set up on this server.",
+        reason: leftBehind ? `${said} ${leftBehind}` : said,
       };
     }
     onAccountKnown?.({ credentials, dashboardUrl: https.instanceUrl });

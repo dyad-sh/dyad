@@ -57,6 +57,8 @@ Before an automatic preview starts a new runtime, let any active chat actor for
 that app finish its repository-writing checkpoint. Otherwise startup can retain
 a repository read claim during a slow dependency install while chat finalization
 queues for the writer, delaying the visible `Retry` completion state indefinitely.
+Stop, restart, and app cleanup must synchronously supersede a start waiting at
+this boundary so a later lifecycle request cannot be followed by a delayed launch.
 
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old

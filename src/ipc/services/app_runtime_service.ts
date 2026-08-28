@@ -1569,6 +1569,7 @@ export class AppRuntimeService {
   private readonly cancellationTombstones = new CancellationTombstones(
     MAX_RUNTIME_CANCELLATION_TOMBSTONES,
   );
+  private readonly pendingStartTokens = new Map<number, symbol>();
 
   constructor(private readonly dependencies: AppRuntimeServiceDependencies) {}
 
@@ -1581,7 +1582,21 @@ export class AppRuntimeService {
     // before admitting the runtime so a slow dependency install cannot hold
     // chat completion behind itself. Existing runtimes stay on the fast path.
     if (!this.dependencies.getRunningApp(appId)) {
-      await this.dependencies.waitForAppChatActorsIdle(appId);
+      const pendingStartToken = Symbol(`app-runtime-start:${appId}`);
+      this.pendingStartTokens.set(appId, pendingStartToken);
+      try {
+        await this.dependencies.waitForAppChatActorsIdle(appId);
+        if (this.pendingStartTokens.get(appId) !== pendingStartToken) {
+          logger.debug(
+            `Skipping app ${appId} start because a later lifecycle request superseded it.`,
+          );
+          return;
+        }
+      } finally {
+        if (this.pendingStartTokens.get(appId) === pendingStartToken) {
+          this.pendingStartTokens.delete(appId);
+        }
+      }
     }
     return this.dependencies.runSerialized(appId, "start", async () => {
       const existing = this.dependencies.getRunningApp(appId);
@@ -1637,6 +1652,7 @@ export class AppRuntimeService {
       recreateSandbox = false,
       clearRuntimeLogs = false,
     } = options;
+    this.pendingStartTokens.delete(appId);
     logger.log(`Restarting app ${appId}`);
     return this.dependencies.runSerialized(appId, "restart", async () => {
       const app = await this.requireApp(appId);
@@ -1692,6 +1708,7 @@ export class AppRuntimeService {
   }
 
   async stop(appId: number): Promise<void> {
+    this.pendingStartTokens.delete(appId);
     logger.log(
       `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
     );
@@ -1845,6 +1862,7 @@ export class AppRuntimeService {
    * recognized by bounded tombstones and cannot settle a replacement claim.
    */
   cleanup(appId: number): void {
+    this.pendingStartTokens.delete(appId);
     for (const claim of this.externalClaimsByApp.get(appId)?.values() ?? []) {
       this.cancellationTombstones.add(claim.invocationRef);
       this.externalClaims.delete(invocationRegistryKey(claim.invocationRef));

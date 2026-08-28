@@ -132,8 +132,12 @@ export async function enableApi(
     [
       `$s = \\App\\Models\\InstanceSettings::get();`,
       `$s->is_api_enabled = true;`,
-      `$s->save();`,
-      `echo $s->is_api_enabled ? 'enabled' : 'still-disabled';`,
+      `$ok = $s->save();`,
+      // Read back rather than read off what was just assigned. Tinker keeps
+      // going after a statement throws, so echoing the property would say
+      // "enabled" for a save that never happened — and the screen would then
+      // leave out the one step the user still had to do by hand.
+      `echo $ok && \\App\\Models\\InstanceSettings::get()->is_api_enabled ? 'enabled' : 'still-disabled';`,
     ].join("\n"),
     { signal, timeoutMs: TINKER_TIMEOUT_MS },
   );

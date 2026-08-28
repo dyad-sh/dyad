@@ -139,6 +139,13 @@ describe("enableApi", () => {
     const session = fakeSession(["enabled"]);
     await expect(enableApi(session)).resolves.toBeUndefined();
     expect(session.scripts[0]).toContain("is_api_enabled = true");
+    // Read back from the database rather than off the property just set:
+    // tinker carries on after a statement throws, so a save that never
+    // happened would otherwise still answer "enabled".
+    expect(session.scripts[0]).toContain("$ok = $s->save()");
+    expect(session.scripts[0]).toContain(
+      "$ok && \\App\\Models\\InstanceSettings::get()->is_api_enabled",
+    );
   });
 
   it("fails when the setting did not take", async () => {

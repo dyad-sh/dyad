@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apps } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { activeRecordings } from "@/ipc/services/recording_registry";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { RateLimitError } from "@/ipc/utils/retryWithRateLimit";
@@ -334,6 +335,30 @@ describe("Supabase handlers", () => {
         message: expect.stringContaining("proj-new"),
       });
       expect(readApp()).toMatchObject({ supabaseProjectId: null });
+    });
+
+    // The contract's invalidations are published only after a handler resolves,
+    // and this path throws. Without an explicit publish, a peer window's
+    // selector never lists the project the error tells the user to pick.
+    it("tells other windows about the project it could not link", async () => {
+      insertApp();
+      const publish = vi.spyOn(queryInvalidationBus, "publish");
+      vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
+        throw new Error("database is locked");
+      });
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toThrow();
+
+      expect(publish).toHaveBeenCalledWith(
+        [{ family: "provider-status", provider: "supabase" }],
+        expect.objectContaining({
+          originHandledScopes: [
+            { family: "provider-status", provider: "supabase" },
+          ],
+        }),
+      );
     });
 
     it("classifies a rejected create as user-fixable and keeps Supabase's reason", async () => {

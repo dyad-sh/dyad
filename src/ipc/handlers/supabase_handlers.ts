@@ -39,6 +39,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { safeSend } from "../utils/safe_sender";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { isRateLimitError } from "../utils/retryWithRateLimit";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -240,7 +241,7 @@ export function registerSupabaseHandlers() {
     createAppOperationHandler(
       "create-supabase-project",
       ["provider"],
-      async (_, params) => {
+      async (event, params) => {
         const { appId, name, organizationSlug, region } = params;
         // Fail before creating, rather than orphaning a project the user then
         // has to go delete.
@@ -289,6 +290,21 @@ export function registerSupabaseHandlers() {
             })
             .where(eq(apps.id, appId));
         } catch (error) {
+          // The contract's invalidations are published only once a handler
+          // resolves, and this one throws. Without this, peer windows never
+          // learn the project exists, so the list the message tells the user to
+          // pick it from does not have it.
+          queryInvalidationBus.publish(
+            [{ family: "provider-status", provider: "supabase" }],
+            {
+              originEndpoint: event.sender,
+              // The mutation's own onError refreshes it here, same as the
+              // success path claims.
+              originHandledScopes: [
+                { family: "provider-status", provider: "supabase" },
+              ],
+            },
+          );
           const unlinked = new DyadError(
             `Created Supabase project ${project.id} but couldn't link it to this app: ${error instanceof Error ? error.message : error}. Select it from the project list to finish connecting.`,
             DyadErrorKind.Internal,

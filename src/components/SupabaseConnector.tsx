@@ -118,20 +118,21 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // project provisioned outside Dyad.
   // Deliberately the app's own ref, not the branch target below: on a branched
   // app that is the branch, which provisions separately from its parent.
-  const { isProvisioning } = useSupabaseProjectStatus({
+  const { isProvisioning, isStatusUnknown } = useSupabaseProjectStatus({
     projectId: app?.supabaseProjectId,
     organizationSlug: app?.supabaseOrganizationSlug,
     enabled: isConnected,
   });
 
-  // The branch target falls back to the parent, so only an app without one is
-  // listing branches against the project that is still provisioning.
+  // Unknown counts as unavailable, not just a confirmed COMING_UP: a project
+  // that has only just been linked reads as not provisioning until the first
+  // check answers, and one doomed request in that window caches a failure that
+  // would surface the moment the banner cleared. Only for an app listing
+  // against its own project — a branched one targets its healthy parent.
+  // Hidden rather than shown disabled, because an empty picker offering no
+  // branch is a worse answer than no picker while we do not know.
   const isBranchListUnavailable =
-    isProvisioning && !app?.supabaseParentProjectId;
-
-  // Null while the target is coming up, so the query never runs: listing
-  // branches against it fails, and React Query caches that failure without
-  // retrying, so it would surface the moment the banner cleared.
+    (isProvisioning || isStatusUnknown) && !app?.supabaseParentProjectId;
   const branchesProjectId = isBranchListUnavailable
     ? null
     : app?.supabaseParentProjectId || app?.supabaseProjectId;
@@ -167,9 +168,28 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const [createFormAppId, setCreateFormAppId] = useState<number | null>(null);
   const isCreateFormOpen = createFormAppId === appId;
   // Keyed by app rather than a single slot: creates for two apps can be in
-  // flight at once, and for a project created but not linked this message is
-  // the only record it was minted and left orphaned.
+  // flight at once, so one app's failure must not overwrite another's.
   const [createErrors, setCreateErrors] = useState<Record<number, string>>({});
+
+  // A project that was minted and left unlinked, held apart from the failure
+  // above because it is a fact about the user's Supabase account rather than
+  // about the form. Every way a form error resolves — reopening, typing,
+  // cancelling, a later create — settles nothing about a project that already
+  // exists, so this clears only when the user says so.
+  const [orphanNotices, setOrphanNotices] = useState<Record<number, string>>(
+    {},
+  );
+
+  const dropKey = (forAppId: number) => (current: Record<number, string>) => {
+    // Returning the same object when there is nothing to drop keeps React's
+    // bailout: this runs on every keystroke, and a fresh one would re-render
+    // the connector for each character typed into the form.
+    if (!(forAppId in current)) return current;
+    const { [forAppId]: _cleared, ...rest } = current;
+    return rest;
+  };
+  const clearCreateError = () => setCreateErrors(dropKey(appId));
+  const dismissOrphanNotice = () => setOrphanNotices(dropKey(appId));
 
   // The connection flow lives in the main process; this component only
   // projects it. Timeouts (Supabase historically had none — a closed
@@ -262,6 +282,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         organizationSlug,
       });
       toast.success(t("integrations.supabase.projectConnected"));
+      // The app is connected, so a failed create for it is moot. Any orphan
+      // notice stays: this may or may not be the project that was stranded,
+      // and only the user knows.
+      clearCreateError();
       await refreshApp();
     } catch (error) {
       toast.error(
@@ -281,6 +305,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     project: SupabaseProject,
   ) => {
     setCreateFormAppId((open) => (open === createdForAppId ? null : open));
+    // An earlier failure for this app is settled now, and nothing else drops it
+    // once the form is shut: it would resurface on the next disconnect. Any
+    // orphan notice stays — a second project does not unstrand the first.
+    setCreateErrors(dropKey(createdForAppId));
     toast.success(
       t("integrations.supabase.projectCreated", { name: project.name }),
     );
@@ -293,26 +321,45 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     createdForAppId: number,
     error: unknown,
   ) => {
-    setCreateErrors((current) => ({
-      ...current,
-      [createdForAppId]: getErrorMessage(error),
-    }));
+    const message = getErrorMessage(error);
     if (isCreatedButUnlinkedError(error)) {
+      setOrphanNotices((current) => ({
+        ...current,
+        [createdForAppId]: message,
+      }));
       setCreateFormAppId((open) => (open === createdForAppId ? null : open));
+      return;
     }
+    setCreateErrors((current) => ({ ...current, [createdForAppId]: message }));
   };
 
   const createErrorForThisApp = createErrors[appId] ?? null;
+  const orphanNoticeForThisApp = orphanNotices[appId] ?? null;
 
-  // Returns the same object when there is nothing to clear, which is the case
-  // on every keystroke: a fresh one would defeat React's bailout and re-render
-  // the connector for each character typed into the form.
-  const clearCreateError = () =>
-    setCreateErrors((current) => {
-      if (!(appId in current)) return current;
-      const { [appId]: _cleared, ...rest } = current;
-      return rest;
-    });
+  // Rendered by both the connected and the selector card. Following the
+  // message's own instruction links the app, which swaps to the connected card
+  // — so a notice only the selector showed would go invisible and undismissable
+  // at exactly that moment, then reappear stale on a later disconnect. It
+  // describes the user's Supabase account, which neither card owns.
+  const orphanNotice = orphanNoticeForThisApp && (
+    <Alert className="mb-4" data-testid="supabase-orphaned-project">
+      <Info className="h-4 w-4" />
+      <AlertDescription
+        role="alert"
+        className="flex items-start justify-between gap-2"
+      >
+        <span>{orphanNoticeForThisApp}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={dismissOrphanNotice}
+          data-testid="supabase-dismiss-orphaned-project"
+        >
+          {t("common:close")}
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
 
   // Group projects by organization for display
   const groupedProjects = projects.reduce(
@@ -619,6 +666,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {orphanNotice}
           <div className="space-y-4">
             {/* A project Dyad just created reports COMING_UP for a minute or
             two, during which its database refuses connections. Say so, rather
@@ -633,10 +681,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               </Alert>
             )}
 
-            {/* Hidden only when the project the branch query targets is itself
-            coming up: listing branches against it fails, and the error would
-            contradict the banner above. A branch of a healthy parent still
-            lists fine, because that query targets the parent. */}
+            {/* Hidden while the project the branch query targets is coming up
+            or not yet known: listing branches against it fails, and the error
+            would contradict the banner above. A branch of a healthy parent
+            still lists fine, because that query targets the parent. */}
             {!isBranchListUnavailable && (
               <div className="space-y-2">
                 <Label htmlFor="supabase-branch-select">
@@ -833,11 +881,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Above the branches below, not inside one of them: a
-          created-but-unlinked failure closes the form and refetches the
-          project list, so an alert further down would be replaced by that
-          refetch's skeleton, or lost entirely if the refetch then errored.
-          The form renders its own copy, so this is only for when it is shut. */}
+          {orphanNotice}
+
+          {/* The form renders its own copy, so this is only for a create that
+          failed after its form had gone. */}
           {!isCreateFormOpen && createErrorForThisApp && (
             <Alert className="mb-4" data-testid="supabase-create-project-error">
               <Info className="h-4 w-4" />

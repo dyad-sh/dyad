@@ -15,6 +15,7 @@ vi.mock("@/ipc/types", () => ({
 }));
 
 import { useSupabaseProjectStatus } from "./useSupabase";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const PROVISIONING = {
   projectId: "proj-1",
@@ -125,13 +126,11 @@ describe("useSupabaseProjectStatus", () => {
     expect(result.current.isProvisioning).toBe(false);
   });
 
-  // The accepted cost of having no renderer-side retry. A renderer retry would
-  // multiply `fetchWithRetry`'s own budget in the main process, and cancelling
-  // one mid-backoff (which React Query does on any navigation away from the
-  // panel) drops the query into terminal error after a single failure anyway.
-  // So a blip stops the poll early, which is cosmetic: the project keeps
-  // provisioning and the next mount re-checks it.
-  it("gives up on a transient failure rather than retrying in the renderer", async () => {
+  // Taking the banner down looks exactly like the project being ready, so a
+  // 502 or a dropped connection must not do it. `fetchWithRetry` in the main
+  // process only retries a 429, so those arrive here unretried and the budget
+  // has to live in the renderer.
+  it("rides out a transient failure and keeps the banner up", async () => {
     mocks.getProjectStatus.mockResolvedValueOnce(PROVISIONING);
     mocks.getProjectStatus.mockRejectedValueOnce(new Error("502 bad gateway"));
     mocks.getProjectStatus.mockResolvedValue(PROVISIONING);
@@ -140,30 +139,118 @@ describe("useSupabaseProjectStatus", () => {
     await waitFor(() => expect(result.current.isProvisioning).toBe(true));
 
     await advanceTicks(3);
+    expect(result.current.isProvisioning).toBe(true);
+
+    // And it is still polling, rather than sitting on stale data.
     const settled = mocks.getProjectStatus.mock.calls.length;
+    await advanceTicks(2);
+    expect(mocks.getProjectStatus.mock.calls.length).toBeGreaterThan(settled);
+  });
+
+  // The one failure the budget must not cover. `fetchWithRetry` has already
+  // backed a 429 off up to ten times before it reaches here, so retrying would
+  // triple a budget spent on an endpoint that asked to be left alone.
+  it("does not retry a rate limit the main process already backed off", async () => {
+    mocks.getProjectStatus.mockResolvedValueOnce(PROVISIONING);
+    mocks.getProjectStatus.mockRejectedValue(
+      new DyadError("Rate limited (429)", DyadErrorKind.RateLimited),
+    );
+
+    const { result } = renderStatus();
+    await waitFor(() => expect(result.current.isProvisioning).toBe(true));
+
+    const beforeFailing = mocks.getProjectStatus.mock.calls.length;
     await advanceTicks(3);
 
-    // One attempt per tick, and no further ticks after the failure.
+    // One attempt for the failing tick, and the poll stops on it.
+    expect(mocks.getProjectStatus.mock.calls.length).toBe(beforeFailing + 1);
+    expect(result.current.isProvisioning).toBe(false);
+  });
+
+  // The budget has to be a budget: retrying without bound would put the panel
+  // back to hammering a rate-limited endpoint for as long as it is mounted.
+  it("still gives up when the failures do not stop", async () => {
+    mocks.getProjectStatus.mockResolvedValueOnce(PROVISIONING);
+    mocks.getProjectStatus.mockRejectedValue(new Error("502 bad gateway"));
+
+    const { result } = renderStatus();
+    await waitFor(() => expect(result.current.isProvisioning).toBe(true));
+
+    await advanceTicks(6);
+    const settled = mocks.getProjectStatus.mock.calls.length;
+    await advanceTicks(6);
+
     expect(mocks.getProjectStatus.mock.calls.length).toBe(settled);
     expect(result.current.isProvisioning).toBe(false);
   });
 
-  // A remount is the recovery path for the case above, so it has to actually
-  // re-check. Seeded through the real sequence — a success, then a failed tick —
-  // because that is the only way the poll can be running when it breaks, and it
-  // leaves cached data behind that a naive mount would serve instead of
-  // refetching.
+  // Distinct from `isProvisioning` being false: callers gate work on this so
+  // they do not treat "not answered yet" as "ready".
+  it("reports the first check as unknown until it answers", async () => {
+    mocks.getProjectStatus.mockResolvedValue(READY);
+
+    const { result } = renderStatus();
+    expect(result.current.isStatusUnknown).toBe(true);
+    expect(result.current.isProvisioning).toBe(false);
+
+    await waitFor(() => expect(result.current.status).toBe("ACTIVE_HEALTHY"));
+    expect(result.current.isStatusUnknown).toBe(false);
+  });
+
+  // Nothing is pending when there is nothing to ask. A query that reported
+  // itself unknown while disabled would gate its callers forever, because no
+  // request is ever coming to lift it.
+  it("is not unknown when there is no project to ask about", () => {
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useSupabaseProjectStatus({
+          projectId: null,
+          organizationSlug: "org-1",
+        }),
+      { wrapper },
+    );
+
+    expect(result.current.isStatusUnknown).toBe(false);
+    expect(mocks.getProjectStatus).not.toHaveBeenCalled();
+  });
+
+  it("is not unknown when the caller has it disabled", () => {
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useSupabaseProjectStatus({
+          projectId: "proj-1",
+          organizationSlug: "org-1",
+          enabled: false,
+        }),
+      { wrapper },
+    );
+
+    expect(result.current.isStatusUnknown).toBe(false);
+    expect(mocks.getProjectStatus).not.toHaveBeenCalled();
+  });
+
+  // A remount is the recovery path once the endpoint stays down, so it has to
+  // actually re-check. Seeded through the real sequence — a success, then
+  // sustained failure — because that is the only way the poll can be running
+  // when it breaks, and it leaves cached data behind that a naive mount would
+  // serve instead of refetching.
   it("re-checks when the panel is reopened after a failure", async () => {
     mocks.getProjectStatus.mockResolvedValueOnce(PROVISIONING);
-    mocks.getProjectStatus.mockRejectedValueOnce(new Error("502 bad gateway"));
-    mocks.getProjectStatus.mockResolvedValue(PROVISIONING);
+    mocks.getProjectStatus.mockRejectedValue(new Error("502 bad gateway"));
 
     const first = renderStatus();
     await waitFor(() => expect(first.result.current.isProvisioning).toBe(true));
-    await advanceTicks(2);
+    await advanceTicks(4);
     await waitFor(() =>
       expect(first.result.current.isProvisioning).toBe(false),
     );
+    mocks.getProjectStatus.mockResolvedValue(PROVISIONING);
     const beforeRemount = mocks.getProjectStatus.mock.calls.length;
     first.unmount();
 

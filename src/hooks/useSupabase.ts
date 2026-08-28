@@ -24,6 +24,7 @@ import {
 } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
+import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
@@ -351,6 +352,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
 }
 
 const PROJECT_STATUS_POLL_INTERVAL_MS = 5_000;
+const PROJECT_STATUS_RETRY_COUNT = 2;
 
 /**
  * Whether a project is still being provisioned, asked of Supabase on each mount
@@ -382,15 +384,25 @@ export function useSupabaseProjectStatus({
     // Opting out of the app-wide 60s staleTime is what makes a failed tick
     // recoverable: a cached COMING_UP would otherwise be served to the next
     // mount with no request, leaving the banner down for the rest of the
-    // provision. No renderer retry either — the main process already retries,
-    // and a cancelled one lands in terminal `error` after a single failure.
+    // provision.
     staleTime: 0,
     // `staleTime: 0` would otherwise let React Query's focus and reconnect
     // refetches through unthrottled, one request per event against a
     // rate-limited API. Mount is the recovery path that matters.
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    retry: false,
+    retry: (failureCount, error) => {
+      // A 429 has already been backed off up to ten times in the main process.
+      // The endpoint has asked to be left alone, so retrying it here would only
+      // multiply that budget.
+      if (isDyadError(error) && error.kind === DyadErrorKind.RateLimited) {
+        return false;
+      }
+      // Everything else arrives unretried — `fetchWithRetry` only handles a
+      // 429 — and without a budget one 502 or dropped connection ends the poll
+      // and takes the banner down for good, which reads exactly like "ready".
+      return failureCount < PROJECT_STATUS_RETRY_COUNT;
+    },
     refetchInterval: (query) => {
       // A terminal error is the bound. React Query retains the last successful
       // data, so reading `data.status` alone would see COMING_UP forever once
@@ -415,6 +427,10 @@ export function useSupabaseProjectStatus({
     isProvisioning:
       !query.isError &&
       query.data?.status === SUPABASE_PROJECT_STATUS_PROVISIONING,
+    // The first check has not answered yet, so the project may or may not be
+    // serving. Distinct from `isProvisioning` being false, which callers would
+    // otherwise read as "ready". False when the query is disabled.
+    isStatusUnknown: query.isLoading,
   };
 }
 

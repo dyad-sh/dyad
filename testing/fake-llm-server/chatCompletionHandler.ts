@@ -584,7 +584,7 @@ export default Index;
       messageContent += "\n\n" + generateDump(req);
     }
 
-    if (lastMessage && lastMessage.content === "[increment]") {
+    if (userTextContent.startsWith("[increment]")) {
       globalCounter++;
       messageContent = `counter=${globalCounter}`;
     }

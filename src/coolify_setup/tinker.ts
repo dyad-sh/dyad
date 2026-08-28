@@ -62,12 +62,18 @@ export function wrapScript(body: string): string {
 /**
  * Pulls our output back out of a tinker transcript.
  *
- * The opening marker is matched with its prompt attached, because that is what
- * distinguishes the real output from the echo of the line that produced it.
+ * The opening marker is matched with the prompt it shares a line with, because
+ * that is what distinguishes the real output from the echo of the line that
+ * produced it. The prompt is allowed to be absent or repeated: it is an
+ * artefact of psysh flushing a prompt before the output arrives, and nothing
+ * here should turn a change in that into every call failing. Either way the
+ * echoed line cannot match, because it carries the script around the marker.
  */
+const START_LINE = new RegExp(`^(?:>\\s*)*${START}$`);
+
 export function extractOutput(transcript: string): string | null {
   const lines = transcript.split(/\r?\n/);
-  const startAt = lines.findIndex((line) => line.trimEnd() === `> ${START}`);
+  const startAt = lines.findIndex((line) => START_LINE.test(line.trim()));
   if (startAt === -1) return null;
   const rest = lines.slice(startAt + 1);
   const endAt = rest.findIndex((line) => line.trimEnd() === END);

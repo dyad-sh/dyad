@@ -20,6 +20,39 @@ const REAL_TRANSCRIPT = [
   "__DYAD_OUT_END__",
 ].join("\n");
 
+describe("finding our output however psysh prompts", () => {
+  it("reads it when the prompt is missing or repeated", () => {
+    // The prompt sharing a line with the output is an artefact of when psysh
+    // flushes. A version that stopped echoing, or that stacked prompts, would
+    // otherwise make every call fail — and the caller reports that as Coolify
+    // refusing to create an account, on a server where it exists.
+    for (const marker of [
+      "__DYAD_OUT_START__",
+      "> __DYAD_OUT_START__",
+      "> > > __DYAD_OUT_START__",
+    ]) {
+      expect(
+        extractOutput([marker, "answer", "__DYAD_OUT_END__"].join("\n")),
+      ).toBe("answer");
+    }
+  });
+
+  it("still does not take the line that produced it for the output", () => {
+    // The echoed script line carries the marker too, and matching it would
+    // return the rest of the script as the answer.
+    expect(
+      extractOutput(
+        [
+          '> echo "__DYAD_OUT_START__" . PHP_EOL;',
+          "> __DYAD_OUT_START__",
+          "answer",
+          "__DYAD_OUT_END__",
+        ].join("\n"),
+      ),
+    ).toBe("answer");
+  });
+});
+
 function fakeSession(
   onRun: (command: string, options?: { input?: string }) => { stdout: string },
 ): SshSession & { calls: Array<{ command: string; input?: string }> } {

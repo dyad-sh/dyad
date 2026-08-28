@@ -100,9 +100,10 @@ describe("readCoolifyVersion", () => {
     await expect(readCoolifyVersion(session)).rejects.toBeInstanceOf(SshError);
   });
 
-  it("still answers null when a bound Dyad set is the one that was hit", async () => {
-    // The instance is reachable and simply did not answer in time, which is
-    // the case this was written for.
+  it("says a slow answer was slow rather than calling the version old", async () => {
+    // The instance is reachable and simply did not answer in time, which on
+    // a small server right after an install is ordinary. Answered as null,
+    // the user is told the Coolify they just installed is too old to drive.
     const session = {
       run: vi.fn(async () => {
         throw new SshError(
@@ -114,7 +115,22 @@ describe("readCoolifyVersion", () => {
       end: vi.fn(),
     } as unknown as SshSession;
 
-    expect(await readCoolifyVersion(session)).toBeNull();
+    await expect(readCoolifyVersion(session)).rejects.toThrow(
+      /did not answer in time/,
+    );
+  });
+
+  it("does not call a container still starting an unreadable version", async () => {
+    // No markers back means the script never ran — a container still coming
+    // up. Its own message says to wait, which is the useful thing to say.
+    const session = {
+      run: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })),
+      end: vi.fn(),
+    } as unknown as SshSession;
+
+    await expect(readCoolifyVersion(session)).rejects.toThrow(
+      /may still be starting/,
+    );
   });
 });
 

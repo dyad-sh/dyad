@@ -88,17 +88,22 @@ export async function readCoolifyVersion(
     // driven. Swallowing it here would report a version problem for something
     // they did on purpose, and carry on setting the server up.
     if ((error as { kind?: string }).kind === "user_cancelled") throw error;
-    // A link that has died is not an instance whose version cannot be read.
-    // Returning null here says the version is the problem, and the caller
-    // tells the user their freshly installed Coolify is too old to drive —
-    // for a question that never reached it. The same line isAdminSeeded
-    // draws: a bound Dyad imposed is worth another look, a lost connection
-    // is not.
-    if (error instanceof SshError && error.failure !== "command-timeout") {
-      throw error;
+    // Null means the instance answered and what it said was not a version.
+    // Anything else is the question not getting through, and answering null
+    // for that tells the user their freshly installed Coolify is too old to
+    // drive — for something it was never asked.
+    if (error instanceof SshError && error.failure === "command-timeout") {
+      // Reachable and simply slow, which on a small server right after an
+      // install is ordinary. Worth saying as itself: the version is not the
+      // problem, and there is nothing to fix by finding a newer Coolify.
+      throw new DyadError(
+        "Coolify did not answer in time when Dyad asked which version it " +
+          "is. It may still be starting up — open it and connect with a " +
+          "token once it does.",
+        DyadErrorKind.External,
+      );
     }
-    // An instance too old or too different to answer is one to set up by hand.
-    return null;
+    throw error;
   }
 }
 

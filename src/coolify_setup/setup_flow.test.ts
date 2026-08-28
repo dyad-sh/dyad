@@ -232,6 +232,39 @@ describe("runServerSetup", () => {
     expect(result.apiEnabled).toBe(false);
   });
 
+  it("does not tell the user a fresh install is too old when it was only slow", async () => {
+    // A tinker one-liner over the 30s bound on a 2GB box right after an
+    // install is ordinary. Reported as an unsupported version, the user is
+    // told something false about a Coolify they installed minutes ago, and
+    // preflight refuses to install again — so there is nothing to act on.
+    const server = fakeServer();
+    const answering = server.session.run as unknown as (
+      command: string,
+      options?: { input?: string },
+    ) => Promise<unknown>;
+    server.session.run = (async (
+      command: string,
+      options?: { input?: string },
+    ) => {
+      if ((options?.input ?? "").includes("constants.coolify.version")) {
+        throw new SshError(
+          "command-timeout",
+          "timed out",
+          DyadErrorKind.External,
+        );
+      }
+      return answering(command, options);
+    }) as unknown as SshSession["run"];
+
+    const result = await run(server).promise;
+
+    expect(result.token).toBeNull();
+    expect(result.tokenUnavailableReason).toMatch(/did not answer in time/);
+    expect(result.tokenUnavailableReason).not.toMatch(/version of Coolify/);
+    // The install still stands, and the address is still usable.
+    expect(result.credentials.password).toBeTruthy();
+  });
+
   it("does not claim the API was opened when opening it is what failed", async () => {
     // Reported once the server has confirmed it, not when the attempt
     // starts: saying it is on when it is not sends the user past the one

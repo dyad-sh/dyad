@@ -231,7 +231,11 @@ describe("two servers that are not the same server", () => {
     expect(forServer.textContent).not.toContain("someone-elses");
     expect(forInstance.textContent).toContain("someone-elses.example.com");
     // The password belongs to the machine Dyad built, and stays with it.
-    expect(forInstance.textContent).not.toContain("Abc123@xyz");
+    // Asserted on the field rather than on the text: a secret renders as
+    // bullets until it is revealed, so looking for the value itself passes
+    // wherever the row is put.
+    expect(screen.getByTestId("coolify-field-server-password")).toBeTruthy();
+    expect(screen.queryByTestId("coolify-field-instance-password")).toBeNull();
   });
 
   it("shows one block when both describe the same address", async () => {

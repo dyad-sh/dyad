@@ -497,10 +497,13 @@ export async function tryEnableHttps(
             `still be set to answer at it.\n`,
         );
         if (settled) {
-          settled.reason =
+          // Wrapped, so the trim applies to the joined sentence rather than
+          // binding to the last piece of it.
+          settled.reason = (
             `${settled.reason ?? ""} Coolify may still be configured for ` +
             `${domain}; clear the instance domain in its settings if the ` +
-            `dashboard does not answer at ${plainUrlFor(host)}.`.trimStart();
+            `dashboard does not answer at ${plainUrlFor(host)}.`
+          ).trimStart();
         }
       });
     }

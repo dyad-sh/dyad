@@ -1523,7 +1523,8 @@ export function getAppRuntimeOperationResources(
   // file during its lookup (normally a narrow warm-cache/filesystem window,
   // but up to the 5-second cold-fetch timeout). We accept these races so no
   // preview lifecycle operation can block chat completion. Operations that
-  // write runtime-config, including restore/checkout, remain excluded.
+  // also write runtime-config remain excluded; repository-only GitHub branch
+  // operations do not.
   return [
     readAppResource("app-path"),
     "runtime",

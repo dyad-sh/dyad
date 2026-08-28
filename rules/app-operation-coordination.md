@@ -52,8 +52,9 @@ Retain app-path and runtime-config admission until the preview is ready. Start,
 restart, and rebuild intentionally do not claim the repository, so repository-only
 writers may interleave throughout install and readiness. This includes chat
 checkpoints, commit/discard operations, switch/pull/merge/rebase, and agent or
-test file writes; operations such as restore/checkout that write runtime-config
-remain excluded.
+test file writes. Operations that also write runtime-config remain excluded;
+some restore/checkout paths do, while repository-only GitHub branch operations
+do not.
 
 Dependency setup may therefore race a chat checkpoint, so preview-generated
 tracked changes such as lockfiles or `pnpm-workspace.yaml` may land in the current

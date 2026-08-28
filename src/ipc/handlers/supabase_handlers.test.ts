@@ -409,6 +409,29 @@ describe("Supabase handlers", () => {
     });
 
     // Linking the app also releases it, whichever project the user picked.
+    // `projectId` is nullable on that contract, so a call that leaves the app
+    // unlinked must not count as having resolved the stranded project.
+    it("keeps refusing when set-app-project wrote no project", async () => {
+      insertApp();
+      vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
+        throw new Error("database is locked");
+      });
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toThrow();
+
+      await harness.invokeHandler("supabase:set-app-project", {
+        appId: 7,
+        projectId: null,
+        organizationSlug: null,
+      });
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
+    });
+
     it("stops refusing once the app has been linked", async () => {
       insertApp();
       vi.spyOn(harness.db, "update").mockImplementationOnce(() => {

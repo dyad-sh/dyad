@@ -1229,6 +1229,24 @@ describe("SupabaseConnector — clearing a create failure", () => {
   // For a project created but not linked, this message carries the only copy of
   // its id, and "Create new project" is the natural thing to click after
   // reading it. Clearing on reopen would wipe it before the user could act.
+  // Backing out of the form settles nothing about a project that was already
+  // minted, and this message is the only place its id appears. Reopening to
+  // re-read it and then cancelling must not be what loses it.
+  it("keeps the failure when the form is cancelled", async () => {
+    await submitFailingCreate(createdButUnlinkedError());
+    await screen.findByTestId("supabase-create-project-error");
+
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(screen.getByText("common:cancel"));
+    await act(async () => {});
+
+    expect(
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
+    ).toContain("couldn't link it to this app");
+  });
+
   it("keeps the failure visible when the form is reopened", async () => {
     await submitFailingCreate(createdButUnlinkedError());
     await screen.findByTestId("supabase-create-project-error");

@@ -846,10 +846,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               onClearError={clearCreateError}
               onCreated={handleProjectCreated}
               onFailed={handleProjectCreateFailed}
-              onCancel={() => {
-                setCreateFormAppId(null);
-                clearCreateError();
-              }}
+              // Closes the form without dropping the last failure, for the same
+              // reason opening it does not: for a project created but not
+              // linked, that message is the only place its id appears, and
+              // backing out of the form settles nothing about it.
+              onCancel={() => setCreateFormAppId(null)}
             />
           ) : isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">

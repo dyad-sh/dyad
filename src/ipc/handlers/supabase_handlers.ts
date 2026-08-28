@@ -427,9 +427,12 @@ export function registerSupabaseHandlers() {
             supabaseOrganizationSlug: organizationSlug,
           })
           .where(eq(apps.id, appId));
-        // The app has a project now, whether or not it is the one a failed
-        // create left behind, so the create guard has nothing left to protect.
-        unlinkedProjectsByApp.delete(appId);
+        // Only once a project is actually written: `projectId` is nullable on
+        // this contract, and a call that leaves the app unlinked has not
+        // resolved anything the create guard is holding.
+        if (projectId) {
+          unlinkedProjectsByApp.delete(appId);
+        }
 
         logger.info(
           `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationSlug})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,

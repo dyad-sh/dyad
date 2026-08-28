@@ -943,11 +943,20 @@ export async function createSupabaseProject({
     throw await createResponseError(response, "create project");
   }
 
-  const project = await response.json();
+  // A 2xx says Supabase accepted the create, so a real project probably exists
+  // whether the body is unreadable or merely missing the ref. Both are marked
+  // like the link failure, so callers warn the user rather than inviting them
+  // to create another.
+  let project:
+    | { id?: string; name?: string; region?: string; status?: string }
+    | undefined;
+  try {
+    project = await response.json();
+  } catch (error) {
+    project = undefined;
+    logger.error("Supabase returned an unreadable create response", error);
+  }
   if (!project?.id) {
-    // A 2xx says Supabase accepted the create, so a real project probably
-    // exists even though we cannot name it. Marked like the link failure so
-    // callers warn the user rather than inviting them to create another.
     const unnamed = new DyadError(
       `Supabase created a project but returned no project ref: ${JSON.stringify(project)}`,
       DyadErrorKind.External,

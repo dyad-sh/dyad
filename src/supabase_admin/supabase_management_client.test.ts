@@ -449,6 +449,25 @@ describe("createSupabaseProject", () => {
   // A 2xx means Supabase accepted the create, so a project probably exists even
   // though we cannot name it. Callers key off this code to warn the user rather
   // than invite a retry that mints a second one.
+  // An unreadable body is the same situation as a missing ref: Supabase took
+  // the create. Letting the parse throw would classify it as an ordinary
+  // failure, leaving the form inviting a retry that mints a second project.
+  it("marks a 2xx whose body cannot be parsed as created but unlinked", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("not json at all", { status: 201 }),
+    );
+
+    await expect(
+      createSupabaseProject({
+        name: "My App",
+        organizationSlug: "acme-org",
+        region: "us-east-1",
+      }),
+    ).rejects.toMatchObject({
+      code: SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
+    });
+  });
+
   it("marks a 2xx with no project ref as created but unlinked", async () => {
     created({});
 

@@ -256,16 +256,16 @@ describe("Supabase create-project invalidation", () => {
       };
       const scopes = contract.invalidates?.(input) ?? [];
 
+      // Counted as well as matched: "only those" has to mean it, or a scope
+      // added by accident — the project list among them — would pass unnoticed.
+      // Not an ordered comparison, because order carries nothing downstream.
+      expect(scopes, `${channel}`).toHaveLength(2);
       expect(scopes, `${channel}`).toEqual(
         expect.arrayContaining([
           { family: "apps" },
           { family: "app", appId: 7 },
         ]),
       );
-      expect(
-        scopes.map((scope) => scope.family),
-        `${channel}`,
-      ).not.toContain("provider-status");
     }
   });
 });

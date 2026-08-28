@@ -6,7 +6,7 @@ import {
 } from "@/errors/dyad_error";
 import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { TelemetryEventPayload } from "@/ipc/types";
-import { SshError } from "@/ipc/utils/ssh_client";
+import { sshFailureOf } from "@/shared/ssh_failure";
 import {
   COOLIFY_REQUEST_ERROR_NAME,
   COOLIFY_TRANSPORT_ERROR_NAME,
@@ -133,10 +133,8 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // reported as a fault here — and the message carries whatever they typed.
   // Only the two that say what went wrong. "unknown" is the bucket for a
   // failure nothing here recognised, which is what telemetry is for.
-  if (
-    error instanceof SshError &&
-    (error.failure === "unreachable" || error.failure === "timeout")
-  ) {
+  const sshFailure = sshFailureOf(error);
+  if (sshFailure === "unreachable" || sshFailure === "timeout") {
     return true;
   }
 

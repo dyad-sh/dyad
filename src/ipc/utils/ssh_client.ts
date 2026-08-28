@@ -1,4 +1,5 @@
 import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
+import type { SshFailure } from "@/shared/ssh_failure";
 import { createHash } from "crypto";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -32,22 +33,7 @@ export interface SshTarget {
  * unreachable host asks them to check the address. Reading English out of a
  * message to make that choice breaks the first time the wording moves.
  */
-export type SshFailure =
-  | "auth-rejected"
-  | "host-key-rejected"
-  | "unreachable"
-  /** The connection stopped answering: nothing on it will work again. */
-  | "timeout"
-  /**
-   * We gave up on one command, having asked it to be quick.
-   *
-   * Distinct from "timeout" because the connection is still good and the
-   * question can be asked again — a caller that polls must be able to tell
-   * "this attempt was slow" from "this link is dead", or one slow answer ends
-   * a wait that had minutes left in it.
-   */
-  | "command-timeout"
-  | "unknown";
+export type { SshFailure };
 
 export class SshError extends DyadError {
   constructor(

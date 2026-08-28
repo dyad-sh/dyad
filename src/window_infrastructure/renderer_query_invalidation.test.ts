@@ -240,17 +240,32 @@ describe("Supabase create-project invalidation", () => {
     );
   });
 
-  // Repointing an app does not change the project list, so these must not
-  // carry the provider scope.
-  it("does not publish the provider scope when only the link changes", () => {
-    for (const channel of ["setAppProject", "unsetAppProject"] as const) {
+  // Repointing an app changes that app, so peer windows have to hear about it —
+  // but not the project list, which is unchanged. Asserting the absence alone
+  // would pass just as well if the declaration were deleted outright.
+  it("publishes the app scopes, and only those, when the link changes", () => {
+    for (const [channel, input] of [
+      ["setAppProject", { appId: 7 }],
+      ["unsetAppProject", { app: 7 }],
+    ] as const) {
       const contract = supabaseContracts[channel] as {
-        invalidates?: (input: unknown) => Array<{ family: string }>;
+        invalidates?: (input: unknown) => Array<{
+          family: string;
+          appId?: number;
+        }>;
       };
-      const families = (contract.invalidates?.({ appId: 7, app: 7 }) ?? []).map(
-        (scope) => scope.family,
+      const scopes = contract.invalidates?.(input) ?? [];
+
+      expect(scopes, `${channel}`).toEqual(
+        expect.arrayContaining([
+          { family: "apps" },
+          { family: "app", appId: 7 },
+        ]),
       );
-      expect(families, `${channel}`).not.toContain("provider-status");
+      expect(
+        scopes.map((scope) => scope.family),
+        `${channel}`,
+      ).not.toContain("provider-status");
     }
   });
 });

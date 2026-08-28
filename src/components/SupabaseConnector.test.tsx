@@ -41,8 +41,6 @@ const {
   refreshedSettings,
   organizationsState,
   createState,
-  projectStatusState,
-  projectStatusMock,
   supabaseOptionsState,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
@@ -78,14 +76,6 @@ const {
     // running at once cannot be mistaken for each other.
     creatingAppIds: new Set<number>(),
   },
-  // The provisioning banner is the user-facing point of the status hook, so the
-  // stub has to be varyable rather than a constant.
-  projectStatusState: {
-    status: null as string | null,
-    isProvisioning: false,
-    isStatusUnknown: false,
-  },
-  projectStatusMock: vi.fn(),
   // What the connector asked the data hook for. The branch query is gated by
   // the argument it passes, not by anything it renders.
   supabaseOptionsState: {
@@ -132,7 +122,6 @@ vi.mock("@/ipc/types", () => ({
   SUPABASE_REGIONS: [{ id: "us-east-1", label: "East US (North Virginia)" }],
   DEFAULT_SUPABASE_REGION: "us-east-1",
   SUPABASE_PROJECT_NAME_MAX_LENGTH: 64,
-  SUPABASE_PROJECT_STATUS_PROVISIONING: "COMING_UP",
   SUPABASE_PROJECT_CREATED_BUT_UNLINKED:
     "supabase_project_created_but_unlinked",
 }));
@@ -217,7 +206,6 @@ vi.mock("@/hooks/useSupabase", () => ({
       deleteOrganization: vi.fn(),
     };
   },
-  useSupabaseProjectStatus: projectStatusMock,
   // Mirrors the real predicate: matched on the code the handler attaches, not
   // on the error kind.
   isCreatedButUnlinkedError: (error: unknown) =>
@@ -276,10 +264,6 @@ beforeEach(() => {
   organizationsState.current = [];
   createState.createProject = vi.fn();
   createState.creatingAppIds = new Set();
-  projectStatusState.status = null;
-  projectStatusState.isProvisioning = false;
-  projectStatusState.isStatusUnknown = false;
-  projectStatusMock.mockImplementation(() => projectStatusState);
   supabaseOptionsState.last = null;
   projectsState.current = [];
   providerLoadingState.organizations = false;
@@ -780,99 +764,6 @@ describe("SupabaseConnector — app API key", () => {
   });
 });
 
-describe("SupabaseConnector — provisioning banner", () => {
-  const BANNER = "supabase-project-provisioning";
-
-  it("warns while the new project's database is still coming up", async () => {
-    projectStatusState.status = "COMING_UP";
-    projectStatusState.isProvisioning = true;
-
-    renderConnector();
-
-    expect(await screen.findByTestId(BANNER)).toBeTruthy();
-    // Listing branches against a project that is still coming up fails, and
-    // that error would contradict the banner.
-    expect(screen.queryByTestId("supabase-branch-select")).toBeNull();
-  });
-
-  // The window the status check has not answered in yet. A newly linked
-  // project reads as not provisioning here, so gating on `isProvisioning`
-  // alone still lets one doomed request through and caches its failure.
-  it("does not ask for branches before the status check answers", async () => {
-    projectStatusState.isStatusUnknown = true;
-
-    renderConnector();
-
-    // Withheld rather than shown empty: a picker offering no branch, for an app
-    // that has one, is a worse answer than no picker while we do not know.
-    await screen.findByTestId("supabase-redeploy-functions-button");
-    expect(screen.queryByTestId("supabase-branch-select")).toBeNull();
-    expect(supabaseOptionsState.last?.branchesProjectId).toBeNull();
-  });
-
-  // A branched app lists against its healthy parent, so it has nothing to wait
-  // for.
-  it("asks for a branched app's branches while its own status is unknown", async () => {
-    projectStatusState.isStatusUnknown = true;
-    appState.supabaseParentProjectId = "proj-parent";
-
-    renderConnector();
-
-    await screen.findByTestId("supabase-branch-select");
-    expect(supabaseOptionsState.last?.branchesProjectId).toBe("proj-parent");
-  });
-
-  // Hiding the branch section is not enough: the query would still run, fail,
-  // and stay cached with retries off, so its error would appear the moment the
-  // banner cleared.
-  it("does not ask for branches of a project that is coming up", async () => {
-    projectStatusState.status = "COMING_UP";
-    projectStatusState.isProvisioning = true;
-
-    renderConnector();
-
-    await screen.findByTestId(BANNER);
-    expect(supabaseOptionsState.last?.branchesProjectId).toBeNull();
-  });
-
-  // The branch query targets the parent on a branched app, so it succeeds even
-  // while the branch itself is provisioning.
-  it("still offers branches when only a branch of a healthy project is coming up", async () => {
-    projectStatusState.status = "COMING_UP";
-    projectStatusState.isProvisioning = true;
-    appState.supabaseParentProjectId = "proj-parent";
-
-    renderConnector();
-
-    expect(await screen.findByTestId(BANNER)).toBeTruthy();
-    expect(await screen.findByTestId("supabase-branch-select")).toBeTruthy();
-    expect(supabaseOptionsState.last?.branchesProjectId).toBe("proj-parent");
-  });
-
-  it("says nothing once the project is serving", async () => {
-    projectStatusState.status = "ACTIVE_HEALTHY";
-
-    renderConnector();
-
-    await screen.findByTestId("supabase-branch-select");
-    expect(screen.queryByTestId(BANNER)).toBeNull();
-  });
-
-  // Guards the wiring, not just the rendering: pointing the hook at the wrong
-  // id (a branch ref, say) would leave the banner permanently silent.
-  it("asks about the app's own project", async () => {
-    renderConnector();
-
-    await screen.findByTestId("supabase-branch-select");
-    expect(projectStatusMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: "proj-1",
-        organizationSlug: "org-1",
-      }),
-    );
-  });
-});
-
 describe("SupabaseConnector — creating a project", () => {
   it("offers project creation when the organization has no projects", async () => {
     showSelector();
@@ -1046,7 +937,7 @@ describe("SupabaseConnector — a create that fails", () => {
       expect(screen.queryByTestId("supabase-new-project-name")).toBeNull(),
     );
     expect(
-      (await screen.findByTestId("supabase-orphaned-project")).textContent,
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
 
@@ -1070,25 +961,25 @@ describe("SupabaseConnector — a create that fails", () => {
   // only record of the orphan appeared.
   it("keeps reporting the orphan while the project list reloads", async () => {
     const { rerender } = await submitFailingCreate(createdButUnlinkedError());
-    await screen.findByTestId("supabase-orphaned-project");
+    await screen.findByTestId("supabase-create-project-error");
 
     providerLoadingState.projects = true;
     rerender(<SupabaseConnector appId={7} />);
 
     expect(
-      (await screen.findByTestId("supabase-orphaned-project")).textContent,
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
 
   it("keeps reporting the orphan when that reload fails", async () => {
     const { rerender } = await submitFailingCreate(createdButUnlinkedError());
-    await screen.findByTestId("supabase-orphaned-project");
+    await screen.findByTestId("supabase-create-project-error");
 
     providerErrorState.projects = new Error("offline");
     rerender(<SupabaseConnector appId={7} />);
 
     expect(
-      (await screen.findByTestId("supabase-orphaned-project")).textContent,
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
 
@@ -1133,7 +1024,7 @@ describe("SupabaseConnector — a create that fails", () => {
   it("keeps one app's failure when another app starts its own create", async () => {
     const unlinked = createdButUnlinkedError();
     const { rerender } = await submitFailingCreate(unlinked);
-    await screen.findByTestId("supabase-orphaned-project");
+    await screen.findByTestId("supabase-create-project-error");
 
     appState.name = "Other App";
     rerender(<SupabaseConnector appId={8} />);
@@ -1146,18 +1037,15 @@ describe("SupabaseConnector — a create that fails", () => {
 
     rerender(<SupabaseConnector appId={7} />);
     expect(
-      (await screen.findByTestId("supabase-orphaned-project")).textContent,
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
 });
 
 describe("SupabaseConnector — clearing a create failure", () => {
-  // Picking a project connects the app, but says nothing about which project
-  // was stranded — it may not be this one. Only the user knows whether they
-  // have dealt with it, so only the user dismisses it. Linking swaps the panel
-  // to the connected card, which is why the notice has to live in both: shown
-  // only by the selector it would vanish, undismissable, at this exact step.
-  it("keeps the orphan notice through linking, until dismissed", async () => {
+  // Picking a project is how the user finishes a create that failed after
+  // minting one, so the message has done its job once the app is linked.
+  it("clears the failure once the app has a project", async () => {
     const user = userEvent.setup();
     projectsState.current = [
       {
@@ -1167,101 +1055,133 @@ describe("SupabaseConnector — clearing a create failure", () => {
         organizationSlug: "org-1",
       },
     ];
-    // Stands in for the real link plus the refreshApp that follows it.
+    // Stands in for the link the handler writes and refreshApp reloads.
     setAppProjectMock.mockImplementation(async () => {
       appState.supabaseProjectId = "proj-new";
-      appState.supabaseProjectName = "My App";
-      appState.supabaseOrganizationSlug = "org-1";
     });
 
     const { rerender } = await submitFailingCreate(createdButUnlinkedError());
-    await screen.findByTestId("supabase-orphaned-project");
+    await screen.findByTestId("supabase-create-project-error");
 
     await user.click(screen.getByLabelText("Project"));
     await user.click(await screen.findByRole("option", { name: /My App/ }));
     await waitFor(() => expect(setAppProjectMock).toHaveBeenCalled());
     rerender(<SupabaseConnector appId={7} />);
 
-    // The connected card is up now, and the notice came with it.
-    await screen.findByTestId("supabase-redeploy-functions-button");
-    expect(screen.getByTestId("supabase-orphaned-project")).toBeTruthy();
-
-    await user.click(screen.getByTestId("supabase-dismiss-orphaned-project"));
     await waitFor(() =>
-      expect(screen.queryByTestId("supabase-orphaned-project")).toBeNull(),
+      expect(screen.queryByTestId("supabase-create-project-error")).toBeNull(),
     );
   });
 
-  // Reopening the form, typing in it, or cancelling out of it are all things
-  // the user does about the *next* create. None of them unstrand the project
-  // the last one left behind.
-  it("keeps the orphan notice across reopening and cancelling the form", async () => {
-    await submitFailingCreate(createdButUnlinkedError());
-    await screen.findByTestId("supabase-orphaned-project");
-
-    fireEvent.click(
-      await screen.findByTestId("supabase-create-project-button"),
-    );
-    expect(screen.getByTestId("supabase-orphaned-project")).toBeTruthy();
-
-    fireEvent.change(await screen.findByTestId("supabase-new-project-name"), {
-      target: { value: "another-name" },
-    });
-    expect(screen.getByTestId("supabase-orphaned-project")).toBeTruthy();
-
-    // The i18n stub renders keys verbatim, so this is the Cancel button.
-    fireEvent.click(screen.getByText("common:cancel"));
-    await act(async () => {});
-    expect(screen.getByTestId("supabase-orphaned-project")).toBeTruthy();
-  });
-
-  // A second create mints a second project; it does nothing about the one the
-  // first create stranded. Clearing here would leave the user with a project
-  // consuming their quota and nothing anywhere saying it exists.
-  it("keeps an orphan on file when a later create for that app succeeds", async () => {
+  // The app on screen being linked says nothing about the app a create was
+  // launched for. Suppressing on that basis discards the orphan message for the
+  // app that actually failed — the only record of a project being paid for.
+  it("keeps a failure for an app the panel has navigated away from", async () => {
     showSelector();
-    const first = deferredCreate();
-    const second = deferredCreate();
-    createState.createProject = vi
-      .fn()
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
+    const create = deferredCreate();
+    createState.createProject = vi.fn().mockReturnValue(create.promise);
 
-    renderConnector();
+    const { rerender } = renderConnector();
     fireEvent.click(
       await screen.findByTestId("supabase-create-project-button"),
     );
-    const submit = await screen.findByTestId("supabase-create-project-submit");
-    fireEvent.click(submit);
-    fireEvent.click(submit);
-    await waitFor(() =>
-      expect(createState.createProject).toHaveBeenCalledTimes(2),
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
     );
+    await waitFor(() => expect(createState.createProject).toHaveBeenCalled());
 
+    // App 8 is on screen and linked when app 7's create fails.
+    appState.supabaseProjectId = "proj-8";
+    appState.supabaseProjectName = "Other Project";
+    rerender(<SupabaseConnector appId={8} />);
     await act(async () => {
-      first.fail(createdButUnlinkedError());
-      await first.promise.catch(() => {});
-    });
-    await act(async () => {
-      second.settle({
-        id: "proj-second",
-        name: "My App",
-        region: "us-east-1",
-        organizationSlug: "org-1",
-      });
-      await second.promise;
+      create.fail(createdButUnlinkedError());
+      await create.promise.catch(() => {});
     });
 
-    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled());
+    // Back on app 7, still unlinked, the message has to be there.
+    appState.supabaseProjectId = null;
+    appState.supabaseProjectName = null;
+    rerender(<SupabaseConnector appId={7} />);
     expect(
-      (await screen.findByTestId("supabase-orphaned-project")).textContent,
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
 
-  // Same stranding by a different route. Resubmitting cannot reach it — the
-  // form clears the error itself on submit — so it takes two creates in flight
-  // at once, the earlier one failing after the later one was sent.
-  it("clears the failure when an overlapping create for that app succeeds", async () => {
+  // The one path the clear-on-linked effect cannot cover: a failure recorded
+  // while the app was already linked leaves the effect no transition to fire
+  // on. Disconnecting is what brings the selector card back, so it has to drop
+  // the message on the way.
+  it("clears a failure recorded while linked when the app is disconnected", async () => {
+    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
+    appState.supabaseProjectId = "proj-1";
+    appState.supabaseProjectName = null;
+    createState.createProject = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("This app is already connected to a Supabase project."),
+      );
+
+    const { rerender } = renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+    await screen.findByRole("alert");
+
+    // Disconnect from the reconnect card, which is where a linked app with no
+    // usable credentials offers it.
+    hasSupabaseCredentialsForOrganizationMock.mockReturnValue(false);
+    rerender(<SupabaseConnector appId={7} />);
+    fireEvent.click(
+      screen.getByText("integrations.supabase.disconnectProject"),
+    );
+    await waitFor(() => expect(unsetAppProjectMock).toHaveBeenCalled());
+
+    // Back on the selector as an unlinked app, with nothing left over. Asserted
+    // on the message rather than the outside alert: the form stays open on an
+    // ordinary failure, so it is the form's own copy that would survive.
+    hasSupabaseCredentialsForOrganizationMock.mockReturnValue(true);
+    appState.supabaseProjectId = null;
+    rerender(<SupabaseConnector appId={7} />);
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  // The connected card is gated on the project NAME, which getApp leaves null
+  // when the Management API call for it fails. That renders the selector, with
+  // its Create button, for an app that is linked — and the handler refuses.
+  // Suppressed, that click is a silent no-op: the mutation shows no toast.
+  it("shows the refusal when Create is pressed on a linked app", async () => {
+    organizationsState.current = [{ organizationSlug: "org-1", name: "Acme" }];
+    appState.supabaseProjectId = "proj-1";
+    appState.supabaseProjectName = null;
+    createState.createProject = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("This app is already connected to a Supabase project."),
+      );
+
+    renderConnector();
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-submit"),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "already connected",
+    );
+  });
+
+  // A double-submit settles as one success and one "already connected"
+  // failure, and the failure lands second. Clearing per success path would
+  // leave it on file to reappear at the next disconnect, contradicting the
+  // success toast the user just saw.
+  it("drops a failure that lost the race to a create that linked the app", async () => {
     showSelector();
     const first = deferredCreate();
     const second = deferredCreate();
@@ -1270,7 +1190,7 @@ describe("SupabaseConnector — clearing a create failure", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
 
-    renderConnector();
+    const { rerender } = renderConnector();
     fireEvent.click(
       await screen.findByTestId("supabase-create-project-button"),
     );
@@ -1282,25 +1202,52 @@ describe("SupabaseConnector — clearing a create failure", () => {
     );
 
     await act(async () => {
-      first.fail(new Error("network blip"));
-      await first.promise.catch(() => {});
-    });
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "network blip",
-    );
-
-    await act(async () => {
-      second.settle({
+      first.settle({
         id: "proj-new",
         name: "My App",
         region: "us-east-1",
         organizationSlug: "org-1",
       });
-      await second.promise;
+      await first.promise;
+    });
+    await act(async () => {
+      second.fail(
+        new Error("This app is already connected to a Supabase project."),
+      );
+      await second.promise.catch(() => {});
     });
 
-    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalled());
-    expect(screen.queryByTestId("supabase-create-project-error")).toBeNull();
+    // The create linked the app, which is what settles the losing failure.
+    appState.supabaseProjectId = "proj-new";
+    rerender(<SupabaseConnector appId={7} />);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("supabase-create-project-error")).toBeNull(),
+    );
+  });
+
+  // For a project created but not linked, this message carries the only copy of
+  // its id, and "Create new project" is the natural thing to click after
+  // reading it. Clearing on reopen would wipe it before the user could act.
+  it("keeps the failure visible when the form is reopened", async () => {
+    await submitFailingCreate(createdButUnlinkedError());
+    await screen.findByTestId("supabase-create-project-error");
+
+    fireEvent.click(
+      await screen.findByTestId("supabase-create-project-button"),
+    );
+
+    // Inside the form now, rather than beside it.
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "couldn't link it to this app",
+    );
+
+    // And the first keystroke is what drops it.
+    fireEvent.change(await screen.findByTestId("supabase-new-project-name"), {
+      target: { value: "retry-name" },
+    });
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   // The scoping tests pass even if the clear never fires, which would strand a
@@ -1322,7 +1269,7 @@ describe("SupabaseConnector — clearing a create failure", () => {
   it("keeps both apps' failures when two creates fail", async () => {
     const unlinked = createdButUnlinkedError();
     const { rerender } = await submitFailingCreate(unlinked);
-    await screen.findByTestId("supabase-orphaned-project");
+    await screen.findByTestId("supabase-create-project-error");
 
     appState.name = "Other App";
     createState.createProject = vi
@@ -1341,7 +1288,7 @@ describe("SupabaseConnector — clearing a create failure", () => {
 
     rerender(<SupabaseConnector appId={7} />);
     expect(
-      (await screen.findByTestId("supabase-orphaned-project")).textContent,
+      (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
 });

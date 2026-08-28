@@ -607,7 +607,6 @@
       "region": "Región",
       "regionDescription": "Elige la región más cercana a tus usuarios. No se puede cambiar después de crear el proyecto.",
       "createProjectDescription": "Dyad genera la contraseña de la base de datos. Restablécela desde el panel de Supabase si necesitas acceso directo a la base de datos.",
-      "projectProvisioning": "Supabase todavía está configurando este proyecto. Las solicitudes a la base de datos y a la API fallarán hasta que termine, normalmente en un par de minutos.",
       "refreshProjects": "Actualizar proyectos",
       "addOrganization": "Añadir Organización",
       "organizationCredentialsMissing": "Las credenciales de la organización de este proyecto no están disponibles. Vuelve a conectar la organización para restaurar las operaciones de base de datos y despliegue.",

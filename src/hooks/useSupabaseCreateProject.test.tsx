@@ -220,3 +220,44 @@ describe("isCreatedButUnlinkedError", () => {
     expect(isCreatedButUnlinkedError(undefined)).toBe(false);
   });
 });
+
+describe("useSupabase — refetching the project list after a failed create", () => {
+  // Only the created-but-unlinked failure leaves something new in the list to
+  // find. `listAllProjects` reports a partial result as a success, so an
+  // offline create refetching here would replace a good cached list with an
+  // empty one — the opposite of helpful.
+  it("refetches only for a create that left a project behind", async () => {
+    mocks.listOrganizations.mockResolvedValue([
+      { organizationSlug: "org-1", name: "Acme" },
+    ]);
+    mocks.listAllProjects.mockResolvedValue([
+      {
+        id: "proj-1",
+        name: "One",
+        region: "us-east-1",
+        organizationSlug: "org-1",
+      },
+    ]);
+
+    const { result } = renderSupabase();
+    await waitFor(() => expect(mocks.listAllProjects).toHaveBeenCalledTimes(1));
+
+    mocks.createProject.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await result.current.createProject(params(7)).catch(() => {});
+    });
+    await act(async () => {});
+    expect(mocks.listAllProjects).toHaveBeenCalledTimes(1);
+
+    const unlinked = new DyadError(
+      "Created but not linked",
+      DyadErrorKind.Internal,
+    ) as DyadError & { code: string };
+    unlinked.code = "supabase_project_created_but_unlinked";
+    mocks.createProject.mockRejectedValueOnce(unlinked);
+    await act(async () => {
+      await result.current.createProject(params(7)).catch(() => {});
+    });
+    await waitFor(() => expect(mocks.listAllProjects).toHaveBeenCalledTimes(2));
+  });
+});

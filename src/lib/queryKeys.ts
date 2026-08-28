@@ -381,13 +381,6 @@ export const queryKeys = {
     projects: ["supabase", "projects"] as const,
     redeploy: ({ appId }: { appId: number }) =>
       ["supabase", "redeploy", appId] as const,
-    projectStatus: ({
-      projectId,
-      organizationSlug,
-    }: {
-      projectId: string | null;
-      organizationSlug: string | null;
-    }) => ["supabase", "projectStatus", projectId, organizationSlug] as const,
     /**
      * Scoped by project too: the answer is about one app/project pairing, so
      * repointing an app at another project (or branch) must not reuse the old

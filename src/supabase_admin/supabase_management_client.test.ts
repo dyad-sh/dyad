@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import {
   classifyManagementApiError,
+  createSupabaseProject,
   getProjectApiKeys,
   getSupabaseProjectLogs,
   listSupabaseOrganizations,
@@ -10,6 +11,7 @@ import {
 import { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
+import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types/supabase";
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
@@ -375,5 +377,109 @@ describe("classifyManagementApiError", () => {
     const original = new Error("socket hang up");
 
     expect(classifyManagementApiError(original, "do a thing")).toBe(original);
+  });
+});
+
+describe("createSupabaseProject", () => {
+  const CREDENTIALS = {
+    supabase: {
+      organizations: {
+        "acme-org": {
+          accessToken: { value: "organization-token" },
+          refreshToken: { value: "organization-refresh" },
+          expiresIn: 3600,
+          tokenTimestamp: Date.now(),
+        },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    vi.mocked(readSettings).mockReturnValue(CREDENTIALS as never);
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(readSettings).mockReturnValue({} as never);
+  });
+
+  const created = (body: unknown, status = 201) =>
+    vi
+      .mocked(fetch)
+      .mockResolvedValue(new Response(JSON.stringify(body), { status }));
+
+  // The single highest-consequence line on this path. Credentials are keyed by
+  // the slug, and this value is written to the app row, so echoing back
+  // Supabase's canonical `organization_id` would leave the app unable to
+  // authenticate against its own project.
+  it("keeps the organization slug it was given, not the one echoed back", async () => {
+    created({
+      id: "proj-abc",
+      name: "My App",
+      region: "us-east-1",
+      organization_id: "canonical-org-id",
+      status: "COMING_UP",
+    });
+
+    await expect(
+      createSupabaseProject({
+        name: "My App",
+        organizationSlug: "acme-org",
+        region: "us-east-1",
+      }),
+    ).resolves.toMatchObject({
+      id: "proj-abc",
+      organizationSlug: "acme-org",
+    });
+  });
+
+  it("accepts a 200 as readily as a 201", async () => {
+    created({ id: "proj-abc", name: "My App", region: "us-east-1" }, 200);
+
+    await expect(
+      createSupabaseProject({
+        name: "My App",
+        organizationSlug: "acme-org",
+        region: "us-east-1",
+      }),
+    ).resolves.toMatchObject({ id: "proj-abc" });
+  });
+
+  // A 2xx means Supabase accepted the create, so a project probably exists even
+  // though we cannot name it. Callers key off this code to warn the user rather
+  // than invite a retry that mints a second one.
+  it("marks a 2xx with no project ref as created but unlinked", async () => {
+    created({});
+
+    await expect(
+      createSupabaseProject({
+        name: "My App",
+        organizationSlug: "acme-org",
+        region: "us-east-1",
+      }),
+    ).rejects.toMatchObject({
+      code: SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
+    });
+  });
+
+  // Why this path uses raw fetch rather than the SDK's createProject(), which
+  // discards the response body: the body is where Supabase explains the
+  // failures users actually hit.
+  it("keeps Supabase's own explanation of a refusal", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ message: "free tier project limit reached" }),
+        { status: 403, statusText: "Forbidden" },
+      ),
+    );
+
+    await expect(
+      createSupabaseProject({
+        name: "My App",
+        organizationSlug: "acme-org",
+        region: "us-east-1",
+      }),
+    ).rejects.toThrow(/free tier project limit reached/);
   });
 });

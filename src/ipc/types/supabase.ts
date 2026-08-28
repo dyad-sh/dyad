@@ -165,24 +165,6 @@ export type CreateSupabaseProjectParams = z.infer<
 >;
 
 /**
- * One of the ~15 project statuses in Supabase's Management API (see the
- * `V1ProjectResponse` union in `@dyad-sh/supabase-management-js`). A project
- * reports this for a minute or two after creation, while its database still
- * refuses connections.
- */
-export const SUPABASE_PROJECT_STATUS_PROVISIONING = "COMING_UP";
-
-export const SupabaseProjectStatusSchema = z.object({
-  projectId: z.string(),
-  // Supabase's raw status, passed through rather than mapped so callers pick
-  // the ones they care about. Null when the response omitted it, which is
-  // distinct from Supabase reporting its own "UNKNOWN".
-  status: z.string().nullable(),
-});
-
-export type SupabaseProjectStatus = z.infer<typeof SupabaseProjectStatusSchema>;
-
-/**
  * Set as the `code` on the create failure that leaves a real project behind,
  * unlinked. `code` survives IPC, so the renderer can tell that one failure
  * apart from every other way a create can fail.
@@ -240,19 +222,6 @@ export const supabaseContracts = {
       { family: "app", appId: input.appId },
       { family: "provider-status", provider: "supabase" },
     ],
-  }),
-
-  /**
-   * Provisioning status of a project, used to poll a just-created one until its
-   * database accepts connections.
-   */
-  getProjectStatus: defineContract({
-    channel: "supabase:get-project-status",
-    input: z.object({
-      projectId: z.string(),
-      organizationSlug: z.string().nullable().optional(),
-    }),
-    output: SupabaseProjectStatusSchema,
   }),
 
   listBranches: defineContract({

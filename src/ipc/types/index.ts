@@ -290,13 +290,11 @@ export type {
   ConsoleEntry,
   SupabaseRedeployProgress,
   CreateSupabaseProjectParams,
-  SupabaseProjectStatus,
   SupabaseRegionId,
 } from "./supabase";
 export {
   SUPABASE_REGIONS,
   DEFAULT_SUPABASE_REGION,
-  SUPABASE_PROJECT_STATUS_PROVISIONING,
   SUPABASE_PROJECT_NAME_MAX_LENGTH,
   SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
 } from "./supabase";

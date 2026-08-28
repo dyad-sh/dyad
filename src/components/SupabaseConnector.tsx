@@ -17,7 +17,6 @@ import { useSettings } from "@/hooks/useSettings";
 import {
   useRedeploySupabaseFunctions,
   useSupabase,
-  useSupabaseProjectStatus,
   isCreatedButUnlinkedError,
 } from "@/hooks/useSupabase";
 import { CreateSupabaseProjectForm } from "@/components/CreateSupabaseProjectForm";
@@ -113,29 +112,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { redeployAllFunctions, redeployProgress, isRedeployingFunctions } =
     useRedeploySupabaseFunctions(appId);
 
-  // Asked of Supabase rather than remembered from the create that started it,
-  // so the banner survives leaving this panel mid-provision and also covers a
-  // project provisioned outside Dyad.
-  // Deliberately the app's own ref, not the branch target below: on a branched
-  // app that is the branch, which provisions separately from its parent.
-  const { isProvisioning, isStatusUnknown } = useSupabaseProjectStatus({
-    projectId: app?.supabaseProjectId,
-    organizationSlug: app?.supabaseOrganizationSlug,
-    enabled: isConnected,
-  });
-
-  // Unknown counts as unavailable, not just a confirmed COMING_UP: a project
-  // that has only just been linked reads as not provisioning until the first
-  // check answers, and one doomed request in that window caches a failure that
-  // would surface the moment the banner cleared. Only for an app listing
-  // against its own project — a branched one targets its healthy parent.
-  // Hidden rather than shown disabled, because an empty picker offering no
-  // branch is a worse answer than no picker while we do not know.
-  const isBranchListUnavailable =
-    (isProvisioning || isStatusUnknown) && !app?.supabaseParentProjectId;
-  const branchesProjectId = isBranchListUnavailable
-    ? null
-    : app?.supabaseParentProjectId || app?.supabaseProjectId;
+  const branchesProjectId =
+    app?.supabaseParentProjectId || app?.supabaseProjectId;
 
   const {
     organizations,
@@ -171,15 +149,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // flight at once, so one app's failure must not overwrite another's.
   const [createErrors, setCreateErrors] = useState<Record<number, string>>({});
 
-  // A project that was minted and left unlinked, held apart from the failure
-  // above because it is a fact about the user's Supabase account rather than
-  // about the form. Every way a form error resolves — reopening, typing,
-  // cancelling, a later create — settles nothing about a project that already
-  // exists, so this clears only when the user says so.
-  const [orphanNotices, setOrphanNotices] = useState<Record<number, string>>(
-    {},
-  );
-
   const dropKey = (forAppId: number) => (current: Record<number, string>) => {
     // Returning the same object when there is nothing to drop keeps React's
     // bailout: this runs on every keystroke, and a fresh one would re-render
@@ -189,7 +158,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     return rest;
   };
   const clearCreateError = () => setCreateErrors(dropKey(appId));
-  const dismissOrphanNotice = () => setOrphanNotices(dropKey(appId));
+
+  const linkedProjectId = app?.supabaseProjectId;
 
   // The connection flow lives in the main process; this component only
   // projects it. Timeouts (Supabase historically had none — a closed
@@ -282,10 +252,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         organizationSlug,
       });
       toast.success(t("integrations.supabase.projectConnected"));
-      // The app is connected, so a failed create for it is moot. Any orphan
-      // notice stays: this may or may not be the project that was stranded,
-      // and only the user knows.
-      clearCreateError();
       await refreshApp();
     } catch (error) {
       toast.error(
@@ -305,10 +271,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     project: SupabaseProject,
   ) => {
     setCreateFormAppId((open) => (open === createdForAppId ? null : open));
-    // An earlier failure for this app is settled now, and nothing else drops it
-    // once the form is shut: it would resurface on the next disconnect. Any
-    // orphan notice stays — a second project does not unstrand the first.
-    setCreateErrors(dropKey(createdForAppId));
     toast.success(
       t("integrations.supabase.projectCreated", { name: project.name }),
     );
@@ -321,45 +283,28 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     createdForAppId: number,
     error: unknown,
   ) => {
-    const message = getErrorMessage(error);
+    setCreateErrors((current) => ({
+      ...current,
+      [createdForAppId]: getErrorMessage(error),
+    }));
     if (isCreatedButUnlinkedError(error)) {
-      setOrphanNotices((current) => ({
-        ...current,
-        [createdForAppId]: message,
-      }));
       setCreateFormAppId((open) => (open === createdForAppId ? null : open));
-      return;
     }
-    setCreateErrors((current) => ({ ...current, [createdForAppId]: message }));
   };
 
-  const createErrorForThisApp = createErrors[appId] ?? null;
-  const orphanNoticeForThisApp = orphanNotices[appId] ?? null;
+  // Once the app has a project, a failed create for it says nothing useful: a
+  // double-submit settles as one success and one "already connected" failure,
+  // and the failure lands second. Keyed off the app rather than cleared by each
+  // success path, so it covers a link made from anywhere — this panel, the
+  // selector, or another window. Cannot touch a project created but not
+  // linked, which leaves the app unlinked and so never reaches this.
+  useEffect(() => {
+    if (linkedProjectId) {
+      setCreateErrors(dropKey(appId));
+    }
+  }, [linkedProjectId, appId]);
 
-  // Rendered by both the connected and the selector card. Following the
-  // message's own instruction links the app, which swaps to the connected card
-  // — so a notice only the selector showed would go invisible and undismissable
-  // at exactly that moment, then reappear stale on a later disconnect. It
-  // describes the user's Supabase account, which neither card owns.
-  const orphanNotice = orphanNoticeForThisApp && (
-    <Alert className="mb-4" data-testid="supabase-orphaned-project">
-      <Info className="h-4 w-4" />
-      <AlertDescription
-        role="alert"
-        className="flex items-start justify-between gap-2"
-      >
-        <span>{orphanNoticeForThisApp}</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={dismissOrphanNotice}
-          data-testid="supabase-dismiss-orphaned-project"
-        >
-          {t("common:close")}
-        </Button>
-      </AlertDescription>
-    </Alert>
-  );
+  const createErrorForThisApp = createErrors[appId] ?? null;
 
   // Group projects by organization for display
   const groupedProjects = projects.reduce(
@@ -436,6 +381,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     try {
       await unsetAppProject(appId);
       toast.success(t("integrations.supabase.disconnectProject"));
+      // Covers the ordering the effect above cannot: a failure recorded while
+      // the app was already linked, which the effect has no change left to fire
+      // on. Disconnecting is what brings the selector card back, so it is the
+      // last point before such a message could be seen.
+      clearCreateError();
       await refreshApp();
     } catch (error) {
       console.error("Failed to disconnect project:", error);
@@ -666,94 +616,72 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {orphanNotice}
           <div className="space-y-4">
-            {/* A project Dyad just created reports COMING_UP for a minute or
-            two, during which its database refuses connections. Say so, rather
-            than letting the first schema change fail with a connection error
-            that doesn't explain itself. */}
-            {isProvisioning && (
-              <Alert data-testid="supabase-project-provisioning">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <AlertDescription>
-                  {t("integrations.supabase.projectProvisioning")}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Hidden while the project the branch query targets is coming up
-            or not yet known: listing branches against it fails, and the error
-            would contradict the banner above. A branch of a healthy parent
-            still lists fine, because that query targets the parent. */}
-            {!isBranchListUnavailable && (
-              <div className="space-y-2">
-                <Label htmlFor="supabase-branch-select">
-                  {t("integrations.supabase.databaseBranch")}
-                </Label>
-                {branchesError ? (
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      {getErrorMessage(branchesError)}
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <Select
-                    value={app.supabaseProjectId || ""}
-                    onValueChange={async (supabaseBranchProjectId) => {
-                      try {
-                        const branch = branches.find(
-                          (b) => b.projectRef === supabaseBranchProjectId,
-                        );
-                        if (!branch) {
-                          throw new Error(
-                            t("integrations.supabase.branchNotFound"),
-                          );
-                        }
-                        // Keep the same organizationSlug from the app
-                        await setAppProject({
-                          projectId: branch.projectRef,
-                          parentProjectId: branch.parentProjectRef,
-                          appId,
-                          organizationSlug: app.supabaseOrganizationSlug,
-                        });
-                        toast.success(
-                          t("integrations.supabase.branchSelected"),
-                        );
-                        await refreshApp();
-                      } catch (error) {
-                        toast.error(
-                          t("integrations.supabase.failedSetBranch", {
-                            error: String(error),
-                          }),
+            <div className="space-y-2">
+              <Label htmlFor="supabase-branch-select">
+                {t("integrations.supabase.databaseBranch")}
+              </Label>
+              {branchesError ? (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    {getErrorMessage(branchesError)}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Select
+                  value={app.supabaseProjectId || ""}
+                  onValueChange={async (supabaseBranchProjectId) => {
+                    try {
+                      const branch = branches.find(
+                        (b) => b.projectRef === supabaseBranchProjectId,
+                      );
+                      if (!branch) {
+                        throw new Error(
+                          t("integrations.supabase.branchNotFound"),
                         );
                       }
-                    }}
-                    disabled={isLoadingBranches || isSettingAppProject}
+                      // Keep the same organizationSlug from the app
+                      await setAppProject({
+                        projectId: branch.projectRef,
+                        parentProjectId: branch.parentProjectRef,
+                        appId,
+                        organizationSlug: app.supabaseOrganizationSlug,
+                      });
+                      toast.success(t("integrations.supabase.branchSelected"));
+                      await refreshApp();
+                    } catch (error) {
+                      toast.error(
+                        t("integrations.supabase.failedSetBranch", {
+                          error: String(error),
+                        }),
+                      );
+                    }
+                  }}
+                  disabled={isLoadingBranches || isSettingAppProject}
+                >
+                  <SelectTrigger
+                    id="supabase-branch-select"
+                    data-testid="supabase-branch-select"
                   >
-                    <SelectTrigger
-                      id="supabase-branch-select"
-                      data-testid="supabase-branch-select"
-                    >
-                      <SelectValue
-                        placeholder={t("integrations.supabase.selectBranch")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {branches.map((branch) => (
-                        <SelectItem
-                          key={branch.projectRef}
-                          value={branch.projectRef}
-                        >
-                          {branch.name}
-                          {branch.isDefault && " (Default)"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            )}
+                    <SelectValue
+                      placeholder={t("integrations.supabase.selectBranch")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem
+                        key={branch.projectRef}
+                        value={branch.projectRef}
+                      >
+                        {branch.name}
+                        {branch.isDefault && " (Default)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
 
             {/* Shown only once the app's client is confirmed to hold this
             project's legacy key — an app already on a publishable key has
@@ -881,12 +809,17 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {orphanNotice}
-
-          {/* The form renders its own copy, so this is only for a create that
-          failed after its form had gone. */}
+          {/* Above the loading and error branches below, not inside one of
+          them: a created-but-unlinked failure refetches the project list, so an
+          alert further down would be replaced by that refetch's skeleton, or
+          lost entirely if the refetch then errored. The form renders its own
+          copy, so this is only for when the form is shut. */}
           {!isCreateFormOpen && createErrorForThisApp && (
-            <Alert className="mb-4" data-testid="supabase-create-project-error">
+            <Alert
+              variant="destructive"
+              className="mb-4"
+              data-testid="supabase-create-project-error"
+            >
               <Info className="h-4 w-4" />
               <AlertDescription role="alert">
                 {createErrorForThisApp}
@@ -1026,10 +959,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 variant="outline"
                 size="sm"
                 className="gap-1"
-                onClick={() => {
-                  setCreateFormAppId(appId);
-                  clearCreateError();
-                }}
+                // Deliberately does not clear the last failure: for a project
+                // created but not linked, that message is the only place its id
+                // appears, and this button is the natural thing to click after
+                // reading it. The form shows it and the first keystroke drops
+                // it.
+                onClick={() => setCreateFormAppId(appId)}
                 disabled={organizations.length === 0}
                 data-testid="supabase-create-project-button"
               >

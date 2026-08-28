@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apps } from "@/db/schema";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { activeRecordings } from "@/ipc/services/recording_registry";
@@ -19,7 +19,6 @@ const mocks = vi.hoisted(() => ({
   deployAllSupabaseFunctions: vi.fn(),
   readSettings: vi.fn(),
   createSupabaseProject: vi.fn(),
-  getSupabaseProjectStatus: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -55,11 +54,11 @@ vi.mock(
       typeof import("@/supabase_admin/supabase_management_client")
     >()),
     createSupabaseProject: mocks.createSupabaseProject,
-    getSupabaseProjectStatus: mocks.getSupabaseProjectStatus,
   }),
 );
 
-const { registerSupabaseHandlers } = await import("./supabase_handlers");
+const { registerSupabaseHandlers, unlinkedProjectsByApp } =
+  await import("./supabase_handlers");
 
 describe("Supabase handlers", () => {
   let harness: HandlerTestHarness;
@@ -67,6 +66,9 @@ describe("Supabase handlers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     activeRecordings.clear();
+    // Process-lifetime state, so without this a stranded project recorded by
+    // one test refuses the next test's create.
+    unlinkedProjectsByApp.clear();
     harness = setupHandlerTestHarness();
     registerSupabaseHandlers();
   });
@@ -361,6 +363,104 @@ describe("Supabase handlers", () => {
       );
     });
 
+    // The "already connected" guard reads the app row, and on this path the
+    // write to that row is exactly what failed. Without a separate record every
+    // retry mints another project the user pays for and has no pointer to.
+    it("refuses another create once one was left unlinked", async () => {
+      insertApp();
+      vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
+        throw new Error("database is locked");
+      });
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toThrow();
+      expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+        message: expect.stringContaining("proj-new"),
+      });
+      // Refused before reaching Supabase, which is the whole point.
+      expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
+    });
+
+    // Refusing for the life of the process would strand the app: a user who
+    // reads the message and deletes that project in the dashboard would have
+    // nothing left that clears it. The refusal consumes the record instead, so
+    // it interrupts the reflexive retry once and then gets out of the way.
+    it("stops refusing after it has said so once", async () => {
+      insertApp();
+      vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
+        throw new Error("database is locked");
+      });
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toThrow();
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).resolves.toMatchObject({ id: "proj-new" });
+    });
+
+    // Linking the app also releases it, whichever project the user picked.
+    it("stops refusing once the app has been linked", async () => {
+      insertApp();
+      vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
+        throw new Error("database is locked");
+      });
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toThrow();
+
+      await harness.invokeHandler("supabase:set-app-project", {
+        appId: 7,
+        projectId: "proj-new",
+        organizationSlug: "org-1",
+      });
+      await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).resolves.toMatchObject({ id: "proj-new" });
+      expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(2);
+    });
+
+    // A 2xx with no ref means Supabase probably made a project we cannot name.
+    // Treating it as an ordinary failure would leave the form inviting a retry.
+    it("treats a created project with no ref as unlinked too", async () => {
+      insertApp();
+      const noRef = new DyadError(
+        "Supabase created a project but returned no project ref: {}",
+        DyadErrorKind.External,
+      ) as DyadError & { code: string };
+      noRef.code = SUPABASE_PROJECT_CREATED_BUT_UNLINKED;
+      mocks.createSupabaseProject.mockRejectedValueOnce(noRef);
+      const publish = vi.spyOn(queryInvalidationBus, "publish");
+
+      // The code is what closes the form in the renderer, and the raw body the
+      // client reported is developer-facing, so it is logged and replaced.
+      const thrown = await harness
+        .invokeHandler("supabase:create-project", INPUT)
+        .catch((error: unknown) => error);
+      expect(thrown).toMatchObject({
+        code: SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
+        message: expect.stringContaining("Check your Supabase dashboard"),
+      });
+      expect((thrown as Error).message).not.toContain("no project ref");
+      expect(publish).toHaveBeenCalled();
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
+    });
+
     it("classifies a rejected create as user-fixable and keeps Supabase's reason", async () => {
       insertApp();
       mocks.createSupabaseProject.mockRejectedValue(
@@ -407,31 +507,5 @@ describe("Supabase handlers", () => {
         harness.invokeHandler("supabase:create-project", INPUT),
       ).rejects.toMatchObject({ kind: DyadErrorKind.RateLimited });
     });
-  });
-
-  describe("supabase:get-project-status", () => {
-    const STATUS_INPUT = { projectId: "proj-1", organizationSlug: "org-1" };
-
-    // This runs on a poll for every Supabase-connected app, so an unclassified
-    // failure is not a one-off: a project deleted from the Supabase dashboard
-    // would report a product exception on every mount and every tick.
-    it.each([
-      ["a deleted project", 404, DyadErrorKind.NotFound],
-      ["an org the token cannot see", 403, DyadErrorKind.Auth],
-      ["a revoked token", 401, DyadErrorKind.Auth],
-    ])(
-      "classifies %s rather than reporting it",
-      async (_label, status, kind) => {
-        mocks.getSupabaseProjectStatus.mockRejectedValue(
-          new SupabaseManagementAPIError(`Failed to get project: ${status}`, {
-            status,
-          } as Response),
-        );
-
-        await expect(
-          harness.invokeHandler("supabase:get-project-status", STATUS_INPUT),
-        ).rejects.toMatchObject({ kind });
-      },
-    );
   });
 });

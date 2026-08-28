@@ -609,7 +609,6 @@
       "region": "리전",
       "regionDescription": "사용자와 가장 가까운 리전을 선택하세요. 프로젝트를 만든 후에는 변경할 수 없습니다.",
       "createProjectDescription": "Dyad가 데이터베이스 비밀번호를 생성합니다. 데이터베이스에 직접 접근해야 하면 Supabase 대시보드에서 재설정하세요.",
-      "projectProvisioning": "Supabase가 아직 이 프로젝트를 설정하고 있습니다. 완료될 때까지 데이터베이스와 API 요청이 실패하며, 보통 몇 분 정도 걸립니다.",
       "refreshProjects": "프로젝트 새로고침",
       "addOrganization": "조직 추가",
       "organizationCredentialsMissing": "이 프로젝트 조직의 자격 증명을 사용할 수 없습니다. 데이터베이스 및 배포 작업을 복원하려면 조직을 다시 연결하세요.",

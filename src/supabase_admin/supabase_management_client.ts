@@ -10,6 +10,7 @@ import {
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "../ipc/types/supabase";
 import type { SupabaseOrganizationCredentials } from "../lib/schemas";
 import {
   fetchWithRetry,
@@ -887,8 +888,8 @@ function generateDatabasePassword(): string {
 
 /**
  * Creates a project in a connected organization. It comes back `COMING_UP` and
- * is unusable for a minute or two, so callers should poll
- * `getSupabaseProjectStatus` before doing anything with it.
+ * its database refuses connections for a minute or two, so the returned status
+ * is worth logging even though nothing gates on it yet.
  */
 export async function createSupabaseProject({
   name,
@@ -944,10 +945,16 @@ export async function createSupabaseProject({
 
   const project = await response.json();
   if (!project?.id) {
-    throw new DyadError(
+    // A 2xx says Supabase accepted the create, so a real project probably
+    // exists even though we cannot name it. Marked like the link failure so
+    // callers warn the user rather than inviting them to create another.
+    const unnamed = new DyadError(
       `Supabase created a project but returned no project ref: ${JSON.stringify(project)}`,
       DyadErrorKind.External,
     );
+    (unnamed as DyadError & { code: string }).code =
+      SUPABASE_PROJECT_CREATED_BUT_UNLINKED;
+    throw unnamed;
   }
 
   logger.info(`Created Supabase project ${project.id} ("${project.name}")`);
@@ -961,44 +968,6 @@ export async function createSupabaseProject({
     organizationSlug,
     status: project.status ?? null,
   };
-}
-
-/**
- * Supabase's raw project status, passed through for callers to interpret.
- * `ACTIVE_HEALTHY` is the only one where the database and API are serving;
- * `COMING_UP` is a project still being built. Null if the response omitted it.
- */
-export async function getSupabaseProjectStatus({
-  projectId,
-  organizationSlug,
-}: {
-  projectId: string;
-  organizationSlug: string | null;
-}): Promise<{ projectId: string; status: string | null }> {
-  if (IS_TEST_BUILD) {
-    return { projectId, status: "ACTIVE_HEALTHY" };
-  }
-
-  const supabase = await getSupabaseClient({ organizationSlug });
-
-  const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${encodeURIComponent(projectId)}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
-      },
-    },
-    `Get Supabase project ${projectId}`,
-  );
-
-  if (response.status !== 200) {
-    throw await createResponseError(response, "get project");
-  }
-
-  const project = await response.json();
-  const status: string | null = project?.status ?? null;
-  return { projectId, status };
 }
 
 export async function listSupabaseBranches({

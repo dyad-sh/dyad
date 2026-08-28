@@ -603,7 +603,6 @@
       "region": "Região",
       "regionDescription": "Escolha a região mais próxima dos seus usuários. Isso não pode ser alterado depois que o projeto for criado.",
       "createProjectDescription": "O Dyad gera a senha do banco de dados. Redefina-a no painel do Supabase se precisar de acesso direto ao banco.",
-      "projectProvisioning": "O Supabase ainda está configurando este projeto. Solicitações ao banco de dados e à API vão falhar até terminar, normalmente em alguns minutos.",
       "refreshProjects": "Atualizar projetos",
       "addOrganization": "Adicionar Organização",
       "organizationCredentialsMissing": "As credenciais da organização deste projeto não estão disponíveis. Reconecte a organização para restaurar as operações de banco de dados e implantação.",

@@ -5,7 +5,6 @@ import { apps } from "../../db/schema";
 import {
   createSupabaseProject,
   getSupabaseClientForOrganization,
-  getSupabaseProjectStatus,
   listSupabaseBranches,
   getSupabaseProjectLogs,
   getOrganizationDetails,
@@ -45,6 +44,47 @@ const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 /**
+ * Projects created for an app that were never linked to it, by app id. Null
+ * when Supabase accepted the create without returning a ref. The app row cannot
+ * record this — writing it is what failed — so it is held here instead, to
+ * refuse the retry that would otherwise mint a second project the user is
+ * billed for and has no record of. Consumed by that refusal, and dropped when
+ * the app is linked.
+ */
+export const unlinkedProjectsByApp = new Map<number, string | null>();
+
+function hasCreatedButUnlinkedCode(error: unknown): boolean {
+  return (
+    (error as { code?: unknown } | null)?.code ===
+    SUPABASE_PROJECT_CREATED_BUT_UNLINKED
+  );
+}
+
+/**
+ * A project exists that this app is not pointed at. Peer windows have to be
+ * told, because the contract's own invalidations are published only once a
+ * handler resolves and every caller of this is about to throw.
+ */
+function recordUnlinkedProject(
+  appId: number,
+  projectId: string | null,
+  event: { sender: Electron.WebContents },
+) {
+  unlinkedProjectsByApp.set(appId, projectId);
+  queryInvalidationBus.publish(
+    [{ family: "provider-status", provider: "supabase" }],
+    {
+      originEndpoint: event.sender,
+      // The mutation's own onError refreshes it in the acting window, same as
+      // the success path claims.
+      originHandledScopes: [
+        { family: "provider-status", provider: "supabase" },
+      ],
+    },
+  );
+}
+
+/**
  * A 4xx here is the user's to fix — most often an organization out of project
  * slots — and carries Supabase's own explanation, so it must not be reported as
  * an upstream exception. `classifyManagementApiError` would call every 403 an
@@ -74,41 +114,6 @@ function classifyCreateProjectError(error: unknown): unknown {
   }
   return new DyadError(
     `Couldn't create the Supabase project: ${error instanceof Error ? error.message : error}`,
-    DyadErrorKind.External,
-  );
-}
-
-/**
- * This runs on a poll for every connected app, so an unclassified failure is
- * never a one-off: a project deleted from the dashboard would report an
- * exception on every mount and every tick, and none of these are product bugs.
- */
-function classifyProjectStatusError(error: unknown): unknown {
-  if (isDyadError(error)) {
-    return error;
-  }
-  if (isRateLimitError(error)) {
-    return new DyadError(
-      error instanceof Error ? error.message : String(error),
-      DyadErrorKind.RateLimited,
-    );
-  }
-  if (error instanceof SupabaseManagementAPIError) {
-    const status = error.response.status;
-    if (status === 404) {
-      return new DyadError(error.message, DyadErrorKind.NotFound);
-    }
-    if (status === 401 || status === 403) {
-      return classifyManagementApiError(error, "check this project's status");
-    }
-    if (status >= 400 && status < 500) {
-      return new DyadError(error.message, DyadErrorKind.Precondition);
-    }
-  }
-  // 5xx and transport failures are genuinely upstream, but they still have to
-  // cross IPC classified or they arrive as unclassified product exceptions.
-  return new DyadError(
-    `Couldn't read the Supabase project's status: ${error instanceof Error ? error.message : error}`,
     DyadErrorKind.External,
   );
 }
@@ -265,6 +270,24 @@ export function registerSupabaseHandlers() {
             DyadErrorKind.Precondition,
           );
         }
+        // The check above cannot see a project whose link write failed — that
+        // write is what failed — so on its own it lets a queued or repeated
+        // create mint another one. Every attempt after the first would be a new
+        // project the user is billed for and has no record of.
+        if (unlinkedProjectsByApp.has(appId)) {
+          const stranded = unlinkedProjectsByApp.get(appId);
+          // Dropped as it fires, so this refuses the reflexive retry once and
+          // then gets out of the way. Refusing for the life of the process
+          // would strand the app instead: the user who reacts by deleting that
+          // project in the Supabase dashboard has no way left to create one.
+          unlinkedProjectsByApp.delete(appId);
+          throw new DyadError(
+            stranded
+              ? `Supabase project ${stranded} was created for this app but couldn't be linked. Select it from the project list rather than creating another, or try again to create a second one.`
+              : "A Supabase project was already created for this app but couldn't be linked. Check your Supabase dashboard before trying again.",
+            DyadErrorKind.Precondition,
+          );
+        }
 
         let project;
         try {
@@ -274,7 +297,26 @@ export function registerSupabaseHandlers() {
             region,
           });
         } catch (error) {
-          throw classifyCreateProjectError(error);
+          const classified = classifyCreateProjectError(error);
+          // Supabase answered 2xx without a ref: a project may well exist, so
+          // this is the same situation as a failed link, minus the id. The
+          // message the client threw names the raw body, which is worth logging
+          // and useless to the user, so it is replaced rather than shown.
+          if (hasCreatedButUnlinkedCode(classified)) {
+            logger.error(
+              `Supabase accepted a create for app ${appId} without returning a ref`,
+              classified,
+            );
+            recordUnlinkedProject(appId, null, event);
+            const unnamed = new DyadError(
+              "Supabase accepted the project but didn't say which one it created. Check your Supabase dashboard before trying again.",
+              DyadErrorKind.External,
+            );
+            (unnamed as DyadError & { code: string }).code =
+              SUPABASE_PROJECT_CREATED_BUT_UNLINKED;
+            throw unnamed;
+          }
+          throw classified;
         }
 
         // The project exists by now, so a failure here leaves it unlinked
@@ -290,21 +332,7 @@ export function registerSupabaseHandlers() {
             })
             .where(eq(apps.id, appId));
         } catch (error) {
-          // The contract's invalidations are published only once a handler
-          // resolves, and this one throws. Without this, peer windows never
-          // learn the project exists, so the list the message tells the user to
-          // pick it from does not have it.
-          queryInvalidationBus.publish(
-            [{ family: "provider-status", provider: "supabase" }],
-            {
-              originEndpoint: event.sender,
-              // The mutation's own onError refreshes it here, same as the
-              // success path claims.
-              originHandledScopes: [
-                { family: "provider-status", provider: "supabase" },
-              ],
-            },
-          );
+          recordUnlinkedProject(appId, project.id, event);
           const unlinked = new DyadError(
             `Created Supabase project ${project.id} but couldn't link it to this app: ${error instanceof Error ? error.message : error}. Select it from the project list to finish connecting.`,
             DyadErrorKind.Internal,
@@ -324,19 +352,6 @@ export function registerSupabaseHandlers() {
       "create a Supabase project",
     ),
   );
-
-  // Polled while a just-created project is still coming up.
-  createTypedHandler(supabaseContracts.getProjectStatus, async (_, params) => {
-    const { projectId, organizationSlug } = params;
-    try {
-      return await getSupabaseProjectStatus({
-        projectId,
-        organizationSlug: organizationSlug ?? null,
-      });
-    } catch (error) {
-      throw classifyProjectStatusError(error);
-    }
-  });
 
   // List branches for a Supabase project (database branches)
   createTypedHandler(supabaseContracts.listBranches, async (_, params) => {
@@ -412,6 +427,9 @@ export function registerSupabaseHandlers() {
             supabaseOrganizationSlug: organizationSlug,
           })
           .where(eq(apps.id, appId));
+        // The app has a project now, whether or not it is the one a failed
+        // create left behind, so the create guard has nothing left to protect.
+        unlinkedProjectsByApp.delete(appId);
 
         logger.info(
           `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationSlug})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,

@@ -629,7 +629,6 @@
       "region": "Region",
       "regionDescription": "Pick the region closest to your users. This can't be changed after the project is created.",
       "createProjectDescription": "Dyad generates the database password. Reset it from the Supabase dashboard if you need direct database access.",
-      "projectProvisioning": "Supabase is still setting up this project. Database and API requests will fail until it finishes, usually within a couple of minutes.",
       "refreshProjects": "Refresh projects",
       "addOrganization": "Add Organization",
       "organizationCredentialsMissing": "Credentials for this project's organization are unavailable. Reconnect the organization to restore database and deployment operations.",

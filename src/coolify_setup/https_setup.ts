@@ -1,3 +1,4 @@
+import log from "electron-log";
 import { isIP } from "node:net";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { sleep } from "./sleep";
@@ -276,6 +277,8 @@ export async function domainPointsAtServer(
   return "points-here";
 }
 
+const logger = log.scope("coolify_https_setup");
+
 export interface HttpsOutcome {
   /** What Dyad should store and talk to. */
   instanceUrl: string;
@@ -436,6 +439,7 @@ export async function tryEnableHttps(
   // applying it — leaves Coolify answering at a name that serves nothing, so
   // the domain comes back off before anyone is told what happened.
   let keepDomain = false;
+  let settled: HttpsOutcome | null = null;
   try {
     await applyInstanceDomain(session, domain, { signal });
 
@@ -453,7 +457,9 @@ export async function tryEnableHttps(
     }
 
     onProgress?.("No certificate arrived; leaving Coolify on plain HTTP.\n");
-    return {
+    // Held rather than returned outright so the revert below can add to it.
+    // The caller has this object, not a copy of it.
+    settled = {
       instanceUrl: plainUrlFor(host),
       secure: false,
       reason: !domain.endsWith(".sslip.io")
@@ -462,6 +468,7 @@ export async function tryEnableHttps(
           `provides these names shares one certificate allowance between ` +
           `everyone using it, and it can run out.`,
     };
+    return settled;
   } finally {
     // Without the signal, which by this point may be the reason we are here.
     // Bounded by the tinker call's own timeout, so a wedged server cannot
@@ -478,7 +485,24 @@ export async function tryEnableHttps(
         timeoutMs: signal?.aborted
           ? CANCELLED_REVERT_TIMEOUT_MS
           : APPLY_DOMAIN_TIMEOUT_MS,
-      }).catch(() => {});
+      }).catch((error: unknown) => {
+        // The state the comment above calls the one to avoid, arrived at
+        // anyway. Swallowed, because the install itself stands and this is
+        // the way out of a failure rather than the failure — but not
+        // silently: the last thing the log said was that the domain was
+        // being removed, which reads as it having worked.
+        logger.error(`Could not remove the temporary domain ${domain}`, error);
+        onProgress?.(
+          `Could not remove the temporary domain ${domain}. Coolify may ` +
+            `still be set to answer at it.\n`,
+        );
+        if (settled) {
+          settled.reason =
+            `${settled.reason ?? ""} Coolify may still be configured for ` +
+            `${domain}; clear the instance domain in its settings if the ` +
+            `dashboard does not answer at ${plainUrlFor(host)}.`.trimStart();
+        }
+      });
     }
   }
 }

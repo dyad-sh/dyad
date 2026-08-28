@@ -491,6 +491,44 @@ describe("tryEnableHttps", () => {
     expect(said.join("")).toMatch(/Removing the temporary domain/);
   });
 
+  it("says so when the domain will not come back off", async () => {
+    // The state the revert exists to avoid, arrived at anyway. Left silent,
+    // the last thing said was that the domain was being removed — which
+    // reads as it having worked, over a Coolify still set to answer at a
+    // name it has no certificate for.
+    const said: string[] = [];
+    const { session } = fakeSession();
+    const answering = session.run as unknown as (
+      command: string,
+      options?: { input?: string },
+    ) => Promise<unknown>;
+    let domainWrites = 0;
+    session.run = (async (command: string, options?: { input?: string }) => {
+      // The first write puts the domain on; the second takes it back off,
+      // and that is the one this is about.
+      if ((options?.input ?? "").includes("fqdn")) {
+        domainWrites += 1;
+        if (domainWrites > 1) throw new Error("tinker is wedged");
+      }
+      return answering(command, options);
+    }) as unknown as SshSession["run"];
+
+    const result = await tryEnableHttps(session, "203.0.113.5", {
+      ...FAST,
+      check: async () => false,
+      onProgress: (message) => said.push(message),
+    });
+
+    expect(said.join("")).toMatch(/Could not remove the temporary domain/);
+    // And carried where the panel will show it, not only in the log.
+    expect(result.reason).toMatch(/may still be configured for/);
+    expect(result.reason).toMatch(/clear the instance domain/);
+    // The install still stands: this is the way out of a failure, not a new
+    // one to throw.
+    expect(result.secure).toBe(false);
+    expect(result.instanceUrl).toBe("http://203.0.113.5:8000");
+  });
+
   it("gives the revert the full budget when nobody is waiting on a cancel", async () => {
     // The short bound exists so "Stopping…" cannot hang. On the ordinary
     // no-certificate path there is no cancel, and the domain still has to

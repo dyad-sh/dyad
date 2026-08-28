@@ -296,8 +296,15 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const createErrorForThisApp = createErrors[appId] ?? null;
 
+  // Returns the same object when there is nothing to clear, which is the case
+  // on every keystroke: a fresh one would defeat React's bailout and re-render
+  // the connector for each character typed into the form.
   const clearCreateError = () =>
-    setCreateErrors(({ [appId]: _cleared, ...rest }) => rest);
+    setCreateErrors((current) => {
+      if (!(appId in current)) return current;
+      const { [appId]: _cleared, ...rest } = current;
+      return rest;
+    });
 
   // Group projects by organization for display
   const groupedProjects = projects.reduce(

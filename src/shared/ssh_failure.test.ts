@@ -30,6 +30,17 @@ describe("reading a failure off an error", () => {
     ).toBeNull();
   });
 
+  it("does not hand back a failure that is not one of ours", () => {
+    // The name is all that got us this far, and anything can carry it.
+    // Answering with an unrecognised string would put a value past a caller
+    // that has covered every case the type admits.
+    const odd = Object.assign(new Error("odd"), {
+      name: "SshError",
+      failure: "made-up",
+    });
+    expect(sshFailureOf(odd)).toBeNull();
+  });
+
   it("does not answer for one of ours carrying no failure", () => {
     // A shape that passes the name check but has nothing to read.
     const odd = Object.assign(new Error("odd"), { name: "SshError" });

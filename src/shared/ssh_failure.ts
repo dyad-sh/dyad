@@ -9,12 +9,19 @@
  * keeps it off the boot; this keeps the question askable without reaching for
  * the client at all.
  */
-export type SshFailure =
-  | "auth-rejected"
-  | "host-key-rejected"
-  | "unreachable"
+/**
+ * Every failure the client reports, and the only source of the type.
+ *
+ * One list rather than a union beside a lookup: the accessor below has to
+ * decide whether a value is one of these at runtime, and a second copy of
+ * the members is a copy that can fall behind the first.
+ */
+export const SSH_FAILURES = [
+  "auth-rejected",
+  "host-key-rejected",
+  "unreachable",
   /** The connection stopped answering: nothing on it will work again. */
-  | "timeout"
+  "timeout",
   /**
    * We gave up on one command, having asked it to be quick.
    *
@@ -23,9 +30,12 @@ export type SshFailure =
    * "this attempt was slow" from "this link is dead", or one slow answer ends
    * a wait that had minutes left in it.
    */
-  | "command-timeout"
+  "command-timeout",
   /** Nothing here recognised it. */
-  | "unknown";
+  "unknown",
+] as const;
+
+export type SshFailure = (typeof SSH_FAILURES)[number];
 
 /**
  * The failure an error carries, or null if it is not one of ours.
@@ -37,5 +47,10 @@ export type SshFailure =
 export function sshFailureOf(error: unknown): SshFailure | null {
   if (!(error instanceof Error) || error.name !== "SshError") return null;
   const { failure } = error as Error & { failure?: unknown };
-  return typeof failure === "string" ? (failure as SshFailure) : null;
+  // Checked, not asserted. The name is all that got us here, and anything
+  // may carry it — handing back a value the type says cannot exist would
+  // put it past a caller that has covered every case there is.
+  return SSH_FAILURES.includes(failure as SshFailure)
+    ? (failure as SshFailure)
+    : null;
 }

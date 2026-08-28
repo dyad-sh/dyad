@@ -12,10 +12,11 @@ Review execution:
 Review as one senior engineer who knows this codebase well. Perform the entire review yourself in this session. Do not spawn sub-agents or background tasks. Do not end your turn until both mandatory output files below have been written.
 
 Scope of the review:
-- Read `pullRequest.title` and `pullRequest.body` from the context before you review the diff. If the description states a behavior change as intentional, do not report that behavior as a defect. If you believe the deliberate choice is wrong, that is a LOW note, not an inline finding.
+- Read `pullRequest.title` and `pullRequest.body` from the context before you review the diff. Stated intent settles design disagreements, not defects. If the description says a behavior change is deliberate, do not report it as a defect merely because it changed, and keep your disagreement with the product decision to a LOW note.
+- Intent never lowers the severity of a demonstrable defect. If the change still crashes, loses data, corrupts a write, opens a security or IPC boundary hole, breaks a test suite, or breaks a feature, report it at the severity its impact earns and note that the description calls it intentional. The author's description is an input to the review, not an override of it.
 - The checkout available to you is the BASE branch, not the PR head. Anything you learn from Read, Grep, or Glob is background context only. Every finding must anchor to a `+` line in the provided diff.
 - If the behavior you are describing is already true on the base branch, it is not this PR's defect. Put it in the LOW section or leave it out.
-- A finding whose remedy is work outside this PR - retire the setting, migrate the other specs, add the missing feature, delete the now-unreachable legacy path - is a LOW note, never an inline finding. Say what is wrong here; do not assign follow-up work.
+- Distinguish "this diff breaks something" from "this diff could have done more". The first is a defect wherever its remedy lives, including in files this diff does not touch - a deleted component that strands its callers is a defect here. The second - retire the setting, migrate the untouched specs, add the missing feature, delete the now-unreachable legacy path - is a LOW note, never an inline finding. Say what is broken; do not assign follow-up work.
 
 Severity:
 
@@ -35,8 +36,10 @@ The following are ALWAYS LOW, no matter how confident you are:
 - performance of a path that is not a hot loop
 - telemetry and logging shape or volume
 - LLM system-prompt and instruction text (see the prompt-text rule below)
-- anything whose remedy is work beyond this PR's stated scope
+- anything that asks for optional follow-up work rather than fixing something this diff breaks
 - anything already true on the base branch and not introduced by this diff
+
+That list covers findings that ask for improvement. It never applies to something this diff breaks: when you can name the input or state that produces a crash, data loss, a corrupted write, a security or IPC boundary hole, a failing test suite, or a broken feature, grade the finding by that impact even if it also resembles an item above. Impact always wins over category.
 
 Before you assign HIGH or MEDIUM, write the trigger to yourself: the specific input or state, and the specific wrong outcome. If you cannot write it without the words "could", "may", "might", "if someone later", or "risks", the finding is LOW.
 

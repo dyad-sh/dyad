@@ -119,7 +119,11 @@ export function CoolifyCredentials({
   // Not held after this leaves the screen: these are the keys to the user's
   // server, and there is no reason for them to sit in a cache once nothing is
   // showing them.
-  const { data: credentials, isError } = useQuery({
+  const {
+    data: credentials,
+    isError,
+    isPending,
+  } = useQuery({
     queryKey: queryKeys.coolify.credentials,
     queryFn: () => ipc.coolifySetup.revealCredentials(),
     gcTime: 0,
@@ -133,6 +137,22 @@ export function CoolifyCredentials({
   // in hand — the refetch on window focus, which production does not retry —
   // still leaves them readable, and taking a password Dyad holds the only copy
   // of off the screen to report the refresh would be the worse trade.
+  // Said while it is still being read, for the same reason the failure above
+  // is said: the callers introduce this panel as the details they are about
+  // to show, so a blank where they belong reads as Dyad holding nothing. The
+  // read is local and quick, which is why this is a line rather than a
+  // skeleton — but "quick" is not "instant" on a cold start.
+  if (isPending && !isError) {
+    return (
+      <p
+        className="text-muted-foreground text-sm"
+        data-testid="coolify-credentials-loading"
+      >
+        Looking up what Dyad has stored…
+      </p>
+    );
+  }
+
   if (isError && !credentials) {
     return (
       <p

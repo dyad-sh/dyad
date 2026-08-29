@@ -83,12 +83,6 @@ export function CoolifySignOutDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        {isPending && !isError && (
-          <div className="text-muted-foreground text-sm">
-            Looking up what Dyad has stored…
-          </div>
-        )}
-
         <CoolifyCredentials />
 
         {passwordIsLocked && (

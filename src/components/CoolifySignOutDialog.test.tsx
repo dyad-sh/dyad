@@ -162,6 +162,17 @@ describe("nothing to look at yet", () => {
     expect(signOutButton().disabled).toBe(false);
   });
 
+  it("says it is looking only once", async () => {
+    // The panel below says it now. Saying it here too put the same sentence
+    // on screen twice, which is what the read-failure line was moved for.
+    h.revealCredentials.mockReturnValue(new Promise(() => {}));
+    open();
+
+    expect(
+      await screen.findAllByText(/Looking up what Dyad has stored/),
+    ).toHaveLength(1);
+  });
+
   it("says when it holds a password it cannot read", async () => {
     // The panel cannot show a row for a value it does not have, so a missing
     // password would otherwise read as there never having been one.

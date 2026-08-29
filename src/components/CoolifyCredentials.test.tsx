@@ -159,6 +159,29 @@ describe("naming the section", () => {
   });
 });
 
+describe("while the read is still going", () => {
+  it("says so rather than leaving the caller's heading over nothing", async () => {
+    // Every caller introduces this panel as the details it is about to show.
+    // Rendering nothing until the answer lands leaves "Its details are below"
+    // with nothing below it, which reads as Dyad holding nothing at all.
+    h.revealCredentials.mockReturnValue(new Promise(() => {}));
+    render(<CoolifyCredentials showTitle />);
+
+    expect(
+      await screen.findByTestId("coolify-credentials-loading"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("coolify-credentials")).toBeNull();
+  });
+
+  it("gives way once the answer arrives", async () => {
+    render(<CoolifyCredentials />);
+
+    await settle();
+    expect(screen.queryByTestId("coolify-credentials-loading")).toBeNull();
+    expect(screen.getByTestId("coolify-credentials")).toBeTruthy();
+  });
+});
+
 describe("a password Dyad holds but cannot read", () => {
   it("says so rather than showing a server that never had one", async () => {
     // readSettings drops a password it cannot decrypt and keeps the account.

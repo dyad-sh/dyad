@@ -75,9 +75,16 @@ describe("readCoolifyVersion", () => {
     expect(await readCoolifyVersion(session)).toBe("4.3.2");
   });
 
-  it("answers null when the reply is not a version", async () => {
+  it("says it could not read the version rather than that it is old", async () => {
+    // The installer always fetches the newest Coolify, so "too old" is the
+    // least likely thing to be true here — and the key this reads is
+    // Coolify's own, free to be renamed, which is the ordinary way to get an
+    // answer that is not a version. Saying the version is unsupported sends
+    // the user looking for a problem with a server they just installed.
     const session = fakeSession(["Command not found"]);
-    expect(await readCoolifyVersion(session)).toBeNull();
+    await expect(readCoolifyVersion(session)).rejects.toThrow(
+      /could not read which version/,
+    );
   });
 
   it("does not call a lost link an unreadable version", async () => {

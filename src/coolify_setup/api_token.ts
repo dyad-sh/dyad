@@ -82,7 +82,19 @@ export async function readCoolifyVersion(
       `echo config('constants.coolify.version');`,
       { signal, timeoutMs: TINKER_TIMEOUT_MS },
     );
-    return /^\d+\.\d+/.test(output.trim()) ? output.trim() : null;
+    const said = output.trim();
+    if (/^\d+\.\d+/.test(said)) return said;
+    // It answered, and what it said was not a version. Null would send the
+    // caller down the path that reports a Coolify too old to drive — and the
+    // installer always fetches the newest one, so that is the least likely
+    // thing to be true. The key this reads is Coolify's own and free to move,
+    // which is the ordinary way to arrive here.
+    throw new DyadError(
+      "Dyad could not read which version of Coolify this is, so it could not " +
+        "set up an API token by itself. The server is installed — open it " +
+        "and make a token there.",
+      DyadErrorKind.External,
+    );
   } catch (error) {
     // A cancelled setup is the user stopping, not an instance that cannot be
     // driven. Swallowing it here would report a version problem for something

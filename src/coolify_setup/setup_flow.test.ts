@@ -232,6 +232,25 @@ describe("runServerSetup", () => {
     expect(result.apiEnabled).toBe(false);
   });
 
+  it("does not call an unreadable version an unsupported one", async () => {
+    // The whole install fetches the newest Coolify, so the version being too
+    // old is the least likely reason the token step did not finish. Reported
+    // that way, the user goes looking for a problem with a server that is
+    // minutes old.
+    const server = fakeServer({ version: "Command not found" });
+    const result = await run(server).promise;
+
+    expect(result.token).toBeNull();
+    expect(result.tokenUnavailableReason).toMatch(
+      /could not read which version/,
+    );
+    expect(result.tokenUnavailableReason).not.toMatch(
+      /version of Coolify could not be set up/,
+    );
+    // The install still stands, and the way on is on the screen.
+    expect(result.credentials.password).toBeTruthy();
+  });
+
   it("does not tell the user a fresh install is too old when it was only slow", async () => {
     // A tinker one-liner over the 30s bound on a 2GB box right after an
     // install is ordinary. Reported as an unsupported version, the user is

@@ -900,6 +900,20 @@ export async function createSupabaseProject({
   organizationSlug: string;
   region: string;
 }): Promise<CreatedSupabaseProjectResponse> {
+  // Every outbound call in this module is guarded the same way: a test build
+  // installs real-looking credentials, so without this the create form would
+  // POST to the live API from CI. No E2E drives it yet, which is why the fake
+  // id is distinct from the one the project list and connect flow return.
+  if (IS_TEST_BUILD) {
+    return {
+      id: "fake-created-project-id",
+      name,
+      region,
+      organizationSlug,
+      status: "ACTIVE_HEALTHY",
+    };
+  }
+
   logger.info(
     `Creating Supabase project "${name}" in organization ${organizationSlug} (${region})`,
   );

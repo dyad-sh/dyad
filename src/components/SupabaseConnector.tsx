@@ -148,6 +148,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // Keyed by app rather than a single slot: creates for two apps can be in
   // flight at once, so one app's failure must not overwrite another's.
   const [createErrors, setCreateErrors] = useState<Record<number, string>>({});
+  // Which of those failures left a real project behind. Only those are worth
+  // surviving a cancel: the message carries the stranded project's id, and
+  // nothing else in the UI records it. An ordinary failure kept as long would
+  // just be a banner the user cannot get rid of.
+  const [orphanedAppIds, setOrphanedAppIds] = useState<ReadonlySet<number>>(
+    new Set(),
+  );
 
   const dropKey = (forAppId: number) => (current: Record<number, string>) => {
     // Returning the same object when there is nothing to drop keeps React's
@@ -157,7 +164,15 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     const { [forAppId]: _cleared, ...rest } = current;
     return rest;
   };
-  const clearCreateError = () => setCreateErrors(dropKey(appId));
+  const clearCreateError = () => {
+    setCreateErrors(dropKey(appId));
+    setOrphanedAppIds((current) => {
+      if (!current.has(appId)) return current;
+      const next = new Set(current);
+      next.delete(appId);
+      return next;
+    });
+  };
 
   const linkedProjectId = app?.supabaseProjectId;
 
@@ -288,6 +303,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       [createdForAppId]: getErrorMessage(error),
     }));
     if (isCreatedButUnlinkedError(error)) {
+      setOrphanedAppIds((current) => new Set(current).add(createdForAppId));
       setCreateFormAppId((open) => (open === createdForAppId ? null : open));
     }
   };
@@ -846,11 +862,17 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               onClearError={clearCreateError}
               onCreated={handleProjectCreated}
               onFailed={handleProjectCreateFailed}
-              // Closes the form without dropping the last failure, for the same
-              // reason opening it does not: for a project created but not
-              // linked, that message is the only place its id appears, and
-              // backing out of the form settles nothing about it.
-              onCancel={() => setCreateFormAppId(null)}
+              // Keeps a stranded project's message, for the same reason opening
+              // the form does: it is the only place that project's id appears,
+              // and backing out settles nothing about it. Every other failure
+              // goes, or cancelling would leave a banner with no way to
+              // dismiss it.
+              onCancel={() => {
+                setCreateFormAppId(null);
+                if (!orphanedAppIds.has(appId)) {
+                  clearCreateError();
+                }
+              }}
             />
           ) : isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">

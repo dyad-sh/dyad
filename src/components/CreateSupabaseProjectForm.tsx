@@ -59,6 +59,8 @@ export function CreateSupabaseProjectForm({
   // linked to the app.
   error: string | null;
   onFailed: (createdForAppId: number, error: unknown) => void;
+  // Called on every edit: the error describes the values that were submitted,
+  // so any change to them stales it.
   onClearError: () => void;
   onCancel: () => void;
 }) {
@@ -76,15 +78,12 @@ export function CreateSupabaseProjectForm({
   const [region, setRegion] = useState<SupabaseRegionId>(
     DEFAULT_SUPABASE_REGION,
   );
-  // The error describes the values that were submitted, so any edit stales it.
-  const clearError = onClearError;
-
   const trimmedName = name.trim();
   const canSubmit = !!trimmedName && !!organizationSlug && !isCreatingProject;
 
   const handleCreate = async () => {
     if (!canSubmit) return;
-    clearError();
+    onClearError();
     try {
       const project = await createProject({
         appId,
@@ -110,7 +109,7 @@ export function CreateSupabaseProjectForm({
           value={name}
           onChange={(e) => {
             setName(e.target.value);
-            clearError();
+            onClearError();
           }}
           placeholder="my-app"
           maxLength={SUPABASE_PROJECT_NAME_MAX_LENGTH}
@@ -134,7 +133,7 @@ export function CreateSupabaseProjectForm({
               // current organization beats storing "" and disabling submit
               // with nothing on screen explaining why.
               if (value) setOrganizationSlug(value);
-              clearError();
+              onClearError();
             }}
             disabled={isCreatingProject}
           >
@@ -171,7 +170,7 @@ export function CreateSupabaseProjectForm({
             // Base UI hands back null when a selection is cleared; keep the
             // current region rather than storing null and failing validation.
             if (value) setRegion(value as SupabaseRegionId);
-            clearError();
+            onClearError();
           }}
           disabled={isCreatingProject}
         >

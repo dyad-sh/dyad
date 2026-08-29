@@ -1247,6 +1247,21 @@ describe("SupabaseConnector — clearing a create failure", () => {
     ).toContain("couldn't link it to this app");
   });
 
+  // Only a stranded project earns that stickiness. An ordinary failure kept
+  // past a cancel becomes a banner over the selector with nothing on screen to
+  // dismiss it.
+  it("clears an ordinary failure when the form is cancelled", async () => {
+    await submitFailingCreate(new Error("You have reached your project limit"));
+    await screen.findByRole("alert");
+
+    fireEvent.click(screen.getByText("common:cancel"));
+    await act(async () => {});
+
+    // The testid, not the form's own `role="alert"`: that one goes with the
+    // form whether or not the record was dropped, so it would pass either way.
+    expect(screen.queryByTestId("supabase-create-project-error")).toBeNull();
+  });
+
   it("keeps the failure visible when the form is reopened", async () => {
     await submitFailingCreate(createdButUnlinkedError());
     await screen.findByTestId("supabase-create-project-error");

@@ -155,7 +155,24 @@ export async function preflight(
         "instead of installing again.",
     };
   }
-  if (memoryMb !== null && memoryMb < MINIMUM_MEMORY_MB) {
+  // Unreadable, not unlimited. The transcript guard above only fires when
+  // nothing at all came back, and a server whose /proc/meminfo cannot be read
+  // answers `mem=` — an empty value, which reaches here as null and would
+  // walk straight past the check below. Installing then finishes and Coolify
+  // does not run, on a machine that now refuses a second attempt.
+  if (memoryMb === null) {
+    return {
+      ready: false,
+      alreadyInstalled,
+      installedKnown: true,
+      memoryMb: null,
+      reason:
+        "Dyad could not read how much memory this server has, so it cannot " +
+        "tell whether Coolify would run on it. Check the server and try " +
+        "again.",
+    };
+  }
+  if (memoryMb < MINIMUM_MEMORY_MB) {
     return {
       ready: false,
       alreadyInstalled,

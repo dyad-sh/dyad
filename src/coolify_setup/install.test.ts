@@ -133,6 +133,28 @@ describe("preflight", () => {
     expect(checks.reason).toContain("could not read");
   });
 
+  it("refuses a server whose memory it could not read", async () => {
+    // A server that answers the question but not this part of it sends back
+    // `mem=` — empty, not missing, so the whole-transcript guard above does
+    // not fire and the size check has nothing to compare. Read as ready, the
+    // 2GB rule is quietly absent: the install finishes and Coolify does not
+    // run, on a machine that now refuses a second attempt.
+    const session = sessionAnswering(
+      vi.fn(async () => ({
+        code: 0,
+        stdout: "mem=\ncontainer=\nbusy=no",
+        stderr: "",
+      })) as never,
+    );
+    const checks = await preflight(session);
+
+    expect(checks.ready).toBe(false);
+    expect(checks.memoryMb).toBeNull();
+    expect(checks.reason).toContain("could not read how much memory");
+    // It answered about Coolify, so that part is not in doubt.
+    expect(checks.installedKnown).toBe(true);
+  });
+
   it("still reports a server that is busy", async () => {
     const session = sessionAnswering(
       vi.fn(async () => ({

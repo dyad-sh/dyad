@@ -21,6 +21,14 @@ const h = vi.hoisted(() => ({
   writeThrows: false,
   /** How many writes fail before the store comes back. */
   writeFailures: 0,
+  /**
+   * Writes that succeed before the failures above start.
+   *
+   * The record written on the way in is the first write, and failing it now
+   * refuses the run outright — so a case about the writes that come after the
+   * account exists has to let that one through.
+   */
+  writeOkFirst: 0,
   reportsAccountTwice: false,
   failsBeforeCredentials: false,
   onRunStarted: null as null | (() => void),
@@ -43,6 +51,12 @@ vi.mock("./base", () => ({
 vi.mock("@/main/settings", () => ({
   readSettings: () => h.settings,
   writeSettings: (value: Record<string, unknown>) => {
+    if (h.writeOkFirst > 0) {
+      h.writeOkFirst -= 1;
+      h.written.push(value);
+      Object.assign(h.settings, value);
+      return;
+    }
     if (h.writeFailures > 0) {
       h.writeFailures -= 1;
       throw new Error("keychain is unavailable");
@@ -209,6 +223,7 @@ beforeEach(() => {
   h.verifiedAgainst.length = 0;
   h.writeThrows = false;
   h.writeFailures = 0;
+  h.writeOkFirst = 0;
   h.reportsAccountTwice = false;
   h.preflightThrows = false;
   h.preflightReady = true;
@@ -299,27 +314,49 @@ describe("run", () => {
     await expect(checkThenRun()).rejects.toThrow(/identity has changed/);
   });
 
+  it("does not start an install it cannot record the password for", async () => {
+    // Before the installer, so nothing has been done to the server and this
+    // costs a retry. Carrying on would put an account on a machine whose
+    // password Dyad never managed to keep — and preflight then refuses to
+    // install again, so there is no way back to it.
+    h.writeThrows = true;
+
+    const error = (await checkThenRun().catch((e: unknown) => e)) as Error;
+
+    expect(error.message).toMatch(/could not save the admin/);
+    // What the keychain said is logged, not handed to a screen that already
+    // carries a password this run invented.
+    expect(error.message).not.toMatch(/Abc123@xyz/);
+    expect(error.message).not.toMatch(/keychain is unavailable/);
+    // And nothing was left behind to hold up the next attempt.
+    expect(
+      (h.settings.coolify as { admin?: unknown } | undefined)?.admin,
+    ).toBeUndefined();
+  });
+
   it("finishes when the account cannot be written down", async () => {
     // The account is on the server either way, and a retry is refused because
     // Coolify is installed now — so ending the run here would lose the only
-    // copy of a password Dyad invented.
+    // copy of a password Dyad invented. The record on the way in lands: that
+    // one failing refuses the run instead, before anything is installed.
+    h.writeOkFirst = 1;
     h.writeThrows = true;
 
-    await expect(checkThenRun()).resolves.toMatchObject({
-      adminPassword: "Abc123@xyz",
-      // Nothing was written, so the next screen has no token to use — saying
-      // otherwise sends the user to a panel that cannot work.
-      tokenStored: false,
-      tokenUnavailableReason: expect.stringContaining("could not save"),
-    });
+    const result = (await checkThenRun()) as {
+      adminPassword: string;
+      tokenStored: boolean;
+      tokenUnavailableReason: string;
+    };
 
+    expect(result.adminPassword).toBe("Abc123@xyz");
+    // Nothing was written, so the next screen has no token to use — saying
+    // otherwise sends the user to a panel that cannot work.
+    expect(result.tokenStored).toBe(false);
     // Where the password actually is. The screen puts the card above this
     // message, and on this path it is the only copy — so the direction is
     // the part that matters, and it is written here rather than there.
-    const { tokenUnavailableReason } = (await checkThenRun()) as {
-      tokenUnavailableReason: string;
-    };
-    expect(tokenUnavailableReason).toContain("password above");
+    expect(result.tokenUnavailableReason).toContain("could not save");
+    expect(result.tokenUnavailableReason).toContain("password above");
   });
 
   it("refuses a server it has not looked at", async () => {
@@ -414,10 +451,10 @@ describe("run", () => {
   it("stores the account on the way out when the first attempt failed", async () => {
     // Coolify has the account either way, and preflight refuses to install
     // over it — so a password stored nowhere is a server nobody can sign into.
-    // Two, not one: the record written on the way in is the first write, so
-    // failing only that leaves the account's own write to succeed and the
-    // retry below never runs.
-    h.writeFailures = 2;
+    // The record on the way in lands — failing that refuses the run — and
+    // the account's own write is the one that does not, so the retry runs.
+    h.writeOkFirst = 1;
+    h.writeFailures = 1;
     h.reportsAccount = true;
     h.setupError = new DyadError("exit 1", DyadErrorKind.External);
 
@@ -433,9 +470,10 @@ describe("run", () => {
     // The account is reported twice — once when it exists, and again once
     // HTTPS has settled where it answers. A copy kept from the first would
     // write the earlier address back over the later one on the way out.
-    // Two writes fail: the one on the way in, and the first of the two
-    // accounts — so the copy left behind is the one holding the old address.
-    h.writeFailures = 2;
+    // The record on the way in lands, and the first of the two accounts does
+    // not — so the copy left behind is the one holding the old address.
+    h.writeOkFirst = 1;
+    h.writeFailures = 1;
     h.reportsAccount = true;
     h.reportsAccountTwice = true;
     h.setupError = new DyadError("exit 1", DyadErrorKind.External);
@@ -452,7 +490,9 @@ describe("run", () => {
 
   it("reports what went wrong, not what the retry did", async () => {
     // A write that fails again must not become the failure the user is told
-    // about — the install is what they were watching.
+    // about — the install is what they were watching. The record on the way
+    // in lands, since failing that refuses the run before it starts.
+    h.writeOkFirst = 1;
     h.writeThrows = true;
     h.reportsAccount = true;
     h.setupError = new DyadError("exit 1", DyadErrorKind.External);

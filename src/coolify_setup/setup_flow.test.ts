@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { runServerSetup, type SetupStep } from "./setup_flow";
 import { waitForAdminSeeded } from "./install";
 import { tryEnableHttps } from "./https_setup";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 
@@ -653,6 +653,32 @@ describe("runServerSetup", () => {
     expect(seen[0].password).toBeTruthy();
     // Before the installer had run, not after.
     expect(seen[0].at).toBe(0);
+  });
+
+  it("does not install when the caller could not keep the credentials", async () => {
+    // The hook above runs before the installer for a reason, and the caller
+    // refuses there when it cannot record the password. That only costs a
+    // retry if nothing has been installed by then.
+    const server = fakeServer();
+    let installs = 0;
+    const original = server.session.run;
+    server.session.run = ((command: string, options?: { input?: string }) => {
+      if (command.includes("bash -s")) installs += 1;
+      return (original as unknown as typeof server.session.run)(
+        command,
+        options,
+      );
+    }) as unknown as SshSession["run"];
+
+    await expect(
+      run(server, {
+        onCredentialsBuilt: () => {
+          throw new DyadError("nowhere to keep it", DyadErrorKind.External);
+        },
+      }).promise,
+    ).rejects.toThrow(/nowhere to keep it/);
+
+    expect(installs).toBe(0);
   });
 
   it("says the link died rather than blaming the version for it", async () => {

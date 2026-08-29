@@ -166,9 +166,24 @@ function setupController(): CoolifySetupController {
               instanceUrl: dashboardUrl,
             };
           } catch (error) {
-            // The run is worth more than this record. Failing here only means
-            // the account has to be caught by the write below instead.
+            // Refused rather than carried, and only here: nothing has been
+            // done to the server yet, so this costs a retry. Past this point
+            // the account exists and ending the run would throw away the only
+            // copy of its password, which is why the write below carries on
+            // instead.
+            //
+            // The reason is not passed through. This run carries a password
+            // and the handler is marked not to be logged, so what went wrong
+            // goes to the log and the user gets words of ours.
             logger.error("Could not store the admin account early", error);
+            throw new DyadError(
+              "Dyad could not save the admin password on this computer, so " +
+                "it has not started the install — a server it cannot record " +
+                "the password for is one nobody can sign in to. Nothing was " +
+                "sent to the server. Try again once there is room on disk " +
+                "and the keychain is available.",
+              DyadErrorKind.External,
+            );
           }
         },
         // Written the moment the account exists rather than at the end. A

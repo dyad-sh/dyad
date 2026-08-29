@@ -75,7 +75,7 @@ export function compareVersions(a: string, b: string): number {
 export async function readCoolifyVersion(
   session: SshSession,
   { signal }: { signal?: AbortSignal } = {},
-): Promise<string | null> {
+): Promise<string> {
   try {
     const output = await runTinker(
       session,
@@ -100,10 +100,10 @@ export async function readCoolifyVersion(
     // driven. Swallowing it here would report a version problem for something
     // they did on purpose, and carry on setting the server up.
     if ((error as { kind?: string }).kind === "user_cancelled") throw error;
-    // Null means the instance answered and what it said was not a version.
-    // Anything else is the question not getting through, and answering null
-    // for that tells the user their freshly installed Coolify is too old to
-    // drive — for something it was never asked.
+    // Every way of not getting an answer says so as itself. Reported as a
+    // version this instance does not have, the user is sent looking for a
+    // problem with a server that is minutes old — so the only thing that
+    // returns from here is a version it actually read.
     if (error instanceof SshError && error.failure === "command-timeout") {
       // Reachable and simply slow, which on a small server right after an
       // install is ordinary. Worth saying as itself: the version is not the

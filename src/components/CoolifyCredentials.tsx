@@ -129,19 +129,11 @@ export function CoolifyCredentials({
     gcTime: 0,
   });
 
-  // Said rather than left blank. Callers introduce this panel as the details
-  // they are about to show, so rendering nothing at all reads as Dyad holding
-  // nothing rather than as a read that did not answer.
-  //
-  // Only when there is nothing to show. A read that fails over details already
-  // in hand — the refetch on window focus, which production does not retry —
-  // still leaves them readable, and taking a password Dyad holds the only copy
-  // of off the screen to report the refresh would be the worse trade.
-  // Said while it is still being read, for the same reason the failure above
-  // is said: the callers introduce this panel as the details they are about
-  // to show, so a blank where they belong reads as Dyad holding nothing. The
-  // read is local and quick, which is why this is a line rather than a
-  // skeleton — but "quick" is not "instant" on a cold start.
+  // Said rather than left blank, the same reason the failure below is said:
+  // callers introduce this panel as the details they are about to show, so a
+  // blank where those belong reads as Dyad holding nothing rather than as a
+  // read still going. Local and quick, which is why this is a line and not a
+  // skeleton — but quick is not instant on a cold start.
   if (isPending && !isError) {
     return (
       <p
@@ -153,6 +145,11 @@ export function CoolifyCredentials({
     );
   }
 
+  // Only when there is nothing to show. A read that fails over details
+  // already in hand — the refetch on window focus, which production does not
+  // retry — still leaves them readable, and taking a password Dyad holds the
+  // only copy of off the screen to report the refresh would be the worse
+  // trade.
   if (isError && !credentials) {
     return (
       <p

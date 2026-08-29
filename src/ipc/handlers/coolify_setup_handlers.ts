@@ -100,15 +100,6 @@ function setupController(): CoolifySetupController {
       // Trust on first use only when there has been no first use. A server
       // that was looked at is held to what it showed then.
       const pinned = inspectedFingerprints.get(serverKeyFor(target));
-      /**
-       * What the account write could not store, if it could not store it.
-       *
-       * A run that then fails takes the only copy of the password with it:
-       * the failed screen carries a message and a log, and the call never
-       * returns the result that shows it. So it is tried once more where it
-       * starts to matter, which turns a keychain that was briefly busy into
-       * nothing at all.
-       */
       /** Whether the server ever reported an account, so a run that ended
           before one existed can put back what it wrote on the way in. */
       let accountConfirmed = false;
@@ -125,6 +116,15 @@ function setupController(): CoolifySetupController {
        * this record from anyone else's writing in the minutes since.
        */
       let provisional: NonNullable<Coolify["admin"]> | undefined;
+      /**
+       * What the account write could not store, if it could not store it.
+       *
+       * A run that then fails takes the only copy of the password with it:
+       * the failed screen carries a message and a log, and the call never
+       * returns the result that shows it. So it is tried once more where it
+       * starts to matter, which turns a keychain that was briefly busy into
+       * nothing at all.
+       */
       let unsavedAccount: {
         credentials: { email: string; password: string };
         dashboardUrl: string;

@@ -40,13 +40,6 @@ export interface ServerKey {
 }
 
 /**
- * Returns Dyad's server key, creating it the first time.
- *
- * Reused rather than regenerated per server: the public half is something the
- * user pastes into a console by hand, and making them do that again for every
- * server would be the most tedious part of the whole flow.
- */
-/**
  * The stored line when it names the key on disk, and the derived one when not.
  *
  * Both halves matter. Deriving alone renames the key — the comment comes from
@@ -72,6 +65,13 @@ function storedMatching(keyPath: string, derived: string): string {
   }
 }
 
+/**
+ * Returns Dyad's server key, creating it the first time.
+ *
+ * Reused rather than regenerated per server: the public half is something the
+ * user pastes into a console by hand, and making them do that again for every
+ * server would be the most tedious part of the whole flow.
+ */
 export function ensureServerKey(): ServerKey {
   const keyPath = serverKeyPath();
   if (fs.existsSync(keyPath)) {

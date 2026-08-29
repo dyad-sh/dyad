@@ -409,7 +409,14 @@ describe("Supabase handlers", () => {
         await expect(
           harness.invokeHandler("supabase:create-project", INPUT),
           `attempt ${attempt}`,
-        ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+        ).rejects.toMatchObject({
+          kind: DyadErrorKind.Precondition,
+          // Refusing is only half of it: the message has to name the way out,
+          // and selecting a project is what actually releases the record. Not
+          // asserted as prose — this is the one instruction the guard owes the
+          // user, and it has been rewritten twice with nothing holding it.
+          message: expect.stringMatching(/select .*project/i),
+        });
       }
       // Refused before reaching Supabase every time, so no second project.
       expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
@@ -448,9 +455,12 @@ describe("Supabase handlers", () => {
         harness.invokeHandler("supabase:create-project", INPUT),
       ).rejects.toThrow();
 
+      // Deliberately not the stranded project: the refusal tells the user they
+      // can select another one, and that only holds if any project releases the
+      // record. This is the escape for someone who deleted the stranded one.
       await harness.invokeHandler("supabase:set-app-project", {
         appId: 7,
-        projectId: "proj-new",
+        projectId: "an-unrelated-project",
         organizationSlug: "org-1",
       });
       await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
@@ -485,9 +495,14 @@ describe("Supabase handlers", () => {
       expect((thrown as Error).message).not.toContain("no project ref");
       expect(publish).toHaveBeenCalled();
 
+      // The no-ref branch owes the same instruction, and it cannot name a
+      // project to select, so it has to point at the dashboard as well.
       await expect(
         harness.invokeHandler("supabase:create-project", INPUT),
-      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+        message: expect.stringMatching(/select .*project/i),
+      });
       expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
     });
 

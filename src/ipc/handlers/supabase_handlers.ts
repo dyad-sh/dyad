@@ -206,23 +206,15 @@ export function registerSupabaseHandlers() {
     const settings = readSettings();
     const organizations = settings.supabase?.organizations ?? {};
     if (IS_TEST_BUILD) {
-      // Both ids, so a project the create flow made is selectable here the way
-      // a real one would be, while staying distinguishable from the one that
-      // was already there.
-      return Object.keys(organizations).flatMap((organizationSlug) => [
-        {
-          id: "fake-project-id",
-          name: "Fake Supabase Project",
-          region: "us-east-1",
-          organizationSlug,
-        },
-        {
-          id: "fake-created-project-id",
-          name: "Fake Created Supabase Project",
-          region: "us-east-1",
-          organizationSlug,
-        },
-      ]);
+      // Only the project that already exists. Listing the created one here too
+      // would put a project in the selector that nothing created, which an E2E
+      // could link without ever exercising the create flow.
+      return Object.keys(organizations).map((organizationSlug) => ({
+        id: "fake-project-id",
+        name: "Fake Supabase Project",
+        region: "us-east-1",
+        organizationSlug,
+      }));
     }
 
     const allProjects: Array<{
@@ -309,9 +301,12 @@ export function registerSupabaseHandlers() {
         if (unlinkedProjectsByApp.has(appId)) {
           const stranded = unlinkedProjectsByApp.get(appId);
           throw new DyadError(
+            // Both branches name the escape for someone who has deleted the
+            // stranded project, and any project releases the record — so
+            // selecting one they already have comes before making another.
             stranded
-              ? `Supabase project ${stranded} was created for this app but couldn't be linked. Select it from the project list to finish connecting, or connect this app to another project if you have since deleted it.`
-              : "A Supabase project was already created for this app but couldn't be linked. Check your Supabase dashboard, then connect this app to a project from the list.",
+              ? `Supabase project ${stranded} was created for this app but couldn't be linked. Select it from the project list to finish connecting. If you have deleted it, select another project, or create one in your Supabase dashboard if you have none left.`
+              : "A Supabase project was already created for this app but couldn't be linked. Check your Supabase dashboard, then select a project from the list. Create one there first if you have none.",
             DyadErrorKind.Precondition,
           );
         }

@@ -91,6 +91,9 @@ const {
   },
   providerLoadingState: {
     organizations: false,
+    // A background refetch over cached data is fetching without loading. The
+    // connector gates on both, so they cannot share one flag here.
+    organizationsRefetching: false,
     projects: false,
   },
   providerErrorState: {
@@ -189,7 +192,9 @@ vi.mock("@/hooks/useSupabase", () => ({
       isLoadingProjects: providerLoadingState.projects,
       isFetchingProjects: providerLoadingState.projects,
       isLoadingOrganizations: providerLoadingState.organizations,
-      isFetchingOrganizations: providerLoadingState.organizations,
+      isFetchingOrganizations:
+        providerLoadingState.organizations ||
+        providerLoadingState.organizationsRefetching,
       projectsError: providerErrorState.projects,
       organizationsError: providerErrorState.organizations,
       isLoadingBranches: false,
@@ -267,6 +272,7 @@ beforeEach(() => {
   supabaseOptionsState.last = null;
   projectsState.current = [];
   providerLoadingState.organizations = false;
+  providerLoadingState.organizationsRefetching = false;
   providerLoadingState.projects = false;
   providerErrorState.organizations = null;
   providerErrorState.projects = null;
@@ -778,6 +784,19 @@ describe("SupabaseConnector — creating a project", () => {
     // The i18n stub renders keys verbatim. Add Organization is the way out of
     // this state, and it is still on screen.
     await screen.findByText("integrations.supabase.addOrganization");
+    expect(screen.queryByTestId("supabase-create-project-button")).toBeNull();
+  });
+
+  // A refetch keeps the cached list, so `isLoadingOrganizations` is false while
+  // it runs. Offering Create against a list that is mid-refresh would let the
+  // user pick an organization that has since gone.
+  it("waits for an organizations refetch too, not just the first load", async () => {
+    showSelector();
+    providerLoadingState.organizationsRefetching = true;
+
+    renderConnector();
+
+    await act(async () => {});
     expect(screen.queryByTestId("supabase-create-project-button")).toBeNull();
   });
 

@@ -128,6 +128,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isLoadingProjects,
     isFetchingProjects,
     isLoadingOrganizations,
+    isFetchingOrganizations,
     organizationsError,
     projectsError,
     isLoadingBranches,
@@ -876,7 +877,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             />
           ) : isLoadingProjects ||
             isFetchingProjects ||
-            isLoadingOrganizations ? (
+            isLoadingOrganizations ||
+            isFetchingOrganizations ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />

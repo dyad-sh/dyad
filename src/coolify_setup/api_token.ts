@@ -82,8 +82,8 @@ export async function readCoolifyVersion(
       `echo config('constants.coolify.version');`,
       { signal, timeoutMs: TINKER_TIMEOUT_MS },
     );
-    const said = output.trim();
-    if (/^\d+\.\d+/.test(said)) return said;
+    const said = answerLine(output, (line) => /^\d+\.\d+/.test(line));
+    if (said) return said;
     // It answered, and what it said was not a version. Null would send the
     // caller down the path that reports a Coolify too old to drive — and the
     // installer always fetches the newest one, so that is the least likely
@@ -214,14 +214,14 @@ export async function mintApiToken(
     },
   );
 
-  const token = output.trim();
-  if (token === "no-user") {
+  const token = output;
+  if (answerLine(token, (line) => line === "no-user")) {
     throw new DyadError(
       "Coolify has no account for this address, so no token could be created.",
       DyadErrorKind.Precondition,
     );
   }
-  if (token === "no-team") {
+  if (answerLine(token, (line) => line === "no-team")) {
     throw new DyadError(
       "Coolify's admin account has no team yet, so no token could be created.",
       DyadErrorKind.Precondition,

@@ -75,6 +75,19 @@ describe("readCoolifyVersion", () => {
     expect(await readCoolifyVersion(session)).toBe("4.3.2");
   });
 
+  it("reads the version past a notice on either side of it", async () => {
+    // The first of the five readers, and the one the rest are behind: a
+    // notice here costs the whole automated-token path on a server that
+    // answered correctly. After it, the notice would have been glued onto
+    // the version and stored as it.
+    expect(
+      await readCoolifyVersion(fakeSession(["PHP Deprecated: x\n4.3.2"])),
+    ).toBe("4.3.2");
+    expect(
+      await readCoolifyVersion(fakeSession(["4.3.2\nPHP Deprecated: x"])),
+    ).toBe("4.3.2");
+  });
+
   it("says it could not read the version rather than that it is old", async () => {
     // The installer always fetches the newest Coolify, so "too old" is the
     // least likely thing to be true here — and the key this reads is
@@ -160,6 +173,16 @@ describe("enableApi", () => {
     // so one deprecation notice would have reported a working server broken.
     const session = fakeSession(["PHP Deprecated: something\nenabled"]);
     await expect(enableApi(session)).resolves.toBeUndefined();
+  });
+
+  it("still names a missing team past a notice", async () => {
+    // Read as the whole answer, a notice beside the sentinel turned "no team
+    // yet" into "no usable token" — the same words a real failure gets, and
+    // none of the reason.
+    const session = fakeSession(["PHP Deprecated: x\nno-team"]);
+    await expect(mintApiToken(session, "me@gmail.com")).rejects.toThrow(
+      /no team yet/,
+    );
   });
 
   it("fails when the setting did not take", async () => {

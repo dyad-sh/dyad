@@ -423,7 +423,8 @@ export function registerCoolifySetupHandlers() {
   createTypedHandler(coolifySetupContracts.getServerKey, async () => {
     const key = ensureServerKey();
     // Only the public half crosses to the renderer. The private half never
-    // leaves the main process, the same rule the API token follows.
+    // leaves the main process — unlike the API token, which revealCredentials
+    // does hand over so the panel can show it.
     return { publicKey: key.publicKey };
   });
 

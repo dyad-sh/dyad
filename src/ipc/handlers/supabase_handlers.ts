@@ -206,12 +206,23 @@ export function registerSupabaseHandlers() {
     const settings = readSettings();
     const organizations = settings.supabase?.organizations ?? {};
     if (IS_TEST_BUILD) {
-      return Object.keys(organizations).map((organizationSlug) => ({
-        id: "fake-project-id",
-        name: "Fake Supabase Project",
-        region: "us-east-1",
-        organizationSlug,
-      }));
+      // Both ids, so a project the create flow made is selectable here the way
+      // a real one would be, while staying distinguishable from the one that
+      // was already there.
+      return Object.keys(organizations).flatMap((organizationSlug) => [
+        {
+          id: "fake-project-id",
+          name: "Fake Supabase Project",
+          region: "us-east-1",
+          organizationSlug,
+        },
+        {
+          id: "fake-created-project-id",
+          name: "Fake Created Supabase Project",
+          region: "us-east-1",
+          organizationSlug,
+        },
+      ]);
     }
 
     const allProjects: Array<{

@@ -874,7 +874,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 }
               }}
             />
-          ) : isLoadingProjects || isFetchingProjects ? (
+          ) : isLoadingProjects ||
+            isFetchingProjects ||
+            isLoadingOrganizations ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />
@@ -978,22 +980,28 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 </div>
               )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                // Deliberately does not clear the last failure: for a project
-                // created but not linked, that message is the only place its id
-                // appears, and this button is the natural thing to click after
-                // reading it. The form shows it and the first keystroke drops
-                // it.
-                onClick={() => setCreateFormAppId(appId)}
-                disabled={organizations.length === 0}
-                data-testid="supabase-create-project-button"
-              >
-                <Plus className="h-4 w-4" />
-                {t("integrations.supabase.createProject")}
-              </Button>
+              {/* Not offered at all without an organization to create in,
+              rather than offered and dead. Connecting can land here — if
+              listing organizations fails, the return handler stores the token
+              in the legacy fields with no organization — and the way out is the
+              Add Organization action above, not this button. */}
+              {organizations.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  // Deliberately does not clear the last failure: for a project
+                  // created but not linked, that message is the only place its
+                  // id appears, and this button is the natural thing to click
+                  // after reading it. The form shows it and the first keystroke
+                  // drops it.
+                  onClick={() => setCreateFormAppId(appId)}
+                  data-testid="supabase-create-project-button"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t("integrations.supabase.createProject")}
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

@@ -765,6 +765,32 @@ describe("SupabaseConnector — app API key", () => {
 });
 
 describe("SupabaseConnector — creating a project", () => {
+  // Reachable from a normal connect, not just an old install: if listing
+  // organizations fails, the return handler falls back to the legacy token
+  // fields with no organization recorded. Offering a create with nowhere to
+  // create it would be the dead end this feature exists to remove.
+  it("does not offer a create with no organization to create in", async () => {
+    showSelector();
+    organizationsState.current = [];
+
+    renderConnector();
+
+    // The i18n stub renders keys verbatim. Add Organization is the way out of
+    // this state, and it is still on screen.
+    await screen.findByText("integrations.supabase.addOrganization");
+    expect(screen.queryByTestId("supabase-create-project-button")).toBeNull();
+  });
+
+  it("waits for organizations before offering anything", async () => {
+    showSelector();
+    providerLoadingState.organizations = true;
+
+    renderConnector();
+
+    await act(async () => {});
+    expect(screen.queryByTestId("supabase-create-project-button")).toBeNull();
+  });
+
   it("offers project creation when the organization has no projects", async () => {
     showSelector();
 

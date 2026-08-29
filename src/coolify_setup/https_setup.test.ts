@@ -518,6 +518,36 @@ describe("tryEnableHttps", () => {
     expect(oneLine).toContain("return 'applied'");
   });
 
+  it("reads applied past a notice, and not out of the echoed script", async () => {
+    // The script it sends contains the word, so matching anywhere in the
+    // region would take the echo of the line that printed it.
+    const { session } = fakeSession();
+    session.run = (async () => ({
+      code: 0,
+      stdout: transcript("PHP Deprecated: something\napplied"),
+      stderr: "",
+    })) as unknown as SshSession["run"];
+
+    await expect(
+      applyInstanceDomain(session, "coolify.example.com"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not take the word out of the middle of a line", async () => {
+    // The script it sends carries the word, so a region holding the echo of
+    // that line — and no answer of its own — is not the server saying yes.
+    const { session } = fakeSession();
+    session.run = (async () => ({
+      code: 0,
+      stdout: transcript("> echo (function () { return 'applied'; })();"),
+      stderr: "",
+    })) as unknown as SshSession["run"];
+
+    await expect(
+      applyInstanceDomain(session, "coolify.example.com"),
+    ).rejects.toThrow();
+  });
+
   it("does not call a vetoed save applied", async () => {
     // Eloquent answers false rather than throwing when a model event stops
     // the write, so a run that reported success would go on to probe for a

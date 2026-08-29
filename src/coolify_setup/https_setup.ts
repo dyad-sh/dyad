@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { sleep } from "./sleep";
 import type { SshSession } from "@/ipc/utils/ssh_client";
-import { runTinker } from "./tinker";
+import { answerLine, runTinker } from "./tinker";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
 import { resolveBoth } from "@/ipc/utils/dns_resolve";
@@ -125,6 +125,12 @@ function dashboardPort(): number {
   return override ? Number(override) : 8000;
 }
 
+/**
+ * Where the dashboard answers.
+ *
+ * The same address the setup stores and shows the user, from one definition:
+ * two copies meant a change to the port could move only half of them.
+ */
 export function plainUrlFor(host: string): string {
   return `http://${urlHost(host)}:${dashboardPort()}`;
 }
@@ -182,8 +188,10 @@ export async function applyInstanceDomain(
   );
   // Checked, because a Coolify that refused still prints and still ends. Left
   // unread, its error became a two-minute wait blamed on the certificate
-  // authority. Matched loosely: the transcript carries its own noise.
-  if (!answer.includes("applied")) {
+  // authority. One line of the answer, like the other readers: tolerant of a
+  // notice beside it, and tight enough that the echoed script line — which
+  // carries the word — cannot pass for the answer.
+  if (!answerLine(answer, (line) => line === "applied")) {
     throw new DyadError(
       `Coolify would not take the domain: ${answer.trim()}`,
       DyadErrorKind.External,
@@ -292,14 +300,6 @@ export interface HttpsOutcome {
 }
 
 /**
- * Tries to put the instance on HTTPS, and settles for HTTP if it cannot.
- *
- * The instance is left on plain HTTP rather than pointed at a domain with no
- * certificate: a half-configured proxy would answer the dashboard's own address
- * with an error, and a working server nobody can open is worse than one that is
- * merely unencrypted.
- */
-/**
  * Whether a name stands for something a certificate authority could reach.
  *
  * Only a definite private answer says no. A resolver that cannot answer, or a
@@ -313,6 +313,14 @@ function resolvesPublicly(addresses: string[]): boolean {
   );
 }
 
+/**
+ * Tries to put the instance on HTTPS, and settles for HTTP if it cannot.
+ *
+ * The instance is left on plain HTTP rather than pointed at a domain with no
+ * certificate: a half-configured proxy would answer the dashboard's own address
+ * with an error, and a working server nobody can open is worse than one that is
+ * merely unencrypted.
+ */
 export async function tryEnableHttps(
   session: SshSession,
   host: string,

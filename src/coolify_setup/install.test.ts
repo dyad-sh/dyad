@@ -271,6 +271,27 @@ describe("waiting for the admin account", () => {
     ).rejects.toMatchObject({ kind: DyadErrorKind.UserCancelled });
   });
 
+  it("sees the account past a notice printed beside the answer", async () => {
+    // Required to be the whole answer, one deprecation notice would report a
+    // seeded account as missing — and the run then fails with Coolify
+    // refusing to create an account it already created.
+    const session = sessionAnswering(
+      vi.fn(async () => ({
+        code: 0,
+        stdout: transcript("PHP Deprecated: something\nyes"),
+        stderr: "",
+      })) as never,
+    );
+
+    await expect(
+      waitForAdminSeeded(session, "me@gmail.com", {
+        timeoutMs: 50,
+        intervalMs: 1,
+        attemptTimeoutMs: 50,
+      }),
+    ).resolves.toMatchObject({ seeded: true });
+  });
+
   it("bounds the repair and the confirmation after it, not only the poll", async () => {
     // The loop expiring is where the seeder runs, and the question after it
     // is the same question — asked on the same server that just failed to

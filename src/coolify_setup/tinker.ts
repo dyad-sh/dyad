@@ -83,6 +83,25 @@ export function extractOutput(transcript: string): string | null {
   return rest.slice(0, endAt).join("\n").trim();
 }
 
+/**
+ * Finds the answer among whatever else the region carries.
+ *
+ * Coolify prints its own notices between the markers, so the answer is not
+ * always the whole of what comes back. Read line by line rather than as one
+ * value, and exactly per line rather than anywhere in it — a warning that
+ * mentions the answer is not the answer.
+ */
+export function answerLine(
+  region: string,
+  matches: (line: string) => boolean,
+): string | null {
+  for (const line of region.split(/\r?\n/)) {
+    const said = line.trim();
+    if (said && matches(said)) return said;
+  }
+  return null;
+}
+
 export interface TinkerOptions {
   /**
    * Values the script reads with getenv().

@@ -155,6 +155,13 @@ describe("enableApi", () => {
     );
   });
 
+  it("reads the answer past a notice Coolify printed", async () => {
+    // Three of the four readers required the whole region to be the answer,
+    // so one deprecation notice would have reported a working server broken.
+    const session = fakeSession(["PHP Deprecated: something\nenabled"]);
+    await expect(enableApi(session)).resolves.toBeUndefined();
+  });
+
   it("fails when the setting did not take", async () => {
     const session = fakeSession(["still-disabled"]);
     await expect(enableApi(session)).rejects.toMatchObject({

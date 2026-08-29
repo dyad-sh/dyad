@@ -3,7 +3,7 @@ import { sleep } from "./sleep";
 import { plainUrlFor } from "./https_setup";
 import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
-import { runTinker } from "./tinker";
+import { answerLine, runTinker } from "./tinker";
 import type { AdminCredentials } from "./admin_credentials";
 import { isShellSafe } from "./admin_credentials";
 
@@ -264,13 +264,6 @@ export async function installCoolify(
 }
 
 /**
- * Where the dashboard answers.
- *
- * The same address the setup stores and shows the user, from one definition:
- * two copies meant a change to the port could move only half of them.
- */
-
-/**
  * Waits for the dashboard to answer.
  *
  * The installer returns before Coolify is listening, so this is what stands
@@ -337,7 +330,9 @@ export async function isAdminSeeded(
       `echo \\App\\Models\\User::where('email', getenv('DYAD_ADMIN_EMAIL'))->exists() ? 'yes' : 'no';`,
       { env: { DYAD_ADMIN_EMAIL: email }, signal, timeoutMs },
     );
-    return output.trim() === "yes";
+    // One line of the answer: a notice printed beside it must not read as
+    // the account not being there.
+    return Boolean(answerLine(output, (line) => line === "yes"));
   } catch (error) {
     // A container still starting cannot answer at all. That is not the same as
     // answering no, and treating it as one is how a healthy server gets

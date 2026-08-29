@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractOutput, runTinker, tinkerCommand, wrapScript } from "./tinker";
+import {
+  answerLine,
+  extractOutput,
+  runTinker,
+  tinkerCommand,
+  wrapScript,
+} from "./tinker";
 import type { SshSession } from "@/ipc/utils/ssh_client";
 
 /**
@@ -19,6 +25,25 @@ const REAL_TRANSCRIPT = [
   "line-two",
   "__DYAD_OUT_END__",
 ].join("\n");
+
+describe("reading the answer out of a noisy region", () => {
+  it("finds it beside whatever else Coolify printed", () => {
+    const region = ["PHP Deprecated:  Some notice", "yes", ""].join("\n");
+    expect(answerLine(region, (l) => l === "yes")).toBe("yes");
+  });
+
+  it("will not take a line that merely mentions it", () => {
+    // A warning naming the answer is not the answer.
+    expect(
+      answerLine("Warning: expected yes here", (l) => l === "yes"),
+    ).toBeNull();
+  });
+
+  it("answers nothing when the region has none", () => {
+    expect(answerLine("no\nstill-disabled", (l) => l === "yes")).toBeNull();
+    expect(answerLine("", (l) => l === "yes")).toBeNull();
+  });
+});
 
 describe("finding our output however psysh prompts", () => {
   it("reads it when the prompt is missing or repeated", () => {

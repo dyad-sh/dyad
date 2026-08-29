@@ -2,7 +2,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { COOLIFY_SCOPES_PHP_ARRAY } from "@/shared/coolify_scopes";
 import { SshError } from "@/ipc/utils/ssh_client";
 import type { SshSession } from "@/ipc/utils/ssh_client";
-import { runTinker } from "./tinker";
+import { answerLine, runTinker } from "./tinker";
 
 /**
  * How long one of these questions may take.
@@ -153,7 +153,9 @@ export async function enableApi(
     ].join("\n"),
     { signal, timeoutMs: TINKER_TIMEOUT_MS },
   );
-  if (output.trim() !== "enabled") {
+  // One line of the answer, not the whole of it: Coolify prints its own
+  // notices between the markers.
+  if (!answerLine(output, (line) => line === "enabled")) {
     throw new DyadError(
       "Could not turn Coolify's API on automatically.",
       DyadErrorKind.External,
@@ -225,16 +227,19 @@ export async function mintApiToken(
       DyadErrorKind.Precondition,
     );
   }
-  // Sanctum's plain text token is `<id>|<40+ characters>`. Checking the shape
-  // keeps a stray warning or a partial line from being stored as a credential
-  // and failing much later, somewhere that cannot explain itself.
-  if (!/^\d+\|[A-Za-z0-9]{40,}$/.test(token)) {
+  // Sanctum's plain text token is `<id>|<40+ characters>`. Read as one line
+  // among any others, so a notice beside it does not lose the token — and
+  // checked for shape, so a notice is never stored as one.
+  const minted = answerLine(token, (line) =>
+    /^\d+\|[A-Za-z0-9]{40,}$/.test(line),
+  );
+  if (!minted) {
     throw new DyadError(
       "Coolify did not return a usable API token.",
       DyadErrorKind.External,
     );
   }
-  return token;
+  return minted;
 }
 
 export interface AutomaticAccess {

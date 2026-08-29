@@ -502,6 +502,38 @@ describe("Supabase handlers", () => {
       expect(readApp()).toMatchObject({ supabaseProjectId: null });
     });
 
+    // The telemetry filter recognises a dropped connection by name and message
+    // (`isGenericFetchFailedError`), so wrapping it would rename it and make
+    // every create attempted offline a reported exception.
+    it("leaves a dropped connection as it came, for the telemetry filter", async () => {
+      insertApp();
+      const offline = new TypeError("fetch failed");
+      mocks.createSupabaseProject.mockRejectedValue(offline);
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({
+        name: "TypeError",
+        message: "fetch failed",
+      });
+    });
+
+    // Everything else still gets the context the passthrough above cannot
+    // carry, so an ordinary failure does not reach the user as a bare string.
+    it("explains a failure the filter does not recognise", async () => {
+      insertApp();
+      mocks.createSupabaseProject.mockRejectedValue(
+        new Error("socket hang up"),
+      );
+
+      await expect(
+        harness.invokeHandler("supabase:create-project", INPUT),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.External,
+        message: expect.stringContaining("Couldn't create the Supabase"),
+      });
+    });
+
     it("reports a Supabase outage as an upstream failure", async () => {
       insertApp();
       mocks.createSupabaseProject.mockRejectedValue(

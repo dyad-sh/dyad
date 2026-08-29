@@ -900,19 +900,6 @@ export async function createSupabaseProject({
   organizationSlug: string;
   region: string;
 }): Promise<CreatedSupabaseProjectResponse> {
-  if (IS_TEST_BUILD) {
-    return {
-      // Distinct from the `fake-project-id` the fake project list and connect
-      // flow use, so a test can tell a created project from a pre-existing one.
-      // No E2E covers this path yet.
-      id: "fake-created-project-id",
-      name,
-      region,
-      organizationSlug,
-      status: "ACTIVE_HEALTHY",
-    };
-  }
-
   logger.info(
     `Creating Supabase project "${name}" in organization ${organizationSlug} (${region})`,
   );

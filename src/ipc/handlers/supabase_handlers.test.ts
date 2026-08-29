@@ -326,16 +326,22 @@ describe("Supabase handlers", () => {
     it("marks a create that could not be linked with a stable code", async () => {
       insertApp();
       vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
-        throw new Error("database is locked");
+        throw new Error("SQLITE_BUSY: /home/someone/.dyad/sqlite.db is locked");
       });
 
-      await expect(
-        harness.invokeHandler("supabase:create-project", INPUT),
-      ).rejects.toMatchObject({
+      const thrown = await harness
+        .invokeHandler("supabase:create-project", INPUT)
+        .catch((error: unknown) => error);
+      expect(thrown).toMatchObject({
         kind: DyadErrorKind.Internal,
         code: SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
         message: expect.stringContaining("proj-new"),
       });
+      // The database error is logged, not projected: `rules/dyad-errors.md`
+      // treats the renderer boundary as security-sensitive, and a Drizzle
+      // failure can carry SQL, parameters and local paths.
+      expect((thrown as Error).message).not.toContain("SQLITE_BUSY");
+      expect((thrown as Error).message).not.toContain("/home/someone");
       expect(readApp()).toMatchObject({ supabaseProjectId: null });
     });
 
@@ -386,11 +392,11 @@ describe("Supabase handlers", () => {
       expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
     });
 
-    // Refusing for the life of the process would strand the app: a user who
-    // reads the message and deletes that project in the dashboard would have
-    // nothing left that clears it. The refusal consumes the record instead, so
-    // it interrupts the reflexive retry once and then gets out of the way.
-    it("stops refusing after it has said so once", async () => {
+    // The operation lock queues concurrent creates, so a double-click sends a
+    // second one that arrives here by itself. Spending the record on that would
+    // leave the click the user actually makes after reading the message
+    // unguarded, which is the one this exists to stop.
+    it("keeps refusing for as long as the app is unlinked", async () => {
       insertApp();
       vi.spyOn(harness.db, "update").mockImplementationOnce(() => {
         throw new Error("database is locked");
@@ -399,13 +405,14 @@ describe("Supabase handlers", () => {
         harness.invokeHandler("supabase:create-project", INPUT),
       ).rejects.toThrow();
 
-      await expect(
-        harness.invokeHandler("supabase:create-project", INPUT),
-      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-
-      await expect(
-        harness.invokeHandler("supabase:create-project", INPUT),
-      ).resolves.toMatchObject({ id: "proj-new" });
+      for (const attempt of [1, 2, 3]) {
+        await expect(
+          harness.invokeHandler("supabase:create-project", INPUT),
+          `attempt ${attempt}`,
+        ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      }
+      // Refused before reaching Supabase every time, so no second project.
+      expect(mocks.createSupabaseProject).toHaveBeenCalledTimes(1);
     });
 
     // Linking the app also releases it, whichever project the user picked.

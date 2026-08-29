@@ -49,8 +49,8 @@ const testOnlyHandle = createTestOnlyLoggedHandler(logger);
  * when Supabase accepted the create without returning a ref. The app row cannot
  * record this — writing it is what failed — so it is held here instead, to
  * refuse the retry that would otherwise mint a second project the user is
- * billed for and has no record of. Consumed by that refusal, and dropped when
- * the app is linked.
+ * billed for and has no record of. Dropped when the app is linked, and not
+ * before: see the refusal itself for why one refusal is not enough.
  */
 export const unlinkedProjectsByApp = new Map<number, string | null>();
 
@@ -299,17 +299,19 @@ export function registerSupabaseHandlers() {
         // write is what failed — so on its own it lets a queued or repeated
         // create mint another one. Every attempt after the first would be a new
         // project the user is billed for and has no record of.
+        // Held until the app is linked rather than spent on the first refusal.
+        // The operation lock queues concurrent creates, so a double-click sends
+        // a second one that arrives here on its own: consuming the record there
+        // would leave the user's deliberate retry — the click after they read
+        // the message — unguarded, which is the click this exists to stop.
+        // Linking any project releases it, so a user who deleted the stranded
+        // one still has a way out.
         if (unlinkedProjectsByApp.has(appId)) {
           const stranded = unlinkedProjectsByApp.get(appId);
-          // Dropped as it fires, so this refuses the reflexive retry once and
-          // then gets out of the way. Refusing for the life of the process
-          // would strand the app instead: the user who reacts by deleting that
-          // project in the Supabase dashboard has no way left to create one.
-          unlinkedProjectsByApp.delete(appId);
           throw new DyadError(
             stranded
-              ? `Supabase project ${stranded} was created for this app but couldn't be linked. Select it from the project list rather than creating another, or try again to create a second one.`
-              : "A Supabase project was already created for this app but couldn't be linked. Check your Supabase dashboard before trying again.",
+              ? `Supabase project ${stranded} was created for this app but couldn't be linked. Select it from the project list to finish connecting, or connect this app to another project if you have since deleted it.`
+              : "A Supabase project was already created for this app but couldn't be linked. Check your Supabase dashboard, then connect this app to a project from the list.",
             DyadErrorKind.Precondition,
           );
         }
@@ -358,8 +360,16 @@ export function registerSupabaseHandlers() {
             .where(eq(apps.id, appId));
         } catch (error) {
           recordUnlinkedProject(appId, project.id, event);
+          // The database error is logged, not interpolated: it can carry SQL,
+          // parameters and local paths, and `rules/dyad-errors.md` treats the
+          // main-to-renderer projection as a security boundary. The project ref
+          // is the user's own and is the actionable part, so it stays.
+          logger.error(
+            `Created Supabase project ${project.id} but couldn't link it to app ${appId}`,
+            error,
+          );
           const unlinked = new DyadError(
-            `Created Supabase project ${project.id} but couldn't link it to this app: ${error instanceof Error ? error.message : error}. Select it from the project list to finish connecting.`,
+            `Created Supabase project ${project.id} but couldn't link it to this app. Select it from the project list to finish connecting.`,
             DyadErrorKind.Internal,
           );
           // The kind is the catch-all for bugs, so it cannot identify this

@@ -599,7 +599,11 @@ export async function getSupabaseProjectName(
   organizationSlug?: string,
 ): Promise<string> {
   if (IS_TEST_BUILD) {
-    return "Fake Supabase Project";
+    // Matches the name the fake project list gives each id, so a project the
+    // create flow made does not read as a different one on the connected card.
+    return projectId === "fake-created-project-id"
+      ? "Fake Created Supabase Project"
+      : "Fake Supabase Project";
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });

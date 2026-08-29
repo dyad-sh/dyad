@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateSupabaseProjectForm } from "./CreateSupabaseProjectForm";
@@ -123,6 +129,21 @@ describe("CreateSupabaseProjectForm", () => {
       "supabase-new-project-name",
     ) as HTMLInputElement;
     expect(input.value).toBe("over-quota");
+  });
+
+  // A throw from the success handler is a bug in that handler, not a failed
+  // create. Reporting it as one would tell the user a project they now own and
+  // are billed for was never made.
+  it("does not report a create as failed when the success handler throws", async () => {
+    const { props } = renderForm({
+      onCreated: vi.fn().mockRejectedValue(new Error("toast blew up")),
+    });
+
+    fireEvent.click(screen.getByTestId("supabase-create-project-submit"));
+
+    await waitFor(() => expect(props.onCreated).toHaveBeenCalled());
+    await act(async () => {});
+    expect(props.onFailed).not.toHaveBeenCalled();
   });
 
   it("renders the failure the connector hands back", () => {

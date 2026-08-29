@@ -84,16 +84,29 @@ export function CreateSupabaseProjectForm({
   const handleCreate = async () => {
     if (!canSubmit) return;
     onClearError();
+    let project;
     try {
-      const project = await createProject({
+      project = await createProject({
         appId,
         name: trimmedName,
         organizationSlug,
         region,
       });
-      await onCreated(appId, project);
     } catch (err) {
       onFailed(appId, err);
+      return;
+    }
+    // Its own catch, not the one above: anything this throws is a bug in the
+    // success handler, not a failed create, and reporting it through `onFailed`
+    // would tell the user a project they now own was never made. Swallowed
+    // rather than left to reject, since nothing owns this promise.
+    try {
+      await onCreated(appId, project);
+    } catch (err) {
+      console.error(
+        "Supabase project was created, but reporting it failed:",
+        err,
+      );
     }
   };
 

@@ -602,7 +602,7 @@
       "selectProjectDescription": "이 앱에 연결할 Supabase 프로젝트를 선택하거나 새 프로젝트를 만드세요",
       "createProject": "새 프로젝트 만들기",
       "creatingProject": "프로젝트 생성 중…",
-      "projectCreated": "Supabase 프로젝트 \"{{name}}\"을(를) 만들었습니다",
+      "projectCreated": "Supabase 프로젝트 \"{{name}}\"을(를) 만들었습니다. 설정이 완료되기까지 1~2분 정도 걸립니다.",
       "projectName": "프로젝트 이름",
       "organization": "조직",
       "selectOrganization": "조직을 선택하세요",

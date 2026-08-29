@@ -622,7 +622,7 @@
       "selectProjectDescription": "Select a Supabase project to connect to this app, or create a new one",
       "createProject": "Create new project",
       "creatingProject": "Creating project…",
-      "projectCreated": "Created Supabase project \"{{name}}\"",
+      "projectCreated": "Created Supabase project \"{{name}}\". It takes a minute or two to finish setting up.",
       "projectName": "Project name",
       "organization": "Organization",
       "selectOrganization": "Select an organization",

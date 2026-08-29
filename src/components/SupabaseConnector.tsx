@@ -75,6 +75,12 @@ import {
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
+/** A failed create, and whether it left a real project behind. */
+interface CreateError {
+  message: string;
+  isOrphan: boolean;
+}
+
 function findLinkedSupabaseProject(
   projects: SupabaseProject[],
   projectId: string,
@@ -147,32 +153,25 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const isCreateFormOpen = createFormAppId === appId;
   // Keyed by app rather than a single slot: creates for two apps can be in
   // flight at once, so one app's failure must not overwrite another's.
-  const [createErrors, setCreateErrors] = useState<Record<number, string>>({});
-  // Which of those failures left a real project behind. Only those are worth
-  // surviving a cancel: the message carries the stranded project's id, and
-  // nothing else in the UI records it. An ordinary failure kept as long would
-  // just be a banner the user cannot get rid of.
-  const [orphanedAppIds, setOrphanedAppIds] = useState<ReadonlySet<number>>(
-    new Set(),
+  // `isOrphan` marks a failure that left a real project behind. Carried on the
+  // record rather than tracked alongside it, so the two cannot drift: only an
+  // orphan's message is worth surviving a cancel, since it holds the stranded
+  // project's id and nothing else in the UI does. An ordinary failure kept that
+  // long would just be a banner the user cannot get rid of.
+  const [createErrors, setCreateErrors] = useState<Record<number, CreateError>>(
+    {},
   );
 
-  const dropKey = (forAppId: number) => (current: Record<number, string>) => {
-    // Returning the same object when there is nothing to drop keeps React's
-    // bailout: this runs on every keystroke, and a fresh one would re-render
-    // the connector for each character typed into the form.
-    if (!(forAppId in current)) return current;
-    const { [forAppId]: _cleared, ...rest } = current;
-    return rest;
-  };
-  const clearCreateError = () => {
-    setCreateErrors(dropKey(appId));
-    setOrphanedAppIds((current) => {
-      if (!current.has(appId)) return current;
-      const next = new Set(current);
-      next.delete(appId);
-      return next;
-    });
-  };
+  const dropKey =
+    (forAppId: number) => (current: Record<number, CreateError>) => {
+      // Returning the same object when there is nothing to drop keeps React's
+      // bailout: this runs on every keystroke, and a fresh one would re-render
+      // the connector for each character typed into the form.
+      if (!(forAppId in current)) return current;
+      const { [forAppId]: _cleared, ...rest } = current;
+      return rest;
+    };
+  const clearCreateError = () => setCreateErrors(dropKey(appId));
 
   const linkedProjectId = app?.supabaseProjectId;
 
@@ -298,12 +297,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     createdForAppId: number,
     error: unknown,
   ) => {
+    const isOrphan = isCreatedButUnlinkedError(error);
     setCreateErrors((current) => ({
       ...current,
-      [createdForAppId]: getErrorMessage(error),
+      [createdForAppId]: { message: getErrorMessage(error), isOrphan },
     }));
-    if (isCreatedButUnlinkedError(error)) {
-      setOrphanedAppIds((current) => new Set(current).add(createdForAppId));
+    if (isOrphan) {
       setCreateFormAppId((open) => (open === createdForAppId ? null : open));
     }
   };
@@ -320,7 +319,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   }, [linkedProjectId, appId]);
 
-  const createErrorForThisApp = createErrors[appId] ?? null;
+  const createErrorForThisApp = createErrors[appId]?.message ?? null;
 
   // Group projects by organization for display
   const groupedProjects = projects.reduce(
@@ -837,9 +836,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               data-testid="supabase-create-project-error"
             >
               <Info className="h-4 w-4" />
-              <AlertDescription role="alert">
-                {createErrorForThisApp}
-              </AlertDescription>
+              {/* No `role` here: `Alert` already puts one on its wrapper, and
+              nesting a second live region inside it makes a role query match
+              twice. */}
+              <AlertDescription>{createErrorForThisApp}</AlertDescription>
             </Alert>
           )}
 
@@ -869,7 +869,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               // dismiss it.
               onCancel={() => {
                 setCreateFormAppId(null);
-                if (!orphanedAppIds.has(appId)) {
+                if (!createErrors[appId]?.isOrphan) {
                   clearCreateError();
                 }
               }}

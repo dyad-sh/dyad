@@ -1042,6 +1042,19 @@ describe("SupabaseConnector — a create that fails", () => {
   });
 });
 
+// `@/ipc/types` is mocked wholesale here, so the marker the fixtures carry is a
+// copy of the real one rather than the real one. Imported directly — the real
+// module is untouched by that mock — so changing the constant fails here rather
+// than leaving these tests quietly pinning a value nothing uses.
+describe("the created-but-unlinked marker these tests fake", () => {
+  it("still matches the real constant", async () => {
+    const real = await import("@/ipc/types/supabase");
+    expect(real.SUPABASE_PROJECT_CREATED_BUT_UNLINKED).toBe(
+      SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
+    );
+  });
+});
+
 describe("SupabaseConnector — clearing a create failure", () => {
   // Picking a project is how the user finishes a create that failed after
   // minting one, so the message has done its job once the app is linked.

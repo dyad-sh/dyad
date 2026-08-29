@@ -596,7 +596,7 @@
       "selectProjectDescription": "选择要连接到此应用的 Supabase 项目，或创建一个新项目",
       "createProject": "创建新项目",
       "creatingProject": "正在创建项目…",
-      "projectCreated": "已创建 Supabase 项目“{{name}}”",
+      "projectCreated": "已创建 Supabase 项目“{{name}}”。完成设置需要一两分钟。",
       "projectName": "项目名称",
       "organization": "组织",
       "selectOrganization": "选择一个组织",

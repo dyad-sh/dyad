@@ -135,6 +135,10 @@ export type SupabaseRegionId = (typeof SUPABASE_REGIONS)[number]["id"];
 // Type-only, so nothing from the SDK reaches the renderer bundle. Fails the
 // typecheck naming the offender if the list above and the region enum in the
 // Management API spec ever diverge, in either direction.
+//
+// If a `@dyad-sh/supabase-management-js` bump fails the typecheck here, that is
+// this guard doing its job: Supabase added or renamed a region, and
+// `SUPABASE_REGIONS` above needs the same edit.
 type AssertNever<T extends never> = T;
 type _EveryApiRegionIsOffered = AssertNever<
   Exclude<CreateProjectRequestBody["region"], SupabaseRegionId>

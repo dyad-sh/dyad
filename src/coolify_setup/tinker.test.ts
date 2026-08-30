@@ -26,6 +26,58 @@ const REAL_TRANSCRIPT = [
   "__DYAD_OUT_END__",
 ].join("\n");
 
+/**
+ * The same shape from a later Coolify, captured the same way.
+ *
+ * Two versions apart, psysh still flushes its last prompt onto the line the
+ * first output lands on — which is the whole basis for telling real output
+ * from the echo of the script that produced it.
+ */
+const REAL_4_3_14 = [
+  '> echo "__DYAD_OUT_START__" . PHP_EOL;',
+  "",
+  "> echo config('constants.coolify.version');",
+  '> echo PHP_EOL . "__DYAD_OUT_END__" . PHP_EOL;',
+  "> __DYAD_OUT_START__",
+  "4.3.14",
+  "__DYAD_OUT_END__",
+].join("\n");
+
+/**
+ * The same again, with psysh redrawing an echo it could not fit.
+ *
+ * A long input line comes back carrying a carriage return and overwritten
+ * partway, so the echo is neither complete nor clean. It still lands above
+ * the opening marker, which is what keeps it out of the answer.
+ */
+const REAL_MANGLED_ECHO = [
+  '> echo "__DYAD_OUT_START__" . PHP_EOL;',
+  "",
+  "> \r<l', 'nobody@example.com')->exists() ? 'yes' : 'no';",
+  '> echo PHP_EOL . "__DYAD_OUT_END__" . PHP_EOL;',
+  "> __DYAD_OUT_START__",
+  "no",
+  "__DYAD_OUT_END__",
+].join("\n");
+
+describe("transcripts from a real Coolify", () => {
+  it("reads the version a 4.3.14 server gave back", () => {
+    expect(extractOutput(REAL_4_3_14)).toBe("4.3.14");
+    expect(
+      answerLine(extractOutput(REAL_4_3_14) ?? "", (l) => /^\d+\.\d+/.test(l)),
+    ).toBe("4.3.14");
+  });
+
+  it("is not confused by an echo psysh redrew", () => {
+    // The mangled line carries a CR and part of the script, including the
+    // words "yes" and "no" — everything the reader below is looking for.
+    const region = extractOutput(REAL_MANGLED_ECHO);
+    expect(region).toBe("no");
+    expect(answerLine(region ?? "", (l) => l === "no")).toBe("no");
+    expect(answerLine(region ?? "", (l) => l === "yes")).toBeNull();
+  });
+});
+
 describe("reading the answer out of a noisy region", () => {
   it("finds it beside whatever else Coolify printed", () => {
     const region = ["PHP Deprecated:  Some notice", "yes", ""].join("\n");

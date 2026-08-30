@@ -270,8 +270,9 @@ export const CoolifySchema = z.object({
    *
    * Kept because Dyad invented this password on the user's behalf, for their
    * own machine — showing it once and forgetting it leaves them locked out of
-   * a server they own. Encrypted like the token, and only ever handed to the
-   * renderer when it is asked for.
+   * a server they own. Encrypted like the token, and like the token it
+   * reaches the renderer whenever settings are read, not only when the panel
+   * asks to show it.
    *
    * One object rather than three fields, because they are only ever
    * meaningful together: an account without the address it opens is a

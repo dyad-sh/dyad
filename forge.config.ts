@@ -44,6 +44,14 @@ const pgRuntimeDependencies = [
   "xtend",
 ] as const;
 
+/**
+ * What ssh2 needs at runtime, and only that.
+ *
+ * Its optional native helpers — cpu-features, nan, buildcheck — are left out
+ * on purpose. ssh2 guards those requires and falls back to pure JavaScript,
+ * so leaving them behind costs some speed and avoids shipping a binding
+ * compiled against whatever Node the build machine happened to have.
+ */
 const ssh2RuntimeDependencies = [
   "ssh2",
   "asn1",

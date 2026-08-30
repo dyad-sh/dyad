@@ -86,10 +86,16 @@ export function extractOutput(transcript: string): string | null {
 /**
  * Finds the answer among whatever else the region carries.
  *
- * Coolify prints its own notices between the markers, so the answer is not
- * always the whole of what comes back. Read line by line rather than as one
- * value, and exactly per line rather than anywhere in it — a warning that
- * mentions the answer is not the answer.
+ * Insurance rather than something observed: two real transcripts, 4.3.2 and
+ * 4.3.14, both came back with nothing but the answer between the markers. But
+ * a notice from Coolify would only have to happen once for a reader that
+ * demands the whole region to report a working server as broken, and reading
+ * a line at a time costs nothing when there is only one.
+ *
+ * Exactly per line rather than anywhere in it, so a notice that mentions the
+ * answer is not taken for it. Trimmed per line because psysh writes a
+ * carriage return mid-transcript when it redraws a long echo — the region's
+ * own trim only reaches the ends.
  */
 export function answerLine(
   region: string,

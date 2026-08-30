@@ -6,7 +6,7 @@ import { Timeout } from "./helpers/constants";
 import {
   startFakeSshServer,
   type FakeSshServer,
-} from "./helpers/fake_ssh_server";
+} from "../src/testing/fake_ssh_server";
 
 /**
  * Installing Coolify onto a server, through the packaged app.

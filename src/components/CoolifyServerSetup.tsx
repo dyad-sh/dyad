@@ -16,7 +16,7 @@ import type {
 import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCoolifySetupSnapshot } from "@/hooks/useCoolifySetupSnapshot";
-import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
+import { adminEmailRefusal } from "@/shared/coolify_admin_email";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
 import { selectCoolifySetupCapabilities } from "@/coolify_setup/capabilities";
 
@@ -210,7 +210,8 @@ export function CoolifyServerSetup({
     await ipc.coolifySetup.dismiss().catch(showError);
   };
 
-  const emailLooksUsable = !adminEmail || isPlausibleAdminEmail(adminEmail);
+  const emailRefusal = adminEmail ? adminEmailRefusal(adminEmail) : null;
+  const emailLooksUsable = !emailRefusal;
   const domainLooksUsable =
     !customDomain.trim() || isPlausibleInstanceDomain(customDomain);
   // --- Finished ---
@@ -445,13 +446,13 @@ export function CoolifyServerSetup({
           value={adminEmail}
           onChange={(e) => setAdminEmail(e.target.value)}
         />
-        {/* Checked while typing, because Coolify resolves the domain when it
-            creates the account — and finding out afterwards costs the whole
-            install. */}
-        {!emailLooksUsable && (
+        {/* Checked while typing, because neither reason is cheap to find out
+            later: a domain Coolify will not take costs the whole install, and
+            an address Dyad cannot put in a shell word costs a run that
+            connects, looks the server over, and then fails. */}
+        {emailRefusal && (
           <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-            Use an address you can receive mail at. Coolify checks that the
-            domain resolves when it creates the account.
+            {emailRefusal}
           </p>
         )}
         <p className="mt-1 text-xs text-muted-foreground">

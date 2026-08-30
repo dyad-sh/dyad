@@ -81,9 +81,13 @@ describe("certificateDomainFor", () => {
     );
   });
 
-  it("still takes a domain the user gave for such a server", () => {
-    // Their own domain may point at a router that forwards to it, which is a
-    // different question from what the address itself can be reached at.
+  it("keeps a domain the user gave, whatever the address is", () => {
+    // Not because the certificate can be had — the caller turns this server
+    // down a step later for the address it resolves to. It decides which
+    // refusal the user reads: with the domain kept, the message names the
+    // address, which is the thing that is actually private. Nulled here, it
+    // would name the domain instead and send someone to check a name that
+    // was answering perfectly well.
     expect(certificateDomainFor("192.168.1.50", "coolify.example.com")).toBe(
       "coolify.example.com",
     );

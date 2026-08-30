@@ -24,7 +24,7 @@ import { runServerSetup } from "@/coolify_setup/setup_flow";
 import { CoolifySetupController } from "@/coolify_setup/controller";
 import { selectCoolifySetupCapabilities } from "@/coolify_setup/capabilities";
 import { uuidIdSource } from "@/state_machines/clock";
-import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
+import { adminEmailRefusal } from "@/shared/coolify_admin_email";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
 import { sshFailureOf } from "@/shared/ssh_failure";
 import { IS_TEST_BUILD } from "../utils/test_utils";
@@ -543,15 +543,15 @@ export function registerCoolifySetupHandlers() {
 
   // DO NOT LOG this handler: its result carries the generated admin password.
   createTypedHandler(coolifySetupContracts.run, async (_, input) => {
-    // Checked before anything is done, because Coolify resolves the domain when
-    // it seeds its admin and a rejected address leaves an install with no
-    // account on it — minutes later, with nothing to show for them.
-    if (!isPlausibleAdminEmail(input.adminEmail)) {
-      throw new DyadError(
-        "Use an email address you can receive mail at. Coolify checks that " +
-          "the domain resolves when it creates the admin account.",
-        DyadErrorKind.Validation,
-      );
+    // Checked before anything is done, though the two cost differently.
+    // Coolify resolves the domain when it seeds its admin, so a domain it
+    // will not take is found out minutes in, on a finished install with no
+    // account on it. An address buildInstallScript cannot put in a shell word
+    // never reaches the server at all — but not before a connection, a
+    // preflight, and an account record written and then taken back off.
+    const emailRefusal = adminEmailRefusal(input.adminEmail);
+    if (emailRefusal) {
+      throw new DyadError(emailRefusal, DyadErrorKind.Validation);
     }
     if (input.customDomain && !isPlausibleInstanceDomain(input.customDomain)) {
       throw new DyadError(

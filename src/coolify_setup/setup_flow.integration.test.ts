@@ -6,7 +6,7 @@ import {
   generateSshKeyPair,
   startFakeSshServer,
   type FakeSshServer,
-} from "../../e2e-tests/helpers/fake_ssh_server";
+} from "@/testing/fake_ssh_server";
 
 /**
  * The setup flow over a real SSH connection, without the app around it.

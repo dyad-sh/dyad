@@ -26,6 +26,7 @@ import { selectCoolifySetupCapabilities } from "@/coolify_setup/capabilities";
 import { uuidIdSource } from "@/state_machines/clock";
 import { isPlausibleAdminEmail } from "@/shared/coolify_admin_email";
 import { isPlausibleInstanceDomain } from "@/shared/coolify_domain";
+import { sshFailureOf } from "@/shared/ssh_failure";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("coolify_setup_handlers");
@@ -403,6 +404,57 @@ function targetFrom(input: SetupServer, privateKey: string) {
   };
 }
 
+/**
+ * The same failure, with a line about the address when the address explains it.
+ *
+ * A whole URL pasted here is the likeliest wrong answer, because the token
+ * form asks for exactly that shape — and ssh2 takes it as a hostname, so the
+ * lookup fails. What the client says on its own hedges between the address
+ * and a port nobody is listening on, and the port is the one people go and
+ * look at; this settles it. Said as the rule rather than as a diagnosis: a
+ * slash is all that got us here, so telling someone their address "looks like
+ * a URL" would be a guess, and wrong for one they typed a path onto.
+ *
+ * Deliberately not a check on the way in. Nothing here decides whether an
+ * address is usable: an address this does not recognise connects exactly as
+ * it did before, and this only ever speaks after a connection has already
+ * failed. That is what keeps it from refusing a name that would have worked
+ * — a single-label name, a .local, a zone id — none of which this has to
+ * know about.
+ *
+ * The error object is kept rather than replaced with one of ours. The failure
+ * it carries never reaches the renderer — the serialized error has no such
+ * field — but it is read on the way out: shouldFilterTelemetryException drops
+ * an "unreachable" outright, as a server that does not answer is the user's
+ * own network rather than a fault here. A plain Error would carry no failure,
+ * match nothing else that filter looks for, and start reporting the connects
+ * this speaks for — the ones from an address with a slash in it — as
+ * exceptions. Every other failed connect keeps the error it was given.
+ *
+ * What the client said is still replaced, which leaves its wording unread on
+ * this one path. That is the trade: a message written where the address came
+ * from can be specific, and one written in the transport cannot.
+ */
+function withHostShapeHint<T>(host: string, error: T): T {
+  if (!(error instanceof Error)) return error;
+  // A slash, and only a slash. A scheme brings two of its own and a path is
+  // one, so this catches both without naming either — and an address that is
+  // colons all the way down, which is how an IPv6 literal is written, has
+  // none and is left alone.
+  if (!host.includes("/")) return error;
+  // What went wrong, in the shortest form the error carries it: the errno if
+  // the system named one, and otherwise the failure. Both are read off the
+  // error rather than out of its message, and both are a word rather than a
+  // sentence — the sentence the client wrote offers a closed port as the
+  // other suspect, which this has just ruled out.
+  const detail =
+    (error as { systemCode?: string }).systemCode ?? sshFailureOf(error);
+  error.message =
+    "Enter just the server address, for example 203.0.113.5 — with no " +
+    `https:// and no / characters in it.${detail ? ` (${detail})` : ""}`;
+  return error;
+}
+
 /** Test-only: the pin map and the controller both outlive a single case. */
 export function resetCoolifySetupStateForTests(): void {
   inspectedFingerprints.clear();
@@ -439,7 +491,11 @@ export function registerCoolifySetupHandlers() {
       trustOnFirstUse((fp) => {
         fingerprint = fp;
       }),
-    );
+    ).catch((error: unknown) => {
+      // Only the connect. Once it is open the address reached something, and
+      // anything after this is about the server rather than what was typed.
+      throw withHostShapeHint(input.host, error);
+    });
     try {
       // Bounded, because nothing else bounds it: the probe asks docker, and a
       // wedged daemon never answers. Left unbounded the button span forever
@@ -492,9 +548,8 @@ export function registerCoolifySetupHandlers() {
     // account on it — minutes later, with nothing to show for them.
     if (!isPlausibleAdminEmail(input.adminEmail)) {
       throw new DyadError(
-        "Enter an email address whose domain resolves. Coolify checks this " +
-          "when it creates the admin account, and rejects addresses like " +
-          "admin@example.test.",
+        "Use an email address you can receive mail at. Coolify checks that " +
+          "the domain resolves when it creates the admin account.",
         DyadErrorKind.Validation,
       );
     }

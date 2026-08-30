@@ -450,8 +450,8 @@ export function CoolifyServerSetup({
             install. */}
         {!emailLooksUsable && (
           <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-            Coolify checks that the domain resolves, so addresses like
-            admin@example.test are rejected. Use one you can receive mail at.
+            Use an address you can receive mail at. Coolify checks that the
+            domain resolves when it creates the account.
           </p>
         )}
         <p className="mt-1 text-xs text-muted-foreground">

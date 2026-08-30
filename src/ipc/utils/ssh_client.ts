@@ -40,6 +40,18 @@ export class SshError extends DyadError {
     readonly failure: SshFailure,
     message: string,
     kind: DyadErrorKind,
+    /**
+     * What the operating system called it, where it said anything.
+     *
+     * Carried rather than left in the message for the same reason `failure`
+     * is: a caller that wants to say ENOTFOUND should not have to find it in
+     * a sentence. Deliberately not `code`, which a handler writes a mark to
+     * so the panel does not report a failure the screen is already showing —
+     * and writes only while nothing holds that name yet. Declared here, the
+     * name is held whether or not anything is passed, so calling this `code`
+     * would stop that mark being written at all and tell the user twice.
+     */
+    readonly systemCode?: string,
   ) {
     super(message, kind);
     this.name = "SshError";
@@ -140,6 +152,7 @@ function classify(
       `Could not reach the server (${err.code}). Check the address and that ` +
         `port 22 is open.`,
       DyadErrorKind.External,
+      err.code,
     );
   }
   return new SshError(
@@ -148,6 +161,7 @@ function classify(
       ? `The connection to the server failed: ${err.message}`
       : `Could not connect over SSH: ${err.message}`,
     DyadErrorKind.External,
+    err.code,
   );
 }
 

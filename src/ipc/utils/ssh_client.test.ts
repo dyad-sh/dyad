@@ -161,6 +161,8 @@ describe("classifying a failed connection", () => {
     raw: Record<string, unknown>;
     failure: string;
     kind: string;
+    /** What the system called it, where it called it anything. */
+    systemCode?: string;
   }> = [
     {
       name: "a key the server will not take",
@@ -189,6 +191,7 @@ describe("classifying a failed connection", () => {
       },
       failure: "unreachable",
       kind: "external",
+      systemCode: "ENOTFOUND",
     },
     {
       name: "a closed port",
@@ -199,6 +202,7 @@ describe("classifying a failed connection", () => {
       },
       failure: "unreachable",
       kind: "external",
+      systemCode: "ECONNREFUSED",
     },
     {
       name: "two ends that cannot agree on ciphers",
@@ -208,6 +212,16 @@ describe("classifying a failed connection", () => {
       },
       failure: "handshake-failed",
       kind: "external",
+    },
+    {
+      // The bucket, but a named one: a socket error this does not recognise
+      // still says what the system called it, and that name is what makes it
+      // worth reporting.
+      name: "an error nothing here recognises, named",
+      raw: { level: "client-socket", code: "EPIPE", message: "broken pipe" },
+      failure: "unknown",
+      kind: "external",
+      systemCode: "EPIPE",
     },
     {
       name: "anything else",
@@ -240,15 +254,21 @@ describe("classifying a failed connection", () => {
     expect(error.message).not.toMatch(/connect: Handshake failed/i);
   });
 
-  it.each(CASES)("reads $name as $failure", async ({ raw, failure, kind }) => {
-    h.nextFailure = Object.assign(new Error(String(raw.message)), raw);
-    const error = (await connectSsh(
-      TARGET,
-      trustOnFirstUse(() => {}),
-    ).catch((e) => e)) as SshError;
-    expect(error.failure).toBe(failure);
-    expect((error as unknown as { kind: string }).kind).toBe(kind);
-  });
+  it.each(CASES)(
+    "reads $name as $failure",
+    async ({ raw, failure, kind, systemCode }) => {
+      h.nextFailure = Object.assign(new Error(String(raw.message)), raw);
+      const error = (await connectSsh(
+        TARGET,
+        trustOnFirstUse(() => {}),
+      ).catch((e) => e)) as SshError;
+      expect(error.failure).toBe(failure);
+      expect((error as unknown as { kind: string }).kind).toBe(kind);
+      // Carried across rather than left in the sentence it was written into,
+      // so a caller that wants to name the fault does not have to read one.
+      expect(error.systemCode).toBe(systemCode);
+    },
+  );
 });
 
 describe("running a command", () => {

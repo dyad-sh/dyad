@@ -36,6 +36,8 @@ const h = vi.hoisted(() => ({
   preflightReady: true,
   fingerprint: "SHA256:fingerprint",
   lastConnectTarget: null as null | { host: string },
+  /** What the SSH connect throws, for the cases about a failed connect. */
+  connectError: null as unknown,
 }));
 
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
@@ -78,6 +80,7 @@ vi.mock("../utils/ssh_client", () => ({
   connectSsh: vi.fn(
     async (target: { host: string }, verify: (fp: string) => boolean) => {
       h.lastConnectTarget = target;
+      if (h.connectError) throw h.connectError;
       verify(h.fingerprint);
       return {
         run: vi.fn(),
@@ -97,12 +100,25 @@ vi.mock("../utils/ssh_client", () => ({
     h.verifiedAgainst.push(expected);
     return (fingerprint: string) => fingerprint === expected;
   },
+  // Close enough to the real class for what this file asserts: the failure,
+  // the kind, the errno, and the name `sshFailureOf` matches on. It is not a DyadError,
+  // so a case about what survives serialization would need more than this.
+  //
+  // The failure and the kind are asserted on for opposite reasons. The
+  // failure is read here and goes no further: it is what drops an unreachable server from
+  // telemetry, as the user's own network rather than a fault here, and the
+  // serialized error has no such field. The kind is not read for this
+  // failure — the filter has already answered on the failure — and it does
+  // cross. Between them they pin the error as the one the client threw.
   SshError: class SshError extends Error {
     constructor(
       readonly failure: string,
       message: string,
+      readonly kind?: string,
+      readonly systemCode?: string,
     ) {
       super(message);
+      this.name = "SshError";
     }
   },
 }));
@@ -218,6 +234,7 @@ beforeEach(() => {
   h.reportsAccount = true;
   h.failsBeforeCredentials = false;
   h.lastConnectTarget = null;
+  h.connectError = null;
   h.onRunStarted = null;
   h.runCalls = 0;
   h.verifiedAgainst.length = 0;
@@ -258,6 +275,131 @@ describe("inspect", () => {
   it("closes the connection it opened", async () => {
     await call("coolify-setup:inspect", TARGET);
     expect(h.sessionEnded).toBe(1);
+  });
+
+  /**
+   * What the client reports for a name that does not resolve.
+   *
+   * Written out rather than shortened: a connect the socket reports as failed
+   * does not arrive raw — `classify` turns those into an SshError with words
+   * of its own — so a fixture shaped like the library's own message would be
+   * a shape this path does not produce, and would let the hint be built
+   * against text the user never sees.
+   *
+   * A function rather than a constant, because the handler rewrites the
+   * message of the error it is given: one shared instance would carry the
+   * previous case's hint into the next one.
+   */
+  const UNREACHABLE = () =>
+    new SshError(
+      "unreachable",
+      "Could not reach the server (ENOTFOUND). Check the address and that " +
+        "port 22 is open.",
+      DyadErrorKind.External,
+      "ENOTFOUND",
+    );
+
+  it("says what to type instead, before anything else", async () => {
+    // The other way in — a token for a Coolify that already exists — asks for
+    // exactly that shape, so it is the likeliest wrong answer. What the client
+    // says on its own names the address as one of two suspects; the other is a
+    // port nobody is listening on, and that is the one people go and look at.
+    h.connectError = UNREACHABLE();
+
+    await expect(
+      call("coolify-setup:inspect", {
+        ...TARGET,
+        host: "https://203.0.113.5:8000",
+      }),
+    ).rejects.toThrow(/^Enter just the server address[\s\S]*ENOTFOUND/);
+  });
+
+  it("says it for an address with a path on it, too", async () => {
+    // The half with no scheme in it — an address someone put a path onto,
+    // copied out of a page that documented one. Worth its own case because
+    // this is where calling it "a URL" would have been a guess: the message
+    // states the rule instead, so it is true of both.
+    h.connectError = UNREACHABLE();
+
+    await expect(
+      call("coolify-setup:inspect", { ...TARGET, host: "203.0.113.5/coolify" }),
+    ).rejects.toThrow(/Enter just the server address/);
+  });
+
+  it("keeps the fault it was given, and what it was", async () => {
+    // Added to the error rather than replacing it. The code is the one part
+    // of what the client said that a bug report needs — the sentence around
+    // it offers a closed port, which the hint has just ruled out — and the
+    // failure decides, in this process before any of it is serialized,
+    // whether this is reported at all.
+    h.connectError = UNREACHABLE();
+
+    await expect(
+      call("coolify-setup:inspect", { ...TARGET, host: "203.0.113.5/coolify" }),
+    ).rejects.toMatchObject({
+      failure: "unreachable",
+      kind: DyadErrorKind.External,
+      // Ends there: the sentence the client wrapped the code in offers a
+      // closed port as the other suspect, and keeping it would put a second
+      // answer under the one this just gave.
+      message: expect.stringMatching(/\(ENOTFOUND\)$/),
+    });
+  });
+
+  it("falls back to the failure when the system named nothing", async () => {
+    // Only some of `classify`'s branches have an errno to pass on. The rest
+    // still carry a failure, which is a word rather than the sentence they
+    // wrote — and that sentence is the one offering a closed port, which the
+    // instruction it is appended to has just ruled out.
+    h.connectError = new SshError(
+      "timeout",
+      "The server did not answer in time. Check the address and that port " +
+        "22 is reachable.",
+      DyadErrorKind.External,
+    );
+
+    await expect(
+      call("coolify-setup:inspect", { ...TARGET, host: "203.0.113.5/coolify" }),
+    ).rejects.toThrow(/in it\. \(timeout\)$/);
+  });
+
+  it("says nothing about the address once the connection is open", async () => {
+    // Only the connect is covered, and nothing but this says so. Past it the
+    // address reached something, so what failed is the server — and the hint
+    // would be advice the connection that just succeeded has disproved.
+    h.preflightThrows = true;
+
+    await expect(
+      call("coolify-setup:inspect", { ...TARGET, host: "203.0.113.5/coolify" }),
+    ).rejects.toThrow(/^docker never answered$/);
+  });
+
+  it("says only the instruction when the error carries neither", async () => {
+    // Nothing to add is not a reason to add the message back: what is left
+    // is the one sentence that tells the user what to do.
+    h.connectError = new Error("something went wrong");
+
+    await expect(
+      call("coolify-setup:inspect", { ...TARGET, host: "203.0.113.5/coolify" }),
+    ).rejects.toThrow(/no \/ characters in it\.$/);
+  });
+
+  it("says nothing about an address it does not recognise", async () => {
+    // The whole point of adding this after the failure rather than before the
+    // connect. An address shaped like nothing in particular — a single-label
+    // name, an IPv6 literal — is none of its business, and a hint here would
+    // be a confident wrong answer on top of a real fault.
+    //
+    // Given the same failure as the cases that do get the hint, so the
+    // address is the only thing separating them from this one: a plainer
+    // error here would let an implementation that hints on every SshError
+    // pass this untouched.
+    for (const host of ["fe80::1", "coolify", "my_server.local"]) {
+      h.connectError = UNREACHABLE();
+      await expect(
+        call("coolify-setup:inspect", { ...TARGET, host }),
+      ).rejects.toThrow(/^Could not reach the server \(ENOTFOUND\)\./);
+    }
   });
 });
 

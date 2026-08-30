@@ -139,7 +139,7 @@ describe("the admin address", () => {
       "admin@dyad.test",
     );
 
-    expect(screen.getByText(/admin@example.test are rejected/)).toBeTruthy();
+    expect(screen.getByText(/receive mail at/)).toBeTruthy();
   });
 
   it("says nothing about an ordinary address", async () => {
@@ -147,7 +147,7 @@ describe("the admin address", () => {
     renderPanel();
     await user.type(screen.getByTestId("coolify-setup-email"), "me@gmail.com");
 
-    expect(screen.queryByText(/are rejected/)).toBeNull();
+    expect(screen.queryByText(/receive mail at/)).toBeNull();
   });
 
   it("will not start an install it knows the address fails", async () => {

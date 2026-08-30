@@ -34,6 +34,7 @@ import { getLastUpdaterError } from "../../main/updater_state";
 import { collectProcessMemoryDiagnostics } from "../../utils/process_memory_diagnostics";
 import { resolveDefaultModelSelection } from "@/ipc/utils/model_effort";
 import type { ModelSelection } from "@/lib/schemas";
+import { LAST_UPDATER_ERROR_HEADER } from "@/lib/debugLogFormatting";
 
 /**
  * Collects auto-updater failure details: the last updater error seen this
@@ -45,7 +46,7 @@ function readUpdaterLogs(): string | null {
 
   const lastError = getLastUpdaterError();
   if (lastError) {
-    sections.push(`Last updater error (this session):\n${lastError}`);
+    sections.push(`${LAST_UPDATER_ERROR_HEADER}\n${lastError}`);
   }
 
   if (process.platform === "win32") {
@@ -308,6 +309,9 @@ function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
   }
 }
 
+/** Tall enough for the preview's max-h-64 on a HiDPI display. */
+const PREVIEW_MAX_HEIGHT = 512;
+
 export function registerDebugHandlers() {
   createTypedHandler(systemContracts.getSystemDebugInfo, async () => {
     console.log("IPC: get-system-debug-info called");
@@ -537,5 +541,16 @@ export function registerDebugHandlers() {
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);
+
+    // The clipboard keeps the full-resolution capture; the returned data URL
+    // only ever feeds a preview 256 CSS pixels tall. Encoding the untouched
+    // image blocks this process for the whole PNG pass and ships megabytes
+    // over IPC.
+    const preview =
+      image.getSize().height > PREVIEW_MAX_HEIGHT
+        ? image.resize({ height: PREVIEW_MAX_HEIGHT, quality: "good" })
+        : image;
+
+    return { dataUrl: preview.toDataURL() };
   });
 }

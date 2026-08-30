@@ -793,8 +793,12 @@ export function shouldBypassNonProTelemetrySampling(
 
   // Reporting a bug is rare enough that these add little volume, and sampling
   // them independently would break the outcome each prompt is paired with.
+  // The form events are read as rates against each other -- how often the
+  // required-field gate fires per form opened -- which independent sampling
+  // would turn into noise.
   if (
     eventName?.startsWith("screenshot-prompt:") ||
+    eventName?.startsWith("issue-form:") ||
     eventName === "session-report:copy-session-id"
   ) {
     return true;

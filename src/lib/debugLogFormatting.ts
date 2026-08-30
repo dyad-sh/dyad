@@ -1,5 +1,5 @@
-const DEFAULT_UPDATER_LOG_ISSUE_BODY_LIMIT = 1_200;
-const LAST_UPDATER_ERROR_HEADER = "Last updater error (this session):";
+const DEFAULT_UPDATER_LOG_ISSUE_BODY_LIMIT = 600;
+export const LAST_UPDATER_ERROR_HEADER = "Last updater error (this session):";
 const TRUNCATED_MARKER = "[...truncated...]\n";
 const NEXT_UPDATER_SECTION_PATTERN =
   /\n\n(?:Squirrel.*\.log \(tail\):|Error reading Squirrel logs:)/g;

@@ -8,6 +8,8 @@ interface ScreenshotSuccessDialogProps {
   onDismiss: () => void;
   onSubmit: () => void;
   icon: ReactNode;
+  /** Data URL of the capture, so the reporter can see what they are sending. */
+  previewSrc?: string;
 }
 
 export function ScreenshotSuccessDialog({
@@ -15,6 +17,7 @@ export function ScreenshotSuccessDialog({
   onDismiss,
   onSubmit,
   icon,
+  previewSrc,
 }: ScreenshotSuccessDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onDismiss}>
@@ -24,6 +27,13 @@ export function ScreenshotSuccessDialog({
             Screenshot captured to clipboard! Please paste in GitHub issue.
           </DialogTitle>
         </DialogHeader>
+        {previewSrc && (
+          <img
+            src={previewSrc}
+            alt="Screenshot that was copied to your clipboard"
+            className="w-full max-h-64 object-contain rounded-md border bg-(--background-lightest)"
+          />
+        )}
         <Button
           variant="default"
           onClick={onSubmit}

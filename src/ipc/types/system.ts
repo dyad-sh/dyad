@@ -413,7 +413,10 @@ export const systemContracts = {
   takeScreenshot: defineContract({
     channel: "take-screenshot",
     input: z.void(),
-    output: z.void(),
+    // The image is written to the clipboard for pasting into GitHub, and
+    // returned as a data URL so the reporter can see what was captured
+    // before the report is filed.
+    output: z.object({ dataUrl: z.string() }),
   }),
 
   // Restart

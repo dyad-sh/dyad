@@ -2,6 +2,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
 
+const FIELDS = {
+  title: "",
+  description: "",
+  expected: "",
+  actual: "",
+};
+
 const mocks = vi.hoisted(() => {
   const posthogCapture = vi.fn();
   return {
@@ -64,7 +71,7 @@ function renderPrompt(
     onCaptureAbandon: vi.fn(),
     onContinue: vi.fn(),
     source: "report-bug" as const,
-    report: { kind: "bug" } as const,
+    report: { kind: "bug", fields: FIELDS } as const,
     ...overrides,
   };
   const view = render(<BugScreenshotDialog {...props} />);
@@ -73,7 +80,7 @@ function renderPrompt(
 
 const SESSION = {
   source: "upload-session",
-  report: { kind: "session", sessionId: "v2:abc" },
+  report: { kind: "session", sessionId: "v2:abc", fields: FIELDS },
 } as const;
 
 function shownEvents() {
@@ -84,7 +91,9 @@ function shownEvents() {
 
 describe("BugScreenshotDialog", () => {
   beforeEach(() => {
-    mocks.takeScreenshot.mockReset().mockResolvedValue(undefined);
+    mocks.takeScreenshot
+      .mockReset()
+      .mockResolvedValue({ dataUrl: "data:image/png;base64,AAAA" });
     mocks.posthogCapture.mockReset();
     mocks.showError.mockReset();
   });
@@ -156,7 +165,7 @@ describe("BugScreenshotDialog", () => {
 
     expect(props.onContinue).toHaveBeenCalledWith(
       { status: "declined" },
-      { kind: "bug" },
+      { kind: "bug", fields: FIELDS },
     );
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "screenshot-prompt:decline",
@@ -178,7 +187,7 @@ describe("BugScreenshotDialog", () => {
     fireEvent.click(await screen.findByText("Create GitHub issue"));
     expect(props.onContinue).toHaveBeenCalledWith(
       { status: "captured" },
-      { kind: "bug" },
+      { kind: "bug", fields: FIELDS },
     );
   });
 
@@ -196,14 +205,17 @@ describe("BugScreenshotDialog", () => {
 
   it("files a late capture against the report that started it", async () => {
     const props = renderPrompt({
-      report: { kind: "session", sessionId: "v2:first" },
+      report: { kind: "session", sessionId: "v2:first", fields: FIELDS },
     });
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     // Another report starts while this capture is still resolving.
     props.view.rerender(
-      <BugScreenshotDialog {...props.props} report={{ kind: "bug" }} />,
+      <BugScreenshotDialog
+        {...props.props}
+        report={{ kind: "bug", fields: FIELDS }}
+      />,
     );
     fireEvent.click(await screen.findByText("Create GitHub issue"));
 
@@ -212,6 +224,7 @@ describe("BugScreenshotDialog", () => {
       {
         kind: "session",
         sessionId: "v2:first",
+        fields: FIELDS,
       },
     );
   });
@@ -219,7 +232,7 @@ describe("BugScreenshotDialog", () => {
   it("reports a late capture under the source that started it", async () => {
     const props = renderPrompt({
       source: "upload-session",
-      report: { kind: "session", sessionId: "v2:first" },
+      report: { kind: "session", sessionId: "v2:first", fields: FIELDS },
     });
     fireEvent.click(screen.getByRole("button", { name: /recommended/ }));
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
@@ -229,7 +242,7 @@ describe("BugScreenshotDialog", () => {
       <BugScreenshotDialog
         {...props.props}
         source="report-bug"
-        report={{ kind: "bug" }}
+        report={{ kind: "bug", fields: FIELDS }}
       />,
     );
     fireEvent.click(await screen.findByText("Create GitHub issue"));

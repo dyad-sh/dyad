@@ -16,7 +16,9 @@ import { test, Timeout } from "./helpers/test_helper";
 async function stubScreenshotCapture(electronApp: ElectronApplication) {
   await electronApp.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler("take-screenshot");
-    ipcMain.handle("take-screenshot", () => {});
+    ipcMain.handle("take-screenshot", () => ({
+      dataUrl: "data:image/png;base64,AAAA",
+    }));
   });
 }
 
@@ -50,23 +52,36 @@ test("file a bug report without a screenshot", async ({ po }) => {
 
   await po.page.getByRole("button", { name: "Help" }).click();
   await po.page.getByRole("button", { name: "Report a Bug" }).click();
+
+  const description = po.page.getByLabel("What went wrong?");
+  await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
+  await po.page.getByLabel("Title").fill("Preview goes blank");
+  await description.fill("Switching branches blanks the preview.");
+
+  await po.page.getByRole("button", { name: "Next: add a screenshot" }).click();
   await expect(po.page.getByText("Take a screenshot?")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 
+  // Backing out returns to the form with the draft, rather than discarding
+  // what the reporter already wrote.
   await po.page.keyboard.press("Escape");
-  await expect(po.page.getByText("Need help with Dyad?")).toBeVisible();
+  await expect(description).toHaveValue(
+    "Switching branches blanks the preview.",
+  );
   await expect(po.page.getByText("Take a screenshot?")).not.toBeVisible();
 
   // The report that follows the back out is the point: a dismissal must not
   // leave state behind that breaks the next one.
-  await po.page.getByRole("button", { name: "Report a Bug" }).click();
+  await po.page.getByRole("button", { name: "Next: add a screenshot" }).click();
   await po.page.getByText("File bug report without screenshot").click();
 
   const params = await firstIssueUrl(po.electronApp);
-  expect(params.get("title")).toContain("[bug]");
+  expect(params.get("title")).toBe("[bug] Preview goes blank");
   expect(params.get("labels")).toContain("bug");
-  expect(params.get("body")).toContain("Screenshot status: declined");
+  const body = params.get("body") ?? "";
+  expect(body).toContain("Screenshot status: declined");
+  expect(body).toContain("Switching branches blanks the preview.");
 });
 
 test("upload a chat session and report it with a screenshot", async ({
@@ -115,14 +130,28 @@ test("upload a chat session and report it with a screenshot", async ({
     expect(uploads).toEqual(["/signed"]);
 
     await po.page.getByRole("button", { name: "Create GitHub Issue" }).click();
+
+    const description = po.page.getByLabel("What is the issue?");
+    await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
+    // Every field on the session form is required, matching the "(required)"
+    // markers the generated body carries.
+    await po.page.getByLabel("Title").fill("Generated page is blank");
+    await description.fill("The generated page is blank.");
+    await po.page.getByLabel("Expected behavior").fill("A rendered page.");
+    await po.page.getByLabel("Actual behavior").fill("A white screen.");
+    await po.page
+      .getByRole("button", { name: "Next: add a screenshot" })
+      .click();
     await expect(po.page.getByText("Take a screenshot?")).toBeVisible();
 
-    // Backing out must not orphan an upload that already reached the server.
+    // Backing out must not orphan an upload that already reached the server,
+    // nor lose the draft written against it.
     await po.page.keyboard.press("Escape");
-    await expect(po.page.getByText("Upload Complete")).toBeVisible();
-    await expect(po.page.getByText("v2:e2e-session")).toBeVisible();
+    await expect(description).toHaveValue("The generated page is blank.");
 
-    await po.page.getByRole("button", { name: "Create GitHub Issue" }).click();
+    await po.page
+      .getByRole("button", { name: "Next: add a screenshot" })
+      .click();
     await po.page.getByRole("button", { name: /recommended/ }).click();
 
     // The prompt hides itself for the capture, then confirms it succeeded.
@@ -132,10 +161,15 @@ test("upload a chat session and report it with a screenshot", async ({
     await po.page.getByText("Create GitHub issue").click();
 
     const params = await firstIssueUrl(po.electronApp);
-    expect(params.get("title")).toContain("[session report]");
+    expect(params.get("title")).toBe(
+      "[session report] Generated page is blank",
+    );
     expect(params.get("labels")).toContain("support");
     const body = params.get("body") ?? "";
     expect(body).toContain("Screenshot status: captured");
+    expect(body).toContain("The generated page is blank.");
+    expect(body).toContain("A rendered page.");
+    expect(body).toContain("A white screen.");
     // The session the reporter uploaded is the one the issue points at.
     expect(body).toContain("v2:e2e-session");
   } finally {

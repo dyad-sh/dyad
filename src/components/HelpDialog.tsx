@@ -39,6 +39,7 @@ import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
 import {
   BugScreenshotDialog,
+  promptSourceForKind,
   type PendingReport,
   type ScreenshotPromptSource,
 } from "./BugScreenshotDialog";
@@ -48,20 +49,40 @@ import { useChatMode } from "@/hooks/useChatMode";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 import { createModelSelection, getModelPreferenceKey } from "@/lib/modelEffort";
 import {
+  EMPTY_REPORT_FIELDS,
   buildBugReportBody,
   buildBugReportFallbackBody,
+  buildIssueUrl,
   buildSessionReportBody,
   buildSessionReportFallbackBody,
+  formatDiagnosticsSections,
+  formatIssueTitle,
+  type ReportFields,
   type ScreenshotOutcome,
 } from "@/lib/issueBody";
+import {
+  IssueForm,
+  NO_CAP_HIT,
+  type CapState,
+  type ReportKind,
+} from "./IssueForm";
+import { type SystemDebugInfo } from "@/ipc/types";
 
 // =============================================================================
 // Animation constants
 // =============================================================================
 
-type DialogScreen = "main" | "review" | "upload-complete";
+type DialogScreen = "main" | "review" | "upload-complete" | "form";
 
-const SCREEN_ORDER: DialogScreen[] = ["main", "review", "upload-complete"];
+// Positional: the slide direction is read off these indices. The form is the
+// last stop in both flows -- straight from main for a bug report, and after
+// the upload for a session report.
+const SCREEN_ORDER: DialogScreen[] = [
+  "main",
+  "review",
+  "upload-complete",
+  "form",
+];
 
 const screenVariants = {
   enter: (direction: number) => ({
@@ -84,9 +105,6 @@ const screenTransition = {
 // GitHub issue helpers (shared between Report a Bug & Upload Chat Session)
 // =============================================================================
 
-const GITHUB_ISSUES_BASE =
-  "https://github.com/dyad-sh/dyad/issues/new" as const;
-
 function openGitHubIssue(params: {
   title: string;
   labels: string[];
@@ -95,12 +113,9 @@ function openGitHubIssue(params: {
 }) {
   const labels = [...params.labels];
   if (params.isDyadProUser) labels.push("pro");
-  const qs = new URLSearchParams({
-    title: params.title,
-    labels: labels.join(","),
-    body: params.body,
-  });
-  ipc.system.openExternalUrl(`${GITHUB_ISSUES_BASE}?${qs.toString()}`);
+  ipc.system.openExternalUrl(
+    buildIssueUrl({ title: params.title, labels, body: params.body }),
+  );
 }
 
 // =============================================================================
@@ -243,6 +258,17 @@ export function HelpDialog() {
   const [pendingReport, setPendingReport] = useState<PendingReport | null>(
     null,
   );
+  // The form's draft. Held here rather than in the report, because the report
+  // is only assembled once the reporter leaves the form for the screenshot.
+  const [reportKind, setReportKind] = useState<ReportKind | null>(null);
+  const [fields, setFields] = useState<ReportFields>(EMPTY_REPORT_FIELDS);
+  const [atCap, setAtCap] = useState<CapState>(NO_CAP_HIT);
+  // Shown in the form's diagnostics disclosure. The body is still built from a
+  // fresh read at submit time, so what ships is never staler than the report.
+  const [formDebugInfo, setFormDebugInfo] = useState<SystemDebugInfo | null>(
+    null,
+  );
+  const [formDebugInfoFailed, setFormDebugInfoFailed] = useState(false);
   const hasNavigated = useRef(false);
   // Tracks which chat (if any) we've already preloaded for the crash-triggered
   // upload flow, so the preload effect fires once per open.
@@ -271,6 +297,7 @@ export function HelpDialog() {
       }))
     : null;
   const { userBudget } = useUserBudgetInfo();
+  const posthog = usePostHog();
   const isDyadProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
 
   // ---------------------------------------------------------------------------
@@ -291,6 +318,11 @@ export function HelpDialog() {
     setDirection(0);
     setDebugBundle(null);
     setSessionId("");
+    setReportKind(null);
+    setFields(EMPTY_REPORT_FIELDS);
+    setAtCap(NO_CAP_HIT);
+    setFormDebugInfo(null);
+    setFormDebugInfoFailed(false);
     hasNavigated.current = false;
     preloadedChatId.current = null;
   };
@@ -298,8 +330,46 @@ export function HelpDialog() {
   // Holds this dialog's state while a report waits on the screenshot prompt,
   // so backing out of the prompt lands the reporter where they were.
   useEffect(() => {
-    if (!isOpen && !pendingReport) resetDialogState();
-  }, [isOpen, pendingReport]);
+    if (!isOpen && !pendingReport && !reportKind) resetDialogState();
+  }, [isOpen, pendingReport, reportKind]);
+
+  // The draft survives a closed dialog, but this guard must not: it exists to
+  // keep the preload to once per opening, and a second force-close on the same
+  // chat has to preload again. resetDialogState would clear it, except a live
+  // draft is exactly the case that suppresses that reset.
+  useEffect(() => {
+    if (!isOpen) preloadedChatId.current = null;
+  }, [isOpen]);
+
+  // Loaded when the form opens so the disclosure can show what will be
+  // attached before the reporter commits to sending it.
+  useEffect(() => {
+    if (screen !== "form" || formDebugInfo || formDebugInfoFailed) return;
+    let active = true;
+    ipc.system
+      .getSystemDebugInfo()
+      .then((info) => {
+        if (active) setFormDebugInfo(info);
+      })
+      .catch((error) => {
+        // The disclosure says so rather than sitting on a spinner. The report
+        // itself has its own fallback path if the same call fails at submit.
+        console.error("Failed to load diagnostics preview:", error);
+        if (active) setFormDebugInfoFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [screen, formDebugInfo, formDebugInfoFailed]);
+
+  // A dispatched report releases the draft, which leaves the form with nothing
+  // to render. Only relevant while the dialog is on screen: a closed dialog is
+  // reset wholesale above, and correcting it here would fight that reset.
+  useEffect(() => {
+    if (isOpen && screen === "form" && !reportKind) {
+      setScreen(sessionId ? "upload-complete" : "main");
+    }
+  }, [isOpen, screen, reportKind, sessionId]);
 
   // Crash-triggered upload: when opened with a uploadChatId, skip the main
   // screen, preload that chat's debug bundle, and jump straight to review.
@@ -308,6 +378,12 @@ export function HelpDialog() {
     const chatId = helpDialog.uploadChatId;
     if (chatId == null || preloadedChatId.current === chatId) return;
     preloadedChatId.current = chatId;
+    // The crash upload is a new report and takes the dialog over, so the
+    // suspended draft goes with it. Left in place it would keep
+    // resetDialogState suppressed for the rest of the session.
+    setReportKind(null);
+    setFields(EMPTY_REPORT_FIELDS);
+    setAtCap(NO_CAP_HIT);
     setIsUploading(true);
     // Guard against the dialog closing before the bundle resolves, which would
     // otherwise leave it on the review screen with a stale bundle.
@@ -348,8 +424,12 @@ export function HelpDialog() {
   // Actions
   // ---------------------------------------------------------------------------
 
-  const handleReportBug = async (screenshot: ScreenshotOutcome) => {
+  const handleReportBug = async (
+    screenshot: ScreenshotOutcome,
+    reportedFields: ReportFields,
+  ) => {
     showInfo("Preparing your bug report...");
+    const title = formatIssueTitle("bug", reportedFields.title);
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
       const body = buildBugReportBody({
@@ -358,9 +438,10 @@ export function HelpDialog() {
         selectedModel: diagnosticModelSelection,
         userBudget: userBudget ?? undefined,
         screenshot,
+        fields: reportedFields,
       });
       openGitHubIssue({
-        title: "[bug] <WRITE TITLE HERE>",
+        title,
         labels: ["bug"],
         body,
         isDyadProUser,
@@ -368,9 +449,12 @@ export function HelpDialog() {
     } catch (error) {
       console.error("Failed to prepare bug report:", error);
       openGitHubIssue({
-        title: "[bug] <WRITE TITLE HERE>",
+        title,
         labels: ["bug"],
-        body: buildBugReportFallbackBody({ screenshot }),
+        body: buildBugReportFallbackBody({
+          screenshot,
+          fields: reportedFields,
+        }),
         isDyadProUser,
       });
     }
@@ -441,12 +525,14 @@ export function HelpDialog() {
   const handleOpenGitHubIssue = async (
     screenshot: ScreenshotOutcome,
     reportedSessionId: string,
+    reportedFields: ReportFields,
   ) => {
     showInfo("Preparing your session report...");
+    const title = formatIssueTitle("session", reportedFields.title);
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
       openGitHubIssue({
-        title: "[session report] <add title>",
+        title,
         labels: ["support"],
         body: buildSessionReportBody({
           debugInfo,
@@ -454,6 +540,7 @@ export function HelpDialog() {
           selectedModel: diagnosticModelSelection,
           userBudget: userBudget ?? undefined,
           screenshot,
+          fields: reportedFields,
           sessionId: reportedSessionId,
         }),
         isDyadProUser,
@@ -461,11 +548,12 @@ export function HelpDialog() {
     } catch (error) {
       console.error("Failed to prepare session report:", error);
       openGitHubIssue({
-        title: "[session report] <add title>",
+        title,
         labels: ["support"],
         body: buildSessionReportFallbackBody({
           userBudget: userBudget ?? undefined,
           screenshot,
+          fields: reportedFields,
           sessionId: reportedSessionId,
         }),
         isDyadProUser,
@@ -473,14 +561,45 @@ export function HelpDialog() {
     }
   };
 
-  // Both report paths funnel through the screenshot prompt, so the issue body
-  // always records whether a screenshot was taken.
+  // Both report paths funnel through the form and then the screenshot prompt,
+  // so the issue body always records whether a screenshot was taken.
+  const startReport = (kind: ReportKind) => {
+    // Emitted here rather than on the form's mount, which also runs when the
+    // reporter reopens a suspended draft: this is the denominator the blocked
+    // count is read against, so it has to be one per report started.
+    posthog.capture("issue-form:opened", {
+      source: promptSourceForKind(kind),
+    });
+    // A second report replaces the first: reaching this while one is in flight
+    // takes a click during the sub-second window where no dialog is on screen.
+    setReportKind(kind);
+    setFields(EMPTY_REPORT_FIELDS);
+    setAtCap(NO_CAP_HIT);
+    navigateTo("form");
+  };
+
+  const handleFormBack = () => {
+    setReportKind(null);
+    setFields(EMPTY_REPORT_FIELDS);
+    setAtCap(NO_CAP_HIT);
+    navigateTo(sessionId ? "upload-complete" : "main");
+  };
+
+  // The fields travel with the report from here, so the dispatch that runs
+  // after the prompt is answered never reads them back out of this dialog.
+  const handleFormContinue = () => {
+    if (!reportKind) return;
+    openScreenshotPrompt(
+      reportKind === "session"
+        ? { kind: "session", sessionId, fields }
+        : { kind: "bug", fields },
+    );
+  };
+
   const openScreenshotPrompt = (report: PendingReport) => {
     // Held separately from pendingReport, which is released as soon as the
     // report is dispatched, while the prompt is still animating out.
-    setPromptSource(
-      report.kind === "session" ? "upload-session" : "report-bug",
-    );
+    setPromptSource(promptSourceForKind(report.kind));
     setPendingReport(report);
     handleClose();
     setIsScreenshotPromptOpen(true);
@@ -493,11 +612,20 @@ export function HelpDialog() {
     // The report carries its own screenshot outcome and session ID, so it
     // needs nothing from this dialog once it starts. Release only this report,
     // so a later one is never cleared out from under itself.
+    const ownsDraft = pendingReport === report;
     setPendingReport((current) => (current === report ? null : current));
+    // Releases the draft too, since the report carries everything it needs.
+    // Guarded the same way as pendingReport above: a report that finishes
+    // after a newer one started must not clear the newer one's draft.
+    if (ownsDraft) {
+      setReportKind(null);
+      setFields(EMPTY_REPORT_FIELDS);
+      setAtCap(NO_CAP_HIT);
+    }
     if (report.kind === "session") {
-      void handleOpenGitHubIssue(screenshot, report.sessionId);
+      void handleOpenGitHubIssue(screenshot, report.sessionId, report.fields);
     } else {
-      void handleReportBug(screenshot);
+      void handleReportBug(screenshot, report.fields);
     }
   };
 
@@ -608,7 +736,7 @@ export function HelpDialog() {
             </p>
             <Button
               variant="outline"
-              onClick={() => openScreenshotPrompt({ kind: "bug" })}
+              onClick={() => startReport("bug")}
               className="w-full bg-(--background-lightest)"
             >
               <BugIcon className="mr-2 h-4 w-4" /> Report a Bug
@@ -739,7 +867,7 @@ export function HelpDialog() {
       </div>
 
       <Button
-        onClick={() => openScreenshotPrompt({ kind: "session", sessionId })}
+        onClick={() => startReport("session")}
         className="w-full py-5 text-base mt-4"
         size="lg"
       >
@@ -758,6 +886,60 @@ export function HelpDialog() {
       </div>
     </AnimatedScreen>
   );
+
+  const renderFormScreen = () =>
+    reportKind && (
+      <AnimatedScreen
+        screenKey="form"
+        direction={direction}
+        className="flex flex-col overflow-hidden"
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {reportKind === "bug" ? "Report a bug" : "Describe the issue"}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogDescription>
+          Filling this in here means the GitHub issue arrives ready to read.
+        </DialogDescription>
+
+        {/* Padded on every side, not just the right: the scroll container
+            clips overflow, and the inputs draw a focus ring up to 4px outside
+            their box that would otherwise be cut off. */}
+        <div className="overflow-y-auto flex-grow mt-4 p-1.5">
+          <IssueForm
+            kind={reportKind}
+            fields={fields}
+            onChange={setFields}
+            atCap={atCap}
+            onAtCapChange={setAtCap}
+            onBack={handleFormBack}
+            onContinue={handleFormContinue}
+            diagnostics={
+              <ReviewDetailsSection title="Diagnostics we'll include">
+                {formDebugInfo ? (
+                  // The body's own text, not a summary of it: anything added
+                  // to the report shows up here without a second edit.
+                  formatDiagnosticsSections({
+                    debugInfo: formDebugInfo,
+                    settings,
+                    selectedModel: diagnosticModelSelection,
+                    userBudget: userBudget ?? undefined,
+                  })
+                ) : formDebugInfoFailed ? (
+                  <span className="font-sans">
+                    Diagnostics could not be read. Your report will still be
+                    filed, with whatever we can gather at that point.
+                  </span>
+                ) : (
+                  <span className="font-sans">Loading diagnostics...</span>
+                )}
+              </ReviewDetailsSection>
+            }
+          />
+        </div>
+      </AnimatedScreen>
+    );
 
   // Shown while a crash-triggered upload preloads its bundle, so the user who
   // clicked "Upload Chat Session" sees a spinner instead of the main help menu
@@ -791,16 +973,19 @@ export function HelpDialog() {
           className={
             screen === "review"
               ? "max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
-              : undefined
+              : screen === "form"
+                ? "max-h-[80vh] overflow-hidden flex flex-col"
+                : undefined
           }
         >
           <AnimatePresence mode="wait" custom={direction}>
-            {screen === "main" &&
-              (isCrashPreloading
-                ? renderPreloadingScreen()
-                : renderMainScreen())}
-            {screen === "review" && renderReviewScreen()}
-            {screen === "upload-complete" && renderUploadCompleteScreen()}
+            {isCrashPreloading && renderPreloadingScreen()}
+            {!isCrashPreloading && screen === "main" && renderMainScreen()}
+            {!isCrashPreloading && screen === "review" && renderReviewScreen()}
+            {!isCrashPreloading &&
+              screen === "upload-complete" &&
+              renderUploadCompleteScreen()}
+            {!isCrashPreloading && screen === "form" && renderFormScreen()}
           </AnimatePresence>
         </DialogContent>
       </Dialog>

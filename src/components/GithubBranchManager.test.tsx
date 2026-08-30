@@ -121,6 +121,19 @@ describe("GithubBranchManager machine projection", () => {
     ).toBe(true);
   });
 
+  it("asks the remote to refresh branches instead of re-reading local refs", () => {
+    render(<GithubBranchManager appId={1} />);
+
+    fireEvent.click(screen.getByTestId("branch-actions-menu-trigger"));
+    fireEvent.click(screen.getByTestId("refresh-branches-button"));
+
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "OP_REQUESTED",
+      op: { type: "fetch" },
+    });
+    expect(mocks.inventory.refetch).not.toHaveBeenCalled();
+  });
+
   it("preserves create input on failure and closes only after success", async () => {
     const view = render(<GithubBranchManager appId={1} />);
 

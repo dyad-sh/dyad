@@ -68,7 +68,7 @@ interface BranchManagerProps {
 }
 
 export function GithubBranchManager({ appId }: BranchManagerProps) {
-  const { data, isFetching, refetch } = useGithubBranchInventory(appId);
+  const { data, isFetching } = useGithubBranchInventory(appId);
   const { projection, send } = useGithubOps(appId);
   const {
     capabilities: {
@@ -236,7 +236,9 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
               Create new branch
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => void refetch()}
+              onClick={() =>
+                send({ type: "OP_REQUESTED", op: { type: "fetch" } })
+              }
               disabled={!canMutateBranches || isFetching}
               data-testid="refresh-branches-button"
             >

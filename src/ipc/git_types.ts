@@ -93,6 +93,8 @@ export interface GitAuthorParam {
 export interface GitFetchParams extends GitBaseParams {
   remote?: string;
   accessToken?: string;
+  /** Drop remote-tracking refs for branches that no longer exist on the remote. */
+  prune?: boolean;
 }
 
 export interface GitPullParams extends GitBaseParams {

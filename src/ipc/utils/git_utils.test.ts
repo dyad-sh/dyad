@@ -17,7 +17,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { gitListFilesNative, gitLog } from "@/ipc/utils/git_utils";
+import { gitFetch, gitListFilesNative, gitLog } from "@/ipc/utils/git_utils";
 import {
   classifyGitOperationError,
   ensureGitLineEndingPolicy,
@@ -1087,4 +1087,50 @@ describe("index entry snapshot and restore", () => {
       await runGitOutput(repoDir, ["diff", "--name-only", "--diff-filter=U"]),
     ).toBe("c.txt");
   });
+});
+
+describe("gitFetch", () => {
+  let workspaceDir: string | undefined;
+
+  afterEach(async () => {
+    if (workspaceDir) {
+      await fs.promises.rm(workspaceDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      workspaceDir = undefined;
+    }
+  });
+
+  it("only drops remote-tracking refs for deleted branches when pruning", async () => {
+    workspaceDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-fetch-prune-"),
+    );
+    const remoteDir = path.join(workspaceDir, "remote.git");
+    const appDir = path.join(workspaceDir, "app");
+    await runGit(workspaceDir, ["init", "--bare", remoteDir]);
+    await runGit(workspaceDir, ["clone", remoteDir, appDir]);
+    // The first assertion below depends on fetch not pruning by default, which
+    // a contributor's global `fetch.prune = true` would otherwise override.
+    await runGit(appDir, ["config", "fetch.prune", "false"]);
+    await fs.promises.writeFile(path.join(appDir, "file.txt"), "content\n");
+    await commitAll(appDir, "init");
+    await runGit(appDir, ["push", "origin", "HEAD:main"]);
+    await runGit(appDir, ["push", "origin", "HEAD:feature/gone"]);
+
+    // Someone else (e.g. the GitHub web UI) deletes the branch on the remote.
+    await runGit(remoteDir, ["update-ref", "-d", "refs/heads/feature/gone"]);
+
+    await gitFetch({ path: appDir });
+    expect(await runGitOutput(appDir, ["branch", "-r", "--list"])).toContain(
+      "origin/feature/gone",
+    );
+
+    await gitFetch({ path: appDir, prune: true });
+    const remaining = await runGitOutput(appDir, ["branch", "-r", "--list"]);
+    expect(remaining).not.toContain("origin/feature/gone");
+    expect(remaining).toContain("origin/main");
+  }, 30_000);
 });

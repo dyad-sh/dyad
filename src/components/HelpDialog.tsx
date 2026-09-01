@@ -317,6 +317,7 @@ export function HelpDialog() {
 
   const handleBack = () => {
     captureToken.current++;
+    setIsFiling(false);
     setReportOpen(false);
     setDescription("");
     setAtCap(false);
@@ -568,7 +569,6 @@ export function HelpDialog() {
           <Button
             variant="ghost"
             aria-label="Back"
-            disabled={isFiling}
             className="mr-2 p-0 h-8 w-8"
             onClick={handleBack}
           >
@@ -590,6 +590,7 @@ export function HelpDialog() {
               outcome={screenshot}
               previewSrc={screenshotPreview}
               isCapturing={isCapturing}
+              locked={isFiling}
               onCapture={captureScreenshot}
               onRemove={removeScreenshot}
             />

@@ -7,6 +7,8 @@ interface ScreenshotFieldProps {
   /** Data URL of the capture, shown large enough to read before it is sent. */
   previewSrc: string | null;
   isCapturing: boolean;
+  /** Locked once filing starts: the screenshot has already been acted on. */
+  locked: boolean;
   onCapture: () => void;
   onRemove: () => void;
 }
@@ -15,6 +17,7 @@ export function ScreenshotField({
   outcome,
   previewSrc,
   isCapturing,
+  locked,
   onCapture,
   onRemove,
 }: ScreenshotFieldProps) {
@@ -28,11 +31,16 @@ export function ScreenshotField({
               variant="ghost"
               size="sm"
               onClick={onCapture}
-              disabled={isCapturing}
+              disabled={isCapturing || locked}
             >
               <RefreshCwIcon className="mr-1.5 h-3.5 w-3.5" /> Retake
             </Button>
-            <Button variant="ghost" size="sm" onClick={onRemove}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRemove}
+              disabled={locked}
+            >
               <XIcon className="mr-1.5 h-3.5 w-3.5" /> Remove
             </Button>
           </div>
@@ -59,7 +67,7 @@ export function ScreenshotField({
       <button
         type="button"
         onClick={onCapture}
-        disabled={isCapturing}
+        disabled={isCapturing || locked}
         className="w-full rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 hover:border-primary/60 transition-colors px-4 py-5 flex items-center gap-3 text-left disabled:opacity-60"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">

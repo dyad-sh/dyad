@@ -101,6 +101,7 @@ export function IssueForm({
           id="issue-description"
           ref={descriptionRef}
           required
+          disabled={isFiling}
           aria-invalid={showBlocked}
           aria-describedby={showBlocked ? "issue-description-error" : undefined}
           value={description}

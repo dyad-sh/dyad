@@ -197,6 +197,11 @@ async function openForm(description = "the preview goes blank") {
 const submit = () =>
   fireEvent.click(screen.getByRole("button", { name: /Create GitHub issue/ }));
 
+const addScreenshot = async () => {
+  fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+  return screen.findByAltText("Screenshot copied to your clipboard");
+};
+
 const fileIt = async () => {
   submit();
   await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
@@ -469,16 +474,76 @@ describe("HelpDialog disclosures", () => {
     submit();
     await screen.findByRole("button", { name: /Preparing your report/ });
 
-    // Backing out mid-filing is refused, so the reporter cannot strand
-    // themselves between two reports.
+    // Backing out of a filing that is taking too long has to work, and has to
+    // leave the reporter able to write a new report.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+
+    await act(async () => {
+      release(undefined);
+    });
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    expect(bodyOfOpenedIssue()).toContain("the first problem");
+    // The finished filing must not close the dialog or clear the form the
+    // reporter is now using.
+    expect(screen.getByDisplayValue("the second problem")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Create GitHub issue/ }),
+    ).toBeTruthy();
+  });
+
+  it("leaves a way out when filing stalls", async () => {
+    mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
+
+    await openForm("it hangs on submit");
+    submit();
+    await screen.findByRole("button", { name: /Preparing your report/ });
+
+    // Neither fetch has a timeout, and a broken network is exactly the
+    // situation a bug reporter is in.
     const back = screen.getByRole("button", {
       name: "Back",
     }) as HTMLButtonElement;
-    expect(back.disabled).toBe(true);
+    expect(back.disabled).toBe(false);
+    fireEvent.click(back);
+    expect(await screen.findByText("Need help with Dyad?")).toBeTruthy();
+  });
 
-    release(undefined);
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
-    expect(bodyOfOpenedIssue()).toContain("the first problem");
+  it("locks everything the filed report was built from", async () => {
+    mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await screen.findByRole("button", { name: /Preparing your report/ });
+
+    // Changing any of these would be accepted by the UI and ignored by the
+    // report that is already on its way.
+    expect(
+      (screen.getByLabelText(/What happened/) as HTMLTextAreaElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText("Chat session") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByLabelText(
+          "Basic system information and logs",
+        ) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: /Remove/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: /Retake/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it("says diagnostics were unavailable rather than declined", async () => {
@@ -662,11 +727,6 @@ describe("HelpDialog disclosures", () => {
 });
 
 describe("HelpDialog screenshot", () => {
-  const addScreenshot = async () => {
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
-    return screen.findByAltText("Screenshot copied to your clipboard");
-  };
-
   it("captures from the form and shows it before it is sent", async () => {
     await openForm();
 

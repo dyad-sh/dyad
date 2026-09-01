@@ -309,8 +309,8 @@ function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
   }
 }
 
-/** Tall enough for the preview's max-h-64 on a HiDPI display. */
-const PREVIEW_MAX_HEIGHT = 512;
+/** Twice the preview's max-h-72, so it stays sharp on a HiDPI display. */
+const PREVIEW_MAX_HEIGHT = 576;
 
 export function registerDebugHandlers() {
   createTypedHandler(systemContracts.getSystemDebugInfo, async () => {
@@ -543,7 +543,7 @@ export function registerDebugHandlers() {
     clipboard.writeImage(image);
 
     // The clipboard keeps the full-resolution capture; the returned data URL
-    // only ever feeds a preview 256 CSS pixels tall. Encoding the untouched
+    // only ever feeds a preview 288 CSS pixels tall. Encoding the untouched
     // image blocks this process for the whole PNG pass and ships megabytes
     // over IPC.
     const preview =

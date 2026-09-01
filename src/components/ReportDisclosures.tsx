@@ -33,6 +33,9 @@ function Disclosure({
       <div className="flex items-start gap-2.5">
         <Checkbox
           id={id}
+          // The visible control is a span; the id lands on a hidden input, so
+          // without this the checkbox has no accessible name of its own.
+          aria-label={title}
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}

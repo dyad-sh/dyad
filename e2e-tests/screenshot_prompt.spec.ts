@@ -57,8 +57,10 @@ test("file a bug report with nothing attached", async ({ po }) => {
   await description.fill("Switching branches blanks the preview.");
 
   // Nothing leaves the machine on this path.
-  await po.page.getByLabel("Basic system information and logs").uncheck();
-  await po.page.getByLabel("Chat session").uncheck();
+  await po.page
+    .getByRole("checkbox", { name: "Basic system information and logs" })
+    .uncheck();
+  await po.page.getByRole("checkbox", { name: "Chat session" }).uncheck();
 
   await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
 
@@ -109,7 +111,9 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     const description = po.page.getByLabel("What happened?");
     await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
     await description.fill("The generated page is blank.");
-    await expect(po.page.getByLabel("Chat session")).toBeChecked();
+    await expect(
+      po.page.getByRole("checkbox", { name: "Chat session" }),
+    ).toBeChecked();
 
     // The dialog hides itself for the capture, then comes back showing it.
     await po.page.getByRole("button", { name: /Add a screenshot/ }).click();

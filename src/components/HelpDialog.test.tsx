@@ -397,7 +397,9 @@ describe("HelpDialog disclosures", () => {
   it("leaves system information out when it is unticked", async () => {
     await openForm();
     fireEvent.click(
-      await screen.findByLabelText("Basic system information and logs"),
+      await screen.findByRole("checkbox", {
+        name: "Basic system information and logs",
+      }),
     );
     await fileIt();
 
@@ -410,7 +412,9 @@ describe("HelpDialog disclosures", () => {
 
   it("does not upload the session when it is unticked", async () => {
     await openForm();
-    fireEvent.click(await screen.findByLabelText("Chat session"));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "Chat session" }),
+    );
     await fileIt();
 
     expect(mocks.uploadToSignedUrl).not.toHaveBeenCalled();
@@ -423,7 +427,9 @@ describe("HelpDialog disclosures", () => {
     fireEvent.click(await screen.findByText("Report a Bug"));
 
     expect(
-      (screen.getByLabelText("Chat session") as HTMLInputElement).disabled,
+      screen
+        .getByRole("checkbox", { name: "Chat session" })
+        .hasAttribute("data-disabled"),
     ).toBe(true);
     expect(
       screen.getByText("Open a chat first to include a session."),
@@ -455,8 +461,8 @@ describe("HelpDialog disclosures", () => {
     await screen.findByRole("button", { name: /Preparing your report/ });
 
     // The upload is already running, so the box must not look changeable.
-    const box = screen.getByLabelText("Chat session") as HTMLInputElement;
-    expect(box.disabled).toBe(true);
+    const box = screen.getByRole("checkbox", { name: "Chat session" });
+    expect(box.hasAttribute("data-disabled")).toBe(true);
 
     release(undefined);
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
@@ -527,14 +533,14 @@ describe("HelpDialog disclosures", () => {
       (screen.getByLabelText(/What happened/) as HTMLTextAreaElement).disabled,
     ).toBe(true);
     expect(
-      (screen.getByLabelText("Chat session") as HTMLInputElement).disabled,
+      screen
+        .getByRole("checkbox", { name: "Chat session" })
+        .hasAttribute("data-disabled"),
     ).toBe(true);
     expect(
-      (
-        screen.getByLabelText(
-          "Basic system information and logs",
-        ) as HTMLInputElement
-      ).disabled,
+      screen
+        .getByRole("checkbox", { name: "Basic system information and logs" })
+        .hasAttribute("data-disabled"),
     ).toBe(true);
     expect(
       (screen.getByRole("button", { name: /Remove/ }) as HTMLButtonElement)
@@ -690,16 +696,18 @@ describe("HelpDialog disclosures", () => {
     fireEvent.click(screen.getByText("force-close-report"));
     await screen.findByLabelText(/What happened/);
     expect(
-      (screen.getByLabelText("Chat session") as HTMLInputElement).checked,
+      screen
+        .getByRole("checkbox", { name: "Chat session" })
+        .hasAttribute("data-checked"),
     ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
     await screen.findByAltText("Screenshot copied to your clipboard");
 
     // The reporter agreed to send the session; it must not quietly withdraw.
-    const box = screen.getByLabelText("Chat session") as HTMLInputElement;
-    expect(box.disabled).toBe(false);
-    expect(box.checked).toBe(true);
+    const box = screen.getByRole("checkbox", { name: "Chat session" });
+    expect(box.hasAttribute("data-disabled")).toBe(false);
+    expect(box.hasAttribute("data-checked")).toBe(true);
   });
 
   it("counts a crash-opened form like any other report", async () => {
@@ -721,7 +729,9 @@ describe("HelpDialog disclosures", () => {
 
     expect(await screen.findByLabelText(/What happened/)).toBeTruthy();
     expect(
-      (screen.getByLabelText("Chat session") as HTMLInputElement).checked,
+      screen
+        .getByRole("checkbox", { name: "Chat session" })
+        .hasAttribute("data-checked"),
     ).toBe(true);
   });
 });

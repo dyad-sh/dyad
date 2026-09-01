@@ -417,7 +417,9 @@ export const systemContracts = {
    */
   recopyScreenshot: defineContract({
     channel: "recopy-screenshot",
-    input: z.void(),
+    // Names the capture to restore. Two reports can be open at once, and the
+    // reporter must never be handed another report's screenshot to paste.
+    input: z.object({ captureId: z.string() }),
     output: z.object({ copied: z.boolean() }),
   }),
 
@@ -427,7 +429,7 @@ export const systemContracts = {
     // The image is written to the clipboard for pasting into GitHub, and
     // returned as a data URL so the reporter can see what was captured
     // before the report is filed.
-    output: z.object({ dataUrl: z.string() }),
+    output: z.object({ dataUrl: z.string(), captureId: z.string() }),
   }),
 
   // Restart

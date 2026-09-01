@@ -53,6 +53,8 @@ interface OutgoingReport {
   includeSession: boolean;
   chatId: number | null;
   bundle: SessionDebugBundle | null;
+  /** Names this report's own capture, so another report's cannot be pasted. */
+  captureId: string | null;
 }
 
 /**
@@ -157,6 +159,7 @@ export function HelpDialog() {
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(
     null,
   );
+  const [captureId, setCaptureId] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isFiling, setIsFiling] = useState(false);
   // Fixed when the report starts. Reading it from the dialog atom would let it
@@ -227,6 +230,7 @@ export function HelpDialog() {
     setBundleLoading(false);
     setScreenshot(null);
     setScreenshotPreview(null);
+    setCaptureId(null);
     setIsCapturing(false);
     setIsFiling(false);
     setSessionChatId(null);
@@ -297,6 +301,7 @@ export function HelpDialog() {
     setSessionChatId(chatId);
     setScreenshot(null);
     setScreenshotPreview(null);
+    setCaptureId(null);
     setIsFiling(false);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
@@ -323,6 +328,7 @@ export function HelpDialog() {
     setAtCap(false);
     setScreenshot(null);
     setScreenshotPreview(null);
+    setCaptureId(null);
     navigateTo("main");
   };
 
@@ -385,10 +391,11 @@ export function HelpDialog() {
     onClose();
     setTimeout(async () => {
       try {
-        const { dataUrl } = await ipc.system.takeScreenshot();
+        const capture = await ipc.system.takeScreenshot();
         if (captureToken.current !== token) return;
         setScreenshot({ status: "captured" });
-        setScreenshotPreview(dataUrl);
+        setScreenshotPreview(capture.dataUrl);
+        setCaptureId(capture.captureId);
         posthog.capture("screenshot-prompt:captured", {
           source: "report-bug",
         });
@@ -398,6 +405,7 @@ export function HelpDialog() {
         if (captureToken.current !== token) return;
         setScreenshot({ status: "capture-failed", reason });
         setScreenshotPreview(null);
+        setCaptureId(null);
         posthog.capture("screenshot-prompt:capture-failed", {
           source: "report-bug",
           failure: classifyCaptureFailure(reason),
@@ -418,6 +426,7 @@ export function HelpDialog() {
     posthog.capture("screenshot-prompt:removed", { source: "report-bug" });
     setScreenshot(null);
     setScreenshotPreview(null);
+    setCaptureId(null);
   };
 
   const handleSubmit = () => {
@@ -428,6 +437,7 @@ export function HelpDialog() {
       includeSession: includeSession && sessionChatId != null,
       chatId: sessionChatId ?? null,
       bundle: debugBundle,
+      captureId,
     };
     setIsFiling(true);
     void fileReport(report, captureToken.current);
@@ -469,9 +479,9 @@ export function HelpDialog() {
 
     // Put the capture back on the clipboard now: the reporter pastes it into
     // GitHub next, and anything they copied since would have replaced it.
-    if (report.screenshot.status === "captured") {
+    if (report.screenshot.status === "captured" && report.captureId) {
       try {
-        await ipc.system.recopyScreenshot();
+        await ipc.system.recopyScreenshot({ captureId: report.captureId });
       } catch (error) {
         console.error("Failed to copy the screenshot:", error);
       }

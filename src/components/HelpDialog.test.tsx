@@ -215,6 +215,7 @@ beforeEach(() => {
   mocks.recopyScreenshot.mockResolvedValue({ copied: true });
   mocks.takeScreenshot.mockResolvedValue({
     dataUrl: "data:image/png;base64,AAAA",
+    captureId: "capture-1",
   });
   vi.stubGlobal(
     "fetch",
@@ -825,7 +826,7 @@ describe("HelpDialog screenshot", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(await screen.findByText("Report a Bug"));
 
-    release({ dataUrl: "data:image/png;base64,AAAA" });
+    release({ dataUrl: "data:image/png;base64,AAAA", captureId: "capture-1" });
 
     await waitFor(() =>
       expect(screen.getByLabelText(/What happened/)).toBeTruthy(),
@@ -851,7 +852,7 @@ describe("HelpDialog screenshot", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(await screen.findByText("Report a Bug"));
 
-    release({ dataUrl: "data:image/png;base64,AAAA" });
+    release({ dataUrl: "data:image/png;base64,AAAA", captureId: "capture-1" });
 
     await waitFor(() =>
       expect(screen.getByLabelText(/What happened/)).toBeTruthy(),
@@ -874,6 +875,49 @@ describe("HelpDialog screenshot", () => {
     expect(mocks.recopyScreenshot.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.openExternalUrl.mock.invocationCallOrder[0],
     );
+  });
+
+  it("restores this report's own capture, not a later one", async () => {
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("the first problem");
+    await addScreenshot();
+    submit();
+    await screen.findByRole("button", { name: /Preparing your report/ });
+
+    // Back is live during a slow filing, so a second report can be started
+    // and captured while the first is still uploading.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+    await addScreenshot();
+
+    await act(async () => {
+      release(undefined);
+    });
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    // The reporter is told to paste, so the clipboard must hold the image
+    // that belongs to the report GitHub just opened.
+    expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
+      captureId: "capture-first",
+    });
   });
 
   it("does not touch the clipboard when there is no screenshot", async () => {

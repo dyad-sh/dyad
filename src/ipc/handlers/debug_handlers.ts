@@ -1,5 +1,6 @@
 import { BrowserWindow, clipboard } from "electron";
 import { platform, arch } from "os";
+import { randomUUID } from "node:crypto";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { SCREENSHOT_ERRORS, systemContracts } from "../types/system";
@@ -310,11 +311,16 @@ function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
 }
 
 /**
- * The last capture at full resolution. Held so it can be put back on the
- * clipboard when the report is filed: the reporter pastes it into GitHub
- * minutes later, and anything they copy in between would replace it.
+ * Recent captures at full resolution, keyed so a report can ask for its own.
+ * They are put back on the clipboard when the report is filed, because the
+ * reporter pastes into GitHub minutes later and anything they copy in between
+ * would replace it. Keyed rather than latest-wins: a second report can be
+ * started and captured while the first is still uploading.
  */
-let lastCapture: Electron.NativeImage | null = null;
+const captures = new Map<string, Electron.NativeImage>();
+
+/** Enough for a couple of overlapping reports; these are megabytes each. */
+const MAX_RETAINED_CAPTURES = 3;
 
 /** Twice the preview's max-h-72, so it stays sharp on a HiDPI display. */
 const PREVIEW_MAX_HEIGHT = 576;
@@ -548,7 +554,12 @@ export function registerDebugHandlers() {
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);
-    lastCapture = image;
+
+    const captureId = randomUUID();
+    captures.set(captureId, image);
+    while (captures.size > MAX_RETAINED_CAPTURES) {
+      captures.delete(captures.keys().next().value as string);
+    }
 
     // The clipboard keeps the full-resolution capture; the returned data URL
     // only ever feeds a preview 288 CSS pixels tall. Encoding the untouched
@@ -559,12 +570,13 @@ export function registerDebugHandlers() {
         ? image.resize({ height: PREVIEW_MAX_HEIGHT, quality: "good" })
         : image;
 
-    return { dataUrl: preview.toDataURL() };
+    return { dataUrl: preview.toDataURL(), captureId };
   });
 
-  createTypedHandler(systemContracts.recopyScreenshot, async () => {
-    if (!lastCapture) return { copied: false };
-    clipboard.writeImage(lastCapture);
+  createTypedHandler(systemContracts.recopyScreenshot, async (_, params) => {
+    const image = captures.get(params.captureId);
+    if (!image) return { copied: false };
+    clipboard.writeImage(image);
     return { copied: true };
   });
 }

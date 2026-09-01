@@ -196,6 +196,40 @@ describe("allocateE2eTestPort", () => {
   });
 });
 
+describe("startE2eTestRuntime readiness", () => {
+  it("treats a 500 from the root route as ready", async () => {
+    // An SSR app whose `/` throws in dev is exactly what this feature is for.
+    // Requiring a non-error status waited out the whole readiness budget and
+    // then failed the run, so specs that never visit `/` never executed.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-500-"));
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      [
+        'import http from "node:http";',
+        "const port = Number(process.argv[2]);",
+        "http",
+        "  .createServer((_req, res) => {",
+        "    res.writeHead(500);",
+        '    res.end("boom");',
+        "  })",
+        '  .listen(port, "127.0.0.1");',
+      ].join("\n"),
+    );
+    let runtime: Awaited<ReturnType<typeof startE2eTestRuntime>> | undefined;
+    try {
+      runtime = await startE2eTestRuntime({
+        workspacePath: root,
+        installCommand: "true",
+        startCommand: `"${process.execPath}" server.mjs {port}`,
+      });
+      expect(runtime.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    } finally {
+      await runtime?.stop();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
 describe("startE2eTestRuntime port recovery", () => {
   it("stops polling a dead port when the server announces the clash", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-port-"));
@@ -346,14 +380,17 @@ describe("e2eServerReadyTimeoutMs", () => {
       installCommand: "pip install -r requirements.txt",
       startCommand: "python server.py",
     });
-    expect(dyadManaged).toBe(120_000);
+    // The managed budget is itself generous — the sandbox omits the build
+    // caches, so every run is a cold compile — but the install-and-serve one
+    // has to be larger still.
+    expect(dyadManaged).toBeGreaterThanOrEqual(300_000);
     expect(custom).toBeGreaterThan(dyadManaged);
   });
 
   it("does not extend the budget for a start command with no install command", () => {
     // Same rule `getCommand` uses: an app is custom only when both are set.
     expect(e2eServerReadyTimeoutMs({ startCommand: "python server.py" })).toBe(
-      120_000,
+      e2eServerReadyTimeoutMs({}),
     );
   });
 });

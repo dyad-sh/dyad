@@ -969,6 +969,51 @@ describe("tests handlers", () => {
         path.join(realAppPath, "e2e-tests", "a.spec.ts"),
       );
     });
+
+    it("points the infra error at the real app too", async () => {
+      // A spec that fails to compile produces no JSON report at all, so the
+      // location the user and the agent get is the runner's stderr tail — which
+      // names the sandbox that the outer `finally` deletes a second later.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const sandboxPath = path.join(TEMP_BASE, "sandbox-copy-2");
+      fs.mkdirSync(sandboxPath, { recursive: true });
+      createE2eTestWorkspaceMock.mockImplementation(async () => ({
+        workspacePath: sandboxPath,
+        artifactPath: path.join(TEMP_BASE, "artifacts"),
+        dispose: vi.fn(),
+      }));
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      spawnStreamingMock.mockResolvedValue({
+        code: 1,
+        stdout: "",
+        stderr: `error TS2304 at ${path.join(sandboxPath, "e2e-tests", "a.spec.ts")}:12`,
+        aborted: false,
+        timedOut: false,
+      });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toBeDefined();
+      expect(result.infraError!.message).not.toContain(sandboxPath);
+      expect(result.infraError!.message).toContain(
+        path.join(TEMP_BASE, "app", "e2e-tests", "a.spec.ts"),
+      );
+    });
   });
 
   describe("stop progress events", () => {

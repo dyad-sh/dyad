@@ -1598,8 +1598,10 @@ export function TestsPanel() {
             </div>
           )}
 
-          {/* Dev-server gate banner — only when the run actually needs it. */}
-          {testRunBlocked && specs.length > 0 && (
+          {/* Dev-server gate banner — only when the run actually needs it, and
+              not next to the refusal above, which has already said that
+              starting the app changes nothing for this one. */}
+          {testRunBlocked && !showNeonSandboxRefusal && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
               <span className="flex-1">Start the app to run tests.</span>

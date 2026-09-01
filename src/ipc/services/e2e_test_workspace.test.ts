@@ -422,6 +422,36 @@ describe("E2E test workspace", () => {
     ).toBe(false);
   });
 
+  it("copies a symlinked node_modules root instead of relinking it", async () => {
+    // `verbatimSymlinks` is what keeps pnpm's relative links inside the tree
+    // intact — but it applies to the root entry too. Recreating that link gives
+    // the sandbox either a dangling dependency root (relative link) or a
+    // pointer straight back at the user's real tree (absolute link), where a
+    // sandbox write to `node_modules/.vite` lands in their project.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const realModules = path.join(root, "shared-node-modules");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(path.join(realModules, "left-pad"), { recursive: true });
+    await fs.writeFile(
+      path.join(realModules, "left-pad", "index.js"),
+      "module.exports = 1;",
+    );
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.symlink(realModules, path.join(appPath, "node_modules"), "dir");
+
+    const workspace = await createE2eTestWorkspace({ appId: 3, appPath });
+    try {
+      const copied = path.join(workspace.workspacePath, "node_modules");
+      expect((await fs.lstat(copied)).isSymbolicLink()).toBe(false);
+      expect(
+        await fs.readFile(path.join(copied, "left-pad", "index.js"), "utf8"),
+      ).toBe("module.exports = 1;");
+    } finally {
+      await workspace.dispose();
+    }
+  });
+
   it("keeps build output for an app that supplies its own commands", () => {
     // `(install) && (start)` runs verbatim with no build step, so `next start`
     // or a server that serves `dist/` needs the output already on disk —

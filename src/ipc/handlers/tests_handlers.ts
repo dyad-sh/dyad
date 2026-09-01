@@ -1308,7 +1308,18 @@ export async function runAppTestsWithIsolation({
             retained ? workspace!.artifactPath : undefined,
             rewriteSandboxPaths,
           );
-          return { ...result, isolation: prepared.isolation };
+          return {
+            ...result,
+            // Same treatment as the failure text above. This message is built
+            // from the runner's stdout/stderr tail and from report-level
+            // errors, so a spec that fails to compile — no JSON report at all —
+            // reports its location inside the sandbox, which is deleted a
+            // second later.
+            infraError: result.infraError && {
+              message: rewriteSandboxPaths(result.infraError.message),
+            },
+            isolation: prepared.isolation,
+          };
         } finally {
           if (testRuntime) {
             try {
@@ -1371,7 +1382,12 @@ export async function runAppTestsWithIsolation({
       appId,
       results: [],
       infraError: {
-        message: error instanceof Error ? error.message : String(error),
+        // Rewritten like every other user-facing path: a failure thrown out of
+        // the run stage (a spawn error, a readiness timeout that quotes the
+        // server's output) can name the sandbox the `finally` below deletes.
+        message: rewriteSandboxPaths(
+          error instanceof Error ? error.message : String(error),
+        ),
       },
     });
     // Anything reaching here is a test-infrastructure failure (isolation setup,
@@ -1387,9 +1403,14 @@ export async function runAppTestsWithIsolation({
       // Deleting a cloned node_modules tree is tens of thousands of unlinks —
       // slowest on Windows, where the copy was a real one. The results are
       // already computed but the panel still has Run/Record/Delete disabled
-      // until `finished`, so label the wait for every isolation mode instead of
-      // leaving it unexplained (the provider teardown above only announces
-      // itself when there was provider state to remove).
+      // until `finished`, so the wait needs a label rather than an unexplained
+      // freeze.
+      //
+      // This lands only for a run that has not announced cleanup yet — an
+      // isolation-free run, or one that failed before its provider teardown.
+      // The renderer's phase guard is monotonic, so for a run whose provider
+      // teardown already announced itself this is a no-op and its label stands
+      // (naming the provider work) for the disposal too.
       emitProgress("cleaning-up", finalResult.isolation);
       try {
         await workspace.dispose();

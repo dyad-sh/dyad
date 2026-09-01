@@ -102,8 +102,17 @@ async function copyNodeModules(
     countEntry?: () => void;
   } = {},
 ): Promise<void> {
-  const source = path.join(appPath, "node_modules");
+  let source = path.join(appPath, "node_modules");
   try {
+    // Resolve the ROOT before copying. `verbatimSymlinks` is what keeps pnpm's
+    // relative links *inside* the tree intact, but it applies to this entry
+    // too: an app whose `node_modules` is itself a link (a pnpm workspace
+    // member, a hand-linked tree) would get a recreated link instead of a copy
+    // — relative, and it dangles under `<userData>/test-sandboxes`; absolute,
+    // and the sandbox is pointed straight back at the real tree, which is
+    // exactly the linked dependency root the comment below rules out. `stat`
+    // follows links, so it cannot tell the two cases apart on its own.
+    source = await fs.realpath(source);
     const stat = await fs.stat(source);
     if (!stat.isDirectory()) throw new Error("not a directory");
   } catch {

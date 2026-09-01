@@ -21,7 +21,15 @@ import {
 } from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("e2e_test_runtime");
-const SERVER_READY_TIMEOUT_MS = 120_000;
+/**
+ * Budget for a Dyad-managed app's own dev server. Deliberately generous: the
+ * sandbox omits `.next`/`.vite`/`.svelte-kit` (the dev server rebuilds from
+ * source), so every sandboxed run is a COLD compile, and on a large app on a
+ * slow machine that routinely passes two minutes. The normal preview imposes no
+ * deadline at all, so a tight cap here would fail runs that were merely slow.
+ * This exists only so a truly stuck server cannot hang the run forever.
+ */
+const SERVER_READY_TIMEOUT_MS = 300_000;
 /**
  * Budget when the spawned command installs before it serves. A custom app's
  * install step runs inside the same shell command, so it spends the readiness
@@ -332,10 +340,14 @@ async function waitForReady({
       );
     }
     try {
-      const response = await fetch(baseUrl, {
-        signal: AbortSignal.timeout(1_000),
-      });
-      if (response.status < 500) return;
+      // ANY response means the server is listening, 5xx included. Requiring a
+      // non-error status would refuse to start a run whose root route throws in
+      // dev — an SSR app with one broken page — and then fail the whole run on
+      // the readiness budget, including the specs that never visit `/`. Tests
+      // against an app with a broken page are the case this feature exists for,
+      // so the per-test failures have to reach the report instead.
+      await fetch(baseUrl, { signal: AbortSignal.timeout(1_000) });
+      return;
     } catch {
       // The server has not bound yet.
     }

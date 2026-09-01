@@ -371,6 +371,41 @@ describe("HelpDialog report flow", () => {
     expect(await screen.findByDisplayValue("half-written report")).toBeTruthy();
   });
 
+  it("re-reads diagnostics for a draft the reporter comes back to", async () => {
+    await openForm("half-written report");
+    await screen.findByText(/Dyad Version: 1\.2\.3/);
+
+    // The reporter leaves the form up, goes back to the app and makes the bug
+    // happen again. The logs worth having are the ones written since.
+    mocks.getSystemDebugInfo.mockResolvedValue({
+      ...debugInfo,
+      dyadVersion: "4.5.6",
+    });
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+
+    expect(await screen.findByText(/Dyad Version: 4\.5\.6/)).toBeTruthy();
+    await fileIt();
+    expect(bodyOfOpenedIssue()).toContain("4.5.6");
+  });
+
+  it("keeps the last diagnostics while a reopened draft re-reads", async () => {
+    await openForm("half-written report");
+    await screen.findByText(/Dyad Version: 1\.2\.3/);
+
+    // The re-read is still in flight, so what the reporter last saw is what
+    // goes: filing straight away must not report them as unavailable.
+    mocks.getSystemDebugInfo.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    await screen.findByText(/Dyad Version: 1\.2\.3/);
+    await fileIt();
+
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("1.2.3");
+    expect(body).not.toContain("Could not be collected on this machine.");
+  });
+
   it("abandons the draft when the reporter backs out", async () => {
     await openForm("never mind");
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -560,6 +595,55 @@ describe("HelpDialog disclosures", () => {
 
     // A maintainer has to be able to tell a failed read from a reporter who
     // chose not to share.
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Could not be collected on this machine.");
+    expect(body).not.toContain("Not included by the reporter.");
+  });
+
+  it("announces that the report is being prepared", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    submit();
+
+    // Nothing else tells a screen reader the button press was heard.
+    const live = await screen.findAllByRole("status");
+    expect(
+      live.some((node) => node.textContent?.includes("Preparing your report")),
+    ).toBe(true);
+
+    await act(async () => {
+      release(undefined);
+    });
+  });
+
+  it("sends the diagnostics the reporter reviewed, not a later read", async () => {
+    // Only the first read matches what the disclosure showed.
+    mocks.getSystemDebugInfo.mockImplementation(async () =>
+      mocks.getSystemDebugInfo.mock.calls.length === 1
+        ? debugInfo
+        : { ...debugInfo, dyadVersion: "9.9.9" },
+    );
+    await openForm();
+    await screen.findByText(/Dyad Version: 1\.2\.3/);
+    await fileIt();
+
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("1.2.3");
+    expect(body).not.toContain("9.9.9");
+  });
+
+  it("files without diagnostics when they never finish loading", async () => {
+    // Nothing to review, so nothing to send: the report still has to go.
+    mocks.getSystemDebugInfo.mockReturnValue(new Promise(() => {}));
+    await openForm();
+    await fileIt();
+
     const body = bodyOfOpenedIssue();
     expect(body).toContain("Could not be collected on this machine.");
     expect(body).not.toContain("Not included by the reporter.");
@@ -918,6 +1002,69 @@ describe("HelpDialog screenshot", () => {
     expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
       captureId: "capture-first",
     });
+  });
+
+  it("does not claim a screenshot the clipboard could not take back", async () => {
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // There is nothing for the reporter to paste, so the issue must not tell
+    // a maintainer to expect an image.
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: capture-failed");
+    expect(body).not.toContain("Screenshot status: captured");
+  });
+
+  it("lets the next report take a screenshot after one never lands", async () => {
+    mocks.takeScreenshot.mockReturnValue(new Promise(() => {}));
+
+    await openForm("first report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    // A crash starts a fresh report without passing through Back.
+    fireEvent.click(screen.getByText("force-close-report"));
+
+    // Nothing is coming back to clear the flag, so the new report has to.
+    const button = (await screen.findByRole("button", {
+      name: /Add a screenshot/,
+    })) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  it("keeps the button disabled when an older capture lands", async () => {
+    let release = (_: unknown) => {};
+    mocks.takeScreenshot
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => {}));
+
+    await openForm("first report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Add a screenshot/ }),
+    );
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      release({ dataUrl: "data:image/png;base64,AAAA", captureId: "old" });
+    });
+
+    // The first report's capture must not report the second one as finished.
+    fireEvent.click(screen.getByText("reopen-help"));
+    expect(
+      await screen.findByRole("button", { name: /Taking screenshot/ }),
+    ).toBeTruthy();
   });
 
   it("does not touch the clipboard when there is no screenshot", async () => {

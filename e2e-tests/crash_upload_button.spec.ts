@@ -3,7 +3,7 @@ import { Timeout, testWithConfig } from "./helpers/test_helper";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-// The force-close dialog offers a one-click "Upload Chat Session" button for the
+// The force-close dialog offers a one-click "Report this crash" button for the
 // chat that was streaming at crash time. That chat id is captured in the crash
 // sentinel (session.lock) at stream start. These tests mock the sentinel (the
 // same approach as the force-close performance test) to verify the button is
@@ -33,7 +33,7 @@ testWithConfig({
     );
   },
 })(
-  "force-close dialog shows Upload Chat Session button when a chat was active",
+  "force-close dialog shows the report button when a chat was active",
   async ({ po }) => {
     await expect(po.chatActions.getHomeChatInputContainer()).toBeVisible({
       timeout: Timeout.LONG,
@@ -43,7 +43,7 @@ testWithConfig({
     ).toBeVisible({ timeout: Timeout.MEDIUM });
 
     await expect(
-      po.page.getByRole("button", { name: "Upload Chat Session" }),
+      po.page.getByRole("button", { name: "Report this crash" }),
     ).toBeVisible();
   },
 );
@@ -54,7 +54,7 @@ testWithConfig({
     writeCrashScenario(userDataDir, JSON.stringify({ ts: Date.now() }));
   },
 })(
-  "force-close dialog hides Upload Chat Session button when no chat was active",
+  "force-close dialog hides the report button when no chat was active",
   async ({ po }) => {
     await expect(po.chatActions.getHomeChatInputContainer()).toBeVisible({
       timeout: Timeout.LONG,
@@ -64,7 +64,7 @@ testWithConfig({
     ).toBeVisible({ timeout: Timeout.MEDIUM });
 
     await expect(
-      po.page.getByRole("button", { name: "Upload Chat Session" }),
+      po.page.getByRole("button", { name: "Report this crash" }),
     ).not.toBeVisible();
   },
 );

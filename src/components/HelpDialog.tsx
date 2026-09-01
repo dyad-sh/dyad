@@ -19,7 +19,7 @@ import { usePostHog } from "posthog-js/react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
-import { showError, showInfo } from "@/lib/toast";
+import { showError } from "@/lib/toast";
 import { SCREENSHOT_ERRORS } from "@/ipc/types/system";
 import { useTranslation } from "react-i18next";
 import { HelpBotDialog } from "./HelpBotDialog";
@@ -55,6 +55,8 @@ interface OutgoingReport {
   bundle: SessionDebugBundle | null;
   /** Names this report's own capture, so another report's cannot be pasted. */
   captureId: string | null;
+  /** What the disclosure showed. Null if it had not loaded yet. */
+  debugInfo: SystemDebugInfo | null;
 }
 
 /**
@@ -144,12 +146,15 @@ export function HelpDialog() {
   const [includeSystemInfo, setIncludeSystemInfo] = useState(true);
   const [includeSession, setIncludeSession] = useState(true);
 
-  // Shown in the disclosures. The body is built from a fresh read at submit
-  // time, so what ships is never staler than the report.
+  // Shown in the disclosures, and sent as-is: the reporter agrees to what
+  // they can see, so the body must not carry anything else.
   const [formDebugInfo, setFormDebugInfo] = useState<SystemDebugInfo | null>(
     null,
   );
   const [formDebugInfoFailed, setFormDebugInfoFailed] = useState(false);
+  // Bumped to ask for another read. The form opening is not enough on its own:
+  // a crash report can start while the form is already up.
+  const [diagnosticsRun, setDiagnosticsRun] = useState(0);
   const [debugBundle, setDebugBundle] = useState<SessionDebugBundle | null>(
     null,
   );
@@ -226,6 +231,7 @@ export function HelpDialog() {
     setIncludeSession(true);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
+    setDiagnosticsRun((run) => run + 1);
     setDebugBundle(null);
     setBundleLoading(false);
     setScreenshot(null);
@@ -245,6 +251,15 @@ export function HelpDialog() {
     if (!isOpen && !reportOpen) resetDialogState();
   }, [isOpen, reportOpen]);
 
+  // A kept draft can sit closed while the reporter goes back and reproduces
+  // the bug, so its diagnostics are read again on the way in. The old snapshot
+  // stays up until the new one lands, so there is never a gap with nothing to
+  // show or send.
+  useEffect(() => {
+    if (isOpen || !reportOpen) return;
+    setDiagnosticsRun((run) => run + 1);
+  }, [isOpen, reportOpen]);
+
   // The preload guard is scoped to one opening, so a repeat force-close on the
   // same chat preloads again.
   useEffect(() => {
@@ -253,12 +268,14 @@ export function HelpDialog() {
 
   // Loaded when the form opens so the disclosure can show what will be sent.
   useEffect(() => {
-    if (screen !== "form" || formDebugInfo || formDebugInfoFailed) return;
+    if (screen !== "form") return;
     let active = true;
     ipc.system
       .getSystemDebugInfo()
       .then((info) => {
-        if (active) setFormDebugInfo(info);
+        if (!active) return;
+        setFormDebugInfo(info);
+        setFormDebugInfoFailed(false);
       })
       .catch((error) => {
         console.error("Failed to load diagnostics preview:", error);
@@ -267,7 +284,7 @@ export function HelpDialog() {
     return () => {
       active = false;
     };
-  }, [screen, formDebugInfo, formDebugInfoFailed]);
+  }, [screen, diagnosticsRun]);
 
   // A crash-triggered report opens the form with the session already ticked.
   useEffect(() => {
@@ -302,6 +319,7 @@ export function HelpDialog() {
     setScreenshot(null);
     setScreenshotPreview(null);
     setCaptureId(null);
+    setIsCapturing(false);
     setIsFiling(false);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
@@ -412,12 +430,12 @@ export function HelpDialog() {
         });
         showError(reason);
       } finally {
-        // Cleared whatever the token says: a capture only runs when no other
-        // is in flight, so this can never clear a newer one's flag.
-        setIsCapturing(false);
-        // Only the report that started the capture wants the dialog back: by
-        // now the reporter may have filed and been sent to GitHub.
-        if (captureToken.current === token) setHelpDialog({ open: true });
+        // Both belong to the report that started the capture: by now the
+        // reporter may have filed, or started a report that owns the flag.
+        if (captureToken.current === token) {
+          setIsCapturing(false);
+          setHelpDialog({ open: true });
+        }
       }
     }, 200); // Small delay for the dialog to close
   };
@@ -438,6 +456,7 @@ export function HelpDialog() {
       chatId: sessionChatId ?? null,
       bundle: debugBundle,
       captureId,
+      debugInfo: formDebugInfo,
     };
     setIsFiling(true);
     void fileReport(report, captureToken.current);
@@ -457,19 +476,20 @@ export function HelpDialog() {
       }
     }
 
+    // The reviewed snapshot, not a fresh read: the disclosure is what the
+    // reporter agreed to send, so it is what gets sent.
     let diagnostics: Diagnostics | "unavailable" | null = null;
     if (report.includeSystemInfo) {
-      try {
+      if (report.debugInfo) {
         diagnostics = {
-          debugInfo: await ipc.system.getSystemDebugInfo(),
+          debugInfo: report.debugInfo,
           settings,
           selectedModel: diagnosticModelSelection,
           userBudget: userBudget ?? undefined,
         };
-      } catch (error) {
-        // Told to the reporter and marked in the body, so it cannot be read
-        // as them having declined to share it.
-        console.error("Failed to gather diagnostics:", error);
+      } else {
+        // Asked for but never read, so it is marked as unavailable rather
+        // than as the reporter having declined.
         diagnostics = "unavailable";
         showError(
           "Could not read your system information. Filing the report without it.",
@@ -479,18 +499,33 @@ export function HelpDialog() {
 
     // Put the capture back on the clipboard now: the reporter pastes it into
     // GitHub next, and anything they copied since would have replaced it.
-    if (report.screenshot.status === "captured" && report.captureId) {
+    let screenshot = report.screenshot;
+    if (screenshot.status === "captured" && report.captureId) {
+      let copied = false;
       try {
-        await ipc.system.recopyScreenshot({ captureId: report.captureId });
+        ({ copied } = await ipc.system.recopyScreenshot({
+          captureId: report.captureId,
+        }));
       } catch (error) {
         console.error("Failed to copy the screenshot:", error);
+      }
+      if (!copied) {
+        // The reporter cannot paste what is not on the clipboard, so the
+        // issue must not tell a maintainer to expect an image.
+        screenshot = {
+          status: "capture-failed",
+          reason: "The screenshot could not be put back on the clipboard",
+        };
+        showError(
+          "Your screenshot could not be restored. Filing the report without it.",
+        );
       }
     }
 
     openGitHubIssue({
       body: buildIssueBody({
         description: report.description,
-        screenshot: report.screenshot,
+        screenshot,
         diagnostics,
         sessionId,
         redactedUserId: userBudget?.redactedUserId,

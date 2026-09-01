@@ -71,7 +71,7 @@ const UPDATER_LOG_ENCODED_LIMIT = 600;
  * capped, so leaving this one open would mean the ceiling rests on error
  * strings staying short rather than on anything enforced.
  */
-const SCREENSHOT_REASON_LIMIT = 200;
+export const SCREENSHOT_REASON_LIMIT = 200;
 
 /**
  * Cost of a string in the query string ISSUE_URL_CEILING is measured against.

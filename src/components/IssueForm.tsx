@@ -132,6 +132,12 @@ export function IssueForm({
       {screenshot}
       {disclosures}
 
+      {/* The button's changing label is not reliably announced once focus
+          has moved, so the state is also spoken here. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {isFiling ? "Preparing your report..." : ""}
+      </p>
+
       <Button
         onClick={handleSubmit}
         disabled={isFiling}

@@ -4,6 +4,7 @@ import {
   ISSUE_URL_CEILING,
   MIN_DESCRIPTION_LENGTH,
   PROSE_BUDGET,
+  SCREENSHOT_REASON_LIMIT,
   applyDescriptionEdit,
   buildIssueBody,
   buildIssueUrl,
@@ -460,8 +461,10 @@ describe("issue URL budget", () => {
       body: buildIssueBody({
         description: applyDescriptionEdit("", unit.repeat(4_000)).value,
         screenshot: {
+          // A reason is whatever the OS threw, so the budget has to hold at
+          // the clamp rather than at the messages we happen to ship.
           status: "capture-failed",
-          reason: "No focused window to capture (window is minimised)",
+          reason: "\u754c".repeat(SCREENSHOT_REASON_LIMIT),
         },
         diagnostics: worstCaseDiagnostics,
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",

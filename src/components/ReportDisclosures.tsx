@@ -116,6 +116,8 @@ interface ReportDisclosuresProps {
   onIncludeSessionChange: (checked: boolean) => void;
   onSessionExpand: () => void;
   sessionUnavailableReason?: string;
+  /** Locked once filing starts, since the choice has already been acted on. */
+  locked: boolean;
 }
 
 export function ReportDisclosures({
@@ -129,6 +131,7 @@ export function ReportDisclosures({
   onIncludeSessionChange,
   onSessionExpand,
   sessionUnavailableReason,
+  locked,
 }: ReportDisclosuresProps) {
   return (
     <div className="space-y-2">
@@ -139,6 +142,7 @@ export function ReportDisclosures({
         subtitle="Version, platform, settings and app logs. Logs can include file paths and project names."
         checked={includeSystemInfo}
         onCheckedChange={onIncludeSystemInfoChange}
+        disabled={locked}
       >
         <div className="text-xs bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-56 overflow-y-auto font-mono whitespace-pre-wrap">
           {diagnostics ??
@@ -155,7 +159,7 @@ export function ReportDisclosures({
         subtitle="Your chat messages and a snapshot of your code, so the team can reproduce it."
         checked={includeSession}
         onCheckedChange={onIncludeSessionChange}
-        disabled={Boolean(sessionUnavailableReason)}
+        disabled={locked || Boolean(sessionUnavailableReason)}
         disabledReason={sessionUnavailableReason}
         onExpand={onSessionExpand}
       >

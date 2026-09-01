@@ -297,6 +297,7 @@ export function HelpDialog() {
     setSessionChatId(chatId);
     setScreenshot(null);
     setScreenshotPreview(null);
+    setIsFiling(false);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
     setDebugBundle(null);
@@ -428,10 +429,10 @@ export function HelpDialog() {
       bundle: debugBundle,
     };
     setIsFiling(true);
-    void fileReport(report);
+    void fileReport(report, captureToken.current);
   };
 
-  const fileReport = async (report: OutgoingReport) => {
+  const fileReport = async (report: OutgoingReport, token: number) => {
     let sessionId: string | null = null;
     if (report.includeSession && report.chatId != null) {
       try {
@@ -486,6 +487,8 @@ export function HelpDialog() {
       isDyadProUser,
     });
 
+    // Only tears down the report it filed: the reporter may have moved on.
+    if (captureToken.current !== token) return;
     captureToken.current++;
     setIsFiling(false);
     setReportOpen(false);
@@ -565,6 +568,7 @@ export function HelpDialog() {
           <Button
             variant="ghost"
             aria-label="Back"
+            disabled={isFiling}
             className="mr-2 p-0 h-8 w-8"
             onClick={handleBack}
           >
@@ -612,6 +616,7 @@ export function HelpDialog() {
               includeSession={includeSession && sessionChatId != null}
               onIncludeSessionChange={setIncludeSession}
               onSessionExpand={loadSessionBundle}
+              locked={isFiling}
               sessionUnavailableReason={
                 sessionChatId == null
                   ? "Open a chat first to include a session."

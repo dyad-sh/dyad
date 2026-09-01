@@ -437,6 +437,50 @@ describe("HelpDialog disclosures", () => {
     );
   });
 
+  it("does not let consent be withdrawn after it has been acted on", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    submit();
+    await screen.findByRole("button", { name: /Preparing your report/ });
+
+    // The upload is already running, so the box must not look changeable.
+    const box = screen.getByLabelText("Chat session") as HTMLInputElement;
+    expect(box.disabled).toBe(true);
+
+    release(undefined);
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+  });
+
+  it("does not tear down a newer report when an earlier filing finishes", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("the first problem");
+    submit();
+    await screen.findByRole("button", { name: /Preparing your report/ });
+
+    // Backing out mid-filing is refused, so the reporter cannot strand
+    // themselves between two reports.
+    const back = screen.getByRole("button", {
+      name: "Back",
+    }) as HTMLButtonElement;
+    expect(back.disabled).toBe(true);
+
+    release(undefined);
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("the first problem");
+  });
+
   it("says diagnostics were unavailable rather than declined", async () => {
     mocks.getSystemDebugInfo.mockRejectedValue(new Error("no debug info"));
     await openForm();
@@ -754,9 +798,12 @@ describe("HelpDialog screenshot", () => {
     submit();
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
-    // The reporter pastes it into GitHub next, so it has to be there rather
-    // than whatever they copied while filling the form in.
+    // Ordering is the point: the clipboard has to be right before the browser
+    // opens, not after the reporter has already been sent there.
     expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(mocks.recopyScreenshot.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.openExternalUrl.mock.invocationCallOrder[0],
+    );
   });
 
   it("does not touch the clipboard when there is no screenshot", async () => {

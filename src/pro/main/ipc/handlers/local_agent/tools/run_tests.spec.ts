@@ -370,6 +370,31 @@ describe("runTestsTool", () => {
 
     expect(out).toContain("Page snapshot: unavailable for this run.");
     expect(out).not.toContain("error-context.md");
+    // Nothing to fall back to: both reads came back empty, so pointing at "the
+    // page snapshot" one line after calling it unavailable would send the model
+    // after an artifact that does not exist.
+    expect(out).not.toMatch(/rely on the page snapshot/);
+    expect(out).toContain("work from the error text alone");
+  });
+
+  it("still points at the snapshot when only the screenshot is missing", async () => {
+    runner.mockResolvedValue(
+      failResult(
+        "boom",
+        "/home/u/.config/dyad/test-artifacts/1-2-3/test-results/a/test-failed-1.png",
+      ),
+    );
+    screenshot.mockResolvedValue(null);
+    errorContext.mockResolvedValue("- button 'Submit'");
+    const ctx = makeCtx();
+
+    const out = await runTestsTool.execute(
+      { testFile: "e2e-tests/a.spec.ts" },
+      ctx,
+    );
+
+    expect(out).toContain("- button 'Submit'");
+    expect(out).toContain("rely on the page snapshot above instead");
   });
 
   it("does not require the dev server for a sandboxed run", async () => {

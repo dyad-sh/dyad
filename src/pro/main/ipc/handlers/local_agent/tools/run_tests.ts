@@ -452,7 +452,17 @@ async function attachFailureArtifacts(
   const snapshotSection = inlineSnapshot
     ? `\n- Page snapshot (the page state when the test failed; inlined because this run's artifacts live outside the app and read_file cannot reach them):\n\n${inlineSnapshot}\n`
     : "\n- Page snapshot: unavailable for this run.";
-  return `\nArtifacts from THIS run:${snapshotSection}\n- Screenshot: ${attachmentNote}.`;
+  // Both reads are best-effort, and both can come back empty at once (retention
+  // failed, the file was oversized). The shared note ends "rely on the page
+  // snapshot instead", which the line above has just said is unavailable — so
+  // when there is nothing left to fall back to, say that instead of sending the
+  // model after an artifact that does not exist.
+  const sandboxScreenshotNote = dataUrl
+    ? attachmentNote
+    : inlineSnapshot
+      ? "could NOT be attached as an image — rely on the page snapshot above instead"
+      : "could NOT be attached as an image — work from the error text alone";
+  return `\nArtifacts from THIS run:${snapshotSection}\n- Screenshot: ${sandboxScreenshotNote}.`;
 }
 
 async function reportFailure(params: {

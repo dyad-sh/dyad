@@ -495,6 +495,25 @@ describe("TestsPanel", () => {
       ).toBeTruthy();
     });
 
+    it("leaves a Supabase-linked app alone, Neon project or not", async () => {
+      // `prepareIsolatedTestDatabase` takes the Supabase test-user branch
+      // first, so a dual-linked app is isolated that way in any runtime and the
+      // main process never refuses it. Claiming otherwise would also suppress
+      // the dev-server banner — the one thing that would unblock the run.
+      mocks.app = {
+        id: 1,
+        testingEnabled: true,
+        neonProjectId: "neon-proj",
+        supabaseProjectId: "supabase-proj",
+      };
+      mocks.settings = { disableSandboxedE2eTests: true };
+      renderPanel();
+
+      await screen.findByText("signup.spec.ts");
+      expect(screen.queryByText(/won't run for this app/i)).toBeNull();
+      expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
+    });
+
     it("stays quiet about the refusal while settings are still loading", async () => {
       mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
       mocks.settings = undefined as unknown as Record<string, unknown>;

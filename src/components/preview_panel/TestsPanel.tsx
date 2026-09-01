@@ -776,14 +776,22 @@ export function TestsPanel() {
   // a temporary Neon branch that only that copy points at. Worth saying, since
   // the alternative a user would assume is "my tests hit my real database" —
   // but it must not promise the preview restart the old env-swap path did.
+  // `!hasSupabase`, matching the main process: `prepareIsolatedTestDatabase`
+  // takes the Supabase test-user branch first, so a dual-linked app is isolated
+  // that way and never touches a Neon branch at all. Keying on `hasNeon` alone
+  // promises a temporary database the run will not create.
+  const isNeonIsolatedApp = hasNeon && !hasSupabase;
   const showNeonSandboxDisclosure =
-    specs.length > 0 && !!app?.neonProjectId && sandboxAvailable === true;
+    specs.length > 0 && isNeonIsolatedApp && sandboxAvailable === true;
   // The other half of that disclosure. Without a sandbox there is no throwaway
   // branch to point the app at, so the main process refuses a Neon run outright
   // rather than testing against the user's real database — and saying nothing
   // here leaves Run looking available right up until the refusal comes back.
+  // Same `!hasSupabase` guard, and for a sharper reason: this banner suppresses
+  // the dev-server one below, so claiming it for an app that would have run
+  // fine hides the only thing that would have unblocked it.
   const showNeonSandboxRefusal =
-    specs.length > 0 && !!app?.neonProjectId && sandboxAvailable === false;
+    specs.length > 0 && isNeonIsolatedApp && sandboxAvailable === false;
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it

@@ -1,36 +1,24 @@
 import { ipc } from "@/ipc/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { BugIcon, Camera, MessageSquareIcon } from "lucide-react";
+import { BugIcon, Camera } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import { ScreenshotSuccessDialog } from "./ScreenshotSuccessDialog";
 import { showError } from "@/lib/toast";
 import { SCREENSHOT_ERRORS } from "@/ipc/types/system";
-import { type ReportFields, type ScreenshotOutcome } from "@/lib/issueBody";
+import { type ScreenshotOutcome } from "@/lib/issueBody";
 
-/** Which report flow opened the prompt. Reported with every prompt event. */
-export type ScreenshotPromptSource = "report-bug" | "upload-session";
+/** Reported with every prompt event. One flow, so one value. */
+export type ScreenshotPromptSource = "report-bug";
 
-/**
- * Shared by the prompt and the form so both report the same `source`, and a
- * change to one cannot silently split the funnel across two spellings.
- */
-export function promptSourceForKind(
-  kind: "bug" | "session",
-): ScreenshotPromptSource {
-  return kind === "session" ? "upload-session" : "report-bug";
+/** What the prompt should file once the reporter answers it. */
+export interface PendingReport {
+  description: string;
+  includeSystemInfo: boolean;
+  includeSession: boolean;
+  chatId: number | null;
 }
-
-/**
- * The report a prompt was opened for, carried through to the outcome. The
- * form fields ride along rather than being read back from the help dialog:
- * opening the prompt closes that dialog, and the report is dispatched
- * asynchronously after the prompt is answered.
- */
-export type PendingReport =
-  | { kind: "bug"; fields: ReportFields }
-  | { kind: "session"; sessionId: string; fields: ReportFields };
 
 /**
  * Known capture failures, reported instead of the raw message so the event
@@ -46,15 +34,10 @@ function classifyCaptureFailure(reason: string): string {
   return "other";
 }
 
-/** Copy that differs between the two flows, keyed by the reporting source. */
 const VARIANTS = {
   "report-bug": {
     declineLabel: "File bug report without screenshot",
     icon: <BugIcon className="mr-2 h-5 w-5" />,
-  },
-  "upload-session": {
-    declineLabel: "Create issue without screenshot",
-    icon: <MessageSquareIcon className="mr-2 h-5 w-5" />,
   },
 } as const;
 

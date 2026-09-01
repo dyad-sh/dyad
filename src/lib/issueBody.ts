@@ -49,36 +49,6 @@ export const ISSUE_URL_CEILING = 6_500;
 export const PROSE_BUDGET = 2_000;
 
 /**
- * Room the shared budget guarantees to every prose field the form renders.
- *
- * Without it one field can take the whole budget and leave the others with
- * nothing: every keystroke is swallowed, the field stays empty, and on the
- * session form -- where all three are required -- the continue gate then
- * demands text the reporter physically cannot enter. Sized well above the
- * median expected/actual answer, which runs about 25 characters.
- *
- * The guarantee holds regardless of edit order, including clearing a field to
- * reword it. Reserving only for fields that are empty *right now* is not
- * enough: the others grow into the space a field held while it was filled, so
- * clearing it later leaves it with a couple of characters -- less than one CJK
- * character -- and the dead end returns.
- */
-export const EMPTY_FIELD_RESERVE = 150;
-
-export type ReportKind = "bug" | "session";
-
-type ProseField = "description" | "expected" | "actual";
-
-/** Only the fields a given form renders reserve anything. */
-const PROSE_FIELDS_BY_KIND: Record<ReportKind, readonly ProseField[]> = {
-  bug: ["description"],
-  session: ["description", "expected", "actual"],
-};
-
-/** Titles are short in practice; GitHub's own limit is 256. */
-export const TITLE_BUDGET = 150;
-
-/**
  * Tail of the app log carried inline, in encoded characters like every other
  * budget here. Logs are the worst content to measure raw: they are mostly
  * newlines, braces, quotes and colons, which cost 3 each, and they carry file
@@ -147,41 +117,8 @@ function clampToEncoded(value: string, budget: number): string {
 }
 
 // =============================================================================
-// Reporter-supplied fields
+// The reporter's description
 // =============================================================================
-
-/** What the reporter typed into the form. */
-export interface ReportFields {
-  title: string;
-  description: string;
-  /** Session reports only. */
-  expected?: string;
-  actual?: string;
-}
-
-export const EMPTY_REPORT_FIELDS: ReportFields = {
-  title: "",
-  description: "",
-  expected: "",
-  actual: "",
-};
-
-/**
- * Prose counted against PROSE_BUDGET. The title is budgeted separately, so a
- * long title never eats into the description.
- */
-export function proseLength(fields: ReportFields): number {
-  return (
-    encodedLength(fields.description) +
-    encodedLength(fields.expected ?? "") +
-    encodedLength(fields.actual ?? "")
-  );
-}
-
-/** Prose the reporter has left before the cap stops them. */
-export function proseRemaining(fields: ReportFields): number {
-  return Math.max(0, PROSE_BUDGET - proseLength(fields));
-}
 
 /**
  * Splits an edit into the run that was just added and the text around it, by
@@ -214,16 +151,6 @@ function splitEdit(previous: string, value: string) {
   };
 }
 
-/**
- * Applies an edit within `budget`, keeping as much of what was just added as
- * fits and leaving the rest of the field untouched.
- *
- * Only the inserted run is trimmed. Clamping the whole value would drop
- * characters off the far end that the reporter never touched and, in a
- * scrolled textarea, would never see go; refusing the edit outright would mean
- * a paste into the middle of a full field simply does not appear. Trimming the
- * insertion lands what fits wherever it was pasted and touches nothing else.
- */
 function applyEdit(
   previous: string,
   value: string,
@@ -239,47 +166,26 @@ function applyEdit(
 }
 
 /**
- * Applies one field edit within the shared budget. Returns the resulting
- * fields and whether anything was refused, so the form can show the cap
- * message on the edit that hit it -- including a paste, which lands what fits.
+ * Applies an edit to the description within the budget, keeping as much of
+ * what was just added as fits and leaving the rest of the field alone.
+ *
+ * Only the inserted run is trimmed. Clamping the whole value would drop
+ * characters off the far end that the reporter never touched and, in a
+ * scrolled textarea, would never see go; refusing the edit outright would mean
+ * a paste into the middle of a full field simply does not appear.
  */
-export function applyFieldEdit(
-  fields: ReportFields,
-  key: ProseField,
+export function applyDescriptionEdit(
+  previous: string,
   value: string,
-  kind: ReportKind,
-): { fields: ReportFields; hitCap: boolean } {
-  const previous = fields[key] ?? "";
-  const others = proseLength(fields) - encodedLength(previous);
-  // Held per field rather than all-or-nothing: each other field keeps the part
-  // of its reserve it has not already spent. Since
-  // `encodedLength(g) + reserveFor(g) === max(encodedLength(g), RESERVE)`,
-  // every field can always reach RESERVE whatever order they were edited in.
-  const reserved = PROSE_FIELDS_BY_KIND[kind]
-    .filter((field) => field !== key)
-    .reduce(
-      (total, field) =>
-        total +
-        Math.max(0, EMPTY_FIELD_RESERVE - encodedLength(fields[field] ?? "")),
-      0,
-    );
-  const allowed = Math.max(0, PROSE_BUDGET - others - reserved);
-  const result = applyEdit(previous, value, allowed);
-  return {
-    fields: { ...fields, [key]: result.value },
-    hitCap: result.hitCap,
-  };
+): { value: string; hitCap: boolean } {
+  return applyEdit(previous, value, PROSE_BUDGET);
 }
 
-export function applyTitleEdit(
-  fields: ReportFields,
-  value: string,
-): { fields: ReportFields; hitCap: boolean } {
-  const result = applyEdit(fields.title, value, TITLE_BUDGET);
-  return {
-    fields: { ...fields, title: result.value },
-    hitCap: result.hitCap,
-  };
+/** Shortest description worth filing. "it crashed" clears it. */
+export const MIN_DESCRIPTION_LENGTH = 10;
+
+export function describesSomething(description: string): boolean {
+  return description.trim().length >= MIN_DESCRIPTION_LENGTH;
 }
 
 // =============================================================================
@@ -307,14 +213,12 @@ export function buildIssueUrl({
   return `${GITHUB_ISSUES_BASE}?${qs.toString()}`;
 }
 
-/** Falls back to the old placeholder so an untitled report is still filable. */
-export function formatIssueTitle(kind: ReportKind, title: string): string {
-  const prefix = kind === "bug" ? "[bug]" : "[session report]";
-  const trimmed = title.trim();
-  return trimmed
-    ? `${prefix} ${trimmed}`
-    : `${prefix} ${kind === "bug" ? "<WRITE TITLE HERE>" : "<add title>"}`;
-}
+/**
+ * GitHub's title field. Left as a placeholder on purpose: the triage bot
+ * rewrites it from the body, and a reporter can edit it on GitHub before
+ * submitting.
+ */
+export const ISSUE_TITLE = "[bug] <WRITE TITLE HERE>";
 
 // =============================================================================
 // Body
@@ -454,139 +358,60 @@ ${formatSettingsLines(settings, selectedModel)}
 ${formatLogsSection(debugInfo)}`;
 }
 
-interface CommonBodyParams {
-  debugInfo: SystemDebugInfo;
-  settings: UserSettings | null;
-  /** Effort-aware model for this chat, falling back to the global setting. */
-  selectedModel: ModelSelection | null;
-  userBudget: UserBudgetInfo | undefined;
+export interface IssueBodyParams {
+  description: string;
   screenshot: ScreenshotOutcome;
-  fields: ReportFields;
+  /**
+   * System information, settings and logs. Null when the reporter unticked
+   * the box, or when the diagnostics could not be read.
+   */
+  diagnostics: {
+    debugInfo: SystemDebugInfo;
+    settings: UserSettings | null;
+    selectedModel: ModelSelection | null;
+    userBudget: UserBudgetInfo | undefined;
+  } | null;
+  /** Set when a chat session was uploaded alongside the report. */
+  sessionId: string | null;
+  /** Shown so a maintainer knows a Pro reporter filed this. */
+  redactedUserId?: string;
 }
 
-export function buildBugReportBody({
-  debugInfo,
-  settings,
-  selectedModel,
-  userBudget,
+export function buildIssueBody({
+  description,
   screenshot,
-  fields,
-}: CommonBodyParams): string {
-  return `\
-<!-- Please fill in all fields in English -->
-
-${formatSection(
-  "## Bug Description (required)",
-  "<!-- Please describe the issue you're experiencing and how to reproduce it -->",
-  fields.description,
-)}
-
-## Screenshot (recommended)
-<!-- Screenshot of the bug -->
-${formatScreenshotStatusLine(screenshot)}
-
-${formatDiagnosticsSections({ debugInfo, settings, selectedModel, userBudget })}
-`;
-}
-
-export function buildSessionReportBody({
-  debugInfo,
-  settings,
-  selectedModel,
-  userBudget,
-  screenshot,
-  fields,
+  diagnostics,
   sessionId,
-}: CommonBodyParams & { sessionId: string }): string {
-  return `\
-<!-- Please fill in all fields in English -->
+  redactedUserId,
+}: IssueBodyParams): string {
+  const sections = [
+    "<!-- Please fill in all fields in English -->",
+    "",
+    formatSection(
+      "## What happened (required)",
+      "<!-- Please describe the issue you're experiencing -->",
+      description,
+    ),
+    "",
+    "## Screenshot",
+    formatScreenshotStatusLine(screenshot),
+  ];
 
-Session ID: ${sessionId}
-Session Schema: v2.0
-Pro User ID: ${userBudget?.redactedUserId || "n/a"}
+  if (sessionId) {
+    sections.push(
+      "",
+      "## Chat session",
+      `Session ID: ${sessionId}`,
+      "Session Schema: v2.0",
+      `Pro User ID: ${redactedUserId || "n/a"}`,
+    );
+  }
 
-${formatSection(
-  "## Issue Description (required)",
-  "<!-- Please describe the issue you're experiencing -->",
-  fields.description,
-)}
+  if (diagnostics) {
+    sections.push("", formatDiagnosticsSections(diagnostics));
+  } else {
+    sections.push("", "## System Information", "Not included.");
+  }
 
-${formatSection(
-  "## Expected Behavior (required)",
-  "<!-- What did you expect to happen? -->",
-  fields.expected ?? "",
-)}
-
-${formatSection(
-  "## Actual Behavior (required)",
-  "<!-- What actually happened? -->",
-  fields.actual ?? "",
-)}
-
-## Screenshot (recommended)
-<!-- Screenshot of the issue -->
-${formatScreenshotStatusLine(screenshot)}
-
-${formatDiagnosticsSections({ debugInfo, settings, selectedModel, userBudget })}
-`;
-}
-
-/** Used when getSystemDebugInfo fails, so the report still reaches GitHub. */
-export function buildBugReportFallbackBody({
-  screenshot,
-  fields,
-}: {
-  screenshot: ScreenshotOutcome;
-  fields: ReportFields;
-}): string {
-  return `\
-<!-- Please fill in all fields in English -->
-
-${formatSection(
-  "## Bug Description (required)",
-  "<!-- Please describe the issue you're experiencing and how to reproduce it -->",
-  fields.description,
-)}
-
-## Screenshot (recommended)
-<!-- Screenshot of the bug -->
-${formatScreenshotStatusLine(screenshot)}
-`;
-}
-
-/** Used when getSystemDebugInfo fails, so the session ID still reaches GitHub. */
-export function buildSessionReportFallbackBody({
-  userBudget,
-  screenshot,
-  fields,
-  sessionId,
-}: {
-  userBudget: UserBudgetInfo | undefined;
-  screenshot: ScreenshotOutcome;
-  fields: ReportFields;
-  sessionId: string;
-}): string {
-  return `Session ID: ${sessionId}
-Session Schema: v2.0
-Pro User ID: ${userBudget?.redactedUserId || "n/a"}
-
-${formatSection(
-  "## Issue Description (required)",
-  "<!-- Please describe the issue you're experiencing -->",
-  fields.description,
-)}
-
-${formatSection(
-  "## Expected Behavior (required)",
-  "<!-- What did you expect to happen? -->",
-  fields.expected ?? "",
-)}
-
-${formatSection(
-  "## Actual Behavior (required)",
-  "<!-- What actually happened? -->",
-  fields.actual ?? "",
-)}
-
-${formatScreenshotStatusLine(screenshot)}`;
+  return sections.join("\n") + "\n";
 }

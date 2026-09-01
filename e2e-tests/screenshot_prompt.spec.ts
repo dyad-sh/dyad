@@ -84,9 +84,7 @@ test("file a bug report without a screenshot", async ({ po }) => {
   expect(body).toContain("Switching branches blanks the preview.");
 });
 
-test("upload a chat session and report it with a screenshot", async ({
-  po,
-}) => {
+test("report a bug with a chat session and a screenshot", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
   await recordIssueUrls(po.electronApp);
@@ -119,39 +117,14 @@ test("upload a chat session and report it with a screenshot", async ({
     });
 
     await po.page.getByRole("button", { name: "Help" }).click();
-    await po.page.getByRole("button", { name: "Upload Chat Session" }).click();
-    await po.page.getByRole("button", { name: "Upload", exact: true }).click();
+    await po.page.getByRole("button", { name: "Report a Bug" }).click();
 
-    await expect(po.page.getByText("Upload Complete")).toBeVisible({
-      timeout: Timeout.LONG,
-    });
-    // The id shown comes from the real upload round trip.
-    await expect(po.page.getByText("v2:e2e-session")).toBeVisible();
-    expect(uploads).toEqual(["/signed"]);
-
-    await po.page.getByRole("button", { name: "Create GitHub Issue" }).click();
-
-    const description = po.page.getByLabel("What is the issue?");
+    const description = po.page.getByLabel("What happened?");
     await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
-    // Every field on the session form is required, matching the "(required)"
-    // markers the generated body carries.
-    await po.page.getByLabel("Title").fill("Generated page is blank");
     await description.fill("The generated page is blank.");
-    await po.page.getByLabel("Expected behavior").fill("A rendered page.");
-    await po.page.getByLabel("Actual behavior").fill("A white screen.");
-    await po.page
-      .getByRole("button", { name: "Next: add a screenshot" })
-      .click();
-    await expect(po.page.getByText("Take a screenshot?")).toBeVisible();
+    await expect(po.page.getByLabel("Chat session")).toBeChecked();
 
-    // Backing out must not orphan an upload that already reached the server,
-    // nor lose the draft written against it.
-    await po.page.keyboard.press("Escape");
-    await expect(description).toHaveValue("The generated page is blank.");
-
-    await po.page
-      .getByRole("button", { name: "Next: add a screenshot" })
-      .click();
+    await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
     await po.page.getByRole("button", { name: /recommended/ }).click();
 
     // The prompt hides itself for the capture, then confirms it succeeded.
@@ -161,17 +134,13 @@ test("upload a chat session and report it with a screenshot", async ({
     await po.page.getByText("Create GitHub issue").click();
 
     const params = await firstIssueUrl(po.electronApp);
-    expect(params.get("title")).toBe(
-      "[session report] Generated page is blank",
-    );
-    expect(params.get("labels")).toContain("support");
+    expect(params.get("labels")).toContain("bug");
     const body = params.get("body") ?? "";
     expect(body).toContain("Screenshot status: captured");
     expect(body).toContain("The generated page is blank.");
-    expect(body).toContain("A rendered page.");
-    expect(body).toContain("A white screen.");
     // The session the reporter uploaded is the one the issue points at.
     expect(body).toContain("v2:e2e-session");
+    expect(uploads).toEqual(["/signed"]);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

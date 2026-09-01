@@ -11,7 +11,7 @@ import { getActiveStreamCount } from "../ipc/handlers/chat_stream_handlers";
 import { runningApps } from "../ipc/utils/process_manager";
 import { typescriptUtilityProcessScheduler } from "../ipc/processors/typescript_utility_process_scheduler";
 import { getUserDataPath } from "../paths/paths";
-import { getDiskUsageMB } from "./disk_usage";
+import { getDiskUsageMB, isDiskSpaceExhausted } from "./disk_usage";
 
 const logger = log.scope("performance-monitor");
 
@@ -33,6 +33,7 @@ let peakRssMB = 0;
 const peakProcessWorkingSetsMB: Record<string, number> = {};
 let peakActivity: ActivitySnapshot | null = null;
 let peakTimestamp: number | null = null;
+let warnedAboutFullDisk = false;
 
 /**
  * Get current memory usage in MB
@@ -237,6 +238,22 @@ function capturePerformanceMetrics() {
     // to measure. The apps folder is user-configurable and can sit on a
     // different drive entirely.
     const diskUsage = getDiskUsageMB(getUserDataPath());
+
+    // Performance snapshots are best-effort diagnostics. Avoid rewriting
+    // settings when the user-data volume has less than 1 MB available: the
+    // write cannot be relied on to complete and retrying every 30 seconds only
+    // produces ENOSPC log spam. If capacity is unknown, retain the existing
+    // behavior and attempt the write.
+    if (isDiskSpaceExhausted(diskUsage)) {
+      if (!warnedAboutFullDisk) {
+        logger.warn(
+          "Skipping performance snapshot because the user-data volume has less than 1 MB available",
+        );
+        warnedAboutFullDisk = true;
+      }
+      return;
+    }
+    warnedAboutFullDisk = false;
 
     logger.debug(
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,

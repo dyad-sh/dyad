@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
-import { getDiskUsageMB } from "@/utils/disk_usage";
+import { getDiskUsageMB, isDiskSpaceExhausted } from "@/utils/disk_usage";
 
 const { errorLog } = vi.hoisted(() => ({ errorLog: vi.fn() }));
 vi.mock("electron-log", () => ({
@@ -77,5 +77,28 @@ describe("getDiskUsageMB", () => {
     // A repeating failure is itself diagnostic, and only a recent line
     // survives in the last-N-lines view that bug reports include.
     expect(errorLog).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("isDiskSpaceExhausted", () => {
+  it("returns true when no whole megabyte is available", () => {
+    expect(
+      isDiskSpaceExhausted({
+        totalMB: 1024,
+        usedMB: 1024,
+        availableMB: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when space is available or capacity is unknown", () => {
+    expect(
+      isDiskSpaceExhausted({
+        totalMB: 1024,
+        usedMB: 1023,
+        availableMB: 1,
+      }),
+    ).toBe(false);
+    expect(isDiskSpaceExhausted(null)).toBe(false);
   });
 });

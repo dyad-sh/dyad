@@ -11,6 +11,10 @@ export interface DiskUsageMB {
   availableMB: number;
 }
 
+export function isDiskSpaceExhausted(diskUsage: DiskUsageMB | null): boolean {
+  return diskUsage !== null && diskUsage.availableMB <= 0;
+}
+
 /**
  * Capacity of the filesystem holding `targetPath`, from one statfs syscall.
  * usedMB counts every allocated block, while availableMB is what this user

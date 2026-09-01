@@ -295,7 +295,7 @@ describe("startE2eTestRuntime port accounting", () => {
       [
         'import fs from "node:fs";',
         "const port = Number(process.argv[2]);",
-        'fs.appendFileSync(process.env.DYAD_ATTEMPTS, "x");',
+        "fs.appendFileSync(process.env.DYAD_ATTEMPTS, `${port}\\n`);",
         "console.error(`listen EADDRINUSE: address already in use 127.0.0.1:${port}`);",
         "process.exit(1);",
       ].join("\n"),
@@ -313,7 +313,14 @@ describe("startE2eTestRuntime port accounting", () => {
           startCommand: `"${process.execPath}" server.mjs {port}`,
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-      expect(fs.readFileSync(attempts, "utf8")).toBe("xxx");
+      const tried = fs.readFileSync(attempts, "utf8").trim().split("\n");
+      expect(tried).toHaveLength(3);
+      // A DIFFERENT port each time. `probePort` binds 127.0.0.1 and closes at
+      // once, so it cannot see the conflict that killed the server — an
+      // IPv6-only listener, or a process that binds right after the probe. The
+      // failed port has to stay excluded for the rest of the loop or all three
+      // attempts land on the same port and the retry does nothing.
+      expect(new Set(tried).size).toBe(3);
     } finally {
       delete process.env.DYAD_ATTEMPTS;
       fs.rmSync(root, { recursive: true, force: true });

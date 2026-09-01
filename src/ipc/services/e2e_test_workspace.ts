@@ -16,9 +16,35 @@ const logger = log.scope("e2e_test_workspace");
 // on non-reflink filesystems is measurable in the field.
 const REFLINK_REQUESTED = process.platform !== "win32";
 
+/**
+ * Never copied, whatever the app is. `node_modules` gets its own reflink-aware
+ * copy below; `test-results` and `playwright-report` are the *previous* run's
+ * Playwright output, and copying them in would make `retainE2eTestArtifacts`
+ * hand the panel stale screenshots as if this run had produced them; the rest
+ * are caches and history no run reads.
+ */
 const EXCLUDED_ROOTS = new Set([
   ".git",
   "node_modules",
+  ".turbo",
+  ".cache",
+  "test-results",
+  "playwright-report",
+  "coverage",
+]);
+
+/**
+ * Build output. A Dyad-managed app is served by `npm run dev`, which builds
+ * from source, so copying these would only cost time.
+ *
+ * An app with its own install and start commands is the opposite case:
+ * `buildE2eTestStartCommand` runs `(install) && (start)` verbatim and adds no
+ * build step, so a `next start` or a server that serves `dist/` needs the
+ * output already on disk. Excluding it would make the app start fine under the
+ * normal preview and fail only under test, with a "no production build" error
+ * pointing at nothing the user changed.
+ */
+const BUILD_OUTPUT_ROOTS = new Set([
   "dist",
   "build",
   "out",
@@ -26,11 +52,6 @@ const EXCLUDED_ROOTS = new Set([
   ".next",
   ".nuxt",
   ".svelte-kit",
-  ".turbo",
-  ".cache",
-  "test-results",
-  "playwright-report",
-  "coverage",
 ]);
 
 export const E2E_TEST_SANDBOX_DIR = "test-sandboxes";
@@ -52,11 +73,13 @@ export interface E2eTestWorkspace {
 export function shouldCopyE2eWorkspacePath(
   appPath: string,
   candidatePath: string,
+  { hasCustomCommands = false }: { hasCustomCommands?: boolean } = {},
 ): boolean {
   const relative = path.relative(appPath, candidatePath);
   if (!relative) return true;
   const [root] = relative.split(path.sep);
-  return root !== ".DS_Store" && !EXCLUDED_ROOTS.has(root);
+  if (root === ".DS_Store" || EXCLUDED_ROOTS.has(root)) return false;
+  return hasCustomCommands || !BUILD_OUTPUT_ROOTS.has(root);
 }
 
 function assertOwnedPath(root: string, candidate: string): void {
@@ -195,7 +218,12 @@ export async function createE2eTestWorkspace({
         : { mode: fsConstants.COPYFILE_FICLONE }),
       filter: (candidatePath) => {
         if (signal?.aborted) return false;
-        if (!shouldCopyE2eWorkspacePath(appPath, candidatePath)) return false;
+        if (
+          !shouldCopyE2eWorkspacePath(appPath, candidatePath, {
+            hasCustomCommands,
+          })
+        )
+          return false;
         sourceEntries += 1;
         return true;
       },
@@ -239,7 +267,16 @@ export async function createE2eTestWorkspace({
 export async function retainE2eTestArtifacts({
   workspacePath,
   artifactPath,
-}: Pick<E2eTestWorkspace, "workspacePath" | "artifactPath">): Promise<void> {
+  supersedesAllResults = true,
+}: Pick<E2eTestWorkspace, "workspacePath" | "artifactPath"> & {
+  /**
+   * Whether this run replaced every result the panel is showing. True only for
+   * a run-all; a single file or a single test leaves the other specs' rows —
+   * and their screenshot paths, which point into an *earlier* run's artifact
+   * directory — on screen.
+   */
+  supersedesAllResults?: boolean;
+}): Promise<void> {
   const source = path.join(workspacePath, "test-results");
   let hasArtifacts = true;
   try {
@@ -261,9 +298,21 @@ export async function retainE2eTestArtifacts({
     // the caller drops the new paths on failure, so nothing points at either
     // directory, and skipping the prune would leave the old one owner-less
     // until the app is deleted.
-    await pruneSupersededArtifacts(artifactPath);
+    await pruneSupersededArtifacts(artifactPath, supersedesAllResults);
   }
 }
+
+/**
+ * How many earlier artifact directories a partial run leaves in place.
+ *
+ * A single-spec run replaces only that spec's row, so the rows it did not touch
+ * keep pointing into whichever earlier run produced them — and that is not
+ * always the immediately previous one (run-all, then spec B, then spec C leaves
+ * spec A's screenshots two runs back). Keeping a few covers the realistic
+ * sequences without letting a long session of single-spec runs accumulate
+ * artifact directories forever; the next run-all collapses them all.
+ */
+const PARTIAL_RUN_ARTIFACT_HISTORY = 4;
 
 /**
  * Drop the app's other retained artifact directories, now that this run has
@@ -273,19 +322,68 @@ export async function retainE2eTestArtifacts({
  * the same app aborts the first and proceeds without awaiting its teardown, so
  * two runs' cleanups overlap — and whichever retained second would otherwise
  * delete the other's screenshots before they ever reached the panel.
+ *
+ * A run that only replaced *some* of the panel's results keeps the newest few
+ * of the rest, for the same reason: the rows it did not re-run still point into
+ * the directory that produced them.
  */
-async function pruneSupersededArtifacts(artifactPath: string): Promise<void> {
+async function pruneSupersededArtifacts(
+  artifactPath: string,
+  supersedesAllResults: boolean,
+): Promise<void> {
   const runName = path.basename(artifactPath);
   const appId = runDirectoryAppId(runName);
   if (appId === null) return;
+  const root = path.dirname(artifactPath);
+  const isSupersedable = (name: string) =>
+    name !== runName &&
+    !activeWorkspaceNames.has(name) &&
+    runDirectoryAppId(name) === appId;
+  const keep = supersedesAllResults
+    ? new Set<string>()
+    : await newestRunDirectories(
+        root,
+        isSupersedable,
+        PARTIAL_RUN_ARTIFACT_HISTORY,
+      );
   await removeRunDirectories(
-    path.dirname(artifactPath),
-    (name) =>
-      name !== runName &&
-      !activeWorkspaceNames.has(name) &&
-      runDirectoryAppId(name) === appId,
+    root,
+    (name) => isSupersedable(name) && !keep.has(name),
     "test artifacts",
   );
+}
+
+/** The `limit` most recently written matching run directories under `root`. */
+async function newestRunDirectories(
+  root: string,
+  isCandidate: (name: string) => boolean,
+  limit: number,
+): Promise<Set<string>> {
+  if (limit <= 0) return new Set();
+  let entries;
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch {
+    // The caller's own listing reports this; there is nothing to keep either
+    // way.
+    return new Set();
+  }
+  const dated = await Promise.all(
+    entries
+      .filter((entry) => isCandidate(entry.name))
+      .map(async (entry) => {
+        try {
+          const { mtimeMs } = await fs.stat(path.join(root, entry.name));
+          return { name: entry.name, mtimeMs };
+        } catch {
+          // Unreadable: sort it oldest so it is pruned rather than kept in
+          // place of a directory the panel may still be pointing at.
+          return { name: entry.name, mtimeMs: 0 };
+        }
+      }),
+  );
+  dated.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return new Set(dated.slice(0, limit).map((entry) => entry.name));
 }
 
 export function rewriteE2eArtifactPath(

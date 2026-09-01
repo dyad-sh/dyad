@@ -109,7 +109,16 @@ function probePort(port: number): Promise<number | null> {
   });
 }
 
-export async function allocateE2eTestPort(): Promise<number> {
+export async function allocateE2eTestPort(
+  /**
+   * Ports this caller already lost a server on. `probePort` binds 127.0.0.1 and
+   * closes immediately, so it cannot see every conflict that kills a real
+   * server — an IPv6-only listener on the same port, or a process that binds
+   * moments after the probe. Without an exclusion, a retry re-picks the port
+   * that just failed.
+   */
+  excludedPorts: ReadonlySet<number> = new Set(),
+): Promise<number> {
   // Scan Dyad's reserved band first. Binding port 0 would let the OS pick from
   // the ephemeral range, which on Linux (32768–60999) overlaps the app, proxy
   // and proxy-fallback bands almost entirely — so a test server could hold
@@ -117,6 +126,7 @@ export async function allocateE2eTestPort(): Promise<number> {
   // fail to start with nothing to point at as the cause.
   for (let offset = 0; offset < E2E_TEST_SERVER_PORT_RANGE; offset += 1) {
     const port = E2E_TEST_SERVER_PORT_START + offset;
+    if (excludedPorts.has(port)) continue;
     if (pendingE2eTestPorts.has(port)) continue;
     // The band is above every *default* reserved range, but Dyad's own E2E
     // shards relocate those ranges: `DYAD_E2E_PORT_BLOCK_INDEX=9` puts a
@@ -124,6 +134,13 @@ export async function allocateE2eTestPort(): Promise<number> {
     // fallback loop below already asks; the band has to ask too.
     if (isReservedDyadPort(port)) continue;
     if ((await probePort(port)) !== null) {
+      // Re-checked AFTER the await, not only before it. The probe binds and
+      // closes, so a concurrent allocation suspended on the same port probes it
+      // successfully too — and two runs for two different apps are not
+      // serialized by the per-app operation coordinator. Only the allocation
+      // that reaches this synchronous check-and-add first keeps the port; the
+      // fallback loop below has always re-checked this way.
+      if (pendingE2eTestPorts.has(port)) continue;
       pendingE2eTestPorts.add(port);
       return port;
     }
@@ -136,7 +153,8 @@ export async function allocateE2eTestPort(): Promise<number> {
     if (
       port !== null &&
       !isReservedDyadPort(port) &&
-      !pendingE2eTestPorts.has(port)
+      !pendingE2eTestPorts.has(port) &&
+      !excludedPorts.has(port)
     ) {
       pendingE2eTestPorts.add(port);
       return port;
@@ -329,21 +347,27 @@ async function waitForReady({
   );
 }
 
+export interface StartE2eTestRuntimeOptions {
+  workspacePath: string;
+  installCommand?: string | null;
+  startCommand?: string | null;
+  signal?: AbortSignal;
+  onOutput?: (chunk: string) => void;
+}
+
 async function startE2eTestRuntimeOnce({
   workspacePath,
   installCommand,
   startCommand,
   signal,
   onOutput,
-}: {
-  workspacePath: string;
-  installCommand?: string | null;
-  startCommand?: string | null;
-  signal?: AbortSignal;
-  onOutput?: (chunk: string) => void;
+  excludedPorts,
+}: StartE2eTestRuntimeOptions & {
+  /** Mutated on failure so the next attempt cannot re-pick this port. */
+  excludedPorts: Set<number>;
 }): Promise<E2eTestRuntime> {
   if (signal?.aborted) throw new Error("Test run stopped.");
-  const port = await allocateE2eTestPort();
+  const port = await allocateE2eTestPort(excludedPorts);
   // Every exit from here on must hand the port back. Without this, anything
   // that throws before the try/catch below — a workspace read, the pnpm version
   // probe, `spawn` itself — permanently burns one of the 200 band ports, and
@@ -364,6 +388,13 @@ async function startE2eTestRuntimeOnce({
       onOutput,
       onBound: releasePort,
     });
+  } catch (error) {
+    // Burn this port for the rest of the retry loop. `releasePort` below hands
+    // it straight back to `allocateE2eTestPort`, which would re-probe it, find
+    // it bindable on 127.0.0.1, and hand it back — so without this every
+    // attempt lands on the same port and the retry is a no-op.
+    excludedPorts.add(port);
+    throw error;
   } finally {
     releasePort();
   }
@@ -484,12 +515,15 @@ async function startServerOnPort({
 }
 
 export async function startE2eTestRuntime(
-  options: Parameters<typeof startE2eTestRuntimeOnce>[0],
+  options: StartE2eTestRuntimeOptions,
 ): Promise<E2eTestRuntime> {
   let lastError: unknown;
+  // Shared across the three attempts, so each retry picks a port none of the
+  // earlier ones already failed on.
+  const excludedPorts = new Set<number>();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await startE2eTestRuntimeOnce(options);
+      return await startE2eTestRuntimeOnce({ ...options, excludedPorts });
     } catch (error) {
       lastError = error;
       if (!(error instanceof PortInUseError)) throw error;

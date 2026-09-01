@@ -421,4 +421,75 @@ describe("E2E test workspace", () => {
       ),
     ).toBe(false);
   });
+
+  it("keeps build output for an app that supplies its own commands", () => {
+    // `(install) && (start)` runs verbatim with no build step, so `next start`
+    // or a server that serves `dist/` needs the output already on disk —
+    // otherwise the app runs under the normal preview and fails only in the
+    // sandbox. A Dyad-managed app is served by `npm run dev`, which builds from
+    // source, so copying it there would only cost time.
+    const appPath = path.resolve("app");
+    for (const buildRoot of [".next", "dist", "build", ".svelte-kit"]) {
+      const candidate = path.join(appPath, buildRoot, "x");
+      expect(shouldCopyE2eWorkspacePath(appPath, candidate)).toBe(false);
+      expect(
+        shouldCopyE2eWorkspacePath(appPath, candidate, {
+          hasCustomCommands: true,
+        }),
+      ).toBe(true);
+    }
+    // Never copied either way: the previous run's Playwright output would be
+    // retained as if this run had produced it, and node_modules has its own
+    // reflink-aware copy.
+    for (const alwaysExcluded of ["node_modules", "test-results", ".git"]) {
+      expect(
+        shouldCopyE2eWorkspacePath(
+          appPath,
+          path.join(appPath, alwaysExcluded, "x"),
+          { hasCustomCommands: true },
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("keeps an earlier run's artifacts when only one spec re-ran", async () => {
+    // A single-spec run replaces only that spec's row. The rows it did not
+    // touch stay on screen with screenshot paths into the run that produced
+    // them, so pruning that run leaves thumbnails that silently fail to load.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    const previous = path.join(userData, E2E_TEST_ARTIFACT_DIR, "7-oldrun");
+    await fs.mkdir(path.join(previous, "test-results"), { recursive: true });
+    await fs.writeFile(path.join(previous, "test-results", "shot.png"), "png");
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    await fs.mkdir(path.join(workspace.workspacePath, "test-results"), {
+      recursive: true,
+    });
+    await retainE2eTestArtifacts({
+      ...workspace,
+      supersedesAllResults: false,
+    });
+
+    expect(
+      await fs.readFile(
+        path.join(previous, "test-results", "shot.png"),
+        "utf8",
+      ),
+    ).toBe("png");
+    // A later run-all replaces every row, so it collapses the history.
+    const runAll = await createE2eTestWorkspace({ appId: 7, appPath });
+    await fs.mkdir(path.join(runAll.workspacePath, "test-results"), {
+      recursive: true,
+    });
+    await workspace.dispose();
+    await retainE2eTestArtifacts({ ...runAll, supersedesAllResults: true });
+    expect(
+      await fs.readdir(path.join(userData, E2E_TEST_ARTIFACT_DIR)),
+    ).toEqual([path.basename(runAll.artifactPath)]);
+    await runAll.dispose();
+  });
 });

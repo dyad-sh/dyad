@@ -1232,7 +1232,16 @@ export async function runAppTestsWithIsolation({
           // from now.
           let retained = false;
           try {
-            await retainE2eTestArtifacts(workspace!);
+            await retainE2eTestArtifacts({
+              workspacePath: workspace!.workspacePath,
+              artifactPath: workspace!.artifactPath,
+              // Only a run-all clears every result in the panel
+              // (`applyTestRunStartedAtom`). After a single-file or single-test
+              // run, the rows it didn't touch are still on screen with
+              // screenshot paths into an earlier run's artifact directory, so
+              // that directory must survive this one's prune.
+              supersedesAllResults: normalizedTestFile == null,
+            });
             retained = true;
           } catch (error) {
             logger.warn(

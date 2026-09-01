@@ -674,6 +674,45 @@ describe("tests handlers", () => {
       expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
     });
 
+    it("reports a test server that won't start as an infra error, not a crash", async () => {
+      // A broken start command, a compile error in the entry module, a
+      // readiness timeout — the most common way this feature fails. Letting it
+      // reject the IPC call makes the panel render an unknown `runError`
+      // instead of the infra banner, and the agent take its generic
+      // "unexpected error" branch instead of counting a non-attempt.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      startE2eTestRuntimeMock.mockRejectedValue(
+        new DyadError(
+          "The isolated test server exited before becoming ready.",
+          DyadErrorKind.Precondition,
+        ),
+      );
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(result.infraError?.message).toMatch(
+        /exited before becoming ready/i,
+      );
+      expect(result.results).toEqual([]);
+      expect(spawnStreamingMock).not.toHaveBeenCalled();
+    });
+
     it("keeps a finished run's results when artifact retention fails", async () => {
       const appId = seedApp("app");
       harness.db
@@ -840,11 +879,12 @@ describe("tests handlers", () => {
       });
     });
 
-    it("names the Supabase test user when the run then fails outright", async () => {
+    it("names the Supabase test user when Stop lands mid-run", async () => {
       // The teardown verdict is recorded in the run stage's `finally`, which
-      // runs before the throw propagates — so both outer-catch results carry no
-      // isolation of their own. Reading the mode off them reported a leaked
-      // auth user in the user's real project as "the isolated test database".
+      // runs before the cancellation reaches the outer catch — and that catch
+      // builds its result without an isolation. Reading the mode off the result
+      // reported a leaked auth user in the user's real project as "the isolated
+      // test database".
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -858,19 +898,22 @@ describe("tests handlers", () => {
           remoteCleanupCompleted: false,
         }),
       });
-      startE2eTestRuntimeMock.mockRejectedValue(
-        new Error("no free port for the isolated test server"),
-      );
-
-      await expect(
-        runAppTestsWithIsolation({
-          event: { sender: {} } as any,
-          appId,
-          source: "panel",
-        }),
-      ).rejects.toMatchObject({
-        message: expect.stringMatching(/temporary test user/i),
+      const stop = new AbortController();
+      startE2eTestRuntimeMock.mockImplementation(async () => {
+        stop.abort();
+        throw new Error("Test run stopped.");
       });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+        externalSignal: stop.signal,
+      });
+
+      expect(result.isolation).toBeUndefined();
+      expect(result.infraError?.message).toMatch(/temporary test user/i);
+      expect(result.infraError?.message).not.toMatch(/isolated test database/i);
     });
 
     it("points failure text at the real app, not the deleted sandbox", async () => {

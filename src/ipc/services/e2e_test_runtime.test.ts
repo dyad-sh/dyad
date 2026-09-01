@@ -230,6 +230,40 @@ describe("startE2eTestRuntime readiness", () => {
   }, 30_000);
 });
 
+describe("startE2eTestRuntime loopback family", () => {
+  it("finds a server that only bound the IPv6 loopback", async () => {
+    // Vite and Next bind the hostname `localhost`. Under Node's verbatim DNS
+    // ordering — the default on Windows, and anywhere the resolver puts `::1`
+    // first — that is an IPv6-only listener. `probePort` binds 127.0.0.1 only,
+    // so allocation succeeds and a v4-only poll would wait out the entire
+    // readiness budget on a server that was serving the whole time.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-v6-"));
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      [
+        'import http from "node:http";',
+        "const port = Number(process.argv[2]);",
+        "http",
+        '  .createServer((_req, res) => res.end("ok"))',
+        '  .listen(port, "::1");',
+      ].join("\n"),
+    );
+    let runtime: Awaited<ReturnType<typeof startE2eTestRuntime>> | undefined;
+    try {
+      runtime = await startE2eTestRuntime({
+        workspacePath: root,
+        installCommand: "true",
+        startCommand: `"${process.execPath}" server.mjs {port}`,
+      });
+      // And the URL handed to Playwright is the one that actually answered.
+      expect(runtime.baseUrl).toMatch(/^http:\/\/\[::1\]:\d+$/);
+    } finally {
+      await runtime?.stop();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
 describe("startE2eTestRuntime port recovery", () => {
   it("stops polling a dead port when the server announces the clash", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-port-"));

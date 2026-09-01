@@ -1229,13 +1229,39 @@ export async function runAppTestsWithIsolation({
           }
 
           emit("Starting the isolated test server…\n", "setup");
-          testRuntime = await startE2eTestRuntime({
-            workspacePath: workspace!.workspacePath,
-            installCommand: app.installCommand,
-            startCommand: app.startCommand,
-            signal: controller.signal,
-            onOutput: (chunk) => emit(chunk, "setup"),
-          });
+          try {
+            testRuntime = await startE2eTestRuntime({
+              workspacePath: workspace!.workspacePath,
+              installCommand: app.installCommand,
+              startCommand: app.startCommand,
+              signal: controller.signal,
+              onOutput: (chunk) => emit(chunk, "setup"),
+            });
+          } catch (error) {
+            // A Stop is not a start failure — let it reach the outer catch,
+            // which turns it into the same "Test run stopped." result.
+            if (controller.signal.aborted) throw error;
+            // Everything else here — a broken start command, a compile error in
+            // the entry module, a readiness timeout, no free port — is the most
+            // common way this feature fails, and it is an environment problem
+            // the user acts on. Reported as data for the same reason the
+            // prepare stage reports its own failures that way: letting it
+            // escape rejects the IPC call, so the panel renders an unknown
+            // `runError` instead of the infra banner and the agent takes its
+            // generic "unexpected error" branch instead of counting a
+            // non-attempt infra failure.
+            const message =
+              error instanceof Error ? error.message : String(error);
+            logger.error(
+              `Isolated E2E test server failed to start for app ${appId}: ${message}`,
+            );
+            return {
+              appId,
+              results: [],
+              infraError: { message },
+              isolation: prepared.isolation,
+            };
+          }
 
           if (prepared.authorizeRuntimeOrigin) {
             const runtimeOrigin = new URL(testRuntime.baseUrl).origin;

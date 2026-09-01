@@ -495,6 +495,21 @@ describe("TestsPanel", () => {
       ).toBeTruthy();
     });
 
+    it("disables Run for a refusal the preview cannot fix", async () => {
+      // The preview being up is irrelevant here: without a sandbox there is no
+      // throwaway branch, so every click comes back with the same refusal —
+      // next to a banner already saying tests won't run for this app.
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = { disableSandboxedE2eTests: true };
+      mocks.appUrl = "http://localhost:32100";
+      renderPanel();
+
+      const runAll = await screen.findByRole("button", {
+        name: "Run all tests",
+      });
+      expect(runAll.hasAttribute("disabled")).toBe(true);
+    });
+
     it("leaves a Supabase-linked app alone, Neon project or not", async () => {
       // `prepareIsolatedTestDatabase` takes the Supabase test-user branch
       // first, so a dual-linked app is isolated that way in any runtime and the

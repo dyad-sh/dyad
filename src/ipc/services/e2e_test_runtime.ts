@@ -283,8 +283,21 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * Poll until the server answers, and report WHICH loopback address it answered
+ * on.
+ *
+ * Both families are tried. Vite and Next bind the *hostname* `localhost`, and
+ * on Node 17+ (verbatim DNS ordering — the default on Windows, and anywhere the
+ * resolver returns `::1` first) that is an IPv6-only listener. `probePort` binds
+ * 127.0.0.1 only, so allocation succeeds, the server comes up healthy on
+ * `[::1]:port`, and a v4-only poll would get ECONNREFUSED until the whole
+ * readiness budget expired — on a server that was serving the entire time. The
+ * winner becomes Playwright's `baseURL`, so the tests reach the same address
+ * the poll proved was answering.
+ */
 async function waitForReady({
-  baseUrl,
+  candidateUrls,
   port,
   process: child,
   signal,
@@ -293,7 +306,7 @@ async function waitForReady({
   portHint,
   timeoutMs,
 }: {
-  baseUrl: string;
+  candidateUrls: readonly string[];
   port: number;
   process: ChildProcess;
   signal?: AbortSignal;
@@ -301,7 +314,7 @@ async function waitForReady({
   spawnError: () => Error | undefined;
   portHint: string;
   timeoutMs: number;
-}): Promise<void> {
+}): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (signal?.aborted) throw new Error("Test run stopped.");
@@ -339,17 +352,26 @@ async function waitForReady({
         `The isolated test server moved off port ${port} because it was already in use.`,
       );
     }
-    try {
-      // ANY response means the server is listening, 5xx included. Requiring a
-      // non-error status would refuse to start a run whose root route throws in
-      // dev — an SSR app with one broken page — and then fail the whole run on
-      // the readiness budget, including the specs that never visit `/`. Tests
-      // against an app with a broken page are the case this feature exists for,
-      // so the per-test failures have to reach the report instead.
-      await fetch(baseUrl, { signal: AbortSignal.timeout(1_000) });
-      return;
-    } catch {
-      // The server has not bound yet.
+    for (const candidate of candidateUrls) {
+      try {
+        // ANY response means the server is listening, 5xx included. Requiring a
+        // non-error status would refuse to start a run whose root route throws
+        // in dev — an SSR app with one broken page — and then fail the whole
+        // run on the readiness budget, including the specs that never visit
+        // `/`. Tests against an app with a broken page are the case this
+        // feature exists for, so the per-test failures have to reach the
+        // report instead.
+        const response = await fetch(candidate, {
+          signal: AbortSignal.timeout(1_000),
+        });
+        // Drop the body. An unread `Response.body` keeps undici's socket — and
+        // the dev server's connection — open for the rest of the run, and Node
+        // warns about it.
+        await response.body?.cancel();
+        return candidate;
+      } catch {
+        // Not listening on this address yet.
+      }
     }
     await delay(SERVER_READY_POLL_MS, signal);
   }
@@ -431,7 +453,11 @@ async function startServerOnPort({
   onOutput?: (chunk: string) => void;
   onBound: () => void;
 }): Promise<E2eTestRuntime> {
-  const baseUrl = `http://127.0.0.1:${port}`;
+  // IPv4 first — it is what a dev server binding `0.0.0.0` or `127.0.0.1`
+  // answers on, and the overwhelmingly common case — with the IPv6 loopback
+  // behind it for servers that bind the `localhost` hostname on a box whose
+  // resolver puts `::1` first. `waitForReady` returns whichever answered.
+  const candidateUrls = [`http://127.0.0.1:${port}`, `http://[::1]:${port}`];
   const isCustom = hasCustomE2eStartCommand({ installCommand, startCommand });
   const { command, env } = await buildE2eTestStartCommand({
     workspacePath,
@@ -499,8 +525,8 @@ async function startServerOnPort({
   signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
-    await waitForReady({
-      baseUrl,
+    const baseUrl = await waitForReady({
+      candidateUrls,
       port,
       process: child,
       signal,
@@ -512,7 +538,7 @@ async function startServerOnPort({
     // The server owns the port now, so a concurrent allocation only needs the
     // real bind check to see it is taken.
     onBound();
-    logger.info(`Isolated E2E server ready on port ${port}`);
+    logger.info(`Isolated E2E server ready at ${baseUrl}`);
     return {
       baseUrl,
       process: child,

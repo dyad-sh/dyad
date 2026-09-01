@@ -3,11 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { test, Timeout } from "./helpers/test_helper";
 
-// Both flows end in a filed report, with a back out on the way. Backing out on
-// its own only shows the dialog returned; carrying on afterwards is what shows
-// the flow still works, which is where this feature's regressions have been.
-//
-// The capture is stubbed at the IPC boundary, so these cover the flow's
+// The capture is stubbed at the IPC boundary, so these cover the form's
 // handling of a successful capture, not that an image reaches the clipboard.
 // A real capture needs a host that grants the window OS focus, which the CI
 // runner does not.
@@ -46,42 +42,30 @@ async function firstIssueUrl(electronApp: ElectronApplication) {
   return new URL((await read())[0]).searchParams;
 }
 
-test("file a bug report without a screenshot", async ({ po }) => {
+test("file a bug report with nothing attached", async ({ po }) => {
   await po.setUp();
   await recordIssueUrls(po.electronApp);
 
   await po.page.getByRole("button", { name: "Help" }).click();
   await po.page.getByRole("button", { name: "Report a Bug" }).click();
 
-  const description = po.page.getByLabel("What went wrong?");
+  const description = po.page.getByLabel("What happened?");
   await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
-  await po.page.getByLabel("Title").fill("Preview goes blank");
   await description.fill("Switching branches blanks the preview.");
 
-  await po.page.getByRole("button", { name: "Next: add a screenshot" }).click();
-  await expect(po.page.getByText("Take a screenshot?")).toBeVisible({
-    timeout: Timeout.MEDIUM,
-  });
+  // Nothing leaves the machine on this path.
+  await po.page.getByLabel("Basic system information and logs").uncheck();
+  await po.page.getByLabel("Chat session").uncheck();
 
-  // Backing out returns to the form with the draft, rather than discarding
-  // what the reporter already wrote.
-  await po.page.keyboard.press("Escape");
-  await expect(description).toHaveValue(
-    "Switching branches blanks the preview.",
-  );
-  await expect(po.page.getByText("Take a screenshot?")).not.toBeVisible();
-
-  // The report that follows the back out is the point: a dismissal must not
-  // leave state behind that breaks the next one.
-  await po.page.getByRole("button", { name: "Next: add a screenshot" }).click();
-  await po.page.getByText("File bug report without screenshot").click();
+  await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
 
   const params = await firstIssueUrl(po.electronApp);
-  expect(params.get("title")).toBe("[bug] Preview goes blank");
   expect(params.get("labels")).toContain("bug");
   const body = params.get("body") ?? "";
-  expect(body).toContain("Screenshot status: declined");
   expect(body).toContain("Switching branches blanks the preview.");
+  expect(body).toContain("Screenshot status: declined");
+  expect(body).toContain("Not included.");
+  expect(body).not.toContain("Session ID");
 });
 
 test("report a bug with a chat session and a screenshot", async ({ po }) => {
@@ -124,14 +108,15 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     await description.fill("The generated page is blank.");
     await expect(po.page.getByLabel("Chat session")).toBeChecked();
 
-    await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
-    await po.page.getByRole("button", { name: /recommended/ }).click();
-
-    // The prompt hides itself for the capture, then confirms it succeeded.
+    // The dialog hides itself for the capture, then comes back showing it.
+    await po.page.getByRole("button", { name: /Add a screenshot/ }).click();
     await expect(
-      po.page.getByText(/Screenshot captured to clipboard/),
+      po.page.getByAltText("Screenshot attached to this report"),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
-    await po.page.getByText("Create GitHub issue").click();
+    // The draft survives the dialog hiding and reopening.
+    await expect(description).toHaveValue("The generated page is blank.");
+
+    await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
 
     const params = await firstIssueUrl(po.electronApp);
     expect(params.get("labels")).toContain("bug");

@@ -20,10 +20,10 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
 import { showError, showInfo } from "@/lib/toast";
+import { SCREENSHOT_ERRORS } from "@/ipc/types/system";
 import { useTranslation } from "react-i18next";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
-import { BugScreenshotDialog, type PendingReport } from "./BugScreenshotDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { motion, AnimatePresence } from "framer-motion";
 import { useChatMode } from "@/hooks/useChatMode";
@@ -37,11 +37,34 @@ import {
   type ScreenshotOutcome,
 } from "@/lib/issueBody";
 import { IssueForm } from "./IssueForm";
+import { ScreenshotField } from "./ScreenshotField";
 import { ReportDisclosures } from "./ReportDisclosures";
 
 const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
 
 type DialogScreen = "main" | "form";
+
+/** Everything needed to file, snapshotted when the reporter submits. */
+interface OutgoingReport {
+  description: string;
+  screenshot: ScreenshotOutcome;
+  includeSystemInfo: boolean;
+  includeSession: boolean;
+  chatId: number | null;
+  bundle: SessionDebugBundle | null;
+}
+
+/**
+ * Known capture failures, reported instead of the raw message so the event
+ * carries a fixed set of values.
+ */
+function classifyCaptureFailure(reason: string): string {
+  if (reason.includes(SCREENSHOT_ERRORS.noFocusedWindow)) {
+    return "no-focused-window";
+  }
+  if (reason.includes(SCREENSHOT_ERRORS.emptyImage)) return "empty-image";
+  return "other";
+}
 
 const SCREEN_ORDER: DialogScreen[] = ["main", "form"];
 
@@ -129,10 +152,11 @@ export function HelpDialog() {
   );
   const [bundleLoading, setBundleLoading] = useState(false);
 
-  const [isScreenshotPromptOpen, setIsScreenshotPromptOpen] = useState(false);
-  const [pendingReport, setPendingReport] = useState<PendingReport | null>(
+  const [screenshot, setScreenshot] = useState<ScreenshotOutcome | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(
     null,
   );
+  const [isCapturing, setIsCapturing] = useState(false);
 
   const hasNavigated = useRef(false);
   const preloadedChatId = useRef<number | null>(null);
@@ -190,6 +214,9 @@ export function HelpDialog() {
     setFormDebugInfoFailed(false);
     setDebugBundle(null);
     setBundleLoading(false);
+    setScreenshot(null);
+    setScreenshotPreview(null);
+    setIsCapturing(false);
     hasNavigated.current = false;
     preloadedChatId.current = null;
   };
@@ -197,8 +224,8 @@ export function HelpDialog() {
   // The draft outlives a closed dialog, so reopening Help returns the reporter
   // to what they were writing.
   useEffect(() => {
-    if (!isOpen && !pendingReport && !reportOpen) resetDialogState();
-  }, [isOpen, pendingReport, reportOpen]);
+    if (!isOpen && !reportOpen) resetDialogState();
+  }, [isOpen, reportOpen]);
 
   // The preload guard is scoped to one opening, so a repeat force-close on the
   // same chat preloads again.
@@ -274,9 +301,11 @@ export function HelpDialog() {
   };
 
   /** Uploads the session and returns the ID the issue body references. */
-  const uploadSession = async (chatId: number): Promise<string> => {
-    const bundle =
-      debugBundle ?? (await ipc.misc.getSessionDebugBundle(chatId));
+  const uploadSession = async (
+    chatId: number,
+    loaded: SessionDebugBundle | null,
+  ): Promise<string> => {
+    const bundle = loaded ?? (await ipc.misc.getSessionDebugBundle(chatId));
     const response = await fetch(UPLOAD_URL_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -297,31 +326,66 @@ export function HelpDialog() {
     return "v2:" + filename.replace(".json", "");
   };
 
+  const captureScreenshot = () => {
+    if (isCapturing) return;
+    setIsCapturing(true);
+    posthog.capture("screenshot-prompt:capture-attempt", {
+      source: "report-bug",
+    });
+    // The dialog hides so that it stays out of the picture.
+    onClose();
+    setTimeout(async () => {
+      try {
+        const { dataUrl } = await ipc.system.takeScreenshot();
+        setScreenshot({ status: "captured" });
+        setScreenshotPreview(dataUrl);
+        posthog.capture("screenshot-prompt:captured", {
+          source: "report-bug",
+        });
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Failed to take screenshot";
+        setScreenshot({ status: "capture-failed", reason });
+        setScreenshotPreview(null);
+        posthog.capture("screenshot-prompt:capture-failed", {
+          source: "report-bug",
+          failure: classifyCaptureFailure(reason),
+        });
+        showError(reason);
+      } finally {
+        setIsCapturing(false);
+        setHelpDialog({ open: true });
+      }
+    }, 200); // Small delay for the dialog to close
+  };
+
+  const removeScreenshot = () => {
+    posthog.capture("screenshot-prompt:removed", { source: "report-bug" });
+    setScreenshot(null);
+    setScreenshotPreview(null);
+  };
+
   const handleSubmit = () => {
-    openScreenshotPrompt({
+    const report: OutgoingReport = {
       description,
+      screenshot: screenshot ?? { status: "declined" },
       includeSystemInfo,
       includeSession: includeSession && chatForSession != null,
       chatId: chatForSession ?? null,
-    });
-  };
-
-  const openScreenshotPrompt = (report: PendingReport) => {
-    setPendingReport(report);
+      bundle: debugBundle,
+    };
+    setReportOpen(false);
     onClose();
-    setIsScreenshotPromptOpen(true);
+    void fileReport(report);
   };
 
-  const fileReport = async (
-    screenshot: ScreenshotOutcome,
-    report: PendingReport,
-  ) => {
+  const fileReport = async (report: OutgoingReport) => {
     showInfo("Preparing your report...");
 
     let sessionId: string | null = null;
     if (report.includeSession && report.chatId != null) {
       try {
-        sessionId = await uploadSession(report.chatId);
+        sessionId = await uploadSession(report.chatId, report.bundle);
       } catch (error) {
         // A failed upload must not cost the reporter their whole report.
         console.error("Failed to upload chat session:", error);
@@ -348,42 +412,13 @@ export function HelpDialog() {
     openGitHubIssue({
       body: buildIssueBody({
         description: report.description,
-        screenshot,
+        screenshot: report.screenshot,
         diagnostics,
         sessionId,
         redactedUserId: userBudget?.redactedUserId,
       }),
       isDyadProUser,
     });
-  };
-
-  const handleScreenshotPromptContinue = (
-    screenshot: ScreenshotOutcome,
-    report: PendingReport,
-  ) => {
-    const ownsDraft = pendingReport === report;
-    setPendingReport((current) => (current === report ? null : current));
-    if (ownsDraft) {
-      setReportOpen(false);
-      setDescription("");
-      setAtCap(false);
-    }
-    void fileReport(screenshot, report);
-  };
-
-  // A prompt on screen belongs to a newer report, so an abandoned capture
-  // leaves it in place rather than closing it.
-  const handleCaptureAbandon = () => {
-    if (isScreenshotPromptOpen) return;
-    setPendingReport(null);
-    setHelpDialog({ open: true });
-  };
-
-  // Backing out of the prompt returns the reporter to the form as they left it.
-  const handleScreenshotPromptDismiss = () => {
-    setIsScreenshotPromptOpen(false);
-    setPendingReport(null);
-    setHelpDialog({ open: true });
   };
 
   // ---------------------------------------------------------------------------
@@ -474,7 +509,15 @@ export function HelpDialog() {
           onDescriptionChange={setDescription}
           atCap={atCap}
           onAtCapChange={setAtCap}
-          screenshot={null}
+          screenshot={
+            <ScreenshotField
+              outcome={screenshot}
+              previewSrc={screenshotPreview}
+              isCapturing={isCapturing}
+              onCapture={captureScreenshot}
+              onRemove={removeScreenshot}
+            />
+          }
           onSubmit={handleSubmit}
           disclosures={
             <ReportDisclosures
@@ -531,15 +574,6 @@ export function HelpDialog() {
       <HelpBotDialog
         isOpen={isHelpBotOpen}
         onClose={() => setIsHelpBotOpen(false)}
-      />
-      <BugScreenshotDialog
-        isOpen={isScreenshotPromptOpen}
-        onClose={() => setIsScreenshotPromptOpen(false)}
-        onDismiss={handleScreenshotPromptDismiss}
-        onCaptureAbandon={handleCaptureAbandon}
-        onContinue={handleScreenshotPromptContinue}
-        source="report-bug"
-        report={pendingReport}
       />
     </>
   );

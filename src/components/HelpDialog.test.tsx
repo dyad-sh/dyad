@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useSetAtom } from "jotai";
+import { Provider, createStore, useSetAtom } from "jotai";
 import { useEffect } from "react";
 import { HelpDialog } from "./HelpDialog";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
@@ -156,6 +156,19 @@ function OpenHelpDialog() {
   );
 }
 
+/**
+ * A fresh store per test. Without it the crash-report atom set by one test is
+ * still live when the next one mounts, and HelpDialog's effects run before the
+ * harness can clear it.
+ */
+function renderHelp() {
+  return render(
+    <Provider store={createStore()}>
+      <OpenHelpDialog />
+    </Provider>,
+  );
+}
+
 function urlOfOpenedIssue(): URL {
   return new URL(mocks.openExternalUrl.mock.calls.at(-1)?.[0] as string);
 }
@@ -166,7 +179,7 @@ function bodyOfOpenedIssue(): string {
 
 /** Help -> Report a Bug -> a filled-in form. */
 async function openForm(description = "the preview goes blank") {
-  render(<OpenHelpDialog />);
+  renderHelp();
   fireEvent.click(await screen.findByText("Report a Bug"));
   const field = await screen.findByLabelText("What happened?");
   fireEvent.change(field, { target: { value: description } });
@@ -175,6 +188,11 @@ async function openForm(description = "the preview goes blank") {
 
 const submit = () =>
   fireEvent.click(screen.getByRole("button", { name: /Create GitHub issue/ }));
+
+const fileIt = async () => {
+  submit();
+  await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+};
 
 describe("HelpDialog report flow", () => {
   afterEach(() => {
@@ -202,7 +220,7 @@ describe("HelpDialog report flow", () => {
   });
 
   it("goes straight from Help to the form", async () => {
-    render(<OpenHelpDialog />);
+    renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));
 
     expect(await screen.findByLabelText("What happened?")).toBeTruthy();
@@ -213,12 +231,8 @@ describe("HelpDialog report flow", () => {
 
   it("files the report with the description in the body", async () => {
     await openForm("the preview goes blank after a branch switch");
-    submit();
-    fireEvent.click(
-      await screen.findByText("File bug report without screenshot"),
-    );
+    await fileIt();
 
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
     const body = bodyOfOpenedIssue();
     expect(body).toContain("the preview goes blank after a branch switch");
     expect(body).toContain("Screenshot status: declined");
@@ -226,7 +240,7 @@ describe("HelpDialog report flow", () => {
   });
 
   it("will not submit without a description of some substance", async () => {
-    render(<OpenHelpDialog />);
+    renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));
     fireEvent.change(await screen.findByLabelText("What happened?"), {
       target: { value: "asdf" },
@@ -234,7 +248,7 @@ describe("HelpDialog report flow", () => {
 
     submit();
 
-    expect(screen.queryByText("Take a screenshot?")).toBeNull();
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toContain(
       "Please describe what happened",
     );
@@ -243,12 +257,12 @@ describe("HelpDialog report flow", () => {
 
   it("accepts a short but real description", async () => {
     await openForm("it crashed");
-    submit();
-    expect(await screen.findByText("Take a screenshot?")).toBeTruthy();
+    await fileIt();
+    expect(bodyOfOpenedIssue()).toContain("it crashed");
   });
 
   it("treats whitespace as empty and clears the message once filled", async () => {
-    render(<OpenHelpDialog />);
+    renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));
     const field = await screen.findByLabelText("What happened?");
     fireEvent.change(field, { target: { value: "          " } });
@@ -316,14 +330,6 @@ describe("HelpDialog disclosures", () => {
     );
   });
 
-  const fileIt = async () => {
-    submit();
-    fireEvent.click(
-      await screen.findByText("File bug report without screenshot"),
-    );
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
-  };
-
   it("sends system information and a session by default", async () => {
     await openForm();
     await fileIt();
@@ -356,7 +362,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("offers no session when there is no chat open", async () => {
-    render(<OpenHelpDialog />);
+    renderHelp();
     fireEvent.click(screen.getByText("clear-chat"));
     fireEvent.click(await screen.findByText("Report a Bug"));
 
@@ -392,7 +398,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("opens the form with the session ticked after a force-close", async () => {
-    render(<OpenHelpDialog />);
+    renderHelp();
     await screen.findByText("Need help with Dyad?");
 
     fireEvent.click(screen.getByText("force-close-report"));
@@ -401,5 +407,107 @@ describe("HelpDialog disclosures", () => {
     expect(
       (screen.getByLabelText("Chat session") as HTMLInputElement).checked,
     ).toBe(true);
+  });
+});
+
+describe("HelpDialog screenshot", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
+    mocks.getSessionDebugBundle.mockResolvedValue(bundle);
+    mocks.uploadToSignedUrl.mockResolvedValue(undefined);
+    mocks.takeScreenshot.mockResolvedValue({
+      dataUrl: "data:image/png;base64,AAAA",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          uploadUrl: "https://upload.test/signed",
+          filename: "abc.json",
+        }),
+      }),
+    );
+  });
+
+  const addScreenshot = async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    return screen.findByAltText("Screenshot attached to this report");
+  };
+
+  it("captures from the form and shows it before it is sent", async () => {
+    await openForm();
+
+    const preview = (await addScreenshot()) as HTMLImageElement;
+
+    expect(preview.src).toContain("data:image/png");
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:captured",
+      { source: "report-bug" },
+    );
+  });
+
+  it("records a captured screenshot in the issue", async () => {
+    await openForm();
+    await addScreenshot();
+    submit();
+
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: captured");
+  });
+
+  it("records a decline when the reporter files without one", async () => {
+    await openForm();
+    submit();
+
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
+  it("goes back to declined when the screenshot is removed", async () => {
+    await openForm();
+    await addScreenshot();
+
+    fireEvent.click(screen.getByRole("button", { name: /Remove/ }));
+    expect(
+      screen.queryByAltText("Screenshot attached to this report"),
+    ).toBeNull();
+
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
+  it("keeps the draft while the dialog hides for the capture", async () => {
+    await openForm("half-written report");
+    await addScreenshot();
+
+    // The dialog closes to stay out of the picture, then comes back with the
+    // description still there.
+    expect(screen.getByDisplayValue("half-written report")).toBeTruthy();
+  });
+
+  it("records a failed capture and still lets the report go", async () => {
+    mocks.takeScreenshot.mockRejectedValue(
+      new Error("No focused window to capture"),
+    );
+    await openForm();
+
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:capture-failed",
+      { source: "report-bug", failure: "no-focused-window" },
+    );
+
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: capture-failed");
   });
 });

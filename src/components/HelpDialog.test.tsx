@@ -461,6 +461,35 @@ describe("HelpDialog disclosures", () => {
     expect(body).not.toContain("Session ID");
   });
 
+  it("uploads the session for the report's own chat", async () => {
+    mocks.getSessionDebugBundle.mockImplementation((id: number) =>
+      Promise.resolve({ ...bundle, codebase: `codebase-${id}` }),
+    );
+
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText("What happened?");
+
+    // Look at what the crash report would send, then abandon it.
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+    await waitFor(() =>
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(42),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText("What happened?"), {
+      target: { value: "a different problem" },
+    });
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+
+    const sent = mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data;
+    expect(sent.codebase).toBe("codebase-1");
+  });
+
   it("uploads the crashed chat, not whichever chat is selected", async () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
@@ -498,6 +527,17 @@ describe("HelpDialog disclosures", () => {
     const box = screen.getByLabelText("Chat session") as HTMLInputElement;
     expect(box.disabled).toBe(false);
     expect(box.checked).toBe(true);
+  });
+
+  it("counts a crash-opened form like any other report", async () => {
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText("What happened?");
+
+    expect(posthogClient.capture).toHaveBeenCalledWith("issue-form:opened", {
+      source: "report-bug",
+    });
   });
 
   it("opens the form with the session ticked after a force-close", async () => {
@@ -639,6 +679,33 @@ describe("HelpDialog screenshot", () => {
     expect(
       screen.queryByAltText("Screenshot attached to this report"),
     ).toBeNull();
+  });
+
+  it("leaves the screenshot button usable after a discarded capture", async () => {
+    let release = (_: unknown) => {};
+    mocks.takeScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("first report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+
+    release({ dataUrl: "data:image/png;base64,AAAA" });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("What happened?")).toBeTruthy(),
+    );
+    const button = screen.getByRole("button", {
+      name: /Add a screenshot/,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
   });
 
   it("records a failed capture and still lets the report go", async () => {

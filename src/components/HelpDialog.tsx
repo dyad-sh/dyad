@@ -268,11 +268,7 @@ export function HelpDialog() {
     const chatId = helpDialog.uploadChatId;
     if (chatId == null || preloadedChatId.current === chatId) return;
     preloadedChatId.current = chatId;
-    setReportOpen(true);
-    setDescription("");
-    setIncludeSession(true);
-    setIncludeSystemInfo(true);
-    setSessionChatId(chatId);
+    beginReport(chatId);
     setDirection(1);
     setScreen("form");
     hasNavigated.current = true;
@@ -282,7 +278,11 @@ export function HelpDialog() {
   // Actions
   // ---------------------------------------------------------------------------
 
-  const startReport = () => {
+  /**
+   * Everything a report starts from. Both entry points go through here so a
+   * new report cannot inherit anything from the last one.
+   */
+  const beginReport = (chatId: number | null) => {
     posthog.capture("issue-form:opened", { source: "report-bug" });
     captureToken.current++;
     blockedReported.current = false;
@@ -291,13 +291,17 @@ export function HelpDialog() {
     setAtCap(false);
     setIncludeSystemInfo(true);
     setIncludeSession(true);
-    setSessionChatId(selectedChatId);
+    setSessionChatId(chatId);
     setScreenshot(null);
     setScreenshotPreview(null);
-    // Re-read for this report: a failed read would otherwise leave the
-    // disclosure stuck on its error with nothing to retry it.
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
+    setDebugBundle(null);
+    setBundleLoading(false);
+  };
+
+  const startReport = () => {
+    beginReport(selectedChatId);
     navigateTo("form");
   };
 
@@ -386,7 +390,9 @@ export function HelpDialog() {
         });
         showError(reason);
       } finally {
-        if (captureToken.current === token) setIsCapturing(false);
+        // Cleared whatever the token says: a capture only runs when no other
+        // is in flight, so this can never clear a newer one's flag.
+        setIsCapturing(false);
         setHelpDialog({ open: true });
       }
     }, 200); // Small delay for the dialog to close

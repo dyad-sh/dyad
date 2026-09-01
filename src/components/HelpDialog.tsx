@@ -323,15 +323,24 @@ export function HelpDialog() {
 
   const loadSessionBundle = () => {
     if (debugBundle || bundleLoading || sessionChatId == null) return;
+    // Reading a session serialises the whole codebase, so it can outlive the
+    // report that asked for it.
+    const token = captureToken.current;
     setBundleLoading(true);
     ipc.misc
       .getSessionDebugBundle(sessionChatId)
-      .then(setDebugBundle)
+      .then((loaded) => {
+        if (captureToken.current === token) setDebugBundle(loaded);
+      })
       .catch((error) => {
         console.error("Failed to load chat session:", error);
-        showError(t("home:help.failedToLoadChatSession"));
+        if (captureToken.current === token) {
+          showError(t("home:help.failedToLoadChatSession"));
+        }
       })
-      .finally(() => setBundleLoading(false));
+      .finally(() => {
+        if (captureToken.current === token) setBundleLoading(false);
+      });
   };
 
   /** Uploads the session and returns the ID the issue body references. */

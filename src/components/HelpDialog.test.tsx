@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Provider, createStore, useSetAtom } from "jotai";
 import { useEffect } from "react";
@@ -459,6 +465,48 @@ describe("HelpDialog disclosures", () => {
     const body = bodyOfOpenedIssue();
     expect(body).toContain("the preview goes blank");
     expect(body).not.toContain("Session ID");
+  });
+
+  it("discards a session read that lands after its report is gone", async () => {
+    let release = (_: unknown) => {};
+    mocks.getSessionDebugBundle.mockImplementation((id: number) =>
+      id === 42
+        ? new Promise((resolve) => {
+            release = () => resolve({ ...bundle, codebase: "codebase-42" });
+          })
+        : Promise.resolve({ ...bundle, codebase: `codebase-${id}` }),
+    );
+
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText("What happened?");
+
+    // Reading a session serialises the whole codebase, so it can be slow.
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+    await waitFor(() =>
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(42),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText("What happened?"), {
+      target: { value: "a different problem" },
+    });
+
+    // The abandoned read lands while the new report is on screen. Flushed so
+    // the state write happens before the report is submitted, which is the
+    // whole point of the test.
+    await act(async () => {
+      release(null);
+    });
+
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+    expect(mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data.codebase).toBe(
+      "codebase-1",
+    );
   });
 
   it("uploads the session for the report's own chat", async () => {

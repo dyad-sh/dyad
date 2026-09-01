@@ -54,7 +54,7 @@ export const PROSE_BUDGET = 2_000;
  * newlines, braces, quotes and colons, which cost 3 each, and they carry file
  * paths, so a non-ASCII home directory or app name multiplies them by 9.
  */
-export const LOG_ISSUE_BODY_LIMIT = 1_500;
+export const LOG_ISSUE_BODY_LIMIT = 2_000;
 
 /**
  * Cap for diagnostics that come from user-controlled strings: a custom model
@@ -351,17 +351,19 @@ ${clampTailToEncoded(debugInfo.logs, LOG_ISSUE_BODY_LIMIT) || "No logs available
  * rather than a hand-maintained summary of it. Two copies drifted twice while
  * this was being built, which is why this is a function and not a comment.
  */
+export interface Diagnostics {
+  debugInfo: SystemDebugInfo;
+  settings: UserSettings | null;
+  selectedModel: ModelSelection | null;
+  userBudget: UserBudgetInfo | undefined;
+}
+
 export function formatDiagnosticsSections({
   debugInfo,
   settings,
   selectedModel,
   userBudget,
-}: {
-  debugInfo: SystemDebugInfo;
-  settings: UserSettings | null;
-  selectedModel: ModelSelection | null;
-  userBudget: UserBudgetInfo | undefined;
-}): string {
+}: Diagnostics): string {
   return `${formatSystemInfoSection(debugInfo, userBudget)}
 
 ## Settings
@@ -375,14 +377,10 @@ export interface IssueBodyParams {
   screenshot: ScreenshotOutcome;
   /**
    * System information, settings and logs. Null when the reporter unticked
-   * the box, or when the diagnostics could not be read.
+   * the box, "unavailable" when they asked for it but it could not be read --
+   * a maintainer needs to tell those two apart.
    */
-  diagnostics: {
-    debugInfo: SystemDebugInfo;
-    settings: UserSettings | null;
-    selectedModel: ModelSelection | null;
-    userBudget: UserBudgetInfo | undefined;
-  } | null;
+  diagnostics: Diagnostics | "unavailable" | null;
   /** Set when a chat session was uploaded alongside the report. */
   sessionId: string | null;
   /** Shown so a maintainer knows a Pro reporter filed this. */
@@ -419,10 +417,16 @@ export function buildIssueBody({
     );
   }
 
-  if (diagnostics) {
+  if (diagnostics === "unavailable") {
+    sections.push(
+      "",
+      "## System Information",
+      "Could not be collected on this machine.",
+    );
+  } else if (diagnostics) {
     sections.push("", formatDiagnosticsSections(diagnostics));
   } else {
-    sections.push("", "## System Information", "Not included.");
+    sections.push("", "## System Information", "Not included by the reporter.");
   }
 
   return sections.join("\n") + "\n";

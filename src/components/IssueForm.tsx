@@ -8,7 +8,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Github } from "lucide-react";
+import { Github, Loader2Icon } from "lucide-react";
 import {
   MIN_DESCRIPTION_LENGTH,
   applyDescriptionEdit,
@@ -28,6 +28,8 @@ interface IssueFormProps {
   /** The system-information and chat-session disclosures. */
   disclosures: ReactNode;
   onSubmit: () => void;
+  /** Filing runs after submit and can take seconds on a large project. */
+  isFiling: boolean;
 }
 
 export function IssueForm({
@@ -39,6 +41,7 @@ export function IssueForm({
   screenshot,
   disclosures,
   onSubmit,
+  isFiling,
 }: IssueFormProps) {
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [blocked, setBlocked] = useState<{ attempt: number } | null>(null);
@@ -93,10 +96,11 @@ export function IssueForm({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="issue-description">What happened?</Label>
+        <Label htmlFor="issue-description">What happened? (required)</Label>
         <Textarea
           id="issue-description"
           ref={descriptionRef}
+          required
           aria-invalid={showBlocked}
           aria-describedby={showBlocked ? "issue-description-error" : undefined}
           value={description}
@@ -129,11 +133,21 @@ export function IssueForm({
 
       <Button
         onClick={handleSubmit}
+        disabled={isFiling}
         className="w-full py-5 text-base"
         size="lg"
       >
-        <Github className="mr-2 h-5 w-5" />
-        Create GitHub issue
+        {isFiling ? (
+          <>
+            <Loader2Icon className="mr-2 h-5 w-5 animate-spin" />
+            Preparing your report...
+          </>
+        ) : (
+          <>
+            <Github className="mr-2 h-5 w-5" />
+            Create GitHub issue
+          </>
+        )}
       </Button>
     </div>
   );

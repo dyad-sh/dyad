@@ -114,8 +114,12 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     // The dialog hides itself for the capture, then comes back showing it.
     await po.page.getByRole("button", { name: /Add a screenshot/ }).click();
     await expect(
-      po.page.getByAltText("Screenshot attached to this report"),
+      po.page.getByAltText("Screenshot copied to your clipboard"),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+    // The image travels on the clipboard, so the reporter has to be told.
+    await expect(
+      po.page.getByText(/in the GitHub issue to attach it/),
+    ).toBeVisible();
     // The draft survives the dialog hiding and reopening.
     await expect(description).toHaveValue("The generated page is blank.");
 

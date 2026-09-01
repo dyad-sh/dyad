@@ -41,9 +41,15 @@ export function ScreenshotField({
             what they are about to make public. */}
         <img
           src={previewSrc}
-          alt="Screenshot attached to this report"
+          alt="Screenshot copied to your clipboard"
           className="w-full max-h-72 object-contain rounded-md border bg-(--background-lightest)"
         />
+        {/* The image travels on the clipboard, not in the report, so the
+            reporter has to paste it once GitHub opens. */}
+        <p className="text-xs text-muted-foreground">
+          Copied to your clipboard. Press <kbd>Cmd</kbd>/<kbd>Ctrl</kbd> +{" "}
+          <kbd>V</kbd> in the GitHub issue to attach it.
+        </p>
       </div>
     );
   }
@@ -68,7 +74,8 @@ export function ScreenshotField({
             {isCapturing ? "Taking screenshot..." : "Add a screenshot"}
           </span>
           <span className="block text-xs text-muted-foreground">
-            Dyad hides while it captures. You will see it before it is sent.
+            Dyad hides while it captures. You will paste it into GitHub at the
+            end.
           </span>
         </span>
       </button>

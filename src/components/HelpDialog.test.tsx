@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   uploadToSignedUrl: vi.fn(),
   openExternalUrl: vi.fn(),
   takeScreenshot: vi.fn(),
+  recopyScreenshot: vi.fn(),
   showInfo: vi.fn(),
 }));
 
@@ -29,6 +30,7 @@ vi.mock("@/ipc/types", () => ({
       openExternalUrl: mocks.openExternalUrl,
       uploadToSignedUrl: mocks.uploadToSignedUrl,
       takeScreenshot: mocks.takeScreenshot,
+      recopyScreenshot: mocks.recopyScreenshot,
     },
     misc: { getSessionDebugBundle: mocks.getSessionDebugBundle },
   },
@@ -187,7 +189,7 @@ function bodyOfOpenedIssue(): string {
 async function openForm(description = "the preview goes blank") {
   renderHelp();
   fireEvent.click(await screen.findByText("Report a Bug"));
-  const field = await screen.findByLabelText("What happened?");
+  const field = await screen.findByLabelText(/What happened/);
   fireEvent.change(field, { target: { value: description } });
   return field as HTMLTextAreaElement;
 }
@@ -200,36 +202,37 @@ const fileIt = async () => {
   await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 };
 
-describe("HelpDialog report flow", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
+  mocks.getSessionDebugBundle.mockResolvedValue(bundle);
+  mocks.uploadToSignedUrl.mockResolvedValue(undefined);
+  mocks.recopyScreenshot.mockResolvedValue({ copied: true });
+  mocks.takeScreenshot.mockResolvedValue({
+    dataUrl: "data:image/png;base64,AAAA",
   });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
-    mocks.getSessionDebugBundle.mockResolvedValue(bundle);
-    mocks.uploadToSignedUrl.mockResolvedValue(undefined);
-    mocks.takeScreenshot.mockResolvedValue({
-      dataUrl: "data:image/png;base64,AAAA",
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          uploadUrl: "https://upload.test/signed",
-          filename: "abc.json",
-        }),
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        uploadUrl: "https://upload.test/signed",
+        filename: "abc.json",
       }),
-    );
-  });
+    }),
+  );
+});
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("HelpDialog report flow", () => {
   it("goes straight from Help to the form", async () => {
     renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));
 
-    expect(await screen.findByLabelText("What happened?")).toBeTruthy();
+    expect(await screen.findByLabelText(/What happened/)).toBeTruthy();
     expect(posthogClient.capture).toHaveBeenCalledWith("issue-form:opened", {
       source: "report-bug",
     });
@@ -248,7 +251,7 @@ describe("HelpDialog report flow", () => {
   it("will not submit without a description of some substance", async () => {
     renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));
-    fireEvent.change(await screen.findByLabelText("What happened?"), {
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
       target: { value: "asdf" },
     });
 
@@ -270,7 +273,7 @@ describe("HelpDialog report flow", () => {
   it("treats whitespace as empty and clears the message once filled", async () => {
     renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));
-    const field = await screen.findByLabelText("What happened?");
+    const field = await screen.findByLabelText(/What happened/);
     fireEvent.change(field, { target: { value: "          " } });
     submit();
     expect(screen.getByRole("alert")).toBeTruthy();
@@ -326,7 +329,7 @@ describe("HelpDialog report flow", () => {
 
     submit();
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
-    await screen.findByAltText("Screenshot attached to this report");
+    await screen.findByAltText("Screenshot copied to your clipboard");
     submit();
 
     const blocked = posthogClient.capture.mock.calls.filter(
@@ -369,37 +372,13 @@ describe("HelpDialog report flow", () => {
     expect(await screen.findByText("Need help with Dyad?")).toBeTruthy();
     fireEvent.click(screen.getByText("Report a Bug"));
     expect(
-      ((await screen.findByLabelText("What happened?")) as HTMLTextAreaElement)
+      ((await screen.findByLabelText(/What happened/)) as HTMLTextAreaElement)
         .value,
     ).toBe("");
   });
 });
 
 describe("HelpDialog disclosures", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
-    mocks.getSessionDebugBundle.mockResolvedValue(bundle);
-    mocks.uploadToSignedUrl.mockResolvedValue(undefined);
-    mocks.takeScreenshot.mockResolvedValue({
-      dataUrl: "data:image/png;base64,AAAA",
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          uploadUrl: "https://upload.test/signed",
-          filename: "abc.json",
-        }),
-      }),
-    );
-  });
-
   it("sends system information and a session by default", async () => {
     await openForm();
     await fileIt();
@@ -418,7 +397,9 @@ describe("HelpDialog disclosures", () => {
     await fileIt();
 
     const body = bodyOfOpenedIssue();
-    expect(body).toContain("## System Information\nNot included.");
+    expect(body).toContain(
+      "## System Information\nNot included by the reporter.",
+    );
     expect(body).not.toContain("- Dyad Version:");
   });
 
@@ -456,6 +437,41 @@ describe("HelpDialog disclosures", () => {
     );
   });
 
+  it("says diagnostics were unavailable rather than declined", async () => {
+    mocks.getSystemDebugInfo.mockRejectedValue(new Error("no debug info"));
+    await openForm();
+    await fileIt();
+
+    // A maintainer has to be able to tell a failed read from a reporter who
+    // chose not to share.
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Could not be collected on this machine.");
+    expect(body).not.toContain("Not included by the reporter.");
+  });
+
+  it("keeps the dialog up while the report is being filed", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    submit();
+
+    // Serialising a codebase and uploading it takes time; the reporter needs
+    // to see that something is happening and must not start a second report.
+    const button = (await screen.findByRole("button", {
+      name: /Preparing your report/,
+    })) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+
+    release(undefined);
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+  });
+
   it("still files the report when the session upload fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
 
@@ -480,7 +496,7 @@ describe("HelpDialog disclosures", () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
     fireEvent.click(screen.getByText("force-close-report"));
-    await screen.findByLabelText("What happened?");
+    await screen.findByLabelText(/What happened/);
 
     // Reading a session serialises the whole codebase, so it can be slow.
     const summaries = screen.getAllByText("Show what will be sent");
@@ -491,7 +507,7 @@ describe("HelpDialog disclosures", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(await screen.findByText("Report a Bug"));
-    fireEvent.change(await screen.findByLabelText("What happened?"), {
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
       target: { value: "a different problem" },
     });
 
@@ -517,7 +533,7 @@ describe("HelpDialog disclosures", () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
     fireEvent.click(screen.getByText("force-close-report"));
-    await screen.findByLabelText("What happened?");
+    await screen.findByLabelText(/What happened/);
 
     // Look at what the crash report would send, then abandon it.
     const summaries = screen.getAllByText("Show what will be sent");
@@ -528,7 +544,7 @@ describe("HelpDialog disclosures", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(await screen.findByText("Report a Bug"));
-    fireEvent.change(await screen.findByLabelText("What happened?"), {
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
       target: { value: "a different problem" },
     });
     submit();
@@ -542,14 +558,14 @@ describe("HelpDialog disclosures", () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
     fireEvent.click(screen.getByText("force-close-report"));
-    await screen.findByLabelText("What happened?");
-    fireEvent.change(screen.getByLabelText("What happened?"), {
+    await screen.findByLabelText(/What happened/);
+    fireEvent.change(screen.getByLabelText(/What happened/), {
       target: { value: "it crashed on me" },
     });
 
     // The dialog closes and reopens for the capture.
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
-    await screen.findByAltText("Screenshot attached to this report");
+    await screen.findByAltText("Screenshot copied to your clipboard");
 
     submit();
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
@@ -563,13 +579,13 @@ describe("HelpDialog disclosures", () => {
     await screen.findByText("Need help with Dyad?");
     fireEvent.click(screen.getByText("clear-chat"));
     fireEvent.click(screen.getByText("force-close-report"));
-    await screen.findByLabelText("What happened?");
+    await screen.findByLabelText(/What happened/);
     expect(
       (screen.getByLabelText("Chat session") as HTMLInputElement).checked,
     ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
-    await screen.findByAltText("Screenshot attached to this report");
+    await screen.findByAltText("Screenshot copied to your clipboard");
 
     // The reporter agreed to send the session; it must not quietly withdraw.
     const box = screen.getByLabelText("Chat session") as HTMLInputElement;
@@ -581,7 +597,7 @@ describe("HelpDialog disclosures", () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
     fireEvent.click(screen.getByText("force-close-report"));
-    await screen.findByLabelText("What happened?");
+    await screen.findByLabelText(/What happened/);
 
     expect(posthogClient.capture).toHaveBeenCalledWith("issue-form:opened", {
       source: "report-bug",
@@ -594,7 +610,7 @@ describe("HelpDialog disclosures", () => {
 
     fireEvent.click(screen.getByText("force-close-report"));
 
-    expect(await screen.findByLabelText("What happened?")).toBeTruthy();
+    expect(await screen.findByLabelText(/What happened/)).toBeTruthy();
     expect(
       (screen.getByLabelText("Chat session") as HTMLInputElement).checked,
     ).toBe(true);
@@ -602,33 +618,9 @@ describe("HelpDialog disclosures", () => {
 });
 
 describe("HelpDialog screenshot", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
-    mocks.getSessionDebugBundle.mockResolvedValue(bundle);
-    mocks.uploadToSignedUrl.mockResolvedValue(undefined);
-    mocks.takeScreenshot.mockResolvedValue({
-      dataUrl: "data:image/png;base64,AAAA",
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          uploadUrl: "https://upload.test/signed",
-          filename: "abc.json",
-        }),
-      }),
-    );
-  });
-
   const addScreenshot = async () => {
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
-    return screen.findByAltText("Screenshot attached to this report");
+    return screen.findByAltText("Screenshot copied to your clipboard");
   };
 
   it("captures from the form and shows it before it is sent", async () => {
@@ -666,7 +658,7 @@ describe("HelpDialog screenshot", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Remove/ }));
     expect(
-      screen.queryByAltText("Screenshot attached to this report"),
+      screen.queryByAltText("Screenshot copied to your clipboard"),
     ).toBeNull();
 
     submit();
@@ -691,10 +683,10 @@ describe("HelpDialog screenshot", () => {
     fireEvent.click(await screen.findByText("Report a Bug"));
 
     expect(
-      screen.queryByAltText("Screenshot attached to this report"),
+      screen.queryByAltText("Screenshot copied to your clipboard"),
     ).toBeNull();
 
-    fireEvent.change(await screen.findByLabelText("What happened?"), {
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
       target: { value: "a different problem" },
     });
     submit();
@@ -722,10 +714,10 @@ describe("HelpDialog screenshot", () => {
     release({ dataUrl: "data:image/png;base64,AAAA" });
 
     await waitFor(() =>
-      expect(screen.getByLabelText("What happened?")).toBeTruthy(),
+      expect(screen.getByLabelText(/What happened/)).toBeTruthy(),
     );
     expect(
-      screen.queryByAltText("Screenshot attached to this report"),
+      screen.queryByAltText("Screenshot copied to your clipboard"),
     ).toBeNull();
   });
 
@@ -748,12 +740,31 @@ describe("HelpDialog screenshot", () => {
     release({ dataUrl: "data:image/png;base64,AAAA" });
 
     await waitFor(() =>
-      expect(screen.getByLabelText("What happened?")).toBeTruthy(),
+      expect(screen.getByLabelText(/What happened/)).toBeTruthy(),
     );
     const button = screen.getByRole("button", {
       name: /Add a screenshot/,
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
+  });
+
+  it("puts the capture back on the clipboard as the report is filed", async () => {
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    // The reporter pastes it into GitHub next, so it has to be there rather
+    // than whatever they copied while filling the form in.
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+  });
+
+  it("does not touch the clipboard when there is no screenshot", async () => {
+    await openForm();
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
   });
 
   it("records a failed capture and still lets the report go", async () => {

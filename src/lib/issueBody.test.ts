@@ -202,7 +202,9 @@ describe("buildIssueBody", () => {
       diagnostics: null,
       sessionId: null,
     });
-    expect(withheld).toContain("## System Information\nNot included.");
+    expect(withheld).toContain(
+      "## System Information\nNot included by the reporter.",
+    );
     expect(withheld).not.toContain("- Dyad Version");
     expect(withheld).not.toContain("## Logs");
   });

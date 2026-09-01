@@ -34,6 +34,7 @@ import {
   buildIssueBody,
   buildIssueUrl,
   formatDiagnosticsSections,
+  type Diagnostics,
   type ScreenshotOutcome,
 } from "@/lib/issueBody";
 import { IssueForm } from "./IssueForm";
@@ -157,6 +158,7 @@ export function HelpDialog() {
     null,
   );
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isFiling, setIsFiling] = useState(false);
   // Fixed when the report starts. Reading it from the dialog atom would let it
   // change under the reporter, because closing the dialog for a capture drops
   // the crash-triggered chat id.
@@ -226,6 +228,7 @@ export function HelpDialog() {
     setScreenshot(null);
     setScreenshotPreview(null);
     setIsCapturing(false);
+    setIsFiling(false);
     setSessionChatId(null);
     captureToken.current++;
     hasNavigated.current = false;
@@ -402,7 +405,9 @@ export function HelpDialog() {
         // Cleared whatever the token says: a capture only runs when no other
         // is in flight, so this can never clear a newer one's flag.
         setIsCapturing(false);
-        setHelpDialog({ open: true });
+        // Only the report that started the capture wants the dialog back: by
+        // now the reporter may have filed and been sent to GitHub.
+        if (captureToken.current === token) setHelpDialog({ open: true });
       }
     }, 200); // Small delay for the dialog to close
   };
@@ -422,15 +427,11 @@ export function HelpDialog() {
       chatId: sessionChatId ?? null,
       bundle: debugBundle,
     };
-    captureToken.current++;
-    setReportOpen(false);
-    onClose();
+    setIsFiling(true);
     void fileReport(report);
   };
 
   const fileReport = async (report: OutgoingReport) => {
-    showInfo("Preparing your report...");
-
     let sessionId: string | null = null;
     if (report.includeSession && report.chatId != null) {
       try {
@@ -444,7 +445,7 @@ export function HelpDialog() {
       }
     }
 
-    let diagnostics = null;
+    let diagnostics: Diagnostics | "unavailable" | null = null;
     if (report.includeSystemInfo) {
       try {
         diagnostics = {
@@ -454,7 +455,23 @@ export function HelpDialog() {
           userBudget: userBudget ?? undefined,
         };
       } catch (error) {
+        // Told to the reporter and marked in the body, so it cannot be read
+        // as them having declined to share it.
         console.error("Failed to gather diagnostics:", error);
+        diagnostics = "unavailable";
+        showError(
+          "Could not read your system information. Filing the report without it.",
+        );
+      }
+    }
+
+    // Put the capture back on the clipboard now: the reporter pastes it into
+    // GitHub next, and anything they copied since would have replaced it.
+    if (report.screenshot.status === "captured") {
+      try {
+        await ipc.system.recopyScreenshot();
+      } catch (error) {
+        console.error("Failed to copy the screenshot:", error);
       }
     }
 
@@ -468,6 +485,11 @@ export function HelpDialog() {
       }),
       isDyadProUser,
     });
+
+    captureToken.current++;
+    setIsFiling(false);
+    setReportOpen(false);
+    onClose();
   };
 
   // ---------------------------------------------------------------------------
@@ -569,6 +591,7 @@ export function HelpDialog() {
             />
           }
           onSubmit={handleSubmit}
+          isFiling={isFiling}
           disclosures={
             <ReportDisclosures
               diagnostics={

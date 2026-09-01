@@ -410,6 +410,17 @@ export const systemContracts = {
   }),
 
   // Screenshot
+  /**
+   * Re-writes the last capture to the clipboard. The reporter pastes it into
+   * GitHub at the end of the flow, by which time anything else they copied
+   * would have replaced it.
+   */
+  recopyScreenshot: defineContract({
+    channel: "recopy-screenshot",
+    input: z.void(),
+    output: z.object({ copied: z.boolean() }),
+  }),
+
   takeScreenshot: defineContract({
     channel: "take-screenshot",
     input: z.void(),

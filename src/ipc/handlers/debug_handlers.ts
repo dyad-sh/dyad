@@ -309,6 +309,13 @@ function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
   }
 }
 
+/**
+ * The last capture at full resolution. Held so it can be put back on the
+ * clipboard when the report is filed: the reporter pastes it into GitHub
+ * minutes later, and anything they copy in between would replace it.
+ */
+let lastCapture: Electron.NativeImage | null = null;
+
 /** Twice the preview's max-h-72, so it stays sharp on a HiDPI display. */
 const PREVIEW_MAX_HEIGHT = 576;
 
@@ -541,6 +548,7 @@ export function registerDebugHandlers() {
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);
+    lastCapture = image;
 
     // The clipboard keeps the full-resolution capture; the returned data URL
     // only ever feeds a preview 288 CSS pixels tall. Encoding the untouched
@@ -552,5 +560,11 @@ export function registerDebugHandlers() {
         : image;
 
     return { dataUrl: preview.toDataURL() };
+  });
+
+  createTypedHandler(systemContracts.recopyScreenshot, async () => {
+    if (!lastCapture) return { copied: false };
+    clipboard.writeImage(lastCapture);
+    return { copied: true };
   });
 }

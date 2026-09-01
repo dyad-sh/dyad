@@ -301,6 +301,7 @@ describe("startE2eTestRuntime port accounting", () => {
       ].join("\n"),
     );
     process.env.DYAD_ATTEMPTS = attempts;
+    const output: string[] = [];
     try {
       // Precondition, not Internal: three fresh ports all taken means something
       // else on the machine holds them, which the user acts on — it must not
@@ -311,8 +312,15 @@ describe("startE2eTestRuntime port accounting", () => {
           workspacePath: root,
           installCommand: "true",
           startCommand: `"${process.execPath}" server.mjs {port}`,
+          onOutput: (chunk) => output.push(chunk),
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      // Announced twice, not three times. The third failure exits the loop
+      // straight into the error above, and "retrying with another port…" would
+      // be the last thing the user read before the run gave up.
+      expect(
+        output.filter((chunk) => /retrying with another port/.test(chunk)),
+      ).toHaveLength(2);
       const tried = fs.readFileSync(attempts, "utf8").trim().split("\n");
       expect(tried).toHaveLength(3);
       // A DIFFERENT port each time. `probePort` binds 127.0.0.1 and closes at

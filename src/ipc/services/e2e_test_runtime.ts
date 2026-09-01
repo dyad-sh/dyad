@@ -33,6 +33,8 @@ const SERVER_READY_TIMEOUT_MS = 120_000;
  */
 const INSTALL_AND_SERVER_READY_TIMEOUT_MS = 900_000;
 const SERVER_READY_POLL_MS = 250;
+/** How many ports a run tries before reporting that it couldn't get one. */
+const PORT_START_ATTEMPTS = 3;
 
 /**
  * How long the sandbox server gets to answer. A custom app's install step runs
@@ -521,15 +523,20 @@ export async function startE2eTestRuntime(
   // Shared across the three attempts, so each retry picks a port none of the
   // earlier ones already failed on.
   const excludedPorts = new Set<number>();
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < PORT_START_ATTEMPTS; attempt += 1) {
     try {
       return await startE2eTestRuntimeOnce({ ...options, excludedPorts });
     } catch (error) {
       lastError = error;
       if (!(error instanceof PortInUseError)) throw error;
-      options.onOutput?.(
-        "[test server] The selected port was taken; retrying with another port…\n",
-      );
+      // Only when a retry actually follows. On the last attempt the loop exits
+      // straight into the failure below, and promising a retry that never comes
+      // is the last thing the user reads before the run gives up.
+      if (attempt < PORT_START_ATTEMPTS - 1) {
+        options.onOutput?.(
+          "[test server] The selected port was taken; retrying with another port…\n",
+        );
+      }
     }
   }
   // Same reasoning: three fresh ports all found taken means something else on

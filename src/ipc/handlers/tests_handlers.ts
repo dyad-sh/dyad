@@ -121,9 +121,15 @@ function rewriteResultArtifactPaths(
   results: TestResult[],
   workspacePath: string,
   artifactPath: string | undefined,
+  /**
+   * Applied to the failure text, which carries spec locations and stack frames
+   * rooted at the sandbox — a directory deleted moments after the run.
+   */
+  rewriteText: (text: string) => string = (text) => text,
 ): TestResult[] {
   return results.map((result) => ({
     ...result,
+    error: result.error === undefined ? undefined : rewriteText(result.error),
     screenshotPath: rewriteE2eArtifactPath(
       result.screenshotPath,
       workspacePath,
@@ -131,6 +137,7 @@ function rewriteResultArtifactPaths(
     ),
     tests: result.tests?.map((test) => ({
       ...test,
+      error: test.error === undefined ? undefined : rewriteText(test.error),
       screenshotPath: rewriteE2eArtifactPath(
         test.screenshotPath,
         workspacePath,
@@ -636,7 +643,12 @@ async function runTestsAgainstNormalPreview({
     state: "stopping" | "cleaning-up",
     isolation?: TestIsolation,
   ) => void;
-  onIsolationCleanupFailed: (failed: boolean) => void;
+  /**
+   * Reports the teardown verdict along with the isolation it belongs to, so the
+   * caller's warning can name what actually leaked even when the result it
+   * folds the warning into carries no isolation of its own.
+   */
+  onIsolationCleanupFailed: (failed: boolean, isolation: TestIsolation) => void;
   testFile?: string;
   testLine?: number;
   grep?: string;
@@ -672,7 +684,16 @@ async function runTestsAgainstNormalPreview({
           appId,
           results: [],
           infraError: { message: neonRefusal },
-          isolation: { mode: "none" as const, reason: disclosure },
+          // NOT `disclosure`: that sentence says the tests ran against the
+          // normal preview, and this branch returned before anything ran. A
+          // badge asserting an execution that never happened, next to an error
+          // saying it didn't, is the wrong-thing copy this work set out to
+          // remove.
+          isolation: {
+            mode: "none" as const,
+            reason:
+              "No tests ran: Dyad won't run this app's tests against your real database.",
+          },
         };
       }
 
@@ -719,9 +740,10 @@ async function runTestsAgainstNormalPreview({
             if (prepared.isolation.mode !== "none") {
               emitProgress("cleaning-up", prepared.isolation);
             }
-            onIsolationCleanupFailed(true);
+            onIsolationCleanupFailed(true, prepared.isolation);
             onIsolationCleanupFailed(
               !(await prepared.teardown()).remoteCleanupCompleted,
+              prepared.isolation,
             );
           } catch (error) {
             logger.error(
@@ -742,7 +764,7 @@ async function runTestsAgainstNormalPreview({
  * exception.
  */
 type E2eTestPrepareResult =
-  | { installed: boolean; workspace: E2eTestWorkspace }
+  | { installed: boolean; workspace: E2eTestWorkspace; appPath: string }
   | { setupError: string };
 // INVARIANT: the two arms are exclusive — a `setupError` never carries a
 // workspace. `createE2eTestWorkspace` disposes its own partially-copied tree
@@ -917,14 +939,40 @@ export async function runAppTestsWithIsolation({
     }
   }
 
+  /**
+   * Set once this run has a sandbox. Everything Playwright prints — spec
+   * locations in the list reporter's output, stack frames in failure text — is
+   * rooted at the throwaway copy, which is deleted seconds after the run ends.
+   * Pointing those back at the real app keeps the output drawer's locations
+   * openable, and keeps the agent (whose `read_file` rejects anything outside
+   * the app directory) from being sent somewhere it cannot reach.
+   *
+   * Best-effort on the streamed side: a path split across two chunks survives
+   * unrewritten. The parsed results below are rewritten whole.
+   */
+  let sandboxPathRewrite: { from: string; to: string } | undefined;
+  const rewriteSandboxPaths = (text: string) =>
+    sandboxPathRewrite
+      ? text.replaceAll(sandboxPathRewrite.from, sandboxPathRewrite.to)
+      : text;
+
   const emit = (chunk: string, phase: "setup" | "running") =>
-    emitOutput(event, appId, runId, chunk, phase);
+    emitOutput(event, appId, runId, rewriteSandboxPaths(chunk), phase);
 
   let finalResult: RunAppTestsResult = { appId, results: [] };
   let workspace: E2eTestWorkspace | undefined;
   // The real env is never changed. This only reports a sandbox/provider cleanup
   // failure (for example, a temporary Neon branch left for startup recovery).
   let isolationCleanupFailed = false;
+  /**
+   * Which provider actually has something left over, recorded where the
+   * teardown verdict is. Read in preference to `finalResult.isolation`, which
+   * both outer-catch results — the abort and the unexpected failure — build
+   * without one, even though the run stage's `finally` has already set the flag
+   * by then. Reporting a leaked Supabase auth user as "the isolated test
+   * database" is the same wrong-thing copy this work set out to remove.
+   */
+  let cleanupIsolationMode: TestIsolation["mode"] | undefined;
   /**
    * Fold failed provider cleanup into a result. Applied on both exits so an
    * unexpected rejection cannot hide a temporary branch left for recovery.
@@ -940,7 +988,7 @@ export async function runAppTestsWithIsolation({
     // retried by their own startup sweep (`reconcileOrphanTestBranches`,
     // `reconcileOrphanTestUsers`), so both say so.
     const restoreMessage =
-      result.isolation?.mode === "supabase-test-user"
+      (cleanupIsolationMode ?? result.isolation?.mode) === "supabase-test-user"
         ? "Dyad couldn't delete the temporary test user it created in your Supabase project. Your app settings were not changed; Dyad will retry the deletion on next startup."
         : "Dyad couldn't finish cleaning up the isolated test database. Your app settings were not changed; Dyad will retry remote cleanup on next startup.";
     return {
@@ -1014,8 +1062,9 @@ export async function runAppTestsWithIsolation({
           signal: controller.signal,
           emit,
           emitProgress,
-          onIsolationCleanupFailed: (failed) => {
+          onIsolationCleanupFailed: (failed, isolation) => {
             isolationCleanupFailed = failed;
+            cleanupIsolationMode = isolation.mode;
           },
           testFile: normalizedTestFile ?? undefined,
           testLine,
@@ -1060,6 +1109,7 @@ export async function runAppTestsWithIsolation({
           emit("Copying the app into an isolated test workspace…\n", "setup");
           return {
             installed,
+            appPath: realAppPath,
             workspace: await createE2eTestWorkspace({
               appId,
               appPath: realAppPath,
@@ -1098,6 +1148,10 @@ export async function runAppTestsWithIsolation({
       return finalResult;
     }
     workspace = prepareResult.workspace;
+    sandboxPathRewrite = {
+      from: workspace.workspacePath,
+      to: prepareResult.appPath,
+    };
     // Set here, not when the route was chosen: this flag drives the cleanup
     // copy, and a run whose setup failed has no sandbox to claim Dyad is
     // deleting. Recorded once rather than re-read later, because the setting
@@ -1252,6 +1306,7 @@ export async function runAppTestsWithIsolation({
             result.results,
             workspace!.workspacePath,
             retained ? workspace!.artifactPath : undefined,
+            rewriteSandboxPaths,
           );
           return { ...result, isolation: prepared.isolation };
         } finally {
@@ -1277,6 +1332,7 @@ export async function runAppTestsWithIsolation({
               if (prepared.isolation.mode !== "none") {
                 emitProgress("cleaning-up", prepared.isolation);
               }
+              cleanupIsolationMode = prepared.isolation.mode;
               isolationCleanupFailed = true;
               // NOT `envRestored`: the sandbox path never rewrites the real
               // `.env.local`, so that flag only reports on a workspace file

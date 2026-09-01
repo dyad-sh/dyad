@@ -778,6 +778,12 @@ export function TestsPanel() {
   // but it must not promise the preview restart the old env-swap path did.
   const showNeonSandboxDisclosure =
     specs.length > 0 && !!app?.neonProjectId && sandboxAvailable === true;
+  // The other half of that disclosure. Without a sandbox there is no throwaway
+  // branch to point the app at, so the main process refuses a Neon run outright
+  // rather than testing against the user's real database — and saying nothing
+  // here leaves Run looking available right up until the refusal comes back.
+  const showNeonSandboxRefusal =
+    specs.length > 0 && !!app?.neonProjectId && sandboxAvailable === false;
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it
@@ -1577,6 +1583,17 @@ export function TestsPanel() {
               <span className="flex-1">
                 Neon test runs use a copy of your app and a temporary database.
                 Your preview keeps running against your real one.
+              </span>
+            </div>
+          )}
+
+          {!isRunning && showNeonSandboxRefusal && (
+            <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span className="flex-1">
+                {(settings?.runtimeMode2 ?? "host") === "host"
+                  ? "Tests won't run for this app while isolated test servers are off in Settings — without one there's no temporary database, and Dyad won't test against your real one."
+                  : "Tests won't run for this app in this runtime — isolated test servers aren't available here, so there's no temporary database, and Dyad won't test against your real one."}
               </span>
             </div>
           )}

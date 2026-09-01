@@ -472,6 +472,38 @@ describe("TestsPanel", () => {
       expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
     });
 
+    it("says a Neon run can't happen at all without the sandbox", async () => {
+      // The main process refuses this combination outright — no sandbox means
+      // no throwaway branch, and Dyad won't test against the real database. Run
+      // otherwise looks available right up until the refusal comes back.
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = { disableSandboxedE2eTests: true };
+      renderPanel();
+
+      expect(
+        await screen.findByText(/won't run for this app while isolated test/i),
+      ).toBeTruthy();
+    });
+
+    it("blames the runtime, not Settings, when that is what's missing", async () => {
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = { runtimeMode2: "docker" };
+      renderPanel();
+
+      expect(
+        await screen.findByText(/won't run for this app in this runtime/i),
+      ).toBeTruthy();
+    });
+
+    it("stays quiet about the refusal while settings are still loading", async () => {
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = undefined as unknown as Record<string, unknown>;
+      renderPanel();
+
+      await screen.findByText("signup.spec.ts");
+      expect(screen.queryByText(/won't run for this app/i)).toBeNull();
+    });
+
     it("promises no sandbox while settings are still loading", async () => {
       // The Run gate treats loading as "sandbox available" so it doesn't refuse
       // the run; this banner has to key off the same guard, or the panel

@@ -832,7 +832,142 @@ describe("tests handlers", () => {
         expect(result.infraError?.message).toMatch(/real database/i);
         expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
         expect(spawnStreamingMock).not.toHaveBeenCalled();
+        // The badge must not claim an execution that never happened. The
+        // fallback disclosure ("Tests run against your normal preview…") reads
+        // as exactly that next to an error saying they didn't.
+        expect(result.isolation?.reason).toMatch(/no tests ran/i);
+        expect(result.isolation?.reason).not.toMatch(/normal preview/i);
       });
+    });
+
+    it("names the Supabase test user when the run then fails outright", async () => {
+      // The teardown verdict is recorded in the run stage's `finally`, which
+      // runs before the throw propagates — so both outer-catch results carry no
+      // isolation of their own. Reading the mode off them reported a leaked
+      // auth user in the user's real project as "the isolated test database".
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "supabase-test-user" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: false,
+        }),
+      });
+      startE2eTestRuntimeMock.mockRejectedValue(
+        new Error("no free port for the isolated test server"),
+      );
+
+      await expect(
+        runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        }),
+      ).rejects.toMatchObject({
+        message: expect.stringMatching(/temporary test user/i),
+      });
+    });
+
+    it("points failure text at the real app, not the deleted sandbox", async () => {
+      // Playwright roots every spec location and stack frame at the throwaway
+      // copy, which is removed seconds later. The user can't open those paths
+      // and the agent's `read_file` rejects anything outside the app.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const sandboxPath = path.join(TEMP_BASE, "sandbox-copy");
+      fs.mkdirSync(sandboxPath, { recursive: true });
+      createE2eTestWorkspaceMock.mockImplementation(async () => ({
+        workspacePath: sandboxPath,
+        artifactPath: path.join(TEMP_BASE, "artifacts"),
+        dispose: vi.fn(),
+      }));
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      spawnStreamingMock.mockImplementation(
+        async ({ onOutput }: { onOutput?: (chunk: string) => void }) => {
+          onOutput?.(
+            `  1) ${path.join(sandboxPath, "e2e-tests", "a.spec.ts")}:12\n`,
+          );
+          const reportPath = path.join(
+            sandboxPath,
+            "test-results",
+            "results.json",
+          );
+          fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+          fs.writeFileSync(
+            reportPath,
+            JSON.stringify({
+              suites: [
+                {
+                  file: "e2e-tests/a.spec.ts",
+                  specs: [
+                    {
+                      title: "works",
+                      ok: false,
+                      tests: [
+                        {
+                          results: [
+                            {
+                              status: "failed",
+                              error: {
+                                message: `expect failed at ${path.join(sandboxPath, "e2e-tests", "a.spec.ts")}:12`,
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            }),
+          );
+          return {
+            code: 1,
+            stdout: "",
+            stderr: "",
+            aborted: false,
+            timedOut: false,
+          };
+        },
+      );
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      const realAppPath = path.join(TEMP_BASE, "app");
+      const failure = result.results[0];
+      expect(failure.status).toBe("failed");
+      expect(failure.error).not.toContain(sandboxPath);
+      expect(failure.error).toContain(
+        path.join(realAppPath, "e2e-tests", "a.spec.ts"),
+      );
+      // The streamed drawer output is rewritten the same way.
+      const streamed = broadcastToRegisteredWindowsMock.mock.calls
+        .filter(([, channel]) => channel === "tests:output")
+        .map(([, , payload]) => payload.chunk as string)
+        .join("");
+      expect(streamed).not.toContain(sandboxPath);
+      expect(streamed).toContain(
+        path.join(realAppPath, "e2e-tests", "a.spec.ts"),
+      );
     });
   });
 

@@ -5,7 +5,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePostHog } from "posthog-js/react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,8 @@ import {
 interface IssueFormProps {
   description: string;
   onDescriptionChange: (description: string) => void;
+  /** Called when the gate refuses a submit. Counted once per report. */
+  onBlocked: () => void;
   /** Whether the last edit was clipped by the size budget. */
   atCap: boolean;
   onAtCapChange: (atCap: boolean) => void;
@@ -32,6 +33,7 @@ interface IssueFormProps {
 export function IssueForm({
   description,
   onDescriptionChange,
+  onBlocked,
   atCap,
   onAtCapChange,
   screenshot,
@@ -43,10 +45,6 @@ export function IssueForm({
   const [caret, setCaret] = useState<{ start: number; end: number } | null>(
     null,
   );
-  const posthog = usePostHog();
-  // One event per form opening, so it can be read against issue-form:opened.
-  // The form unmounts when the reporter leaves it, so this resets with it.
-  const reportedBlocked = useRef(false);
 
   const missing = !describesSomething(description);
   const showBlocked = blocked !== null && missing;
@@ -61,10 +59,7 @@ export function IssueForm({
   const handleSubmit = () => {
     if (missing) {
       setBlocked((previous) => ({ attempt: (previous?.attempt ?? 0) + 1 }));
-      if (!reportedBlocked.current) {
-        reportedBlocked.current = true;
-        posthog.capture("issue-form:blocked", { source: "report-bug" });
-      }
+      onBlocked();
       return;
     }
     setBlocked(null);

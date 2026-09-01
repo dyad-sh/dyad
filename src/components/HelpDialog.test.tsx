@@ -314,6 +314,21 @@ describe("HelpDialog report flow", () => {
     expect(blocked[0][1]).toEqual({ source: "report-bug" });
   });
 
+  it("reports the gate once per form even across a capture", async () => {
+    renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+
+    submit();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await screen.findByAltText("Screenshot attached to this report");
+    submit();
+
+    const blocked = posthogClient.capture.mock.calls.filter(
+      (call) => call[0] === "issue-form:blocked",
+    );
+    expect(blocked).toHaveLength(1);
+  });
+
   it("re-reads diagnostics for each report after a failed read", async () => {
     mocks.getSystemDebugInfo.mockRejectedValueOnce(new Error("no debug info"));
 
@@ -444,6 +459,45 @@ describe("HelpDialog disclosures", () => {
     const body = bodyOfOpenedIssue();
     expect(body).toContain("the preview goes blank");
     expect(body).not.toContain("Session ID");
+  });
+
+  it("uploads the crashed chat, not whichever chat is selected", async () => {
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText("What happened?");
+    fireEvent.change(screen.getByLabelText("What happened?"), {
+      target: { value: "it crashed on me" },
+    });
+
+    // The dialog closes and reopens for the capture.
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await screen.findByAltText("Screenshot attached to this report");
+
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(42);
+    expect(mocks.getSessionDebugBundle).not.toHaveBeenCalledWith(1);
+  });
+
+  it("keeps the session offer after the dialog reopens with no chat selected", async () => {
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("clear-chat"));
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText("What happened?");
+    expect(
+      (screen.getByLabelText("Chat session") as HTMLInputElement).checked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await screen.findByAltText("Screenshot attached to this report");
+
+    // The reporter agreed to send the session; it must not quietly withdraw.
+    const box = screen.getByLabelText("Chat session") as HTMLInputElement;
+    expect(box.disabled).toBe(false);
+    expect(box.checked).toBe(true);
   });
 
   it("opens the form with the session ticked after a force-close", async () => {

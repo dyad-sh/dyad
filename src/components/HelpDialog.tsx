@@ -157,11 +157,19 @@ export function HelpDialog() {
     null,
   );
   const [isCapturing, setIsCapturing] = useState(false);
+  // Fixed when the report starts. Reading it from the dialog atom would let it
+  // change under the reporter, because closing the dialog for a capture drops
+  // the crash-triggered chat id.
+  const [sessionChatId, setSessionChatId] = useState<number | null>(null);
 
   const hasNavigated = useRef(false);
   // Identifies the draft a capture was started for. A capture that lands after
   // the draft was replaced belongs to a report that no longer exists.
   const captureToken = useRef(0);
+  // One issue-form:blocked per report, so it can be read against
+  // issue-form:opened. The form itself unmounts during a capture, so a guard
+  // inside it would reset too often.
+  const blockedReported = useRef(false);
   const preloadedChatId = useRef<number | null>(null);
 
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -191,8 +199,6 @@ export function HelpDialog() {
   const posthog = usePostHog();
   const isDyadProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
 
-  const chatForSession = helpDialog.uploadChatId ?? selectedChatId;
-
   // ---------------------------------------------------------------------------
   // Navigation and lifecycle
   // ---------------------------------------------------------------------------
@@ -220,6 +226,7 @@ export function HelpDialog() {
     setScreenshot(null);
     setScreenshotPreview(null);
     setIsCapturing(false);
+    setSessionChatId(null);
     captureToken.current++;
     hasNavigated.current = false;
     preloadedChatId.current = null;
@@ -265,6 +272,7 @@ export function HelpDialog() {
     setDescription("");
     setIncludeSession(true);
     setIncludeSystemInfo(true);
+    setSessionChatId(chatId);
     setDirection(1);
     setScreen("form");
     hasNavigated.current = true;
@@ -277,11 +285,13 @@ export function HelpDialog() {
   const startReport = () => {
     posthog.capture("issue-form:opened", { source: "report-bug" });
     captureToken.current++;
+    blockedReported.current = false;
     setReportOpen(true);
     setDescription("");
     setAtCap(false);
     setIncludeSystemInfo(true);
     setIncludeSession(true);
+    setSessionChatId(selectedChatId);
     setScreenshot(null);
     setScreenshotPreview(null);
     // Re-read for this report: a failed read would otherwise leave the
@@ -289,6 +299,12 @@ export function HelpDialog() {
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
     navigateTo("form");
+  };
+
+  const reportBlocked = () => {
+    if (blockedReported.current) return;
+    blockedReported.current = true;
+    posthog.capture("issue-form:blocked", { source: "report-bug" });
   };
 
   const handleBack = () => {
@@ -302,10 +318,10 @@ export function HelpDialog() {
   };
 
   const loadSessionBundle = () => {
-    if (debugBundle || bundleLoading || chatForSession == null) return;
+    if (debugBundle || bundleLoading || sessionChatId == null) return;
     setBundleLoading(true);
     ipc.misc
-      .getSessionDebugBundle(chatForSession)
+      .getSessionDebugBundle(sessionChatId)
       .then(setDebugBundle)
       .catch((error) => {
         console.error("Failed to load chat session:", error);
@@ -387,8 +403,8 @@ export function HelpDialog() {
       description,
       screenshot: screenshot ?? { status: "declined" },
       includeSystemInfo,
-      includeSession: includeSession && chatForSession != null,
-      chatId: chatForSession ?? null,
+      includeSession: includeSession && sessionChatId != null,
+      chatId: sessionChatId ?? null,
       bundle: debugBundle,
     };
     captureToken.current++;
@@ -525,6 +541,7 @@ export function HelpDialog() {
         <IssueForm
           description={description}
           onDescriptionChange={setDescription}
+          onBlocked={reportBlocked}
           atCap={atCap}
           onAtCapChange={setAtCap}
           screenshot={
@@ -554,11 +571,11 @@ export function HelpDialog() {
               onIncludeSystemInfoChange={setIncludeSystemInfo}
               bundle={debugBundle}
               bundleLoading={bundleLoading}
-              includeSession={includeSession && chatForSession != null}
+              includeSession={includeSession && sessionChatId != null}
               onIncludeSessionChange={setIncludeSession}
               onSessionExpand={loadSessionBundle}
               sessionUnavailableReason={
-                chatForSession == null
+                sessionChatId == null
                   ? "Open a chat first to include a session."
                   : undefined
               }

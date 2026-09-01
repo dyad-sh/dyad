@@ -284,6 +284,10 @@ export function HelpDialog() {
     setIncludeSession(true);
     setScreenshot(null);
     setScreenshotPreview(null);
+    // Re-read for this report: a failed read would otherwise leave the
+    // disclosure stuck on its error with nothing to retry it.
+    setFormDebugInfo(null);
+    setFormDebugInfoFailed(false);
     navigateTo("form");
   };
 

@@ -12,8 +12,11 @@ import { test, Timeout } from "./helpers/test_helper";
 async function stubScreenshotCapture(electronApp: ElectronApplication) {
   await electronApp.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler("take-screenshot");
+    // A real 1x1 PNG, so the preview actually decodes and the visibility
+    // assertion means something.
     ipcMain.handle("take-screenshot", () => ({
-      dataUrl: "data:image/png;base64,AAAA",
+      dataUrl:
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
     }));
   });
 }

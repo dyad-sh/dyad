@@ -334,6 +334,73 @@ describe("updater log section", () => {
   });
 });
 
+describe("diagnostics field caps", () => {
+  // A custom model id and a node path are user-controlled and otherwise
+  // unbounded, and the model name reaches the body twice.
+  it("caps a long custom model id wherever it appears", () => {
+    const body = buildIssueBody({
+      description: "it crashed",
+      screenshot: { status: "declined" },
+      diagnostics: {
+        ...diagnostics,
+        debugInfo: {
+          ...debugInfo,
+          selectedLanguageModel: "m".repeat(4_000),
+          nodePath: "/" + "p".repeat(4_000),
+        },
+      },
+      sessionId: null,
+    });
+
+    for (const line of body.split("\n")) {
+      if (line.startsWith("- Model:") || line.startsWith("- Node Path:")) {
+        expect(encoded(line)).toBeLessThan(200);
+      }
+    }
+  });
+
+  it("keeps the ceiling when every diagnostics field is absurd", () => {
+    const url = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+        screenshot: { status: "captured" },
+        diagnostics: {
+          debugInfo: {
+            ...debugInfo,
+            selectedLanguageModel: "\u754c".repeat(2_000),
+            nodePath: "\u754c".repeat(2_000),
+            logs: "log line\n".repeat(2_000),
+            updaterLogs: "updater line\n".repeat(2_000),
+          },
+          settings: {
+            selectedModel: {
+              provider: "\u754c".repeat(500),
+              name: "\u754c".repeat(500),
+            },
+            selectedChatMode: "build",
+            autoApproveChanges: true,
+            enableDyadPro: true,
+            runtimeMode2: "local-node",
+            releaseChannel: "stable",
+          } as unknown as UserSettings,
+          selectedModel: {
+            provider: "\u754c".repeat(500),
+            name: "\u754c".repeat(500),
+            effortLevel: "medium",
+          } as unknown as ModelSelection,
+          userBudget,
+        },
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+        redactedUserId: "user-abc",
+      }),
+    });
+
+    expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+});
+
 describe("issue URL budget", () => {
   // GitHub answers 500 past ~6,860 characters and 414 past ~8,500, so the
   // worst case the form can produce has to stay under the ceiling by

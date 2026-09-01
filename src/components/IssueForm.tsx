@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { usePostHog } from "posthog-js/react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -33,6 +40,13 @@ export function IssueForm({
 }: IssueFormProps) {
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [blocked, setBlocked] = useState<{ attempt: number } | null>(null);
+  const [caret, setCaret] = useState<{ start: number; end: number } | null>(
+    null,
+  );
+  const posthog = usePostHog();
+  // One event per form opening, so it can be read against issue-form:opened.
+  // The form unmounts when the reporter leaves it, so this resets with it.
+  const reportedBlocked = useRef(false);
 
   const missing = !describesSomething(description);
   const showBlocked = blocked !== null && missing;
@@ -47,17 +61,39 @@ export function IssueForm({
   const handleSubmit = () => {
     if (missing) {
       setBlocked((previous) => ({ attempt: (previous?.attempt ?? 0) + 1 }));
+      if (!reportedBlocked.current) {
+        reportedBlocked.current = true;
+        posthog.capture("issue-form:blocked", { source: "report-bug" });
+      }
       return;
     }
     setBlocked(null);
     onSubmit();
   };
 
-  const edit = (value: string) => {
-    const result = applyDescriptionEdit(description, value);
+  const edit = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const typed = event.target.value;
+    const result = applyDescriptionEdit(description, typed);
+    if (result.value !== typed) {
+      // The edit was clipped, so the value React writes back is shorter than
+      // what is in the DOM. Without this the caret lands at the end of the
+      // field and the reporter's next keystroke goes to the wrong place.
+      const dropped = result.value.length - typed.length;
+      const start = Math.max(0, (event.target.selectionStart ?? 0) + dropped);
+      const end = Math.max(0, (event.target.selectionEnd ?? 0) + dropped);
+      setCaret({ start, end });
+    }
     onDescriptionChange(result.value);
     onAtCapChange(result.hitCap);
   };
+
+  // Runs before paint, so the caret never visibly jumps. Setting state here is
+  // what forces the render when the clipped value equals the current one.
+  useLayoutEffect(() => {
+    if (!caret) return;
+    descriptionRef.current?.setSelectionRange(caret.start, caret.end);
+    setCaret(null);
+  }, [caret]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,7 +105,7 @@ export function IssueForm({
           aria-invalid={showBlocked}
           aria-describedby={showBlocked ? "issue-description-error" : undefined}
           value={description}
-          onChange={(e) => edit(e.target.value)}
+          onChange={edit}
           rows={3}
           placeholder="Describe the problem and how to reproduce it. The more detail, the faster we can help."
         />

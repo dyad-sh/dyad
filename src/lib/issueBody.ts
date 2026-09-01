@@ -56,6 +56,13 @@ export const PROSE_BUDGET = 2_000;
  */
 export const LOG_ISSUE_BODY_LIMIT = 1_500;
 
+/**
+ * Cap for diagnostics that come from user-controlled strings: a custom model
+ * id, a provider name, a path under a home directory. Without it these are the
+ * only inputs to the body with no bound, and the model name appears twice.
+ */
+const DIAGNOSTIC_FIELD_LIMIT = 120;
+
 /** Encoded ceiling applied on top of the updater log's own summarising. */
 const UPDATER_LOG_ENCODED_LIMIT = 600;
 
@@ -252,6 +259,11 @@ function formatSection(heading: string, hint: string, value: string): string {
   return `${heading}\n${trimmed || hint}`;
 }
 
+/** Holds one diagnostics line to its cap. */
+function field(value: string): string {
+  return clampToEncoded(value, DIAGNOSTIC_FIELD_LIMIT);
+}
+
 function formatSettingsLines(
   settings: UserSettings | null,
   selectedModel: ModelSelection | null,
@@ -259,7 +271,7 @@ function formatSettingsLines(
   if (!settings) return "Settings not available";
   const model = selectedModel ?? settings.selectedModel;
   return [
-    `- Selected Model: ${model.provider}:${model.name}`,
+    `- Selected Model: ${field(`${model.provider}:${model.name}`)}`,
     `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
     `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
     `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
@@ -279,10 +291,10 @@ function formatSystemInfoSection(
 - Architecture: ${debugInfo.architecture}
 - Node Version: ${debugInfo.nodeVersion || "n/a"}
 - PNPM Version: ${debugInfo.pnpmVersion || "n/a"}
-- Node Path: ${debugInfo.nodePath || "n/a"}
+- Node Path: ${field(debugInfo.nodePath || "n/a")}
 - Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 - Telemetry ID: ${debugInfo.telemetryId || "n/a"}
-- Model: ${debugInfo.selectedLanguageModel || "n/a"}`;
+- Model: ${field(debugInfo.selectedLanguageModel || "n/a")}`;
 }
 
 /**

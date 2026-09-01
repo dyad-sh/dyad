@@ -283,6 +283,55 @@ describe("HelpDialog report flow", () => {
     ).toBeTruthy();
   });
 
+  it("leaves the caret where it was when an edit is clipped", async () => {
+    const field = await openForm("a".repeat(PROSE_BUDGET));
+
+    // Type one character ten in: there is no room, so it cannot land.
+    fireEvent.change(field, {
+      target: {
+        value: "a".repeat(10) + "X" + "a".repeat(PROSE_BUDGET - 10),
+        selectionStart: 11,
+        selectionEnd: 11,
+      },
+    });
+
+    expect(field.value).toBe("a".repeat(PROSE_BUDGET));
+    expect(field.selectionStart).toBe(10);
+  });
+
+  it("reports the gate once per form, not once per click", async () => {
+    renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+
+    submit();
+    submit();
+    submit();
+
+    const blocked = posthogClient.capture.mock.calls.filter(
+      (call) => call[0] === "issue-form:blocked",
+    );
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0][1]).toEqual({ source: "report-bug" });
+  });
+
+  it("re-reads diagnostics for each report after a failed read", async () => {
+    mocks.getSystemDebugInfo.mockRejectedValueOnce(new Error("no debug info"));
+
+    renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    expect(
+      await screen.findByText(/Diagnostics could not be read/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+
+    // The next report gets its own read rather than inheriting the failure.
+    await waitFor(() =>
+      expect(screen.queryByText(/Diagnostics could not be read/)).toBeNull(),
+    );
+  });
+
   it("keeps the draft when the reporter closes the dialog mid-form", async () => {
     await openForm("half-written report");
 

@@ -67,7 +67,7 @@ test("file a bug report with nothing attached", async ({ po }) => {
   const body = params.get("body") ?? "";
   expect(body).toContain("Switching branches blanks the preview.");
   expect(body).toContain("Screenshot status: declined");
-  expect(body).toContain("Not included.");
+  expect(body).toContain("Not included by the reporter.");
   expect(body).not.toContain("Session ID");
 });
 

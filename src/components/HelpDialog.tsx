@@ -159,6 +159,9 @@ export function HelpDialog() {
   const [isCapturing, setIsCapturing] = useState(false);
 
   const hasNavigated = useRef(false);
+  // Identifies the draft a capture was started for. A capture that lands after
+  // the draft was replaced belongs to a report that no longer exists.
+  const captureToken = useRef(0);
   const preloadedChatId = useRef<number | null>(null);
 
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -217,6 +220,7 @@ export function HelpDialog() {
     setScreenshot(null);
     setScreenshotPreview(null);
     setIsCapturing(false);
+    captureToken.current++;
     hasNavigated.current = false;
     preloadedChatId.current = null;
   };
@@ -272,18 +276,24 @@ export function HelpDialog() {
 
   const startReport = () => {
     posthog.capture("issue-form:opened", { source: "report-bug" });
+    captureToken.current++;
     setReportOpen(true);
     setDescription("");
     setAtCap(false);
     setIncludeSystemInfo(true);
     setIncludeSession(true);
+    setScreenshot(null);
+    setScreenshotPreview(null);
     navigateTo("form");
   };
 
   const handleBack = () => {
+    captureToken.current++;
     setReportOpen(false);
     setDescription("");
     setAtCap(false);
+    setScreenshot(null);
+    setScreenshotPreview(null);
     navigateTo("main");
   };
 
@@ -328,6 +338,7 @@ export function HelpDialog() {
 
   const captureScreenshot = () => {
     if (isCapturing) return;
+    const token = captureToken.current;
     setIsCapturing(true);
     posthog.capture("screenshot-prompt:capture-attempt", {
       source: "report-bug",
@@ -337,6 +348,7 @@ export function HelpDialog() {
     setTimeout(async () => {
       try {
         const { dataUrl } = await ipc.system.takeScreenshot();
+        if (captureToken.current !== token) return;
         setScreenshot({ status: "captured" });
         setScreenshotPreview(dataUrl);
         posthog.capture("screenshot-prompt:captured", {
@@ -345,6 +357,7 @@ export function HelpDialog() {
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Failed to take screenshot";
+        if (captureToken.current !== token) return;
         setScreenshot({ status: "capture-failed", reason });
         setScreenshotPreview(null);
         posthog.capture("screenshot-prompt:capture-failed", {
@@ -353,7 +366,7 @@ export function HelpDialog() {
         });
         showError(reason);
       } finally {
-        setIsCapturing(false);
+        if (captureToken.current === token) setIsCapturing(false);
         setHelpDialog({ open: true });
       }
     }, 200); // Small delay for the dialog to close
@@ -374,6 +387,7 @@ export function HelpDialog() {
       chatId: chatForSession ?? null,
       bundle: debugBundle,
     };
+    captureToken.current++;
     setReportOpen(false);
     onClose();
     void fileReport(report);

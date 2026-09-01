@@ -492,6 +492,52 @@ describe("HelpDialog screenshot", () => {
     expect(screen.getByDisplayValue("half-written report")).toBeTruthy();
   });
 
+  it("does not carry a screenshot into the next report", async () => {
+    await openForm("first report");
+    await addScreenshot();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+
+    expect(
+      screen.queryByAltText("Screenshot attached to this report"),
+    ).toBeNull();
+
+    fireEvent.change(await screen.findByLabelText("What happened?"), {
+      target: { value: "a different problem" },
+    });
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
+  it("drops a capture that lands after the draft was replaced", async () => {
+    let release = (_: unknown) => {};
+    mocks.takeScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("first report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    // The reporter reopens Help mid-capture and starts over.
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+
+    release({ dataUrl: "data:image/png;base64,AAAA" });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("What happened?")).toBeTruthy(),
+    );
+    expect(
+      screen.queryByAltText("Screenshot attached to this report"),
+    ).toBeNull();
+  });
+
   it("records a failed capture and still lets the report go", async () => {
     mocks.takeScreenshot.mockRejectedValue(
       new Error("No focused window to capture"),

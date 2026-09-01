@@ -71,7 +71,7 @@ export function IssueForm({
           value={description}
           onChange={(e) => edit(e.target.value)}
           rows={3}
-          placeholder="Describe the problem and how to reproduce it."
+          placeholder="Describe the problem and how to reproduce it. The more detail, the faster we can help."
         />
         {showBlocked && (
           <p

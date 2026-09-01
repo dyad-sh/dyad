@@ -70,7 +70,7 @@ export function IssueForm({
           aria-describedby={showBlocked ? "issue-description-error" : undefined}
           value={description}
           onChange={(e) => edit(e.target.value)}
-          rows={6}
+          rows={3}
           placeholder="Describe the problem and how to reproduce it."
         />
         {showBlocked && (

@@ -136,7 +136,7 @@ export function ReportDisclosures({
         id="include-system-info"
         title="Basic system information and logs"
         visibility="public"
-        subtitle="Dyad version, platform, settings and recent app logs, which can include file paths and project names. This appears in the GitHub issue, which anyone can read."
+        subtitle="Version, platform, settings and app logs. Logs can include file paths and project names."
         checked={includeSystemInfo}
         onCheckedChange={onIncludeSystemInfoChange}
       >
@@ -152,7 +152,7 @@ export function ReportDisclosures({
         id="include-session"
         title="Chat session"
         visibility="private"
-        subtitle="Your chat messages and a snapshot of your code, uploaded so the team can reproduce the problem. Not attached to the issue — only a reference ID is."
+        subtitle="Your chat messages and a snapshot of your code, so the team can reproduce it."
         checked={includeSession}
         onCheckedChange={onIncludeSessionChange}
         disabled={Boolean(sessionUnavailableReason)}

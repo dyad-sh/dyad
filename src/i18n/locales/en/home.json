@@ -174,7 +174,7 @@
     "reportBugHeading": "Report a bug",
     "back": "Back",
     "sessionUploadFailed": "Could not upload your chat session. Filing the report without it.",
-    "systemInfoFailed": "Could not read your system information. Filing the report without it.",
+    "systemInfoFailed": "Your system information could not be included. Filing the report without it.",
     "screenshotRestoreFailed": "Your screenshot could not be restored. Filing the report without it.",
     "updaterLogs": "Auto-Updater Logs",
     "appMetadata": "App Metadata",

@@ -45,6 +45,12 @@ const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
 
 type DialogScreen = "main" | "form";
 
+/** Which entry point a report came from, carried on every event it emits. */
+type ReportSource = "report-bug" | "force-close";
+
+/** How long a submit waits on a diagnostics read that has not landed yet. */
+const DIAGNOSTICS_SUBMIT_WAIT_MS = 3_000;
+
 /** Everything needed to file, snapshotted when the reporter submits. */
 interface OutgoingReport {
   description: string;
@@ -147,7 +153,9 @@ export function HelpDialog() {
   const [includeSession, setIncludeSession] = useState(true);
 
   // Shown in the disclosures, and sent as-is: the reporter agrees to what
-  // they can see, so the body must not carry anything else.
+  // they can see. The one exception is a submit that beats the read -- see
+  // fileReport, which waits briefly rather than call the machine
+  // undiagnosable, and so can send a snapshot that was never on screen.
   const [formDebugInfo, setFormDebugInfo] = useState<SystemDebugInfo | null>(
     null,
   );
@@ -187,9 +195,14 @@ export function HelpDialog() {
   // rather than start a second one, or the disclosure and the upload end up
   // showing and sending different snapshots.
   const sessionRequest = useRef<Promise<SessionDebugBundle> | null>(null);
+  // The diagnostics read in flight, for the same reason as the session one.
+  const diagnosticsRequest = useRef<Promise<SystemDebugInfo> | null>(null);
   // Mirrors captureId. Teardown runs from effects, where the state a closure
   // captured may already be a render behind.
   const activeCapture = useRef<string | null>(null);
+  // Where this report came from. A ref because the screenshot events fire from
+  // callbacks that outlive the render which started the report.
+  const reportSource = useRef<ReportSource>("report-bug");
 
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
@@ -287,8 +300,9 @@ export function HelpDialog() {
   useEffect(() => {
     if (screen !== "form") return;
     let active = true;
-    ipc.system
-      .getSystemDebugInfo()
+    const request = ipc.system.getSystemDebugInfo();
+    diagnosticsRequest.current = request;
+    request
       .then((info) => {
         if (!active) return;
         setFormDebugInfo(info);
@@ -309,7 +323,7 @@ export function HelpDialog() {
     const chatId = helpDialog.uploadChatId;
     if (chatId == null || preloadedChatId.current === chatId) return;
     preloadedChatId.current = chatId;
-    beginReport(chatId);
+    beginReport(chatId, "force-close");
     setDirection(1);
     setScreen("form");
     hasNavigated.current = true;
@@ -323,8 +337,9 @@ export function HelpDialog() {
    * Everything a report starts from. Both entry points go through here so a
    * new report cannot inherit anything from the last one.
    */
-  const beginReport = (chatId: number | null) => {
-    posthog.capture("issue-form:opened", { source: "report-bug" });
+  const beginReport = (chatId: number | null, source: ReportSource) => {
+    reportSource.current = source;
+    posthog.capture("issue-form:opened", { source });
     cancelReport();
     blockedReported.current = false;
     setReportOpen(true);
@@ -346,14 +361,16 @@ export function HelpDialog() {
   };
 
   const startReport = () => {
-    beginReport(selectedChatId);
+    beginReport(selectedChatId, "report-bug");
     navigateTo("form");
   };
 
   const reportBlocked = () => {
     if (blockedReported.current) return;
     blockedReported.current = true;
-    posthog.capture("issue-form:blocked", { source: "report-bug" });
+    posthog.capture("issue-form:blocked", {
+      source: reportSource.current,
+    });
   };
 
   const handleBack = () => {
@@ -487,6 +504,7 @@ export function HelpDialog() {
   const cancelReport = ({ keepCapture = false } = {}) => {
     captureToken.current++;
     sessionRequest.current = null;
+    diagnosticsRequest.current = null;
     setBundleLoading(false);
     if (!keepCapture) discardCapture();
     const uploadId = activeUpload.current;
@@ -511,7 +529,7 @@ export function HelpDialog() {
     const token = captureToken.current;
     setIsCapturing(true);
     posthog.capture("screenshot-prompt:capture-attempt", {
-      source: "report-bug",
+      source: reportSource.current,
     });
     // The dialog hides so that it stays out of the picture.
     onClose();
@@ -531,20 +549,24 @@ export function HelpDialog() {
         activeCapture.current = capture.captureId;
         setCaptureId(capture.captureId);
         posthog.capture("screenshot-prompt:captured", {
-          source: "report-bug",
+          source: reportSource.current,
         });
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Failed to take screenshot";
         if (captureToken.current !== token) return;
-        setScreenshot({ status: "capture-failed", reason });
-        setScreenshotPreview(null);
-        setCaptureId(null);
         posthog.capture("screenshot-prompt:capture-failed", {
-          source: "report-bug",
+          source: reportSource.current,
           failure: classifyCaptureFailure(reason),
         });
         showError(reason);
+        // A failed retake still leaves the earlier capture on the clipboard
+        // and in main, so it stays the report's screenshot rather than being
+        // replaced by an error and an empty box.
+        if (activeCapture.current) return;
+        setScreenshot({ status: "capture-failed", reason });
+        setScreenshotPreview(null);
+        setCaptureId(null);
       } finally {
         // Both belong to the report that started the capture: by now the
         // reporter may have filed, or started a report that owns the flag.
@@ -557,7 +579,9 @@ export function HelpDialog() {
   };
 
   const removeScreenshot = () => {
-    posthog.capture("screenshot-prompt:removed", { source: "report-bug" });
+    posthog.capture("screenshot-prompt:removed", {
+      source: reportSource.current,
+    });
     discardCapture();
     setScreenshot(null);
     setScreenshotPreview(null);
@@ -597,13 +621,35 @@ export function HelpDialog() {
       }
     }
 
-    // The reviewed snapshot, not a fresh read: the disclosure is what the
-    // reporter agreed to send, so it is what gets sent.
+    // Normally the reviewed snapshot rather than a fresh read: what the
+    // disclosure showed is what gets sent. The exception is below -- a submit
+    // that lands before the read does.
+    let debugInfo = report.debugInfo;
+    if (report.includeSystemInfo && !debugInfo && diagnosticsRequest.current) {
+      // Submitted while the disclosure was still loading. The read is already
+      // running, so give it a moment rather than call the report
+      // undiagnosable -- but never wait on it indefinitely: these are shell
+      // commands with no timeout of their own, and one wedged behind a proxy
+      // or a dead network drive would strand the reporter on a spinner with
+      // no way to file at all.
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      debugInfo = await Promise.race([
+        diagnosticsRequest.current.catch(() => null),
+        new Promise<null>((resolve) => {
+          deadline = setTimeout(
+            () => resolve(null),
+            DIAGNOSTICS_SUBMIT_WAIT_MS,
+          );
+        }),
+      ]);
+      clearTimeout(deadline);
+    }
+
     let diagnostics: Diagnostics | "unavailable" | null = null;
     if (report.includeSystemInfo) {
-      if (report.debugInfo) {
+      if (debugInfo) {
         diagnostics = {
-          debugInfo: report.debugInfo,
+          debugInfo,
           settings,
           selectedModel: diagnosticModelSelection,
           userBudget: userBudget ?? undefined,

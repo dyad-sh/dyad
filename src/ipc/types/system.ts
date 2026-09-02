@@ -415,7 +415,7 @@ export const systemContracts = {
     channel: "discard-screenshot",
     // A capture is a full-resolution picture of the window. Once the report it
     // belongs to is gone, nothing will ever paste it.
-    input: z.object({ captureId: z.string() }),
+    input: z.object({ captureId: z.string().min(1) }),
     output: z.object({ discarded: z.boolean() }),
   }),
 
@@ -423,7 +423,7 @@ export const systemContracts = {
     channel: "cancel-upload",
     // A reporter who backs out has withdrawn consent to send the session, so
     // the upload has to stop rather than finish unwatched.
-    input: z.object({ uploadId: z.string() }),
+    input: z.object({ uploadId: z.string().min(1) }),
     output: z.object({ cancelled: z.boolean() }),
   }),
 
@@ -437,7 +437,7 @@ export const systemContracts = {
     channel: "recopy-screenshot",
     // Names the capture to restore. Two reports can be open at once, and the
     // reporter must never be handed another report's screenshot to paste.
-    input: z.object({ captureId: z.string() }),
+    input: z.object({ captureId: z.string().min(1) }),
     output: z.object({ copied: z.boolean() }),
   }),
 

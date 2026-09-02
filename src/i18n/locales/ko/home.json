@@ -170,7 +170,7 @@
     "reportBugHeading": "버그 신고",
     "back": "뒤로",
     "sessionUploadFailed": "채팅 세션을 업로드하지 못했습니다. 세션 없이 신고서를 제출합니다.",
-    "systemInfoFailed": "시스템 정보를 읽지 못했습니다. 해당 정보 없이 신고서를 제출합니다.",
+    "systemInfoFailed": "시스템 정보를 포함하지 못했습니다. 해당 정보 없이 신고서를 제출합니다.",
     "screenshotRestoreFailed": "스크린샷을 복원하지 못했습니다. 스크린샷 없이 신고서를 제출합니다.",
     "updaterLogs": "자동 업데이트 로그",
     "appMetadata": "앱 메타데이터",

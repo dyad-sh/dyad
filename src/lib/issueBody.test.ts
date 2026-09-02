@@ -58,6 +58,18 @@ describe("formatScreenshotStatusLine", () => {
     );
   });
 
+  it("names a bare capture failure without inventing a reason", () => {
+    expect(formatScreenshotStatusLine({ status: "capture-failed" })).toBe(
+      "Screenshot status: capture-failed",
+    );
+  });
+
+  it("tells a maintainer to ask for a screenshot the reporter already has", () => {
+    expect(formatScreenshotStatusLine({ status: "captured" })).toContain(
+      "ask them to paste it",
+    );
+  });
+
   it("includes the failure reason when capture failed", () => {
     expect(
       formatScreenshotStatusLine({
@@ -494,6 +506,123 @@ describe("issue URL budget", () => {
           },
         },
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+      }),
+    });
+    expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+
+  // One oversized field at a time: a field added later without a cap shows up
+  // here rather than as a GitHub 500 on a reporter's machine. All of them at
+  // once is not a state any machine can be in.
+  const absurd = "\u754c".repeat(400);
+  it.each([
+    ["dyadVersion", { dyadVersion: absurd }],
+    ["platform", { platform: absurd }],
+    ["architecture", { architecture: absurd }],
+    ["nodeVersion", { nodeVersion: absurd }],
+    ["pnpmVersion", { pnpmVersion: absurd }],
+    ["nodePath", { nodePath: absurd }],
+    ["telemetryId", { telemetryId: absurd }],
+    ["selectedLanguageModel", { selectedLanguageModel: absurd }],
+  ])("keeps an oversized %s under the ceiling", (_name, override) => {
+    const url = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+        screenshot: { status: "captured" },
+        diagnostics: {
+          ...worstCaseDiagnostics,
+          debugInfo: { ...worstCaseDebugInfo, ...override },
+        },
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+        redactedUserId: "user-abc",
+      }),
+    });
+    expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+
+  it.each([
+    ["chat mode", { selectedChatMode: absurd }],
+    ["runtime mode", { runtimeMode2: absurd }],
+    ["release channel", { releaseChannel: absurd }],
+  ])("keeps an oversized %s under the ceiling", (_name, override) => {
+    const url = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+        screenshot: { status: "captured" },
+        diagnostics: {
+          ...worstCaseDiagnostics,
+          settings: {
+            ...worstCaseDiagnostics.settings,
+            ...override,
+          } as unknown as UserSettings,
+        },
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+        redactedUserId: "user-abc",
+      }),
+    });
+    expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+
+  it.each([["effort level", { effortLevel: absurd }]])(
+    "keeps an oversized %s under the ceiling",
+    (_name, override) => {
+      const url = buildIssueUrl({
+        title: ISSUE_TITLE,
+        labels: ["bug", "pro"],
+        body: buildIssueBody({
+          description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+          screenshot: { status: "captured" },
+          diagnostics: {
+            ...worstCaseDiagnostics,
+            selectedModel: {
+              ...worstCaseDiagnostics.selectedModel,
+              ...override,
+            } as unknown as ModelSelection,
+          },
+          sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+          redactedUserId: "user-abc",
+        }),
+      });
+      expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+    },
+  );
+
+  it("keeps an oversized diagnostics pro user id under the ceiling", () => {
+    const url = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+        screenshot: { status: "captured" },
+        diagnostics: {
+          ...worstCaseDiagnostics,
+          userBudget: { redactedUserId: absurd } as UserBudgetInfo,
+        },
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+        redactedUserId: "user-abc",
+      }),
+    });
+    expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+
+  it.each([
+    ["session id", { sessionId: absurd }],
+    ["pro user id", { redactedUserId: absurd }],
+  ])("keeps an oversized %s under the ceiling", (_name, override) => {
+    const url = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+        screenshot: { status: "captured" },
+        diagnostics: worstCaseDiagnostics,
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+        redactedUserId: "user-abc",
+        ...override,
       }),
     });
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);

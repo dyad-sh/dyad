@@ -10,11 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Github, Loader2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  MIN_DESCRIPTION_LENGTH,
-  applyDescriptionEdit,
-  describesSomething,
-} from "@/lib/issueBody";
+import { applyDescriptionEdit, describesSomething } from "@/lib/issueBody";
 
 interface IssueFormProps {
   description: string;
@@ -162,5 +158,3 @@ export function IssueForm({
     </div>
   );
 }
-
-export { MIN_DESCRIPTION_LENGTH };

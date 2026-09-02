@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { AlertCircleIcon, Loader2Icon } from "lucide-react";
-import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
+import { type SessionDebugBundle } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
 
 /** A row of the report the reporter can include or leave out. */
@@ -246,5 +246,3 @@ export function ReportDisclosures({
     </div>
   );
 }
-
-export type { SystemDebugInfo };

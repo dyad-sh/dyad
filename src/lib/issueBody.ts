@@ -30,11 +30,15 @@ export interface ScreenshotOutcome {
  * characters, answer 500 from there to ~8,000, and 414 beyond that. The
  * ceiling below leaves ~5% of headroom under the observed cliff.
  *
- * Every budget in this section is sized so that the worst case -- maximum
- * prose, maximum logs, maximum updater logs, a long title -- still fits.
- * `buildIssueUrl` never truncates; staying under the ceiling is guaranteed by
- * capping the inputs instead, which is what makes the limit visible to the
- * reporter while they type rather than silently after they submit.
+ * The large budgets -- prose, logs, updater logs, the title -- are sized so
+ * that all of them at maximum still fit, and that case is pinned by tests.
+ * The per-field caps are a backstop rather than part of that sum: every
+ * diagnostic field is capped so that no single one can push the body over,
+ * which is what the per-field tests pin. Nine saturating at once would go
+ * over, and no machine reports values like that -- in practice only a
+ * non-ASCII Windows node path comes close to its cap. `buildIssueUrl` never truncates -- the inputs are capped instead,
+ * which is what makes the limit visible to the reporter while they type
+ * rather than silently after they submit.
  *
  * The budgets below are counted in ENCODED characters, not in characters
  * typed, because that is the unit the ceiling is measured in and the two are
@@ -272,12 +276,12 @@ function formatSettingsLines(
   const model = selectedModel ?? settings.selectedModel;
   return [
     `- Selected Model: ${field(`${model.provider}:${model.name}`)}`,
-    `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
+    `- Chat Mode: ${field(settings.selectedChatMode ?? "default")}`,
     `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
     `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
-    `- Effort Level: ${selectedModel?.effortLevel ?? "medium"}`,
-    `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
-    `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
+    `- Effort Level: ${field(selectedModel?.effortLevel ?? "medium")}`,
+    `- Runtime Mode: ${field(settings.runtimeMode2 ?? "n/a")}`,
+    `- Release Channel: ${field(settings.releaseChannel ?? "n/a")}`,
   ].join("\n");
 }
 
@@ -286,14 +290,14 @@ function formatSystemInfoSection(
   userBudget: UserBudgetInfo | undefined,
 ): string {
   return `## System Information
-- Dyad Version: ${debugInfo.dyadVersion}
-- Platform: ${debugInfo.platform}
-- Architecture: ${debugInfo.architecture}
-- Node Version: ${debugInfo.nodeVersion || "n/a"}
-- PNPM Version: ${debugInfo.pnpmVersion || "n/a"}
+- Dyad Version: ${field(debugInfo.dyadVersion)}
+- Platform: ${field(debugInfo.platform)}
+- Architecture: ${field(debugInfo.architecture)}
+- Node Version: ${field(debugInfo.nodeVersion || "n/a")}
+- PNPM Version: ${field(debugInfo.pnpmVersion || "n/a")}
 - Node Path: ${field(debugInfo.nodePath || "n/a")}
-- Pro User ID: ${userBudget?.redactedUserId || "n/a"}
-- Telemetry ID: ${debugInfo.telemetryId || "n/a"}
+- Pro User ID: ${field(userBudget?.redactedUserId || "n/a")}
+- Telemetry ID: ${field(debugInfo.telemetryId || "n/a")}
 - Model: ${field(debugInfo.selectedLanguageModel || "n/a")}`;
 }
 
@@ -411,9 +415,9 @@ export function buildIssueBody({
     sections.push(
       "",
       "## Chat session",
-      `Session ID: ${sessionId}`,
+      `Session ID: ${field(sessionId)}`,
       "Session Schema: v2.0",
-      `Pro User ID: ${redactedUserId || "n/a"}`,
+      `Pro User ID: ${field(redactedUserId || "n/a")}`,
     );
   }
 

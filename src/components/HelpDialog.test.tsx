@@ -923,15 +923,63 @@ describe("HelpDialog disclosures", () => {
     expect(body).not.toContain("9.9.9");
   });
 
-  it("files without diagnostics when they never finish loading", async () => {
-    // Nothing to review, so nothing to send: the report still has to go.
-    mocks.getSystemDebugInfo.mockReturnValue(new Promise(() => {}));
-    await openForm();
-    await fileIt();
+  it("files anyway when the diagnostics read never comes back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.getSystemDebugInfo.mockReturnValue(new Promise(() => {}));
 
+      await openForm();
+      submit();
+      // A wedged shell command must not strand the reporter on a spinner.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+      await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+      expect(bodyOfOpenedIssue()).toContain(
+        "Could not be collected on this machine.",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports the gate against the report that was blocked", async () => {
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText(/What happened/);
+    submit();
+
+    // Both halves of the blocked/opened ratio have to name the same source,
+    // or the crash cohort reads as never hitting the gate.
+    await waitFor(() =>
+      expect(posthogClient.capture).toHaveBeenCalledWith("issue-form:blocked", {
+        source: "force-close",
+      }),
+    );
+  });
+
+  it("waits for diagnostics that are still loading rather than dropping them", async () => {
+    let release = (_: unknown) => {};
+    mocks.getSystemDebugInfo.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    // Submitting while the disclosure still says "Loading diagnostics...".
+    submit();
+    await act(async () => {
+      release(debugInfo);
+    });
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    // The machine was perfectly able to answer; it just had not yet.
     const body = bodyOfOpenedIssue();
-    expect(body).toContain("Could not be collected on this machine.");
-    expect(body).not.toContain("Not included by the reporter.");
+    expect(body).toContain("1.2.3");
+    expect(body).not.toContain("Could not be collected on this machine.");
   });
 
   it("keeps the dialog up while the report is being filed", async () => {
@@ -1080,15 +1128,43 @@ describe("HelpDialog disclosures", () => {
     expect(box.hasAttribute("data-checked")).toBe(true);
   });
 
-  it("counts a crash-opened form like any other report", async () => {
+  it("counts a crash-opened form, and says it came from the crash", async () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
     fireEvent.click(screen.getByText("force-close-report"));
     await screen.findByLabelText(/What happened/);
 
+    // Counted like any other report, but tellable apart from one: whether the
+    // crash flow works is a question the Help-menu numbers cannot answer.
+    expect(posthogClient.capture).toHaveBeenCalledWith("issue-form:opened", {
+      source: "force-close",
+    });
+  });
+
+  it("carries the crash source on the report's screenshot events too", async () => {
+    renderHelp();
+    await screen.findByText("Need help with Dyad?");
+    fireEvent.click(screen.getByText("force-close-report"));
+    await screen.findByLabelText(/What happened/);
+    await addScreenshot();
+
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:captured",
+      { source: "force-close" },
+    );
+  });
+
+  it("says a Help-menu report came from the Help menu", async () => {
+    await openForm();
+    await addScreenshot();
+
     expect(posthogClient.capture).toHaveBeenCalledWith("issue-form:opened", {
       source: "report-bug",
     });
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:captured",
+      { source: "report-bug" },
+    );
   });
 
   it("opens the form with the session ticked after a force-close", async () => {
@@ -1524,6 +1600,31 @@ describe("HelpDialog screenshot", () => {
     expect(alert.textContent).toContain("Could not take a screenshot.");
     expect(alert.textContent).toContain("You can still send the report");
     expect(alert.textContent).toContain("No focused window to capture");
+  });
+
+  it("keeps the earlier screenshot when a retake fails", async () => {
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockRejectedValueOnce(new Error("No focused window to capture"));
+
+    await openForm();
+    await addScreenshot();
+    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalledTimes(2));
+
+    // The first image is still on the clipboard and still in main, so losing
+    // it to a failed retake would throw away something that works.
+    expect(
+      await screen.findByAltText("Screenshot copied to your clipboard"),
+    ).toBeTruthy();
+    await fileIt();
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: captured");
+    expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
+      captureId: "capture-first",
+    });
   });
 
   it("drops a capture the reporter removed", async () => {

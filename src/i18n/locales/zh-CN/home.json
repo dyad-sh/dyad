@@ -171,7 +171,7 @@
     "reportBugHeading": "报告错误",
     "back": "返回",
     "sessionUploadFailed": "无法上传您的聊天会话。报告将在不包含它的情况下提交。",
-    "systemInfoFailed": "无法读取您的系统信息。报告将在不包含它的情况下提交。",
+    "systemInfoFailed": "无法包含您的系统信息。报告将在不包含它的情况下提交。",
     "screenshotRestoreFailed": "无法恢复您的屏幕截图。报告将在不包含它的情况下提交。",
     "updaterLogs": "自动更新日志",
     "appMetadata": "应用元数据",

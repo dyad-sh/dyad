@@ -55,6 +55,8 @@ import {
   DYAD_CONFIG_FILENAME,
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
+  PREVIEW_SLOW_MO_DELAY_MS,
+  PREVIEW_SLOW_MO_ENV,
   SLOW_MO_DELAY_MS,
   SLOW_MO_TEST_TIMEOUT_MS,
   TEST_BASE_URL_ENV,
@@ -446,6 +448,9 @@ async function runPreviewTestBatch({
       [TEST_BASE_URL_ENV]: baseUrl,
       [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
       [PREVIEW_CDP_TOKEN_ENV]: previewToken,
+      [PREVIEW_SLOW_MO_ENV]: String(
+        slowMo ? SLOW_MO_DELAY_MS : PREVIEW_SLOW_MO_DELAY_MS,
+      ),
       PLAYWRIGHT_NO_COPY_PROMPT: "1",
       ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
       PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,

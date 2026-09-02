@@ -69,6 +69,8 @@ import {
 import {
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
+  PREVIEW_SLOW_MO_DELAY_MS,
+  PREVIEW_SLOW_MO_ENV,
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
 
@@ -196,6 +198,9 @@ describe("preview runs", () => {
 
     expect(lastSpawn().env[PREVIEW_CDP_ENDPOINT_ENV]).toBe(CDP_ENDPOINT);
     expect(lastSpawn().env[PREVIEW_CDP_TOKEN_ENV]).toBe(CDP_TOKEN);
+    expect(lastSpawn().env[PREVIEW_SLOW_MO_ENV]).toBe(
+      String(PREVIEW_SLOW_MO_DELAY_MS),
+    );
   });
 
   it("asks the bootstrap to generate the shim", async () => {
@@ -497,6 +502,7 @@ describe("ordinary runs are untouched", () => {
     await runAppTestsCore({ appId: 1 });
 
     expect(lastSpawn().env[PREVIEW_CDP_ENDPOINT_ENV]).toBeUndefined();
+    expect(lastSpawn().env[PREVIEW_SLOW_MO_ENV]).toBeUndefined();
     expect(h.ensurePlaywrightBootstrap).toHaveBeenCalledWith(
       expect.objectContaining({ ensurePreviewShim: false }),
     );

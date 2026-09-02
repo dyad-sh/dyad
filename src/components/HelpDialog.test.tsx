@@ -20,7 +20,12 @@ const mocks = vi.hoisted(() => ({
   openExternalUrl: vi.fn(),
   takeScreenshot: vi.fn(),
   recopyScreenshot: vi.fn(),
+  showError: vi.fn(),
   showInfo: vi.fn(),
+  // Overridable per test; the default pair keeps the model lines out of the
+  // body, which most of these tests rely on.
+  settings: null as unknown,
+  chatById: null as ((id: number | null) => unknown) | null,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -49,7 +54,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: null }),
+  useSettings: () => ({ settings: mocks.settings }),
 }));
 
 vi.mock("@/hooks/useUserBudgetInfo", () => ({
@@ -59,7 +64,9 @@ vi.mock("@/hooks/useUserBudgetInfo", () => ({
 // Both are react-query backed and only feed the "Selected Model"/"Effort Level"
 // diagnostic lines, which these tests do not assert on.
 vi.mock("@/hooks/useChatMode", () => ({
-  useChatMode: () => ({ chat: null }),
+  useChatMode: (id: number | null) => ({
+    chat: mocks.chatById ? mocks.chatById(id) : null,
+  }),
 }));
 
 vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
@@ -67,7 +74,7 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
 }));
 
 vi.mock("@/lib/toast", () => ({
-  showError: vi.fn(),
+  showError: mocks.showError,
   showInfo: mocks.showInfo,
 }));
 
@@ -159,6 +166,8 @@ function OpenHelpDialog() {
       </button>
       {/* Stands in for having no chat open. */}
       <button onClick={() => setSelectedChatId(null)}>clear-chat</button>
+      {/* Stands in for the reporter moving to a different chat. */}
+      <button onClick={() => setSelectedChatId(2)}>other-chat</button>
       <HelpDialog />
     </>
   );
@@ -209,6 +218,8 @@ const fileIt = async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.settings = null;
+  mocks.chatById = null;
   mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
   mocks.getSessionDebugBundle.mockResolvedValue(bundle);
   mocks.uploadToSignedUrl.mockResolvedValue(undefined);
@@ -389,6 +400,54 @@ describe("HelpDialog report flow", () => {
     expect(bodyOfOpenedIssue()).toContain("4.5.6");
   });
 
+  it("reads diagnostics for a report started while the form is already up", async () => {
+    await openForm("half-written report");
+    await screen.findByText(/Dyad Version: 1\.2\.3/);
+    mocks.getSystemDebugInfo.mockResolvedValue({
+      ...debugInfo,
+      dyadVersion: "4.5.6",
+    });
+
+    // A crash report replaces the draft in place, so the screen never changes
+    // and only the report itself can ask for the new read.
+    fireEvent.click(screen.getByText("force-close-report"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "it crashed while I was working" },
+    });
+
+    expect(await screen.findByText(/Dyad Version: 4\.5\.6/)).toBeTruthy();
+    await fileIt();
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("4.5.6");
+    expect(body).not.toContain("Could not be collected on this machine.");
+  });
+
+  it("reports the model for the chat the report is about", async () => {
+    mocks.settings = {
+      selectedModel: { provider: "openai", name: "fallback-model" },
+    };
+    mocks.chatById = (id) => ({
+      modelSelection: {
+        provider: "openai",
+        name: id === 1 ? "chat-a-model" : "chat-b-model",
+        effortLevel: "high",
+      },
+    });
+
+    // The draft is pinned to chat 1; the reporter then goes to look at another
+    // chat before coming back to submit it.
+    await openForm("started in the first chat");
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("other-chat"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    await fileIt();
+
+    // The uploaded session is chat 1's, so the model has to be too.
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("chat-a-model");
+    expect(body).not.toContain("chat-b-model");
+  });
+
   it("keeps the last diagnostics while a reopened draft re-reads", async () => {
     await openForm("half-written report");
     await screen.findByText(/Dyad Version: 1\.2\.3/);
@@ -527,15 +586,36 @@ describe("HelpDialog disclosures", () => {
     await act(async () => {
       release(undefined);
     });
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
-    expect(bodyOfOpenedIssue()).toContain("the first problem");
-    // The finished filing must not close the dialog or clear the form the
-    // reporter is now using.
+    // Back cancels: the abandoned report does not open a browser on top of
+    // the one the reporter is now writing, and does not clear it either.
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue("the second problem")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Create GitHub issue/ }),
     ).toBeTruthy();
+  });
+
+  it("does not warn about a report the reporter backed out of", async () => {
+    let fail = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+
+    await openForm("a slow one");
+    submit();
+    await screen.findByRole("button", { name: /Preparing your report/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await act(async () => {
+      fail(new Error("offline"));
+    });
+
+    // Every one of these toasts says the report went without something. For a
+    // report that never went at all, that is just noise about nothing.
+    expect(mocks.showError).not.toHaveBeenCalled();
   });
 
   it("leaves a way out when filing stalls", async () => {
@@ -617,9 +697,11 @@ describe("HelpDialog disclosures", () => {
       live.some((node) => node.textContent?.includes("Preparing your report")),
     ).toBe(true);
 
+    // Let the filing finish inside this test, or it lands in the next one.
     await act(async () => {
       release(undefined);
     });
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
   });
 
   it("sends the diagnostics the reporter reviewed, not a later read", async () => {
@@ -961,16 +1043,7 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
-  it("restores this report's own capture, not a later one", async () => {
-    mocks.takeScreenshot
-      .mockResolvedValueOnce({
-        dataUrl: "data:image/png;base64,AAAA",
-        captureId: "capture-first",
-      })
-      .mockResolvedValueOnce({
-        dataUrl: "data:image/png;base64,BBBB",
-        captureId: "capture-second",
-      });
+  it("files nothing for a report the reporter backed out of", async () => {
     let release = (_: unknown) => {};
     mocks.uploadToSignedUrl.mockReturnValue(
       new Promise((resolve) => {
@@ -983,8 +1056,8 @@ describe("HelpDialog screenshot", () => {
     submit();
     await screen.findByRole("button", { name: /Preparing your report/ });
 
-    // Back is live during a slow filing, so a second report can be started
-    // and captured while the first is still uploading.
+    // Back is live during a slow filing, so the reporter can give up on it
+    // and start writing something else.
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(await screen.findByText("Report a Bug"));
     fireEvent.change(await screen.findByLabelText(/What happened/), {
@@ -995,11 +1068,69 @@ describe("HelpDialog screenshot", () => {
     await act(async () => {
       release(undefined);
     });
-    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
-    // The reporter is told to paste, so the clipboard must hold the image
-    // that belongs to the report GitHub just opened.
+    // Both are visible outside the dialog and would arrive with nothing on
+    // screen to explain them, so neither may happen for a report that was
+    // backed out of.
+    expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("does not open the browser when the reporter backs out mid-clipboard", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+
+    // Restoring the clipboard is an IPC round trip, so Back can land inside it.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await act(async () => {
+      release({ copied: true });
+    });
+
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("restores the capture the reporter kept, not the one they replaced", async () => {
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+
+    await openForm();
+    await addScreenshot();
+    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    // The first capture's preview is still on screen, so waiting for the alt
+    // text alone would race the retake.
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByAltText(
+            "Screenshot copied to your clipboard",
+          ) as HTMLImageElement
+        ).src,
+      ).toContain("BBBB"),
+    );
+    await fileIt();
+
+    // The reporter is told to paste, so the clipboard has to hold the image
+    // they actually kept.
     expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
+      captureId: "capture-second",
+    });
+    expect(mocks.recopyScreenshot).not.toHaveBeenCalledWith({
       captureId: "capture-first",
     });
   });

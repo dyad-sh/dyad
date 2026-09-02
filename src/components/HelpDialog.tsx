@@ -184,7 +184,9 @@ export function HelpDialog() {
 
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
-  const { chat: selectedChat } = useChatMode(selectedChatId);
+  // Once a report has a chat, that is the one described: a draft outlives a
+  // chat switch, and a crash report names a chat of its own.
+  const { chat: reportChat } = useChatMode(sessionChatId ?? selectedChatId);
   const { data: modelsByProviders } = useLanguageModelsByProviders();
   const defaultCatalogModel = settings
     ? modelsByProviders?.[settings.selectedModel.provider]?.find((model) =>
@@ -195,7 +197,7 @@ export function HelpDialog() {
       )
     : undefined;
   const diagnosticModelSelection = settings
-    ? (selectedChat?.modelSelection ??
+    ? (reportChat?.modelSelection ??
       createModelSelection({
         model: settings.selectedModel,
         catalogModel: defaultCatalogModel,
@@ -231,7 +233,6 @@ export function HelpDialog() {
     setIncludeSession(true);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
-    setDiagnosticsRun((run) => run + 1);
     setDebugBundle(null);
     setBundleLoading(false);
     setScreenshot(null);
@@ -323,6 +324,7 @@ export function HelpDialog() {
     setIsFiling(false);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
+    setDiagnosticsRun((run) => run + 1);
     setDebugBundle(null);
     setBundleLoading(false);
   };
@@ -463,6 +465,12 @@ export function HelpDialog() {
   };
 
   const fileReport = async (report: OutgoingReport, token: number) => {
+    // Every one of these says the report is being filed anyway, so none of
+    // them may reach a reporter who has already backed out of it.
+    const tellReporter = (message: string) => {
+      if (captureToken.current === token) showError(message);
+    };
+
     let sessionId: string | null = null;
     if (report.includeSession && report.chatId != null) {
       try {
@@ -470,7 +478,7 @@ export function HelpDialog() {
       } catch (error) {
         // A failed upload must not cost the reporter their whole report.
         console.error("Failed to upload chat session:", error);
-        showError(
+        tellReporter(
           "Could not upload your chat session. Filing the report without it.",
         );
       }
@@ -491,11 +499,17 @@ export function HelpDialog() {
         // Asked for but never read, so it is marked as unavailable rather
         // than as the reporter having declined.
         diagnostics = "unavailable";
-        showError(
+        tellReporter(
           "Could not read your system information. Filing the report without it.",
         );
       }
     }
+
+    // Everything past here is visible outside the dialog, and the upload above
+    // has no timeout, so a reporter who gave up and pressed Back could see it
+    // land minutes later with nothing on screen to explain it. Back landing
+    // inside the clipboard write below is still too late to take it back.
+    if (captureToken.current !== token) return;
 
     // Put the capture back on the clipboard now: the reporter pastes it into
     // GitHub next, and anything they copied since would have replaced it.
@@ -516,12 +530,13 @@ export function HelpDialog() {
           status: "capture-failed",
           reason: "The screenshot could not be put back on the clipboard",
         };
-        showError(
+        tellReporter(
           "Your screenshot could not be restored. Filing the report without it.",
         );
       }
     }
 
+    if (captureToken.current !== token) return;
     openGitHubIssue({
       body: buildIssueBody({
         description: report.description,

@@ -17,7 +17,12 @@ async function stubScreenshotCapture(electronApp: ElectronApplication) {
     ipcMain.handle("take-screenshot", () => ({
       dataUrl:
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      captureId: "e2e-capture",
     }));
+    // Without this the report takes the evicted-capture branch instead, and
+    // the status the test asserts on is not the one the app really produces.
+    ipcMain.removeHandler("recopy-screenshot");
+    ipcMain.handle("recopy-screenshot", () => ({ copied: true }));
   });
 }
 

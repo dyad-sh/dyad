@@ -577,6 +577,9 @@ export function registerDebugHandlers() {
     const image = captures.get(params.captureId);
     if (!image) return { copied: false };
     clipboard.writeImage(image);
+    // A full-resolution picture of the window can show source, paths or an
+    // open .env, and the clipboard is its last stop. Nothing reads it again.
+    captures.delete(params.captureId);
     return { copied: true };
   });
 }

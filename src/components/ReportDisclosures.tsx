@@ -3,6 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { AlertCircleIcon, Loader2Icon } from "lucide-react";
 import { type SessionDebugBundle, type SystemDebugInfo } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 /** A row of the report the reporter can include or leave out. */
 function Disclosure({
@@ -28,6 +29,7 @@ function Disclosure({
   onExpand?: () => void;
   children: ReactNode;
 }) {
+  const { t } = useTranslation(["home", "common"]);
   return (
     <div className="border rounded-lg p-3 space-y-2">
       <div className="flex items-start gap-2.5">
@@ -53,7 +55,9 @@ function Disclosure({
                   : "text-muted-foreground border-border bg-(--background-lightest)"
               }`}
             >
-              {visibility === "public" ? "Public" : "Private — Dyad team only"}
+              {visibility === "public"
+                ? t("home:report.public")
+                : t("home:report.private")}
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
@@ -73,7 +77,7 @@ function Disclosure({
         }}
       >
         <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-          Show what will be sent
+          {t("home:report.showWhatWillBeSent")}
         </summary>
         <div className="mt-2">{children}</div>
       </details>
@@ -136,13 +140,14 @@ export function ReportDisclosures({
   sessionUnavailableReason,
   locked,
 }: ReportDisclosuresProps) {
+  const { t } = useTranslation(["home", "common"]);
   return (
     <div className="space-y-2">
       <Disclosure
         id="include-system-info"
-        title="Basic system information and logs"
+        title={t("home:report.systemTitle")}
         visibility="public"
-        subtitle="Version, platform, settings and app logs. Logs can include file paths and project names."
+        subtitle={t("home:report.systemSubtitle")}
         checked={includeSystemInfo}
         onCheckedChange={onIncludeSystemInfoChange}
         disabled={locked}
@@ -150,16 +155,16 @@ export function ReportDisclosures({
         <div className="text-xs bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-56 overflow-y-auto font-mono whitespace-pre-wrap">
           {diagnostics ??
             (diagnosticsFailed
-              ? "Diagnostics could not be read. Your report will still be filed."
-              : "Loading diagnostics...")}
+              ? t("home:report.diagnosticsFailed")
+              : t("home:report.diagnosticsLoading"))}
         </div>
       </Disclosure>
 
       <Disclosure
         id="include-session"
-        title="Chat session"
+        title={t("home:report.sessionTitle")}
         visibility="private"
-        subtitle="Your chat messages and a snapshot of your code, so the team can reproduce it."
+        subtitle={t("home:report.sessionSubtitle")}
         checked={includeSession}
         onCheckedChange={onIncludeSessionChange}
         disabled={locked || Boolean(sessionUnavailableReason)}
@@ -169,41 +174,64 @@ export function ReportDisclosures({
         {bundleLoading && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2Icon className="h-3 w-3 animate-spin" />
-            Loading chat session...
+            {t("home:report.sessionLoading")}
           </div>
         )}
         {bundle && (
           <div className="space-y-1.5">
-            <Detail title="Chat Messages" mono={false}>
+            <Detail title={t("home:help.chatMessages")} mono={false}>
               {bundle.chat.messages.map((message) => (
                 <div key={message.id} className="mb-2">
                   <span className="font-semibold">
-                    {message.role === "user" ? "You" : "Assistant"}:{" "}
+                    {message.role === "user"
+                      ? t("home:help.you")
+                      : t("home:help.assistant")}
+                    :{" "}
                   </span>
                   <span>{message.content}</span>
                 </div>
               ))}
             </Detail>
-            <Detail title="Codebase Snapshot">{bundle.codebase}</Detail>
-            <Detail title="Logs">{bundle.logs}</Detail>
+            <Detail title={t("home:help.codebaseSnapshot")}>
+              {bundle.codebase}
+            </Detail>
+            <Detail title={t("home:help.logs")}>{bundle.logs}</Detail>
             {bundle.updaterLogs && (
-              <Detail title="Auto-Updater Logs">{bundle.updaterLogs}</Detail>
+              <Detail title={t("home:report.updaterLogs")}>
+                {bundle.updaterLogs}
+              </Detail>
             )}
-            <Detail title="System Information" mono={false}>
-              <p>Dyad Version: {bundle.system.dyadVersion}</p>
-              <p>Platform: {bundle.system.platform}</p>
-              <p>Architecture: {bundle.system.architecture}</p>
+            <Detail title={t("home:help.systemInformation")} mono={false}>
               <p>
-                Node Version: {bundle.system.nodeVersion || "Not available"}
+                {t("home:help.dyadVersion")} {bundle.system.dyadVersion}
+              </p>
+              <p>
+                {t("home:help.platform")} {bundle.system.platform}
+              </p>
+              <p>
+                {t("home:help.architecture")} {bundle.system.architecture}
+              </p>
+              <p>
+                {t("home:help.nodeVersion")}{" "}
+                {bundle.system.nodeVersion || t("home:report.notAvailable")}
               </p>
             </Detail>
-            <Detail title="Settings" data={bundle.settings} />
-            <Detail title="App Metadata" data={bundle.app} />
-            <Detail title="Custom Providers & Models" data={bundle.providers} />
-            <Detail title="MCP Servers" data={bundle.mcpServers} />
+            <Detail
+              title={t("home:report.settingsLabel")}
+              data={bundle.settings}
+            />
+            <Detail title={t("home:report.appMetadata")} data={bundle.app} />
+            <Detail
+              title={t("home:report.providers")}
+              data={bundle.providers}
+            />
+            <Detail
+              title={t("home:report.mcpServers")}
+              data={bundle.mcpServers}
+            />
             {bundle.memoryDiagnostics && (
               <Detail
-                title="Memory Diagnostics"
+                title={t("home:report.memoryDiagnostics")}
                 data={bundle.memoryDiagnostics}
               />
             )}
@@ -211,7 +239,7 @@ export function ReportDisclosures({
         )}
         {!bundle && !bundleLoading && (
           <p className="text-xs text-muted-foreground">
-            Expand to load the session that will be uploaded.
+            {t("home:report.sessionExpand")}
           </p>
         )}
       </Disclosure>

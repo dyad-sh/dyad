@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Github, Loader2Icon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   MIN_DESCRIPTION_LENGTH,
   applyDescriptionEdit,
@@ -43,6 +44,7 @@ export function IssueForm({
   onSubmit,
   isFiling,
 }: IssueFormProps) {
+  const { t } = useTranslation(["home", "common"]);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [blocked, setBlocked] = useState<{ attempt: number } | null>(null);
   const [caret, setCaret] = useState<{ start: number; end: number } | null>(
@@ -96,7 +98,9 @@ export function IssueForm({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="issue-description">What happened? (required)</Label>
+        <Label htmlFor="issue-description">
+          {t("home:report.whatHappened")}
+        </Label>
         <Textarea
           id="issue-description"
           ref={descriptionRef}
@@ -107,7 +111,7 @@ export function IssueForm({
           value={description}
           onChange={edit}
           rows={3}
-          placeholder="Describe the problem and how to reproduce it. The more detail, the faster we can help."
+          placeholder={t("home:report.descriptionPlaceholder")}
         />
         {showBlocked && (
           <p
@@ -115,7 +119,7 @@ export function IssueForm({
             className="text-xs text-destructive"
             role="alert"
           >
-            Please describe what happened &mdash; one sentence is enough.
+            {t("home:report.descriptionRequired")}
           </p>
         )}
         {atCap && (
@@ -123,8 +127,7 @@ export function IssueForm({
             className="text-xs text-amber-600 dark:text-amber-400"
             role="status"
           >
-            Character limit reached. You can finish writing your description on
-            GitHub in the next step.
+            {t("home:report.capReached")}
           </p>
         )}
       </div>
@@ -135,7 +138,7 @@ export function IssueForm({
       {/* The button's changing label is not reliably announced once focus
           has moved, so the state is also spoken here. */}
       <p className="sr-only" role="status" aria-live="polite">
-        {isFiling ? "Preparing your report..." : ""}
+        {isFiling ? t("home:report.preparing") : ""}
       </p>
 
       <Button
@@ -147,12 +150,12 @@ export function IssueForm({
         {isFiling ? (
           <>
             <Loader2Icon className="mr-2 h-5 w-5 animate-spin" />
-            Preparing your report...
+            {t("home:report.preparing")}
           </>
         ) : (
           <>
             <Github className="mr-2 h-5 w-5" />
-            Create GitHub issue
+            {t("home:report.createIssue")}
           </>
         )}
       </Button>

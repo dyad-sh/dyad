@@ -65,6 +65,15 @@ export function registerUploadHandlers() {
         body: JSON.stringify(data),
         signal: controller.signal,
       });
+    } catch (error) {
+      // A reporter backing out is an outcome, not a fault. Rethrowing would
+      // publish an AbortError to the exception telemetry, so the more often
+      // the cancel works the more broken the uploader would look.
+      if (controller.signal.aborted) {
+        logger.debug("Upload aborted before it finished");
+        return;
+      }
+      throw error;
     } finally {
       if (uploadId) uploads.delete(uploadId);
     }

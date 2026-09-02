@@ -183,6 +183,10 @@ export function HelpDialog() {
   const preloadedChatId = useRef<number | null>(null);
   // The upload in flight, so backing out can stop it sending.
   const activeUpload = useRef<string | null>(null);
+  // The session read in flight. Submitting before it lands must join it
+  // rather than start a second one, or the disclosure and the upload end up
+  // showing and sending different snapshots.
+  const sessionRequest = useRef<Promise<SessionDebugBundle> | null>(null);
   // Mirrors captureId. Teardown runs from effects, where the state a closure
   // captured may already be a render behind.
   const activeCapture = useRef<string | null>(null);
@@ -364,14 +368,31 @@ export function HelpDialog() {
     navigateTo("main");
   };
 
+  /**
+   * The one session read a report gets. Both the disclosure and the upload go
+   * through here, so whichever runs second joins the first instead of
+   * serialising the codebase again and sending a different snapshot than the
+   * one the reporter reviewed.
+   */
+  const readSession = (chatId: number): Promise<SessionDebugBundle> => {
+    const inFlight = sessionRequest.current;
+    if (inFlight) return inFlight;
+    const request = ipc.misc.getSessionDebugBundle(chatId);
+    sessionRequest.current = request;
+    // A failure must not be remembered, or every later attempt re-awaits it.
+    request.catch(() => {
+      if (sessionRequest.current === request) sessionRequest.current = null;
+    });
+    return request;
+  };
+
   const loadSessionBundle = () => {
     if (debugBundle || bundleLoading || sessionChatId == null) return;
     // Reading a session serialises the whole codebase, so it can outlive the
     // report that asked for it.
     const token = captureToken.current;
     setBundleLoading(true);
-    ipc.misc
-      .getSessionDebugBundle(sessionChatId)
+    readSession(sessionChatId)
       .then((loaded) => {
         if (captureToken.current === token) setDebugBundle(loaded);
       })
@@ -400,7 +421,7 @@ export function HelpDialog() {
     loaded: SessionDebugBundle | null,
     token: number,
   ): Promise<string | null> => {
-    const bundle = loaded ?? (await ipc.misc.getSessionDebugBundle(chatId));
+    const bundle = loaded ?? (await readSession(chatId));
     if (captureToken.current !== token) return null;
 
     const response = await fetch(UPLOAD_URL_ENDPOINT, {
@@ -448,7 +469,11 @@ export function HelpDialog() {
    */
   const dismissDialog = () => {
     if (isFiling) {
-      cancelReport();
+      // The draft survives a dismissal, so its screenshot is kept rather than
+      // discarded. One exception it cannot cover: if the clipboard restore had
+      // already succeeded, main dropped the image at that point and the
+      // preview outlives it.
+      cancelReport({ keepCapture: true });
       setIsFiling(false);
     }
     onClose();
@@ -459,9 +484,11 @@ export function HelpDialog() {
    * flight; the upload is the one thing that keeps sending regardless, so it
    * is aborted rather than left to finish.
    */
-  const cancelReport = () => {
+  const cancelReport = ({ keepCapture = false } = {}) => {
     captureToken.current++;
-    discardCapture();
+    sessionRequest.current = null;
+    setBundleLoading(false);
+    if (!keepCapture) discardCapture();
     const uploadId = activeUpload.current;
     if (!uploadId) return;
     activeUpload.current = null;
@@ -566,9 +593,7 @@ export function HelpDialog() {
       } catch (error) {
         // A failed upload must not cost the reporter their whole report.
         console.error("Failed to upload chat session:", error);
-        tellReporter(
-          "Could not upload your chat session. Filing the report without it.",
-        );
+        tellReporter(t("home:report.sessionUploadFailed"));
       }
     }
 
@@ -587,9 +612,7 @@ export function HelpDialog() {
         // Asked for but never read, so it is marked as unavailable rather
         // than as the reporter having declined.
         diagnostics = "unavailable";
-        tellReporter(
-          "Could not read your system information. Filing the report without it.",
-        );
+        tellReporter(t("home:report.systemInfoFailed"));
       }
     }
 
@@ -622,9 +645,7 @@ export function HelpDialog() {
           status: "capture-failed",
           reason: "The screenshot could no longer be restored for pasting",
         };
-        tellReporter(
-          "Your screenshot could not be restored. Filing the report without it.",
-        );
+        tellReporter(t("home:report.screenshotRestoreFailed"));
       }
     }
 
@@ -659,11 +680,9 @@ export function HelpDialog() {
       skipInitial={!hasNavigated.current}
     >
       <DialogHeader>
-        <DialogTitle>Need help with Dyad?</DialogTitle>
+        <DialogTitle>{t("home:help.needHelp")}</DialogTitle>
       </DialogHeader>
-      <DialogDescription>
-        If you need help or want to report an issue, here are some options:
-      </DialogDescription>
+      <DialogDescription>{t("home:help.helpOptions")}</DialogDescription>
       <div className="flex flex-col w-full mt-4 space-y-5">
         {isDyadProUser ? (
           <Button
@@ -682,28 +701,28 @@ export function HelpDialog() {
             }
             className="w-full py-6 bg-(--background-lightest)"
           >
-            <BookOpenIcon className="mr-2 h-5 w-5" /> Open Docs
+            <BookOpenIcon className="mr-2 h-5 w-5" /> {t("home:help.openDocs")}
           </Button>
         )}
 
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-border" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Report an issue
+            {t("home:report.reportAnIssue")}
           </span>
           <div className="h-px flex-1 bg-border" />
         </div>
 
         <div className="border rounded-lg p-4 space-y-3">
           <p className="text-sm text-muted-foreground">
-            Tell us what went wrong. You choose what to send along with it.
+            {t("home:report.reportBugBlurb")}
           </p>
           <Button
             variant="outline"
             onClick={startReport}
             className="w-full bg-(--background-lightest)"
           >
-            <BugIcon className="mr-2 h-4 w-4" /> Report a Bug
+            <BugIcon className="mr-2 h-4 w-4" /> {t("home:help.reportBug")}
           </Button>
         </div>
       </div>
@@ -720,13 +739,13 @@ export function HelpDialog() {
         <DialogTitle className="flex items-center">
           <Button
             variant="ghost"
-            aria-label="Back"
+            aria-label={t("home:report.back")}
             className="mr-2 p-0 h-8 w-8"
             onClick={handleBack}
           >
             <ChevronLeftIcon className="h-4 w-4" />
           </Button>
-          Report a bug
+          {t("home:report.reportBugHeading")}
         </DialogTitle>
       </DialogHeader>
 
@@ -772,7 +791,7 @@ export function HelpDialog() {
               locked={isFiling}
               sessionUnavailableReason={
                 sessionChatId == null
-                  ? "Open a chat first to include a session."
+                  ? t("home:report.sessionUnavailable")
                   : undefined
               }
             />

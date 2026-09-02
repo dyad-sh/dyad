@@ -53,9 +53,32 @@ vi.mock("posthog-js/react", () => ({
   usePostHog: () => posthogClient,
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}));
+// Resolves against the real English bundle rather than echoing the key, so
+// these tests assert on the copy a reporter sees and a mistyped key fails
+// here instead of shipping.
+vi.mock("react-i18next", async () => {
+  const home = (await import("@/i18n/locales/en/home.json")).default;
+  const common = (await import("@/i18n/locales/en/common.json")).default;
+  const bundles: Record<string, unknown> = { home, common };
+  const t = (key: string, vars?: Record<string, string>) => {
+    // Matches the app's defaultNS, so an unprefixed key resolves the same
+    // here as it would at runtime.
+    const [ns, path] = key.includes(":") ? key.split(":") : ["common", key];
+    const value = path
+      .split(".")
+      .reduce<unknown>(
+        (node, part) => (node as Record<string, unknown>)?.[part],
+        bundles[ns],
+      );
+    if (typeof value !== "string") throw new Error(`Missing i18n key: ${key}`);
+    // i18next substitutes {{name}}; without it a placeholder would render
+    // literally here and the test would pass on copy no reporter ever sees.
+    return value.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+      vars && name in vars ? vars[name] : match,
+    );
+  };
+  return { useTranslation: () => ({ t }) };
+});
 
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({ settings: mocks.settings }),
@@ -693,6 +716,21 @@ describe("HelpDialog disclosures", () => {
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
   });
 
+  it("keeps the screenshot of a draft that survives a dismissal", async () => {
+    mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
+
+    await openForm("a slow one");
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    // The form still shows the preview when they come back, so the image has
+    // to still exist for them to paste.
+    expect(mocks.discardScreenshot).not.toHaveBeenCalled();
+  });
+
   it("does not open GitHub for a report dismissed mid-filing", async () => {
     let release = (_: unknown) => {};
     mocks.uploadToSignedUrl.mockReturnValue(
@@ -711,6 +749,76 @@ describe("HelpDialog disclosures", () => {
     });
 
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("uploads the session the disclosure was reading, not a second copy", async () => {
+    let release = (_: unknown) => {};
+    mocks.getSessionDebugBundle.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+    await waitFor(() =>
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(1),
+    );
+
+    // Submitting before the read lands must join it, not start another: two
+    // reads mean the reporter reviews one snapshot and sends a different one.
+    submit();
+    await act(async () => {
+      release(bundle);
+    });
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("tries the session again after a failed preview read", async () => {
+    mocks.getSessionDebugBundle.mockRejectedValueOnce(new Error("locked"));
+
+    await openForm();
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+    await waitFor(() =>
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(1),
+    );
+
+    // Remembering the failure would cost the maintainer the session for good,
+    // and show the reporter a second error for the same fault.
+    await fileIt();
+    expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(2);
+    expect(bodyOfOpenedIssue()).toContain("Session ID");
+  });
+
+  it("shows the session it is uploading when expanded after submit", async () => {
+    let release = (_: unknown) => {};
+    mocks.getSessionDebugBundle.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    // The disclosure starts collapsed, so submitting first is the common path.
+    submit();
+    await waitFor(() =>
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(1),
+    );
+
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+    await act(async () => {
+      release(bundle);
+    });
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    // Expanding after submit must join the upload's read, not start a rival
+    // one that shows the reporter a different snapshot than the one sent.
+    expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a way out when filing stalls", async () => {
@@ -1383,6 +1491,39 @@ describe("HelpDialog screenshot", () => {
         captureId: "capture-1",
       }),
     );
+  });
+
+  it("shows the paste shortcut as keys, in one sentence", async () => {
+    await openForm();
+    await addScreenshot();
+
+    const hint = screen
+      .getByAltText("Screenshot copied to your clipboard")
+      .parentElement!.querySelector("p.text-xs")!;
+
+    // The sentence has to read as one sentence, with the keys marked up.
+    expect(hint.textContent).toBe(
+      "Copied to your clipboard. Press Cmd/Ctrl + V in the GitHub issue to attach it.",
+    );
+    expect(
+      Array.from(hint.querySelectorAll("kbd")).map((k) => k.textContent),
+    ).toEqual(["Cmd", "Ctrl", "V"]);
+  });
+
+  it("still shows why a capture failed", async () => {
+    mocks.takeScreenshot.mockRejectedValue(
+      new Error("No focused window to capture"),
+    );
+
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // The generic line is translated and the OS reason is not, so they render
+    // separately -- but the reason still has to reach the reporter.
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not take a screenshot.");
+    expect(alert.textContent).toContain("You can still send the report");
+    expect(alert.textContent).toContain("No focused window to capture");
   });
 
   it("drops a capture the reporter removed", async () => {

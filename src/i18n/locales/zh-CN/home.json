@@ -173,6 +173,8 @@
     "sessionUploadFailed": "无法上传您的聊天会话。报告将在不包含它的情况下提交。",
     "systemInfoFailed": "无法包含您的系统信息。报告将在不包含它的情况下提交。",
     "screenshotRestoreFailed": "无法恢复您的屏幕截图。报告将在不包含它的情况下提交。",
+    "screenshotDropped": "您的屏幕截图已无法恢复，因此已从此报告中移除。",
+    "filingFailed": "提交报告时出现问题。请重试。",
     "updaterLogs": "自动更新日志",
     "appMetadata": "应用元数据",
     "providers": "自定义提供商和模型",

@@ -192,11 +192,35 @@ export function applyDescriptionEdit(
   return applyEdit(previous, value, PROSE_BUDGET);
 }
 
-/** Shortest description worth filing. "it crashed" clears it. */
+/**
+ * The least a description can weigh and still be worth filing. Counted in
+ * weight rather than characters, because a character is worth far more in
+ * some scripts than others -- see `describesSomething`.
+ */
 export const MIN_DESCRIPTION_LENGTH = 10;
 
+/**
+ * Scripts where one code point carries far more than a Latin letter -- a
+ * complete report is far shorter than the same report in English. Counting raw
+ * characters would turn away "预览一片空白" while accepting "it crashed".
+ *
+ * Letters only. The kana blocks also hold marks that carry no meaning on
+ * their own -- the middle dot, the prolonged sound mark -- and weighting
+ * those would let a run of them through the gate.
+ */
+const DENSE_SCRIPT =
+  /[\u3041-\u3096\u30a1-\u30fa\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7a3\uff66-\uff6f\uff71-\uff9d\u{20000}-\u{2a6df}]/u;
+
+/** What one character of `description` is worth against the minimum. */
+const DENSE_CHARACTER_WEIGHT = 3;
+
 export function describesSomething(description: string): boolean {
-  return description.trim().length >= MIN_DESCRIPTION_LENGTH;
+  let weight = 0;
+  for (const character of description.trim()) {
+    weight += DENSE_SCRIPT.test(character) ? DENSE_CHARACTER_WEIGHT : 1;
+    if (weight >= MIN_DESCRIPTION_LENGTH) return true;
+  }
+  return false;
 }
 
 // =============================================================================
@@ -425,7 +449,7 @@ export function buildIssueBody({
     sections.push(
       "",
       "## System Information",
-      "Could not be collected on this machine.",
+      "Not available when the report was filed.",
     );
   } else if (diagnostics) {
     sections.push("", formatDiagnosticsSections(diagnostics));

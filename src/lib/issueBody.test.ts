@@ -105,6 +105,50 @@ describe("describesSomething", () => {
       describesSomething(`  ${"a".repeat(MIN_DESCRIPTION_LENGTH)}  `),
     ).toBe(true);
   });
+
+  it.each([
+    ["Chinese", "\u9884\u89c8\u4e00\u7247\u7a7a\u767d"],
+    ["Korean", "\uc571\uc774 \uc790\uafb8 \uaebc\uc838\uc694"],
+    ["Japanese", "\u30d7\u30ec\u30d3\u30e5\u30fc\u304c\u7a7a\u767d"],
+    // All-hiragana and all-katakana, so neither leans on the CJK range.
+    ["all-hiragana", "\u3046\u3054\u304b\u306a\u3044"],
+    ["all-katakana", "\u30d5\u30ea\u30fc\u30ba"],
+    [
+      "half-width katakana",
+      "\uff71\uff8c\uff9f\uff98\uff89\uff86\uff70\uff8b\uff9e",
+    ],
+    ["CJK extension A", "\u3400\u3401\u3402\u3403"],
+    ["CJK extension B", "\u{20000}\u{20001}\u{20002}\u{20003}"],
+  ])("accepts a real %s report", (_name, text) => {
+    expect(describesSomething(text)).toBe(true);
+  });
+
+  it("accepts a Japanese report containing a prolonged sound mark", () => {
+    // The mark is worth nothing alone but is part of real words.
+    expect(
+      describesSomething("\u30b3\u30fc\u30d2\u30fc\u304c\u51fa\u306a\u3044"),
+    ).toBe(true);
+  });
+
+  it.each([
+    // Marks that live inside the kana blocks but mean nothing on their own.
+    ["middle dots", "\u30fb\u30fb\u30fb\u30fb"],
+    ["prolonged sound marks", "\u30fc\u30fc\u30fc\u30fc"],
+    ["half-width prolonged marks", "\uff70\uff70\uff70\uff70"],
+    ["combining sound marks", "\u3099\u3099\u3099\u3099"],
+    ["iteration marks", "\u309d\u309d\u309d\u309d"],
+    ["CJK punctuation", "\u3002\u3002\u3002\u3002"],
+    ["unassigned Hangul", "\ud7a4\ud7a4\ud7a4\ud7a4"],
+  ])("still turns away %s", (_name, text) => {
+    expect(describesSomething(text)).toBe(false);
+  });
+
+  it("needs more than three dense characters", () => {
+    // Pins the weight: at 2 a three-character report would fail, at 4 it
+    // would pass, and neither is what the minimum is meant to mean.
+    expect(describesSomething("\u4e00\u4e8c\u4e09")).toBe(false);
+    expect(describesSomething("\u4e00\u4e8c\u4e09\u56db")).toBe(true);
+  });
 });
 
 describe("applyDescriptionEdit", () => {

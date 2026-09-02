@@ -176,6 +176,8 @@
     "sessionUploadFailed": "Could not upload your chat session. Filing the report without it.",
     "systemInfoFailed": "Your system information could not be included. Filing the report without it.",
     "screenshotRestoreFailed": "Your screenshot could not be restored. Filing the report without it.",
+    "screenshotDropped": "Your screenshot could no longer be restored, so it was removed from this report.",
+    "filingFailed": "Something went wrong while filing your report. Please try again.",
     "updaterLogs": "Auto-Updater Logs",
     "appMetadata": "App Metadata",
     "providers": "Custom Providers & Models",

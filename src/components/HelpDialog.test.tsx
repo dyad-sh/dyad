@@ -205,11 +205,12 @@ function OpenHelpDialog() {
  * still live when the next one mounts, and HelpDialog's effects run before the
  * harness can clear it.
  */
-function renderHelp() {
+function renderHelp(options?: { reactStrictMode?: boolean }) {
   return render(
     <Provider store={createStore()}>
       <OpenHelpDialog />
     </Provider>,
+    options,
   );
 }
 
@@ -244,7 +245,10 @@ const fileIt = async () => {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // reset, not clear: clearAllMocks keeps implementations AND leaves any
+  // unconsumed mock*Once queue in place, so a test that stops short of
+  // draining its own queue would hand the leftovers to the next one.
+  vi.resetAllMocks();
   mocks.settings = null;
   mocks.chatById = null;
   mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
@@ -448,7 +452,7 @@ describe("HelpDialog report flow", () => {
     await fileIt();
     const body = bodyOfOpenedIssue();
     expect(body).toContain("4.5.6");
-    expect(body).not.toContain("Could not be collected on this machine.");
+    expect(body).not.toContain("Not available when the report was filed.");
   });
 
   it("reports the model for the chat the report is about", async () => {
@@ -491,7 +495,7 @@ describe("HelpDialog report flow", () => {
 
     const body = bodyOfOpenedIssue();
     expect(body).toContain("1.2.3");
-    expect(body).not.toContain("Could not be collected on this machine.");
+    expect(body).not.toContain("Not available when the report was filed.");
   });
 
   it("abandons the draft when the reporter backs out", async () => {
@@ -821,6 +825,454 @@ describe("HelpDialog disclosures", () => {
     expect(mocks.getSessionDebugBundle).toHaveBeenCalledTimes(1);
   });
 
+  it("lets the reporter try again when filing throws", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    submit();
+
+    // An unexpected throw must not leave a disabled "Preparing your
+    // report..." with an unhandled rejection behind it.
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(mocks.showError).toHaveBeenCalled();
+  });
+
+  it("does not upload the session twice when a retry follows a throw", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    submit();
+    await waitFor(() =>
+      expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    // A second PUT would leave the reporter's chat and codebase on the service
+    // twice, with no issue pointing at the first copy.
+    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("never files one report's session under another", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("the first problem");
+    submit();
+    await waitFor(() =>
+      expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(1),
+    );
+
+    // Back out of it, then start a fresh report for a different chat.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+
+    // The abandoned upload lands now. An aborted upload resolves rather than
+    // rejects, so its continuation must not hand this report that session.
+    await act(async () => {
+      release(undefined);
+    });
+    await fileIt();
+
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("the second problem");
+    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops offering a lost screenshot when filing throws", async () => {
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    await addScreenshot();
+    submit();
+
+    // A filing that throws hands the reporter a live form back, so the
+    // preview cannot be left standing for an image main no longer holds.
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(
+      screen.queryByAltText("Screenshot copied to your clipboard"),
+    ).toBeNull();
+  });
+
+  it("asks main again on a retry rather than assuming the clipboard", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+    mocks.recopyScreenshot
+      .mockResolvedValueOnce({ copied: true })
+      .mockResolvedValueOnce({ copied: false });
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    await fileIt();
+
+    // Remembering the first restore would mean assuming the image is still on
+    // the clipboard, which the reporter can change at any moment. Being wrong
+    // that way tells a maintainer to expect an image that is not there.
+    expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(2);
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: capture-failed");
+    expect(body).not.toContain("Screenshot status: captured");
+  });
+
+  it("does not remember a restore made for a report that ended", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(1),
+    );
+
+    // Dismiss mid-restore: the draft survives, the report does not.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ copied: true });
+    });
+
+    // Main dropped the image on that restore, and the reporter has been away
+    // since. Filing "captured" would tell a maintainer to expect a paste that
+    // nothing can produce, so the draft must stop offering it at all.
+    fireEvent.click(screen.getByText("reopen-help"));
+    await fileIt();
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: capture-failed");
+    expect(body).not.toContain("Screenshot status: captured");
+  });
+
+  it("uploads its own session rather than the last report's", async () => {
+    let nth = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({
+          uploadUrl: "https://upload.test/signed",
+          filename: `session-${++nth}.json`,
+        }),
+      })),
+    );
+
+    await openForm("the first problem");
+    await fileIt();
+    expect(bodyOfOpenedIssue()).toContain("v2:session-1");
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+    await fileIt();
+
+    // Reusing the first report's id would point a maintainer at another
+    // chat's uploaded session.
+    expect(bodyOfOpenedIssue()).toContain("v2:session-2");
+    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not file a lost screenshot as one the reporter declined", async () => {
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    // They captured one and were told it was dropped. "declined" would tell a
+    // maintainer they chose to send nothing, and the two are counted apart.
+    await fileIt();
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: capture-failed");
+    expect(body).not.toContain("Screenshot status: declined");
+  });
+
+  it("does not warn about a filing the reporter walked away from", async () => {
+    let fail = (_: unknown) => {};
+    mocks.openExternalUrl.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+
+    await openForm("a slow one");
+    submit();
+    // Wait until the browser open is in flight: any earlier and the report
+    // bails before the catch, and the test proves nothing.
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      fail(new Error("no browser"));
+    });
+
+    // They abandoned it. "Something went wrong while filing your report"
+    // would be about a report they already decided to stop.
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Something went wrong while filing your report. Please try again.",
+    );
+  });
+
+  it("says nothing about a failed restore once the dialog is gone", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const view = renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "unmount me mid-restore" },
+    });
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+
+    view.unmount();
+    await act(async () => {
+      release({ copied: false });
+    });
+
+    // The mirror of the successful-restore case: no form, nothing to say.
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("says why a lost screenshot went, on the draft they come back to", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ copied: false });
+    });
+
+    // The failed-restore half of the pair, mirroring the successful one.
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("asks again for a restore once the reporter has been away", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    // Away and back: whatever they copied in between is on the clipboard now,
+    // so assuming the image survived would promise a paste that is not there.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    await fileIt();
+
+    expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops showing a screenshot main dropped on a restore", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(1),
+    );
+
+    // Dismiss mid-restore, then let it succeed: main drops the image at that
+    // point, so the preview left standing promises a paste that is not there.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ copied: true });
+    });
+    fireEvent.click(screen.getByText("reopen-help"));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByAltText("Screenshot copied to your clipboard"),
+      ).toBeNull(),
+    );
+    // It must not simply vanish between one visit and the next.
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("says nothing about a screenshot once the dialog is gone", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const view = renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "unmount me mid-restore" },
+    });
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+
+    view.unmount();
+    await act(async () => {
+      release({ copied: true });
+    });
+
+    // There is no "this report" any more -- the draft went with the dialog.
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("stops showing a lost screenshot under StrictMode too", async () => {
+    // StrictMode tears effects down and re-runs them, which is exactly what
+    // silently inverted the mounted guard once already.
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    renderHelp({ reactStrictMode: true });
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "strict mode still counts" },
+    });
+    await addScreenshot();
+    submit();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByAltText("Screenshot copied to your clipboard"),
+      ).toBeNull(),
+    );
+  });
+
+  it("stops showing a screenshot after a second filing loses it", async () => {
+    // Both filings fail, so the form is still up to be inspected -- after a
+    // successful one the dialog tears down and any assertion is vacuous.
+    mocks.openExternalUrl
+      .mockRejectedValueOnce(new Error("no browser"))
+      .mockRejectedValueOnce(new Error("no browser"));
+    mocks.recopyScreenshot
+      .mockResolvedValueOnce({ copied: true })
+      .mockResolvedValueOnce({ copied: false });
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    // Away and back clears the "still on the clipboard" assumption, so the
+    // retry asks again -- and this time main has nothing.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    submit();
+    await waitFor(() =>
+      expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(2),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByAltText("Screenshot copied to your clipboard"),
+      ).toBeNull(),
+    );
+  });
+
   it("leaves a way out when filing stalls", async () => {
     mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
 
@@ -879,7 +1331,7 @@ describe("HelpDialog disclosures", () => {
     // A maintainer has to be able to tell a failed read from a reporter who
     // chose not to share.
     const body = bodyOfOpenedIssue();
-    expect(body).toContain("Could not be collected on this machine.");
+    expect(body).toContain("Not available when the report was filed.");
     expect(body).not.toContain("Not included by the reporter.");
   });
 
@@ -923,27 +1375,6 @@ describe("HelpDialog disclosures", () => {
     expect(body).not.toContain("9.9.9");
   });
 
-  it("files anyway when the diagnostics read never comes back", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      mocks.getSystemDebugInfo.mockReturnValue(new Promise(() => {}));
-
-      await openForm();
-      submit();
-      // A wedged shell command must not strand the reporter on a spinner.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(4_000);
-      });
-      await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
-
-      expect(bodyOfOpenedIssue()).toContain(
-        "Could not be collected on this machine.",
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("reports the gate against the report that was blocked", async () => {
     renderHelp();
     await screen.findByText("Need help with Dyad?");
@@ -960,7 +1391,7 @@ describe("HelpDialog disclosures", () => {
     );
   });
 
-  it("waits for diagnostics that are still loading rather than dropping them", async () => {
+  it("sends no diagnostics the reporter never saw", async () => {
     let release = (_: unknown) => {};
     mocks.getSystemDebugInfo.mockReturnValue(
       new Promise((resolve) => {
@@ -969,17 +1400,19 @@ describe("HelpDialog disclosures", () => {
     );
 
     await openForm();
-    // Submitting while the disclosure still says "Loading diagnostics...".
+    // Submitting while the disclosure still reads "Loading diagnostics...".
     submit();
     await act(async () => {
       release(debugInfo);
     });
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
-    // The machine was perfectly able to answer; it just had not yet.
+    // The read landed after the form locked, so the reporter could no longer
+    // look at it or untick it. Filing without it beats sending it unseen.
     const body = bodyOfOpenedIssue();
-    expect(body).toContain("1.2.3");
-    expect(body).not.toContain("Could not be collected on this machine.");
+    expect(body).not.toContain("1.2.3");
+    expect(body).toContain("Not available when the report was filed.");
+    expect(body).not.toContain("Not included by the reporter.");
   });
 
   it("keeps the dialog up while the report is being filed", async () => {
@@ -1647,6 +2080,156 @@ describe("HelpDialog screenshot", () => {
 
     // The restore already dropped it in main; asking again is pointless work.
     expect(mocks.discardScreenshot).not.toHaveBeenCalled();
+  });
+
+  it("stops showing a screenshot it can no longer restore", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+    // Dismissing inside the restore is the window that strands it.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ copied: false });
+    });
+    fireEvent.click(screen.getByText("reopen-help"));
+
+    // The image is gone from main, so the form must not keep offering it.
+    await waitFor(() =>
+      expect(
+        screen.queryByAltText("Screenshot copied to your clipboard"),
+      ).toBeNull(),
+    );
+  });
+
+  it("does not re-read diagnostics just to take a screenshot", async () => {
+    await openForm();
+    await waitFor(() =>
+      expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(1),
+    );
+
+    await addScreenshot();
+    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    await screen.findByAltText("Screenshot copied to your clipboard");
+
+    // Hiding for a capture is not the reporter going away to reproduce a bug.
+    expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a newer report's screenshot alone when an older restore works", async () => {
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("the first problem");
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+    await addScreenshot();
+
+    await act(async () => {
+      release({ copied: true });
+    });
+
+    // The mirror of the failed-restore case: a succeeded restore also drops
+    // the image in main, and must not take a newer report's with it.
+    expect(
+      screen.getByAltText("Screenshot copied to your clipboard"),
+    ).toBeTruthy();
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("leaves a newer report's screenshot alone when an older restore fails", async () => {
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("the first problem");
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+    await addScreenshot();
+
+    await act(async () => {
+      release({ copied: false });
+    });
+
+    // The failed restore belongs to a report that is gone; the screenshot on
+    // screen belongs to the one being written now.
+    expect(
+      screen.getByAltText("Screenshot copied to your clipboard"),
+    ).toBeTruthy();
+  });
+
+  it("clears a capture flag stranded by a report that ended", async () => {
+    mocks.takeScreenshot.mockReturnValue(new Promise(() => {}));
+    mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
+
+    await openForm("a slow one");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    fireEvent.click(screen.getByText("reopen-help"));
+
+    // The capture never lands, so the report ending is the only thing left
+    // that can clear the flag.
+    const button = (await screen.findByRole("button", {
+      name: /Add a screenshot/,
+    })) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
   });
 
   it("does not touch the clipboard when there is no screenshot", async () => {

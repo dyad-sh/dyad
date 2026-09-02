@@ -116,8 +116,10 @@ export function ScreenshotField({
             {t("home:report.screenshotFailed")}{" "}
             {t("home:report.screenshotStillFile")}
           </p>
-          {/* The reason comes from the OS and is not translated, so it sits on
-              its own rather than being read as part of the sentence above. */}
+          {/* Not translated: usually the OS's own words, sometimes Dyad's for
+              a failure only the maintainer's copy of the report can explain.
+              Either way it sits on its own rather than being read as part of
+              the translated sentence above. */}
           {outcome.reason && (
             <p className="text-xs text-muted-foreground">{outcome.reason}</p>
           )}

@@ -176,6 +176,8 @@
     "sessionUploadFailed": "No se pudo subir tu sesión de chat. El informe se enviará sin ella.",
     "systemInfoFailed": "No se pudo incluir la información de tu sistema. El informe se enviará sin ella.",
     "screenshotRestoreFailed": "No se pudo restaurar tu captura de pantalla. El informe se enviará sin ella.",
+    "screenshotDropped": "Tu captura de pantalla ya no se pudo restaurar, así que se ha quitado de este informe.",
+    "filingFailed": "Algo ha fallado al enviar tu informe. Vuelve a intentarlo.",
     "updaterLogs": "Registros del Actualizador",
     "appMetadata": "Metadatos de la Aplicación",
     "providers": "Proveedores y Modelos Personalizados",

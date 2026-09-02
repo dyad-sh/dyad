@@ -45,11 +45,16 @@ const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
 
 type DialogScreen = "main" | "form";
 
+/**
+ * Why a captured screenshot is no longer available. Shown to the reporter and
+ * carried into the issue, so it stays in English like the OS failures beside
+ * it rather than being translated for one audience and not the other.
+ */
+const SCREENSHOT_LOST_REASON =
+  "The screenshot could no longer be restored for pasting";
+
 /** Which entry point a report came from, carried on every event it emits. */
 type ReportSource = "report-bug" | "force-close";
-
-/** How long a submit waits on a diagnostics read that has not landed yet. */
-const DIAGNOSTICS_SUBMIT_WAIT_MS = 3_000;
 
 /** Everything needed to file, snapshotted when the reporter submits. */
 interface OutgoingReport {
@@ -96,10 +101,13 @@ const screenTransition = {
   opacity: { duration: 0.15 },
 };
 
-function openGitHubIssue(params: { body: string; isDyadProUser: unknown }) {
+function openGitHubIssue(params: {
+  body: string;
+  isDyadProUser: unknown;
+}): Promise<void> {
   const labels = ["bug"];
   if (params.isDyadProUser) labels.push("pro");
-  ipc.system.openExternalUrl(
+  return ipc.system.openExternalUrl(
     buildIssueUrl({ title: ISSUE_TITLE, labels, body: params.body }),
   );
 }
@@ -153,9 +161,9 @@ export function HelpDialog() {
   const [includeSession, setIncludeSession] = useState(true);
 
   // Shown in the disclosures, and sent as-is: the reporter agrees to what
-  // they can see. The one exception is a submit that beats the read -- see
-  // fileReport, which waits briefly rather than call the machine
-  // undiagnosable, and so can send a snapshot that was never on screen.
+  // they can see, so the body never carries anything else. A submit that
+  // beats the read files without diagnostics rather than sending a snapshot
+  // that was never on screen and can no longer be unticked.
   const [formDebugInfo, setFormDebugInfo] = useState<SystemDebugInfo | null>(
     null,
   );
@@ -195,11 +203,24 @@ export function HelpDialog() {
   // rather than start a second one, or the disclosure and the upload end up
   // showing and sending different snapshots.
   const sessionRequest = useRef<Promise<SessionDebugBundle> | null>(null);
-  // The diagnostics read in flight, for the same reason as the session one.
-  const diagnosticsRequest = useRef<Promise<SystemDebugInfo> | null>(null);
-  // Mirrors captureId. Teardown runs from effects, where the state a closure
-  // captured may already be a render behind.
+  // What main still holds for this form, so it can be told to drop it. Read
+  // from teardown, which runs from effects where captured state may already
+  // be a render behind -- hence a ref rather than the state.
   const activeCapture = useRef<string | null>(null);
+  // What the form is currently showing. Distinct from `activeCapture`, which
+  // a successful restore clears while the preview deliberately stays up.
+  const displayedCapture = useRef<string | null>(null);
+  // False once the component is unmounted -- not merely when the dialog is
+  // dismissed, which keeps the draft and must still be told about changes.
+  const mounted = useRef(true);
+  // The session this report already uploaded. A retry reuses it rather than
+  // sending the reporter's chat and codebase a second time and leaving the
+  // first copy on the service with no issue pointing at it.
+  const uploadedSession = useRef<string | null>(null);
+  // Set when the dialog hides itself for a capture, and consumed by the
+  // re-read effect below. A flag rather than `isCapturing`, which can strand
+  // true on a capture that never lands and would then suppress it forever.
+  const hidingForCapture = useRef(false);
   // Where this report came from. A ref because the screenshot events fire from
   // callbacks that outlive the render which started the report.
   const reportSource = useRef<ReportSource>("report-bug");
@@ -259,7 +280,7 @@ export function HelpDialog() {
     setBundleLoading(false);
     setScreenshot(null);
     setScreenshotPreview(null);
-    setCaptureId(null);
+    showCapture(null);
     setIsCapturing(false);
     setIsFiling(false);
     setSessionChatId(null);
@@ -280,12 +301,28 @@ export function HelpDialog() {
   // show or send.
   useEffect(() => {
     if (isOpen || !reportOpen) return;
+    // The dialog hid itself for a screenshot rather than the reporter
+    // leaving, so re-reading now would cost three shell commands a retake.
+    if (hidingForCapture.current) {
+      hidingForCapture.current = false;
+      return;
+    }
     setDiagnosticsRun((run) => run + 1);
   }, [isOpen, reportOpen]);
 
   // A route change can unmount the dialog while a draft still holds a capture
   // and an upload is in flight. Neither should outlive the screen.
-  useEffect(() => () => cancelReport(), []);
+  useEffect(() => {
+    // Set on every run, not just the first: StrictMode tears the effect down
+    // and re-runs it on the same instance, and an empty body here would leave
+    // this false -- silently inverting both guards below for the whole
+    // session.
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      cancelReport();
+    };
+  }, []);
 
   // The preload guard is scoped to one opening, so a repeat force-close on the
   // same chat preloads again.
@@ -301,7 +338,6 @@ export function HelpDialog() {
     if (screen !== "form") return;
     let active = true;
     const request = ipc.system.getSystemDebugInfo();
-    diagnosticsRequest.current = request;
     request
       .then((info) => {
         if (!active) return;
@@ -350,7 +386,7 @@ export function HelpDialog() {
     setSessionChatId(chatId);
     setScreenshot(null);
     setScreenshotPreview(null);
-    setCaptureId(null);
+    showCapture(null);
     setIsCapturing(false);
     setIsFiling(false);
     setFormDebugInfo(null);
@@ -381,7 +417,7 @@ export function HelpDialog() {
     setAtCap(false);
     setScreenshot(null);
     setScreenshotPreview(null);
-    setCaptureId(null);
+    showCapture(null);
     navigateTo("main");
   };
 
@@ -438,6 +474,9 @@ export function HelpDialog() {
     loaded: SessionDebugBundle | null,
     token: number,
   ): Promise<string | null> => {
+    const alreadyUploaded = uploadedSession.current;
+    if (alreadyUploaded) return alreadyUploaded;
+
     const bundle = loaded ?? (await readSession(chatId));
     if (captureToken.current !== token) return null;
 
@@ -467,7 +506,34 @@ export function HelpDialog() {
     } finally {
       if (activeUpload.current === uploadId) activeUpload.current = null;
     }
-    return "v2:" + filename.replace(".json", "");
+    const sessionId = "v2:" + filename.replace(".json", "");
+    // Only the report that made this upload may remember it. An abort
+    // resolves rather than rejects, so without this the continuation of a
+    // cancelled upload would resurrect the cache the cancel just cleared.
+    if (captureToken.current === token) uploadedSession.current = sessionId;
+    return sessionId;
+  };
+
+  /**
+   * The form is offering an image main no longer holds -- either the restore
+   * failed, or it succeeded and main dropped it on the way out. Either way it
+   * cannot be produced again, so the form must stop promising it. Marked
+   * failed rather than cleared: cleared would file as "declined" next time,
+   * claiming the reporter chose to send nothing.
+   */
+  const dropStaleScreenshot = () => {
+    setScreenshot({
+      status: "capture-failed",
+      reason: SCREENSHOT_LOST_REASON,
+    });
+    setScreenshotPreview(null);
+    showCapture(null);
+  };
+
+  /** Shows a capture on the form, or clears it. Keeps the ref in step. */
+  const showCapture = (captureId: string | null) => {
+    displayedCapture.current = captureId;
+    setCaptureId(captureId);
   };
 
   /** Tells main to drop a capture no report will ever paste. */
@@ -487,9 +553,9 @@ export function HelpDialog() {
   const dismissDialog = () => {
     if (isFiling) {
       // The draft survives a dismissal, so its screenshot is kept rather than
-      // discarded. One exception it cannot cover: if the clipboard restore had
-      // already succeeded, main dropped the image at that point and the
-      // preview outlives it.
+      // discarded. If the restore had already succeeded, main dropped the
+      // image at that point -- the next submit asks again, finds nothing, and
+      // reports capture-failed rather than promising a paste.
       cancelReport({ keepCapture: true });
       setIsFiling(false);
     }
@@ -503,8 +569,9 @@ export function HelpDialog() {
    */
   const cancelReport = ({ keepCapture = false } = {}) => {
     captureToken.current++;
+    setIsCapturing(false);
     sessionRequest.current = null;
-    diagnosticsRequest.current = null;
+    uploadedSession.current = null;
     setBundleLoading(false);
     if (!keepCapture) discardCapture();
     const uploadId = activeUpload.current;
@@ -528,6 +595,7 @@ export function HelpDialog() {
     if (isCapturing) return;
     const token = captureToken.current;
     setIsCapturing(true);
+    hidingForCapture.current = true;
     posthog.capture("screenshot-prompt:capture-attempt", {
       source: reportSource.current,
     });
@@ -547,7 +615,7 @@ export function HelpDialog() {
         // A retake replaces the previous image, which nothing will paste.
         discardCapture();
         activeCapture.current = capture.captureId;
-        setCaptureId(capture.captureId);
+        showCapture(capture.captureId);
         posthog.capture("screenshot-prompt:captured", {
           source: reportSource.current,
         });
@@ -566,7 +634,7 @@ export function HelpDialog() {
         if (activeCapture.current) return;
         setScreenshot({ status: "capture-failed", reason });
         setScreenshotPreview(null);
-        setCaptureId(null);
+        showCapture(null);
       } finally {
         // Both belong to the report that started the capture: by now the
         // reporter may have filed, or started a report that owns the flag.
@@ -585,7 +653,7 @@ export function HelpDialog() {
     discardCapture();
     setScreenshot(null);
     setScreenshotPreview(null);
-    setCaptureId(null);
+    showCapture(null);
   };
 
   const handleSubmit = () => {
@@ -600,7 +668,15 @@ export function HelpDialog() {
       debugInfo: formDebugInfo,
     };
     setIsFiling(true);
-    void fileReport(report, captureToken.current);
+    const token = captureToken.current;
+    void fileReport(report, token).catch((error) => {
+      // Nothing above is expected to throw, but an unhandled one would leave
+      // the reporter on a disabled "Preparing your report..." forever.
+      console.error("Failed to file the report:", error);
+      if (captureToken.current !== token) return;
+      setIsFiling(false);
+      showError(t("home:report.filingFailed"));
+    });
   };
 
   const fileReport = async (report: OutgoingReport, token: number) => {
@@ -621,35 +697,13 @@ export function HelpDialog() {
       }
     }
 
-    // Normally the reviewed snapshot rather than a fresh read: what the
-    // disclosure showed is what gets sent. The exception is below -- a submit
-    // that lands before the read does.
-    let debugInfo = report.debugInfo;
-    if (report.includeSystemInfo && !debugInfo && diagnosticsRequest.current) {
-      // Submitted while the disclosure was still loading. The read is already
-      // running, so give it a moment rather than call the report
-      // undiagnosable -- but never wait on it indefinitely: these are shell
-      // commands with no timeout of their own, and one wedged behind a proxy
-      // or a dead network drive would strand the reporter on a spinner with
-      // no way to file at all.
-      let deadline: ReturnType<typeof setTimeout> | undefined;
-      debugInfo = await Promise.race([
-        diagnosticsRequest.current.catch(() => null),
-        new Promise<null>((resolve) => {
-          deadline = setTimeout(
-            () => resolve(null),
-            DIAGNOSTICS_SUBMIT_WAIT_MS,
-          );
-        }),
-      ]);
-      clearTimeout(deadline);
-    }
-
+    // The reviewed snapshot, never a fresh read: what the disclosure showed
+    // is what gets sent, and nothing else.
     let diagnostics: Diagnostics | "unavailable" | null = null;
     if (report.includeSystemInfo) {
-      if (debugInfo) {
+      if (report.debugInfo) {
         diagnostics = {
-          debugInfo,
+          debugInfo: report.debugInfo,
           settings,
           selectedModel: diagnosticModelSelection,
           userBudget: userBudget ?? undefined,
@@ -671,6 +725,10 @@ export function HelpDialog() {
     // Put the capture back on the clipboard now: the reporter pastes it into
     // GitHub next, and anything they copied since would have replaced it.
     let outgoingScreenshot = report.screenshot;
+    // Always ask main rather than remembering a previous restore: a cache
+    // would have to assume the image is still on the clipboard, and the
+    // reporter can copy anything at any time. Being wrong that way tells a
+    // maintainer to expect an image that is not there.
     if (outgoingScreenshot.status === "captured" && report.captureId) {
       let copied = false;
       try {
@@ -680,8 +738,24 @@ export function HelpDialog() {
       } catch (error) {
         console.error("Failed to copy the screenshot:", error);
       }
-      if (copied && activeCapture.current === report.captureId) {
-        activeCapture.current = null;
+      if (copied) {
+        // Only the report that made this restore may remember it, for the
+        // same reason as `uploadedSession`: a report the reporter walked away
+        // from must not leave a cache saying the image is on the clipboard.
+        // The restore consumed the image in main. If the reporter walked away
+        // and kept the draft, the preview left behind is a promise nothing
+        // can keep.
+        if (
+          mounted.current &&
+          captureToken.current !== token &&
+          displayedCapture.current === report.captureId
+        ) {
+          showError(t("home:report.screenshotDropped"));
+          dropStaleScreenshot();
+        }
+        if (activeCapture.current === report.captureId) {
+          activeCapture.current = null;
+        }
       }
       if (!copied) {
         // The capture itself worked and may still be on the clipboard, but
@@ -689,14 +763,33 @@ export function HelpDialog() {
         // maintainer to expect an image.
         outgoingScreenshot = {
           status: "capture-failed",
-          reason: "The screenshot could no longer be restored for pasting",
+          reason: SCREENSHOT_LOST_REASON,
         };
-        tellReporter(t("home:report.screenshotRestoreFailed"));
+        // Main no longer holds it, so the form must stop offering it. This
+        // runs whichever way the report went: filing can throw and hand the
+        // reporter back a live form, so "it is about to be torn down" is not
+        // something this branch may assume.
+        // The form's own capture, not main's: a successful restore clears
+        // main's while the preview deliberately stays up, so keying on that
+        // would skip this block for every capture that ever restored.
+        const stillOnTheForm =
+          mounted.current && displayedCapture.current === report.captureId;
+        if (stillOnTheForm) {
+          dropStaleScreenshot();
+          activeCapture.current = null;
+        }
+        if (captureToken.current === token) {
+          showError(t("home:report.screenshotRestoreFailed"));
+        } else if (stillOnTheForm) {
+          // A draft they walked away from and will come back to: without this
+          // the image just vanishes between one visit and the next.
+          showError(t("home:report.screenshotDropped"));
+        }
       }
     }
 
     if (captureToken.current !== token) return;
-    openGitHubIssue({
+    await openGitHubIssue({
       body: buildIssueBody({
         description: report.description,
         screenshot: outgoingScreenshot,

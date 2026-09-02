@@ -17,9 +17,11 @@ const mocks = vi.hoisted(() => ({
   getSystemDebugInfo: vi.fn(),
   getSessionDebugBundle: vi.fn(),
   uploadToSignedUrl: vi.fn(),
+  cancelUpload: vi.fn(),
   openExternalUrl: vi.fn(),
   takeScreenshot: vi.fn(),
   recopyScreenshot: vi.fn(),
+  discardScreenshot: vi.fn(),
   showError: vi.fn(),
   showInfo: vi.fn(),
   // Overridable per test; the default pair keeps the model lines out of the
@@ -34,8 +36,10 @@ vi.mock("@/ipc/types", () => ({
       getSystemDebugInfo: mocks.getSystemDebugInfo,
       openExternalUrl: mocks.openExternalUrl,
       uploadToSignedUrl: mocks.uploadToSignedUrl,
+      cancelUpload: mocks.cancelUpload,
       takeScreenshot: mocks.takeScreenshot,
       recopyScreenshot: mocks.recopyScreenshot,
+      discardScreenshot: mocks.discardScreenshot,
     },
     misc: { getSessionDebugBundle: mocks.getSessionDebugBundle },
   },
@@ -223,7 +227,9 @@ beforeEach(() => {
   mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
   mocks.getSessionDebugBundle.mockResolvedValue(bundle);
   mocks.uploadToSignedUrl.mockResolvedValue(undefined);
+  mocks.cancelUpload.mockResolvedValue({ cancelled: true });
   mocks.recopyScreenshot.mockResolvedValue({ copied: true });
+  mocks.discardScreenshot.mockResolvedValue({ discarded: true });
   mocks.takeScreenshot.mockResolvedValue({
     dataUrl: "data:image/png;base64,AAAA",
     captureId: "capture-1",
@@ -616,6 +622,95 @@ describe("HelpDialog disclosures", () => {
     // Every one of these toasts says the report went without something. For a
     // report that never went at all, that is just noise about nothing.
     expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("stops sending the session when the reporter backs out", async () => {
+    mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
+
+    await openForm("a slow one");
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+    const { uploadId } = mocks.uploadToSignedUrl.mock.calls.at(-1)![0];
+    expect(uploadId).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    // The session is the reporter's private data. Backing out has to stop it
+    // going, not just stop the issue being opened afterwards.
+    await waitFor(() =>
+      expect(mocks.cancelUpload).toHaveBeenCalledWith({ uploadId }),
+    );
+  });
+
+  it("does not send the session when the reporter backs out before the PUT", async () => {
+    let releaseUrl = (_: unknown) => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          releaseUrl = () =>
+            resolve({
+              ok: true,
+              json: async () => ({
+                uploadUrl: "https://upload.test/signed",
+                filename: "abc.json",
+              }),
+            });
+        }),
+      ),
+    );
+
+    await openForm("a slow one");
+    submit();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+    // Nothing private has left yet: the signed-URL request carries only the
+    // content type, so backing out here must stop before the PUT.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await act(async () => {
+      releaseUrl(undefined);
+    });
+
+    expect(mocks.uploadToSignedUrl).not.toHaveBeenCalled();
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("cancels the report when the dialog is dismissed mid-filing", async () => {
+    mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
+
+    await openForm("a slow one");
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+    const { uploadId } = mocks.uploadToSignedUrl.mock.calls.at(-1)![0];
+
+    // Escape and the close button are the same intent as Back here, and were
+    // the exit that did not cancel anything.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    await waitFor(() =>
+      expect(mocks.cancelUpload).toHaveBeenCalledWith({ uploadId }),
+    );
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("does not open GitHub for a report dismissed mid-filing", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadToSignedUrl.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("a slow one");
+    submit();
+    await waitFor(() => expect(mocks.uploadToSignedUrl).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    await act(async () => {
+      release(undefined);
+    });
+
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
   });
 
   it("leaves a way out when filing stalls", async () => {
@@ -1196,6 +1291,120 @@ describe("HelpDialog screenshot", () => {
     expect(
       await screen.findByRole("button", { name: /Taking screenshot/ }),
     ).toBeTruthy();
+  });
+
+  it("drops an abandoned capture instead of leaving it in memory", async () => {
+    await openForm();
+    await addScreenshot();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    // Nothing will ever paste it, and it is a full-resolution picture of the
+    // window sitting in the main process.
+    await waitFor(() =>
+      expect(mocks.discardScreenshot).toHaveBeenCalledWith({
+        captureId: "capture-1",
+      }),
+    );
+  });
+
+  it("drops a capture that lands after its report is gone", async () => {
+    let release = (_: unknown) => {};
+    mocks.takeScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await act(async () => {
+      release({ dataUrl: "data:image/png;base64,AAAA", captureId: "late" });
+    });
+
+    // Main stored it before the guard could run, so dropping it is the only
+    // thing left that can.
+    await waitFor(() =>
+      expect(mocks.discardScreenshot).toHaveBeenCalledWith({
+        captureId: "late",
+      }),
+    );
+  });
+
+  it("drops the capture a retake replaced", async () => {
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+
+    await openForm();
+    await addScreenshot();
+    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByAltText(
+            "Screenshot copied to your clipboard",
+          ) as HTMLImageElement
+        ).src,
+      ).toContain("BBBB"),
+    );
+
+    // Retake is one click and entirely ordinary, so the replaced image must
+    // not sit in the main process waiting to be evicted.
+    await waitFor(() =>
+      expect(mocks.discardScreenshot).toHaveBeenCalledWith({
+        captureId: "capture-first",
+      }),
+    );
+  });
+
+  it("drops a capture when the dialog is unmounted", async () => {
+    const view = renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "unmount me" },
+    });
+    await addScreenshot();
+
+    view.unmount();
+
+    await waitFor(() =>
+      expect(mocks.discardScreenshot).toHaveBeenCalledWith({
+        captureId: "capture-1",
+      }),
+    );
+  });
+
+  it("drops a capture the reporter removed", async () => {
+    await openForm();
+    await addScreenshot();
+
+    fireEvent.click(screen.getByRole("button", { name: /Remove/ }));
+
+    await waitFor(() =>
+      expect(mocks.discardScreenshot).toHaveBeenCalledWith({
+        captureId: "capture-1",
+      }),
+    );
+  });
+
+  it("does not discard a capture it just put back on the clipboard", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // The restore already dropped it in main; asking again is pointless work.
+    expect(mocks.discardScreenshot).not.toHaveBeenCalled();
   });
 
   it("does not touch the clipboard when there is no screenshot", async () => {

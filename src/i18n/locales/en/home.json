@@ -161,7 +161,6 @@
     "reportBugDescription": "We'll auto-fill your report with system info and logs. You can review it for any sensitive info before submitting.",
     "preparingReport": "Preparing Report...",
     "uploadChatDescription": "Share chat logs and code for troubleshooting. Data is used only to resolve your issue and auto-deleted after a limited time.",
-    "preparingUpload": "Preparing Upload...",
     "failedToLoadChatSession": "Failed to load chat session. Please try again or report manually.",
     "helpBotTitle": "Dyad Help Bot",
     "askQuestion": "Ask a question about using Dyad.",

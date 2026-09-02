@@ -798,8 +798,7 @@ export function shouldBypassNonProTelemetrySampling(
   // would turn into noise.
   if (
     eventName?.startsWith("screenshot-prompt:") ||
-    eventName?.startsWith("issue-form:") ||
-    eventName === "session-report:copy-session-id"
+    eventName?.startsWith("issue-form:")
   ) {
     return true;
   }

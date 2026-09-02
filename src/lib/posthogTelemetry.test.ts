@@ -809,7 +809,6 @@ describe("shouldBypassNonProTelemetrySampling", () => {
       "screenshot-prompt:removed",
       "issue-form:opened",
       "issue-form:blocked",
-      "session-report:copy-session-id",
     ]) {
       expect(
         shouldBypassNonProTelemetrySampling({

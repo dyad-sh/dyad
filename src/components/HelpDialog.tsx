@@ -181,6 +181,11 @@ export function HelpDialog() {
   // inside it would reset too often.
   const blockedReported = useRef(false);
   const preloadedChatId = useRef<number | null>(null);
+  // The upload in flight, so backing out can stop it sending.
+  const activeUpload = useRef<string | null>(null);
+  // Mirrors captureId. Teardown runs from effects, where the state a closure
+  // captured may already be a render behind.
+  const activeCapture = useRef<string | null>(null);
 
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
@@ -241,7 +246,7 @@ export function HelpDialog() {
     setIsCapturing(false);
     setIsFiling(false);
     setSessionChatId(null);
-    captureToken.current++;
+    cancelReport();
     hasNavigated.current = false;
     preloadedChatId.current = null;
   };
@@ -261,6 +266,10 @@ export function HelpDialog() {
     setDiagnosticsRun((run) => run + 1);
   }, [isOpen, reportOpen]);
 
+  // A route change can unmount the dialog while a draft still holds a capture
+  // and an upload is in flight. Neither should outlive the screen.
+  useEffect(() => () => cancelReport(), []);
+
   // The preload guard is scoped to one opening, so a repeat force-close on the
   // same chat preloads again.
   useEffect(() => {
@@ -268,6 +277,9 @@ export function HelpDialog() {
   }, [isOpen]);
 
   // Loaded when the form opens so the disclosure can show what will be sent.
+  // Read here rather than through react-query: the disclosure and the issue
+  // body have to show the same snapshot, and a shared cache could refresh
+  // under the reporter between reviewing it and sending it.
   useEffect(() => {
     if (screen !== "form") return;
     let active = true;
@@ -309,7 +321,7 @@ export function HelpDialog() {
    */
   const beginReport = (chatId: number | null) => {
     posthog.capture("issue-form:opened", { source: "report-bug" });
-    captureToken.current++;
+    cancelReport();
     blockedReported.current = false;
     setReportOpen(true);
     setDescription("");
@@ -341,7 +353,7 @@ export function HelpDialog() {
   };
 
   const handleBack = () => {
-    captureToken.current++;
+    cancelReport();
     setIsFiling(false);
     setReportOpen(false);
     setDescription("");
@@ -374,12 +386,23 @@ export function HelpDialog() {
       });
   };
 
-  /** Uploads the session and returns the ID the issue body references. */
+  /**
+   * Uploads the session and returns the ID the issue body references.
+   *
+   * The session is the reporter's private data, so backing out has to stop it
+   * being sent. Serialising the codebase and fetching the signed URL send
+   * nothing and are checked between, which is where the protection actually
+   * comes from: those are the slow steps. Once the PUT starts, aborting only
+   * helps while the body is still streaming -- a small bundle is already gone.
+   */
   const uploadSession = async (
     chatId: number,
     loaded: SessionDebugBundle | null,
-  ): Promise<string> => {
+    token: number,
+  ): Promise<string | null> => {
     const bundle = loaded ?? (await ipc.misc.getSessionDebugBundle(chatId));
+    if (captureToken.current !== token) return null;
+
     const response = await fetch(UPLOAD_URL_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -392,12 +415,68 @@ export function HelpDialog() {
       throw new Error(`Failed to get upload URL: ${response.statusText}`);
     }
     const { uploadUrl, filename } = await response.json();
-    await ipc.system.uploadToSignedUrl({
-      url: uploadUrl,
-      contentType: "application/json",
-      data: bundle,
-    });
+    if (captureToken.current !== token) return null;
+
+    const uploadId = crypto.randomUUID();
+    activeUpload.current = uploadId;
+    try {
+      await ipc.system.uploadToSignedUrl({
+        url: uploadUrl,
+        contentType: "application/json",
+        data: bundle,
+        uploadId,
+      });
+    } finally {
+      if (activeUpload.current === uploadId) activeUpload.current = null;
+    }
     return "v2:" + filename.replace(".json", "");
+  };
+
+  /** Tells main to drop a capture no report will ever paste. */
+  const discardCapture = (captureId = activeCapture.current) => {
+    if (!captureId) return;
+    if (activeCapture.current === captureId) activeCapture.current = null;
+    void ipc.system.discardScreenshot({ captureId }).catch((error) => {
+      console.error("Failed to discard the screenshot:", error);
+    });
+  };
+
+  /**
+   * Closing the dialog by hand. During a filing this is the same intent as
+   * Back -- the reporter has walked away -- so it has to stop the report the
+   * same way. The draft survives, as it does for any other dismissal.
+   */
+  const dismissDialog = () => {
+    if (isFiling) {
+      cancelReport();
+      setIsFiling(false);
+    }
+    onClose();
+  };
+
+  /**
+   * Ends the current report. Bumping the token orphans everything already in
+   * flight; the upload is the one thing that keeps sending regardless, so it
+   * is aborted rather than left to finish.
+   */
+  const cancelReport = () => {
+    captureToken.current++;
+    discardCapture();
+    const uploadId = activeUpload.current;
+    if (!uploadId) return;
+    activeUpload.current = null;
+    void ipc.system
+      .cancelUpload({ uploadId })
+      .then(({ cancelled }) => {
+        // False means the PUT had already finished, so the session did reach
+        // the service. Worth seeing in the logs rather than assuming.
+        if (!cancelled) {
+          console.warn("Session upload finished before it could be cancelled");
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to cancel the session upload:", error);
+      });
   };
 
   const captureScreenshot = () => {
@@ -412,9 +491,17 @@ export function HelpDialog() {
     setTimeout(async () => {
       try {
         const capture = await ipc.system.takeScreenshot();
-        if (captureToken.current !== token) return;
+        if (captureToken.current !== token) {
+          // Main stored it before the guard could run, and the report it
+          // belongs to no longer exists.
+          discardCapture(capture.captureId);
+          return;
+        }
         setScreenshot({ status: "captured" });
         setScreenshotPreview(capture.dataUrl);
+        // A retake replaces the previous image, which nothing will paste.
+        discardCapture();
+        activeCapture.current = capture.captureId;
         setCaptureId(capture.captureId);
         posthog.capture("screenshot-prompt:captured", {
           source: "report-bug",
@@ -444,6 +531,7 @@ export function HelpDialog() {
 
   const removeScreenshot = () => {
     posthog.capture("screenshot-prompt:removed", { source: "report-bug" });
+    discardCapture();
     setScreenshot(null);
     setScreenshotPreview(null);
     setCaptureId(null);
@@ -474,7 +562,7 @@ export function HelpDialog() {
     let sessionId: string | null = null;
     if (report.includeSession && report.chatId != null) {
       try {
-        sessionId = await uploadSession(report.chatId, report.bundle);
+        sessionId = await uploadSession(report.chatId, report.bundle, token);
       } catch (error) {
         // A failed upload must not cost the reporter their whole report.
         console.error("Failed to upload chat session:", error);
@@ -513,8 +601,8 @@ export function HelpDialog() {
 
     // Put the capture back on the clipboard now: the reporter pastes it into
     // GitHub next, and anything they copied since would have replaced it.
-    let screenshot = report.screenshot;
-    if (screenshot.status === "captured" && report.captureId) {
+    let outgoingScreenshot = report.screenshot;
+    if (outgoingScreenshot.status === "captured" && report.captureId) {
       let copied = false;
       try {
         ({ copied } = await ipc.system.recopyScreenshot({
@@ -523,12 +611,16 @@ export function HelpDialog() {
       } catch (error) {
         console.error("Failed to copy the screenshot:", error);
       }
+      if (copied && activeCapture.current === report.captureId) {
+        activeCapture.current = null;
+      }
       if (!copied) {
-        // The reporter cannot paste what is not on the clipboard, so the
-        // issue must not tell a maintainer to expect an image.
-        screenshot = {
+        // The capture itself worked and may still be on the clipboard, but
+        // nothing can promise that now, so the issue must not tell a
+        // maintainer to expect an image.
+        outgoingScreenshot = {
           status: "capture-failed",
-          reason: "The screenshot could not be put back on the clipboard",
+          reason: "The screenshot could no longer be restored for pasting",
         };
         tellReporter(
           "Your screenshot could not be restored. Filing the report without it.",
@@ -540,7 +632,7 @@ export function HelpDialog() {
     openGitHubIssue({
       body: buildIssueBody({
         description: report.description,
-        screenshot,
+        screenshot: outgoingScreenshot,
         diagnostics,
         sessionId,
         redactedUserId: userBudget?.redactedUserId,
@@ -696,7 +788,7 @@ export function HelpDialog() {
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={dismissDialog}>
         <DialogContent
           className={
             screen === "form"

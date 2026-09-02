@@ -573,6 +573,10 @@ export function registerDebugHandlers() {
     return { dataUrl: preview.toDataURL(), captureId };
   });
 
+  createTypedHandler(systemContracts.discardScreenshot, async (_, params) => {
+    return { discarded: captures.delete(params.captureId) };
+  });
+
   createTypedHandler(systemContracts.recopyScreenshot, async (_, params) => {
     const image = captures.get(params.captureId);
     if (!image) return { copied: false };

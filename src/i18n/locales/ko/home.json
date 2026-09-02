@@ -157,7 +157,6 @@
     "reportBugDescription": "시스템 정보와 로그가 자동으로 채워진 신고서를 작성해 드립니다. 제출 전에 민감한 정보가 있는지 검토할 수 있습니다.",
     "preparingReport": "신고서 준비 중...",
     "uploadChatDescription": "문제 해결을 위해 채팅 기록과 코드를 공유하세요. 데이터는 문제 해결에만 사용되며 일정 시간이 지나면 자동 삭제됩니다.",
-    "preparingUpload": "업로드 준비 중...",
     "failedToLoadChatSession": "채팅 세션을 불러오지 못했습니다. 다시 시도하거나 수동으로 신고해 주세요.",
     "helpBotTitle": "Dyad 도움말 봇",
     "askQuestion": "Dyad 사용에 대해 질문하세요.",

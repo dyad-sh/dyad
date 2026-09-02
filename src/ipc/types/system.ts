@@ -405,8 +405,26 @@ export const systemContracts = {
       url: z.string(),
       contentType: z.string(),
       data: z.any(),
+      /** Names this upload so it can be cancelled while it is in flight. */
+      uploadId: z.string().min(1).optional(),
     }),
     output: z.void(),
+  }),
+
+  discardScreenshot: defineContract({
+    channel: "discard-screenshot",
+    // A capture is a full-resolution picture of the window. Once the report it
+    // belongs to is gone, nothing will ever paste it.
+    input: z.object({ captureId: z.string() }),
+    output: z.object({ discarded: z.boolean() }),
+  }),
+
+  cancelUpload: defineContract({
+    channel: "cancel-upload",
+    // A reporter who backs out has withdrawn consent to send the session, so
+    // the upload has to stop rather than finish unwatched.
+    input: z.object({ uploadId: z.string() }),
+    output: z.object({ cancelled: z.boolean() }),
   }),
 
   // Screenshot

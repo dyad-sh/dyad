@@ -158,7 +158,6 @@
     "reportBugDescription": "我们将自动填充系统信息和日志。提交前您可以检查是否有敏感信息。",
     "preparingReport": "正在准备报告...",
     "uploadChatDescription": "分享聊天日志和代码以进行故障排除。数据仅用于解决您的问题，并在限定时间后自动删除。",
-    "preparingUpload": "正在准备上传...",
     "failedToLoadChatSession": "无法加载聊天会话。请重试或手动报告。",
     "helpBotTitle": "Dyad 帮助机器人",
     "askQuestion": "关于使用 Dyad 的问题。",

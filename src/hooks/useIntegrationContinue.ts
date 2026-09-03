@@ -10,12 +10,14 @@ import {
   usePendingIntegrations,
   useRespondingRequestIds,
 } from "@/user_input/hooks";
+import { usePostHog } from "posthog-js/react";
 
 /**
  * Shared continue logic for the integration setup flow. Request lifecycle
  * reads and responses go through the generic user-input read-model adapter.
  */
 export function useIntegrationContinue() {
+  const posthog = usePostHog();
   const chatId = useAtomValue(selectedChatIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const store = useStore();
@@ -59,6 +61,7 @@ export function useIntegrationContinue() {
       },
     );
     if (!responded) return;
+    posthog.capture("integration-setup:complete", { provider });
     setIntegrationProviderSelection((prev) => {
       if (!prev.has(pendingIntegration.requestId)) return prev;
       const next = new Map(prev);
@@ -75,6 +78,7 @@ export function useIntegrationContinue() {
     canContinue,
     isSubmitting,
     userInputReadModel,
+    posthog,
     setIntegrationProviderSelection,
     setPreviewMode,
   ]);

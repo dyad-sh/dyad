@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 import { ipc } from "@/ipc/types";
+import { usePostHog } from "posthog-js/react";
 
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
@@ -36,6 +37,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   outcome,
 }) => {
   const { t } = useTranslation("home");
+  const posthog = usePostHog();
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const pendingIntegrationMap = usePendingIntegrations();
@@ -65,18 +67,18 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   const providerOptions = [
     {
+      id: "neon" as const,
+      name: t("integrations.databaseSetup.providers.neon.name"),
+      description: t("integrations.databaseSetup.providers.neon.description"),
+      url: "https://neon.tech",
+    },
+    {
       id: "supabase" as const,
       name: t("integrations.databaseSetup.providers.supabase.name"),
       description: t(
         "integrations.databaseSetup.providers.supabase.description",
       ),
       url: "https://supabase.com",
-    },
-    {
-      id: "neon" as const,
-      name: t("integrations.databaseSetup.providers.neon.name"),
-      description: t("integrations.databaseSetup.providers.neon.description"),
-      url: "https://neon.tech",
     },
   ];
 
@@ -87,7 +89,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     userSelectedProvider ??
     requestedProvider ??
     pendingIntegration?.provider ??
-    "supabase";
+    "neon";
 
   const lockedProvider = requestedProvider ?? pendingIntegration?.provider;
 
@@ -173,6 +175,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const handleNextClick = () => {
     if (!effectiveSelectedProvider || chatId == null || !pendingIntegration)
       return;
+    posthog.capture("integration-setup:start", {
+      provider: effectiveSelectedProvider,
+    });
     // Share the UI choice with the Configure panel without mutating the
     // main-authoritative request read model.
     setIntegrationProviderSelection((prev) => {

@@ -1592,27 +1592,34 @@ async function runTestsAgainstNormalPreview({
  * failing the setup costs a retry, and passing it would run the tests against
  * credentials nothing verified.
  */
-async function sandboxEnvMatchesLive(
+async function readEnvFile(directory: string): Promise<string | null> {
+  try {
+    return await fs.promises.readFile(
+      path.join(directory, ENV_FILE_NAME),
+      "utf8",
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function sandboxEnvMatchesCapture(
   realAppPath: string,
   workspace: E2eTestWorkspace,
+  capturedEnv: string | null,
 ): Promise<boolean> {
-  const read = async (appPath: string) => {
-    try {
-      return await fs.promises.readFile(
-        path.join(appPath, ENV_FILE_NAME),
-        "utf8",
-      );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
-    }
-  };
   try {
     const [live, sandbox] = await Promise.all([
-      read(realAppPath),
-      read(workspace.workspacePath),
+      readEnvFile(realAppPath),
+      readEnvFile(workspace.workspacePath),
     ]);
-    return live === sandbox;
+    // Against the value read BEFORE the snapshot, not just live-versus-copy.
+    // A rewrite that landed between that read and the copy starting leaves both
+    // sides holding the same NEW file, so comparing them to each other agrees
+    // while the row this run isolates from describes the OLD one — a Supabase
+    // test user created in one project while the sandbox app reads another's.
+    return live === capturedEnv && sandbox === capturedEnv;
   } catch (error) {
     logger.warn(
       `Couldn't compare the captured environment against the live one: ${error}`,
@@ -1885,6 +1892,13 @@ export async function runAppTestsWithIsolation({
     // What this run is, not what it requested. A refused preview has already
     // cleared the endpoint and will emit a correlated fallback event below.
     preview: previewWindow !== undefined,
+    // The route is decided far below, but the setting that decides it is
+    // readable now and synchronously — and the setup phase is over long before
+    // the first progress event could carry this. Without it here, the panel's
+    // "installing dependencies can take a few minutes" copy never appears for
+    // an agent run, or for any window that mounted after the click, which is
+    // exactly the multi-minute apparent hang it exists to explain.
+    sandboxed: usesSandboxedE2eTests(readSettings()),
   });
 
   // Install and announce the new owner before aborting the prior run. Its
@@ -2130,6 +2144,10 @@ export async function runAppTestsWithIsolation({
             installCommand: claimedApp.installCommand,
             startCommand: claimedApp.startCommand,
           };
+          // Read alongside the row, before the copy, for the same reason: the
+          // credentials the run isolates from and the ones the sandbox will
+          // hold have to be the same ones.
+          const capturedEnv = await readEnvFile(realAppPath);
           emit("Capturing the app in an isolated Git workspace…\n", "setup");
           const workspace = await createE2eTestWorkspace({
             appId,
@@ -2156,7 +2174,11 @@ export async function runAppTestsWithIsolation({
               // every comparison above while the sandbox holds the old ones.
               // Comparing the copy against the live file is the direct check,
               // and it covers writers this code has never heard of.
-              !(await sandboxEnvMatchesLive(realAppPath, workspace))
+              !(await sandboxEnvMatchesCapture(
+                realAppPath,
+                workspace,
+                capturedEnv,
+              ))
             ) {
               throw new DyadError(
                 CONFIGURATION_CHANGED_MESSAGE,
@@ -2315,37 +2337,41 @@ export async function runAppTestsWithIsolation({
           // the user keeps editing the live app while it runs.
           //
           // Lifecycle scripts are the app's own code, and they run with
-          // whatever `.env.local` the sandbox holds. The Neon path rewrote it
-          // to the throwaway branch above, so scripts there are both safe and
-          // wanted — `prisma generate`, native rebuilds, codegen. Supabase
-          // isolation is a throwaway RLS-scoped user in the REAL project and
-          // never touches the copied env, so a `postinstall` migration would
-          // run DDL against the user's live database, four times over in one
-          // agent turn. Skipped there, and said out loud rather than silently.
-          const ignoreScripts = !!app.supabaseProjectId;
+          // whatever `.env.local` the sandbox holds. Only the Neon path
+          // rewrites that file — to the throwaway branch — so for a Supabase
+          // app, or one with no managed database at all, a `postinstall`
+          // migration would run against whatever the copied credentials point
+          // at, four times over in one agent turn.
+          //
+          // The credentials are withheld for the duration of the install
+          // rather than the scripts disabled. `--ignore-scripts` is not
+          // selective: it would also break `prisma generate`, native rebuilds
+          // and codegen for every app that merely has a database, turning
+          // working runs into a server that cannot start. Taking the database
+          // out of the environment leaves the scripts running and denies them
+          // only the thing they must not reach.
+          const withholdDatabaseEnv = prepared.isolation.mode !== "neon-branch";
           try {
             if (workspace!.dependencyInstallPath) {
               emit(
                 "Installing clean dependencies in the test workspace…\n",
                 "setup",
               );
-              if (ignoreScripts) {
+              if (withholdDatabaseEnv) {
                 emit(
-                  "Skipping install scripts: this app's Supabase credentials stay live during the run, so Dyad won't run them against your real project.\n",
+                  "Install scripts run without this app's database credentials, so they can't reach your real data. A script that needs a database will fail here.\n",
                   "setup",
                 );
               }
-            } else if (ignoreScripts && hasCustomE2eStartCommand(app)) {
+            } else if (withholdDatabaseEnv && hasCustomE2eStartCommand(app)) {
               // A custom app installs through its own command, run verbatim by
-              // the runtime — there is no argument to add and no safe way to
-              // suppress scripts from outside it (`npm_config_ignore_scripts`
-              // would also disable an `npm start`). The preview runs the same
+              // the runtime as part of `install && start` — so the withholding
+              // above cannot wrap it without also hiding the credentials from
+              // the server the run is about to start. The preview runs the same
               // command against the same live project, so this is not new
-              // exposure, but it is the one case the protection above cannot
-              // reach and the user should hear that from Dyad rather than
-              // discover it.
+              // exposure, but it is the one case the protection cannot reach.
               emit(
-                "Note: your custom install command runs as written, with this app's live Supabase credentials — Dyad can't skip install scripts for it.\n",
+                "Note: your custom install command runs as written, with this app's live database credentials — Dyad can't withhold them from it.\n",
                 "setup",
               );
             }
@@ -2353,7 +2379,7 @@ export async function runAppTestsWithIsolation({
               workspace: workspace!,
               signal: controller.signal,
               onOutput: (chunk) => emit(chunk, "setup"),
-              ignoreScripts,
+              withholdDatabaseEnv,
             });
           } catch (error) {
             if (controller.signal.aborted) throw error;

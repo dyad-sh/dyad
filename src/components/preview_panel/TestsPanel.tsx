@@ -1015,6 +1015,9 @@ export function TestsPanel() {
       headed,
       parallel,
       slowMo,
+      // Settings resolve after mount, so without this the click keeps
+      // dispatching the sandbox expectation from before they loaded.
+      sandboxAvailable,
       runsInPreviewWebContentsView,
       setPreviewMode,
       setPreviewNativeViewAppId,

@@ -702,11 +702,18 @@ async function startServerOnPort({
         // emits no `close` — so the root's exit alone would report "confirmed"
         // for exactly the case that needs to say otherwise.
         const confirmStopped = async () => {
-          if (await forceKillProcessTree(child)) return true;
-          // Nothing can bind the port while a server still holds it, on either
-          // stack. It is the one observable tied to the thing the caller cares
-          // about: a survivor still serving the app out of the workspace that
-          // is about to be deleted.
+          await forceKillProcessTree(child);
+          // Two independent facts, because neither alone is enough. The
+          // wrapper shell outliving SIGKILL is a definite failure. And its
+          // clean exit proves nothing about a descendant that daemonized or
+          // was reparented — that survivor left the shell's tree, so
+          // `forceKillProcessTree` can neither see nor signal it, yet it is
+          // exactly what still holds the workspace as its cwd. Nothing can
+          // bind the port while something is listening on it, on either stack,
+          // so that is the observable tied to what the caller decides with.
+          if (child.exitCode === null && child.signalCode === null) {
+            return false;
+          }
           return (await probePort(port)) !== null;
         };
         // `killProcess` resolves on its own 5s timeout with the tree still

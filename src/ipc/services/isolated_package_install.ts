@@ -141,34 +141,21 @@ export async function resolvePackageManager(
 export function getCleanInstallArgs({
   packageManager,
   hasLockfile,
-  ignoreScripts = false,
 }: {
   packageManager: IsolatedPackageManager;
   hasLockfile: boolean;
-  /**
-   * Refuse to run the app's lifecycle scripts.
-   *
-   * Only for a workspace whose database credentials are still the live ones.
-   * Isolation that swaps the env (the Neon branch) makes scripts safe *and*
-   * useful — `prisma generate`, native rebuilds and codegen all run there — so
-   * this is off by default and turning it on unconditionally would break those
-   * apps under test only.
-   */
-  ignoreScripts?: boolean;
 }): string[] {
   if (packageManager === "pnpm") {
     return [
       ...PNPM_INSTALL_POLICY_ARGS,
       "install",
       ...(hasLockfile ? ["--frozen-lockfile"] : []),
-      ...(ignoreScripts ? ["--ignore-scripts"] : []),
       "--prefer-offline",
     ];
   }
   return [
     hasLockfile ? "ci" : "install",
     "--legacy-peer-deps",
-    ...(ignoreScripts ? ["--ignore-scripts"] : []),
     "--prefer-offline",
   ];
 }
@@ -180,15 +167,12 @@ export async function runCleanPackageInstall({
   timeoutMs,
   onOutput,
   onProcess,
-  ignoreScripts,
 }: {
   cwd: string;
   packageManager: IsolatedPackageManager;
   signal?: AbortSignal;
   timeoutMs: number;
   onOutput?: (chunk: string) => void;
-  /** See `getCleanInstallArgs`. */
-  ignoreScripts?: boolean;
   /**
    * Hands the install child to the caller so it can be terminated by something
    * other than `signal`. Opt-in: the build snapshot shares this helper and has
@@ -205,7 +189,7 @@ export async function runCleanPackageInstall({
     .catch(() => false);
   const result = await spawnStreaming({
     command: packageManager,
-    args: getCleanInstallArgs({ packageManager, hasLockfile, ignoreScripts }),
+    args: getCleanInstallArgs({ packageManager, hasLockfile }),
     cwd,
     env: getPackageManagerCommandEnv(),
     signal,

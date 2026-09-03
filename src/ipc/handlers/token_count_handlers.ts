@@ -217,6 +217,8 @@ export function registerTokenCountHandlers() {
           selectedChatMode === "local-agent" &&
           isDyadPro &&
           settings.enableAdvancedSubagents === true,
+        runTypeScriptForWholeProject:
+          settings.runTypeScriptForWholeProject === true,
       });
       const systemPromptTokens =
         estimateTokens(systemPrompt + supabaseContext) + toolDefinitionTokens;

@@ -456,6 +456,7 @@ const BaseUserSettingsFields = {
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpToolSearch: z.boolean().optional(),
   enableCodeExplorer: z.boolean().optional(),
+  runTypeScriptForWholeProject: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),
   enableExplorerSubagent: z.boolean().optional(),
   enableAutoReview: z.boolean().optional(),

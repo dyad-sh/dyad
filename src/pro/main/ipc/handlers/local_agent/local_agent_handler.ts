@@ -1004,6 +1004,8 @@ export async function handleLocalAgentStream(
         !buildMode &&
         isDyadProEnabled(settings) &&
         settings.enableAdvancedSubagents === true,
+      runTypeScriptForWholeProject:
+        settings.runTypeScriptForWholeProject === true,
       freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.

@@ -184,6 +184,8 @@ export interface AgentContext {
   canUseImplementerSubagent?: boolean;
   /** Whether root turns may manage and message existing child threads. */
   canUseAdvancedSubagentTools?: boolean;
+  /** Whether run_type_checks accepts no paths and reports the whole project. */
+  runTypeScriptForWholeProject?: boolean;
   /**
    * If true, this turn is using a Dyad Free model. Some Pro-enabled
    * conveniences, such as MCP auto-approval, should stay disabled.

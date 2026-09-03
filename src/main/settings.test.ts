@@ -133,6 +133,7 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
+          "runTypeScriptForWholeProject": false,
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",
@@ -573,6 +574,7 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
+          "runTypeScriptForWholeProject": false,
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",

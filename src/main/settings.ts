@@ -68,6 +68,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableSandboxScriptExecution: true,
   enableMcpToolSearch: true,
   enableCodeExplorer: true,
+  runTypeScriptForWholeProject: false,
   enableMultiWindow: false,
   enableExplorerSubagent: true,
   enableAutoReview: false,

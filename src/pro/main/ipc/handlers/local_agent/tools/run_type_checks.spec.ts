@@ -86,6 +86,20 @@ describe("runTypeChecksTool precondition guidance", () => {
     };
   }
 
+  it("removes the paths parameter when project-wide reporting is enabled", () => {
+    const projectWideSchema = runTypeChecksTool.getInputSchema?.({
+      runTypeScriptForWholeProject: true,
+    } as AgentContext);
+    const scopedSchema = runTypeChecksTool.getInputSchema?.({
+      runTypeScriptForWholeProject: false,
+    } as AgentContext);
+
+    expect(projectWideSchema?.parse({ paths: ["src/App.tsx"] })).toEqual({});
+    expect(scopedSchema?.parse({ paths: ["src/App.tsx"] })).toEqual({
+      paths: ["src/App.tsx"],
+    });
+  });
+
   it("tells the agent to rebuild when TypeScript is declared but missing", async () => {
     const appPath = await makeApp({
       devDependencies: { typescript: "^5.0.0" },
@@ -293,6 +307,31 @@ describe("runTypeChecksTool precondition guidance", () => {
       "The project also has 1 type error outside this scope.",
     );
     expect(result).not.toContain("src/Other.tsx:1:1");
+  });
+
+  it("always reports every project error when project-wide reporting is enabled", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^7.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    ctx.runTypeScriptForWholeProject = true;
+    vi.mocked(runTypeScriptCheck).mockResolvedValue({
+      outcome: "errors",
+      problems: [problem("src/App.tsx"), problem("src/Other.tsx")],
+    });
+
+    const result = await runTypeChecksTool.execute(
+      { paths: ["src/App.tsx"] },
+      ctx,
+    );
+
+    expect(result).toContain("Found 2 type errors");
+    expect(result).toContain("src/App.tsx:1:1");
+    expect(result).toContain("src/Other.tsx:1:1");
+    expect(result).not.toContain("outside this scope");
+    expect(ctx.onXmlStream).toHaveBeenCalledWith(
+      '<dyad-status title="Type checking all files"></dyad-status>',
+    );
   });
 
   it("describes a clean scoped check without claiming a project-wide result", async () => {

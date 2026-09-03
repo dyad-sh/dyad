@@ -101,6 +101,30 @@ describe("SETTINGS_SEARCH_INDEX", () => {
     });
   });
 
+  it("includes the whole-project TypeScript experiment", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.runTypeScriptForWholeProject,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.runTypeScriptForWholeProject,
+      label: "Run TypeScript for whole project",
+      description:
+        "Make the local agent's type-check tool report diagnostics for the whole project instead of selected paths",
+      keywords: [
+        "typescript",
+        "type check",
+        "project",
+        "agent",
+        "tool",
+        "diagnostics",
+        "experiment",
+      ],
+      sectionId: SECTION_IDS.experiments,
+      sectionLabel: "Experiments",
+    });
+  });
+
   it("includes the block unsafe npm packages experiment", () => {
     expect(
       SETTINGS_SEARCH_INDEX.find(

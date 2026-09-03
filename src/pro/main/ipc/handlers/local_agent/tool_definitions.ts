@@ -493,6 +493,7 @@ export async function estimateAgentToolTokens({
   canUseExplorerSubagent = false,
   canUseImplementerSubagent = false,
   canUseAdvancedSubagentTools = false,
+  runTypeScriptForWholeProject = false,
   preCommitHookAvailable = false,
   reinstallAndRestartAppToolAvailable = true,
   mcpToolDefs = [],
@@ -514,6 +515,7 @@ export async function estimateAgentToolTokens({
   canUseExplorerSubagent?: boolean;
   canUseImplementerSubagent?: boolean;
   canUseAdvancedSubagentTools?: boolean;
+  runTypeScriptForWholeProject?: boolean;
   preCommitHookAvailable?: boolean;
   reinstallAndRestartAppToolAvailable?: boolean;
   mcpToolDefs?: McpToolDef[];
@@ -531,6 +533,7 @@ export async function estimateAgentToolTokens({
     canUseExplorerSubagent,
     canUseImplementerSubagent,
     canUseAdvancedSubagentTools,
+    runTypeScriptForWholeProject,
     preCommitHookAvailable,
     reinstallAndRestartAppToolAvailable,
     sandboxWriteFileHostEnabled: !readOnly && !planModeOnly,
@@ -562,7 +565,9 @@ export async function estimateAgentToolTokens({
       type: "function" as const,
       name: definition.name,
       description: definition.description,
-      inputSchema: await asSchema(definition.inputSchema).jsonSchema,
+      inputSchema: await asSchema(
+        definition.getInputSchema?.(estimateContext) ?? definition.inputSchema,
+      ).jsonSchema,
     })),
   );
 

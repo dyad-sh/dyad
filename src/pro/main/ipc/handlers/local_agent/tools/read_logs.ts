@@ -30,9 +30,7 @@ const readLogsSchema = z.object({
     .min(1)
     .max(200)
     .optional()
-    .describe(
-      "Maximum number of matching logs to return (default: 50, max: 200). Runtime lifecycle boundaries are included separately and do not count toward this limit.",
-    ),
+    .describe("Maximum number of logs to return (default: 50, max: 200)"),
 });
 
 function truncateMessage(message: string, maxLength: number = 1000): string {

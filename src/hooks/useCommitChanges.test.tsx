@@ -147,7 +147,7 @@ describe("useCommitChanges", () => {
     );
   });
 
-  it("keeps unrelated commit failures on the existing toast path", async () => {
+  it("exposes unrelated commit failures inline instead of in a toast", async () => {
     const error = new Error("repository unavailable");
     mocks.commitChanges.mockRejectedValueOnce(error);
     const { result } = renderHook(() => useCommitChanges(), {
@@ -160,12 +160,9 @@ describe("useCommitChanges", () => {
       ).rejects.toBe(error);
     });
 
-    await waitFor(() =>
-      expect(mocks.showError).toHaveBeenCalledWith(
-        "Failed to commit: repository unavailable",
-      ),
-    );
+    await waitFor(() => expect(result.current.commitError).toBe(error));
     expect(result.current.preCommitError).toBeNull();
+    expect(mocks.showError).not.toHaveBeenCalled();
   });
 
   it("tracks only progress for the active commit operation", async () => {
@@ -288,6 +285,7 @@ describe("useCommitChanges", () => {
       await expect(commitPromise).rejects.toBe(cancelled);
     });
     expect(mocks.showError).not.toHaveBeenCalled();
+    expect(result.current.commitError).toBeNull();
   });
 
   it("reports when cancellation arrives after the operation finished", async () => {

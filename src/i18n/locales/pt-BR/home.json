@@ -273,6 +273,7 @@
     "prepareCommitMsgFailedDescription": "Suas alterações não foram commitadas. Revise a saída do hook, corrija sua configuração ou ambiente e faça o commit novamente.",
     "commitMsgFailed": "A verificação da mensagem do commit falhou",
     "commitMsgFailedDescription": "Suas alterações não foram commitadas. Atualize a mensagem do commit e faça o commit novamente.",
+    "commitFailed": "Falha no commit",
     "sendToChat": "Enviar para o chat",
     "systemMessages": "Mensagens do Sistema",
     "consoleFilters": {

@@ -280,6 +280,7 @@
     "commitMessage": "Commit message",
     "commitMessagePlaceholder": "Enter commit message...",
     "filesToCommit": "Files to commit ({{count}})",
+    "commitFailed": "Commit failed",
     "preCommitFailed": "Pre-commit checks failed",
     "preCommitFailedDescription": "Your changes were not committed. Fix the reported issues and commit again.",
     "viewPreCommitOutput": "View check output",

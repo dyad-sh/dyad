@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CommitDialogFooter } from "./CommitDialogActions";
+import {
+  CommitDialogFooter,
+  CommitRecoveryAlerts,
+} from "./CommitDialogActions";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -17,6 +20,7 @@ vi.mock("react-i18next", () => ({
         "preview.runningPreCommitChecks": "Running pre-commit checks...",
         "preview.validatingCommitMessage": "Validating commit message...",
         "preview.creatingCommit": "Creating commit...",
+        "preview.commitFailed": "Commit failed",
       })[key] ?? key,
   }),
 }));
@@ -79,5 +83,26 @@ describe("CommitDialogFooter", () => {
     expect(
       screen.getByTestId("cancel-commit-button").hasAttribute("disabled"),
     ).toBe(true);
+  });
+});
+
+describe("CommitRecoveryAlerts", () => {
+  it("shows an ordinary commit error in the dialog", () => {
+    render(
+      <CommitRecoveryAlerts
+        preCommitError={null}
+        prepareCommitMsgError={null}
+        commitMsgError={null}
+        commitError={new Error("unable to write the Git index")}
+        isStartingAiFix={false}
+        isCheckingAiFixAvailability={false}
+        aiFixUnavailableReason={null}
+        onFixPreCommitWithAI={vi.fn()}
+      />,
+    );
+
+    const alert = screen.getByTestId("commit-failure-alert");
+    expect(alert.textContent).toContain("Commit failed");
+    expect(alert.textContent).toContain("unable to write the Git index");
   });
 });

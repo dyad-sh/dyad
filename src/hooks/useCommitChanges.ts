@@ -96,7 +96,7 @@ export function useCommitChanges() {
         queryKey: queryKeys.versions.list({ appId }),
       });
     },
-    onError: (error: Error, { appId }) => {
+    onError: (_error: Error, { appId }) => {
       // Staging runs before any hook, and hooks like lint-staged routinely
       // rewrite and re-stage files before failing. The dialog stays open on
       // this path, so refetch or it keeps rendering the pre-hook file list and
@@ -104,14 +104,6 @@ export function useCommitChanges() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
       });
-      if (
-        !isPreCommitFailure(error) &&
-        !isPrepareCommitMsgFailure(error) &&
-        !isCommitMsgFailure(error) &&
-        !isCommitCancelled(error)
-      ) {
-        showError(`Failed to commit: ${error.message}`);
-      }
     },
   });
 
@@ -180,6 +172,14 @@ export function useCommitChanges() {
       ? commitError
       : null,
     commitMsgError: isCommitMsgFailure(commitError) ? commitError : null,
+    commitError:
+      commitError !== null &&
+      !isPreCommitFailure(commitError) &&
+      !isPrepareCommitMsgFailure(commitError) &&
+      !isCommitMsgFailure(commitError) &&
+      !isCommitCancelled(commitError)
+        ? commitError
+        : null,
     resetCommitError,
   };
 }

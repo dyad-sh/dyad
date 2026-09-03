@@ -70,6 +70,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     preCommitError,
     prepareCommitMsgError,
     commitMsgError,
+    commitError,
     resetCommitError,
     dismissDialog,
     handleCommit,
@@ -241,6 +242,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               preCommitError={preCommitError}
               prepareCommitMsgError={prepareCommitMsgError}
               commitMsgError={commitMsgError}
+              commitError={commitError}
               isStartingAiFix={isStartingAiFix}
               isCheckingAiFixAvailability={isCheckingAiFixAvailability}
               aiFixUnavailableReason={aiFixUnavailableReason}

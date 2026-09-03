@@ -50,6 +50,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     preCommitError,
     prepareCommitMsgError,
     commitMsgError,
+    commitError,
     resetCommitError,
     dismissDialog,
     handleCommit,
@@ -213,6 +214,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               preCommitError={preCommitError}
               prepareCommitMsgError={prepareCommitMsgError}
               commitMsgError={commitMsgError}
+              commitError={commitError}
               isStartingAiFix={isStartingAiFix}
               isCheckingAiFixAvailability={isCheckingAiFixAvailability}
               aiFixUnavailableReason={aiFixUnavailableReason}

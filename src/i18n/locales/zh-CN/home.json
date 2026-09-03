@@ -273,6 +273,7 @@
     "prepareCommitMsgFailedDescription": "更改尚未提交。请查看钩子输出，修复其设置或环境后再重新提交。",
     "commitMsgFailed": "提交消息检查失败",
     "commitMsgFailedDescription": "更改尚未提交。请更新提交消息后重新提交。",
+    "commitFailed": "提交失败",
     "sendToChat": "发送到聊天",
     "systemMessages": "系统消息",
     "consoleFilters": {

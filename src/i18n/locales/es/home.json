@@ -276,6 +276,7 @@
     "prepareCommitMsgFailedDescription": "Tus cambios no se confirmaron. Revisa la salida del hook, corrige su configuración o entorno y vuelve a confirmar.",
     "commitMsgFailed": "Falló la comprobación del mensaje del commit",
     "commitMsgFailedDescription": "Tus cambios no se confirmaron. Actualiza el mensaje del commit y vuelve a confirmar.",
+    "commitFailed": "Error al confirmar los cambios",
     "sendToChat": "Enviar al chat",
     "systemMessages": "Mensajes del Sistema",
     "consoleFilters": {

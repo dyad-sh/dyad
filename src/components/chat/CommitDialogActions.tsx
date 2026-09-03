@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ export function CommitRecoveryAlerts({
   preCommitError,
   prepareCommitMsgError,
   commitMsgError,
+  commitError,
   isStartingAiFix,
   isCheckingAiFixAvailability,
   aiFixUnavailableReason,
@@ -22,11 +24,14 @@ export function CommitRecoveryAlerts({
   preCommitError: Error | null;
   prepareCommitMsgError: Error | null;
   commitMsgError: Error | null;
+  commitError: Error | null;
   isStartingAiFix: boolean;
   isCheckingAiFixAvailability: boolean;
   aiFixUnavailableReason: FixPreCommitUnavailableReason | null;
   onFixPreCommitWithAI: () => void;
 }) {
+  const { t } = useTranslation("home");
+
   return (
     <>
       {preCommitError && (
@@ -49,6 +54,26 @@ export function CommitRecoveryAlerts({
           kind="prepare-commit-msg"
           error={prepareCommitMsgError}
         />
+      )}
+
+      {commitError && (
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/10 p-3"
+          data-testid="commit-failure-alert"
+        >
+          <div className="flex items-start gap-2">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">
+                {t("preview.commitFailed")}
+              </p>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background/70 p-2 font-mono text-xs text-muted-foreground">
+                {commitError.message}
+              </pre>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

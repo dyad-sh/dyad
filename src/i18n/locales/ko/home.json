@@ -275,6 +275,7 @@
     "prepareCommitMsgFailedDescription": "변경 사항이 커밋되지 않았습니다. 훅 출력을 검토하고 설정 또는 환경을 수정한 뒤 다시 커밋하세요.",
     "commitMsgFailed": "커밋 메시지 검사 실패",
     "commitMsgFailedDescription": "변경 사항이 커밋되지 않았습니다. 커밋 메시지를 수정한 뒤 다시 커밋하세요.",
+    "commitFailed": "커밋 실패",
     "sendToChat": "채팅으로 보내기",
     "systemMessages": "시스템 메시지",
     "consoleFilters": {

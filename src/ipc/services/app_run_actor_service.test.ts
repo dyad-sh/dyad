@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   requireExistingApp: vi.fn().mockResolvedValue(undefined),
   createExternalLifecycleRef: vi.fn(),
   executeExternalLifecycle: vi.fn(),
+  addLog: vi.fn(),
+  enqueue: vi.fn(),
 }));
 
 vi.mock("@/app_run/definition", async (importOriginal) => ({
@@ -22,8 +24,14 @@ vi.mock("./distributed_machine_host", () => ({
   remoteMachineHost: {},
 }));
 
+vi.mock("@/lib/log_store", () => ({
+  addLog: mocks.addLog,
+}));
+
 vi.mock("./main_app_runtime_output", () => ({
-  MainAppRuntimeOutput: class MainAppRuntimeOutput {},
+  MainAppRuntimeOutput: class MainAppRuntimeOutput {
+    enqueue = mocks.enqueue;
+  },
 }));
 
 import { AppRunActorService } from "./app_run_actor_service";
@@ -66,6 +74,23 @@ describe("AppRunActorService.executeAlreadyLockedExternalRestart", () => {
     expect(execute).toHaveBeenCalledWith({
       invocationRef,
       output: expect.anything(),
+    });
+    expect(mocks.addLog).toHaveBeenCalledWith({
+      type: "server",
+      level: "info",
+      message: "Restarting app",
+      sourceName: "Dyad",
+      appId: 7,
+      timestamp: expect.any(Number),
+      runtimeBoundary: "restart",
+    });
+    expect(mocks.enqueue).toHaveBeenCalledWith({
+      type: "info",
+      message: "Restarting app",
+      appId: 7,
+      timestamp: expect.any(Number),
+      invocationRef,
+      runtimeBoundary: "restart",
     });
     expect(actor.send).toHaveBeenNthCalledWith(1, {
       type: "EXTERNAL_RESTART_STARTED",

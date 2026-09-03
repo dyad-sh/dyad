@@ -134,7 +134,30 @@ describe("app runtime log retention (integration)", () => {
       result.indexOf("App restart started"),
     );
     expect(onXmlComplete).toHaveBeenCalledWith(
-      expect.stringContaining('type="client" level="error" count="2"'),
+      expect.stringContaining('type="client" level="error" count="1"'),
+    );
+  });
+
+  it("does not count a lifecycle boundary as a matching log", async () => {
+    await createService().executeExternalLifecycle({
+      appId: APP_ID,
+      output: { send: vi.fn(), enqueue: vi.fn(), flush: vi.fn() },
+      operation: "restart",
+      invocationRef: REF,
+    });
+
+    const onXmlComplete = vi.fn();
+    const result = await readLogsTool.execute(
+      { type: "client", level: "error", searchTerm: "missing" },
+      {
+        chatId: 7,
+        onXmlComplete,
+      } as unknown as AgentContext,
+    );
+
+    expect(result).toBe("No logs found matching the specified filters.");
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining('type="client" level="error" count="0"'),
     );
   });
 });

@@ -67,8 +67,11 @@ function truncateMessage(message: string, maxLength: number = 1000): string {
   );
 }
 
-function formatLogsForAI(logs: ConsoleEntry[]): string {
-  const summary = `Found ${logs.length} log${logs.length === 1 ? "" : "s"}:\n\n`;
+function formatLogsForAI(
+  logs: ConsoleEntry[],
+  matchingLogCount: number = logs.length,
+): string {
+  const summary = `Found ${matchingLogCount} log${matchingLogCount === 1 ? "" : "s"}:\n\n`;
 
   const formatted = logs
     .map((log) => {
@@ -189,9 +192,9 @@ ${summary}
 
     // Format logs for display
     const formattedLogs =
-      filtered.length === 0
+      recentLogs.length === 0
         ? "No logs found matching the specified filters."
-        : formatLogsForAI(filtered);
+        : formatLogsForAI(filtered, recentLogs.length);
 
     // Build the query summary for display
     const parts: string[] = ["Time: last 5 minutes"];
@@ -210,7 +213,7 @@ ${summary}
 
     // Output the complete results in a single tag
     ctx.onXmlComplete(
-      `<dyad-read-logs ${filters.join(" ")} count="${filtered.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
+      `<dyad-read-logs ${filters.join(" ")} count="${recentLogs.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
     );
 
     return formattedLogs;

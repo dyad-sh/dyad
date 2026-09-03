@@ -23,6 +23,7 @@ import {
 import type { FenceHandle } from "@/distributed_machines/keyed_admission_gate";
 import type { ActorMachineFenceHandle } from "@/distributed_machines/actor_host";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
+import { addLog } from "@/lib/log_store";
 
 type AppRunActorHost = Pick<
   typeof remoteMachineHost,
@@ -197,11 +198,30 @@ export class AppRunActorService {
     const invocationRef = appRuntimeService.createExternalLifecycleRef(appId);
     const output = new MainAppRuntimeOutput(appId, invocationRef, sink);
     return actor.trackCaptured(sink, async () => {
+      const startedAt = Date.now();
+      const logEntry = {
+        type: "server" as const,
+        level: "info" as const,
+        message: "Restarting app",
+        sourceName: "Dyad",
+        appId,
+        timestamp: startedAt,
+        runtimeBoundary: "restart" as const,
+      };
+      addLog(logEntry);
+      output.enqueue({
+        type: "info",
+        message: logEntry.message,
+        appId,
+        timestamp: startedAt,
+        invocationRef,
+        runtimeBoundary: "restart",
+      });
       sink.send({
         type: "EXTERNAL_RESTART_STARTED",
         invocationRef,
         operation: "restart",
-        startedAt: Date.now(),
+        startedAt,
       });
       try {
         const result = await execute({ invocationRef, output });

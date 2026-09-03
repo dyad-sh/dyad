@@ -479,6 +479,8 @@ export type ToolResult = string;
 export interface ToolDefinition<T = any> {
   readonly name: string;
   readonly description: string;
+  /** Build a turn-specific description when capabilities change tool behavior. */
+  readonly getDescription?: (ctx: AgentContext) => string;
   readonly inputSchema: z.ZodType<T>;
   /** Build a turn-specific schema when capabilities change the valid input. */
   readonly getInputSchema?: (ctx: AgentContext) => z.ZodType<T>;

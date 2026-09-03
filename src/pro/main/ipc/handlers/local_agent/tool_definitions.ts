@@ -564,7 +564,8 @@ export async function estimateAgentToolTokens({
     ).map(async (definition) => ({
       type: "function" as const,
       name: definition.name,
-      description: definition.description,
+      description:
+        definition.getDescription?.(estimateContext) ?? definition.description,
       inputSchema: await asSchema(
         definition.getInputSchema?.(estimateContext) ?? definition.inputSchema,
       ).jsonSchema,
@@ -780,7 +781,7 @@ export function buildAgentToolSet(
     }
 
     toolSet[tool.name] = {
-      description: tool.description,
+      description: tool.getDescription?.(ctx) ?? tool.description,
       inputSchema: tool.getInputSchema?.(ctx) ?? tool.inputSchema,
       execute: async (
         args: any,

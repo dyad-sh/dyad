@@ -27,6 +27,21 @@ const runTypeChecksSchema = z.object({
 
 const projectWideRunTypeChecksSchema = z.object({});
 
+const scopedDescription = `Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.
+
+- If a file path is provided, returns diagnostics for that file and discloses whether the project has errors elsewhere
+- If a directory path is provided, returns diagnostics for that directory and discloses whether the project has errors elsewhere
+- If no path is provided, returns diagnostics for all files in the workspace
+- Project configuration errors are always returned because they can prevent the requested files from being checked
+- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files
+- NEVER call this tool on a file unless you've edited it or are about to edit it`;
+
+const projectWideDescription = `Run TypeScript type checks on the whole current workspace and return diagnostics for all files.
+
+- Always returns diagnostics for all files in the workspace
+- Project configuration errors are always returned because they can prevent files from being checked
+- This tool can return type errors that were already present before your edits`;
+
 /**
  * Check if a problem file matches any of the specified paths.
  * Matches if the problem file equals the path (file match) or
@@ -136,13 +151,11 @@ export const runTypeChecksTool: ToolDefinition<
   z.infer<typeof runTypeChecksSchema>
 > = {
   name: "run_type_checks",
-  description: `Run TypeScript type checks on the current workspace. The tool always compiles the whole project; use the input schema shown for this turn to determine whether scoped reporting is available.
-
-- When the schema includes paths, a file or directory path filters the returned diagnostics while disclosing whether the project has errors elsewhere
-- When the schema has no parameters, returns diagnostics for all files in the workspace
-- Project configuration errors are always returned because they can prevent the requested files from being checked
-- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files
-- When paths are available, never request a file unless you've edited it or are about to edit it`,
+  description: scopedDescription,
+  getDescription: (ctx) =>
+    ctx.runTypeScriptForWholeProject
+      ? projectWideDescription
+      : scopedDescription,
   inputSchema: runTypeChecksSchema,
   getInputSchema: (ctx) =>
     ctx.runTypeScriptForWholeProject

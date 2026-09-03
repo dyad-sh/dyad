@@ -100,6 +100,24 @@ describe("runTypeChecksTool precondition guidance", () => {
     });
   });
 
+  it("only changes the description when project-wide reporting is enabled", () => {
+    const scopedDescription = runTypeChecksTool.getDescription?.({
+      runTypeScriptForWholeProject: false,
+    } as AgentContext);
+    const projectWideDescription = runTypeChecksTool.getDescription?.({
+      runTypeScriptForWholeProject: true,
+    } as AgentContext);
+
+    expect(scopedDescription).toBe(runTypeChecksTool.description);
+    expect(scopedDescription).toContain(
+      "You can provide paths to specific files or directories",
+    );
+    expect(projectWideDescription).toContain(
+      "return diagnostics for all files",
+    );
+    expect(projectWideDescription).not.toContain("paths");
+  });
+
   it("tells the agent to rebuild when TypeScript is declared but missing", async () => {
     const appPath = await makeApp({
       devDependencies: { typescript: "^5.0.0" },

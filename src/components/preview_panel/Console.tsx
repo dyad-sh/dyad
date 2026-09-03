@@ -10,6 +10,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
 import { useConsoleEntries } from "@/preview_console/hooks";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
+import { matchesConsoleEntryFilters } from "./console_entry_filters";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -165,17 +166,13 @@ export const Console = () => {
   // order relative to each other.
   const filteredEntries = useMemo(() => {
     return consoleEntries
-      .filter((entry) => {
-        if (levelFilter !== "all" && entry.level !== levelFilter) return false;
-        if (typeFilter !== "all" && entry.type !== typeFilter) return false;
-        if (
-          sourceFilter &&
-          sourceFilter !== "all" &&
-          entry.sourceName !== sourceFilter
-        )
-          return false;
-        return true;
-      })
+      .filter((entry) =>
+        matchesConsoleEntryFilters(entry, {
+          level: levelFilter,
+          type: typeFilter,
+          source: sourceFilter,
+        }),
+      )
       .sort((a, b) => a.timestamp - b.timestamp);
   }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 

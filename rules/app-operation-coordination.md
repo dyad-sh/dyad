@@ -69,6 +69,11 @@ Because repository writers remain admitted during that upload, queue a non-block
 full sync immediately after registration to catch changes whose earlier incremental
 sync notifications had no registered sandbox.
 
+Runtime logs span process lifecycles for diagnostics. Start, restart, and rebuild
+must append typed boundary entries instead of clearing retained logs, and log
+filters in both the preview and agent tools must always preserve those boundaries.
+Only explicit log clearing and app deletion discard the retained history.
+
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old
 global `withLock(appId, ...)` pattern from returning.

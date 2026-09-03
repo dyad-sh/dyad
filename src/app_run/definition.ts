@@ -471,7 +471,7 @@ function createCommandRunner() {
           // window; lifecycle state remains owned by the actor.
         }
         const runtimeBoundary =
-          command.operation === "run" ? undefined : command.operation;
+          command.operation === "run" ? ("start" as const) : command.operation;
         const logEntry = {
           level: "info" as const,
           type: "server" as const,

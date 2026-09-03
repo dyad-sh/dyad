@@ -652,6 +652,25 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
+  it("records a cold start as a runtime boundary", async () => {
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    await manager.dispatch(7, { type: "START", startedAt: 10 });
+
+    expect(logs.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Connecting to app...",
+        runtimeBoundary: "start",
+      }),
+    );
+    manager.dispose();
+  });
+
   it("rejects output captured by a superseded runtime invocation", async () => {
     const { actorA } = createHarness();
     await actorA.resync();

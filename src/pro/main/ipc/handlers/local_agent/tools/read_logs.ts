@@ -30,7 +30,9 @@ const readLogsSchema = z.object({
     .min(1)
     .max(200)
     .optional()
-    .describe("Maximum number of logs to return (default: 50, max: 200)"),
+    .describe(
+      "Maximum number of matching logs to return (default: 50, max: 200). Runtime lifecycle boundaries are included separately and do not count toward this limit.",
+    ),
 });
 
 function truncateMessage(message: string, maxLength: number = 1000): string {
@@ -72,10 +74,11 @@ function formatLogsForAI(logs: ConsoleEntry[]): string {
     .map((log) => {
       const timestamp = new Date(log.timestamp).toISOString();
       if (log.runtimeBoundary) {
-        const action =
-          log.runtimeBoundary === "rebuild"
-            ? "App rebuild started"
-            : "App restart started";
+        const action = {
+          start: "App start initiated",
+          restart: "App restart started",
+          rebuild: "App rebuild started",
+        }[log.runtimeBoundary];
         return `--- [${timestamp}] ${action} ---`;
       }
       const level = log.level.toUpperCase();
@@ -147,28 +150,42 @@ ${summary}
 
     // Apply type filter
     if (args.type && args.type !== "all") {
-      filtered = filtered.filter((log) => log.type === args.type);
+      filtered = filtered.filter(
+        (log) => log.runtimeBoundary !== undefined || log.type === args.type,
+      );
     }
 
     // Apply level filter
     if (args.level && args.level !== "all") {
-      filtered = filtered.filter((log) => log.level === args.level);
+      filtered = filtered.filter(
+        (log) => log.runtimeBoundary !== undefined || log.level === args.level,
+      );
     }
 
     // Apply search term filter
     if (args.searchTerm) {
       const term = args.searchTerm.toLowerCase();
-      filtered = filtered.filter((log) =>
-        log.message.toLowerCase().includes(term),
+      filtered = filtered.filter(
+        (log) =>
+          log.runtimeBoundary !== undefined ||
+          log.message.toLowerCase().includes(term),
       );
     }
 
     // Sort by timestamp (oldest to newest)
     filtered.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Limit results (take most recent)
+    // Limit matching logs while retaining lifecycle boundaries as session
+    // metadata. A small limit must not replace the only matching error with a
+    // trailing restart marker.
     const limit = Math.min(args.limit ?? 50, 200);
-    filtered = filtered.slice(-limit);
+    const recentLogs = filtered
+      .filter((log) => !log.runtimeBoundary)
+      .slice(-limit);
+    const recentLogSet = new Set(recentLogs);
+    filtered = filtered.filter(
+      (log) => log.runtimeBoundary !== undefined || recentLogSet.has(log),
+    );
 
     // Format logs for display
     const formattedLogs =

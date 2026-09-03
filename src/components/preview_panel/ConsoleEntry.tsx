@@ -20,7 +20,7 @@ interface ConsoleEntryProps {
   timestamp: number;
   message: string;
   sourceName?: string;
-  runtimeBoundary?: "restart" | "rebuild";
+  runtimeBoundary?: "start" | "restart" | "rebuild";
   typeFilter?: string;
   isExpanded?: boolean;
   onToggleExpand?: () => void;

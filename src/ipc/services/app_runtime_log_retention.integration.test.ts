@@ -94,7 +94,7 @@ describe("app runtime log retention (integration)", () => {
 
   it("lets read_logs inspect entries from before an agent restart", async () => {
     const beforeRestart: ConsoleEntry = {
-      type: "server",
+      type: "client",
       level: "error",
       message: "Error captured before restart",
       appId: APP_ID,
@@ -115,10 +115,18 @@ describe("app runtime log retention (integration)", () => {
     });
 
     const onXmlComplete = vi.fn();
-    const result = await readLogsTool.execute({}, {
-      chatId: 7,
-      onXmlComplete,
-    } as unknown as AgentContext);
+    const result = await readLogsTool.execute(
+      {
+        type: "client",
+        level: "error",
+        searchTerm: "captured",
+        limit: 1,
+      },
+      {
+        chatId: 7,
+        onXmlComplete,
+      } as unknown as AgentContext,
+    );
 
     expect(result).toContain("Error captured before restart");
     expect(result).toContain("App restart started");
@@ -126,7 +134,7 @@ describe("app runtime log retention (integration)", () => {
       result.indexOf("App restart started"),
     );
     expect(onXmlComplete).toHaveBeenCalledWith(
-      expect.stringContaining('count="2"'),
+      expect.stringContaining('type="client" level="error" count="2"'),
     );
   });
 });

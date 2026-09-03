@@ -63,7 +63,7 @@ async function editAndSaveFile(
   filePath: string,
   content: string,
 ) {
-  await selectFileAndWaitForEditor(page, fileName);
+  await selectFileAndWaitForEditor(page, fileName, filePath);
 
   const row = treeRow(page, filePath);
   // A locator matching nothing satisfies a negated assertion, so pin the row

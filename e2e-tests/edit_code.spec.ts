@@ -42,7 +42,11 @@ test("edit code", async ({ po }) => {
     timeout: Timeout.LONG,
   });
 
-  await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
+  await selectFileAndWaitForEditor(
+    po.page,
+    "made-with-dyad.tsx",
+    editedFilePath,
+  );
   await replaceEditorContent(po.page, "export const MadeWithDyad = ;");
 
   // Save the file
@@ -84,15 +88,23 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
     timeout: Timeout.LONG,
   });
 
-  await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
+  await selectFileAndWaitForEditor(
+    po.page,
+    "made-with-dyad.tsx",
+    firstOpenedFilePath,
+  );
   for (const round of [1, 2, 3]) {
     firstFileEdit = `export const MadeWithDyad = "round-${round}";\n`;
     updatedRobotsFile = `User-agent: *\nDisallow: /round-${round}\n`;
 
     await replaceEditorContent(po.page, firstFileEdit);
-    await selectFileAndWaitForEditor(po.page, "robots.txt");
+    await selectFileAndWaitForEditor(po.page, "robots.txt", robotsFilePath);
     await replaceEditorContent(po.page, updatedRobotsFile);
-    await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
+    await selectFileAndWaitForEditor(
+      po.page,
+      "made-with-dyad.tsx",
+      firstOpenedFilePath,
+    );
   }
 
   await expectFileContent(appPath, firstOpenedFilePath, firstFileEdit);

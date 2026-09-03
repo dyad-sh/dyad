@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Circle,
   MessageCircle,
@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
-import { useSetAtom } from "jotai";
+import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
 import {
   Tooltip,
@@ -37,6 +37,11 @@ interface TreeNode {
   isDirectory: boolean;
   children: TreeNode[];
 }
+
+const expandedFileTreePathsByAppIdAtom = atom<
+  ReadonlyMap<number, ReadonlySet<string>>
+>(new Map());
+const EMPTY_EXPANDED_PATHS: ReadonlySet<string> = new Set();
 
 /**
  * Per-path change state the tree decorates rows with. Bundled into one prop so
@@ -295,7 +300,37 @@ const buildFileTree = (files: string[]): TreeNode[] => {
 export const FileTree = ({ appId, files }: FileTreeProps) => {
   const { t } = useTranslation("home");
   const [searchValue, setSearchValue] = useState("");
+  const selectedFile = useAtomValue(selectedFileAtom);
+  const [expandedPathsByAppId, setExpandedPathsByAppId] = useAtom(
+    expandedFileTreePathsByAppIdAtom,
+  );
   const prevAppIdRef = useRef<number | null>(appId);
+
+  const expandedPaths =
+    appId === null
+      ? EMPTY_EXPANDED_PATHS
+      : (expandedPathsByAppId.get(appId) ?? EMPTY_EXPANDED_PATHS);
+
+  const setPathExpanded = useCallback(
+    (path: string, expanded: boolean) => {
+      if (appId === null) return;
+      setExpandedPathsByAppId((currentByAppId) => {
+        const current = currentByAppId.get(appId) ?? EMPTY_EXPANDED_PATHS;
+        if (current.has(path) === expanded) return currentByAppId;
+
+        const nextPaths = new Set(current);
+        if (expanded) {
+          nextPaths.add(path);
+        } else {
+          nextPaths.delete(path);
+        }
+        const nextByAppId = new Map(currentByAppId);
+        nextByAppId.set(appId, nextPaths);
+        return nextByAppId;
+      });
+    },
+    [appId, setExpandedPathsByAppId],
+  );
 
   // Reset search when appId changes to prevent unnecessary IPC calls with old search term
   useEffect(() => {
@@ -304,6 +339,27 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
       setSearchValue("");
     }
   }, [appId]);
+
+  // A file can be opened from chat or a diff rather than from this tree. Reveal
+  // its ancestors so the tree still communicates where the active editor lives.
+  useEffect(() => {
+    if (appId === null || !selectedFile || !files.includes(selectedFile.path)) {
+      return;
+    }
+
+    const ancestors = collectAncestorDirs(new Set([selectedFile.path]));
+    setExpandedPathsByAppId((currentByAppId) => {
+      const current = currentByAppId.get(appId) ?? EMPTY_EXPANDED_PATHS;
+      if ([...ancestors].every((path) => current.has(path))) {
+        return currentByAppId;
+      }
+      const nextPaths = new Set(current);
+      ancestors.forEach((path) => nextPaths.add(path));
+      const nextByAppId = new Map(currentByAppId);
+      nextByAppId.set(appId, nextPaths);
+      return nextByAppId;
+    });
+  }, [appId, files, selectedFile, setExpandedPathsByAppId]);
 
   const debouncedSearch = useDebouncedValue(searchValue, 250);
   const isSearchMode = debouncedSearch.trim().length > 0;
@@ -418,7 +474,10 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div
+        className="flex-1 overflow-auto"
+        role={isSearchMode ? undefined : "tree"}
+      >
         {isSearchMode && searchError && (
           <div className="px-3 py-2 text-xs text-red-500">
             {searchError.message}
@@ -446,6 +505,9 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
         ) : (
           <TreeNodes
             nodes={treeData}
+            expandedPaths={expandedPaths}
+            selectedPath={selectedFile?.path ?? null}
+            onPathExpandedChange={setPathExpanded}
             matchesByPath={matchesByPath}
             isSearchMode={isSearchMode}
             searchQuery={debouncedSearch}
@@ -459,6 +521,9 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
 
 interface TreeNodesProps {
   nodes: TreeNode[];
+  expandedPaths: ReadonlySet<string>;
+  selectedPath: string | null;
+  onPathExpandedChange: (path: string, expanded: boolean) => void;
   matchesByPath: Map<string, AppFileSearchResult>;
   isSearchMode: boolean;
   searchQuery: string;
@@ -478,16 +543,22 @@ const sortNodes = (nodes: TreeNode[]): TreeNode[] => {
 // Tree nodes component
 const TreeNodes = ({
   nodes,
+  expandedPaths,
+  selectedPath,
+  onPathExpandedChange,
   matchesByPath,
   isSearchMode,
   searchQuery,
   status,
 }: TreeNodesProps) => (
-  <ul className="ml-4">
+  <ul className="ml-4" role="group">
     {sortNodes(nodes).map((node) => (
       <TreeNode
         key={node.path}
         node={node}
+        expandedPaths={expandedPaths}
+        selectedPath={selectedPath}
+        onPathExpandedChange={onPathExpandedChange}
         matchesByPath={matchesByPath}
         isSearchMode={isSearchMode}
         searchQuery={searchQuery}
@@ -499,6 +570,9 @@ const TreeNodes = ({
 
 interface TreeNodeProps {
   node: TreeNode;
+  expandedPaths: ReadonlySet<string>;
+  selectedPath: string | null;
+  onPathExpandedChange: (path: string, expanded: boolean) => void;
   matchesByPath: Map<string, AppFileSearchResult>;
   isSearchMode: boolean;
   searchQuery: string;
@@ -609,12 +683,16 @@ const SearchResultItem = ({
 // Individual tree node component
 const TreeNode = ({
   node,
+  expandedPaths,
+  selectedPath,
+  onPathExpandedChange,
   matchesByPath,
   isSearchMode,
   searchQuery,
   status,
 }: TreeNodeProps) => {
-  const [expanded, setExpanded] = useState(false);
+  const expanded = node.isDirectory && expandedPaths.has(node.path);
+  const isSelected = !node.isDirectory && selectedPath === node.path;
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;
   const marker = node.isDirectory
@@ -624,15 +702,9 @@ const TreeNode = ({
   // having changed rather than something below it.
   const nameMarker = node.isDirectory ? null : marker;
 
-  useEffect(() => {
-    if (isSearchMode && node.isDirectory) {
-      setExpanded(true);
-    }
-  }, [isSearchMode, node.isDirectory]);
-
   const handleClick = () => {
     if (node.isDirectory) {
-      setExpanded(!expanded);
+      onPathExpandedChange(node.path, !expanded);
     } else {
       setSelectedFile({
         path: node.path,
@@ -641,11 +713,25 @@ const TreeNode = ({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handleClick();
+  };
+
   return (
-    <li className="py-0.5">
+    <li className="py-0.5" role="none">
       <div
-        className="group flex items-center rounded px-1.5 py-0.5 text-sm hover:bg-(--sidebar)"
+        className={cn(
+          "group flex cursor-pointer items-center rounded px-1.5 py-0.5 text-sm hover:bg-(--sidebar)",
+          isSelected && "bg-(--sidebar)",
+        )}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        role="treeitem"
+        tabIndex={0}
+        aria-expanded={node.isDirectory ? expanded : undefined}
+        aria-current={isSelected ? "page" : undefined}
         data-testid={node.isDirectory ? "file-tree-dir" : "file-tree-file"}
         data-path={node.path}
         data-marker={marker ?? undefined}
@@ -700,6 +786,9 @@ const TreeNode = ({
       {node.isDirectory && expanded && node.children.length > 0 && (
         <TreeNodes
           nodes={node.children}
+          expandedPaths={expandedPaths}
+          selectedPath={selectedPath}
+          onPathExpandedChange={onPathExpandedChange}
           matchesByPath={matchesByPath}
           isSearchMode={isSearchMode}
           searchQuery={searchQuery}

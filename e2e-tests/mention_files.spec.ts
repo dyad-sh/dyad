@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test, Timeout } from "./helpers/test_helper";
+import { expandFileTreeToPath } from "./helpers/monaco_editor";
 
 test("mention file", async ({ po }) => {
   await po.setUp({ autoApprove: true });
@@ -45,6 +46,8 @@ test("reference file from editor file tree", async ({ po }) => {
     const text = await chatInput.textContent();
     expect(text).toContain("[dump]");
   }).toPass({ timeout: Timeout.SHORT });
+
+  await expandFileTreeToPath(po.page, "src/App.tsx");
 
   // Find the file row containing "App.tsx" and its mention button.
   const appTsxText = po.page

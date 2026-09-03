@@ -55,7 +55,26 @@ export async function getActiveEditorModelContent(
   });
 }
 
-export async function selectFileAndWaitForEditor(page: Page, fileName: string) {
+export async function expandFileTreeToPath(page: Page, filePath: string) {
+  const parts = filePath.replace(/\\/g, "/").split("/");
+  for (let depth = 1; depth < parts.length; depth++) {
+    const directoryPath = parts.slice(0, depth).join("/");
+    const directory = page.locator(
+      `[data-testid="file-tree-dir"][data-path="${directoryPath}"]`,
+    );
+    await expect(directory).toBeVisible({ timeout: Timeout.MEDIUM });
+    if ((await directory.getAttribute("aria-expanded")) !== "true") {
+      await directory.click();
+    }
+  }
+}
+
+export async function selectFileAndWaitForEditor(
+  page: Page,
+  fileName: string,
+  filePath: string,
+) {
+  await expandFileTreeToPath(page, filePath);
   await page.getByText(fileName, { exact: true }).click();
   await expect(async () => {
     const modelPath = await getActiveEditorModelPath(page);

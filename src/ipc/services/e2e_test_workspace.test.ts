@@ -267,6 +267,112 @@ describe("E2E test workspace", () => {
     await workspace.dispose();
   });
 
+  it("withholds database credentials from install scripts, then restores them", async () => {
+    // `--ignore-scripts` would also break `prisma generate` and native
+    // rebuilds; taking the database out of the environment leaves the scripts
+    // running and denies them only what they must not reach.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.writeFile(path.join(appPath, "package.json"), "{}");
+    await ensureGitRepo(appPath);
+    const env =
+      "# keep me\nDATABASE_URL=postgres://real\nNEXT_PUBLIC_SUPABASE_URL=https://real\nAPI_BASE=https://example.test\n";
+    await fs.writeFile(path.join(appPath, ".env.local"), env);
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    let duringInstall = "";
+    vi.mocked(runCleanPackageInstall).mockImplementationOnce(async () => {
+      duringInstall = await fs.readFile(
+        path.join(workspace.workspacePath, ".env.local"),
+        "utf8",
+      );
+      return {
+        code: 0,
+        stdout: "",
+        stderr: "",
+        aborted: false,
+        timedOut: false,
+        hasLockfile: false,
+      };
+    });
+
+    await installE2eTestWorkspaceDependencies({
+      workspace,
+      withholdDatabaseEnv: true,
+    });
+
+    expect(duringInstall).not.toContain("DATABASE_URL");
+    expect(duringInstall).not.toContain("SUPABASE");
+    // Only the database reaches for the door; everything else the scripts may
+    // legitimately need stays.
+    expect(duringInstall).toContain("API_BASE=https://example.test");
+    expect(duringInstall).toContain("# keep me");
+    // And the run itself gets the real thing back.
+    expect(
+      await fs.readFile(
+        path.join(workspace.workspacePath, ".env.local"),
+        "utf8",
+      ),
+    ).toBe(env);
+    await workspace.dispose();
+  });
+
+  it("removes a tracked virtualenv anywhere in the repository", async () => {
+    // A monorepo sibling's `.venv` records absolute paths in `pyvenv.cfg` and
+    // its shebangs, so a copy activates an interpreter pointing back at the
+    // live checkout — the sandbox escaping itself.
+    const root = await tempRoot();
+    const repoRoot = path.join(root, "repo");
+    const appPath = path.join(repoRoot, "packages", "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(path.join(repoRoot, "packages", "api", ".venv", "bin"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "api", ".venv", "pyvenv.cfg"),
+      `home = ${repoRoot}\n`,
+    );
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.writeFile(path.join(appPath, "package.json"), "{}");
+    await ensureGitRepo(repoRoot);
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    const worktreeRoot = path.resolve(workspace.workspacePath, "..", "..");
+    await expect(
+      fs.stat(path.join(worktreeRoot, "packages", "api", ".venv")),
+    ).rejects.toThrow();
+    await workspace.dispose();
+  });
+
+  it("removes a tracked node_modules at an intermediate depth", async () => {
+    // Node resolves up through every ancestor, so a committed
+    // `/repo/packages/node_modules` would satisfy an import the clean install
+    // never provided.
+    const root = await tempRoot();
+    const repoRoot = path.join(root, "repo");
+    const appPath = path.join(repoRoot, "packages", "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(path.join(repoRoot, "packages", "node_modules", "pkg"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(repoRoot, "packages", "node_modules", "pkg", "index.js"),
+      "committed",
+    );
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.writeFile(path.join(appPath, "package.json"), "{}");
+    await ensureGitRepo(repoRoot);
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    const worktreeRoot = path.resolve(workspace.workspacePath, "..", "..");
+    await expect(
+      fs.stat(path.join(worktreeRoot, "packages", "node_modules")),
+    ).rejects.toThrow();
+    await workspace.dispose();
+  });
+
   it("classifies an isolated dependency install failure without touching the live app", async () => {
     const root = await tempRoot();
     const appPath = path.join(root, "app");

@@ -18,6 +18,7 @@ import {
 } from "@/ipc/services/isolated_package_install";
 import { trackE2eTestProcess } from "@/ipc/services/e2e_test_process_registry";
 import { isMissingPathError } from "../../../shared/node_module_resolution";
+import { ENV_FILE_NAME } from "@/ipc/utils/app_env_var_utils";
 
 const logger = log.scope("e2e_test_workspace");
 
@@ -25,20 +26,21 @@ const DEPENDENCY_INSTALL_TIMEOUT_MS = 15 * 60_000;
 const MAX_INSTALL_ERROR_CHARS = 8_000;
 
 /**
- * Generated roots the sandbox drops, matched directly under the app directory
- * (`node_modules` is the exception and is dropped at any depth). Deliberately
- * not matched at every depth: `rules/local-agent-tools.md` warns that a path
- * like `app/out/page.tsx` is application source, not build output.
+ * Generated *output* roots the sandbox drops, matched directly under the app
+ * directory only.
  *
- * The non-Node entries are not just a copy-cost saving. A virtualenv records
- * absolute paths in `pyvenv.cfg` and its script shebangs, so a copied `.venv`
- * activates an interpreter pointing back at the live checkout — a custom-command
- * app running `. .venv/bin/activate && …` would silently escape its own sandbox.
- * `vendor`, `target` and the rest are the same story for copy cost, and every
- * one of them is rebuilt by the app's own install command when it needs it.
+ * Deliberately not matched at every depth: `rules/local-agent-tools.md` warns
+ * that a path like `app/out/page.tsx` is application source, not build output,
+ * so these names are safe to drop only where an app root makes them
+ * unambiguous.
+ *
+ * Installed environments — `node_modules`, `.venv`, `.yarn`, `Pods` and the
+ * rest — are NOT here. They are never source, so `git_overlay_workspace` drops
+ * them at any depth and never preserves them even when tracked, which is what
+ * stops a monorepo sibling's virtualenv (whose `pyvenv.cfg` and shebangs hold
+ * absolute paths back into the live checkout) from reaching the sandbox.
  */
 const EXCLUDED_ROOTS = new Set([
-  "node_modules",
   "dist",
   "build",
   "out",
@@ -46,7 +48,6 @@ const EXCLUDED_ROOTS = new Set([
   ".next",
   ".nuxt",
   ".svelte-kit",
-  ".turbo",
   ".cache",
   "test-results",
   "playwright-report",
@@ -55,22 +56,10 @@ const EXCLUDED_ROOTS = new Set([
   // global cache. Nested, so it cannot be expressed as a bare root name — an
   // app's own `playwright/` directory may hold fixtures worth copying.
   "playwright/.cache",
-  // Python
-  ".venv",
-  "venv",
-  "__pycache__",
-  ".pytest_cache",
-  ".mypy_cache",
-  ".ruff_cache",
-  // Rust / Go / PHP / Ruby
-  "target",
+  // Committed vendor trees are a build *input* for Go and PHP, so this stays
+  // app-anchored and preserved when tracked, unlike the environment roots.
   "vendor",
-  // Package-manager stores and caches
-  ".yarn",
-  ".pnpm-store",
-  ".gradle",
-  // iOS / macOS
-  "Pods",
+  "target",
 ]);
 
 export const E2E_TEST_SANDBOX_DIR = "test-sandboxes";
@@ -237,42 +226,130 @@ export async function createE2eTestWorkspace({
   }
 }
 
+/**
+ * Environment variables withheld from the workspace while its dependencies
+ * install.
+ *
+ * A clean install runs the app's own lifecycle scripts, and a generated app's
+ * `postinstall` routinely migrates or seeds a database. The sandbox's
+ * `.env.local` is a verbatim copy of the live one unless isolation rewrote it,
+ * so those scripts would reach the user's real data on the way into a run that
+ * calls itself isolated.
+ *
+ * Withheld rather than suppressed with `--ignore-scripts`: that flag is not
+ * selective, and disabling every lifecycle script would break `prisma
+ * generate`, native rebuilds and codegen for apps that merely happen to have a
+ * database — turning working test runs into a server that cannot start. Taking
+ * the credentials away leaves the scripts running and only denies them the one
+ * thing they must not reach. A script that genuinely needs the database fails
+ * loudly, which is the right way round.
+ */
+const DATABASE_ENV_PATTERN =
+  /(DATABASE_URL|DIRECT_URL|POSTGRES|SUPABASE|NEON|^PG(HOST|PORT|USER|PASSWORD|DATABASE)$)/i;
+
+/** Rewrite `.env.local` without the database credentials; return the original. */
+async function withheldEnvFile(directory: string): Promise<string | null> {
+  const envPath = path.join(directory, ENV_FILE_NAME);
+  let original: string;
+  try {
+    original = await fs.readFile(envPath, "utf8");
+  } catch (error) {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  }
+  const kept = original
+    .split("\n")
+    .filter((line) => {
+      const key = line.split("=", 1)[0]?.trim();
+      // Comments and blanks have no key and stay; anything naming a database
+      // goes for the duration of the install.
+      return !key || key.startsWith("#") || !DATABASE_ENV_PATTERN.test(key);
+    })
+    .join("\n");
+  if (kept === original) return null;
+  await fs.writeFile(envPath, kept, "utf8");
+  return original;
+}
+
+/**
+ * Run `install` with the workspace's database credentials withheld from every
+ * directory in `directories`, and put them back afterwards.
+ *
+ * Both the app directory and the resolved install root need this: a monorepo's
+ * root `postinstall` reads the ROOT `.env.local`, which no provider isolation
+ * rewrites — so protecting only the app's would leave that script pointed at
+ * the live database.
+ */
+async function withWithheldDatabaseEnv<T>(
+  directories: readonly string[],
+  install: () => Promise<T>,
+): Promise<T> {
+  const restore = new Map<string, string>();
+  try {
+    for (const directory of new Set(directories)) {
+      const original = await withheldEnvFile(directory);
+      if (original !== null) restore.set(directory, original);
+    }
+    return await install();
+  } finally {
+    for (const [directory, original] of restore) {
+      await fs
+        .writeFile(path.join(directory, ENV_FILE_NAME), original, "utf8")
+        .catch((error) =>
+          logger.warn(
+            `Failed to restore the sandbox environment in ${directory} after installing: ${error}`,
+          ),
+        );
+    }
+  }
+}
+
 export async function installE2eTestWorkspaceDependencies({
   workspace,
   signal,
   onOutput,
-  ignoreScripts,
+  withholdDatabaseEnv,
 }: {
   workspace: E2eTestWorkspace;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
   /**
-   * Refuse to run the app's lifecycle scripts, for a workspace whose database
-   * credentials are still the live ones. See the caller for which isolation
-   * modes need it.
+   * Withhold the workspace's database credentials for the duration of the
+   * install, so lifecycle scripts run but cannot reach the user's real data.
+   * See the caller for which isolation modes need it.
    */
-  ignoreScripts?: boolean;
+  withholdDatabaseEnv?: boolean;
 }): Promise<void> {
   const { dependencyInstallPath, packageManager } = workspace;
   if (!dependencyInstallPath || !packageManager) return;
   if (signal?.aborted) throw new Error("Test run stopped.");
 
   const startedAt = Date.now();
-  const installResult = await runCleanPackageInstall({
-    cwd: dependencyInstallPath,
-    packageManager,
-    signal,
-    timeoutMs: DEPENDENCY_INSTALL_TIMEOUT_MS,
-    onOutput,
-    ignoreScripts,
-    // The other two run-scoped children (the sandbox server and the Playwright
-    // runner) register here for the same reason: `will-quit` cannot await the
-    // async abort path, so aborting alone leaves a cold `npm ci` — budgeted at
-    // 15 minutes — alive past the quit, holding the sandbox directory as its
-    // cwd. That is exactly the state that makes the next launch's orphan sweep
-    // fail on Windows.
-    onProcess: trackE2eTestProcess,
-  });
+  const installResult = await withWithheldDatabaseEnv(
+    withholdDatabaseEnv
+      ? [workspace.workspacePath, dependencyInstallPath]
+      : // The install root's own `.env.local` is never rewritten by provider
+        // isolation, so a monorepo root script would read live credentials even
+        // for a Neon app whose app-level env WAS swapped.
+        [dependencyInstallPath].filter(
+          (directory) => directory !== workspace.workspacePath,
+        ),
+    () =>
+      runCleanPackageInstall({
+        cwd: dependencyInstallPath,
+        packageManager,
+        signal,
+        timeoutMs: DEPENDENCY_INSTALL_TIMEOUT_MS,
+        onOutput,
+        // The other two run-scoped children (the sandbox server and the Playwright
+        // runner) register here for the same reason: `will-quit` cannot await the
+        // async abort path, so aborting alone leaves a cold `npm ci` — budgeted at
+        // 15 minutes — alive past the quit, holding the sandbox directory as its
+        // cwd. That is exactly the state that makes the next launch's orphan sweep
+        // fail on Windows.
+        onProcess: trackE2eTestProcess,
+      }),
+  );
   if (installResult.aborted || signal?.aborted) {
     throw new Error("Test run stopped.");
   }
@@ -433,6 +510,57 @@ export function runDirectoryAppId(name: string): number | null {
   return Number.isSafeInteger(appId) ? appId : null;
 }
 
+/**
+ * Artifact directories kept per app when nothing can still reference them.
+ *
+ * Enough to look back over the last few runs of an app on a fresh launch,
+ * bounded enough that a long-lived install cannot accumulate trace files
+ * without limit.
+ */
+const RETAINED_ARTIFACT_RUNS_ON_STARTUP = 5;
+
+/** Drop all but the newest few artifact directories for each app. */
+async function removeSupersededArtifactRuns(
+  artifactRoot: string,
+): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(artifactRoot, { withFileTypes: true });
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      logger.warn(`Failed to list retained E2E artifacts: ${error}`);
+    }
+    return;
+  }
+  const byApp = new Map<number, { name: string; modifiedAt: number }[]>();
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const appId = runDirectoryAppId(entry.name);
+    if (appId === null) continue;
+    const modifiedAt = await fs
+      .stat(path.join(artifactRoot, entry.name))
+      .then((stat) => stat.mtimeMs)
+      .catch(() => 0);
+    byApp.set(appId, [
+      ...(byApp.get(appId) ?? []),
+      { name: entry.name, modifiedAt },
+    ]);
+  }
+  const superseded = new Set<string>();
+  for (const runs of byApp.values()) {
+    runs
+      .sort((left, right) => right.modifiedAt - left.modifiedAt)
+      .slice(RETAINED_ARTIFACT_RUNS_ON_STARTUP)
+      .forEach((run) => superseded.add(run.name));
+  }
+  if (superseded.size === 0) return;
+  await removeRunDirectories(
+    artifactRoot,
+    (name) => superseded.has(name),
+    "superseded test artifacts",
+  );
+}
+
 async function removeRunDirectories(
   root: string,
   shouldRemove: (name: string, runPath: string) => boolean | Promise<boolean>,
@@ -531,6 +659,16 @@ export async function reconcileOrphanE2eTestWorkspaces({
   // artifacts a stale set would classify as orphaned and delete, leaving the
   // results on screen with broken screenshot paths.
   const knownAppIds = await refreshKnownAppIds();
+  // In-session pruning only runs after a full run, so a session of targeted
+  // runs accumulates directories on purpose — no count chosen in the main
+  // process can know which of them a renderer row still points at. Startup is
+  // the one moment that constraint lifts: the run state lives in renderer
+  // memory and did not survive the restart, so nothing references any of these
+  // and the oldest can go. That is what keeps the accumulation bounded across
+  // sessions without ever breaking a visible result.
+  await removeSupersededArtifactRuns(
+    path.join(userDataPath, E2E_TEST_ARTIFACT_DIR),
+  );
   await removeRunDirectories(
     path.join(userDataPath, E2E_TEST_ARTIFACT_DIR),
     (name) => {

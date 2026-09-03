@@ -269,11 +269,10 @@ http
 import http from "node:http";
 import path from "node:path";
 const port = Number(process.argv[2]);
-// Answers, but serves nothing of the workspace: a stranger on the v4 loopback.
-http
-  .createServer((_request, response) => response.end("not the sandbox"))
-  .listen(port, "127.0.0.1");
-// The real one, serving this run's own files.
+// The real one first, serving this run's own files. Bound BEFORE the decoy so
+// readiness can never poll a window in which only the decoy answers — it
+// probes 127.0.0.1 first, and a lone answer there would be latched as the
+// address to confirm.
 http
   .createServer((request, response) => {
     const name = decodeURIComponent(request.url.slice(1));
@@ -284,7 +283,13 @@ http
     }
     response.end("sandbox");
   })
-  .listen(port, "::1");
+  .listen(port, "::1", () => {
+    // Answers, but serves nothing of the workspace: a stranger on the v4
+    // loopback, and only once the real server is already reachable.
+    http
+      .createServer((_request, response) => response.end("not the sandbox"))
+      .listen(port, "127.0.0.1");
+  });
 `,
     );
     let runtime: Awaited<ReturnType<typeof startE2eTestRuntime>> | undefined;

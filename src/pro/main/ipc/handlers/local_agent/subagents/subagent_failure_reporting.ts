@@ -39,6 +39,14 @@ export function projectSubagentFailureText(
   return { displayText };
 }
 
+export function projectSubagentThreadErrorForRenderer(
+  status: SubagentThreadSummary["status"],
+  error: string | null,
+): string | null {
+  if (status !== "failed" && status !== "entitlement_revoked") return error;
+  return projectSubagentFailureText(error)?.displayText ?? null;
+}
+
 export function buildImplementerFailureReport(
   threads: ImplementerJoinSummary[],
 ): {
@@ -57,7 +65,10 @@ export function buildImplementerFailureReport(
     const details: string[] = [];
 
     if (threadError) details.push(threadError.displayText);
-    if (thread.latestActivity) {
+    if (
+      thread.latestActivity &&
+      ["error", "aborted"].includes(thread.latestActivity.status)
+    ) {
       let latest = `Latest action: ${thread.latestActivity.toolName} (${thread.latestActivity.status})`;
       if (
         activityError &&

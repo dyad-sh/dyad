@@ -78,3 +78,21 @@ describe("ChatErrorBox Basic Agent quota error", () => {
     ).toBeNull();
   });
 });
+
+describe("ChatErrorBox error presentation", () => {
+  it("bounds long string errors in a scrollable region", () => {
+    render(
+      <ChatErrorBox
+        error={`Implementer failures:\n${"Detailed failure line\n".repeat(200)}`}
+        isDyadProEnabled
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    const scrollRegion = screen
+      .getByTestId("chat-error-box")
+      .querySelector(".overflow-y-auto");
+    expect(scrollRegion?.className).toContain("max-h-64");
+    expect(scrollRegion?.className).toContain("scrollbar-on-hover");
+  });
+});

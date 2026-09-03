@@ -55,6 +55,8 @@ When projecting raw main-process errors into renderer-visible text, treat the pr
 
 Never treat a diagnostic remaining unchanged after denylist sanitization as proof that it is safe for third-party telemetry. Arbitrary provider/tool errors can still contain prompts, source snippets, customer identifiers, or unknown credentials; emit fixed classification metadata or explicitly allowlisted machine-generated fields instead, and do not bypass an expected failure's `DyadErrorKind` by manually capturing a plain `Error`.
 
+Before projecting a stored `error` column, verify its semantic use by status: some lifecycle rows reuse error fields for partial-result or success notices that must remain intact. Apply renderer redaction at the IPC projection boundary rather than a shared in-process loader so trusted agent remediation paths retain actionable diagnostics.
+
 Truncation helpers with a caller-supplied bound must also handle bounds shorter than their truncation notice; never pass a negative slice endpoint through and return a value larger than the requested limit.
 
 ## Automation pitfalls

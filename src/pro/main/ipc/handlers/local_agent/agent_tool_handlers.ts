@@ -28,7 +28,10 @@ import {
   skipReviewAutoFix,
   startReview,
 } from "./subagents/subagent_manager";
-import { projectSubagentFailureText } from "./subagents/subagent_failure_reporting";
+import {
+  projectSubagentFailureText,
+  projectSubagentThreadErrorForRenderer,
+} from "./subagents/subagent_failure_reporting";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedTypedHandler(logger);
@@ -60,7 +63,7 @@ export function registerAgentToolHandlers() {
     const threads = await listSubagents(chatId);
     return threads.map((thread) => ({
       ...thread,
-      error: projectSubagentFailureText(thread.error)?.displayText ?? null,
+      error: projectSubagentThreadErrorForRenderer(thread.status, thread.error),
     }));
   });
   handle(

@@ -216,7 +216,9 @@ export function ChatErrorBox({
 
   return (
     <ChatErrorContainer onDismiss={onDismiss}>
-      {error}
+      <div className="max-h-64 overflow-y-auto scrollbar-on-hover">
+        <ErrorMarkdown>{error}</ErrorMarkdown>
+      </div>
       <div className="mt-2 space-y-2 space-x-2">
         {!isDyadProEnabled &&
           error.includes(AI_STREAMING_ERROR_MESSAGE_PREFIX) &&
@@ -332,33 +334,39 @@ function ChatErrorContainer({
       <div className="pl-8 py-1 text-sm">
         <div className="text-red-700 text-wrap">
           {typeof children === "string" ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ children: linkChildren, ...props }) => (
-                  <a
-                    {...props}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (props.href) {
-                        ipc.system.openExternalUrl(props.href);
-                      }
-                    }}
-                    className="text-blue-500 hover:text-blue-700"
-                  >
-                    {linkChildren}
-                  </a>
-                ),
-              }}
-            >
-              {children}
-            </ReactMarkdown>
+            <ErrorMarkdown>{children}</ErrorMarkdown>
           ) : (
             children
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function ErrorMarkdown({ children }: { children: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ children: linkChildren, ...props }) => (
+          <a
+            {...props}
+            onClick={(e) => {
+              e.preventDefault();
+              if (props.href) {
+                ipc.system.openExternalUrl(props.href);
+              }
+            }}
+            className="text-blue-500 hover:text-blue-700"
+          >
+            {linkChildren}
+          </a>
+        ),
+      }}
+    >
+      {children}
+    </ReactMarkdown>
   );
 }
 

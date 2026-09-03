@@ -5,6 +5,7 @@ import {
   buildImplementerFailureReport,
   MAX_IMPLEMENTER_FAILURE_REPORT_CHARS,
   projectSubagentFailureText,
+  projectSubagentThreadErrorForRenderer,
   type ImplementerJoinSummary,
 } from "./subagent_failure_reporting";
 
@@ -104,6 +105,17 @@ it("does not emit failure telemetry for expected terminal statuses", () => {
   ).toBeNull();
 });
 
+it("sanitizes only actual failure thread errors at the renderer boundary", () => {
+  const longNotice = `Partial review:\n${"src/example.ts\n".repeat(200)}`;
+
+  expect(projectSubagentThreadErrorForRenderer("partial", longNotice)).toBe(
+    longNotice,
+  );
+  expect(
+    projectSubagentThreadErrorForRenderer("failed", longNotice)?.length,
+  ).toBeLessThanOrEqual(1_200);
+});
+
 it("redacts sensitive diagnostics and excludes them from telemetry", () => {
   const report = buildImplementerFailureReport([
     failedThread({
@@ -136,4 +148,27 @@ it("preserves bounded task names and applies a final aggregate bound", () => {
     MAX_IMPLEMENTER_FAILURE_REPORT_CHARS,
   );
   expect(report.displayMessage.endsWith("… [truncated]")).toBe(true);
+});
+
+it("does not label a completed latest activity as the failure action", () => {
+  const report = buildImplementerFailureReport([
+    failedThread({
+      error: "The next model step failed.",
+      latestActivity: {
+        id: 3,
+        threadId: "implementer-1",
+        sequence: 4,
+        toolCallId: "call-test",
+        toolName: "run_tests",
+        status: "completed",
+        presentationXml: "<dyad-command />",
+        error: null,
+        startedAt: new Date(),
+        completedAt: new Date(),
+      },
+    }),
+  ]);
+
+  expect(report.displayMessage).toContain("The next model step failed.");
+  expect(report.displayMessage).not.toContain("Latest action: run_tests");
 });

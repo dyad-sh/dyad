@@ -35,5 +35,8 @@ describe("build system prompt", () => {
     expect(prompt).toContain(
       "Use package@latest only when intentionally upgrading to the latest release, including a new major version.",
     );
+    expect(prompt).toContain(
+      "If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.",
+    );
   });
 });

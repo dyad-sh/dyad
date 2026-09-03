@@ -12,6 +12,7 @@ import {
 import {
   AGENT_TEST_WRITING_GUIDANCE,
   getImplementerTestWritingGuidance,
+  PNPM_ENGINE_RECOVERY_INSTRUCTION,
 } from "./system_prompt";
 import {
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
@@ -119,6 +120,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. ${PNPM_ENGINE_RECOVERY_INSTRUCTION}
 </tool_calling>`;
 
 const GIT_CONTEXT_BLOCK = `<git_context>

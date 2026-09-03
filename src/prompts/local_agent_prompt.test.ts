@@ -99,6 +99,9 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain(
       "Add targeted runtime logs only when runtime evidence is needed",
     );
+    expect(prompt).toContain(
+      "If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.",
+    );
     expect(prompt).toContain("<app_lifecycle>");
     expect(prompt).toContain(
       "Rely on hot reload for ordinary source, styling, and asset edits",

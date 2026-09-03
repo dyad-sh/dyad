@@ -60,10 +60,7 @@ import {
 } from "./controller";
 import { SUBAGENT_NONTERMINAL_STATUSES, subagentLifecycleState } from "./state";
 import type { SubagentLifecycleEvent } from "./transition";
-import {
-  projectSubagentFailureText,
-  type ImplementerJoinSummary,
-} from "./subagent_failure_reporting";
+import type { ImplementerJoinSummary } from "./subagent_failure_reporting";
 
 export { SUBAGENT_NONTERMINAL_STATUSES } from "./state";
 
@@ -341,10 +338,7 @@ export async function listSubagents(
     where: eq(agentThreads.chatId, chatId),
     orderBy: [desc(agentThreads.createdAt)],
   });
-  return rows.map((row) => ({
-    ...toSummary(row),
-    error: projectSubagentFailureText(row.error)?.displayText ?? null,
-  }));
+  return rows.map(toSummary);
 }
 
 export async function getSubagentMessages(chatId: number, threadId: string) {
@@ -378,10 +372,7 @@ export async function getSubagentActivities(
     where: eq(agentActivities.threadId, threadId),
     orderBy: [asc(agentActivities.sequence)],
   });
-  return rows.map((row) => ({
-    ...toActivitySummary(row),
-    error: projectSubagentFailureText(row.error)?.displayText ?? null,
-  }));
+  return rows.map(toActivitySummary);
 }
 
 export async function updateSubagentActivity(params: {

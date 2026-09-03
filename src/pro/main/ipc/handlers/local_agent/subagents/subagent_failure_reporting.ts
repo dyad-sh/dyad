@@ -2,6 +2,8 @@ import type { SubagentActivity, SubagentThreadSummary } from "@/ipc/types";
 import { safeGithubOpsErrorMessage } from "@/ipc/services/github_ops_safe_error";
 
 const MAX_FAILURE_DETAIL_CHARS = 1_200;
+const MAX_TASK_NAME_CHARS = 200;
+export const MAX_IMPLEMENTER_FAILURE_REPORT_CHARS = 4_000;
 const HIDDEN_FAILURE_DETAIL = "Failure details were hidden for privacy.";
 
 export type ImplementerJoinSummary = SubagentThreadSummary & {
@@ -10,13 +12,11 @@ export type ImplementerJoinSummary = SubagentThreadSummary & {
 
 export interface ProjectedFailureText {
   displayText: string;
-  telemetrySafe: boolean;
 }
 
 /**
  * Stored sub-agent errors can contain arbitrary provider or tool output. Reuse
- * the main-process diagnostic sanitizer before crossing into chat/UI text, and
- * only mark unchanged, bounded text as eligible for PostHog.
+ * the main-process diagnostic sanitizer before crossing into chat/UI text.
  */
 export function projectSubagentFailureText(
   value: string | null | undefined,
@@ -36,19 +36,20 @@ export function projectSubagentFailureText(
       ? sanitized
       : `${sanitized.slice(0, MAX_FAILURE_DETAIL_CHARS - 14)}… [truncated]`;
 
-  return {
-    displayText,
-    telemetrySafe:
-      normalized.length <= MAX_FAILURE_DETAIL_CHARS && sanitized === normalized,
-  };
+  return { displayText };
 }
 
 export function buildImplementerFailureReport(
   threads: ImplementerJoinSummary[],
-): { displayMessage: string; telemetryMessage: string | null } {
-  let telemetrySafe = true;
+): {
+  displayMessage: string;
+  telemetryProperties: Record<string, number> | null;
+} {
   const displayLines = threads.map((thread) => {
-    const taskName = projectSubagentFailureText(thread.taskName);
+    const taskName = boundDisplayText(
+      thread.taskName.replaceAll(/\s+/g, " "),
+      MAX_TASK_NAME_CHARS,
+    );
     const threadError = projectSubagentFailureText(thread.error);
     const activityError = projectSubagentFailureText(
       thread.latestActivity?.error,
@@ -70,30 +71,41 @@ export function buildImplementerFailureReport(
       details.push("No additional failure details were recorded.");
     }
 
-    telemetrySafe &&=
-      (!threadError || threadError.telemetrySafe) &&
-      (!activityError || activityError.telemetrySafe);
-    return `- ${taskName?.displayText ?? "Implementer task"} (${thread.status}): ${details.join(" ")}`;
+    return `- ${taskName || "Implementer task"} (${thread.status}): ${details.join(" ")}`;
   });
 
-  const telemetryLines = threads.map((thread) => {
-    const threadError = projectSubagentFailureText(thread.error);
-    const activityError = projectSubagentFailureText(
-      thread.latestActivity?.error,
-    );
-    const details = [
-      threadError?.displayText,
-      thread.latestActivity
-        ? `latest action ${thread.latestActivity.toolName} (${thread.latestActivity.status})${activityError && activityError.displayText !== threadError?.displayText ? `: ${activityError.displayText}` : ""}`
-        : null,
-    ].filter((value): value is string => Boolean(value));
-    return `- status ${thread.status}: ${details.join(" ") || "no stored failure detail"}`;
-  });
+  const failedThreads = threads.filter((thread) => thread.status === "failed");
+  const displayMessage = boundDisplayText(
+    `Implementer sub-agent did not complete successfully:\n${displayLines.join("\n")}`,
+    MAX_IMPLEMENTER_FAILURE_REPORT_CHARS,
+  );
 
   return {
-    displayMessage: `Implementer sub-agent did not complete successfully:\n${displayLines.join("\n")}`,
-    telemetryMessage: telemetrySafe
-      ? `Implementer sub-agent failure:\n${telemetryLines.join("\n")}`
-      : null,
+    displayMessage,
+    telemetryProperties:
+      failedThreads.length === 0
+        ? null
+        : {
+            failed_implementer_count: failedThreads.length,
+            with_stored_thread_error_count: failedThreads.filter((thread) =>
+              Boolean(thread.error),
+            ).length,
+            with_latest_activity_count: failedThreads.filter((thread) =>
+              Boolean(thread.latestActivity),
+            ).length,
+            with_latest_activity_error_count: failedThreads.filter((thread) =>
+              Boolean(thread.latestActivity?.error),
+            ).length,
+          },
   };
+}
+
+function boundDisplayText(value: string, maxChars: number): string {
+  const normalized = value
+    .replaceAll(/\r\n?/g, "\n")
+    .replaceAll(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .trim();
+  const notice = "… [truncated]";
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - notice.length))}${notice}`;
 }

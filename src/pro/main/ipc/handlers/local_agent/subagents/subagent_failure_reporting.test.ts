@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import type { SubagentActivity, SubagentThreadSummary } from "@/ipc/types";
 import {
   buildImplementerFailureReport,
+  MAX_IMPLEMENTER_FAILURE_REPORT_CHARS,
   projectSubagentFailureText,
   type ImplementerJoinSummary,
 } from "./subagent_failure_reporting";
@@ -70,7 +71,12 @@ it("reports stored thread error and the latest activity without tool output", ()
     "Latest action: run_tests (error): Test command exited with code 1.",
   );
   expect(report.displayMessage).not.toContain("very large output");
-  expect(report.telemetryMessage).toContain("Model request failed");
+  expect(report.telemetryProperties).toEqual({
+    failed_implementer_count: 1,
+    with_stored_thread_error_count: 1,
+    with_latest_activity_count: 1,
+    with_latest_activity_error_count: 1,
+  });
 });
 
 it("uses a useful fallback when no errors or activities were stored", () => {
@@ -79,7 +85,23 @@ it("uses a useful fallback when no errors or activities were stored", () => {
   expect(report.displayMessage).toContain(
     "Fix authentication (failed): No additional failure details were recorded.",
   );
-  expect(report.telemetryMessage).toContain("no stored failure detail");
+  expect(report.telemetryProperties).toEqual({
+    failed_implementer_count: 1,
+    with_stored_thread_error_count: 0,
+    with_latest_activity_count: 0,
+    with_latest_activity_error_count: 0,
+  });
+});
+
+it("does not emit failure telemetry for expected terminal statuses", () => {
+  expect(
+    buildImplementerFailureReport([
+      failedThread({
+        status: "cancelled",
+        error: "The Implementer was cancelled.",
+      }),
+    ]).telemetryProperties,
+  ).toBeNull();
 });
 
 it("redacts sensitive diagnostics and excludes them from telemetry", () => {
@@ -92,8 +114,26 @@ it("redacts sensitive diagnostics and excludes them from telemetry", () => {
 
   expect(report.displayMessage).not.toContain("ghp_");
   expect(report.displayMessage).not.toContain("alice");
-  expect(report.telemetryMessage).toBeNull();
+  expect(JSON.stringify(report.telemetryProperties)).not.toContain("ghp_");
   expect(
-    projectSubagentFailureText("Ordinary provider failure")?.telemetrySafe,
-  ).toBe(true);
+    projectSubagentFailureText("Ordinary provider failure")?.displayText,
+  ).toBe("Ordinary provider failure");
+});
+
+it("preserves bounded task names and applies a final aggregate bound", () => {
+  const report = buildImplementerFailureReport(
+    Array.from({ length: 10 }, (_, index) =>
+      failedThread({
+        id: `implementer-${index}`,
+        taskName: `Fix /api/users endpoint ${index}`,
+        error: "x".repeat(2_000),
+      }),
+    ),
+  );
+
+  expect(report.displayMessage).toContain("Fix /api/users endpoint 0");
+  expect(report.displayMessage.length).toBeLessThanOrEqual(
+    MAX_IMPLEMENTER_FAILURE_REPORT_CHARS,
+  );
+  expect(report.displayMessage.endsWith("… [truncated]")).toBe(true);
 });

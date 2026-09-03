@@ -108,10 +108,7 @@ import {
   FileEditTracker,
   type Todo,
 } from "./tools/types";
-import {
-  sendTelemetryEvent,
-  sendTelemetryException,
-} from "@/ipc/utils/telemetry";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
   buildTodoReminderMessage,
@@ -2076,10 +2073,9 @@ export async function handleLocalAgentStream(
       );
       if (unsuccessful.length > 0) {
         const failureReport = buildImplementerFailureReport(unsuccessful);
-        if (failureReport.telemetryMessage) {
-          sendTelemetryException(new Error(failureReport.telemetryMessage), {
-            source: "implementer_join",
-            failed_implementer_count: unsuccessful.length,
+        if (failureReport.telemetryProperties) {
+          sendTelemetryEvent("local_agent:implementer_failed", {
+            ...failureReport.telemetryProperties,
           });
         }
         throw new DyadError(

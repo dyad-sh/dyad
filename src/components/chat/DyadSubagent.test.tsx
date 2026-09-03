@@ -224,4 +224,28 @@ describe("DyadSubagent", () => {
       ),
     ).toBeTruthy();
   });
+
+  it("does not style a completed latest activity as the failure cause", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      { ...makeThread("failed"), error: "The following model step failed." },
+    ]);
+    mocks.getSubagentActivities.mockResolvedValue([makeActivity()]);
+
+    render(
+      <DyadSubagent
+        chatId={7}
+        threadId="explorer-1"
+        persona="explorer"
+        taskName="Trace authentication"
+        renderActivity={() => null}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    await screen.findByText(/failed/i);
+    fireEvent.click(
+      screen.getByRole("button", { name: /Trace authentication/ }),
+    );
+    expect(screen.queryByText(/Latest action: grep \(completed\)/)).toBeNull();
+  });
 });

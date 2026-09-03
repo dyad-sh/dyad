@@ -53,6 +53,8 @@ Most IPC/main paths and shared utilities (`git_utils`, Supabase admin, local age
 
 When projecting raw main-process errors into renderer-visible text, treat the projection as a security-sensitive boundary and document the redaction tradeoff: a denylist preserves actionable unknown output but cannot guarantee removal of every identifier. Test known sensitive syntax variants, including authorization headers, identities, common secret/token shapes, quoted and unquoted paths with spaces or embedded delimiter characters, `--flag=/path`, bracketed paths, UNC paths, generic URL schemes, scheme-less/SCP Git remotes, and internal hostnames. Test public remediation URLs, source locations, and common filenames separately so redaction does not erase the guidance users need. Pre-bound both total untrusted text and individual lines before running regex-heavy sanitization, then apply the final length bound after composing prefixes or guidance so the serialized state can never exceed its codec limit. Audit every renderer site for bounded multiline presentation when increasing that limit.
 
+Never treat a diagnostic remaining unchanged after denylist sanitization as proof that it is safe for third-party telemetry. Arbitrary provider/tool errors can still contain prompts, source snippets, customer identifiers, or unknown credentials; emit fixed classification metadata or explicitly allowlisted machine-generated fields instead, and do not bypass an expected failure's `DyadErrorKind` by manually capturing a plain `Error`.
+
 Truncation helpers with a caller-supplied bound must also handle bounds shorter than their truncation notice; never pass a negative slice endpoint through and return a value larger than the requested limit.
 
 ## Automation pitfalls

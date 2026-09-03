@@ -205,15 +205,17 @@ export function DyadSubagent({
           {threadError && (
             <p className="mt-2 text-xs text-destructive">{threadError}</p>
           )}
-          {thread?.status === "failed" && latestActivity && (
-            <p className="mt-1 text-xs text-destructive">
-              Latest action: {formatToolName(latestActivity.toolName)} (
-              {latestActivity.status})
-              {latestActivityError && latestActivityError !== threadError
-                ? `: ${latestActivityError}`
-                : ""}
-            </p>
-          )}
+          {thread?.status === "failed" &&
+            latestActivity &&
+            ["error", "aborted"].includes(latestActivity.status) && (
+              <p className="mt-1 text-xs text-destructive">
+                Latest action: {formatToolName(latestActivity.toolName)} (
+                {latestActivity.status})
+                {latestActivityError && latestActivityError !== threadError
+                  ? `: ${latestActivityError}`
+                  : ""}
+              </p>
+            )}
           {report && (
             <div className="mt-2 border-t border-border/60 pt-2">
               <p className="mb-1 text-xs font-medium">Findings</p>

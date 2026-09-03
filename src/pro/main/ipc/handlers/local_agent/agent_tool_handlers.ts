@@ -28,6 +28,7 @@ import {
   skipReviewAutoFix,
   startReview,
 } from "./subagents/subagent_manager";
+import { projectSubagentFailureText } from "./subagents/subagent_failure_reporting";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedTypedHandler(logger);
@@ -56,7 +57,11 @@ export function registerAgentToolHandlers() {
 
   handle(agentContracts.listSubagents, async (event, { chatId }) => {
     setSubagentEventTarget(event.sender);
-    return listSubagents(chatId);
+    const threads = await listSubagents(chatId);
+    return threads.map((thread) => ({
+      ...thread,
+      error: projectSubagentFailureText(thread.error)?.displayText ?? null,
+    }));
   });
   handle(
     agentContracts.getSubagentMessages,
@@ -69,7 +74,11 @@ export function registerAgentToolHandlers() {
     agentContracts.getSubagentActivities,
     async (event, { chatId, threadId }) => {
       setSubagentEventTarget(event.sender);
-      return getSubagentActivities(chatId, threadId);
+      const activities = await getSubagentActivities(chatId, threadId);
+      return activities.map((activity) => ({
+        ...activity,
+        error: projectSubagentFailureText(activity.error)?.displayText ?? null,
+      }));
     },
   );
   handle(

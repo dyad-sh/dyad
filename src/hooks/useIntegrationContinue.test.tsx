@@ -74,10 +74,16 @@ describe("useIntegrationContinue", () => {
       provider: "neon",
       completed: true,
     });
-    expect(mocks.posthogCapture).toHaveBeenCalledWith(
-      "integration-setup:complete",
-      { provider: "neon", requestId: "integration-1" },
-    );
+    expect(mocks.posthogCapture.mock.calls).toEqual([
+      [
+        "integration-setup:start",
+        { provider: "neon", requestId: "integration-1" },
+      ],
+      [
+        "integration-setup:complete",
+        { provider: "neon", requestId: "integration-1" },
+      ],
+    ]);
   });
 
   it("does not track completion when the response is rejected", async () => {

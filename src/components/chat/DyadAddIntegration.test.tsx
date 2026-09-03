@@ -8,7 +8,12 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 
 const mocks = vi.hoisted(() => ({
+  app: { frameworkType: "vite", files: [] } as
+    | { frameworkType: "vite"; files: string[] }
+    | undefined,
+  appLoading: false,
   posthogCapture: vi.fn(),
+  requestId: "integration-1",
 }));
 
 vi.mock("posthog-js/react", () => ({
@@ -35,7 +40,7 @@ vi.mock("@/user_input/hooks", () => ({
       [
         7,
         {
-          requestId: "integration-1",
+          requestId: mocks.requestId,
           chatId: 7,
           provider: undefined,
         },
@@ -45,8 +50,8 @@ vi.mock("@/user_input/hooks", () => ({
 
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({
-    app: { frameworkType: "vite", files: [] },
-    loading: false,
+    app: mocks.app,
+    loading: mocks.appLoading,
   }),
 }));
 
@@ -77,14 +82,17 @@ function renderCard() {
     return <Provider store={store}>{children}</Provider>;
   }
 
-  render(<DyadAddIntegration>Connect a database.</DyadAddIntegration>, {
+  return render(<DyadAddIntegration>Connect a database.</DyadAddIntegration>, {
     wrapper: Wrapper,
   });
 }
 
 describe("DyadAddIntegration", () => {
   beforeEach(() => {
+    mocks.app = { frameworkType: "vite", files: [] };
+    mocks.appLoading = false;
     mocks.posthogCapture.mockReset();
+    mocks.requestId = crypto.randomUUID();
   });
 
   it("shows Neon first and selects it by default", () => {
@@ -101,8 +109,11 @@ describe("DyadAddIntegration", () => {
   });
 
   it("tracks each provider once when setup starts", () => {
-    renderCard();
+    const view = renderCard();
 
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
+    view.unmount();
+    renderCard();
     fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
     fireEvent.click(
       screen.getByRole("button", {
@@ -123,12 +134,30 @@ describe("DyadAddIntegration", () => {
     expect(mocks.posthogCapture.mock.calls).toEqual([
       [
         "integration-setup:start",
-        { provider: "neon", requestId: "integration-1" },
+        { provider: "neon", requestId: mocks.requestId },
       ],
       [
         "integration-setup:start",
-        { provider: "supabase", requestId: "integration-1" },
+        { provider: "supabase", requestId: mocks.requestId },
       ],
     ]);
+  });
+
+  it("waits for app metadata before committing the default provider", () => {
+    mocks.app = undefined;
+    mocks.appLoading = true;
+    renderCard();
+
+    const radios = screen.getAllByRole("radio");
+    expect(radios).toHaveLength(2);
+    expect(radios[0].textContent).toContain("Neon");
+    expect(radios[0].getAttribute("aria-checked")).toBe("true");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Continue with Neon",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });

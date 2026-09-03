@@ -24,6 +24,7 @@ import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { getCompletedIntegrationProvider } from "./dyadAddIntegrationUtils";
 import { ipc } from "@/ipc/types";
 import { usePostHog } from "posthog-js/react";
+import { captureIntegrationSetupStart } from "@/lib/integrationSetupTelemetry";
 
 interface DyadAddIntegrationProps {
   children: React.ReactNode;
@@ -48,7 +49,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const pendingIntegration =
     chatId != null ? pendingIntegrationMap.get(chatId) : undefined;
-  const { app } = useLoadApp(appId);
+  const { app, loading: isAppLoading } = useLoadApp(appId);
   const { projectInfo, isLoadingBranches } = useNeon(appId);
   const isNeonSupported = isNeonSupportedFramework({
     files: app?.files,
@@ -64,7 +65,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   // True after the user clicks Next: the chat card collapses to a "finish in
   // the right panel" message with a Back button.
   const [inPanelMode, setInPanelMode] = useState(false);
-  const trackedSetupStartsRef = useRef(new Set<string>());
 
   const providerOptions = [
     {
@@ -100,11 +100,17 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     // show only that one (but fall back to supabase if neon was requested for
     // an unsupported framework)
     if (lockedProvider) {
+      if (isAppLoading) {
+        return providerOptions.filter((p) => p.id === lockedProvider);
+      }
       if (lockedProvider === "neon" && !isNeonSupported) {
         return providerOptions.filter((p) => p.id === "supabase");
       }
       return providerOptions.filter((p) => p.id === lockedProvider);
     }
+    // Keep the intended Neon-first choice visible while framework support is
+    // unknown, but do not let the user commit until app metadata has loaded.
+    if (isAppLoading) return providerOptions;
     // No provider specified: show neon only for frameworks that support it
     if (!isNeonSupported) {
       return providerOptions.filter((p) => p.id !== "neon");
@@ -174,16 +180,17 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     !projectInfo?.projectName;
 
   const handleNextClick = () => {
-    if (!effectiveSelectedProvider || chatId == null || !pendingIntegration)
+    if (
+      !effectiveSelectedProvider ||
+      chatId == null ||
+      !pendingIntegration ||
+      isAppLoading
+    )
       return;
-    const setupStartKey = `${pendingIntegration.requestId}:${effectiveSelectedProvider}`;
-    if (!trackedSetupStartsRef.current.has(setupStartKey)) {
-      trackedSetupStartsRef.current.add(setupStartKey);
-      posthog.capture("integration-setup:start", {
-        provider: effectiveSelectedProvider,
-        requestId: pendingIntegration.requestId,
-      });
-    }
+    captureIntegrationSetupStart(posthog, {
+      provider: effectiveSelectedProvider,
+      requestId: pendingIntegration.requestId,
+    });
     // Share the UI choice with the Configure panel without mutating the
     // main-authoritative request read model.
     setIntegrationProviderSelection((prev) => {
@@ -363,7 +370,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
               {availableProviders.map((option, index) => {
                 const isSelected = effectiveSelectedProvider === option.id;
                 const disableSwitch =
-                  !isInteractive || availableProviders.length === 1;
+                  !isInteractive ||
+                  isAppLoading ||
+                  availableProviders.length === 1;
                 return (
                   <div
                     key={option.id}
@@ -455,7 +464,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                 )}
                 <Button
                   onClick={handleNextClick}
-                  disabled={!effectiveSelectedProvider}
+                  disabled={!effectiveSelectedProvider || isAppLoading}
                   className="w-full sm:w-auto"
                   size="sm"
                 >

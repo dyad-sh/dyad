@@ -11,6 +11,7 @@ import {
   useRespondingRequestIds,
 } from "@/user_input/hooks";
 import { usePostHog } from "posthog-js/react";
+import { captureIntegrationSetupComplete } from "@/lib/integrationSetupTelemetry";
 
 /**
  * Shared continue logic for the integration setup flow. Request lifecycle
@@ -61,7 +62,7 @@ export function useIntegrationContinue() {
       },
     );
     if (!responded) return;
-    posthog.capture("integration-setup:complete", {
+    captureIntegrationSetupComplete(posthog, {
       provider,
       requestId: pendingIntegration.requestId,
     });

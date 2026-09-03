@@ -147,6 +147,12 @@ describe("local-agent default request (integration)", () => {
     expect(rawTypeCheckTool.description).toContain(
       "You can provide paths to specific files or directories",
     );
+    expect(rawTypeCheckTool.description).toContain(
+      "Omit paths for final verification after multi-file or cross-cutting changes",
+    );
+    expect(rawTypeCheckTool.description).toContain(
+      "If the user explicitly asks to fix all type-check or build problems, omit paths",
+    );
     expect(rawTypeCheckTool.parameters.properties).toHaveProperty("paths");
     const systemMessage = raw.body.messages.find(
       (m: { role: string }) => m.role === "system",

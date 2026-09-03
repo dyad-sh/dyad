@@ -33,8 +33,11 @@ const scopedDescription = `Run TypeScript type checks on the current workspace. 
 - If a directory path is provided, returns diagnostics for that directory and discloses whether the project has errors elsewhere
 - If no path is provided, returns diagnostics for all files in the workspace
 - Project configuration errors are always returned because they can prevent the requested files from being checked
-- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files
-- NEVER call this tool on a file unless you've edited it or are about to edit it`;
+- Prefer paths for small, isolated changes so the returned diagnostics stay focused
+- Omit paths for final verification after multi-file or cross-cutting changes, or after changing shared types, TypeScript configuration, dependencies, generated types, or global declarations
+- Project-wide results may include pre-existing errors; normally focus only on errors introduced by or related to your changes
+- If the user explicitly asks to fix all type-check or build problems, omit paths and treat every reported TypeScript diagnostic as in scope. Fix them iteratively and rerun this tool until it passes; use run_build separately to verify build problems
+- NEVER request a file path unless you've edited the file or are about to edit it`;
 
 const projectWideDescription = `Run TypeScript type checks on the whole current workspace and return diagnostics for all files.
 

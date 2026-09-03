@@ -112,6 +112,15 @@ describe("runTypeChecksTool precondition guidance", () => {
     expect(scopedDescription).toContain(
       "You can provide paths to specific files or directories",
     );
+    expect(scopedDescription).toContain(
+      "Omit paths for final verification after multi-file or cross-cutting changes",
+    );
+    expect(scopedDescription).toContain(
+      "If the user explicitly asks to fix all type-check or build problems, omit paths",
+    );
+    expect(scopedDescription).toContain(
+      "use run_build separately to verify build problems",
+    );
     expect(projectWideDescription).toContain(
       "return diagnostics for all files",
     );

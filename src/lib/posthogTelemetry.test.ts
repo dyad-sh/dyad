@@ -850,6 +850,20 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     ).toBe(true);
   });
 
+  it("always sends the integration setup funnel for non-Pro sampling", () => {
+    for (const event of [
+      "integration-setup:start",
+      "integration-setup:complete",
+    ]) {
+      expect(
+        shouldBypassNonProTelemetrySampling({
+          event,
+          properties: { provider: "neon", requestId: "integration-1" },
+        }),
+      ).toBe(true);
+    }
+  });
+
   it("always sends pnpm build policy telemetry for non-Pro sampling", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

@@ -791,6 +791,15 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  // Setup funnel events must be admitted together so provider conversion can
+  // be correlated by requestId instead of independently sampled.
+  if (
+    eventName === "integration-setup:start" ||
+    eventName === "integration-setup:complete"
+  ) {
+    return true;
+  }
+
   // Reporting a bug is rare enough that these add little volume, and sampling
   // them independently would break the outcome each prompt is paired with.
   if (

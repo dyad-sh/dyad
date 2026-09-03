@@ -71,6 +71,13 @@ function formatLogsForAI(logs: ConsoleEntry[]): string {
   const formatted = logs
     .map((log) => {
       const timestamp = new Date(log.timestamp).toISOString();
+      if (log.runtimeBoundary) {
+        const action =
+          log.runtimeBoundary === "rebuild"
+            ? "App rebuild started"
+            : "App restart started";
+        return `--- [${timestamp}] ${action} ---`;
+      }
       const level = log.level.toUpperCase();
       const type = log.type;
       const source = log.sourceName ? ` [${log.sourceName}]` : "";

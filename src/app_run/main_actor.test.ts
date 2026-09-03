@@ -34,6 +34,11 @@ const database = vi.hoisted(() => ({
   findFirst: vi.fn(async () => ({ id: 7 }) as { id: number } | undefined),
 }));
 
+const logs = vi.hoisted(() => ({
+  add: vi.fn(),
+  clear: vi.fn(),
+}));
+
 vi.mock("@/db", () => ({
   db: {
     query: {
@@ -54,8 +59,8 @@ vi.mock("drizzle-orm", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/log_store", () => ({
-  addLog: vi.fn(),
-  clearLogs: vi.fn(),
+  addLog: logs.add,
+  clearLogs: logs.clear,
 }));
 
 vi.mock("@/ipc/services/app_runtime_service", () => ({
@@ -128,6 +133,8 @@ describe("main-hosted app-run actor", () => {
     });
     database.findFirst.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
+    logs.add.mockReset();
+    logs.clear.mockReset();
     runtime.start.mockResolvedValue(undefined);
     runtime.restart.mockResolvedValue(undefined);
     runtime.stop.mockResolvedValue(undefined);
@@ -633,6 +640,13 @@ describe("main-hosted app-run actor", () => {
       expect.objectContaining({
         removeNodeModules: true,
         recreateSandbox: false,
+      }),
+    );
+    expect(logs.clear).not.toHaveBeenCalled();
+    expect(logs.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Restarting app...",
+        runtimeBoundary: "restart",
       }),
     );
     manager.dispose();

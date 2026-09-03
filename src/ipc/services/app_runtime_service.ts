@@ -17,6 +17,7 @@ import {
   type RuntimeMode2,
 } from "@/lib/schemas";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
+import type { ConsoleEntry } from "@/ipc/types/supabase";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import {
   CancellationTombstones,
@@ -1498,6 +1499,7 @@ export interface AppRuntimeServiceDependencies {
     sandboxId: string;
     cloudLogAbortController: AbortController;
   }): void;
+  addLog(entry: ConsoleEntry): void;
   clearLogs(appId: number): void;
   readRuntimeMode(): RuntimeMode2;
   removeNodeModules(appPath: string): Promise<void>;
@@ -1542,7 +1544,6 @@ export interface StartAppRuntimeOptions {
 export interface RestartAppRuntimeOptions extends StartAppRuntimeOptions {
   removeNodeModules?: boolean;
   recreateSandbox?: boolean;
-  clearRuntimeLogs?: boolean;
 }
 
 export interface ExternalAppRuntimeLifecycleOptions {
@@ -1640,7 +1641,6 @@ export class AppRuntimeService {
       invocationRef,
       removeNodeModules = false,
       recreateSandbox = false,
-      clearRuntimeLogs = false,
     } = options;
     logger.log(`Restarting app ${appId}`);
     return this.dependencies.runSerialized(appId, "restart", async () => {
@@ -1658,7 +1658,6 @@ export class AppRuntimeService {
           appPath,
           output,
           invocationRef,
-          clearRuntimeLogs,
           appInfo,
         });
         await this.dependencies.waitForReady(appId, options.readyTimeoutMs);
@@ -1687,9 +1686,6 @@ export class AppRuntimeService {
             );
           }
         }
-      }
-      if (clearRuntimeLogs) {
-        this.dependencies.clearLogs(appId);
       }
       await this.startProcess(app, appPath, options);
       await this.dependencies.waitForReady(appId, options.readyTimeoutMs);
@@ -1782,12 +1778,24 @@ export class AppRuntimeService {
       this.externalClaimsByApp.set(options.appId, claims);
     }
     claims.set(invocationRef.operationId, claim);
+    const timestamp = this.dependencies.now();
+    const message =
+      options.operation === "rebuild" ? "Rebuilding app" : "Restarting app";
+    this.dependencies.addLog({
+      type: "server",
+      level: "info",
+      message,
+      sourceName: "Dyad",
+      appId: options.appId,
+      timestamp,
+      runtimeBoundary: options.operation,
+    });
     options.output.send({
       type: "agent-lifecycle-started",
-      message: `${options.operation === "rebuild" ? "Rebuilding" : "Restarting"} app`,
+      message,
       appId: options.appId,
       invocationRef,
-      timestamp: this.dependencies.now(),
+      timestamp,
       lifecycleRequestId: claim.requestId,
       lifecycleOperation: options.operation,
     });
@@ -1831,7 +1839,6 @@ export class AppRuntimeService {
         invocationRef,
         removeNodeModules: options.operation === "rebuild",
         recreateSandbox: options.operation === "rebuild",
-        clearRuntimeLogs: true,
         readyTimeoutMs: options.timeoutMs,
       });
       this.settleExternalClaim(claim);
@@ -1892,7 +1899,6 @@ export class AppRuntimeService {
     appPath: string;
     output: AppRuntimeOutput;
     invocationRef?: AppRunInvocationRef;
-    clearRuntimeLogs: boolean;
     appInfo: RunningAppInfo;
   }): Promise<void> {
     const sandboxId = input.appInfo.cloudSandboxId!;
@@ -1904,9 +1910,6 @@ export class AppRuntimeService {
     input.appInfo.invocationRef = input.invocationRef;
     input.appInfo.output = input.output;
     input.appInfo.cloudLogAbortController = new AbortController();
-    if (input.clearRuntimeLogs) {
-      this.dependencies.clearLogs(input.appId);
-    }
     await this.dependencies.ensureProxy({
       appId: input.appId,
       output: input.output,
@@ -2016,6 +2019,7 @@ export const appRuntimeService = new AppRuntimeService({
   restartSandbox: restartCloudSandbox,
   ensureProxy: ensureProxyForRunningApp,
   startCloudLogs: startCloudSandboxLogStream,
+  addLog,
   clearLogs,
   readRuntimeMode: () => readSettings().runtimeMode2 ?? "host",
   removeNodeModules: async (appPath) => {

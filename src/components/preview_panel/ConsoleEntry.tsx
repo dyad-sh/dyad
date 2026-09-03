@@ -20,6 +20,7 @@ interface ConsoleEntryProps {
   timestamp: number;
   message: string;
   sourceName?: string;
+  runtimeBoundary?: "restart" | "rebuild";
   typeFilter?: string;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
@@ -37,6 +38,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
     timestamp,
     message,
     sourceName,
+    runtimeBoundary,
     level,
     type,
     typeFilter,
@@ -45,6 +47,21 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
   } = props;
   const { t } = useTranslation(["home", "common"]);
   const setChatInput = useSetAtom(chatInputValueAtom);
+
+  if (runtimeBoundary) {
+    return (
+      <div
+        data-testid="runtime-boundary"
+        className="flex items-center gap-2 py-2 text-gray-500"
+      >
+        <div className="h-px flex-1 bg-border" />
+        <span title={new Date(timestamp).toLocaleString()}>
+          {formatTimestamp(timestamp)} · {message}
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+    );
+  }
 
   const isTruncated = message.length > MAX_MESSAGE_LENGTH;
   const displayMessage =

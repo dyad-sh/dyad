@@ -440,6 +440,7 @@ export const AppOutputSchema = z.object({
   lifecycleRequestId: z.string().optional(),
   lifecycleOperation: z.enum(["restart", "rebuild"]).optional(),
   lifecycleRuntimeMayBeLive: z.boolean().optional(),
+  runtimeBoundary: z.enum(["restart", "rebuild"]).optional(),
 });
 
 export type AppOutput = z.infer<typeof AppOutputSchema>;

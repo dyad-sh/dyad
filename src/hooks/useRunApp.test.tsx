@@ -205,6 +205,40 @@ describe("useAppOutputSubscription", () => {
     hook.unmount();
   });
 
+  it("preserves preview logs when an agent restarts the app", () => {
+    const { manager, Wrapper } = makeWrapper(1);
+    const hook = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    emitOutput({
+      type: "stderr",
+      message: "Error before restart",
+      appId: 1,
+      timestamp: 100,
+    });
+    emitOutput({
+      type: "agent-lifecycle-started",
+      lifecycleOperation: "restart",
+      lifecycleRequestId: "restart-1",
+      message: "Restarting app",
+      appId: 1,
+      timestamp: 200,
+    });
+
+    expect(manager.previewConsole.getSnapshot(1)).toEqual([
+      expect.objectContaining({
+        message: "Error before restart",
+        runtimeBoundary: undefined,
+      }),
+      expect.objectContaining({
+        message: "Restarting app",
+        runtimeBoundary: "restart",
+      }),
+    ]);
+    hook.unmount();
+  });
+
   it("keeps console and package warnings keyed by app", () => {
     mocks.settings.current = { enablePnpmMinimumReleaseAgeWarning: true };
     const { manager, packageWarnings, Wrapper } = makeWrapper(1);

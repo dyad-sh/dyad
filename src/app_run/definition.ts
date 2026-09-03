@@ -12,7 +12,7 @@ import {
 import type { RequestId } from "@/distributed_machines/request_identity";
 import { defineRuntimeRemoteIntentContract } from "@/distributed_machines/remote_intent_contract";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import { addLog, clearLogs } from "@/lib/log_store";
+import { addLog } from "@/lib/log_store";
 import { appRuntimeService } from "@/ipc/services/app_runtime_service";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_protocol";
 import { eq } from "drizzle-orm";
@@ -470,15 +470,15 @@ function createCommandRunner() {
           // Presentation stores consume this output independently in each
           // window; lifecycle state remains owned by the actor.
         }
-        if (command.operation !== "run") {
-          clearLogs(command.appId);
-        }
+        const runtimeBoundary =
+          command.operation === "run" ? undefined : command.operation;
         const logEntry = {
           level: "info" as const,
           type: "server" as const,
           message: START_LOG_MESSAGE[command.operation],
           appId: command.appId,
           timestamp: command.startedAt,
+          runtimeBoundary,
         };
         addLog(logEntry);
         const output = new MainAppRuntimeOutput(
@@ -492,6 +492,7 @@ function createCommandRunner() {
           appId: command.appId,
           timestamp: command.startedAt,
           invocationRef: command.invocationRef,
+          runtimeBoundary,
         });
         const operation = Promise.resolve().then(async () => {
           await (command.operation === "run"

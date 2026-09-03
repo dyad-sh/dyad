@@ -9,7 +9,6 @@ export interface RestartAppOptions {
   invocationRef?: AppRunInvocationRef;
   removeNodeModules?: boolean;
   recreateSandbox?: boolean;
-  clearRuntimeLogs?: boolean;
 }
 
 /**

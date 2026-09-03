@@ -149,14 +149,6 @@ export function useAppOutputSubscription() {
         });
       }
 
-      if (
-        output.type === "agent-lifecycle-started" ||
-        output.message === "Restarting app..." ||
-        output.message === "Rebuilding app after pnpm install..."
-      ) {
-        manager.previewConsole.clear(output.appId);
-      }
-
       const logEntry = {
         level:
           output.type === "stderr" ||
@@ -168,6 +160,11 @@ export function useAppOutputSubscription() {
         message: output.message,
         appId: output.appId,
         timestamp: output.timestamp ?? Date.now(),
+        runtimeBoundary:
+          output.runtimeBoundary ??
+          (output.type === "agent-lifecycle-started"
+            ? output.lifecycleOperation
+            : undefined),
       };
 
       if (output.type === "client-error") {

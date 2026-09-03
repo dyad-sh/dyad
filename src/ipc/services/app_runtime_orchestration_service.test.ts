@@ -81,6 +81,7 @@ function createHarness() {
     restartSandbox: vi.fn(),
     ensureProxy: vi.fn(),
     startCloudLogs: vi.fn(),
+    addLog: vi.fn(),
     clearLogs: vi.fn(() => {
       calls.push("clear-logs");
     }),
@@ -137,7 +138,6 @@ describe("AppRuntimeService", () => {
       output,
       invocationRef: REF,
       removeNodeModules: true,
-      clearRuntimeLogs: true,
     });
     await harness.service.stop(APP_ID);
 
@@ -151,7 +151,6 @@ describe("AppRuntimeService", () => {
       "stop",
       "clean-port",
       "remove-node-modules",
-      "clear-logs",
       "start:app-run:test",
       "ready",
       "unlock:restart",
@@ -302,7 +301,6 @@ describe("AppRuntimeService", () => {
       "lock:restart",
       "clean-port",
       "remove-node-modules",
-      "clear-logs",
       "start:app-run:test",
       "ready",
       "unlock:restart",
@@ -311,6 +309,16 @@ describe("AppRuntimeService", () => {
       APP_ID,
       600_000,
     );
+    expect(harness.dependencies.addLog).toHaveBeenCalledWith({
+      type: "server",
+      level: "info",
+      message: "Rebuilding app",
+      sourceName: "Dyad",
+      appId: APP_ID,
+      timestamp: 123,
+      runtimeBoundary: "rebuild",
+    });
+    expect(harness.dependencies.clearLogs).not.toHaveBeenCalled();
   });
 
   it("marks readiness failure as potentially retaining a live runtime", async () => {

@@ -54,6 +54,7 @@ const ConsoleItem = memo(
           timestamp={entry.timestamp}
           message={entry.message}
           sourceName={entry.sourceName}
+          runtimeBoundary={entry.runtimeBoundary}
           typeFilter={typeFilter}
           isExpanded={isExpanded}
           onToggleExpand={() => toggleExpanded(entryKey, index)}
@@ -264,6 +265,7 @@ export const Console = () => {
                       timestamp={entry.timestamp}
                       message={entry.message}
                       sourceName={entry.sourceName}
+                      runtimeBoundary={entry.runtimeBoundary}
                       typeFilter={typeFilter}
                       isExpanded={isExpanded}
                       onToggleExpand={() => toggleExpanded(entryKey)}

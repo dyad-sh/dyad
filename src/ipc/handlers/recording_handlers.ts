@@ -306,6 +306,11 @@ export function registerRecordingHandlers() {
               let started = false;
               let endReason: RecordingEndReason = "stopped";
               let endMessage: string | undefined;
+              // Whether the throwaway branch/test user this recording created
+              // is actually gone. Fails closed for the same reason
+              // `envRestored` does: a teardown that never returned has told us
+              // nothing, and "unknown" must not read as "cleaned up".
+              let remoteCleanupCompleted = true;
               try {
                 // The session was already ended before admission — the owning
                 // window closed, or Stop was pressed while this waited behind
@@ -469,10 +474,13 @@ export function registerRecordingHandlers() {
                   // returns gets to say the environment is restored.
                   summary.envRestored = false;
                   try {
-                    summary.envRestored = (
-                      await prepared.teardown(teardownOptions)
-                    ).envRestored;
+                    const teardownResult =
+                      await prepared.teardown(teardownOptions);
+                    summary.envRestored = teardownResult.envRestored;
+                    remoteCleanupCompleted =
+                      teardownResult.remoteCleanupCompleted;
                   } catch (error) {
+                    remoteCleanupCompleted = false;
                     logger.error(
                       `Recording teardown failed for app ${appId}: ${error}`,
                     );
@@ -486,6 +494,16 @@ export function registerRecordingHandlers() {
                   endReason = "error";
                   endMessage =
                     "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
+                } else if (!remoteCleanupCompleted) {
+                  // The env came back, so the app is usable — but something the
+                  // recording created is still in the user's account: a
+                  // temporary Neon branch, or a test user in their Supabase
+                  // project. The test-run path reports this and the recorder
+                  // was silently dropping it, which is how a leak becomes
+                  // invisible until the user finds it themselves.
+                  endReason = "error";
+                  endMessage =
+                    "Dyad couldn't finish cleaning up the temporary database it created for this recording. Your app settings were restored; Dyad will retry the cleanup on next startup.";
                 }
                 clearRegistration();
                 // A setup failure normally has no live recorder to notify. The

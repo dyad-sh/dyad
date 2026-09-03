@@ -15,6 +15,7 @@ vi.mock("./spawn_streaming", () => ({
 import {
   buildPlaywrightConfig,
   buildPreviewShimSource,
+  canResolvePlaywrightRunner,
   configSetsTimeout,
   detectSystemBrowserChannel,
   DYAD_CONFIG_FILENAME,
@@ -22,6 +23,7 @@ import {
   ensurePlaywrightBootstrap,
   ensurePreviewShim,
   isPlaywrightBrowserInstalled,
+  isPlaywrightInstalled,
   refreshGeneratedE2eTsconfig,
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
@@ -1496,5 +1498,40 @@ describe("configSetsTimeout", () => {
     expect(
       configSetsTimeout(makeAppWithConfig(buildPlaywrightConfig(null))),
     ).toBe(false);
+  });
+});
+
+describe("canResolvePlaywrightRunner", () => {
+  it("finds a copy hoisted to a monorepo's workspace root", () => {
+    // A monorepo app installs at the workspace root, which hoists
+    // `@playwright/test` above the app directory. An app-directory-only check
+    // would refuse a sandbox `npx playwright` resolves fine.
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-mono-"));
+    tempDirs.push(repoRoot);
+    const appPath = path.join(repoRoot, "packages", "app");
+    fs.mkdirSync(appPath, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, "node_modules", "@playwright", "test"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(
+        repoRoot,
+        "node_modules",
+        "@playwright",
+        "test",
+        "package.json",
+      ),
+      JSON.stringify({ version: "1.50.0" }),
+    );
+
+    expect(isPlaywrightInstalled(appPath)).toBe(false);
+    expect(canResolvePlaywrightRunner(appPath)).toBe(true);
+  });
+
+  it("answers false when nothing above the app has it either", () => {
+    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-none-"));
+    tempDirs.push(appPath);
+
+    expect(canResolvePlaywrightRunner(appPath)).toBe(false);
   });
 });

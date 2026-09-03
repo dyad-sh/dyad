@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { TestingForNewAppsSwitch } from "@/components/TestingForNewAppsSwitch";
+import { SandboxedE2eTestsSwitch } from "@/components/SandboxedE2eTestsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
@@ -494,6 +495,19 @@ export function WorkflowSettings() {
           When creating a new app, opt it into AI E2E testing by default. This
           only affects apps created while this setting is on; existing apps are
           unchanged.
+        </p>
+      </div>
+
+      <div id={SETTING_IDS.sandboxedE2eTests} className="space-y-1.5">
+        <SandboxedE2eTestsSwitch />
+        <p className={hint}>
+          Run each E2E test in a throwaway copy of your app with its own server,
+          so tests never touch your preview. Neon apps also get a temporary
+          database; Supabase apps still use your real project, isolated by a
+          throwaway test user. Each run installs dependencies from scratch, so
+          turn this off if that makes runs too slow — tests then run against
+          your normal preview, and apps using Neon won't run at all rather than
+          test against your real data.
         </p>
       </div>
 

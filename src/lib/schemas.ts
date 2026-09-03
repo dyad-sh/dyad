@@ -448,6 +448,16 @@ const BaseUserSettingsFields = {
   testHeaded: z.boolean().optional(),
   testParallel: z.boolean().optional(),
   testSlowMo: z.boolean().optional(),
+  // Escape hatch for the sandboxed E2E runtime, which snapshots the app's
+  // source per run and then installs its dependencies from scratch —
+  // `node_modules` is deliberately never copied or linked, so every run pays a
+  // clean `npm ci` / `pnpm install --frozen-lockfile` (budgeted at 15 minutes)
+  // that a warm project would not. That install, not the snapshot, is what
+  // makes a run noticeably slower. Off by default — the sandbox is the
+  // intended path — and turning it on runs the tests against the normal
+  // preview with the missing isolation disclosed. Neon apps are refused rather
+  // than run against the real database either way.
+  disableSandboxedE2eTests: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),

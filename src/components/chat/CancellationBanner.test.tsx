@@ -18,10 +18,12 @@ vi.mock("react-i18next", () => ({
       ({
         stoppingGeneration: "Stopping…",
         cancellationEndingTestRun: "Ending the test run.",
-        cancellationRestoringTestApp:
-          "Restoring your app's database and preview. This can take a while.",
+        cancellationRemovingTestDatabase:
+          "Removing the temporary test database. This can take a while.",
         cancellationCleaningTestData:
           "Cleaning up the test data from this run.",
+        cancellationCleaningTestSandbox:
+          "Cleaning up this run's test sandbox and data.",
       })[key] ?? key,
   }),
 }));
@@ -30,6 +32,7 @@ function renderBanner(runState?: {
   phase: TestRunPhase;
   isolationMode?: TestIsolation["mode"];
   source?: "panel" | "agent";
+  sandboxed?: boolean;
 }) {
   const store = createStore();
   if (runState) {
@@ -45,6 +48,7 @@ function renderBanner(runState?: {
             isolation: runState.isolationMode
               ? { mode: runState.isolationMode }
               : undefined,
+            sandboxed: runState.sandboxed,
           },
         ],
       ]),
@@ -87,22 +91,44 @@ describe("CancellationBanner", () => {
     });
 
     expect(
-      screen.getByText(/Restoring your app's database and preview/),
+      screen.getByText(/Removing the temporary test database/),
     ).toBeTruthy();
     expect(screen.getByText(/can take a while/)).toBeTruthy();
+    // The run had its own sandbox and its own server; the user's preview and
+    // `.env.local` were never touched, so nothing is being restored.
+    expect(screen.queryByText(/Restoring/i)).toBeNull();
   });
 
-  it("does not claim a restore on the Supabase path", () => {
-    // That teardown only deletes the temporary test user — no env swap, no
-    // dev-server restart, nothing the user sees.
+  it("names the sandbox on the Supabase path when the run took one", () => {
+    // That teardown only deletes the temporary test user and the run's sandbox
+    // copy — no env swap, no dev-server restart, nothing the user sees.
     renderBanner({
       phase: "cleaning-up",
       isolationMode: "supabase-test-user",
       source: "agent",
+      sandboxed: true,
     });
 
-    expect(screen.getByText(/Cleaning up the test data/)).toBeTruthy();
+    expect(
+      screen.getByText(/Cleaning up this run's test sandbox/),
+    ).toBeTruthy();
     expect(screen.queryByText(/Restoring/)).toBeNull();
+  });
+
+  it("claims no sandbox for a run that never took one", () => {
+    // The fallback path (Docker/cloud runtime, or the opt-out) creates no
+    // workspace, and neither does a run whose setup failed before the copy.
+    renderBanner({
+      phase: "cleaning-up",
+      isolationMode: "supabase-test-user",
+      source: "agent",
+      sandboxed: false,
+    });
+
+    expect(
+      screen.getByText("Cleaning up the test data from this run."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/sandbox/i)).toBeNull();
   });
 
   it("reports the kill before the teardown starts", () => {

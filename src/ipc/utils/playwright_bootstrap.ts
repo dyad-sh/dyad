@@ -382,10 +382,10 @@ export function buildPlaywrightConfig(channel: BrowserChannel | null): string {
     : `// Uses Playwright's bundled Chromium (downloaded on first run).`;
   return `import { defineConfig } from "@playwright/test";
 
-// ${DYAD_CONFIG_SENTINEL}. The dev server is started separately by Dyad's
-// preview, so we point baseURL at the already-running proxy URL (passed via
-// env) rather than using Playwright's \`webServer\` (which would double-start
-// the app).
+// ${DYAD_CONFIG_SENTINEL}. Dyad starts the server for the run itself — an
+// isolated run-scoped one when sandboxing is on, otherwise your normal preview
+// — so we point baseURL at whichever it selected (passed via env) rather than
+// using Playwright's \`webServer\` (which would double-start the app).
 // ${browserNote}
 export default defineConfig({
   testDir: "./${E2E_TEST_DIR}",
@@ -1142,6 +1142,25 @@ export function isPlaywrightInstalled(appPath: string): boolean {
   return fs.existsSync(
     path.join(appPath, "node_modules", "@playwright", "test", "package.json"),
   );
+}
+
+/**
+ * Whether the Playwright runner can resolve `@playwright/test` from here, the
+ * way Node does: walking up through every parent `node_modules`.
+ *
+ * Deliberately NOT `isPlaywrightInstalled`. That one answers "should I install
+ * into this exact directory?", where a copy hoisted to a monorepo's workspace
+ * root is not the answer and a false negative costs a redundant install. This
+ * one answers "can the run start at all?", where the same false negative would
+ * refuse a sandbox `npx playwright` would have resolved fine.
+ */
+export function canResolvePlaywrightRunner(appPath: string): boolean {
+  try {
+    resolveNodeModulePackageJsonPathSync(appPath, ["@playwright", "test"]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

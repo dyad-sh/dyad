@@ -324,15 +324,9 @@ function convertRemoteCatalog(
     effortSettings: model.effortSettings,
     type: "cloud" as const,
   }));
-  const remoteAutoModelNames = new Set(
-    remoteAutoModels.map((model) => model.apiName),
-  );
-  modelsByProvider.auto = [
-    ...remoteAutoModels,
-    ...fallbackAutoModels.filter(
-      (model) => !remoteAutoModelNames.has(model.apiName),
-    ),
-  ];
+  if (remoteAutoModels.length === 0) {
+    modelsByProvider.auto = fallbackAutoModels;
+  }
 
   const parsedExpiresAt = remoteCatalog.expiresAt
     ? new Date(remoteCatalog.expiresAt).getTime()

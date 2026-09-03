@@ -4,6 +4,7 @@ export function usesOpenAIResponsesApiInLocalAgent(model: {
 }): boolean {
   return (
     model.provider === "openai" ||
-    (model.provider === "auto" && model.name === "value")
+    (model.provider === "auto" &&
+      (model.name === "value" || model.name === "balanced"))
   );
 }

@@ -406,7 +406,10 @@ export default function AppDetailsPage() {
     >
       <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
 
-      <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
+      <div
+        id="app-settings-overview"
+        className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative"
+      >
         <div className="flex items-center mb-3">
           <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
           <Tooltip>
@@ -618,7 +621,10 @@ export default function AppDetailsPage() {
             Open in Chat
             <MessageCircle className="h-4 w-4" />
           </Button>
-          <div className="border border-gray-200 rounded-md p-4">
+          <div
+            id="app-setting-github"
+            className="border border-gray-200 rounded-md p-4"
+          >
             <GitHubConnector appId={appId} folderName={selectedApp.path} />
             {selectedApp.githubOrg && selectedApp.githubRepo && appId && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
@@ -626,50 +632,62 @@ export default function AppDetailsPage() {
               </div>
             )}
           </div>
-          {/* When providerFilter is set, show the selected connector only if the other provider isn't already active */}
-          {providerFilter === "supabase" &&
-            appId &&
-            !selectedApp?.neonProjectId && <SupabaseConnector appId={appId} />}
-          {providerFilter === "supabase" &&
-            appId &&
-            selectedApp?.neonProjectId && (
-              <UnavailableIntegrationCard provider="supabase" />
-            )}
-          {providerFilter === "neon" &&
-            appId &&
-            !selectedApp?.supabaseProjectId && <NeonConnector appId={appId} />}
-          {providerFilter === "neon" &&
-            appId &&
-            selectedApp?.supabaseProjectId && (
-              <UnavailableIntegrationCard provider="neon" />
-            )}
-          {/* When no providerFilter, show both with existing mutual exclusion */}
-          {!providerFilter && (
-            <>
-              {appId &&
-                !selectedApp?.neonProjectId &&
-                !selectedApp?.supabaseProjectId && (
-                  <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>{t("integrations.mutualExclusion.chooseOne")}</span>
-                  </div>
-                )}
-              {appId && !selectedApp?.neonProjectId && (
+          <div id="app-setting-database" className="space-y-2">
+            {/* When providerFilter is set, show the selected connector only if the other provider isn't already active */}
+            {providerFilter === "supabase" &&
+              appId &&
+              !selectedApp?.neonProjectId && (
                 <SupabaseConnector appId={appId} />
               )}
-              {appId && selectedApp?.neonProjectId && (
+            {providerFilter === "supabase" &&
+              appId &&
+              selectedApp?.neonProjectId && (
                 <UnavailableIntegrationCard provider="supabase" />
               )}
-              {appId && !selectedApp?.supabaseProjectId && (
+            {providerFilter === "neon" &&
+              appId &&
+              !selectedApp?.supabaseProjectId && (
                 <NeonConnector appId={appId} />
               )}
-              {appId && selectedApp?.supabaseProjectId && (
+            {providerFilter === "neon" &&
+              appId &&
+              selectedApp?.supabaseProjectId && (
                 <UnavailableIntegrationCard provider="neon" />
               )}
-            </>
+            {/* When no providerFilter, show both with existing mutual exclusion */}
+            {!providerFilter && (
+              <>
+                {appId &&
+                  !selectedApp?.neonProjectId &&
+                  !selectedApp?.supabaseProjectId && (
+                    <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{t("integrations.mutualExclusion.chooseOne")}</span>
+                    </div>
+                  )}
+                {appId && !selectedApp?.neonProjectId && (
+                  <SupabaseConnector appId={appId} />
+                )}
+                {appId && selectedApp?.neonProjectId && (
+                  <UnavailableIntegrationCard provider="supabase" />
+                )}
+                {appId && !selectedApp?.supabaseProjectId && (
+                  <NeonConnector appId={appId} />
+                )}
+                {appId && selectedApp?.supabaseProjectId && (
+                  <UnavailableIntegrationCard provider="neon" />
+                )}
+              </>
+            )}
+          </div>
+          {appId && (
+            <div id="app-setting-mobile">
+              <CapacitorControls appId={appId} />
+            </div>
           )}
-          {appId && <CapacitorControls appId={appId} />}
-          <AppUpgrades appId={appId} />
+          <div id="app-setting-upgrades">
+            <AppUpgrades appId={appId} />
+          </div>
         </div>
 
         {/* Rename Dialog */}

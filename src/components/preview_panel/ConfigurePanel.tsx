@@ -135,7 +135,7 @@ const AppCommandsSection = ({
 
   if (isLoadingApp) {
     return (
-      <Card>
+      <Card id="app-config-commands">
         <CardHeader>
           <CardTitle>
             <AppCommandsTitle />
@@ -158,7 +158,7 @@ const AppCommandsSection = ({
   const commandsValid = hasInstallCommand === hasStartCommand;
 
   return (
-    <Card>
+    <Card id="app-config-commands">
       <CardHeader>
         <CardTitle>
           <AppCommandsTitle />
@@ -342,7 +342,7 @@ const IntegrationSection = () => {
       : t("integrations.databaseSetup.providers.neon.name");
 
   return (
-    <div ref={sectionRef}>
+    <div ref={sectionRef} id="app-config-database">
       <Card>
         <CardHeader>
           <CardTitle>
@@ -540,7 +540,7 @@ export const ConfigurePanel = () => {
     return (
       <div className="p-4 space-y-4">
         <IntegrationSection />
-        <Card>
+        <Card id="app-config-environment-variables">
           <CardHeader>
             <CardTitle>
               <EnvironmentVariablesTitle />
@@ -559,7 +559,7 @@ export const ConfigurePanel = () => {
           the integration prompt. */}
       <IntegrationSection />
 
-      <Card>
+      <Card id="app-config-environment-variables">
         <CardHeader>
           <CardTitle>
             <EnvironmentVariablesTitle />

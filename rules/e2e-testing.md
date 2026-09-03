@@ -37,6 +37,11 @@ context and assert both the intended reload and non-reload paths.
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 
+Do not assert transient animation classes in E2E tests. Animation completion,
+cancellation, or reduced-motion settings can remove them before Playwright
+observes the state; assert a durable result such as navigation and target
+visibility instead.
+
 **IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application binary, not the source code. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests, otherwise you'll be testing the old version of the application.
 
 ```sh

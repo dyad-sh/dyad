@@ -87,23 +87,13 @@ export function ChatSearchDialog({
     return { before, match, after, raw: before + match + after };
   }
 
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        onOpenChange(!open);
-      }
-    };
-    document.addEventListener("keydown", down);
-    return () => document.removeEventListener("keydown", down);
-  }, [open, onOpenChange]);
-
   return (
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
       data-testid="chat-search-dialog"
       filter={commandFilter}
+      closeOnCommandPaletteOpen
     >
       <CommandInput
         placeholder="Search chats"

@@ -74,6 +74,7 @@ import {
 } from "../utils/playwright_discovery";
 import { parseTestCases } from "../utils/parse_test_cases";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
+import { withoutInheritedDatabaseEnv } from "../utils/sandbox_env";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import {
@@ -374,6 +375,18 @@ export interface RunAppTestsCoreOptions {
    * the app's specs actually import it.
    */
   bootstrapPreviewRouted?: boolean;
+  /**
+   * Withhold the database credentials Dyad itself was launched with from the
+   * Playwright runner.
+   *
+   * Set for sandboxed runs, where the workspace's `.env.local` is the only
+   * database the run may reach: `dotenv` leaves an already-set variable alone,
+   * so an inherited `DATABASE_URL` would beat the isolated one for any spec —
+   * or app route the spec exercises — that reads `process.env` directly.
+   * Unset for a normal preview run, which is the user's own app against their
+   * own environment by definition.
+   */
+  isolateDatabaseEnv?: boolean;
   /** When set, runs a single spec file (relative path); otherwise runs all. */
   testFile?: string;
   /**
@@ -494,6 +507,7 @@ async function runPreviewTestBatch({
   previewToken,
   rotatePreviewView,
   installed,
+  baseEnv,
 }: {
   appId: number;
   appPath: string;
@@ -510,6 +524,8 @@ async function runPreviewTestBatch({
   previewToken: string;
   rotatePreviewView: ((timeoutMs?: number) => Promise<void>) | undefined;
   installed: boolean;
+  /** See `isolateDatabaseEnv` on `RunAppTestsCoreOptions`. */
+  baseEnv: NodeJS.ProcessEnv;
 }): Promise<RunAppTestsResult> {
   const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
   const casesByFile = new Map<string, TestCaseResult[]>();
@@ -536,7 +552,7 @@ async function runPreviewTestBatch({
   };
   const runnerEnv = (reportPath: string) =>
     getPackageManagerCommandEnv({
-      ...process.env,
+      ...baseEnv,
       ...testEnv,
       [TEST_BASE_URL_ENV]: baseUrl,
       [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
@@ -816,6 +832,7 @@ export async function runAppTestsCore({
   skipBootstrap = false,
   bootstrapInstalled = false,
   bootstrapPreviewRouted = false,
+  isolateDatabaseEnv = false,
   testFile,
   testLine,
   grep,
@@ -835,6 +852,9 @@ export async function runAppTestsCore({
   const appPath = explicitAppPath ?? getDyadAppPath(app.path);
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
+  const runnerBaseEnv = isolateDatabaseEnv
+    ? withoutInheritedDatabaseEnv()
+    : process.env;
   const normalizedTestFile =
     testFile === undefined ? undefined : normalizeRunTestFile(testFile);
 
@@ -952,6 +972,7 @@ export async function runAppTestsCore({
       previewToken: previewCdpToken!,
       rotatePreviewView,
       installed,
+      baseEnv: runnerBaseEnv,
     });
   }
 
@@ -1016,7 +1037,7 @@ export async function runAppTestsCore({
       ...playwrightCliInvocationForApp(appPath, args),
       cwd: appPath,
       env: getPackageManagerCommandEnv({
-        ...process.env,
+        ...runnerBaseEnv,
         ...testEnv,
         [TEST_BASE_URL_ENV]: baseUrl,
         // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
@@ -1876,6 +1897,15 @@ export async function runAppTestsWithIsolation({
     once: true,
   });
 
+  // ONE routing decision for the whole run: read here, announced by `started`
+  // immediately below, and reused by the branch far down that actually picks a
+  // route. The run waits for the prior lifecycle in between, which can take
+  // minutes — re-reading Settings after that wait would let a toggle flipped
+  // mid-wait send the run one way while the panel has already told the user the
+  // other, either promising a multi-minute sandbox setup that never happens or
+  // omitting that explanation for a run that does it.
+  const routingSettings = readSettings();
+
   // Publish the new generation before it waits for the prior teardown. A Stop
   // can target this queued run immediately; the renderer must know that its
   // progress belongs to the replacement rather than dropping it behind the
@@ -1892,13 +1922,13 @@ export async function runAppTestsWithIsolation({
     // What this run is, not what it requested. A refused preview has already
     // cleared the endpoint and will emit a correlated fallback event below.
     preview: previewWindow !== undefined,
-    // The route is decided far below, but the setting that decides it is
-    // readable now and synchronously — and the setup phase is over long before
-    // the first progress event could carry this. Without it here, the panel's
-    // "installing dependencies can take a few minutes" copy never appears for
-    // an agent run, or for any window that mounted after the click, which is
-    // exactly the multi-minute apparent hang it exists to explain.
-    sandboxed: usesSandboxedE2eTests(readSettings()),
+    // The route is decided far below, from this same snapshot — the setup phase
+    // is over long before the first progress event could carry it. Without it
+    // here, the panel's "installing dependencies can take a few minutes" copy
+    // never appears for an agent run, or for any window that mounted after the
+    // click, which is exactly the multi-minute apparent hang it exists to
+    // explain.
+    sandboxed: usesSandboxedE2eTests(routingSettings),
   });
 
   // Install and announce the new owner before aborting the prior run. Its
@@ -2021,9 +2051,8 @@ export async function runAppTestsWithIsolation({
     // opt-out. Both routes take the same
     // non-sandboxed path, and both fail closed for Neon rather than running
     // against the user's real database.
-    const settings = readSettings();
-    const runtimeMode = settings.runtimeMode2 ?? "host";
-    const sandboxUnavailable = usesSandboxedE2eTests(settings)
+    const runtimeMode = routingSettings.runtimeMode2 ?? "host";
+    const sandboxUnavailable = usesSandboxedE2eTests(routingSettings)
       ? null
       : runtimeMode !== "host"
         ? {
@@ -2308,6 +2337,7 @@ export async function runAppTestsWithIsolation({
             app,
             workspacePath: workspace!.workspacePath,
             emit,
+            runtimeMode,
             signal: controller.signal,
           });
           // Recorded here so a Stop thrown out of the server start below still
@@ -2492,6 +2522,7 @@ export async function runAppTestsWithIsolation({
               skipBootstrap: true,
               bootstrapInstalled: prepareResult.installed,
               bootstrapPreviewRouted: prepareResult.previewRouted,
+              isolateDatabaseEnv: true,
               testFile: normalizedTestFile ?? undefined,
               testLine,
               grep,

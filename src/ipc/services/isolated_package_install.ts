@@ -163,6 +163,7 @@ export function getCleanInstallArgs({
 export async function runCleanPackageInstall({
   cwd,
   packageManager,
+  env = getPackageManagerCommandEnv(),
   signal,
   timeoutMs,
   onOutput,
@@ -170,6 +171,12 @@ export async function runCleanPackageInstall({
 }: {
   cwd: string;
   packageManager: IsolatedPackageManager;
+  /**
+   * The environment the install and its lifecycle scripts run under. Defaults
+   * to the package-manager environment every other caller wants; the sandbox
+   * passes one with the inherited database credentials removed.
+   */
+  env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   timeoutMs: number;
   onOutput?: (chunk: string) => void;
@@ -191,7 +198,7 @@ export async function runCleanPackageInstall({
     command: packageManager,
     args: getCleanInstallArgs({ packageManager, hasLockfile }),
     cwd,
-    env: getPackageManagerCommandEnv(),
+    env,
     signal,
     timeoutMs,
     onOutput,

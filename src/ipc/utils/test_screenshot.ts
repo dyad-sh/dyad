@@ -36,7 +36,7 @@ const PNG_SIGNATURE = Buffer.from([
 async function resolveContainedArtifact(
   appPath: string,
   artifactPath: string,
-  appId: number | undefined,
+  appId: number,
 ): Promise<string | null> {
   // Playwright reports absolute paths, but resolve relative ones against the
   // app dir just in case.
@@ -100,10 +100,13 @@ async function resolveContainedArtifact(
   // the `test-results` segment is one deeper — and the app id has to match, or
   // one app could read another's screenshots.
   const testResultsSegment = useArtifactRoot ? segments[1] : segments[0];
-  if (
-    useArtifactRoot &&
-    (appId === undefined || runDirectoryAppId(segments[0]) !== appId)
-  ) {
+  if (useArtifactRoot && runDirectoryAppId(segments[0]) !== appId) {
+    // Logged, not silent. The only visible symptom of this branch is a
+    // thumbnail that never appears, which is indistinguishable from a run that
+    // captured no screenshot — so without a line here a mismatch is invisible.
+    logger.warn(
+      `Refusing the retained artifact ${realPath}: run directory ${segments[0]} does not belong to app ${appId}.`,
+    );
     return null;
   }
   if (testResultsSegment !== "test-results") {
@@ -125,7 +128,14 @@ async function resolveContainedArtifact(
 export async function readTestScreenshotDataUrl(
   appPath: string,
   screenshotPath: string,
-  appId?: number,
+  /**
+   * Required, not optional. A sandboxed run's screenshots live under
+   * `<userData>/test-artifacts/<appId>-<run>/`, and the containment check above
+   * rejects that whole root without an id to match — so an omitted argument
+   * would silently lose every artifact a sandboxed run produced. Required means
+   * the compiler catches a new call site instead.
+   */
+  appId: number,
 ): Promise<string | null> {
   if (path.extname(screenshotPath).toLowerCase() !== ".png") {
     return null;
@@ -222,7 +232,8 @@ const MAX_ERROR_CONTEXT_BYTES = 24 * 1024;
 export async function readTestErrorContext(
   appPath: string,
   screenshotPath: string,
-  appId?: number,
+  /** Required for the same reason as on `readTestScreenshotDataUrl`. */
+  appId: number,
 ): Promise<string | null> {
   const contextPath = path.join(
     path.dirname(screenshotPath),

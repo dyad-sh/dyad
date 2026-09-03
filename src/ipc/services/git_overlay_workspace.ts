@@ -7,7 +7,6 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
-import { isMissingPathError } from "../../../shared/node_module_resolution";
 
 const WINDOWS_COPY_CONCURRENCY = 32;
 const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -39,12 +38,59 @@ const ALWAYS_EXCLUDED_ROOTS: ReadonlySet<string> = new Set([
   ".pytest_cache",
   ".mypy_cache",
   ".ruff_cache",
-  ".yarn",
   ".pnpm-store",
   ".gradle",
   "Pods",
   ".turbo",
 ]);
+
+/**
+ * Second-level roots dropped at any depth, keyed by their parent directory.
+ *
+ * Yarn Berry splits `.yarn` between disposable state and *committed tooling*:
+ * `releases/` holds the resolver `.yarnrc.yml` points `yarnPath` at, and
+ * `plugins/`, `patches/`, `sdks/` are equally required to install. Dropping the
+ * whole tree would break a custom install command on any such project, so only
+ * the regenerable halves go.
+ */
+const ALWAYS_EXCLUDED_NESTED_ROOTS: ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> = new Map([
+  [
+    ".yarn",
+    new Set(["cache", "unplugged", "install-state.gz", "build-state.yml"]),
+  ],
+]);
+
+/**
+ * Index of the LAST segment of the always-excluded root covering `segments`,
+ * or -1 when none does. Callers slice at this index to name the root itself
+ * rather than the entry that happened to match beneath it.
+ */
+function alwaysExcludedRootEnd(segments: readonly string[]): number {
+  for (const [index, segment] of segments.entries()) {
+    if (ALWAYS_EXCLUDED_ROOTS.has(segment)) return index;
+    const nested = ALWAYS_EXCLUDED_NESTED_ROOTS.get(segment);
+    if (nested?.has(segments[index + 1])) return index + 1;
+  }
+  return -1;
+}
+
+/**
+ * Await every entry, then rethrow the first failure.
+ *
+ * `Promise.all` hands control back on the first rejection while its siblings
+ * keep reading the source and writing the worktree, and the caller then starts
+ * removing that worktree — and releases its repository claim — underneath them.
+ * `rules/app-operation-coordination.md` requires the all-settled barrier for
+ * exactly this shape.
+ */
+async function settleAll(operations: readonly Promise<unknown>[]) {
+  const settled = await Promise.allSettled(operations);
+  const failure = settled.find((outcome) => outcome.status === "rejected");
+  if (failure) throw failure.reason;
+}
 
 const logger = log.scope("git_overlay_workspace");
 const activeWorkspacePaths = new Set<string>();
@@ -141,10 +187,7 @@ function isExcludedRelativePath(
   excludedTargetRootNames: ReadonlySet<string>,
 ): boolean {
   const segments = normalized.split("/");
-  if (
-    segments.includes(".git") ||
-    segments.some((segment) => ALWAYS_EXCLUDED_ROOTS.has(segment))
-  ) {
+  if (segments.includes(".git") || alwaysExcludedRootEnd(segments) >= 0) {
     return true;
   }
   const normalizedTargetPath = targetRelativePath
@@ -319,12 +362,7 @@ async function overlayWorkspaceState(
     index < overlayPaths.length;
     index += WINDOWS_COPY_CONCURRENCY
   ) {
-    // Settled, not `Promise.all`. A rejection there resolves this await while
-    // sibling copies are still reading the source and writing the worktree, and
-    // the caller starts removing that worktree — and releases the repository
-    // claim — with those copies still running. `rules/app-operation-coordination.md`
-    // requires the barrier for exactly this shape.
-    const settled = await Promise.allSettled(
+    await settleAll(
       overlayPaths
         .slice(index, index + WINDOWS_COPY_CONCURRENCY)
         .map((relativePath) =>
@@ -339,8 +377,6 @@ async function overlayWorkspaceState(
           ),
         ),
     );
-    const failure = settled.find((outcome) => outcome.status === "rejected");
-    if (failure) throw failure.reason;
   }
 }
 
@@ -378,6 +414,8 @@ export async function copyGitOverlayEntriesOnWindows({
         }),
       ),
     );
+    // Same all-settled barrier as `settleAll`, kept inline because the
+    // fulfilled values are the next batch of directory children.
     const failure = settled.find((outcome) => outcome.status === "rejected");
     if (failure) throw failure.reason;
     pendingPaths.push(
@@ -745,21 +783,21 @@ async function removeExcludedTargetRoots(
   );
   const trackedPaths = tracked.stdout.split("\0").filter(Boolean);
   const removedRootNames = new Set<string>();
-  await Promise.all(
-    excludedRootNames.map((entry, index) => {
+  await settleAll(
+    excludedRootNames.map(async (entry, index) => {
       const excludedPath = excludedPaths[index];
       if (
-        !ALWAYS_EXCLUDED_ROOTS.has(entry) &&
+        alwaysExcludedRootEnd(entry.split("/")) < 0 &&
         trackedPaths.some(
           (trackedPath) =>
             trackedPath === excludedPath ||
             trackedPath.startsWith(`${excludedPath}/`),
         )
       ) {
-        return Promise.resolve();
+        return;
       }
       removedRootNames.add(entry);
-      return fs.rm(path.join(targetPath, entry), {
+      await fs.rm(path.join(targetPath, entry), {
         recursive: true,
         force: true,
       });
@@ -797,12 +835,10 @@ async function removeAlwaysExcludedRoots(
   for (const trackedPath of tracked.stdout.split("\0")) {
     if (!trackedPath) continue;
     const segments = trackedPath.split("/");
-    const index = segments.findIndex((segment) =>
-      ALWAYS_EXCLUDED_ROOTS.has(segment),
-    );
+    const index = alwaysExcludedRootEnd(segments);
     if (index >= 0) roots.add(segments.slice(0, index + 1).join("/"));
   }
-  await Promise.all(
+  await settleAll(
     [...roots].map((root) =>
       fs.rm(path.join(worktreePath, toNativePath(root)), {
         recursive: true,
@@ -919,6 +955,14 @@ async function materializeInitializedSubmodules({
         snapshotSubmodulePath,
         "HEAD",
       ],
+      signal,
+    );
+    // Against the submodule's own index. The parent only records a gitlink, so
+    // the top-level sweep cannot see a `node_modules` or `.venv` committed
+    // *inside* this submodule — and Node resolves up through it just the same.
+    await removeAlwaysExcludedRoots(
+      realSubmodulePath,
+      snapshotSubmodulePath,
       signal,
     );
     await overlayWorkspaceState(
@@ -1107,14 +1151,20 @@ export async function removeGitOverlayWorkspace(
         // this registration for a later attempt.
         //
         // Only a definite "it is gone" clears this. A stat that fails for any
-        // other reason — EACCES, EIO, a path Windows still has locked — says
-        // nothing, and reading it as absence would drop the marker while the
-        // registration stands, which is the exact failure this branch exists to
-        // prevent.
+        // other reason — EACCES, EIO, ENOTDIR from a path shape we did not
+        // expect, anything Windows still has locked — says nothing, and reading
+        // it as absence would drop the marker while the registration stands,
+        // which is the exact failure this branch exists to prevent. Narrower
+        // than `isMissingPathError` on purpose: that helper folds ENOTDIR in
+        // for module resolution, where the cost of being wrong is one more
+        // candidate path, not a permanently stranded worktree registration.
         const stillPresent = await fs
           .stat(worktree.snapshotPath)
           .then(() => true)
-          .catch((error) => !isMissingPathError(error));
+          .catch(
+            (error) =>
+              (error as NodeJS.ErrnoException | null)?.code !== "ENOENT",
+          );
         if (stillPresent) allSubmodulesUnregistered = false;
       }
     }

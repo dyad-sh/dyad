@@ -407,7 +407,7 @@ export function ModelPicker() {
                 displayName: AUTO_SIDEKICK_DISPLAY_NAME,
                 description:
                   "Uses Auto and delegates straightforward implementation tasks to a Sidekick",
-                tag: "New",
+                tag: "Experimental",
                 tagColor:
                   "bg-violet-500/15 text-violet-700 dark:text-violet-300",
               },

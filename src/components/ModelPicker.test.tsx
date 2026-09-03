@@ -554,10 +554,11 @@ describe("ModelPicker", () => {
   it("keeps the root menu focused on quick choices and catalog entry points", () => {
     render(<ModelPicker />);
 
-    expect(screen.getByText("Auto Sidekick")).toBeTruthy();
-    expect(
-      screen.getByText("Auto Sidekick").closest("button")?.textContent,
-    ).toContain("New");
+    const autoSidekickRow = screen.getByText("Auto Sidekick").closest("button");
+    expect(autoSidekickRow?.textContent).toContain("Experimental");
+    expect(autoSidekickRow?.getAttribute("aria-label")).toContain(
+      "Experimental",
+    );
     expect(screen.queryByText("GPT 5")).toBeNull();
     expect(screen.queryByText("Premium")).toBeNull();
     expect(screen.queryByText("Local models")).toBeNull();

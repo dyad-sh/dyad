@@ -388,7 +388,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                         <span className="text-sm font-semibold text-foreground">
                           {option.name}
                         </span>
-                        {option.id === "supabase" && (
+                        {option.id === "neon" && (
                           <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/60 dark:text-blue-200">
                             {t("integrations.databaseSetup.recommended")}
                           </span>

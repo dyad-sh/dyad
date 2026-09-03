@@ -20,6 +20,7 @@ vi.mock("react-i18next", () => ({
     t: (key: string, values?: { provider?: string }) => {
       if (key.endsWith("providers.neon.name")) return "Neon";
       if (key.endsWith("providers.supabase.name")) return "Supabase";
+      if (key.endsWith("recommended")) return "Recommended";
       if (key.endsWith("continueWithProvider")) {
         return `Continue with ${values?.provider}`;
       }
@@ -92,8 +93,10 @@ describe("DyadAddIntegration", () => {
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);
     expect(radios[0].textContent).toContain("Neon");
+    expect(radios[0].textContent).toContain("Recommended");
     expect(radios[0].getAttribute("aria-checked")).toBe("true");
     expect(radios[1].textContent).toContain("Supabase");
+    expect(radios[1].textContent).not.toContain("Recommended");
     expect(radios[1].getAttribute("aria-checked")).toBe("false");
   });
 

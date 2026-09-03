@@ -44,7 +44,8 @@ export type TestRunPhase =
   | "setup" // first-run Playwright bootstrap streaming
   | "running" // playwright test executing
   | "stopping" // Stop pressed; killing the Playwright process tree
-  | "cleaning-up"; // tests gone; isolation teardown still restoring the app
+  | "cleaning-up"; // tests gone; provider data and/or the run's sandbox copy
+// of the app are still being removed
 
 export interface TestRunState {
   phase: TestRunPhase;
@@ -72,6 +73,12 @@ export interface TestRunState {
    * a run completes.
    */
   isolation?: TestIsolation;
+  /**
+   * Whether the run executed in an isolated sandbox. Drives the cleanup copy:
+   * the fallback path (Docker/cloud runtime, or the user's opt-out) creates no
+   * workspace, so there is no sandbox to claim Dyad is deleting.
+   */
+  sandboxed?: boolean;
   startedAt?: number;
 }
 
@@ -228,6 +235,7 @@ export const applyTestRunStartedAtom = atom(
       startedAt,
       runId,
       source,
+      sandboxed,
     }: {
       appId: number;
       testFile?: string;
@@ -236,6 +244,14 @@ export const applyTestRunStartedAtom = atom(
       startedAt?: number;
       runId?: number;
       source: "panel" | "agent";
+      /**
+       * Whether this run is expected to be sandboxed, read when it started.
+       * The main process confirms it later, but the setup phase is over by
+       * then and the status line has to describe the wait it is actually in —
+       * so a Settings toggle mid-run cannot relabel a run that already chose
+       * its path.
+       */
+      sandboxed?: boolean;
     },
   ) => {
     const isPartialRun = testFile != null && (testLine != null || !!grep);
@@ -275,6 +291,9 @@ export const applyTestRunStartedAtom = atom(
             ),
         runError: undefined,
         isolation: undefined,
+        // The starter's expectation; the main process confirms (or corrects)
+        // it on the progress and finished events.
+        sandboxed,
         startedAt: startedAt ?? Date.now(),
       }),
     });

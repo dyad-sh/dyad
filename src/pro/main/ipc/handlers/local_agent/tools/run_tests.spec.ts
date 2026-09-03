@@ -12,6 +12,7 @@ vi.mock("@/ipc/handlers/tests_handlers", () => ({
 }));
 vi.mock("@/ipc/utils/test_screenshot", () => ({
   readTestScreenshotDataUrl: vi.fn(),
+  readTestErrorContext: vi.fn(),
 }));
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
@@ -23,13 +24,17 @@ import {
   listSpecFiles,
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
-import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
+import {
+  readTestErrorContext,
+  readTestScreenshotDataUrl,
+} from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
 import { runTestsTool } from "./run_tests";
 
 const runner = vi.mocked(runAppTestsWithIsolation);
 const baseUrl = vi.mocked(getRunningTestBaseUrl);
 const screenshot = vi.mocked(readTestScreenshotDataUrl);
+const errorContext = vi.mocked(readTestErrorContext);
 const specLister = vi.mocked(listSpecFiles);
 const caseLister = vi.mocked(readSpecTestCases);
 const settingsReader = vi.mocked(readSettings);
@@ -116,8 +121,10 @@ describe("runTestsTool", () => {
     screenshot.mockReset();
     specLister.mockReset();
     caseLister.mockReset();
+    errorContext.mockReset();
     baseUrl.mockReturnValue("http://localhost:3000");
     screenshot.mockResolvedValue(null);
+    errorContext.mockResolvedValue(null);
     // The spec the tests target exists on disk, so pre-flight resolution lets
     // the run proceed. Individual tests override this to exercise mismatches.
     specLister.mockResolvedValue(["e2e-tests/a.spec.ts"]);
@@ -223,7 +230,12 @@ describe("runTestsTool", () => {
   });
 
   it("returns an infra message (uncounted) when the dev server isn't running", async () => {
+    // Only the non-sandboxed path needs the preview; a sandboxed run serves the
+    // app itself (covered separately below).
     baseUrl.mockReturnValue(null);
+    settingsReader.mockReturnValue({
+      disableSandboxedE2eTests: true,
+    } as ReturnType<typeof readSettings>);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
       { testFile: "e2e-tests/a.spec.ts" },
@@ -366,6 +378,67 @@ describe("runTestsTool", () => {
       type: "image-url",
       url: "data:image/png;base64,ABC",
     });
+  });
+
+  it("inlines the page snapshot when the artifacts live outside the app", async () => {
+    // A sandboxed run retains artifacts under <userData>/test-artifacts.
+    // read_file goes through safeJoin and rejects anything escaping the app, so
+    // a `../../..` path would guarantee the agent's first step fails.
+    const artifact =
+      "/home/u/.config/dyad/test-artifacts/1-2-3/test-results/a/test-failed-1.png";
+    runner.mockResolvedValue(failResult("boom", artifact));
+    screenshot.mockResolvedValue("data:image/png;base64,ABC");
+    errorContext.mockResolvedValue("- button 'Submit'\n- text 'Oops'");
+    const ctx = makeCtx();
+
+    const out = await runTestsTool.execute(
+      { testFile: "e2e-tests/a.spec.ts" },
+      ctx,
+    );
+
+    expect(out).toContain("- button 'Submit'");
+    // The path itself, not just its shape: an absolute artifact path is
+    // unreadable for the agent, so naming it sends it somewhere it can only
+    // fail. Both negative assertions below pass on output that still leaks it.
+    expect(out).not.toContain(artifact);
+    expect(out).not.toContain("test-artifacts");
+    // No traversal path, and no instruction to open one.
+    expect(out).not.toContain("..");
+    expect(out).not.toContain("read this first with read_file");
+  });
+
+  it("says the snapshot is unavailable rather than naming an unreadable path", async () => {
+    runner.mockResolvedValue(
+      failResult(
+        "boom",
+        "/home/u/.config/dyad/test-artifacts/1-2-3/test-results/a/test-failed-1.png",
+      ),
+    );
+    screenshot.mockResolvedValue(null);
+    errorContext.mockResolvedValue(null);
+    const ctx = makeCtx();
+
+    const out = await runTestsTool.execute(
+      { testFile: "e2e-tests/a.spec.ts" },
+      ctx,
+    );
+
+    expect(out).toContain("Page snapshot: unavailable for this run.");
+    expect(out).not.toContain("error-context.md");
+  });
+
+  it("does not require the dev server for a sandboxed run", async () => {
+    baseUrl.mockReturnValue(null);
+    runner.mockResolvedValue(passedResult);
+    const ctx = makeCtx();
+
+    const out = await runTestsTool.execute(
+      { testFile: "e2e-tests/a.spec.ts" },
+      ctx,
+    );
+
+    expect(out).toContain("All runnable tests passed");
+    expect(runner).toHaveBeenCalledTimes(1);
   });
 
   it("adds a no-progress note when the failure signature is unchanged", async () => {

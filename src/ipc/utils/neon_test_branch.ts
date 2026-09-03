@@ -50,6 +50,25 @@ export function isTestBranchCleanupOnly(marker: string | null): boolean {
   return marker?.startsWith(CLEANUP_ONLY_BRANCH_PREFIX) ?? false;
 }
 
+/**
+ * The Neon branch this app's row still tracks, read fresh.
+ *
+ * For a caller whose own record of the branch is incomplete: branch creation
+ * persists its marker before the provisioning that can still fail, so a failure
+ * can leave the row tracking a branch the caller never got an id for. Reporting
+ * that run as having left nothing behind is the mistake this exists to prevent.
+ */
+export async function trackedTestBranchId(
+  appId: number,
+): Promise<string | null> {
+  // Deliberately not caught here. A read that fails leaves the caller unable to
+  // say whether a branch is tracked, and answering `null` would let it report a
+  // clean run — the one outcome that is definitely wrong when the answer is
+  // unknown. The caller decides what "unknown" means for its own reporting.
+  const row = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  return row?.neonTestBranchId ?? null;
+}
+
 export async function markTestBranchCleanupOnly(
   appData: AppRow,
   branchId: string,
@@ -97,22 +116,43 @@ function resolveParentBranchId(appData: AppRow): string | null {
  * markers in .env.local, so check those before deciding the test branch can
  * safely skip auth provisioning.
  */
-async function appUsesNeonAuth(appData: AppRow): Promise<boolean> {
-  if (
-    appData.neonDevelopmentAuthCookieSecret ||
-    appData.neonProductionAuthCookieSecret
-  ) {
-    return true;
-  }
-
+async function appUsesNeonAuth(
+  appData: AppRow,
+  /**
+   * The sandbox copy, for an E2E run. Its `.env.local` is the one the run's
+   * server will actually read; the live project's can have moved on since the
+   * snapshot, which would have this provision auth the run doesn't need or skip
+   * auth it does.
+   */
+  appPathOverride?: string,
+): Promise<boolean> {
+  // For a sandboxed run the snapshot decides, and it decides FIRST. The row's
+  // persisted cookie secrets describe the live app, which can have had Neon
+  // Auth removed since the snapshot — trusting them ahead of the tree under
+  // test provisions auth the run has no use for, and the provisioning is
+  // several Neon calls per run.
+  const appPath = appPathOverride ?? getDyadAppPath(appData.path);
   try {
-    const appPath = getDyadAppPath(appData.path);
     const envVars = await readEnvVarsOrEmpty({ appPath });
-    return envVars.some(
-      (envVar) =>
-        envVar.key === "NEON_AUTH_BASE_URL" ||
-        envVar.key === "NEON_AUTH_COOKIE_SECRET",
-    );
+    if (
+      envVars.some(
+        (envVar) =>
+          envVar.key === "NEON_AUTH_BASE_URL" ||
+          envVar.key === "NEON_AUTH_COOKIE_SECRET",
+      )
+    ) {
+      return true;
+    }
+    // The sandbox is a faithful copy of the tree the run will serve, so an
+    // absent marker there is an answer rather than missing information. The
+    // live app's env is not: older rows never wrote these markers, which is
+    // what the persisted secrets are the fallback for.
+    return appPathOverride
+      ? false
+      : Boolean(
+          appData.neonDevelopmentAuthCookieSecret ||
+          appData.neonProductionAuthCookieSecret,
+        );
   } catch (error) {
     logger.warn(
       `Couldn't inspect .env.local for Neon Auth markers on app ${appData.id}: ${error}`,
@@ -143,6 +183,14 @@ function resolveAuthBranchType(
  */
 export async function createTempTestBranch(
   appData: AppRow,
+  {
+    cleanupOnly = false,
+    appPathOverride,
+  }: {
+    cleanupOnly?: boolean;
+    /** The sandbox copy, for an E2E run — the tree whose env will be read. */
+    appPathOverride?: string;
+  } = {},
 ): Promise<TempTestBranch> {
   const projectId = appData.neonProjectId;
   if (!projectId) {
@@ -168,6 +216,27 @@ export async function createTempTestBranch(
   // untracked and unrecoverable on a crash. Dead-end instead and let startup
   // reconciliation retry the prior branch on the next launch.
   if (appData.neonTestBranchId) {
+    // A RAW marker means the app's own `.env.local` is still pointed at that
+    // branch — a recorder session that crashed before its teardown. The column
+    // is the only record of that, so a cleanup-only run must not delete the
+    // branch and relabel the row: that would leave the user's app configured
+    // against a branch that no longer exists, with the marker startup recovery
+    // uses to fix it overwritten by one saying "the env is real, only the
+    // branch is outstanding".
+    //
+    // Refused rather than repaired HERE. The repair rewrites the user's real
+    // `.env.local`, and this runs inside the sandboxed run stage, whose claims
+    // are deliberately narrow (`read app-path`, `provider`, `test-files`) —
+    // writing the live working tree under them could interleave with a version
+    // restore, a checkout, or a preview restart. The caller performs the
+    // recovery under its own claim before the snapshot; this is the guard that
+    // catches the case where it did not, or could not.
+    if (cleanupOnly && !isTestBranchCleanupOnly(appData.neonTestBranchId)) {
+      throw new DyadError(
+        `App ${appData.id} still has real database settings pointing at a previous session's temporary Neon branch. Dyad will restore them on the next launch; skipping this run so that recovery isn't lost.`,
+        DyadErrorKind.Precondition,
+      );
+    }
     const priorCleanupOk = await deleteBranchBestEffort(
       projectId,
       trackedBranchId(appData.neonTestBranchId),
@@ -216,10 +285,20 @@ export async function createTempTestBranch(
   // SQLite lock), neither teardown nor reconciliation can find the branch to
   // delete it, so remove the branch we just created before rethrowing rather
   // than leaking it.
+  //
+  // A caller that will never point the real app at this branch writes the
+  // cleanup-only form HERE, not after this function returns. Everything below —
+  // Neon Auth provisioning, the cookie secret, their retries and backoff — can
+  // take seconds, and a crash or quit inside that window would otherwise leave
+  // a raw marker that startup recovery reads as the recorder's env swap and
+  // "restores" by rewriting the user's real `.env.local`.
+  const marker = cleanupOnly
+    ? `${CLEANUP_ONLY_BRANCH_PREFIX}${branch.id}`
+    : branch.id;
   try {
     await db
       .update(apps)
-      .set({ neonTestBranchId: branch.id })
+      .set({ neonTestBranchId: marker })
       .where(eq(apps.id, appData.id));
   } catch (error) {
     await deleteBranchBestEffort(projectId, branch.id);
@@ -235,7 +314,7 @@ export async function createTempTestBranch(
   // main driver of "too many requests" when running several tests back-to-back.
   let neonAuthBaseUrl: string | undefined;
   let cookieSecret: string | undefined;
-  if (await appUsesNeonAuth(appData)) {
+  if (await appUsesNeonAuth(appData, appPathOverride)) {
     try {
       // Wrap in retryOnLocked so getNeonAuth/createNeonAuth back off on a
       // locked branch (423) or rate limit (429) instead of failing the run.
@@ -327,10 +406,21 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
   // the startup reconciliation sweep relies on this id to find it again.
   const deleted = await deleteBranchBestEffort(projectId, branchId);
   if (deleted) {
-    await db
-      .update(apps)
-      .set({ neonTestBranchId: null })
-      .where(eq(apps.id, appData.id));
+    try {
+      await db
+        .update(apps)
+        .set({ neonTestBranchId: null })
+        .where(eq(apps.id, appData.id));
+    } catch (error) {
+      // The branch IS gone, which is what this function reports. A failed row
+      // update leaves a stale marker the next sweep re-reads — and that sweep
+      // treats Neon's 404 as success and clears it — so telling the caller
+      // "cleanup failed" here would warn the user about a leak that does not
+      // exist.
+      logger.warn(
+        `Deleted test branch ${branchId} for app ${appData.id} but couldn't clear its marker; the next startup sweep will: ${error}`,
+      );
+    }
   }
   return deleted;
 }
@@ -352,7 +442,7 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
 export async function markAndDeleteTempTestBranch(
   appData: AppRow,
   branchId: string,
-): Promise<void> {
+): Promise<boolean> {
   // `deleteTempTestBranch` reads the marker off the row it is given, and the
   // caller's copy is stale by now, so carry the branch we actually created.
   let cleanupApp: AppRow = { ...appData, neonTestBranchId: branchId };
@@ -364,11 +454,15 @@ export async function markAndDeleteTempTestBranch(
     );
   }
   try {
-    await deleteTempTestBranch(cleanupApp);
+    // Still best-effort — never throws — but the verdict is reported now.
+    // Callers that promise the user "Dyad will retry remote cleanup on next
+    // startup" need to know whether the branch actually leaked.
+    return await deleteTempTestBranch(cleanupApp);
   } catch (error) {
     logger.error(
       `Failed to delete temporary test branch ${trackedBranchId(branchId)} for app ${appData.id}: ${error}`,
     );
+    return false;
   }
 }
 

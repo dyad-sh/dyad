@@ -387,6 +387,9 @@ export function ModelPicker() {
           if (settings && !dyadProEnabled && model.apiName === "value") {
             return false;
           }
+          if (settings && !dyadProEnabled && model.apiName === "balanced") {
+            return false;
+          }
           if (settings && dyadProEnabled && model.apiName === "free") {
             return false;
           }

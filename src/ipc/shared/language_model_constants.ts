@@ -367,6 +367,19 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
     {
+      name: "balanced",
+      displayName: "Auto (balanced)",
+      description: "Uses a balanced mix of capability, speed, and cost",
+      maxOutputTokens: undefined,
+      contextWindow: 500_000,
+      temperature: 1,
+      dollarSigns: 3,
+      effortSettings: {
+        defaultEffortLevel: "medium",
+        possibleEffortLevels: ["low", "medium", "high"],
+      },
+    },
+    {
       name: "free",
       displayName: "Free (OpenRouter)",
       description: "Selects from one of the free OpenRouter models",

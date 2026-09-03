@@ -67,6 +67,8 @@ const AUTO_MODEL_ALIASES = [
 ] as const;
 
 const OPENROUTER_FREE_MODEL_NAME = "openrouter/free";
+const AUTO_BALANCED_MODEL_NAME = "balanced";
+const AUTO_BALANCED_ALIAS = "dyad/auto/balanced";
 
 export interface ModelClient {
   model: LanguageModel;
@@ -79,6 +81,47 @@ export interface ModelClientResult {
   runtimeModel: LargeLanguageModel;
   isEngineEnabled?: boolean;
   isSmartContextEnabled?: boolean;
+}
+
+type ResolvedAliasModel = NonNullable<
+  Awaited<ReturnType<typeof resolveBuiltinModelAlias>>
+>;
+
+function createDyadEngineAliasModel({
+  provider,
+  resolvedModel,
+  modelId,
+}: {
+  provider: DyadEngineProvider;
+  resolvedModel: ResolvedAliasModel;
+  modelId: string;
+}): LanguageModel {
+  if (resolvedModel.apiProtocol === "responses") {
+    return provider.responses(modelId, {
+      providerId: resolvedModel.providerId,
+    });
+  }
+  if (resolvedModel.apiProtocol === "messages") {
+    return provider.anthropic(modelId, {
+      providerId: resolvedModel.providerId,
+    });
+  }
+  if (resolvedModel.apiProtocol === "chat-completions") {
+    return provider(modelId, { providerId: resolvedModel.providerId });
+  }
+
+  // Preserve the established transport for aliases that predate apiProtocol.
+  if (resolvedModel.providerId === "openai") {
+    return provider.responses(modelId, {
+      providerId: resolvedModel.providerId,
+    });
+  }
+  if (resolvedModel.providerId === "anthropic") {
+    return provider.anthropic(modelId, {
+      providerId: resolvedModel.providerId,
+    });
+  }
+  return provider(modelId, { providerId: resolvedModel.providerId });
 }
 
 const logger = log.scope("getModelClient");
@@ -108,6 +151,17 @@ export async function getModelClient(
   const isDyadProEnabledForRequest = Boolean(
     dyadApiKey && settings.enableDyadPro,
   );
+
+  if (
+    model.provider === "auto" &&
+    model.name === AUTO_BALANCED_MODEL_NAME &&
+    !isDyadProEnabledForRequest
+  ) {
+    throw new DyadError(
+      "Auto (balanced) requires Dyad Pro. Switch to another model or enable Dyad Pro.",
+      DyadErrorKind.Auth,
+    );
+  }
 
   // --- Handle specific provider ---
   const providerConfig = allProviders.find((p) => p.id === model.provider);
@@ -319,6 +373,45 @@ async function getProModelClient({
     };
   }
 
+  if (model.provider === "auto" && model.name === AUTO_BALANCED_MODEL_NAME) {
+    const resolvedModel = await resolveBuiltinModelAlias(AUTO_BALANCED_ALIAS);
+    if (!resolvedModel) {
+      throw new DyadError(
+        "Auto (balanced) could not be resolved from the model catalog",
+        DyadErrorKind.External,
+      );
+    }
+
+    const providers = await getLanguageModelProviders();
+    const resolvedProvider = providers.find(
+      (providerInfo) => providerInfo.id === resolvedModel.providerId,
+    );
+    if (!resolvedProvider) {
+      throw new DyadError(
+        `Configuration not found for provider: ${resolvedModel.providerId}`,
+        DyadErrorKind.NotFound,
+      );
+    }
+
+    if (resolvedModel.apiProtocol !== "responses") {
+      throw new DyadError(
+        "Auto (balanced) must use the Responses API according to the model catalog",
+        DyadErrorKind.External,
+      );
+    }
+
+    const resolvedModelId = `${resolvedProvider.gatewayPrefix || ""}${resolvedModel.apiName}`;
+
+    return {
+      model: createDyadEngineAliasModel({
+        provider,
+        resolvedModel,
+        modelId: resolvedModelId,
+      }),
+      builtinProviderId: resolvedModel.providerId,
+    };
+  }
+
   if (
     settings.selectedChatMode === "local-agent" &&
     model.provider === "auto" &&
@@ -339,18 +432,11 @@ async function getProModelClient({
           resolvedProvider?.gatewayPrefix || ""
         }${resolvedModel.apiName}`;
 
-        const instance =
-          resolvedModel.providerId === "openai"
-            ? provider.responses(resolvedModel.apiName, {
-                providerId: resolvedModel.providerId,
-              })
-            : resolvedModel.providerId === "anthropic"
-              ? provider.anthropic(resolvedModelId, {
-                  providerId: resolvedModel.providerId,
-                })
-              : provider(resolvedModelId, {
-                  providerId: resolvedModel.providerId,
-                });
+        const instance = createDyadEngineAliasModel({
+          provider,
+          resolvedModel,
+          modelId: resolvedModelId,
+        });
 
         // The stream's call options are computed for the PRIMARY selection, so
         // give each chain entry the options it would have received had IT been

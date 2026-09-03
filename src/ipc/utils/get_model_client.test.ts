@@ -66,6 +66,7 @@ vi.mock("../shared/language_model_helpers", () => ({
     {
       id: "openrouter",
       name: "OpenRouter",
+      gatewayPrefix: "openrouter/",
       type: "cloud",
     },
   ]),
@@ -93,6 +94,12 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
         return {
           providerId: "openrouter",
           apiName: "nvidia/nemotron-3-super-120b-a12b:free",
+        };
+      case "dyad/auto/balanced":
+        return {
+          providerId: "openrouter",
+          apiName: "x-ai/grok-4.6",
+          apiProtocol: "responses",
         };
       default:
         return null;
@@ -329,6 +336,79 @@ describe("getModelClient", () => {
 
     expect((modelClient.model as { modelId: string }).modelId).toBe("free-pro");
     expect(modelClient.builtinProviderId).toBe("auto");
+  });
+
+  test("routes Auto (balanced) through its catalog-selected Responses API model", async () => {
+    let capturedUrl: string | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+    setModelClientFetchForTesting(
+      vi.fn(async (url, init) => {
+        capturedUrl = url.toString();
+        capturedBody = JSON.parse(init?.body as string);
+        return new Response(
+          JSON.stringify({
+            id: "resp-balanced",
+            created_at: 1_700_000_000,
+            model: "openrouter/x-ai/grok-4.6",
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                id: "msg-balanced",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "ok",
+                    annotations: [],
+                  },
+                ],
+              },
+            ],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+
+    const { modelClient, runtimeModel } = await getModelClient(
+      { provider: "auto", name: "balanced" },
+      {
+        enableDyadPro: true,
+        selectedChatMode: "build",
+        providerSettings: {
+          auto: { apiKey: { value: "dyad-pro-key" } },
+        },
+      } as unknown as UserSettings,
+    );
+
+    await generateText({
+      model: modelClient.model,
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(capturedUrl).toMatch(/\/v1\/responses$/);
+    expect(capturedBody?.model).toBe("openrouter/x-ai/grok-4.6");
+    expect((modelClient.model as { modelId: string }).modelId).toBe(
+      "openrouter/x-ai/grok-4.6",
+    );
+    expect(modelClient.builtinProviderId).toBe("openrouter");
+    expect(runtimeModel).toEqual({ provider: "auto", name: "balanced" });
+  });
+
+  test("rejects Auto (balanced) without Dyad Pro instead of falling back", async () => {
+    await expect(
+      getModelClient({ provider: "auto", name: "balanced" }, {
+        enableDyadPro: false,
+        providerSettings: {
+          openrouter: { apiKey: { value: "openrouter-key" } },
+        },
+      } as unknown as UserSettings),
+    ).rejects.toMatchObject({
+      message:
+        "Auto (balanced) requires Dyad Pro. Switch to another model or enable Dyad Pro.",
+    });
   });
 
   test("routes the Value model through the Responses API in local agent mode", async () => {

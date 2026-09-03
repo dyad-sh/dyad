@@ -211,6 +211,12 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
               type: "cloud",
             },
             {
+              apiName: "balanced",
+              displayName: "Auto (balanced)",
+              description: "Balanced model",
+              type: "cloud",
+            },
+            {
               apiName: "free",
               displayName: "Free (OpenRouter)",
               description: "Free model",
@@ -1235,11 +1241,18 @@ describe("ModelPicker", () => {
     render(<ModelPicker />);
 
     expect(screen.queryByText("Auto Sidekick")).toBeNull();
+    expect(screen.queryByText("Auto (balanced)")).toBeNull();
     expect(screen.queryByText("GPT 5")).toBeNull();
     expect(screen.getByText("All models")).toBeTruthy();
     expect(screen.queryByText("Other AI providers")).toBeNull();
     expect(screen.queryByText("Dyad Free")).toBeNull();
     expect(screen.getByText("Free (OpenRouter)")).toBeTruthy();
+  });
+
+  it("shows Auto (balanced) to Dyad Pro users", () => {
+    render(<ModelPicker />);
+
+    expect(screen.getByText("Auto (balanced)")).toBeTruthy();
   });
 
   it("marks models without a provider key as locked for non-Pro users", () => {

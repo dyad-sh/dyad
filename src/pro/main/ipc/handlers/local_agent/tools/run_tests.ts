@@ -13,7 +13,11 @@ import {
   listSpecFiles,
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
-import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
+import {
+  readTestErrorContext,
+  readTestScreenshotDataUrl,
+} from "@/ipc/utils/test_screenshot";
+import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
@@ -185,8 +189,13 @@ function guardTurnRunLimit(ctx: AgentContext): string | null {
   return body;
 }
 
-/** Tests need the dev server; being down does not count as an attempt. */
+/**
+ * The non-sandboxed path runs Playwright against the user's preview, so it
+ * needs one. A sandboxed run serves the app itself from its own copy on its own
+ * port and never touches the preview. Being down does not count as an attempt.
+ */
 function guardDevServerRunning(ctx: AgentContext): string | null {
+  if (usesSandboxedE2eTests(readSettings())) return null;
   if (getRunningTestBaseUrl(ctx.appId)) return null;
   const body =
     "The app's dev server isn't running, so the tests can't execute. Ask the user to start the app with the Run button in the preview panel, then call run_tests again. This did NOT count as a fix attempt.";
@@ -416,15 +425,18 @@ async function attachFailureArtifacts(
   const rel = path.isAbsolute(shot.screenshotPath)
     ? path.relative(ctx.appPath, shot.screenshotPath)
     : shot.screenshotPath;
-  const errorContext = path
-    .join(path.dirname(rel), "error-context.md")
-    .split(path.sep)
-    .join("/");
+  // A sandboxed run retains its artifacts under `<userData>/test-artifacts`,
+  // outside the app. `read_file` goes through `safeJoin` and rejects anything
+  // escaping the app directory, so handing the model a `../../..` path would
+  // guarantee its first diagnostic step fails.
+  const readableByAgent = !rel.startsWith("..") && !path.isAbsolute(rel);
   const screenshotPath = rel.split(path.sep).join("/");
-  const dataUrl = await readTestScreenshotDataUrl(
-    ctx.appPath,
-    shot.screenshotPath,
-  );
+  const [dataUrl, inlineSnapshot] = await Promise.all([
+    readTestScreenshotDataUrl(ctx.appPath, shot.screenshotPath, ctx.appId),
+    readableByAgent
+      ? Promise.resolve(null)
+      : readTestErrorContext(ctx.appPath, shot.screenshotPath, ctx.appId),
+  ]);
   if (dataUrl) {
     ctx.appendUserMessage([
       {
@@ -437,10 +449,25 @@ async function attachFailureArtifacts(
   // Only promise the image when it was actually attached — the read can fail
   // (missing/oversized/escaping file), and the model would otherwise burn a
   // turn looking for an attachment that never arrives.
-  const screenshotLine = dataUrl
-    ? `\n- Screenshot: ${screenshotPath} (attached to the next message as an image)`
-    : `\n- Screenshot: ${screenshotPath} (could NOT be attached as an image — rely on the page snapshot instead)`;
-  return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page${screenshotLine}`;
+  const attachmentNote = dataUrl
+    ? "attached to the next message as an image"
+    : "could NOT be attached as an image — rely on the page snapshot instead";
+
+  if (readableByAgent) {
+    const errorContext = path
+      .join(path.dirname(rel), "error-context.md")
+      .split(path.sep)
+      .join("/");
+    return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page\n- Screenshot: ${screenshotPath} (${attachmentNote})`;
+  }
+
+  // Out-of-app artifacts: inline the snapshot rather than name a path the model
+  // cannot open, and don't print the traversal path at all — it's meaningless
+  // to the agent and misleading as a location.
+  const snapshotSection = inlineSnapshot
+    ? `\n- Page snapshot (the page state when the test failed; inlined because this run's artifacts live outside the app and read_file cannot reach them):\n\n${inlineSnapshot}\n`
+    : "\n- Page snapshot: unavailable for this run.";
+  return `\nArtifacts from THIS run:${snapshotSection}\n- Screenshot: ${attachmentNote}.`;
 }
 
 async function reportFailure(params: {
@@ -478,12 +505,12 @@ async function reportFailure(params: {
     : "";
 
   const inconclusiveHint = outcome.allInconclusive
-    ? "\nThese are locator/timeout/strict-mode errors (e.g. a selector that matched nothing, matched a hidden element, or matched more than one element). That is almost always a LOCATOR bug in the test — make the selector more precise (exact text/role, filter to the visible element, scope to a container). Only if error-context.md shows the page never rendered is it the app or environment.\n"
+    ? "\nThese are locator/timeout/strict-mode errors (e.g. a selector that matched nothing, matched a hidden element, or matched more than one element). That is almost always a LOCATOR bug in the test — make the selector more precise (exact text/role, filter to the visible element, scope to a container). Only if the page snapshot shows the page never rendered is it the app or environment.\n"
     : "";
 
   const nextStep =
     remaining > 0
-      ? `Next: read error-context.md, decide whether the TEST or the APP is wrong, make one targeted fix, then call run_tests again. ${remaining} attempt(s) remain for this spec this turn.`
+      ? `Next: use the page snapshot from the artifacts above, decide whether the TEST or the APP is wrong, make one targeted fix, then call run_tests again. ${remaining} attempt(s) remain for this spec this turn.`
       : `You have now used all ${MAX_ATTEMPTS} attempts for this spec. Stop and summarize the situation for the user.`;
 
   const skippedNote =
@@ -519,15 +546,17 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 - Unless you just wrote or edited the spec this turn, READ it with read_file before running it — you need its current content to know the test() titles (for grep) and to interpret failures against what the test actually does.
 - By default the whole file runs, so a pass means every test in the spec passes.
 - Run the whole file by default. Only add \`grep\` (a regex passed to Playwright's --grep, matched against full hierarchical test titles) when you have a specific reason to narrow the run — e.g. one test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no runnable test, the tool reports that nothing executed.
-- Requires the app's dev server to be running (the user starts it with the Run button in the preview panel).
-- On failure you get the error text plus the paths of Playwright's artifacts (error-context.md page snapshot, screenshot) — read error-context.md with read_file to see the page state, then fix and rerun.
+- Runs in an isolated sandbox — a copy of the app served on its own port — so the user's preview does not need to be running. If sandboxing is unavailable (Docker/cloud runtime, or the user turned it off), the tool says so and asks for the dev server instead.
+- Each run pays for that isolation up front: a fresh copy of the app and a clean dependency install before any test executes, which can take minutes on a large project. Budget your attempts accordingly — read the spec and the page snapshot and make your best fix in one go, rather than rerunning to see what changes.
+- On failure you get the error text plus Playwright's artifacts: the error-context.md page snapshot (given to you as a path to read with read_file, or inlined when it lives outside the app) and a screenshot attached as an image. Read the page snapshot to see the page state, then fix and rerun.
 - You get ${MAX_ATTEMPTS} fix attempts per spec per turn. When the limit is reached, stop and summarize the situation for the user.
 - If you suspect a failure is flaky, rerun once with \`flakeCheck: true\` (does not count against the limit).
 - Never rerun something that already passed: once a target (or the whole file) is green and you haven't changed any files, the tool refuses the run — move on instead.`,
   inputSchema: runTestsSchema,
   defaultConsent: "always",
-  // Isolation swaps the app's env file and restarts the dev server, so this
-  // must be excluded from read-only / plan modes.
+  // A run writes Playwright's config/deps into the app and provisions remote
+  // test data (a throwaway Neon branch or Supabase user), so this must be
+  // excluded from read-only / plan modes.
   modifiesState: true,
   isEnabled: (ctx) => ctx.testingEnabled,
 

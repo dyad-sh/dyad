@@ -13,6 +13,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { reconcileTrustedDomains } from "./vercel_neon_sync_helpers";
+import { retryOnLocked } from "./retryOnLocked";
 import { getDyadAppPath } from "@/paths/paths";
 
 export type NeonBranchType = "production" | "development";
@@ -395,6 +396,50 @@ export async function ensureNeonAuthTrustedDomain({
     auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
   });
   return toAdd;
+}
+
+/**
+ * Registers an exact HTTP(S) origin without applying deployment-domain
+ * normalization. Run-scoped E2E servers use HTTP loopback origins, so changing
+ * their scheme to HTTPS would register a different origin and Better Auth would
+ * continue rejecting sign-in requests.
+ */
+export async function ensureNeonAuthTrustedOrigin({
+  projectId,
+  branchId,
+  origin,
+}: {
+  projectId: string;
+  branchId: string;
+  origin: string;
+}): Promise<string | null> {
+  const trustedOrigin = new URL(origin).origin;
+  const neonClient = await getNeonClient();
+  // Both calls back off on 423/429 like every other Neon call in the test-run
+  // flow. Running several specs back to back is exactly the burst that trips
+  // the rate limit, and an unretried clash here refuses the whole run — even
+  // one whose specs never touch sign-in.
+  const existing = await retryOnLocked(
+    () => neonClient.listBranchNeonAuthTrustedDomains(projectId, branchId),
+    `List Neon Auth trusted domains for branch ${branchId}`,
+  );
+  const alreadyTrusted = (existing.data?.domains ?? []).some(({ domain }) => {
+    try {
+      return new URL(domain).origin === trustedOrigin;
+    } catch {
+      return domain === trustedOrigin;
+    }
+  });
+  if (alreadyTrusted) return null;
+  await retryOnLocked(
+    () =>
+      neonClient.addBranchNeonAuthTrustedDomain(projectId, branchId, {
+        domain: trustedOrigin,
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+      }),
+    `Add Neon Auth trusted origin for branch ${branchId}`,
+  );
+  return trustedOrigin;
 }
 
 export interface ResolvedNeonBranchEnvVars {

@@ -476,11 +476,16 @@ export type ToolResult = string;
 // Tool Definition Interface
 // ============================================================================
 
+export type ToolDescriptionContext = Pick<
+  AgentContext,
+  "runTypeScriptForWholeProject"
+>;
+
 export interface ToolDefinition<T = any> {
   readonly name: string;
   readonly description: string;
   /** Build a turn-specific description when capabilities change tool behavior. */
-  readonly getDescription?: (ctx: AgentContext) => string;
+  readonly getDescription?: (ctx: ToolDescriptionContext) => string;
   readonly inputSchema: z.ZodType<T>;
   /** Build a turn-specific schema when capabilities change the valid input. */
   readonly getInputSchema?: (ctx: AgentContext) => z.ZodType<T>;
@@ -565,4 +570,12 @@ export interface ToolDefinition<T = any> {
    * @returns The XML string, or undefined if not enough args yet
    */
   buildXml?: (args: Partial<T>, isComplete: boolean) => string | undefined;
+}
+
+/** Resolve the description exposed for a tool in the current turn. */
+export function resolveToolDescription<T>(
+  tool: ToolDefinition<T>,
+  ctx: ToolDescriptionContext,
+): string {
+  return tool.getDescription?.(ctx) ?? tool.description;
 }

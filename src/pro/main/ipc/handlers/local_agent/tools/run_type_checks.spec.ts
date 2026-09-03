@@ -124,6 +124,9 @@ describe("runTypeChecksTool precondition guidance", () => {
     expect(projectWideDescription).toContain(
       "return diagnostics for all files",
     );
+    expect(projectWideDescription).toContain(
+      "normally act only on errors introduced by or related to your changes",
+    );
     expect(projectWideDescription).not.toContain("paths");
   });
 

@@ -19,6 +19,7 @@ import {
   AppMutatingToolName,
   FILE_EDIT_TOOL_NAMES,
   FileEditToolName,
+  resolveToolDescription,
   ToolDefinition,
 } from "./types";
 
@@ -262,7 +263,7 @@ export async function requireToolConsentOrThrow<T>(
 ): Promise<void> {
   const allowed = await ctx.requireConsent({
     toolName: tool.name,
-    toolDescription: tool.description,
+    toolDescription: resolveToolDescription(tool, ctx),
     inputPreview: tool.getConsentPreview?.(args) ?? null,
     metadata: tool.getConsentMetadata?.(args) ?? null,
   });

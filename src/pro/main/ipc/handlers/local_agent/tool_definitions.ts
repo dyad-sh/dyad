@@ -85,6 +85,7 @@ import { asSchema } from "ai";
 import {
   escapeXmlAttr,
   escapeXmlContent,
+  resolveToolDescription,
   type ToolDefinition,
   type AgentContext,
   type ToolResult,
@@ -564,8 +565,7 @@ export async function estimateAgentToolTokens({
     ).map(async (definition) => ({
       type: "function" as const,
       name: definition.name,
-      description:
-        definition.getDescription?.(estimateContext) ?? definition.description,
+      description: resolveToolDescription(definition, estimateContext),
       inputSchema: await asSchema(
         definition.getInputSchema?.(estimateContext) ?? definition.inputSchema,
       ).jsonSchema,
@@ -781,7 +781,7 @@ export function buildAgentToolSet(
     }
 
     toolSet[tool.name] = {
-      description: tool.getDescription?.(ctx) ?? tool.description,
+      description: resolveToolDescription(tool, ctx),
       inputSchema: tool.getInputSchema?.(ctx) ?? tool.inputSchema,
       execute: async (
         args: any,

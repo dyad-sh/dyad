@@ -15,6 +15,7 @@ import type { AgentTool, SetAgentToolConsentParams } from "@/ipc/types";
 import { agentContracts } from "@/ipc/types/agent";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
+import { resolveToolDescription } from "./tools/types";
 import {
   buildFixFindingsPrompt,
   cancelSubagent,
@@ -35,11 +36,16 @@ export function registerAgentToolHandlers() {
   // Get list of available tools with their consent settings
   handle(agentContracts.getTools, async (): Promise<AgentTool[]> => {
     const consents = getAllAgentToolConsents();
+    const settings = readSettings();
+    const descriptionContext = {
+      runTypeScriptForWholeProject:
+        settings.runTypeScriptForWholeProject === true,
+    };
     return TOOL_DEFINITIONS.filter(
-      (tool) => isDyadProEnabled(readSettings()) || !tool.subagentOnly,
+      (tool) => isDyadProEnabled(settings) || !tool.subagentOnly,
     ).map((tool) => ({
       name: tool.name,
-      description: tool.description,
+      description: resolveToolDescription(tool, descriptionContext),
       isAllowedByDefault:
         getDefaultConsent(tool.name as AgentToolName) === "always",
       consent: consents[tool.name],

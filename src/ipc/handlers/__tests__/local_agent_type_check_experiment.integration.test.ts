@@ -62,6 +62,9 @@ describe("project-wide TypeScript setting (integration)", () => {
     expect(typeCheckTool.description).toContain(
       "return diagnostics for all files",
     );
+    expect(typeCheckTool.description).toContain(
+      "normally act only on errors introduced by or related to your changes",
+    );
     expect(typeCheckTool.description).not.toContain("paths");
     expect(typeCheckTool.parameters.properties).not.toHaveProperty("paths");
     expect([...harness.bridge.missingChannels]).toEqual([]);

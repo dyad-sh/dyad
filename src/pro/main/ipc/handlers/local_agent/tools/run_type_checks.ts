@@ -43,7 +43,7 @@ const projectWideDescription = `Run TypeScript type checks on the whole current 
 
 - Always returns diagnostics for all files in the workspace
 - Project configuration errors are always returned because they can prevent files from being checked
-- This tool can return type errors that were already present before your edits`;
+- Results may include pre-existing errors; normally act only on errors introduced by or related to your changes unless the user asks for a full cleanup`;
 
 /**
  * Check if a problem file matches any of the specified paths.

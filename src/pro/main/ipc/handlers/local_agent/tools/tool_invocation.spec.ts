@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import * as gitUtils from "@/ipc/utils/git_utils";
 import type { AgentContext, ToolDefinition } from "./types";
 import { APP_MUTATING_TOOL_NAMES, FILE_EDIT_TOOL_NAMES } from "./types";
@@ -7,6 +8,7 @@ import {
   FILE_MUTATION_POLICIES,
   shouldTrackToolFileMutation,
   shouldTrackToolMutation,
+  requireToolConsentOrThrow,
   trackAppMutation,
 } from "./tool_invocation";
 
@@ -16,6 +18,38 @@ function tool(
 ): ToolDefinition {
   return { name, shouldTrackMutation } as ToolDefinition;
 }
+
+describe("requireToolConsentOrThrow", () => {
+  it("uses the turn-specific tool description in the consent request", async () => {
+    const requireConsent = vi.fn().mockResolvedValue(true);
+    const definition = {
+      name: "dynamic_tool",
+      description: "Default description",
+      getDescription: (ctx) =>
+        ctx.runTypeScriptForWholeProject
+          ? "Project-wide description"
+          : "Scoped description",
+      inputSchema: z.object({}),
+      defaultConsent: "ask",
+      getConsentPreview: () => "Preview",
+      execute: vi.fn(),
+    } satisfies ToolDefinition;
+    const ctx = {
+      ...({} as AgentContext),
+      requireConsent,
+      runTypeScriptForWholeProject: true,
+    };
+
+    await requireToolConsentOrThrow(definition, {}, ctx);
+
+    expect(requireConsent).toHaveBeenCalledWith({
+      toolName: "dynamic_tool",
+      toolDescription: "Project-wide description",
+      inputPreview: "Preview",
+      metadata: null,
+    });
+  });
+});
 
 describe("shouldTrackToolMutation", () => {
   const ctx = {} as AgentContext;

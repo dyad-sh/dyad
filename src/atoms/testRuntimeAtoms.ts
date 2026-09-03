@@ -292,8 +292,12 @@ export const applyTestRunStartedAtom = atom(
         runError: undefined,
         isolation: undefined,
         // The starter's expectation; the main process confirms (or corrects)
-        // it on the progress and finished events.
-        sandboxed,
+        // it on the progress and finished events. `?? prev` rather than a bare
+        // assignment: this atom is applied TWICE for one run — once optimistically
+        // at the click, then again when the main process broadcasts `started` —
+        // and a caller that omits the flag must not erase what the first call
+        // knew.
+        sandboxed: sandboxed ?? prev.sandboxed,
         startedAt: startedAt ?? Date.now(),
       }),
     });

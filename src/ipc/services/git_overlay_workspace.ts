@@ -7,15 +7,44 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
+import { isMissingPathError } from "../../../shared/node_module_resolution";
 
 const WINDOWS_COPY_CONCURRENCY = 32;
 const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MARKER_SUFFIX = ".owner.json";
 const MARKER_SCHEMA = "dyad-git-overlay-worktree-v1";
 const LEGACY_BUILD_MARKER_SCHEMA = "dyad-build-worktree-v1";
-// Excluded everywhere and never preserved, even when the repository tracks it:
-// every consumer of this workspace installs its own dependency tree.
-const ALWAYS_EXCLUDED_ROOT = "node_modules";
+/**
+ * Roots dropped at ANY depth in the repository, and never preserved even when
+ * Git tracks them.
+ *
+ * These are installed environments, not sources: a dependency tree or a
+ * virtualenv records absolute paths in its own metadata (`pyvenv.cfg`, script
+ * shebangs, `.bin` links), so a copy of one points back at the live checkout
+ * and a sandbox that activated it would quietly escape itself. Every consumer
+ * of this workspace installs its own, so a committed one is never what the run
+ * should resolve against.
+ *
+ * Distinct from the caller's `excludedTargetRootNames`, which are generated
+ * *output* names anchored at the app directory — `rules/local-agent-tools.md`
+ * warns those must not match at every depth, because `app/out/page.tsx` is
+ * application source. Nothing here is ever a source directory, so the same
+ * caution does not apply.
+ */
+const ALWAYS_EXCLUDED_ROOTS: ReadonlySet<string> = new Set([
+  "node_modules",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".yarn",
+  ".pnpm-store",
+  ".gradle",
+  "Pods",
+  ".turbo",
+]);
 
 const logger = log.scope("git_overlay_workspace");
 const activeWorkspacePaths = new Set<string>();
@@ -112,7 +141,10 @@ function isExcludedRelativePath(
   excludedTargetRootNames: ReadonlySet<string>,
 ): boolean {
   const segments = normalized.split("/");
-  if (segments.includes(".git") || segments.includes(ALWAYS_EXCLUDED_ROOT)) {
+  if (
+    segments.includes(".git") ||
+    segments.some((segment) => ALWAYS_EXCLUDED_ROOTS.has(segment))
+  ) {
     return true;
   }
   const normalizedTargetPath = targetRelativePath
@@ -287,7 +319,12 @@ async function overlayWorkspaceState(
     index < overlayPaths.length;
     index += WINDOWS_COPY_CONCURRENCY
   ) {
-    await Promise.all(
+    // Settled, not `Promise.all`. A rejection there resolves this await while
+    // sibling copies are still reading the source and writing the worktree, and
+    // the caller starts removing that worktree — and releases the repository
+    // claim — with those copies still running. `rules/app-operation-coordination.md`
+    // requires the barrier for exactly this shape.
+    const settled = await Promise.allSettled(
       overlayPaths
         .slice(index, index + WINDOWS_COPY_CONCURRENCY)
         .map((relativePath) =>
@@ -302,6 +339,8 @@ async function overlayWorkspaceState(
           ),
         ),
     );
+    const failure = settled.find((outcome) => outcome.status === "rejected");
+    if (failure) throw failure.reason;
   }
 }
 
@@ -326,7 +365,7 @@ export async function copyGitOverlayEntriesOnWindows({
   while (pendingPaths.length > 0) {
     throwIfCancelled(signal);
     const batch = pendingPaths.splice(0, WINDOWS_COPY_CONCURRENCY);
-    const discoveredPaths = await Promise.all(
+    const settled = await Promise.allSettled(
       batch.map((sourcePath) =>
         copyWindowsEntry({
           sourceRoot,
@@ -339,7 +378,13 @@ export async function copyGitOverlayEntriesOnWindows({
         }),
       ),
     );
-    pendingPaths.push(...discoveredPaths.flat());
+    const failure = settled.find((outcome) => outcome.status === "rejected");
+    if (failure) throw failure.reason;
+    pendingPaths.push(
+      ...settled.flatMap((outcome) =>
+        outcome.status === "fulfilled" ? outcome.value : [],
+      ),
+    );
   }
 }
 
@@ -384,8 +429,27 @@ async function copyWindowsEntry({
     try {
       realTarget = await fs.realpath(sourcePath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      // A dangling link. Dropping it here is what the POSIX path deliberately
+      // stopped doing: an app may keep a repository-local link whose target its
+      // install or build step creates, and omitting it made an isolated run
+      // fail on Windows only. Preserved under the same containment rule, with
+      // the text remapped so a target created later resolves inside the
+      // workspace instead of back into the live checkout.
+      const linkText = await fs.readlink(sourcePath);
+      const textualTarget = path.resolve(path.dirname(sourcePath), linkText);
+      if (!pathIsInside(realSourceRoot, textualTarget)) {
+        logger.warn(
+          `Dropping the dangling link ${path.relative(sourceRoot, sourcePath)} from the workspace: its target would land outside the repository.`,
+        );
+        return [];
+      }
+      await fs.symlink(
+        path.join(workspaceRoot, path.relative(realSourceRoot, textualTarget)),
+        destinationPath,
+        "file",
+      );
+      return [];
     }
     if (!pathIsInside(realSourceRoot, realTarget)) {
       throw externalLinkError(path.relative(sourceRoot, sourcePath));
@@ -486,11 +550,14 @@ export async function secureGitOverlaySymlinks(
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           // A dangling link, which repositories legitimately contain — a link
-          // to something a build step produces, say. Kept when it points back
-          // inside: silently removing it makes the workspace differ from the
-          // tree it reproduces. Nothing can leak through a link that resolves
-          // to nothing, but the link TEXT still decides, since a target created
-          // later would follow it.
+          // to something a build step produces, say. Kept rather than deleted,
+          // because silently removing it makes the workspace differ from the
+          // tree it reproduces. But "resolves to nothing" is not "harmless":
+          // the target is exactly the thing a later install or build step
+          // creates, and a link still pointing at the LIVE path would then read
+          // and write straight through the sandbox into the user's checkout.
+          // So the same remap the resolved branch performs is applied to the
+          // link text.
           //
           // Resolved through `realWorkspaceRoot`, not the raw `entryPath`: the
           // walk starts at the unresolved `workspaceRoot`, so on a root with a
@@ -506,20 +573,34 @@ export async function secureGitOverlaySymlinks(
             path.dirname(realEntryPath),
             linkText,
           );
-          if (
-            !pathIsInside(realWorkspaceRoot, textualTarget) &&
-            !pathIsInside(realSourceRoot, textualTarget)
-          ) {
-            // Dropped rather than fatal. It resolves to nothing today, so it
-            // cannot be a way out — and failing the whole workspace over one
-            // would turn a repository that merely contains a stale link into a
-            // build that cannot run at all, which is a worse trade than the
-            // fidelity this preserves elsewhere.
-            logger.warn(
-              `Dropping the dangling link ${path.relative(workspaceRoot, entry.entryPath)} from the workspace: its target would land outside the repository.`,
-            );
-            await fs.unlink(entry.entryPath);
+          if (pathIsInside(realWorkspaceRoot, textualTarget)) {
+            // Already points inside the copy — relative links that stayed
+            // relative land here, and there is nothing to rewrite.
+            continue;
           }
+          if (pathIsInside(realSourceRoot, textualTarget)) {
+            const mapped = path.join(
+              realWorkspaceRoot,
+              path.relative(realSourceRoot, textualTarget),
+            );
+            await fs.rm(entry.entryPath, { force: true });
+            await fs.symlink(
+              process.platform === "win32"
+                ? mapped
+                : path.relative(path.dirname(realEntryPath), mapped) || ".",
+              entry.entryPath,
+              "file",
+            );
+            continue;
+          }
+          // Outside both roots. Dropped rather than fatal: it resolves to
+          // nothing today, so it cannot be a way out, and failing the whole
+          // workspace over one stale link would turn a repository that merely
+          // contains it into a build that cannot run at all.
+          logger.warn(
+            `Dropping the dangling link ${path.relative(workspaceRoot, entry.entryPath)} from the workspace: its target would land outside the repository.`,
+          );
+          await fs.unlink(entry.entryPath);
           continue;
         }
         throw new DyadError(
@@ -668,7 +749,7 @@ async function removeExcludedTargetRoots(
     excludedRootNames.map((entry, index) => {
       const excludedPath = excludedPaths[index];
       if (
-        entry !== ALWAYS_EXCLUDED_ROOT &&
+        !ALWAYS_EXCLUDED_ROOTS.has(entry) &&
         trackedPaths.some(
           (trackedPath) =>
             trackedPath === excludedPath ||
@@ -685,6 +766,50 @@ async function removeExcludedTargetRoots(
     }),
   );
   return removedRootNames;
+}
+
+/**
+ * Delete every checked-out environment root, at any depth in the worktree.
+ *
+ * `removeExcludedTargetRoots` only sweeps the app directory, and Node resolves
+ * up through *every* ancestor — so for `/repo/groups/app`, a tracked
+ * `/repo/groups/node_modules` from `HEAD` would still satisfy an import the
+ * clean install never provided. The same goes for a committed virtualenv
+ * anywhere in a monorepo: the sandbox would activate an interpreter pointing
+ * back at the live checkout.
+ *
+ * Driven by `git ls-files` rather than a directory walk. Only tracked paths can
+ * exist in a fresh `worktree add`, so this is the exact set, and it costs one
+ * Git call instead of descending a tree that may hold hundreds of thousands of
+ * files.
+ */
+async function removeAlwaysExcludedRoots(
+  sourceRepoPath: string,
+  worktreePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const tracked = await runWorkspaceGit(
+    sourceRepoPath,
+    ["ls-files", "-z"],
+    signal,
+  );
+  const roots = new Set<string>();
+  for (const trackedPath of tracked.stdout.split("\0")) {
+    if (!trackedPath) continue;
+    const segments = trackedPath.split("/");
+    const index = segments.findIndex((segment) =>
+      ALWAYS_EXCLUDED_ROOTS.has(segment),
+    );
+    if (index >= 0) roots.add(segments.slice(0, index + 1).join("/"));
+  }
+  await Promise.all(
+    [...roots].map((root) =>
+      fs.rm(path.join(worktreePath, toNativePath(root)), {
+        recursive: true,
+        force: true,
+      }),
+    ),
+  );
 }
 
 async function materializeInitializedSubmodules({
@@ -879,21 +1004,7 @@ export async function createGitOverlayWorkspace({
       excludedTargetRootNames,
       signal,
     );
-    // A nested app installs at its workspace root, so a tracked `node_modules`
-    // checked out at the *repository* root sits above the target and outside
-    // the sweep above — where Node's upward resolution finds it. `npm ci` would
-    // replace one it is pointed at, but an app whose install root is its own
-    // directory (or a custom-command app that installs nothing) would resolve
-    // committed dependencies the clean install never touched.
-    if (
-      targetRelativePosix &&
-      excludedTargetRootNames.has(ALWAYS_EXCLUDED_ROOT)
-    ) {
-      await fs.rm(path.join(worktreePath, ALWAYS_EXCLUDED_ROOT), {
-        recursive: true,
-        force: true,
-      });
-    }
+    await removeAlwaysExcludedRoots(sourceRepoPath, worktreePath, signal);
     await overlayWorkspaceState(
       sourceRepoPath,
       worktreePath,
@@ -994,10 +1105,16 @@ export async function removeGitOverlayWorkspace(
         // being there is why `remove` failed. Verify rather than assume — the
         // whole point of keeping the marker is that something must still name
         // this registration for a later attempt.
+        //
+        // Only a definite "it is gone" clears this. A stat that fails for any
+        // other reason — EACCES, EIO, a path Windows still has locked — says
+        // nothing, and reading it as absence would drop the marker while the
+        // registration stands, which is the exact failure this branch exists to
+        // prevent.
         const stillPresent = await fs
           .stat(worktree.snapshotPath)
           .then(() => true)
-          .catch(() => false);
+          .catch((error) => !isMissingPathError(error));
         if (stillPresent) allSubmodulesUnregistered = false;
       }
     }

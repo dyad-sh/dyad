@@ -1227,10 +1227,12 @@ describe("tests handlers", () => {
       expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
     });
 
-    it("skips install scripts for a Supabase app, whose credentials stay live", async () => {
+    it("withholds the database from install scripts when the env stays live", async () => {
       // Supabase isolation is a throwaway RLS-scoped user in the REAL project
       // and never rewrites the copied env, so a `postinstall` migration would
-      // run DDL against the user's live database.
+      // run DDL against the user's live database. The scripts still run —
+      // `--ignore-scripts` would break codegen and native rebuilds — they just
+      // cannot see a database.
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -1252,13 +1254,41 @@ describe("tests handlers", () => {
       });
 
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
-        expect.objectContaining({ ignoreScripts: true }),
+        expect.objectContaining({ withholdDatabaseEnv: true }),
       );
     });
 
-    it("runs install scripts for a Neon app, whose env was swapped first", async () => {
-      // The branch swap already happened, so `prisma generate` and friends both
-      // are safe and are wanted.
+    it("withholds it for an app with no managed database either", async () => {
+      // The sandbox's `.env.local` is a verbatim copy when isolation resolves
+      // to `none`, so whatever it points at is just as live.
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+
+      await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+
+      expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
+        expect.objectContaining({ withholdDatabaseEnv: true }),
+      );
+    });
+
+    it("leaves the database in place for a Neon app, whose env was swapped", async () => {
+      // The branch swap already pointed the sandbox at the throwaway database,
+      // so a migration script there is both safe and wanted.
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -1280,7 +1310,7 @@ describe("tests handlers", () => {
       });
 
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
-        expect.objectContaining({ ignoreScripts: false }),
+        expect.objectContaining({ withholdDatabaseEnv: false }),
       );
     });
 

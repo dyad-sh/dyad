@@ -64,6 +64,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   // True after the user clicks Next: the chat card collapses to a "finish in
   // the right panel" message with a Back button.
   const [inPanelMode, setInPanelMode] = useState(false);
+  const trackedSetupStartsRef = useRef(new Set<string>());
 
   const providerOptions = [
     {
@@ -175,9 +176,14 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const handleNextClick = () => {
     if (!effectiveSelectedProvider || chatId == null || !pendingIntegration)
       return;
-    posthog.capture("integration-setup:start", {
-      provider: effectiveSelectedProvider,
-    });
+    const setupStartKey = `${pendingIntegration.requestId}:${effectiveSelectedProvider}`;
+    if (!trackedSetupStartsRef.current.has(setupStartKey)) {
+      trackedSetupStartsRef.current.add(setupStartKey);
+      posthog.capture("integration-setup:start", {
+        provider: effectiveSelectedProvider,
+        requestId: pendingIntegration.requestId,
+      });
+    }
     // Share the UI choice with the Configure panel without mutating the
     // main-authoritative request read model.
     setIntegrationProviderSelection((prev) => {

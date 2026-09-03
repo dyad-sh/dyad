@@ -61,7 +61,10 @@ export function useIntegrationContinue() {
       },
     );
     if (!responded) return;
-    posthog.capture("integration-setup:complete", { provider });
+    posthog.capture("integration-setup:complete", {
+      provider,
+      requestId: pendingIntegration.requestId,
+    });
     setIntegrationProviderSelection((prev) => {
       if (!prev.has(pendingIntegration.requestId)) return prev;
       const next = new Map(prev);

@@ -100,17 +100,35 @@ describe("DyadAddIntegration", () => {
     expect(radios[1].getAttribute("aria-checked")).toBe("false");
   });
 
-  it("tracks the provider chosen when setup starts", () => {
+  it("tracks each provider once when setup starts", () => {
     renderCard();
 
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "integrations.databaseSetup.back",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "integrations.databaseSetup.back",
+      }),
+    );
     fireEvent.click(screen.getByRole("radio", { name: /Supabase/ }));
     fireEvent.click(
       screen.getByRole("button", { name: "Continue with Supabase" }),
     );
 
-    expect(mocks.posthogCapture).toHaveBeenCalledWith(
-      "integration-setup:start",
-      { provider: "supabase" },
-    );
+    expect(mocks.posthogCapture.mock.calls).toEqual([
+      [
+        "integration-setup:start",
+        { provider: "neon", requestId: "integration-1" },
+      ],
+      [
+        "integration-setup:start",
+        { provider: "supabase", requestId: "integration-1" },
+      ],
+    ]);
   });
 });

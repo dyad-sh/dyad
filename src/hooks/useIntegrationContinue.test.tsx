@@ -76,7 +76,7 @@ describe("useIntegrationContinue", () => {
     });
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "integration-setup:complete",
-      { provider: "neon" },
+      { provider: "neon", requestId: "integration-1" },
     );
   });
 

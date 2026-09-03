@@ -65,6 +65,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -235,6 +236,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -406,6 +408,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -564,6 +567,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -722,6 +726,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -892,6 +897,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -1131,6 +1137,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -1289,6 +1296,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>
@@ -1434,6 +1442,7 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
 8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+10. If ERR_PNPM_UNSUPPORTED_ENGINE reports an incompatible engines.pnpm range, preserve the existing range, add Dyad's current pnpm major version to package.json, and retry the dependency installation once.
 </tool_calling>
 
 <git_context>

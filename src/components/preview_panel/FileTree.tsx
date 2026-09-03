@@ -446,7 +446,6 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
         ) : (
           <TreeNodes
             nodes={treeData}
-            level={0}
             matchesByPath={matchesByPath}
             isSearchMode={isSearchMode}
             searchQuery={debouncedSearch}
@@ -460,7 +459,6 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
 
 interface TreeNodesProps {
   nodes: TreeNode[];
-  level: number;
   matchesByPath: Map<string, AppFileSearchResult>;
   isSearchMode: boolean;
   searchQuery: string;
@@ -480,7 +478,6 @@ const sortNodes = (nodes: TreeNode[]): TreeNode[] => {
 // Tree nodes component
 const TreeNodes = ({
   nodes,
-  level,
   matchesByPath,
   isSearchMode,
   searchQuery,
@@ -491,7 +488,6 @@ const TreeNodes = ({
       <TreeNode
         key={node.path}
         node={node}
-        level={level}
         matchesByPath={matchesByPath}
         isSearchMode={isSearchMode}
         searchQuery={searchQuery}
@@ -503,7 +499,6 @@ const TreeNodes = ({
 
 interface TreeNodeProps {
   node: TreeNode;
-  level: number;
   matchesByPath: Map<string, AppFileSearchResult>;
   isSearchMode: boolean;
   searchQuery: string;
@@ -614,13 +609,12 @@ const SearchResultItem = ({
 // Individual tree node component
 const TreeNode = ({
   node,
-  level,
   matchesByPath,
   isSearchMode,
   searchQuery,
   status,
 }: TreeNodeProps) => {
-  const [expanded, setExpanded] = useState(level < 2);
+  const [expanded, setExpanded] = useState(false);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;
   const marker = node.isDirectory
@@ -706,7 +700,6 @@ const TreeNode = ({
       {node.isDirectory && expanded && node.children.length > 0 && (
         <TreeNodes
           nodes={node.children}
-          level={level + 1}
           matchesByPath={matchesByPath}
           isSearchMode={isSearchMode}
           searchQuery={searchQuery}

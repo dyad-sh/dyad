@@ -36,6 +36,8 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   app: { id: 1, testingEnabled: true } as Record<string, unknown>,
   settings: {} as Record<string, unknown>,
+  settingsLoading: false,
+  refreshSettings: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -64,6 +66,8 @@ vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     settings: mocks.settings,
     updateSettings: mocks.updateSettings,
+    loading: mocks.settingsLoading,
+    refreshSettings: mocks.refreshSettings,
   }),
 }));
 
@@ -141,6 +145,7 @@ describe("TestsPanel", () => {
     mocks.previewUrlSource = "dyad";
     mocks.app = { id: 1, testingEnabled: true };
     mocks.settings = {};
+    mocks.settingsLoading = false;
     mocks.listAppTests.mockResolvedValue({
       specs: [
         {
@@ -562,6 +567,7 @@ describe("TestsPanel", () => {
     // disclosing it beforehand is for.
     mocks.appUrl = null;
     mocks.settings = undefined as unknown as Record<string, unknown>;
+    mocks.settingsLoading = true;
 
     renderPanel();
 
@@ -574,6 +580,30 @@ describe("TestsPanel", () => {
     ).toBe(true);
     expect(screen.queryByText("Start the app to run tests.")).toBeNull();
     expect(screen.queryByText(/Dyad won't run Neon tests/)).toBeNull();
+    expect(screen.queryByText(/couldn't load your settings/)).toBeNull();
+  });
+
+  it("says why Run is disabled when settings fail to load", async () => {
+    // The other half of the tri-state. Silence is right for the brief load
+    // above, but a settled failure leaves every run control greyed out for as
+    // long as the panel is open — and without this, nothing on screen says so.
+    mocks.appUrl = null;
+    mocks.settings = undefined as unknown as Record<string, unknown>;
+    mocks.settingsLoading = false;
+
+    renderPanel();
+
+    expect(await screen.findByText(/couldn't load your settings/)).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Run all tests",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(mocks.refreshSettings).toHaveBeenCalled();
   });
 
   describe("sandbox disclosure", () => {

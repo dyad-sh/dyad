@@ -19,6 +19,11 @@ import {
 import { trackE2eTestProcess } from "@/ipc/services/e2e_test_process_registry";
 import { isMissingPathError } from "../../../shared/node_module_resolution";
 import { ENV_FILE_NAME } from "@/ipc/utils/app_env_var_utils";
+import {
+  isDatabaseEnvKey,
+  withoutInheritedDatabaseEnv,
+} from "@/ipc/utils/sandbox_env";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("e2e_test_workspace");
 
@@ -244,9 +249,6 @@ export async function createE2eTestWorkspace({
  * thing they must not reach. A script that genuinely needs the database fails
  * loudly, which is the right way round.
  */
-const DATABASE_ENV_PATTERN =
-  /(DATABASE_URL|DIRECT_URL|POSTGRES|SUPABASE|NEON|^PG(HOST|PORT|USER|PASSWORD|DATABASE)$)/i;
-
 /** Rewrite `.env.local` without the database credentials; return the original. */
 async function withheldEnvFile(directory: string): Promise<string | null> {
   const envPath = path.join(directory, ENV_FILE_NAME);
@@ -263,7 +265,7 @@ async function withheldEnvFile(directory: string): Promise<string | null> {
       const key = line.split("=", 1)[0]?.trim();
       // Comments and blanks have no key and stay; anything naming a database
       // goes for the duration of the install.
-      return !key || key.startsWith("#") || !DATABASE_ENV_PATTERN.test(key);
+      return !key || key.startsWith("#") || !isDatabaseEnvKey(key);
     })
     .join("\n");
   if (kept === original) return null;
@@ -338,6 +340,12 @@ export async function installE2eTestWorkspaceDependencies({
       runCleanPackageInstall({
         cwd: dependencyInstallPath,
         packageManager,
+        // Unconditional, unlike the file rewrite above. `dotenv` leaves an
+        // already-set variable alone, so a `DATABASE_URL` inherited from the
+        // shell that launched Dyad would override the isolated value the
+        // sandbox wrote — including the Neon branch URL a `prisma migrate` in
+        // a lifecycle script is supposed to run against.
+        env: getPackageManagerCommandEnv(withoutInheritedDatabaseEnv()),
         signal,
         timeoutMs: DEPENDENCY_INSTALL_TIMEOUT_MS,
         onOutput,
@@ -535,12 +543,31 @@ async function removeSupersededArtifactRuns(
   const byApp = new Map<number, { name: string; modifiedAt: number }[]>();
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    // A run this process still owns is never superseded, whatever its timestamp
+    // sorts as. The sandbox sweep that runs before this one deletes
+    // dependency-heavy trees and can take minutes — long enough for a run to
+    // start and retain its artifacts underneath it. The orphan pass below skips
+    // active names for the same reason.
+    if (activeWorkspaceNames.has(entry.name)) continue;
     const appId = runDirectoryAppId(entry.name);
     if (appId === null) continue;
+    // A stat that fails for any reason other than "it is gone" says nothing
+    // about age. Treating it as epoch-zero would sort the directory oldest and
+    // make it the FIRST thing deleted — the opposite of what an unreadable
+    // directory warrants — so it is left out of the ranking, and so out of the
+    // prune, entirely.
     const modifiedAt = await fs
       .stat(path.join(artifactRoot, entry.name))
       .then((stat) => stat.mtimeMs)
-      .catch(() => 0);
+      .catch((error) => {
+        if (!isMissingPathError(error)) {
+          logger.warn(
+            `Keeping the retained E2E artifacts in ${entry.name}, which could not be read: ${error}`,
+          );
+        }
+        return null;
+      });
+    if (modifiedAt === null) continue;
     byApp.set(appId, [
       ...(byApp.get(appId) ?? []),
       { name: entry.name, modifiedAt },

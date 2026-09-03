@@ -17,6 +17,7 @@ import {
   getPackageManagerSignal,
 } from "@/ipc/utils/package_manager_selection";
 import { forceKillProcessTree, killProcess } from "@/ipc/utils/process_manager";
+import { withoutInheritedDatabaseEnv } from "@/ipc/utils/sandbox_env";
 import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
@@ -338,6 +339,12 @@ export async function buildE2eTestStartCommand({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<{ command: string; env: NodeJS.ProcessEnv }> {
+  // Every branch below builds on this rather than on `process.env`. The
+  // workspace's `.env.local` is the only database the sandbox server may reach,
+  // and `dotenv` will not overwrite a variable that is already set — so a
+  // credential inherited from the shell that launched Dyad would quietly beat
+  // the isolated one and point the app under test at the user's real data.
+  const sandboxEnv = withoutInheritedDatabaseEnv();
   if (hasCustomE2eStartCommand({ installCommand, startCommand })) {
     // Run the user's commands verbatim — no `-- --port` appended, which would
     // break every custom server that doesn't accept that flag (a Python server,
@@ -371,7 +378,7 @@ export async function buildE2eTestStartCommand({
       : trimmedStart;
     return {
       command: `${installCommand!.trim()} && echo "${INSTALL_COMPLETE_MARKER}" && (${start})`,
-      env: { ...process.env, PORT: String(port) },
+      env: { ...sandboxEnv, PORT: String(port) },
     };
   }
 
@@ -388,12 +395,15 @@ export async function buildE2eTestStartCommand({
   if (packageManager === "pnpm") {
     return {
       command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev --port ${port}`,
-      env: { ...getPackageManagerCommandEnv(), PORT: String(port) },
+      env: {
+        ...getPackageManagerCommandEnv(sandboxEnv),
+        PORT: String(port),
+      },
     };
   }
   return {
     command: `npm run dev -- --port ${port}`,
-    env: { ...process.env, PORT: String(port) },
+    env: { ...sandboxEnv, PORT: String(port) },
   };
 }
 

@@ -671,7 +671,12 @@ export function TestsPanel() {
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const requestRecording = useSetAtom(recordingStartRequestAtom);
   const { app } = useLoadApp(selectedAppId);
-  const { settings, updateSettings } = useSettings();
+  const {
+    settings,
+    updateSettings,
+    loading: settingsLoading,
+    refreshSettings,
+  } = useSettings();
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -776,6 +781,15 @@ export function TestsPanel() {
   // the loading state. Nothing should flash on mount for a gate that may not
   // apply once settings arrive.
   const showDevServerGate = sandboxAvailable === false && !devServerRunning;
+  // Settled without settings — the query errored, or resolved to nothing. The
+  // gates above stay quiet for `undefined` so nothing amber flashes during the
+  // brief load, but that same silence would otherwise make a permanent failure
+  // indistinguishable from it: a greyed-out Run, greyed-out per-file and
+  // per-test buttons, and not a word about why. Per **Principle #4: Transparent
+  // Over Magical**, a control that refuses to act has to say what it is waiting
+  // for.
+  const settingsUnavailable =
+    sandboxAvailable === undefined && !settingsLoading;
   const testRunBlocked =
     neonSandboxRefusal !== null ||
     sandboxAvailable === undefined ||
@@ -1742,6 +1756,25 @@ export function TestsPanel() {
                 Neon test runs use a copy of your app and a temporary database.
                 Your preview keeps running against your real one.
               </span>
+            </div>
+          )}
+
+          {/* Settings never arrived. Rendered before the gates below because
+          none of them can be evaluated without settings, and this is the only
+          banner that explains the disabled Run button in that state. */}
+          {settingsUnavailable && specs.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0" />
+              <span className="flex-1">
+                Dyad couldn't load your settings, so it can't tell how tests
+                would run.
+              </span>
+              <button
+                onClick={() => void refreshSettings()}
+                className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+              >
+                Retry
+              </button>
             </div>
           )}
 

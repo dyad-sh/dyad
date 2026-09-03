@@ -90,6 +90,7 @@ import {
   withTrackedMutation,
   type MutationActivityOwner,
 } from "./subagents/mutation_activity_tracker";
+import { buildImplementerFailureReport } from "./subagents/subagent_failure_reporting";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 import { COMPLETED_PLANNING_QUESTIONNAIRE_RESULT_PREFIX } from "./tools/planning_questionnaire";
 
@@ -107,7 +108,10 @@ import {
   FileEditTracker,
   type Todo,
 } from "./tools/types";
-import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import {
+  sendTelemetryEvent,
+  sendTelemetryException,
+} from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
   buildTodoReminderMessage,
@@ -2071,10 +2075,15 @@ export async function handleLocalAgentStream(
         (thread) => !isAcceptableImplementerJoinStatus(thread.status),
       );
       if (unsuccessful.length > 0) {
+        const failureReport = buildImplementerFailureReport(unsuccessful);
+        if (failureReport.telemetryMessage) {
+          sendTelemetryException(new Error(failureReport.telemetryMessage), {
+            source: "implementer_join",
+            failed_implementer_count: unsuccessful.length,
+          });
+        }
         throw new DyadError(
-          `Implementer sub-agent did not complete successfully: ${unsuccessful
-            .map((thread) => `${thread.taskName} (${thread.status})`)
-            .join(", ")}`,
+          failureReport.displayMessage,
           DyadErrorKind.Precondition,
         );
       }

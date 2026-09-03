@@ -348,7 +348,7 @@ const mockSubagentManager = vi.hoisted(() => ({
   cancelSubagent: vi.fn(async () => {}),
   isAcceptableImplementerJoinStatus: vi.fn(() => true),
   waitForSubagents: vi.fn(async () => []),
-  waitForOwnedSubagentsAndSealTurn: vi.fn(async () => []),
+  waitForOwnedSubagentsAndSealTurn: vi.fn(async (): Promise<any[]> => []),
 }));
 
 vi.mock(
@@ -368,6 +368,12 @@ vi.mock(
     return { ...actual, endTurnFinalization: mockEndTurnFinalization };
   },
 );
+
+const mockSendTelemetryException = vi.hoisted(() => vi.fn());
+vi.mock("@/ipc/utils/telemetry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/telemetry")>()),
+  sendTelemetryException: mockSendTelemetryException,
+}));
 
 const {
   mockIsChatPendingCompaction,
@@ -1049,6 +1055,8 @@ describe("handleLocalAgentStream", () => {
     vi.mocked(streamText).mockClear();
     vi.mocked(buildAgentToolSet).mockImplementation(() => ({}));
     mockRequireMcpToolConsent.mockResolvedValue({ approved: true });
+    mockSubagentManager.isAcceptableImplementerJoinStatus.mockReturnValue(true);
+    mockSubagentManager.waitForOwnedSubagentsAndSealTurn.mockResolvedValue([]);
   });
 
   it("projects the capability-aware Implementer prompt into the root tool context", async () => {
@@ -4107,6 +4115,108 @@ describe("handleLocalAgentStream", () => {
       ).toHaveBeenCalledOnce();
       expect(mockEndTurnFinalization).toHaveBeenCalledWith(
         "local-agent-turn:10",
+      );
+    });
+
+    it("reports stored Implementer errors and latest activity", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        ctx.spawnedSubagentThreadIds?.push("implementer-1");
+        ctx.spawnedImplementerThreadIds?.push("implementer-1");
+        return {};
+      });
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Implemented" },
+      ]);
+      mockSubagentManager.isAcceptableImplementerJoinStatus.mockReturnValue(
+        false,
+      );
+      mockSubagentManager.waitForOwnedSubagentsAndSealTurn.mockResolvedValue([
+        {
+          id: "implementer-1",
+          taskName: "Fix authentication",
+          status: "failed",
+          error: "Model request failed with status 503.",
+          latestActivity: {
+            toolName: "run_tests",
+            status: "error",
+            error: "Test command exited with code 1.",
+          },
+        } as any,
+      ]);
+
+      const succeeded = await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(succeeded).toBe(false);
+      const error = getMessagesByChannel("chat:response:error")[0].args[0] as {
+        error: string;
+      };
+      expect(error.error).toContain(
+        "Fix authentication (failed): Model request failed with status 503.",
+      );
+      expect(error.error).toContain(
+        "Latest action: run_tests (error): Test command exited with code 1.",
+      );
+      expect(mockSendTelemetryException).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining("Model request failed"),
+        }),
+        { source: "implementer_join", failed_implementer_count: 1 },
+      );
+    });
+
+    it("reports a failed Implementer when no stored detail exists", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        ctx.spawnedSubagentThreadIds?.push("implementer-1");
+        ctx.spawnedImplementerThreadIds?.push("implementer-1");
+        return {};
+      });
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Done" },
+      ]);
+      mockSubagentManager.isAcceptableImplementerJoinStatus.mockReturnValue(
+        false,
+      );
+      mockSubagentManager.waitForOwnedSubagentsAndSealTurn.mockResolvedValue([
+        {
+          id: "implementer-1",
+          taskName: "Fix authentication",
+          status: "failed",
+          error: null,
+          latestActivity: null,
+        } as any,
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const error = getMessagesByChannel("chat:response:error")[0].args[0] as {
+        error: string;
+      };
+      expect(error.error).toContain(
+        "No additional failure details were recorded.",
       );
     });
 

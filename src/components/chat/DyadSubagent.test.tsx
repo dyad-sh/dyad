@@ -189,4 +189,39 @@ describe("DyadSubagent", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Stop explorer/ })).toBeNull();
   });
+
+  it("shows a failed thread error and its latest activity error", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      { ...makeThread("failed"), error: "Model request failed." },
+    ]);
+    mocks.getSubagentActivities.mockResolvedValue([
+      {
+        ...makeActivity(),
+        status: "error",
+        error: "Command exited with code 1.",
+      },
+    ]);
+
+    render(
+      <DyadSubagent
+        chatId={7}
+        threadId="explorer-1"
+        persona="explorer"
+        taskName="Trace authentication"
+        renderActivity={() => null}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    await screen.findByText(/failed/i);
+    fireEvent.click(
+      screen.getByRole("button", { name: /Trace authentication/ }),
+    );
+    expect(await screen.findByText("Model request failed.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Latest action: grep (error): Command exited with code 1.",
+      ),
+    ).toBeTruthy();
+  });
 });

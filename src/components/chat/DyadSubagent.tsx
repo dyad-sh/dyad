@@ -78,6 +78,8 @@ export function DyadSubagent({
     onError: (error) => showError(error),
   });
   const latestActivity = activities.at(-1);
+  const threadError = thread?.error;
+  const latestActivityError = latestActivity?.error;
   const loadError = threadsQuery.isError || activitiesQuery.isError;
   const report =
     typeof thread?.result?.report === "string" ? thread.result.report : null;
@@ -200,8 +202,17 @@ export function DyadSubagent({
             </p>
           ) : null}
 
-          {thread?.error && (
-            <p className="mt-2 text-xs text-destructive">{thread.error}</p>
+          {threadError && (
+            <p className="mt-2 text-xs text-destructive">{threadError}</p>
+          )}
+          {thread?.status === "failed" && latestActivity && (
+            <p className="mt-1 text-xs text-destructive">
+              Latest action: {formatToolName(latestActivity.toolName)} (
+              {latestActivity.status})
+              {latestActivityError && latestActivityError !== threadError
+                ? `: ${latestActivityError}`
+                : ""}
+            </p>
           )}
           {report && (
             <div className="mt-2 border-t border-border/60 pt-2">

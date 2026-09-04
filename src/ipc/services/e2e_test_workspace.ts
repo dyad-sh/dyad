@@ -434,7 +434,10 @@ export async function installE2eTestWorkspaceDependencies({
         // fail on Windows.
         onProcess: (child) => {
           installChild = child;
-          trackE2eTestProcess(child);
+          // Owned by THIS run's signal. A concurrent run for another app has
+          // its own barrier, and a global registration would let either one's
+          // cleanup kill the other's install.
+          trackE2eTestProcess(child, signal);
         },
       }).then((result) => {
         // The install's OWN outcome, not the root process's exit fields. A

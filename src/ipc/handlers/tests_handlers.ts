@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -557,6 +558,11 @@ async function runPreviewTestBatch({
     if (deadline === undefined) return undefined;
     return Math.max(0, deadline - Date.now());
   };
+  // Tracked against THIS run's signal, not globally: two apps can run tests at
+  // once (the coordinator excludes by app), and either one's cleanup barrier
+  // would otherwise SIGKILL the other's runner mid-test.
+  const trackRunProcess = (child: ChildProcess) =>
+    trackE2eTestProcess(child, signal);
   const runnerEnv = (reportPath: string) =>
     getPackageManagerCommandEnv({
       ...baseEnv,
@@ -593,7 +599,7 @@ async function runPreviewTestBatch({
         signal,
         timeoutMs: discoveryTimeout,
         onOutput: (chunk) => emit(chunk, "setup"),
-        onProcess: trackE2eTestProcess,
+        onProcess: trackRunProcess,
       });
     } catch (error) {
       result.infraError = {
@@ -716,7 +722,7 @@ async function runPreviewTestBatch({
           signal,
           timeoutMs: invocationTimeout,
           onOutput: (chunk) => emit(chunk, "running"),
-          onProcess: trackE2eTestProcess,
+          onProcess: trackRunProcess,
         });
       } catch (error) {
         result.infraError = {
@@ -956,33 +962,35 @@ export async function runAppTestsCore({
     return { appId, results: [], infraError: { message: "Test run stopped." } };
   }
 
-  if (previewEndpoint && !previewCdpToken) {
-    return {
-      appId,
-      results: [],
-      infraError: { message: "Preview automation credentials are missing." },
-    };
-  }
-
-  // Enforced HERE, where the route is chosen, rather than left to an ordering
-  // invariant further in. `waitForPreviewView` no longer checks which page the
-  // view is showing for a sandboxed run — nothing has navigated to that run's
-  // port yet — so what guarantees a spec drives the sandbox server and not the
-  // user's real preview is that `rotate()` loads the run's own URL before every
-  // test. Without a rotate that guarantee is gone, and the failure would be
-  // silent: tests passing against the real app and the real database.
-  if (previewEndpoint && !rotatePreviewView) {
-    return {
-      appId,
-      results: [],
-      infraError: {
-        message:
-          "Preview automation can't point the preview at this run's server.",
-      },
-    };
-  }
-
+  // Both preconditions live inside the branch that takes the route, so the
+  // compiler carries the narrowing into the call below rather than needing a
+  // `!` to paper over a correlation it cannot see.
   if (previewEndpoint) {
+    if (!previewCdpToken) {
+      return {
+        appId,
+        results: [],
+        infraError: { message: "Preview automation credentials are missing." },
+      };
+    }
+    // Enforced HERE, where the route is chosen, rather than left to an ordering
+    // invariant further in. `waitForPreviewView` no longer checks which page
+    // the view is showing for a sandboxed run — nothing has navigated to that
+    // run's port yet — so what guarantees a spec drives the sandbox server and
+    // not the user's real preview is that `rotate()` loads the run's own URL
+    // before every test. Without a rotate that guarantee is gone, and the
+    // failure would be silent: tests passing against the real app and the real
+    // database.
+    if (!rotatePreviewView) {
+      return {
+        appId,
+        results: [],
+        infraError: {
+          message:
+            "Preview automation can't point the preview at this run's server.",
+        },
+      };
+    }
     return runPreviewTestBatch({
       appId,
       appPath,
@@ -996,7 +1004,7 @@ export async function runAppTestsCore({
       emit,
       testEnv,
       previewEndpoint,
-      previewToken: previewCdpToken!,
+      previewToken: previewCdpToken,
       rotatePreviewView,
       installed,
       baseEnv: runnerBaseEnv,
@@ -1081,7 +1089,7 @@ export async function runAppTestsCore({
       onOutput: (chunk) => emit(chunk, "running"),
       // Quit tree-kills the runner synchronously; the signal path alone would
       // leave a headless browser and the sandbox cwd behind.
-      onProcess: trackE2eTestProcess,
+      onProcess: (child) => trackE2eTestProcess(child, signal),
     });
   } catch (error) {
     // A spawn failure (e.g. Node missing from PATH) rejects rather than exiting
@@ -2701,7 +2709,7 @@ export async function runAppTestsWithIsolation({
     // settle those trees before the directory goes, per
     // `rules/app-operation-coordination.md`.
     const runProcessesSettled = workspace
-      ? await settleE2eTestProcesses().catch((error) => {
+      ? await settleE2eTestProcesses(controller.signal).catch((error) => {
           logger.warn(`Failed to settle E2E test processes: ${error}`);
           return false;
         })

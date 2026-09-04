@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -392,6 +393,63 @@ describe("startE2eTestRuntime port recovery", () => {
         }),
       ).rejects.toThrow(/already in use|is in use/i);
     } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("keeps retrying the occupied port when cleanup verification fails", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-cleanup-"));
+    const attempts = path.join(root, "attempts");
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      [
+        'import fs from "node:fs";',
+        "const port = Number(process.argv[2]);",
+        'fs.appendFileSync(process.env.DYAD_ATTEMPTS, "x");',
+        "console.error(`Port ${port} is in use, trying another one...`);",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    process.env.DYAD_ATTEMPTS = attempts;
+    const originalCreateServer = net.createServer.bind(net);
+    let injectedCleanupFailure = false;
+    let restoreCreateServer: (() => void) | undefined;
+    try {
+      await expect(
+        startE2eTestRuntime({
+          workspacePath: root,
+          installCommand: NO_OP_INSTALL_COMMAND,
+          startCommand: `"${process.execPath}" server.mjs {port}`,
+          onOutput: (chunk) => {
+            if (injectedCleanupFailure || !chunk.includes("is in use")) return;
+            injectedCleanupFailure = true;
+            const createServerSpy = vi
+              .spyOn(net, "createServer")
+              .mockImplementationOnce(() => {
+                const server = originalCreateServer();
+                vi.spyOn(server, "listen").mockImplementation((() => {
+                  queueMicrotask(() =>
+                    server.emit(
+                      "error",
+                      Object.assign(new Error("cleanup probe failed"), {
+                        code: "EIO",
+                      }),
+                    ),
+                  );
+                  return server;
+                }) as typeof server.listen);
+                return server;
+              });
+            restoreCreateServer = () => createServerSpy.mockRestore();
+          },
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+
+      expect(injectedCleanupFailure).toBe(true);
+      expect(fs.readFileSync(attempts, "utf8")).toBe("xxx");
+    } finally {
+      restoreCreateServer?.();
+      delete process.env.DYAD_ATTEMPTS;
       fs.rmSync(root, { recursive: true, force: true });
     }
   }, 60_000);

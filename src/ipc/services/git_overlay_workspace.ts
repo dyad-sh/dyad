@@ -95,6 +95,45 @@ async function settleAll(operations: readonly Promise<unknown>[]) {
 const logger = log.scope("git_overlay_workspace");
 const activeWorkspacePaths = new Set<string>();
 
+const WINDOWS_SYMLINK_PRIVILEGE_ERRORS = new Set(["EACCES", "EPERM"]);
+
+/**
+ * Preserve a dangling repository-local link when Windows permits it.
+ *
+ * Unlike junctions, an unresolved link has no target stat from which to infer
+ * that it is a directory, so it must use Windows' real symbolic-link API. A
+ * non-elevated process without Developer Mode cannot call that API. Falling
+ * back to the historical omission keeps the isolated workspace safe and
+ * usable; the app's test/build can then report the missing optional/generated
+ * target instead of every isolated operation failing during workspace setup.
+ */
+async function preserveDanglingWorkspaceLink({
+  targetPath,
+  linkPath,
+  relativePath,
+}: {
+  targetPath: string;
+  linkPath: string;
+  relativePath: string;
+}): Promise<void> {
+  try {
+    await fs.symlink(targetPath, linkPath, "file");
+  } catch (error) {
+    if (
+      process.platform !== "win32" ||
+      !WINDOWS_SYMLINK_PRIVILEGE_ERRORS.has(
+        (error as NodeJS.ErrnoException).code ?? "",
+      )
+    ) {
+      throw error;
+    }
+    await fs.rm(linkPath, { force: true });
+    logger.warn(
+      `Dropping the dangling link ${relativePath} from the workspace because Windows could not preserve it without symbolic-link privileges.`,
+    );
+  }
+}
+
 export type GitOverlayWorkspacePurpose = "build" | "e2e-test";
 
 export interface GitOverlayWorkspace {
@@ -482,11 +521,14 @@ async function copyWindowsEntry({
         );
         return [];
       }
-      await fs.symlink(
-        path.join(workspaceRoot, path.relative(realSourceRoot, textualTarget)),
-        destinationPath,
-        "file",
-      );
+      await preserveDanglingWorkspaceLink({
+        targetPath: path.join(
+          workspaceRoot,
+          path.relative(realSourceRoot, textualTarget),
+        ),
+        linkPath: destinationPath,
+        relativePath: path.relative(sourceRoot, sourcePath),
+      });
       return [];
     }
     if (!pathIsInside(realSourceRoot, realTarget)) {
@@ -622,13 +664,14 @@ export async function secureGitOverlaySymlinks(
               path.relative(realSourceRoot, textualTarget),
             );
             await fs.rm(entry.entryPath, { force: true });
-            await fs.symlink(
-              process.platform === "win32"
-                ? mapped
-                : path.relative(path.dirname(realEntryPath), mapped) || ".",
-              entry.entryPath,
-              "file",
-            );
+            await preserveDanglingWorkspaceLink({
+              targetPath:
+                process.platform === "win32"
+                  ? mapped
+                  : path.relative(path.dirname(realEntryPath), mapped) || ".",
+              linkPath: entry.entryPath,
+              relativePath: path.relative(workspaceRoot, entry.entryPath),
+            });
             continue;
           }
           // Outside both roots. Dropped rather than fatal: it resolves to

@@ -1,5 +1,6 @@
 import { BrowserWindow, clipboard } from "electron";
 import { platform, arch } from "os";
+import { randomUUID } from "node:crypto";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { SCREENSHOT_ERRORS, systemContracts } from "../types/system";
@@ -34,6 +35,7 @@ import { getLastUpdaterError } from "../../main/updater_state";
 import { collectProcessMemoryDiagnostics } from "../../utils/process_memory_diagnostics";
 import { resolveDefaultModelSelection } from "@/ipc/utils/model_effort";
 import type { ModelSelection } from "@/lib/schemas";
+import { LAST_UPDATER_ERROR_HEADER } from "@/lib/debugLogFormatting";
 
 /**
  * Collects auto-updater failure details: the last updater error seen this
@@ -45,7 +47,7 @@ function readUpdaterLogs(): string | null {
 
   const lastError = getLastUpdaterError();
   if (lastError) {
-    sections.push(`Last updater error (this session):\n${lastError}`);
+    sections.push(`${LAST_UPDATER_ERROR_HEADER}\n${lastError}`);
   }
 
   if (process.platform === "win32") {
@@ -308,6 +310,21 @@ function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
   }
 }
 
+/**
+ * Recent captures at full resolution, keyed so a report can ask for its own.
+ * They are put back on the clipboard when the report is filed, because the
+ * reporter pastes into GitHub minutes later and anything they copy in between
+ * would replace it. Keyed rather than latest-wins: a second report can be
+ * started and captured while the first is still uploading.
+ */
+const captures = new Map<string, Electron.NativeImage>();
+
+/** Enough for a couple of overlapping reports; these are megabytes each. */
+const MAX_RETAINED_CAPTURES = 3;
+
+/** Twice the preview's max-h-72, so it stays sharp on a HiDPI display. */
+const PREVIEW_MAX_HEIGHT = 576;
+
 export function registerDebugHandlers() {
   createTypedHandler(systemContracts.getSystemDebugInfo, async () => {
     console.log("IPC: get-system-debug-info called");
@@ -537,5 +554,36 @@ export function registerDebugHandlers() {
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);
+
+    const captureId = randomUUID();
+    captures.set(captureId, image);
+    while (captures.size > MAX_RETAINED_CAPTURES) {
+      captures.delete(captures.keys().next().value as string);
+    }
+
+    // The clipboard keeps the full-resolution capture; the returned data URL
+    // only ever feeds a preview 288 CSS pixels tall. Encoding the untouched
+    // image blocks this process for the whole PNG pass and ships megabytes
+    // over IPC.
+    const preview =
+      image.getSize().height > PREVIEW_MAX_HEIGHT
+        ? image.resize({ height: PREVIEW_MAX_HEIGHT, quality: "good" })
+        : image;
+
+    return { dataUrl: preview.toDataURL(), captureId };
+  });
+
+  createTypedHandler(systemContracts.discardScreenshot, async (_, params) => {
+    return { discarded: captures.delete(params.captureId) };
+  });
+
+  createTypedHandler(systemContracts.recopyScreenshot, async (_, params) => {
+    const image = captures.get(params.captureId);
+    if (!image) return { copied: false };
+    clipboard.writeImage(image);
+    // A full-resolution picture of the window can show source, paths or an
+    // open .env, and the clipboard is its last stop. Nothing reads it again.
+    captures.delete(params.captureId);
+    return { copied: true };
   });
 }

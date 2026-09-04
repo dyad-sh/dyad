@@ -405,15 +405,49 @@ export const systemContracts = {
       url: z.string(),
       contentType: z.string(),
       data: z.any(),
+      /** Names this upload so it can be cancelled while it is in flight. */
+      uploadId: z.string().min(1).optional(),
     }),
     output: z.void(),
   }),
 
+  discardScreenshot: defineContract({
+    channel: "discard-screenshot",
+    // A capture is a full-resolution picture of the window. Once the report it
+    // belongs to is gone, nothing will ever paste it.
+    input: z.object({ captureId: z.string().min(1) }),
+    output: z.object({ discarded: z.boolean() }),
+  }),
+
+  cancelUpload: defineContract({
+    channel: "cancel-upload",
+    // A reporter who backs out has withdrawn consent to send the session, so
+    // the upload has to stop rather than finish unwatched.
+    input: z.object({ uploadId: z.string().min(1) }),
+    output: z.object({ cancelled: z.boolean() }),
+  }),
+
   // Screenshot
+  /**
+   * Re-writes the last capture to the clipboard. The reporter pastes it into
+   * GitHub at the end of the flow, by which time anything else they copied
+   * would have replaced it.
+   */
+  recopyScreenshot: defineContract({
+    channel: "recopy-screenshot",
+    // Names the capture to restore. Two reports can be open at once, and the
+    // reporter must never be handed another report's screenshot to paste.
+    input: z.object({ captureId: z.string().min(1) }),
+    output: z.object({ copied: z.boolean() }),
+  }),
+
   takeScreenshot: defineContract({
     channel: "take-screenshot",
     input: z.void(),
-    output: z.void(),
+    // The image is written to the clipboard for pasting into GitHub, and
+    // returned as a data URL so the reporter can see what was captured
+    // before the report is filed.
+    output: z.object({ dataUrl: z.string(), captureId: z.string() }),
   }),
 
   // Restart

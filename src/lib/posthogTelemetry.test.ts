@@ -803,14 +803,12 @@ describe("shouldBypassNonProTelemetrySampling", () => {
 
   it("always sends the screenshot prompt funnel for non-Pro sampling", () => {
     for (const event of [
-      "screenshot-prompt:shown",
       "screenshot-prompt:capture-attempt",
       "screenshot-prompt:captured",
-      "screenshot-prompt:capture-abandoned",
       "screenshot-prompt:capture-failed",
-      "screenshot-prompt:decline",
-      "screenshot-prompt:dismissed",
-      "session-report:copy-session-id",
+      "screenshot-prompt:removed",
+      "issue-form:opened",
+      "issue-form:blocked",
     ]) {
       expect(
         shouldBypassNonProTelemetrySampling({

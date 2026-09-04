@@ -7,6 +7,9 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/paths/paths", () => ({ getUserDataPath: vi.fn() }));
+vi.mock("@/ipc/utils/process_manager", () => ({
+  forceKillProcessTree: vi.fn(async () => true),
+}));
 vi.mock("@/ipc/services/isolated_package_install", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -25,6 +28,7 @@ import {
   runCleanPackageInstall,
 } from "@/ipc/services/isolated_package_install";
 import { trackedE2eTestProcessCount } from "@/ipc/services/e2e_test_process_registry";
+import { forceKillProcessTree } from "@/ipc/utils/process_manager";
 import {
   createE2eTestWorkspace as createWorkspaceUnderTest,
   E2E_TEST_ARTIFACT_DIR,
@@ -578,9 +582,12 @@ describe("E2E test workspace", () => {
       async ({ cwd, onProcess }) => {
         await fs.mkdir(path.join(cwd, "node_modules"), { recursive: true });
         installChild = new EventEmitter() as unknown as ChildProcess;
+        // `spawnStreaming` only resolves once the process has closed, so an
+        // install that returns normally has always exited. (The abnormal
+        // Stop/timeout path, where it has not, is covered below.)
         Object.assign(installChild, {
           pid: 4242,
-          exitCode: null,
+          exitCode: 0,
           signalCode: null,
         });
         onProcess?.(installChild);
@@ -605,6 +612,66 @@ describe("E2E test workspace", () => {
     // sit there for the life of the process.
     installChild!.emit("exit", 0, null);
     expect(trackedE2eTestProcessCount()).toBe(before);
+    await workspace.dispose();
+  });
+
+  it("waits for a killed install tree before restoring the credentials", async () => {
+    // On a Stop or a timeout `spawnStreaming` fires `treeKill` and returns
+    // without waiting, so the install tree can outlive the call. Restoring the
+    // real credentials — or deleting the workspace — while a lifecycle script
+    // is still running in it is the failure this barrier exists to prevent.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    await fs.writeFile(
+      path.join(appPath, ".env.local"),
+      "DATABASE_URL=postgres://real/db\nPUBLIC_KEY=keep\n",
+    );
+
+    let withheldAtSettle = false;
+    let survivor: ChildProcess | undefined;
+    vi.mocked(runCleanPackageInstall).mockImplementationOnce(
+      async ({ cwd, onProcess }) => {
+        await fs.mkdir(path.join(cwd, "node_modules"), { recursive: true });
+        survivor = new EventEmitter() as unknown as ChildProcess;
+        Object.assign(survivor, { pid: 909, exitCode: null, signalCode: null });
+        onProcess?.(survivor);
+        return {
+          code: 1,
+          stdout: "",
+          stderr: "",
+          aborted: true,
+          timedOut: false,
+          hasLockfile: false,
+        };
+      },
+    );
+
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    vi.mocked(forceKillProcessTree).mockImplementationOnce(async (child) => {
+      withheldAtSettle = !(
+        await fs.readFile(
+          path.join(workspace.workspacePath, ".env.local"),
+          "utf8",
+        )
+      ).includes("DATABASE_URL");
+      Object.assign(child, { exitCode: null, signalCode: "SIGKILL" });
+      return true;
+    });
+
+    await expect(
+      installE2eTestWorkspaceDependencies({
+        workspace,
+        withholdDatabaseEnv: true,
+      }),
+    ).rejects.toThrow("Test run stopped.");
+
+    expect(survivor).toBeDefined();
+    expect(vi.mocked(forceKillProcessTree)).toHaveBeenCalledWith(survivor);
+    // The credentials were still withheld when the tree was settled, not
+    // already handed back to a script that had not stopped.
+    expect(withheldAtSettle).toBe(true);
     await workspace.dispose();
   });
 

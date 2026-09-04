@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
 import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
@@ -279,7 +280,7 @@ export async function prepareIsolatedTestDatabase({
     // Stop pressed during that wait before creating the branch, rewriting
     // .env.local, and restarting the dev server (twice) for nothing.
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
     emit("Setting up isolated test environment…\n", "setup");
 
@@ -389,7 +390,7 @@ export async function prepareIsolatedTestDatabase({
     // would otherwise be reported as a ready session. The catch below restores
     // the real branch and reports the stopped result instead.
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
 
     return {
@@ -562,13 +563,13 @@ async function prepareSupabaseTestUserIsolation({
     // two of them so cancellation takes effect promptly instead of only after
     // the whole setup completes.
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
     // RLS gate (warn, don't refuse): surface unprotected tables to the user.
     const rls = await checkRls({ projectId, organizationSlug });
 
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
     // The test signs the isolated user in through the app's OWN login UI, so a
     // legacy key in the app's generated client is a test failure waiting to
@@ -590,7 +591,7 @@ async function prepareSupabaseTestUserIsolation({
     const warning = buildRlsWarning(rls);
 
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
     emit("Creating an isolated test user…\n", "setup");
     testUser = await createTempTestUser(app);
@@ -616,7 +617,7 @@ async function prepareSupabaseTestUserIsolation({
     // the catch below is what tears the temporary user back down and reports the
     // stopped result.
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
 
     const testCredentials: Record<string, string> = {
@@ -788,7 +789,7 @@ async function waitForServerReady(
   let lastReason = "the dev server never started";
   while (Date.now() < deadline) {
     if (signal?.aborted) {
-      throw new Error("Test run stopped.");
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
     const appInfo = runningApps.get(appId);
     if (!appInfo) {

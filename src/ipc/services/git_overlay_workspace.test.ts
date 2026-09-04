@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  collectPackageAnchoredExcludedPaths,
   parseGitOverlayPaths,
   secureGitOverlaySymlinks,
 } from "./git_overlay_workspace";
@@ -80,7 +81,7 @@ describe("parseGitOverlayPaths exclusions", () => {
 });
 
 describe("secureGitOverlaySymlinks", () => {
-  it("does not fail a Windows workspace when a dangling link needs privileges", async () => {
+  it("does not fail a Windows workspace when a dangling link needs privileges", async (ctx) => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "dyad-overlay-link-test-"),
     );
@@ -91,7 +92,20 @@ describe("secureGitOverlaySymlinks", () => {
       fs.mkdir(workspaceRoot, { recursive: true }),
     ]);
     const linkPath = path.join(workspaceRoot, "generated-link");
-    await fs.symlink(path.join(sourceRoot, "generated-target"), linkPath);
+    // The fixture needs a REAL dangling link, and creating one on Windows
+    // requires Developer Mode or elevation — the very privilege this test is
+    // about not having. Without the guard the setup itself throws EPERM and
+    // the test fails on a privilege-less runner for a reason unrelated to the
+    // behaviour under test.
+    try {
+      await fs.symlink(path.join(sourceRoot, "generated-target"), linkPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EACCES") throw error;
+      await fs.rm(root, { recursive: true, force: true });
+      ctx.skip();
+      return;
+    }
     Object.defineProperty(process, "platform", {
       configurable: true,
       value: "win32",
@@ -110,5 +124,65 @@ describe("secureGitOverlaySymlinks", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("package-root-anchored output exclusions", () => {
+  const collect = (trackedPaths: string[], names: string[]) =>
+    parseGitOverlayPaths(
+      status(
+        "?? packages/web/.next/build-manifest.json",
+        "?? packages/web/dist/index.js",
+        "?? packages/api/coverage/lcov.info",
+        "?? packages/web/src/index.tsx",
+        "?? app/out/page.tsx",
+      ),
+      "apps/store",
+      new Set(names),
+      collectPackageAnchoredExcludedPaths({
+        trackedPaths,
+        targetRelativePath: "apps/store",
+        excludedTargetRootNames: new Set(names),
+      }),
+    );
+
+  it("drops a sibling package's generated output", () => {
+    // The overlay runs from the repository top level while the excluded names
+    // are anchored at the app, so without this a monorepo copies every sibling
+    // package's build output into the sandbox on every run.
+    expect(
+      collect(
+        [
+          "package.json",
+          "packages/web/package.json",
+          "packages/api/package.json",
+          "apps/store/package.json",
+        ],
+        ["dist", "out", ".next", "coverage"],
+      ),
+    ).toEqual(["app/out/page.tsx", "packages/web/src/index.tsx"]);
+  });
+
+  it("keeps a sibling's output when Git tracks content under it", () => {
+    // Committed output is a build INPUT, exactly as it is for the app's own
+    // roots — dropping it would pin the sandbox to its HEAD contents.
+    expect(
+      collect(
+        [
+          "packages/web/package.json",
+          "packages/web/dist/vendor.js",
+          "packages/api/package.json",
+        ],
+        ["dist", "coverage"],
+      ),
+    ).toContain("packages/web/dist/index.js");
+  });
+
+  it("never anchors at a directory that is not a package root", () => {
+    // `app/` has no package.json, so `app/out/page.tsx` stays source — the
+    // exact case `rules/local-agent-tools.md` warns depth-matching would break.
+    expect(collect(["package.json"], ["out", "dist", ".next"])).toContain(
+      "app/out/page.tsx",
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   memo,
@@ -651,6 +652,7 @@ function FileRow({
 
 export function TestsPanel() {
   const { t } = useTranslation("home");
+  const navigate = useNavigate();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
@@ -767,12 +769,22 @@ export function TestsPanel() {
   // user's real database. Disclosed here, before the click, because the refusal
   // is otherwise only discoverable by pressing Run and reading the error — and
   // the Settings hint doesn't cover the Docker/cloud case at all.
-  const neonSandboxRefusal =
+  // Which remedy the refusal has, so the banner can offer it in one click
+  // instead of describing it. `null` when there is no refusal at all.
+  const neonRefusalRemedy =
     sandboxAvailable === false && refusesUnsandboxedTestRun(app)
       ? (settings?.runtimeMode2 ?? "host") !== "host"
-        ? `Tests can't run for this app: isolated test servers aren't available in ${settings?.runtimeMode2} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run them.`
-        : "Tests can't run for this app: isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run them."
+        ? ("runtime" as const)
+        : ("sandbox-setting" as const)
       : null;
+  const neonSandboxRefusal =
+    neonRefusalRemedy === "runtime"
+      ? t("preview.testGate.neonRefusalRuntime", {
+          runtime: settings?.runtimeMode2,
+        })
+      : neonRefusalRemedy === "sandbox-setting"
+        ? t("preview.testGate.neonRefusalDisabled")
+        : null;
   // Disabled while settings are still loading too. The banners stay gated on
   // `false` so nothing amber flashes on mount, but leaving Run *clickable* in a
   // state we can't evaluate sends the user into the main-process refusal — the
@@ -1766,14 +1778,13 @@ export function TestsPanel() {
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
               <span className="flex-1">
-                Dyad couldn't load your settings, so it can't tell how tests
-                would run.
+                {t("preview.testGate.settingsUnavailable")}
               </span>
               <button
                 onClick={() => void refreshSettings()}
                 className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
               >
-                Retry
+                {t("preview.testGate.retry")}
               </button>
             </div>
           )}
@@ -1784,6 +1795,26 @@ export function TestsPanel() {
             <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">{neonSandboxRefusal}</span>
+              {/* The disclosed remedy, one click away. Without this the user is
+              told to change a setting and left to find it — and for the
+              Docker/cloud case that setting is not even in this panel. */}
+              {neonRefusalRemedy === "sandbox-setting" ? (
+                <button
+                  onClick={() =>
+                    updateSettings({ disableSandboxedE2eTests: false })
+                  }
+                  className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+                >
+                  {t("preview.testGate.turnOnSandbox")}
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate({ to: "/settings" })}
+                  className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+                >
+                  {t("preview.testGate.openSettings")}
+                </button>
+              )}
             </div>
           )}
 
@@ -1791,14 +1822,14 @@ export function TestsPanel() {
           {showDevServerGate && !neonSandboxRefusal && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
-              <span className="flex-1">Start the app to run tests.</span>
+              <span className="flex-1">{t("preview.testGate.startApp")}</span>
               <button
                 onClick={() =>
                   runAppLifecycleInBackground("start", runApp(selectedAppId))
                 }
                 className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
               >
-                Start
+                {t("preview.testGate.start")}
               </button>
             </div>
           )}

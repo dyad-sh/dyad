@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
   settingsLoading: false,
   refreshSettings: vi.fn(),
+  navigate: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -69,6 +70,36 @@ vi.mock("@/hooks/useSettings", () => ({
     loading: mocks.settingsLoading,
     refreshSettings: mocks.refreshSettings,
   }),
+}));
+
+// Resolve against the real English catalog rather than stubbing `t` to echo
+// keys: every assertion below is on user-visible copy, and a mock that returned
+// keys would make those assertions stop testing the strings users actually see.
+vi.mock("react-i18next", async () => {
+  const home = (await import("@/i18n/locales/en/home.json")).default as Record<
+    string,
+    unknown
+  >;
+  const t = (key: string, options?: Record<string, unknown>) => {
+    const value = key
+      .split(".")
+      .reduce<unknown>(
+        (node, segment) =>
+          typeof node === "object" && node !== null
+            ? (node as Record<string, unknown>)[segment]
+            : undefined,
+        home,
+      );
+    if (typeof value !== "string") return key;
+    return value.replaceAll(/\{\{(\w+)\}\}/g, (match, name: string) =>
+      String(options?.[name] ?? match),
+    );
+  };
+  return { useTranslation: () => ({ t }) };
+});
+
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mocks.navigate,
 }));
 
 vi.mock("@/hooks/useRunApp", () => ({
@@ -647,6 +678,33 @@ describe("TestsPanel", () => {
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
+    });
+
+    it("offers the refusal's remedy in one click", async () => {
+      // The banner names a setting the user then has to go and find. For the
+      // sandbox toggle that setting is one this panel already owns.
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = { disableSandboxedE2eTests: true };
+      renderPanel();
+
+      fireEvent.click(await screen.findByRole("button", { name: "Turn on" }));
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        disableSandboxedE2eTests: false,
+      });
+    });
+
+    it("sends Docker and cloud users to the runtime setting", async () => {
+      // Nothing in this panel can change the runtime, so the remedy has to be
+      // a way out of it rather than a toggle.
+      mocks.app = { id: 1, testingEnabled: true, neonProjectId: "neon-proj" };
+      mocks.settings = { runtimeMode2: "docker" };
+      renderPanel();
+
+      expect(
+        await screen.findByText(/aren't available in docker runtime yet/i),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/settings" });
     });
 
     it("names the runtime when that is why there is no sandbox", async () => {

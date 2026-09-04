@@ -63,6 +63,90 @@ async function matchesWorkspacePatterns(
   return false;
 }
 
+/**
+ * Positive and negated workspace globs declared at `workspaceRoot`, from either
+ * manifest. Empty when the directory is not a workspace root.
+ */
+async function readWorkspacePatterns(workspaceRoot: string): Promise<{
+  positive: string[];
+  ignored: string[];
+}> {
+  const collected: unknown[] = [];
+  try {
+    const parsed = parseYaml(
+      await fs.readFile(
+        path.join(workspaceRoot, "pnpm-workspace.yaml"),
+        "utf8",
+      ),
+    ) as { packages?: unknown } | null;
+    if (Array.isArray(parsed?.packages)) collected.push(...parsed.packages);
+  } catch {
+    // Not a pnpm workspace root; fall through to the npm manifest.
+  }
+  try {
+    const packageJson = JSON.parse(
+      await fs.readFile(path.join(workspaceRoot, "package.json"), "utf8"),
+    ) as { workspaces?: unknown[] | { packages?: unknown[] } };
+    const workspaces = Array.isArray(packageJson.workspaces)
+      ? packageJson.workspaces
+      : packageJson.workspaces?.packages;
+    if (Array.isArray(workspaces)) collected.push(...workspaces);
+  } catch {
+    // Not an npm workspace root either.
+  }
+  const patterns = collected.filter(
+    (workspace): workspace is string => typeof workspace === "string",
+  );
+  return {
+    positive: patterns.filter((workspace) => !workspace.startsWith("!")),
+    ignored: patterns
+      .filter((workspace) => workspace.startsWith("!"))
+      .map((workspace) => workspace.slice(1)),
+  };
+}
+
+/**
+ * Every package directory a single install at `workspaceRoot` would touch.
+ *
+ * Both package managers install *all* workspace members from the root and run
+ * each member's lifecycle scripts, so a sibling package is as much a part of
+ * this install as the app is — which makes its copied `.env` files a live
+ * credential source the sandbox has to account for.
+ *
+ * Best-effort by design: an unreadable manifest or a glob that matches nothing
+ * yields an empty list rather than failing the run, because the caller's own
+ * directories are covered either way.
+ */
+export async function findWorkspacePackageDirectories(
+  workspaceRoot: string,
+): Promise<string[]> {
+  const { positive, ignored } = await readWorkspacePatterns(workspaceRoot);
+  if (positive.length === 0) return [];
+  let matches: string[];
+  try {
+    matches = await glob(positive, {
+      cwd: workspaceRoot,
+      absolute: true,
+      follow: false,
+      ignore: ignored,
+    });
+  } catch {
+    return [];
+  }
+  const directories: string[] = [];
+  for (const match of matches) {
+    if (match === workspaceRoot) continue;
+    // A member is a directory with its own manifest. The globs are authored for
+    // package managers, so they can also match plain files or empty shells.
+    const isPackage = await fs
+      .stat(path.join(match, "package.json"))
+      .then((stat) => stat.isFile())
+      .catch(() => false);
+    if (isPackage) directories.push(match);
+  }
+  return directories;
+}
+
 async function isNpmWorkspaceMember(
   workspaceRoot: string,
   appPath: string,
@@ -160,6 +244,17 @@ export function getCleanInstallArgs({
   ];
 }
 
+/**
+ * A frozen install refusing because the lockfile and `package.json` disagree.
+ *
+ * npm reports `EUSAGE` with "can only install packages when your package.json
+ * and package-lock.json ... are in sync"; pnpm reports `ERR_PNPM_OUTDATED_LOCKFILE`.
+ * Both are distinguishable from a genuine dependency failure, which is what
+ * makes falling back safe: nothing else is retried.
+ */
+const LOCKFILE_OUT_OF_SYNC_PATTERN =
+  /ERR_PNPM_OUTDATED_LOCKFILE|frozen-lockfile|can only install packages when your package\.json|Missing: .+ from lock file|lockfile is not up to date/i;
+
 export async function runCleanPackageInstall({
   cwd,
   packageManager,
@@ -194,15 +289,47 @@ export async function runCleanPackageInstall({
     .stat(path.join(cwd, lockfileName))
     .then((stat) => stat.isFile())
     .catch(() => false);
-  const result = await spawnStreaming({
-    command: packageManager,
-    args: getCleanInstallArgs({ packageManager, hasLockfile }),
-    cwd,
-    env,
-    signal,
-    timeoutMs,
-    onOutput,
-    onProcess,
-  });
-  return { ...result, hasLockfile };
+  const startedAt = Date.now();
+  const spawnInstall = (frozen: boolean, budgetMs: number) =>
+    spawnStreaming({
+      command: packageManager,
+      args: getCleanInstallArgs({ packageManager, hasLockfile: frozen }),
+      cwd,
+      env,
+      signal,
+      timeoutMs: budgetMs,
+      onOutput,
+      onProcess,
+    });
+
+  const result = await spawnInstall(hasLockfile, timeoutMs);
+  if (
+    !hasLockfile ||
+    result.code === 0 ||
+    result.aborted ||
+    result.timedOut ||
+    !LOCKFILE_OUT_OF_SYNC_PATTERN.test(`${result.stderr}\n${result.stdout}`)
+  ) {
+    return { ...result, hasLockfile };
+  }
+
+  // The lockfile and `package.json` disagree. This is a routine state in a
+  // Dyad app — the agent edits `package.json` and the preview's tolerant
+  // `npm install --legacy-peer-deps` silently repairs it — so a frozen install
+  // being STRICTER than the preview the sandbox is meant to reproduce is a
+  // defect, not extra safety: it would fail every test run for an app that
+  // starts and runs fine.
+  //
+  // Per **Principle #5: Bridge, Don't Replace** ("Dyad runs `npm install` ...
+  // but doesn't manage node_modules or lock files beyond what the user
+  // configures"), the fallback resolves the tree the way the user's own
+  // preview does rather than making Dyad the owner of their lockfile. Announced
+  // rather than silent, per **Principle #4: Transparent Over Magical**, so the
+  // drift is visible in the setup output where the user can act on it.
+  onOutput?.(
+    `\nYour lockfile is out of sync with package.json, so the strict install was refused. Retrying the way your preview installs (${packageManager === "pnpm" ? "pnpm install" : "npm install --legacy-peer-deps"}); commit an updated lockfile to keep test runs reproducible.\n`,
+  );
+  const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt));
+  const retried = await spawnInstall(false, remainingMs);
+  return { ...retried, hasLockfile: false };
 }

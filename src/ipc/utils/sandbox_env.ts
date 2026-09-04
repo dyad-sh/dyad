@@ -21,8 +21,14 @@
  * can restore in its own `.env.local` — so the asymmetry runs one way.
  */
 export const DATABASE_ENV_PATTERN =
-  /(DATABASE_URL|DIRECT_URL|POSTGRES|SUPABASE|NEON|^PG(HOST|PORT|USER|PASSWORD|DATABASE)$)/i;
+  /(DATABASE_URL|DIRECT_URL|POSTGRES|SUPABASE|NEON|^PG(HOST|PORT|USER|PASSWORD|DATABASE|PASSFILE|SERVICE|SERVICEFILE)$)/i;
 
+/**
+ * `PGPASSFILE`, `PGSERVICE` and `PGSERVICEFILE` are in the exact `PG*` list for
+ * the same reason as the direct ones: libpq resolves a password or a whole
+ * connection definition through them, so leaving them behind would let a child
+ * reach the live database with none of the stripped variables present.
+ */
 export function isDatabaseEnvKey(key: string): boolean {
   return DATABASE_ENV_PATTERN.test(key);
 }

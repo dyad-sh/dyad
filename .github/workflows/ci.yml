@@ -420,6 +420,8 @@ jobs:
 
   e2e-tests:
     needs: [check-changes, build-e2e-artifacts]
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -480,7 +482,7 @@ jobs:
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
           # Socket Firewall's binary installer queries GitHub's release API.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SFW_GITHUB_TOKEN: ${{ github.token }}
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
           PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
           # Pilot two workers only on self-hosted macOS shards. Keep GitHub-hosted

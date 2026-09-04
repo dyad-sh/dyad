@@ -231,16 +231,29 @@ export const test = base.extend<{
       // Each launch starts from the supported default unless its own hook
       // selects another version. Do not inherit a previous scenario's value.
       delete process.env.DYAD_TEST_PNPM_VERSION;
-      if (electronConfig.preLaunchHook) {
-        await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
+      const sfwGitHubToken = process.env.SFW_GITHUB_TOKEN;
+      let electronApp: ElectronApplication;
+      try {
+        if (electronConfig.preLaunchHook) {
+          await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
+        }
+        // The token exists only for trusted Node-side fixture setup. Never let
+        // Electron or generated-app child processes inherit it.
+        delete process.env.SFW_GITHUB_TOKEN;
+        electronApp = await launchElectronApp({
+          userDataDir,
+          fakeLlmPort,
+          parallelIndex: testInfo.parallelIndex,
+          showSetupScreen: electronConfig.showSetupScreen,
+          launchArgs: electronConfig.launchArgs,
+        });
+      } finally {
+        if (sfwGitHubToken === undefined) {
+          delete process.env.SFW_GITHUB_TOKEN;
+        } else {
+          process.env.SFW_GITHUB_TOKEN = sfwGitHubToken;
+        }
       }
-      const electronApp = await launchElectronApp({
-        userDataDir,
-        fakeLlmPort,
-        parallelIndex: testInfo.parallelIndex,
-        showSetupScreen: electronConfig.showSetupScreen,
-        launchArgs: electronConfig.launchArgs,
-      });
 
       console.log("electronApp launched!");
       if (showDebugLogs) {

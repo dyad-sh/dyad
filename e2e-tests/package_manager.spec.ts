@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { existsSync, rmSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -17,7 +18,6 @@ const originalTestInstallPnpmVersion =
   process.env.DYAD_TEST_INSTALL_PNPM_VERSION;
 const originalDefaultApproveBuildsUrl =
   process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL;
-const originalGitHubToken = process.env.GITHUB_TOKEN;
 const SOCKET_FIREWALL_VERDICT_TIMEOUT = process.env.CI
   ? 240_000
   : Timeout.EXTRA_LONG;
@@ -110,13 +110,14 @@ async function createSupportedPnpmShim(userDataDir: string) {
   process.env.PATH = `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`;
 }
 
-function warmSocketFirewallCache() {
+function warmSocketFirewallCache(authMarkerPath: string) {
   const maxAttempts = process.env.CI ? 8 : 5;
+  rmSync(authMarkerPath, { force: true });
   const warmupEnv = {
     ...process.env,
     npm_config_store_dir: undefined,
     pnpm_config_store_dir: undefined,
-    ...(process.env.GITHUB_TOKEN
+    ...(process.env.SFW_GITHUB_TOKEN
       ? {
           NODE_OPTIONS: [
             process.env.NODE_OPTIONS,
@@ -124,6 +125,7 @@ function warmSocketFirewallCache() {
           ]
             .filter(Boolean)
             .join(" "),
+          SFW_GITHUB_AUTH_MARKER: authMarkerPath,
         }
       : {}),
   };
@@ -155,6 +157,12 @@ function warmSocketFirewallCache() {
     }
   }
 
+  if (process.env.SFW_GITHUB_TOKEN && !existsSync(authMarkerPath)) {
+    throw new Error(
+      "Socket Firewall warmup failed without authenticating its GitHub API request",
+      { cause: lastError },
+    );
+  }
   throw lastError;
 }
 
@@ -201,12 +209,6 @@ async function restorePackageManagerCache() {
     process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL =
       originalDefaultApproveBuildsUrl;
   }
-
-  if (originalGitHubToken === undefined) {
-    delete process.env.GITHUB_TOKEN;
-  } else {
-    process.env.GITHUB_TOKEN = originalGitHubToken;
-  }
 }
 
 const testSkipIfWindows = testWithConfigSkipIfWindows({
@@ -216,11 +218,7 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
     await createSupportedPnpmShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
     process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
-    try {
-      warmSocketFirewallCache();
-    } finally {
-      delete process.env.GITHUB_TOKEN;
-    }
+    warmSocketFirewallCache(path.join(userDataDir, "sfw-github-authenticated"));
   },
   postLaunchHook: restorePackageManagerCache,
 });

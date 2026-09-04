@@ -68,7 +68,7 @@ interface LoadFailure {
  */
 export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, mode } = useCurrentAppUrl(selectedAppId);
   const { settings } = useSettings();
   const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const isNativeOverlayActive = useAtomValue(previewNativeOverlayActiveAtom);
@@ -244,7 +244,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        originalUrl,
+        appUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -259,7 +259,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
 
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !originalUrl;
+    : !appUrl;
 
   // The main process refuses navigation and reloads while a run drives the
   // page, so leaving these enabled makes them read as broken. Restart isn't

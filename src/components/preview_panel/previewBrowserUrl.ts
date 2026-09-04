@@ -1,7 +1,7 @@
 export async function resolvePreviewBrowserUrl(input: {
   isCloudMode: boolean;
   selectedAppId: number | null;
-  originalUrl: string | null | undefined;
+  appUrl: string | null | undefined;
   createCloudSandboxShareLink: (params: {
     appId: number;
   }) => Promise<{ url: string }>;
@@ -17,9 +17,9 @@ export async function resolvePreviewBrowserUrl(input: {
     return shareLink.url;
   }
 
-  if (!input.originalUrl) {
+  if (!input.appUrl) {
     throw new Error("Preview URL is unavailable.");
   }
 
-  return input.originalUrl;
+  return input.appUrl;
 }

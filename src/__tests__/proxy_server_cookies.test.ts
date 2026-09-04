@@ -194,6 +194,15 @@ describe("proxy worker cookie rewriting", () => {
     expect(cookie).not.toMatch(/Partitioned/i);
   });
 
+  it("strips an upstream Domain attribute so preview cookies stay host-only", async () => {
+    const [cookie] = await proxyCookies([
+      "session=abc123; Domain=localhost; Path=/; HttpOnly",
+    ]);
+
+    expect(cookie).toContain("session=abc123");
+    expect(cookie).not.toMatch(/Domain=/i);
+  });
+
   it("rewrites every cookie when multiple are set", async () => {
     const cookies = await proxyCookies([
       "a=1; Path=/; SameSite=Strict",

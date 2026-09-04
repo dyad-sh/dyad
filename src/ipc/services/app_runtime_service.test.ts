@@ -965,6 +965,9 @@ describe("executeApp", () => {
     expect(runningApps.get(42)?.authBootstrapToken).toBe(
       proxyOptions.authBootstrapToken,
     );
+    expect(runningApps.get(42)?.proxyUrl).toBe(
+      "http://app-42.localhost:42142/",
+    );
     // We must never evict whatever already holds the deterministic proxy port —
     // the worker scans the fallback band instead.
     expect(killPortMock).not.toHaveBeenCalledWith(42142, "tcp");
@@ -1017,7 +1020,7 @@ describe("executeApp", () => {
       "app:output",
       expect.objectContaining({
         invocationRef: oldRef,
-        message: expect.stringContaining("http://localhost:42142"),
+        message: expect.stringContaining("http://app-42.localhost:42142/"),
       }),
     );
     expect(runningApps.get(42)?.proxyUrl).toBeUndefined();

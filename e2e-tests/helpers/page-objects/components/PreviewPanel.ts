@@ -225,6 +225,16 @@ export class PreviewPanel {
     await this.page.getByTestId("preview-refresh-button").click();
   }
 
+  async clickClearPreviewData() {
+    await this.ensurePreviewPanelOpen();
+    await this.clickPreviewMoreOptions();
+    const clearItem = this.page.getByRole("menuitem", {
+      name: /^Clear Cache/,
+    });
+    await expect(clearItem).toBeVisible({ timeout: Timeout.MEDIUM });
+    await clearItem.click({ force: true });
+  }
+
   async clickPreviewNavigateBack() {
     await this.page.getByTestId("preview-navigate-back-button").click();
   }

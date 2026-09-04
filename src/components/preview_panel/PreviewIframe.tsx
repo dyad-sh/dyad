@@ -121,7 +121,7 @@ export const PreviewIframe = ({
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
-  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -345,7 +345,10 @@ export const PreviewIframe = ({
   const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
   const { mutate: clearSessionData } = useMutation({
     mutationFn: () => {
-      return ipc.system.clearSessionData();
+      if (selectedAppId === null) {
+        throw new Error("No app is selected.");
+      }
+      return ipc.system.clearSessionData({ appId: selectedAppId });
     },
     onSuccess: async () => {
       await refreshAppIframe();
@@ -1055,7 +1058,7 @@ export const PreviewIframe = ({
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        originalUrl,
+        appUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -1091,7 +1094,7 @@ export const PreviewIframe = ({
     getPreviewToolbarActionVisibility(previewToolbarWidth);
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !originalUrl;
+    : !appUrl;
 
   return (
     <div className="flex flex-col h-full">

@@ -91,14 +91,8 @@ function toRecordingAuth(setup: IsolationAuthSetup | undefined): RecordingAuth {
  * server-side change an already-issued JWT does not see. Left behind, the
  * preview goes on acting as a user Dyad has disowned, against the real project.
  *
- * The `origin` filter is honest for localStorage/IndexedDB/service workers,
- * which are genuinely origin-keyed, but NOT for cookies: cookies have never been
- * port-scoped on the web, so clearing `http://localhost:<proxyPort>` clears
- * cookies for every other `localhost` origin in this session too — other
- * previews included. There is no API that narrows it, and `session.clearData`'s
- * `origins` filter is wider still (Electron deletes cookies at the registrable
- * domain there). Only the dedicated `session.fromPartition()` noted below would
- * actually contain it; until then the confirmation dialog says so out loud.
+ * App previews use stable per-app localhost hostnames, so the origin filter also
+ * limits cookies to this app. Ports alone would not provide that boundary.
  */
 async function clearPreviewStorage(origin: string): Promise<void> {
   await session.defaultSession.clearStorageData({
@@ -387,12 +381,7 @@ export function registerRecordingHandlers() {
                 //
                 // The preview shares the app's normal browser session, so this also
                 // signs the user out of their own preview and drops whatever it had in
-                // localStorage. Announced rather than done quietly — it is the one
-                // thing here that touches state the user didn't hand us.
-                //
-                // TODO: give the recorder its own `session.fromPartition()` so the
-                // user's preview session is left alone entirely. That reaches into the
-                // preview stack well outside this feature, so it lands separately.
+                // localStorage. The app-specific hostname keeps other previews intact.
                 let warning: string | undefined;
                 emit(
                   "Clearing the preview's cookies and local storage so the recording starts signed out…\n",

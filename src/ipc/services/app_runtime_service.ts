@@ -29,6 +29,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { addLog, clearLogs } from "@/lib/log_store";
 import { getDyadAppPath } from "@/paths/paths";
 import { startProxy } from "@/ipc/utils/start_proxy_server";
+import { toAppPreviewUrl } from "@/ipc/utils/app_preview_url";
 import {
   buildCloudSandboxFileMap,
   CloudSandboxApiError,
@@ -455,7 +456,8 @@ export async function ensureProxyForRunningApp({
   const proxyWorker = await startProxy(originalUrl, {
     port: proxyPort,
     authBootstrapToken,
-    onStarted: (proxyUrl) => {
+    onStarted: (runtimeProxyUrl) => {
+      const proxyUrl = toAppPreviewUrl(appId, runtimeProxyUrl);
       const latestAppInfo = runningApps.get(appId);
       if (
         latestAppInfo &&

@@ -4,8 +4,8 @@ import {
   cancelConnectionFlow,
   startConnectionFlow,
   useConnectionFlow,
-  useUnsolicitedConnectionReturn,
 } from "@/hooks/useConnectionFlow";
+import { buildOAuthLoginUrl } from "@/connection_flow/oauth_deep_link";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
@@ -244,13 +244,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   }, [flowState, t]);
 
-  // A dyad://supabase-oauth-return processed with no active flow (cold
-  // start, app restarted mid-flow, or a return that arrived after the flow
-  // timed out): tokens are already stored, just refresh what we show.
-  useUnsolicitedConnectionReturn("supabase", () => {
-    void refreshAfterConnectRef.current();
-  });
-
   const handleProjectSelect = async (projectValue: string) => {
     try {
       // projectValue format: "organizationSlug:projectId"
@@ -359,7 +352,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           });
         } else {
           await ipc.system.openExternalUrl(
-            "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
+            buildOAuthLoginUrl("supabase", invocationRef),
           );
         }
       } catch (error) {

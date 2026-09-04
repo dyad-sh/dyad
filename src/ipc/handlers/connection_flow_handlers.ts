@@ -8,6 +8,7 @@ import {
 import {
   createConnectionFlowRegistry,
   type ClaimReturnResult,
+  type ConnectionFlowRegistry,
 } from "../../connection_flow/registry";
 import {
   isTerminalFlowState,
@@ -137,30 +138,15 @@ export type OAuthReturnExchangeOutcome =
 
 /**
  * Wraps a provider's OAuth-return token write so the flow machine observes
- * it: claims the active flow (if any), runs the token write, and advances or
- * fails the flow accordingly. Unsolicited returns (no active flow, or the
- * flow already ended — e.g. it timed out first) still perform the token
- * write; the renderer is then told to refresh connection state without
- * transitioning any flow.
+ * it: claims the active flow, runs the token write, and advances or fails the
+ * flow accordingly. By default, an unmatched return never runs the token
+ * write. Authenticated internal producers may explicitly preserve a completed
+ * exchange that raced UI cancellation without claiming a newer flow.
  *
  * `expectedInvocationRef` correlates the return with the flow that produced it.
  * The GitHub device poll chain carries the ref it was started for and
  * MUST pass it, so a stale poll result can never claim (and advance) a
  * newer flow.
- *
- * The Supabase/Neon deep-link returns cannot pass it: the dyad.sh OAuth
- * proxy's login endpoints take no client-supplied state parameter, so the
- * dyad://…-oauth-return URL carries only tokens — there is nothing to
- * round-trip an invocation ref. The closest safe correlation holds structurally
- * instead: the registry keeps at most one flow per provider and `start` is
- * a no-op while one is active, so the awaiting flow a return claims is
- * always the *newest* flow for that provider (an older flow must have
- * reached a terminal state before a new one could start, and terminal flows
- * can never be claimed). A stale browser tab completing after a retry can
- * therefore only be attributed to the newest awaiting flow — which is
- * benign for these providers, because the login URL carries no per-flow
- * parameters either: every return is the same account-level token grant the
- * awaiting flow is waiting for.
  *
  * Failures are recorded on the claimed flow (surfaced by the renderer as a
  * flow-failure toast) and reported in the returned outcome instead of being
@@ -172,20 +158,36 @@ export async function runOAuthReturnExchange(
   {
     failureReason = "token_invalid",
     expectedInvocationRef,
+    allowUnclaimedExchange = false,
   }: {
     failureReason?: ConnectionFlowFailureReason;
     expectedInvocationRef?: ConnectionFlowInvocationRef;
+    allowUnclaimedExchange?: boolean;
   } = {},
+  registry: Pick<
+    ConnectionFlowRegistry,
+    "claimReturn" | "completeTokenExchange" | "fail" | "notifyUnsolicitedReturn"
+  > = connectionFlowRegistry,
 ): Promise<OAuthReturnExchangeOutcome> {
-  const claim: ClaimReturnResult = connectionFlowRegistry.claimReturn(
+  const claim: ClaimReturnResult = registry.claimReturn(
     provider,
     expectedInvocationRef,
   );
+  if (!claim.claimed && !allowUnclaimedExchange) {
+    return {
+      ok: false,
+      claimed: false,
+      error: new DyadError(
+        `The ${provider} OAuth return did not match an active connection flow.`,
+        DyadErrorKind.Auth,
+      ),
+    };
+  }
   try {
     await exchange();
   } catch (error) {
     if (claim.claimed) {
-      connectionFlowRegistry.fail(
+      registry.fail(
         provider,
         claim.invocationRef,
         failureReason,
@@ -195,9 +197,9 @@ export async function runOAuthReturnExchange(
     return { ok: false, claimed: claim.claimed, error };
   }
   if (claim.claimed) {
-    connectionFlowRegistry.completeTokenExchange(provider, claim.invocationRef);
+    registry.completeTokenExchange(provider, claim.invocationRef);
   } else {
-    connectionFlowRegistry.notifyUnsolicitedReturn(provider);
+    registry.notifyUnsolicitedReturn(provider);
   }
   // Persistence completed before this global epoch event. Every live window
   // invalidates independently, and a reloaded window recovers the scope from

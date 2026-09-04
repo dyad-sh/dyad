@@ -30,6 +30,7 @@ import { addLog, clearLogs } from "@/lib/log_store";
 import { getDyadAppPath } from "@/paths/paths";
 import { startProxy } from "@/ipc/utils/start_proxy_server";
 import { toAppPreviewUrl } from "@/ipc/utils/app_preview_url";
+import { DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION } from "@/shared/settings_defaults";
 import {
   buildCloudSandboxFileMap,
   CloudSandboxApiError,
@@ -400,6 +401,9 @@ export async function ensureProxyForRunningApp({
   mode: RuntimeMode2;
   invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
+  const isolateLocalhost =
+    readSettings().enableLocalhostPreviewIsolation ??
+    DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION;
   const appInfo = runningApps.get(appId);
   if (!appInfo) {
     return;
@@ -424,10 +428,12 @@ export async function ensureProxyForRunningApp({
     appInfo.authBootstrapToken &&
     appInfo.proxyUrl
   ) {
+    const proxyUrl = toAppPreviewUrl(appId, appInfo.proxyUrl, isolateLocalhost);
+    appInfo.proxyUrl = proxyUrl;
     emitProxyServerStarted({
       appId,
       output,
-      proxyUrl: appInfo.proxyUrl,
+      proxyUrl,
       originalUrl,
       mode,
       invocationRef,
@@ -457,7 +463,11 @@ export async function ensureProxyForRunningApp({
     port: proxyPort,
     authBootstrapToken,
     onStarted: (runtimeProxyUrl) => {
-      const proxyUrl = toAppPreviewUrl(appId, runtimeProxyUrl);
+      const proxyUrl = toAppPreviewUrl(
+        appId,
+        runtimeProxyUrl,
+        isolateLocalhost,
+      );
       const latestAppInfo = runningApps.get(appId);
       if (
         latestAppInfo &&

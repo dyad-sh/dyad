@@ -4,8 +4,13 @@ import { getTypeScriptCachePath } from "@/paths/paths";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { runningApps } from "../utils/process_manager";
-import { isAppPreviewHostname } from "../utils/app_preview_url";
+import {
+  isAppPreviewHostname,
+  isLoopbackPreviewHostname,
+} from "../utils/app_preview_url";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { readSettings } from "@/main/settings";
+import { DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION } from "@/shared/settings_defaults";
 
 export const registerSessionHandlers = () => {
   createTypedHandler(
@@ -21,7 +26,18 @@ export const registerSessionHandlers = () => {
       }
 
       const parsedPreviewUrl = new URL(previewUrl);
-      if (!isAppPreviewHostname(input.appId, parsedPreviewUrl.hostname)) {
+      const hasIsolatedHostname = isAppPreviewHostname(
+        input.appId,
+        parsedPreviewUrl.hostname,
+      );
+      const isolationEnabled =
+        readSettings().enableLocalhostPreviewIsolation ??
+        DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION;
+      if (
+        !hasIsolatedHostname &&
+        (isolationEnabled ||
+          !isLoopbackPreviewHostname(parsedPreviewUrl.hostname))
+      ) {
         throw new DyadError(
           "The app preview does not have isolated browser storage.",
           DyadErrorKind.Precondition,
@@ -29,7 +45,7 @@ export const registerSessionHandlers = () => {
       }
 
       await defaultAppSession.clearStorageData({
-        origin: parsedPreviewUrl.origin,
+        ...(hasIsolatedHostname ? { origin: parsedPreviewUrl.origin } : {}),
         storages: ["cookies", "localstorage", "serviceworkers", "cachestorage"],
       });
       console.info(`[IPC] Preview data cleared for app ${input.appId}`);

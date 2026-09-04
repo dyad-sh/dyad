@@ -33,7 +33,10 @@ import {
   getRecoveryStats,
   recoverLegacySafeStorageSecret,
 } from "./safe_storage_legacy";
-import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
+import {
+  DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION,
+  DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+} from "@/shared/settings_defaults";
 
 const logger = log.scope("settings");
 
@@ -78,6 +81,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoFixReviewIssues: false,
   autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
+  enableLocalhostPreviewIsolation: DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,
   previewIdleTimeoutPolicy: "default",

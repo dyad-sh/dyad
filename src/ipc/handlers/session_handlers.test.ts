@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   >(),
   rm: vi.fn().mockResolvedValue(undefined),
   runningApps: new Map<number, { proxyUrl?: string }>(),
+  readSettings: vi.fn(() => ({ enableLocalhostPreviewIsolation: true })),
 }));
 
 vi.mock("electron", () => ({
@@ -21,6 +22,9 @@ vi.mock("@/paths/paths", () => ({
 }));
 vi.mock("../utils/process_manager", () => ({
   runningApps: mocks.runningApps,
+}));
+vi.mock("@/main/settings", () => ({
+  readSettings: () => mocks.readSettings(),
 }));
 vi.mock("./base", () => ({
   createTypedHandler: (
@@ -39,6 +43,9 @@ describe("registerSessionHandlers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.runningApps.clear();
+    mocks.readSettings.mockReturnValue({
+      enableLocalhostPreviewIsolation: true,
+    });
   });
 
   it("clears only the selected app's authentication and worker cache storage", async () => {
@@ -61,6 +68,19 @@ describe("registerSessionHandlers", () => {
       mocks.handlers.get("clear-session-data")!({}, { appId: 42 }),
     ).rejects.toThrow("does not have isolated browser storage");
     expect(mocks.clearStorageData).not.toHaveBeenCalled();
+  });
+
+  it("clears shared preview data when isolation is explicitly disabled", async () => {
+    mocks.readSettings.mockReturnValue({
+      enableLocalhostPreviewIsolation: false,
+    });
+    mocks.runningApps.set(42, { proxyUrl: "http://localhost:42142" });
+
+    await mocks.handlers.get("clear-session-data")!({}, { appId: 42 });
+
+    expect(mocks.clearStorageData).toHaveBeenCalledWith({
+      storages: ["cookies", "localstorage", "serviceworkers", "cachestorage"],
+    });
   });
 
   it("refuses to clear data when the selected app is not running", async () => {

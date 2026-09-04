@@ -22,6 +22,7 @@ export const SETTING_IDS = {
   customAppsFolder: "setting-custom-apps-folder",
   defaultChatMode: "setting-default-chat-mode",
   autoExpandPreview: "setting-auto-expand-preview",
+  localhostPreviewIsolation: "setting-localhost-preview-isolation",
   keepPreviewsRunning: "setting-keep-previews-running",
   appBlueprint: "setting-app-blueprint",
   testingForNewApps: "setting-testing-for-new-apps",
@@ -181,6 +182,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Automatically expand the preview panel when code changes are made",
     keywords: ["preview", "expand", "panel", "automatic", "auto"],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.localhostPreviewIsolation,
+    label: "Isolate Local Preview Data",
+    description:
+      "Use a separate localhost hostname for each app to prevent authentication and storage collisions",
+    keywords: [
+      "preview",
+      "localhost",
+      "authentication",
+      "cookies",
+      "storage",
+      "isolation",
+      "oauth",
+    ],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },

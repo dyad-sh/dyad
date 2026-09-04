@@ -91,8 +91,9 @@ function toRecordingAuth(setup: IsolationAuthSetup | undefined): RecordingAuth {
  * server-side change an already-issued JWT does not see. Left behind, the
  * preview goes on acting as a user Dyad has disowned, against the real project.
  *
- * App previews use stable per-app localhost hostnames, so the origin filter also
- * limits cookies to this app. Ports alone would not provide that boundary.
+ * App previews normally use stable per-app localhost hostnames, so the origin
+ * filter also limits cookies to this app. If the user disables that isolation,
+ * cookies return to shared localhost scope; ports alone are not a boundary.
  */
 async function clearPreviewStorage(origin: string): Promise<void> {
   await session.defaultSession.clearStorageData({
@@ -381,7 +382,8 @@ export function registerRecordingHandlers() {
                 //
                 // The preview shares the app's normal browser session, so this also
                 // signs the user out of their own preview and drops whatever it had in
-                // localStorage. The app-specific hostname keeps other previews intact.
+                // localStorage. The app-specific hostname normally keeps other
+                // previews intact; the opt-out warning covers shared localhost.
                 let warning: string | undefined;
                 emit(
                   "Clearing the preview's cookies and local storage so the recording starts signed out…\n",

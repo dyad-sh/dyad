@@ -1,5 +1,9 @@
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
+export function isLoopbackPreviewHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname);
+}
+
 export function getAppPreviewHostname(appId: number): string {
   if (!Number.isSafeInteger(appId) || appId <= 0) {
     throw new Error(`Invalid app id for preview hostname: ${appId}`);
@@ -12,12 +16,20 @@ export function getAppPreviewHostname(appId: number): string {
  * path, or protocol. Non-loopback URLs (cloud and sandbox previews) pass
  * through unchanged.
  */
-export function toAppPreviewUrl(appId: number, runtimeUrl: string): string {
+export function toAppPreviewUrl(
+  appId: number,
+  runtimeUrl: string,
+  isolateLocalhost = true,
+): string {
   const url = new URL(runtimeUrl);
-  if (!LOOPBACK_HOSTS.has(url.hostname)) {
+  const appHostname = getAppPreviewHostname(appId);
+  if (
+    !isLoopbackPreviewHostname(url.hostname) &&
+    url.hostname !== appHostname
+  ) {
     return runtimeUrl;
   }
-  url.hostname = getAppPreviewHostname(appId);
+  url.hostname = isolateLocalhost ? appHostname : "localhost";
   return url.toString();
 }
 

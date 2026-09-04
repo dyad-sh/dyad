@@ -1026,6 +1026,61 @@ describe("executeApp", () => {
     expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
   });
 
+  it("keeps the shared localhost proxy URL when isolation is disabled", async () => {
+    readSettingsMock.mockReturnValue({
+      runtimeMode2: "host",
+      enableLocalhostPreviewIsolation: false,
+    });
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      opts.onStarted("http://localhost:42142");
+      return { terminate: vi.fn() };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    await ensureProxyForRunningApp({
+      appId: 42,
+      output: createOutput(createEvent()),
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://localhost:42142/");
+  });
+
+  it("reuses the proxy worker while applying an isolation setting change", async () => {
+    readSettingsMock.mockReturnValue({
+      runtimeMode2: "host",
+      enableLocalhostPreviewIsolation: false,
+    });
+    const proxyWorker = { terminate: vi.fn() } as unknown as Worker;
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      proxyWorker,
+      proxyUrl: "http://app-42.localhost:42142/",
+      originalUrl: "http://localhost:32142",
+      authBootstrapToken: "bootstrap-token",
+      lastViewedAt: Date.now(),
+    });
+
+    await ensureProxyForRunningApp({
+      appId: 42,
+      output: createOutput(createEvent()),
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+
+    expect(startProxyMock).not.toHaveBeenCalled();
+    expect(proxyWorker.terminate).not.toHaveBeenCalled();
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://localhost:42142/");
+  });
+
   it("does not let an old invocation terminate the replacement proxy", async () => {
     const oldRef = {
       kind: "app-run",

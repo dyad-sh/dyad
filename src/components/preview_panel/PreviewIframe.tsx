@@ -87,6 +87,7 @@ import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { recordingStatusMessage } from "./RecordingBanner";
 import { RecordingBannerHost } from "./RecordingBannerHost";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
+import { DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION } from "@/shared/settings_defaults";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PreviewErrorBanner } from "./PreviewErrorBanner";
@@ -1583,6 +1584,10 @@ export const PreviewIframe = ({
 
       <RecordingStorageWarningDialog
         open={recorder.pendingStart !== null}
+        isolationEnabled={
+          settings?.enableLocalhostPreviewIsolation ??
+          DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION
+        }
         onOpenChange={(open) => {
           if (!open) recorder.dismissStartRecording();
         }}

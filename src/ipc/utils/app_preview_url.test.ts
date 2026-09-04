@@ -31,6 +31,15 @@ describe("app preview URLs", () => {
     expect(toAppPreviewUrl(42, url)).toBe(url);
   });
 
+  it("returns the shared localhost URL when isolation is disabled", () => {
+    expect(toAppPreviewUrl(42, "http://localhost:42142/app", false)).toBe(
+      "http://localhost:42142/app",
+    );
+    expect(
+      toAppPreviewUrl(42, "http://app-42.localhost:42142/app", false),
+    ).toBe("http://localhost:42142/app");
+  });
+
   it.each([0, -1, 1.5, Number.NaN])("rejects invalid app ids: %s", (appId) => {
     expect(() => getAppPreviewHostname(appId)).toThrow(
       "Invalid app id for preview hostname",

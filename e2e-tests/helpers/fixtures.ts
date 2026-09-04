@@ -26,6 +26,7 @@ export interface ElectronConfig {
   showSetupScreen?: boolean;
   showPnpmMinimumReleaseAgeWarning?: boolean;
   launchArgs?: string[];
+  testTimeout?: number;
 }
 
 export async function launchElectronApp({
@@ -215,6 +216,9 @@ export const test = base.extend<{
   ],
   electronApp: [
     async ({ electronConfig }, use, testInfo) => {
+      if (electronConfig.testTimeout !== undefined) {
+        testInfo.setTimeout(electronConfig.testTimeout);
+      }
       // Calculate worker-specific port for fake LLM server
       // Each parallel worker gets its own server to avoid test interference
       const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;

@@ -479,6 +479,8 @@ jobs:
         run: tar -xvf out-macos.tar
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
+          # Socket Firewall's binary installer queries GitHub's release API.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
           PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
           # Pilot two workers only on self-hosted macOS shards. Keep GitHub-hosted

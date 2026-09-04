@@ -68,7 +68,7 @@ interface LoadFailure {
  */
 export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const { settings } = useSettings();
   const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const isNativeOverlayActive = useAtomValue(previewNativeOverlayActiveAtom);
@@ -244,7 +244,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        appUrl,
+        originalUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -259,7 +259,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
 
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !appUrl;
+    : !originalUrl;
 
   // The main process refuses navigation and reloads while a run drives the
   // page, so leaving these enabled makes them read as broken. Restart isn't
@@ -378,7 +378,10 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={14} />
           </TooltipTrigger>
-          <TooltipContent>Open in browser</TooltipContent>
+          <TooltipContent>
+            Open the raw localhost URL; browser login data may be shared between
+            apps
+          </TooltipContent>
         </Tooltip>
 
         <div className="flex shrink-0 items-center gap-1.5">

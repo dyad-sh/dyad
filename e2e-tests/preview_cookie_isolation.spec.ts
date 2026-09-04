@@ -5,7 +5,8 @@ const COOKIE_NAME = "dyad-preview-isolation";
 
 test("local app previews isolate and retain browser cookies", async ({
   po,
-}) => {
+}, testInfo) => {
+  testInfo.setTimeout(Timeout.EXTRA_LONG * 2 + 120_000);
   await po.setUp({ autoApprove: true });
 
   const appA = "minimal";

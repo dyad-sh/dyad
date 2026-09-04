@@ -514,7 +514,9 @@ export function WorkflowSettings() {
           Give each app a stable localhost hostname so cookies and browser data
           cannot collide between previews. Disable only when an integration
           requires an exact localhost callback; the change applies when a
-          preview next rebuilds or restarts.
+          preview next rebuilds or restarts. After upgrading, a one-time preview
+          sign-out is expected because existing shared localhost data is not
+          migrated.
         </p>
       </div>
 

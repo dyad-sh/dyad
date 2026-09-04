@@ -36,3 +36,14 @@ export function toAppPreviewUrl(
 export function isAppPreviewHostname(appId: number, hostname: string): boolean {
   return hostname === getAppPreviewHostname(appId);
 }
+
+export function isAppPreviewStorageScopeAllowed(
+  appId: number,
+  hostname: string,
+  isolateLocalhost: boolean,
+): boolean {
+  return (
+    isAppPreviewHostname(appId, hostname) ||
+    (!isolateLocalhost && isLoopbackPreviewHostname(hostname))
+  );
+}

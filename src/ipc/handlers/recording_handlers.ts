@@ -39,6 +39,8 @@ import {
 import { isTestRunActive } from "./tests_handlers";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION } from "@/shared/settings_defaults";
+import { isAppPreviewStorageScopeAllowed } from "../utils/app_preview_url";
 import {
   isTestBranchCleanupOnly,
   restoreAppFromTestBranch,
@@ -106,6 +108,26 @@ async function clearPreviewStorage(origin: string): Promise<void> {
       "cachestorage",
     ],
   });
+}
+
+function getValidatedPreviewOrigin(appId: number, proxyUrl: string): string {
+  const previewUrl = new URL(proxyUrl);
+  const isolationEnabled =
+    readSettings().enableLocalhostPreviewIsolation ??
+    DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION;
+  if (
+    !isAppPreviewStorageScopeAllowed(
+      appId,
+      previewUrl.hostname,
+      isolationEnabled,
+    )
+  ) {
+    throw new DyadError(
+      "The app preview does not have an allowed browser storage scope.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  return previewUrl.origin;
 }
 
 function infraResult(appId: number, message: string): StartRecordingResult {
@@ -389,7 +411,7 @@ export function registerRecordingHandlers() {
                   "Clearing the preview's cookies and local storage so the recording starts signed out…\n",
                 );
                 try {
-                  const origin = new URL(proxyUrl).origin;
+                  const origin = getValidatedPreviewOrigin(appId, proxyUrl);
                   // Remembered before the clear, not after it and not
                   // re-derived at teardown. After it, a clear that throws would
                   // also disable the teardown clear — and this session goes on

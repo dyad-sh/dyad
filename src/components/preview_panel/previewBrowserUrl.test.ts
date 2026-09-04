@@ -11,7 +11,7 @@ describe("resolvePreviewBrowserUrl", () => {
       resolvePreviewBrowserUrl({
         isCloudMode: true,
         selectedAppId: 42,
-        appUrl: "http://app-42.localhost:42142",
+        originalUrl: "https://preview.internal.test",
         createCloudSandboxShareLink,
       }),
     ).resolves.toBe("https://dyad.sh/share/sandbox-1");
@@ -21,17 +21,17 @@ describe("resolvePreviewBrowserUrl", () => {
     });
   });
 
-  it("returns the isolated proxy URL for non-cloud previews", async () => {
+  it("returns the raw runtime URL for external non-cloud browsers", async () => {
     const createCloudSandboxShareLink = vi.fn();
 
     await expect(
       resolvePreviewBrowserUrl({
         isCloudMode: false,
         selectedAppId: null,
-        appUrl: "http://app-42.localhost:42142",
+        originalUrl: "http://127.0.0.1:3000",
         createCloudSandboxShareLink,
       }),
-    ).resolves.toBe("http://app-42.localhost:42142");
+    ).resolves.toBe("http://127.0.0.1:3000");
 
     expect(createCloudSandboxShareLink).not.toHaveBeenCalled();
   });
@@ -41,7 +41,7 @@ describe("resolvePreviewBrowserUrl", () => {
       resolvePreviewBrowserUrl({
         isCloudMode: true,
         selectedAppId: null,
-        appUrl: "http://app-42.localhost:42142",
+        originalUrl: "https://preview.internal.test",
         createCloudSandboxShareLink: vi.fn(),
       }),
     ).rejects.toThrow("Cloud sandbox is not running.");

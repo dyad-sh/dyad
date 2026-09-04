@@ -122,7 +122,7 @@ export const PreviewIframe = ({
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
-  const { appUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -1059,7 +1059,7 @@ export const PreviewIframe = ({
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        appUrl,
+        originalUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -1095,7 +1095,7 @@ export const PreviewIframe = ({
     getPreviewToolbarActionVisibility(previewToolbarWidth);
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !appUrl;
+    : !originalUrl;
 
   return (
     <div className="flex flex-col h-full">
@@ -1496,7 +1496,10 @@ export const PreviewIframe = ({
               >
                 <ExternalLink size={14} />
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in browser</TooltipContent>
+              <TooltipContent side="bottom">
+                Open the raw localhost URL in your browser; browser login data
+                may be shared between apps
+              </TooltipContent>
             </Tooltip>
           )}
 
@@ -1537,7 +1540,12 @@ export const PreviewIframe = ({
                     data-testid="preview-open-browser-menu-item"
                   >
                     <ExternalLink size={16} />
-                    <span>Open in browser</span>
+                    <div className="flex flex-col">
+                      <span>Open in browser</span>
+                      <span className="text-xs text-muted-foreground">
+                        Uses raw localhost; browser login data may be shared
+                      </span>
+                    </div>
                   </DropdownMenuItem>
                 )}
                 {!showOpenBrowser && <DropdownMenuSeparator />}
@@ -1550,7 +1558,10 @@ export const PreviewIframe = ({
                     </span>
                   </div>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => clearSessionData()}>
+                <DropdownMenuItem
+                  onClick={() => clearSessionData()}
+                  disabled={!appUrl || selectedAppId === null}
+                >
                   <Trash2 size={16} />
                   <div className="flex flex-col">
                     <span>{t("preview.clearCache")}</span>

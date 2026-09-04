@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAppPreviewHostname,
   isAppPreviewHostname,
+  isAppPreviewStorageScopeAllowed,
   toAppPreviewUrl,
 } from "./app_preview_url";
 
@@ -38,6 +39,17 @@ describe("app preview URLs", () => {
     expect(
       toAppPreviewUrl(42, "http://app-42.localhost:42142/app", false),
     ).toBe("http://localhost:42142/app");
+  });
+
+  it("allows only the selected storage scope for the active setting", () => {
+    expect(isAppPreviewStorageScopeAllowed(42, "app-42.localhost", true)).toBe(
+      true,
+    );
+    expect(isAppPreviewStorageScopeAllowed(42, "localhost", true)).toBe(false);
+    expect(isAppPreviewStorageScopeAllowed(42, "localhost", false)).toBe(true);
+    expect(isAppPreviewStorageScopeAllowed(42, "example.com", false)).toBe(
+      false,
+    );
   });
 
   it.each([0, -1, 1.5, Number.NaN])("rejects invalid app ids: %s", (appId) => {

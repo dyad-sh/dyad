@@ -79,6 +79,7 @@ describe("registerSessionHandlers", () => {
     await mocks.handlers.get("clear-session-data")!({}, { appId: 42 });
 
     expect(mocks.clearStorageData).toHaveBeenCalledWith({
+      origin: "http://localhost:42142",
       storages: ["cookies", "localstorage", "serviceworkers", "cachestorage"],
     });
   });

@@ -128,7 +128,7 @@ describe("secureGitOverlaySymlinks", () => {
 });
 
 describe("package-root-anchored output exclusions", () => {
-  const collect = (trackedPaths: string[], names: string[]) =>
+  const collect = async (trackedPaths: string[], names: string[]) =>
     parseGitOverlayPaths(
       status(
         "?? packages/web/.next/build-manifest.json",
@@ -139,19 +139,19 @@ describe("package-root-anchored output exclusions", () => {
       ),
       "apps/store",
       new Set(names),
-      collectPackageAnchoredExcludedPaths({
+      await collectPackageAnchoredExcludedPaths({
         trackedPaths,
         targetRelativePath: "apps/store",
         excludedTargetRootNames: new Set(names),
       }),
     );
 
-  it("drops a sibling package's generated output", () => {
+  it("drops a sibling package's generated output", async () => {
     // The overlay runs from the repository top level while the excluded names
     // are anchored at the app, so without this a monorepo copies every sibling
     // package's build output into the sandbox on every run.
     expect(
-      collect(
+      await collect(
         [
           "package.json",
           "packages/web/package.json",
@@ -163,11 +163,11 @@ describe("package-root-anchored output exclusions", () => {
     ).toEqual(["app/out/page.tsx", "packages/web/src/index.tsx"]);
   });
 
-  it("keeps a sibling's output when Git tracks content under it", () => {
+  it("keeps a sibling's output when Git tracks content under it", async () => {
     // Committed output is a build INPUT, exactly as it is for the app's own
     // roots — dropping it would pin the sandbox to its HEAD contents.
     expect(
-      collect(
+      await collect(
         [
           "packages/web/package.json",
           "packages/web/dist/vendor.js",
@@ -178,11 +178,52 @@ describe("package-root-anchored output exclusions", () => {
     ).toContain("packages/web/dist/index.js");
   });
 
-  it("never anchors at a directory that is not a package root", () => {
+  it("never anchors at a directory that is not a package root", async () => {
     // `app/` has no package.json, so `app/out/page.tsx` stays source — the
     // exact case `rules/local-agent-tools.md` warns depth-matching would break.
-    expect(collect(["package.json"], ["out", "dist", ".next"])).toContain(
+    expect(await collect(["package.json"], ["out", "dist", ".next"])).toContain(
       "app/out/page.tsx",
     );
+  });
+
+  it("requires an exact package.json segment", async () => {
+    // `configs/tsconfig.package.json` does not make `configs` a package root,
+    // and treating it as one would silently drop that directory's `dist` from
+    // the overlay — source, in a directory declaring no package at all.
+    expect(
+      await collectPackageAnchoredExcludedPaths({
+        trackedPaths: ["configs/tsconfig.package.json", "package.json"],
+        targetRelativePath: "apps/store",
+        excludedTargetRootNames: new Set(["dist"]),
+      }),
+    ).toEqual(new Set(["dist"]));
+  });
+
+  it("finds a package root that has never been committed", async () => {
+    // A workspace package added but not yet committed appears only in the live
+    // status, and `--untracked-files=normal` collapses it to one directory
+    // entry — so without a filesystem check its ignored `dist` rides into every
+    // sandbox.
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-overlay-pkg-test-"),
+    );
+    try {
+      await fs.mkdir(path.join(root, "packages", "new"), { recursive: true });
+      await fs.writeFile(
+        path.join(root, "packages", "new", "package.json"),
+        "{}",
+      );
+      expect(
+        await collectPackageAnchoredExcludedPaths({
+          sourceRoot: root,
+          trackedPaths: [],
+          overlayPaths: ["packages/new"],
+          targetRelativePath: "apps/store",
+          excludedTargetRootNames: new Set(["dist"]),
+        }),
+      ).toEqual(new Set(["packages/new/dist"]));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

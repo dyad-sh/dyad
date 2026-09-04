@@ -312,17 +312,22 @@ async function withheldEnvFile(
  * that root and run each member's lifecycle scripts — so a sibling package's
  * copied `.env` is a live credential source for this install too.
  *
- * `settle` runs before anything is restored. `spawnStreaming` starts a
- * `treeKill` and returns without waiting for the tree on a Stop or a timeout,
- * so restoring immediately would hand the real credentials back to an install
- * script that is still running — and `rules/app-operation-coordination.md`
- * requires the barrier before the caller can go on to delete the workspace and
- * release its claim.
+ * `settle` runs before anything is restored, and its verdict decides whether
+ * anything is restored at all. `spawnStreaming` starts a `treeKill` and returns
+ * without waiting for the tree on a Stop or a timeout, so restoring immediately
+ * would hand the real credentials back to an install script that is still
+ * running — and `rules/app-operation-coordination.md` requires the barrier
+ * before the caller can go on to delete the workspace and release its claim.
+ *
+ * A `false` verdict FAILS CLOSED: the files stay stripped. Nothing is lost by
+ * that — the run is already over and this whole directory is a disposable copy
+ * — whereas restoring would be handing live credentials to a process that is
+ * demonstrably still alive.
  */
 async function withWithheldDatabaseEnv<T>(
   directories: readonly string[],
   install: () => Promise<T>,
-  settle?: () => Promise<void>,
+  settle?: () => Promise<boolean>,
 ): Promise<T> {
   const restore = new Map<string, string>();
   try {
@@ -336,21 +341,31 @@ async function withWithheldDatabaseEnv<T>(
     }
     return await install();
   } finally {
-    if (settle) {
-      await settle().catch((error) =>
-        logger.warn(
-          `Failed to confirm the sandbox install had stopped before restoring its environment: ${error}`,
-        ),
-      );
-    }
-    for (const [envPath, original] of restore) {
-      await fs
-        .writeFile(envPath, original, "utf8")
-        .catch((error) =>
+    const settled = settle
+      ? await settle().catch((error) => {
           logger.warn(
-            `Failed to restore the sandbox environment in ${envPath} after installing: ${error}`,
-          ),
-        );
+            `Failed to confirm the sandbox install had stopped: ${error}`,
+          );
+          return false;
+        })
+      : true;
+    if (settled) {
+      for (const [envPath, original] of restore) {
+        await fs
+          .writeFile(envPath, original, "utf8")
+          .catch((error) =>
+            logger.warn(
+              `Failed to restore the sandbox environment in ${envPath} after installing: ${error}`,
+            ),
+          );
+      }
+    } else {
+      // No early `return` here: one inside a `finally` discards whatever the
+      // `try` was returning or throwing, which would swallow the install's own
+      // result along with its failures.
+      logger.warn(
+        "Leaving the sandbox database credentials withheld: the install process tree could not be confirmed stopped.",
+      );
     }
   }
 }
@@ -385,6 +400,9 @@ export async function installE2eTestWorkspaceDependencies({
     ...(await findWorkspacePackageDirectories(dependencyInstallPath)),
   ];
   let installChild: ChildProcess | undefined;
+  // Defaults to "abnormal", so a throw out of the install — which leaves no
+  // result to read — settles rather than restores.
+  let installEndedNormally = false;
   const installResult = await withWithheldDatabaseEnv(
     withholdDatabaseEnv
       ? [workspace.workspacePath, ...installedPackagePaths]
@@ -418,17 +436,25 @@ export async function installE2eTestWorkspaceDependencies({
           installChild = child;
           trackE2eTestProcess(child);
         },
+      }).then((result) => {
+        // The install's OWN outcome, not the root process's exit fields. A
+        // root that has exited says nothing about a lifecycle descendant it
+        // spawned — `npm` forks freely — so keying the barrier on the root
+        // would skip it for exactly the case it exists to catch.
+        installEndedNormally = !result.aborted && !result.timedOut;
+        return result;
       }),
     // On a Stop or a timeout `spawnStreaming` fires `treeKill` and returns
     // immediately, so the install tree can outlive this call. Nothing may
-    // restore the live credentials — or delete the workspace afterwards — while
-    // a lifecycle script is still running in it.
+    // restore the live credentials — or delete the workspace afterwards —
+    // while a lifecycle script is still running in it.
     async () => {
-      if (!installChild || installChild.pid === undefined) return;
-      if (installChild.exitCode !== null || installChild.signalCode !== null) {
-        return;
-      }
-      await forceKillProcessTree(installChild);
+      // A normal return came from `close`, which fires once the root's stdio
+      // has drained: the closest signal Node gives that descendants sharing
+      // those pipes are gone. Nothing to kill, and nothing to withhold.
+      if (installEndedNormally) return true;
+      if (!installChild || installChild.pid === undefined) return true;
+      return await forceKillProcessTree(installChild);
     },
   );
   if (installResult.aborted || signal?.aborted) {

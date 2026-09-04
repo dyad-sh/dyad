@@ -89,6 +89,7 @@ import {
   restoreAppFromTestBranch,
 } from "../utils/neon_test_branch";
 import {
+  settleE2eTestProcesses,
   stopE2eTestProcessesSync,
   trackE2eTestProcess,
 } from "../services/e2e_test_process_registry";
@@ -522,7 +523,13 @@ async function runPreviewTestBatch({
   testEnv: Record<string, string> | undefined;
   previewEndpoint: string;
   previewToken: string;
-  rotatePreviewView: ((timeoutMs?: number) => Promise<void>) | undefined;
+  /**
+   * Required, not optional. Every spec below is preceded by a rotation that
+   * loads the run's own base URL; for a sandboxed run that rotation is the ONLY
+   * thing pointing the view at the sandbox server rather than the user's real
+   * preview. A missing one has to be a type error, not a silent no-op.
+   */
+  rotatePreviewView: (timeoutMs?: number) => Promise<void>;
   installed: boolean;
   /** See `isolateDatabaseEnv` on `RunAppTestsCoreOptions`. */
   baseEnv: NodeJS.ProcessEnv;
@@ -664,7 +671,7 @@ async function runPreviewTestBatch({
         break;
       }
       try {
-        await rotatePreviewView?.(rotationTimeout);
+        await rotatePreviewView(rotationTimeout);
       } catch (error) {
         result.infraError = {
           message: `Couldn't prepare a fresh preview for ${target.fullTitle}: ${error instanceof Error ? error.message : String(error)}`,
@@ -789,7 +796,7 @@ async function runPreviewTestBatch({
       // hundred milliseconds to load, and the timeout then reported a fully
       // green run as an infrastructure failure, which an agent reads as
       // inconclusive and spends a fix attempt on.
-      await rotatePreviewView?.(
+      await rotatePreviewView(
         signal?.aborted ? 1 : PREVIEW_TEARDOWN_ROTATION_TIMEOUT_MS,
       );
     } catch (error) {
@@ -954,6 +961,24 @@ export async function runAppTestsCore({
       appId,
       results: [],
       infraError: { message: "Preview automation credentials are missing." },
+    };
+  }
+
+  // Enforced HERE, where the route is chosen, rather than left to an ordering
+  // invariant further in. `waitForPreviewView` no longer checks which page the
+  // view is showing for a sandboxed run — nothing has navigated to that run's
+  // port yet — so what guarantees a spec drives the sandbox server and not the
+  // user's real preview is that `rotate()` loads the run's own URL before every
+  // test. Without a rotate that guarantee is gone, and the failure would be
+  // silent: tests passing against the real app and the real database.
+  if (previewEndpoint && !rotatePreviewView) {
+    return {
+      appId,
+      results: [],
+      infraError: {
+        message:
+          "Preview automation can't point the preview at this run's server.",
+      },
     };
   }
 
@@ -2668,14 +2693,32 @@ export async function runAppTestsWithIsolation({
     // soon as it sees the run go idle, and a still-standing claim would
     // downgrade that teardown into an invisible view nobody owns.
     releasePreviewReservation();
-    if (workspace && !serverStopped) {
-      // The server tree outlived SIGKILL and still has this directory as its
-      // cwd. Deleting it would leave that survivor serving a deleted tree while
-      // holding a port a later run may allocate — and fail outright on Windows.
-      // The workspace keeps its owner marker, so the next launch's orphan sweep
-      // removes it once the survivor is gone with this process.
+    // The server is not the only thing that holds this directory. On a Stop or
+    // a timeout `spawnStreaming` resolves as soon as it has SENT the kill, so
+    // the Playwright runner, its browser, and an install's lifecycle
+    // descendants can all still be reading and writing the workspace. The
+    // registry is self-pruning, so anything still in it has not exited —
+    // settle those trees before the directory goes, per
+    // `rules/app-operation-coordination.md`.
+    const runProcessesSettled = workspace
+      ? await settleE2eTestProcesses().catch((error) => {
+          logger.warn(`Failed to settle E2E test processes: ${error}`);
+          return false;
+        })
+      : true;
+    if (workspace && (!serverStopped || !runProcessesSettled)) {
+      // Something still has this directory as its cwd. Deleting it would leave
+      // that survivor running against a deleted tree — serving the app under a
+      // port a later run may allocate, or writing artifacts into nothing — and
+      // fail outright on Windows. The workspace keeps its owner marker, so the
+      // next launch's orphan sweep removes it once the survivor is gone with
+      // this process.
       logger.warn(
-        `Keeping the isolated test workspace for app ${appId}: its server did not stop, so the startup sweep will remove it.`,
+        `Keeping the isolated test workspace for app ${appId}: ${
+          serverStopped
+            ? "a test process tree could not be confirmed stopped"
+            : "its server did not stop"
+        }, so the startup sweep will remove it.`,
       );
     } else if (workspace) {
       // Deleting an installed node_modules tree is tens of thousands of

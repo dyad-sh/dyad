@@ -756,8 +756,12 @@ async function startServerOnPort({
     })();
     return stopPromise;
   };
-  const onAbort = () => void stop();
-  signal?.addEventListener("abort", onAbort, { once: true });
+  const stopAfterAbort = () => {
+    void stop().catch((error) => {
+      logger.warn(`Failed to stop the aborted isolated E2E server: ${error}`);
+    });
+  };
+  signal?.addEventListener("abort", stopAfterAbort, { once: true });
 
   try {
     const baseUrl = await waitForReady({
@@ -780,13 +784,22 @@ async function startServerOnPort({
       baseUrl,
       process: child,
       stop: async () => {
-        signal?.removeEventListener("abort", onAbort);
+        signal?.removeEventListener("abort", stopAfterAbort);
         return stop();
       },
     };
   } catch (error) {
-    signal?.removeEventListener("abort", onAbort);
-    await stop();
+    signal?.removeEventListener("abort", stopAfterAbort);
+    try {
+      await stop();
+    } catch (stopError) {
+      // Readiness owns the primary failure. In particular, a PortInUseError
+      // must still reach the outer retry loop even if the verification probe
+      // itself fails while cleaning up this attempt.
+      logger.warn(
+        `Failed to stop the isolated E2E server after startup failed: ${stopError}`,
+      );
+    }
     throw error;
   }
 }

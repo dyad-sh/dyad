@@ -71,6 +71,7 @@ import {
   PREVIEW_CDP_TOKEN_ENV,
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
+import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
 
 const PROXY_URL = "http://localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
@@ -395,6 +396,21 @@ describe("preview runs", () => {
         /^--output=.*0001[\\/]artifacts$/.test(arg),
       ),
     ).toBe(true);
+  });
+
+  it("registers every preview runner for synchronous app shutdown", async () => {
+    const rotatePreviewView = mockPreviewBatch();
+
+    await runAppTestsCore({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+    });
+
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(2);
+    for (const [options] of h.spawnStreaming.mock.calls) {
+      expect(options.onProcess).toBe(trackE2eTestProcess);
+    }
   });
 });
 

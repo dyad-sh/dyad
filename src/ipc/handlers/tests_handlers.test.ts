@@ -1610,6 +1610,50 @@ describe("tests handlers", () => {
       expect(result.isolation?.reason).toMatch(/turned off in Settings/i);
     });
 
+    it("honors testing being disabled while an unsandboxed run waits for its claim", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      readSettingsMock.mockImplementation(() => ({
+        ...structuredClone(DEFAULT_SETTINGS),
+        disableSandboxedE2eTests: true,
+      }));
+      runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+      const originalRun = appOperationCoordinator.run.bind(
+        appOperationCoordinator,
+      );
+      const runSpy = vi
+        .spyOn(appOperationCoordinator, "run")
+        .mockImplementation((request, operation) => {
+          if (request.operation === "run-app-tests") {
+            harness.db
+              .update(apps)
+              .set({ testingEnabled: false })
+              .where(eq(apps.id, appId))
+              .run();
+          }
+          return originalRun(request, operation);
+        });
+
+      try {
+        const result = await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+
+        expect(result.infraError?.message).toMatch(/testing isn't enabled/i);
+        expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
+        expect(spawnStreamingMock).not.toHaveBeenCalled();
+      } finally {
+        runSpy.mockRestore();
+        runningApps.clear();
+      }
+    });
+
     describe("non-host runtime", () => {
       afterEach(() => {
         runningApps.clear();

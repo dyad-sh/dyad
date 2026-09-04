@@ -149,7 +149,7 @@ function ConnectedGitHubConnector({
     dispatchConflictResolutionStarted,
     dispatchConflictResolutionCancelled,
     conflictResolutionClaimed,
-  } = useGithubOps(appId);
+  } = useGithubOps(appId, { autoDismissPushSuccessBanner: true });
   const {
     banner,
     state: githubOpsState,

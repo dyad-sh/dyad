@@ -11,6 +11,10 @@ Background and before/after examples of why this pattern exists:
 - Keep domain types in `state.ts`, the pure total function in `transition.ts`,
   side-effect execution in `controller.ts` or a main-process registry, command
   adapters in `commands.ts`, and renderer bindings in a hook/provider.
+- A renderer machine hook may be mounted more than once for the same actor
+  (for example, both a connector and its branch manager use `useGithubOps`).
+  Make timer-driven or other dispatching effects explicitly opt-in so sibling
+  consumers do not emit duplicate remote events.
 - `state.ts` and `transition.ts` stay pure. They must not depend on React,
   Electron, Jotai, TanStack Query, zod, timers, `Date`, or randomness.
 - When that purity requires a hand-written state type to duplicate an IPC zod

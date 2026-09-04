@@ -25,6 +25,8 @@ const UNAVAILABLE_CAPABILITIES = {
   canConnectRepository: false,
 } as const;
 
+const PUSH_SUCCESS_BANNER_DURATION_MS = 5_000;
+
 function operationId(): string {
   return `github-operation:${globalThis.crypto.randomUUID()}`;
 }
@@ -35,7 +37,10 @@ function conflictResolutionClaimId(): string {
 
 export function useGithubOps(
   appId: number | null,
-  options: { reconcileOnMount?: boolean } = {},
+  options: {
+    reconcileOnMount?: boolean;
+    autoDismissPushSuccessBanner?: boolean;
+  } = {},
 ) {
   const conflictClaimRef = useRef<string | null>(null);
   const routedAppId = appId ?? 0;
@@ -136,6 +141,26 @@ export function useGithubOps(
           },
     [remote.connection, remote.projection],
   );
+
+  useEffect(() => {
+    if (
+      !options.autoDismissPushSuccessBanner ||
+      projection.banner?.kind !== "success" ||
+      projection.banner.completedOperation !== "push"
+    ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      sendWithoutReceipt({ type: "BANNER_DISMISSED" });
+    }, PUSH_SUCCESS_BANNER_DURATION_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    options.autoDismissPushSuccessBanner,
+    projection.banner,
+    sendWithoutReceipt,
+  ]);
 
   const reconcileOnMount = options.reconcileOnMount ?? true;
   useEffect(() => {

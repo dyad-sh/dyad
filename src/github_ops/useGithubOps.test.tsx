@@ -118,4 +118,42 @@ describe("useGithubOps remote readiness", () => {
       type: "RESOLVE_WITH_AI_STARTED",
     });
   });
+
+  it("dismisses a successful push banner after five seconds", () => {
+    vi.useFakeTimers();
+    mocks.connection = "ready";
+    const state = {
+      type: "idle" as const,
+      banner: {
+        kind: "success" as const,
+        completedOperation: "push" as const,
+        message: "Successfully pushed to GitHub!",
+      },
+    };
+    mocks.remote = {
+      ...mocks.remote,
+      state: { ...mocks.remote.state, state },
+      projection: projectGithubOps(state),
+      connection: "ready",
+    };
+    mocks.dispatch.mockResolvedValue({ kind: "applied", messageId: "m1" });
+
+    const { unmount } = renderHook(() =>
+      useGithubOps(7, {
+        reconcileOnMount: false,
+        autoDismissPushSuccessBanner: true,
+      }),
+    );
+
+    act(() => vi.advanceTimersByTime(4_999));
+    expect(mocks.dispatch).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(mocks.dispatch).toHaveBeenCalledWith({
+      type: "BANNER_DISMISSED",
+    });
+
+    unmount();
+    vi.useRealTimers();
+  });
 });

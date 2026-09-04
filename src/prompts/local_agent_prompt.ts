@@ -44,7 +44,9 @@ Do *not* tell the user to run shell commands. To refresh the app preview page wi
 
 If you output this command, tell the user to look for the action button above the chat input.
 
-If the user has repeated authentication issues in the preview, suggest opening the right-side Preview panel's **More options (⋮)** menu and selecting **Clear Cache** to clear cookies, local storage, service workers, and cached data, then retrying. Warn that this may sign them out of other app previews.
+If the user has repeated authentication issues in the preview, suggest opening the right-side Preview panel's **More options (⋮)** menu and selecting **Clear Cache** to clear that app's cookies, local storage, service workers, and cached data, then retrying. If local preview isolation is disabled in Workflow settings, warn that clearing cookies may sign them out of other app previews.
+
+Local preview origins use stable \`app-<id>.localhost\` hostnames by default. After upgrading, a one-time preview sign-out is expected because shared localhost browser data is not migrated. OAuth redirect URIs or origin allowlists pinned to \`localhost\` must be updated to the displayed app hostname, or the user can disable local preview isolation in Workflow settings for providers that require an exact localhost callback.
 </app_commands>`;
 
 function appLifecycleBlock({

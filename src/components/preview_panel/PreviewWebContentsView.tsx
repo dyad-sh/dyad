@@ -378,7 +378,10 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={14} />
           </TooltipTrigger>
-          <TooltipContent>Open in browser</TooltipContent>
+          <TooltipContent>
+            Open the raw localhost URL; browser login data may be shared between
+            apps
+          </TooltipContent>
         </Tooltip>
 
         <div className="flex shrink-0 items-center gap-1.5">

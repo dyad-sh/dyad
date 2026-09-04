@@ -87,6 +87,7 @@ import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { recordingStatusMessage } from "./RecordingBanner";
 import { RecordingBannerHost } from "./RecordingBannerHost";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
+import { DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION } from "@/shared/settings_defaults";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PreviewErrorBanner } from "./PreviewErrorBanner";
@@ -345,7 +346,10 @@ export const PreviewIframe = ({
   const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
   const { mutate: clearSessionData } = useMutation({
     mutationFn: () => {
-      return ipc.system.clearSessionData();
+      if (selectedAppId === null) {
+        throw new Error("No app is selected.");
+      }
+      return ipc.system.clearSessionData({ appId: selectedAppId });
     },
     onSuccess: async () => {
       await refreshAppIframe();
@@ -1492,7 +1496,10 @@ export const PreviewIframe = ({
               >
                 <ExternalLink size={14} />
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in browser</TooltipContent>
+              <TooltipContent side="bottom">
+                Open the raw localhost URL in your browser; browser login data
+                may be shared between apps
+              </TooltipContent>
             </Tooltip>
           )}
 
@@ -1533,7 +1540,12 @@ export const PreviewIframe = ({
                     data-testid="preview-open-browser-menu-item"
                   >
                     <ExternalLink size={16} />
-                    <span>Open in browser</span>
+                    <div className="flex flex-col">
+                      <span>Open in browser</span>
+                      <span className="text-xs text-muted-foreground">
+                        Uses raw localhost; browser login data may be shared
+                      </span>
+                    </div>
                   </DropdownMenuItem>
                 )}
                 {!showOpenBrowser && <DropdownMenuSeparator />}
@@ -1546,7 +1558,10 @@ export const PreviewIframe = ({
                     </span>
                   </div>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => clearSessionData()}>
+                <DropdownMenuItem
+                  onClick={() => clearSessionData()}
+                  disabled={!appUrl || selectedAppId === null}
+                >
                   <Trash2 size={16} />
                   <div className="flex flex-col">
                     <span>{t("preview.clearCache")}</span>
@@ -1580,6 +1595,10 @@ export const PreviewIframe = ({
 
       <RecordingStorageWarningDialog
         open={recorder.pendingStart !== null}
+        isolationEnabled={
+          settings?.enableLocalhostPreviewIsolation ??
+          DEFAULT_ENABLE_LOCALHOST_PREVIEW_ISOLATION
+        }
         onOpenChange={(open) => {
           if (!open) recorder.dismissStartRecording();
         }}

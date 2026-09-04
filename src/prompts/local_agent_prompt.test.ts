@@ -114,9 +114,11 @@ describe("local_agent_prompt", () => {
     );
     expect(prompt).toContain('<dyad-command type="refresh"></dyad-command>');
     expect(prompt).toContain(
-      "selecting **Clear Cache** to clear cookies, local storage, service workers, and cached data",
+      "selecting **Clear Cache** to clear that app's cookies, local storage, service workers, and cached data",
     );
-    expect(prompt).toContain("this may sign them out of other app previews");
+    expect(prompt).toContain(
+      "If local preview isolation is disabled in Workflow settings",
+    );
   });
 
   it("agent mode system prompt with code explorer available", () => {

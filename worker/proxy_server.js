@@ -378,12 +378,15 @@ function rewriteCookieForIframe(cookieStr) {
   if (parts.length === 0) return cookieStr;
   const nameValue = parts[0];
   // Drop any existing SameSite / Secure / Partitioned attributes so ours win.
+  // Domain is deliberately removed too: every preview cookie must remain
+  // host-only on its app-specific *.localhost hostname.
   const attrs = parts.slice(1).filter((p) => {
     const lower = p.toLowerCase();
     return (
       !lower.startsWith("samesite") &&
       lower !== "secure" &&
-      lower !== "partitioned"
+      lower !== "partitioned" &&
+      !lower.startsWith("domain=")
     );
   });
   attrs.push("Secure", "SameSite=None");

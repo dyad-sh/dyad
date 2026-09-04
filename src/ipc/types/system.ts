@@ -356,7 +356,7 @@ export const systemContracts = {
   // Session
   clearSessionData: defineContract({
     channel: "clear-session-data",
-    input: z.void(),
+    input: z.object({ appId: z.number().int().positive() }).strict(),
     output: z.void(),
   }),
 

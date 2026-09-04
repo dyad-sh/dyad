@@ -119,22 +119,22 @@ async function readNpmWorkspacePatterns(
 }
 
 /**
- * Whether `workspaceRoot` declares a pnpm workspace. The two manifests are NOT
- * interchangeable: npm cannot resolve members declared only in
- * `pnpm-workspace.yaml`, so the bootstrap has to know which one is in play
- * before choosing an invocation.
+ * Which manifest at `workspaceRoot` declares `appPath` as a member.
+ *
+ * Membership, not mere declaration. A root can carry BOTH manifests — a pnpm
+ * workspace for some packages and npm `workspaces` for others — and the two are
+ * not interchangeable: npm cannot resolve a member declared only in
+ * `pnpm-workspace.yaml`, and running pnpm for an app npm owns installs into the
+ * wrong tree. Asking which one actually claims this app is the only question
+ * whose answer is safe to act on.
  */
-export async function declaresPnpmWorkspace(
+export async function workspaceMembershipFor(
   workspaceRoot: string,
-): Promise<boolean> {
-  return (await readPnpmWorkspacePatterns(workspaceRoot)) !== null;
-}
-
-/** Whether `workspaceRoot` declares npm/yarn workspaces in its `package.json`. */
-export async function declaresNpmWorkspaces(
-  workspaceRoot: string,
-): Promise<boolean> {
-  return (await readNpmWorkspacePatterns(workspaceRoot)) !== null;
+  appPath: string,
+): Promise<"pnpm" | "npm" | null> {
+  if (await isPnpmWorkspaceMember(workspaceRoot, appPath)) return "pnpm";
+  if (await isNpmWorkspaceMember(workspaceRoot, appPath)) return "npm";
+  return null;
 }
 
 /**

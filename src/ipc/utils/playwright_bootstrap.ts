@@ -5,9 +5,8 @@ import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
 import {
-  declaresNpmWorkspaces,
-  declaresPnpmWorkspace,
   findPackageManagerRoot,
+  workspaceMembershipFor,
 } from "@/ipc/services/isolated_package_install";
 import {
   PNPM_INSTALL_POLICY_ARGS,
@@ -79,13 +78,14 @@ async function playwrightInstallCommand(appPath: string): Promise<{
   const lockRoot = ownsLockfile ? appPath : installRoot;
   const viaWorkspaceRoot = lockRoot !== appPath;
   // A workspace that has never been installed has no lockfile at all, so the
-  // lockfile check below cannot tell pnpm from npm. The DECLARATION can: npm
-  // has no way to resolve members declared only in `pnpm-workspace.yaml`, so
-  // falling through to `npm install -w <member>` there would fail outright.
-  if (
-    has(lockRoot, "pnpm-lock.yaml") ||
-    (viaWorkspaceRoot && (await declaresPnpmWorkspace(lockRoot)))
-  ) {
+  // lockfile check below cannot tell pnpm from npm. MEMBERSHIP can: a root may
+  // carry both manifests, and npm has no way to resolve a member declared only
+  // in `pnpm-workspace.yaml`, so what matters is which manifest claims THIS
+  // app — not which ones the root happens to declare for other packages.
+  const membership = viaWorkspaceRoot
+    ? await workspaceMembershipFor(lockRoot, appPath)
+    : null;
+  if (has(lockRoot, "pnpm-lock.yaml") || membership === "pnpm") {
     return {
       command: "pnpm",
       args: [
@@ -115,8 +115,7 @@ async function playwrightInstallCommand(appPath: string): Promise<{
     };
   }
   // npm (package-lock.json) or unknown — mirror the app runtime's npm install.
-  const useNpmWorkspaceFlag =
-    viaWorkspaceRoot && (await declaresNpmWorkspaces(lockRoot));
+  const useNpmWorkspaceFlag = membership === "npm";
   return {
     command: "npm",
     args: [

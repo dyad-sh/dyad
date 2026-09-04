@@ -81,7 +81,16 @@ const APP_PATH = path.join(os.tmpdir(), "dyad-tests-preview", "apps", "my-app");
 function runAppTestsCore(options: RunAppTestsCoreOptions) {
   return runAppTestsCoreWithoutToken({
     ...options,
-    ...(options.previewCdpEndpoint ? { previewCdpToken: CDP_TOKEN } : {}),
+    // Both arrive together in production: `runTestsWithPreviewAutomation`
+    // builds the token and the rotation from the same automation handle, and
+    // the route now refuses an endpoint without a way to point the view at this
+    // run's own server. Tests that care about the rotation still pass their own.
+    ...(options.previewCdpEndpoint
+      ? {
+          previewCdpToken: CDP_TOKEN,
+          rotatePreviewView: options.rotatePreviewView ?? vi.fn(async () => {}),
+        }
+      : {}),
   });
 }
 

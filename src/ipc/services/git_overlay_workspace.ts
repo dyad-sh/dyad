@@ -401,7 +401,7 @@ async function overlayWorkspaceState(
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
   signal: AbortSignal | undefined,
-  excludedPackagePaths: ReadonlySet<string> = NO_EXCLUDED_PACKAGE_PATHS,
+  trackedPaths: readonly string[] = [],
 ): Promise<void> {
   const status = await runWorkspaceGit(
     sourceRoot,
@@ -416,6 +416,20 @@ async function overlayWorkspaceState(
     ],
     signal,
   );
+  // Two passes on purpose. The first names the live working-tree entries, which
+  // is where an uncommitted package root can be found; the second applies the
+  // exclusions that discovery produces.
+  const excludedPackagePaths = await collectPackageAnchoredExcludedPaths({
+    sourceRoot,
+    trackedPaths,
+    overlayPaths: parseGitOverlayPaths(
+      status.stdout,
+      targetRelativePath,
+      excludedTargetRootNames,
+    ),
+    targetRelativePath,
+    excludedTargetRootNames,
+  });
   const overlayPaths = parseGitOverlayPaths(
     status.stdout,
     targetRelativePath,
@@ -948,28 +962,66 @@ async function removeAlwaysExcludedRoots(
  * build INPUT, and dropping it from the overlay would pin the sandbox to its
  * `HEAD` contents and silently discard every live edit beneath it.
  */
-export function collectPackageAnchoredExcludedPaths({
+export async function collectPackageAnchoredExcludedPaths({
+  sourceRoot,
   trackedPaths,
+  overlayPaths = [],
   targetRelativePath,
   excludedTargetRootNames,
 }: {
+  /** Absolute path the relative entries below are resolved against. */
+  sourceRoot?: string;
   trackedPaths: readonly string[];
+  /**
+   * Live working-tree entries from `git status`. A package added but not yet
+   * committed appears only here — and `--untracked-files=normal` collapses it
+   * to a single directory entry, so its ignored `dist` is inside something the
+   * overlay copies wholesale unless this pass can see the package root.
+   */
+  overlayPaths?: readonly string[];
   targetRelativePath: string;
   excludedTargetRootNames: ReadonlySet<string>;
-}): ReadonlySet<string> {
+}): Promise<ReadonlySet<string>> {
   if (excludedTargetRootNames.size === 0) return NO_EXCLUDED_PACKAGE_PATHS;
   const packageRoots = new Set<string>();
-  for (const trackedPath of trackedPaths) {
-    if (!trackedPath.endsWith("package.json")) continue;
-    const separatorIndex = trackedPath.lastIndexOf("/");
-    const root = separatorIndex < 0 ? "" : trackedPath.slice(0, separatorIndex);
+  const addRoot = (root: string) => {
     // The app's own roots are already handled — and removed rather than merely
     // filtered — by `removeExcludedTargetRoots`.
-    if (root === targetRelativePath) continue;
+    if (root === targetRelativePath) return;
     // An always-excluded ancestor (a committed `node_modules`) is dropped
     // wholesale; the manifests inside it are not package roots of this repo.
-    if (alwaysExcludedRootEnd(root.split("/")) >= 0) continue;
+    if (root && alwaysExcludedRootEnd(root.split("/")) >= 0) return;
     packageRoots.add(root);
+  };
+  // Exact final segment, not a suffix: `configs/tsconfig.package.json` would
+  // otherwise make `configs` a package root and silently drop its `dist` —
+  // source, in a directory that declares no package at all.
+  const manifestParent = (candidate: string): string | null => {
+    const separatorIndex = candidate.lastIndexOf("/");
+    const name =
+      separatorIndex < 0 ? candidate : candidate.slice(separatorIndex + 1);
+    if (name !== "package.json") return null;
+    return separatorIndex < 0 ? "" : candidate.slice(0, separatorIndex);
+  };
+  for (const trackedPath of trackedPaths) {
+    const root = manifestParent(trackedPath);
+    if (root !== null) addRoot(root);
+  }
+  for (const overlayPath of overlayPaths) {
+    const root = manifestParent(overlayPath);
+    if (root !== null) {
+      addRoot(root);
+      continue;
+    }
+    // A collapsed untracked directory. One stat answers whether it declares a
+    // package; the status list is working-tree scale, not repository scale.
+    if (!sourceRoot) continue;
+    if (alwaysExcludedRootEnd(overlayPath.split("/")) >= 0) continue;
+    const declaresPackage = await fs
+      .stat(path.join(sourceRoot, toNativePath(overlayPath), "package.json"))
+      .then((stat) => stat.isFile())
+      .catch(() => false);
+    if (declaresPackage) addRoot(overlayPath);
   }
   const excluded = new Set<string>();
   for (const root of packageRoots) {
@@ -1110,11 +1162,7 @@ async function materializeInitializedSubmodules({
       signal,
       // From the submodule's OWN index: its package roots are invisible to the
       // parent, which records only a gitlink.
-      collectPackageAnchoredExcludedPaths({
-        trackedPaths: submoduleTrackedPaths,
-        targetRelativePath: childTargetRelativePath,
-        excludedTargetRootNames,
-      }),
+      submoduleTrackedPaths,
     );
     await materializeInitializedSubmodules({
       sourceRepoPath: realSubmodulePath,
@@ -1197,18 +1245,13 @@ export async function createGitOverlayWorkspace({
       worktreePath,
       signal,
     );
-    const excludedPackagePaths = collectPackageAnchoredExcludedPaths({
-      trackedPaths,
-      targetRelativePath: targetRelativePosix,
-      excludedTargetRootNames,
-    });
     await overlayWorkspaceState(
       sourceRepoPath,
       worktreePath,
       targetRelativePosix,
       overlayExcludedRootNames,
       signal,
-      excludedPackagePaths,
+      trackedPaths,
     );
     await materializeInitializedSubmodules({
       sourceRepoPath,

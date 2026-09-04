@@ -214,6 +214,16 @@
     "security": "Seguridad",
     "publish": "Publicar",
     "tests": "Pruebas",
+    "testGate": {
+      "settingsUnavailable": "Dyad no pudo cargar tu configuración, así que no puede saber cómo se ejecutarían las pruebas.",
+      "retry": "Reintentar",
+      "startApp": "Inicia la aplicación para ejecutar las pruebas.",
+      "start": "Iniciar",
+      "neonRefusalRuntime": "Las pruebas no pueden ejecutarse en esta aplicación: los servidores de prueba aislados aún no están disponibles en el entorno de ejecución {{runtime}}, y Dyad no ejecutará pruebas de Neon contra tu base de datos real. Cambia al entorno de ejecución host para ejecutarlas.",
+      "neonRefusalDisabled": "Las pruebas no pueden ejecutarse en esta aplicación: los servidores de prueba aislados están desactivados en Configuración, y Dyad no ejecutará pruebas de Neon contra tu base de datos real. Vuelve a activarlos para ejecutarlas.",
+      "turnOnSandbox": "Activar",
+      "openSettings": "Abrir Configuración"
+    },
     "plan": "Plan",
     "moreOptions": "Más opciones",
     "rebuild": "Reconstruir",

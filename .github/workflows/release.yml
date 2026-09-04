@@ -52,7 +52,7 @@ jobs:
           - { name: "windows", image: "windows-2022" }
           # See https://github.com/dyad-sh/dyad/issues/96
           - { name: "linux", image: "ubuntu-22.04" }
-          - { name: "macos-intel", image: "macos-15-intel" }
+          - { name: "macos-intel", image: "macos-26-intel" }
           - { name: "macos", image: "macos-latest" }
     runs-on: ${{ matrix.os.image }}
     steps:

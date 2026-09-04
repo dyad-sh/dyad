@@ -678,7 +678,9 @@ async function startServerOnPort({
     stdio: "pipe",
     detached: false,
   });
-  const untrack = trackE2eTestProcess(child);
+  // Owned by this run's signal, so another app's concurrent run cannot settle
+  // (and SIGKILL) this server as part of its own cleanup.
+  const untrack = trackE2eTestProcess(child, signal);
 
   let tail = "";
   // Sticky, and checked against the accumulated tail rather than the chunk: the

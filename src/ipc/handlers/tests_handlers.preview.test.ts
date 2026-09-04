@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +38,16 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("node-pty", () => ({ spawn: vi.fn() }));
+
+// Real behaviour, spied: the assertions below are about which run a child is
+// registered against, which a stub returning nothing could not show.
+vi.mock("../services/e2e_test_process_registry", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../services/e2e_test_process_registry")
+    >();
+  return { ...actual, trackE2eTestProcess: vi.fn(actual.trackE2eTestProcess) };
+});
 
 vi.mock("../../db", () => ({
   db: { query: { apps: { findFirst: h.findFirst } } },
@@ -85,6 +97,11 @@ function runAppTestsCore(options: RunAppTestsCoreOptions) {
     // builds the token and the rotation from the same automation handle, and
     // the route now refuses an endpoint without a way to point the view at this
     // run's own server. Tests that care about the rotation still pass their own.
+    //
+    // The default is a convenience for tests about something ELSE, so it must
+    // not be read as the fail-closed contract: that path is exercised directly
+    // through `runAppTestsCoreWithoutToken` in "refuses the preview route with
+    // no way to point the view at the run".
     ...(options.previewCdpEndpoint
       ? {
           previewCdpToken: CDP_TOKEN,
@@ -407,19 +424,45 @@ describe("preview runs", () => {
     ).toBe(true);
   });
 
-  it("registers every preview runner for synchronous app shutdown", async () => {
+  it("registers every preview runner against this run, not globally", async () => {
+    // Both facts matter. Registration is what lets quit tree-kill the runner
+    // and its browser; the OWNER is what stops another app's concurrent run
+    // from settling — and so SIGKILLing — this one's processes during its own
+    // cleanup.
     const rotatePreviewView = mockPreviewBatch();
+    const signal = new AbortController().signal;
 
     await runAppTestsCore({
       appId: 1,
       previewCdpEndpoint: CDP_ENDPOINT,
       rotatePreviewView,
+      signal,
     });
 
     expect(h.spawnStreaming).toHaveBeenCalledTimes(2);
     for (const [options] of h.spawnStreaming.mock.calls) {
-      expect(options.onProcess).toBe(trackE2eTestProcess);
+      const child = new EventEmitter() as unknown as ChildProcess;
+      options.onProcess?.(child);
+      expect(vi.mocked(trackE2eTestProcess)).toHaveBeenCalledWith(
+        child,
+        signal,
+      );
     }
+  });
+
+  it("refuses the preview route with no way to point the view at the run", async () => {
+    // Fail-closed. `waitForPreviewView` does not check which page a sandboxed
+    // run's view is showing, so the rotation is the only thing aiming it at
+    // this run's own server — without one the specs would drive the user's
+    // real preview, and the real database, and pass.
+    const result = await runAppTestsCoreWithoutToken({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      previewCdpToken: CDP_TOKEN,
+    });
+
+    expect(result.infraError?.message).toMatch(/can't point the preview/i);
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
   });
 });
 

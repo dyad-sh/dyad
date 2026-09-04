@@ -586,6 +586,7 @@ async function runPreviewTestBatch({
         signal,
         timeoutMs: discoveryTimeout,
         onOutput: (chunk) => emit(chunk, "setup"),
+        onProcess: trackE2eTestProcess,
       });
     } catch (error) {
       result.infraError = {
@@ -708,6 +709,7 @@ async function runPreviewTestBatch({
           signal,
           timeoutMs: invocationTimeout,
           onOutput: (chunk) => emit(chunk, "running"),
+          onProcess: trackE2eTestProcess,
         });
       } catch (error) {
         result.infraError = {
@@ -1503,6 +1505,20 @@ async function runTestsAgainstNormalPreview({
     },
     async () => {
       const app = await getApp(appId);
+      // The route can wait behind another operation after the preflight read.
+      // Honor a Tests-panel disable that happened while it was queued before
+      // creating provider-side isolation or starting Playwright.
+      if (!app.testingEnabled) {
+        return {
+          appId,
+          results: [],
+          infraError: {
+            message:
+              "Testing isn't enabled for this app. Enable it in the Tests panel before running tests.",
+          },
+          isolation: { mode: "none" as const, reason: disclosure },
+        };
+      }
       // Supabase isolation is provider-side and works in any runtime, so only
       // an app whose isolation depends on the Neon branch swap is refused.
       if (refusesUnsandboxedTestRun(app)) {

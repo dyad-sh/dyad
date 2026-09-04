@@ -1,6 +1,22 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parseGitOverlayPaths } from "./git_overlay_workspace";
+import {
+  parseGitOverlayPaths,
+  secureGitOverlaySymlinks,
+} from "./git_overlay_workspace";
+
+const originalPlatform = process.platform;
+
+afterEach(() => {
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: originalPlatform,
+  });
+  vi.restoreAllMocks();
+});
 
 /** `git status --porcelain -z` output for the given `XY path` fields. */
 function status(...fields: string[]): string {
@@ -60,5 +76,39 @@ describe("parseGitOverlayPaths exclusions", () => {
         new Set(["out"]),
       ),
     ).toEqual(["app/src/out/page.tsx"]);
+  });
+});
+
+describe("secureGitOverlaySymlinks", () => {
+  it("does not fail a Windows workspace when a dangling link needs privileges", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-overlay-link-test-"),
+    );
+    const sourceRoot = path.join(root, "source");
+    const workspaceRoot = path.join(root, "workspace");
+    await Promise.all([
+      fs.mkdir(sourceRoot, { recursive: true }),
+      fs.mkdir(workspaceRoot, { recursive: true }),
+    ]);
+    const linkPath = path.join(workspaceRoot, "generated-link");
+    await fs.symlink(path.join(sourceRoot, "generated-target"), linkPath);
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: "win32",
+    });
+    vi.spyOn(fs, "symlink").mockRejectedValueOnce(
+      Object.assign(new Error("privilege not held"), { code: "EPERM" }),
+    );
+
+    try {
+      await expect(
+        secureGitOverlaySymlinks(sourceRoot, workspaceRoot),
+      ).resolves.toBeUndefined();
+      await expect(fs.lstat(linkPath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

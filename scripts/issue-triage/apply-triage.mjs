@@ -1,9 +1,23 @@
+// Runs in the trusted apply job with a narrowly scoped app token. Reads the
+// agent's decision, validates it, and performs the GitHub mutations. If the
+// decision is missing or invalid, posts a short fallback comment and marks the
+// issue so a person knows the bot had nothing to offer.
 import fs from "node:fs";
+
+import {
+  composeComment,
+  composeFallbackComment,
+  FAILED_LABEL,
+  NEEDS_HUMAN_LABEL,
+  normalizeTriage,
+} from "./triage-comment.mjs";
 
 const token = process.env.GITHUB_TOKEN;
 const repository = process.env.GITHUB_REPOSITORY;
 const issueNumber = Number.parseInt(process.env.ISSUE_NUMBER ?? "", 10);
+const issueAuthor = (process.env.ISSUE_AUTHOR ?? "").trim() || null;
 const triagePath = process.env.TRIAGE_OUTPUT_PATH;
+const contextPath = process.env.TRIAGE_CONTEXT_PATH;
 
 if (!token) throw new Error("GITHUB_TOKEN is required");
 if (!repository) throw new Error("GITHUB_REPOSITORY is required");
@@ -13,104 +27,25 @@ if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
 if (!triagePath) throw new Error("TRIAGE_OUTPUT_PATH is required");
 
 const [owner, repo] = repository.split("/");
-if (!owner || !repo)
+if (!owner || !repo) {
   throw new Error(`Invalid GITHUB_REPOSITORY: ${repository}`);
-
-const allowedLabels = new Set([
-  "bug",
-  "feature request",
-  "ux/usability",
-  "pro",
-  "issue/lang",
-  "issue/incomplete",
-]);
-const issueTypeLabels = new Set(["bug", "feature request", "ux/usability"]);
-const allowedConfidence = new Set(["high", "medium", "low"]);
-
-const triage = JSON.parse(fs.readFileSync(triagePath, "utf8"));
-if (!triage || typeof triage !== "object" || Array.isArray(triage)) {
-  throw new Error("Triage output must be a JSON object");
 }
 
-const cleanText = (value, maxLength) =>
-  `${value ?? ""}`.replace(/\s+/g, " ").trim().slice(0, maxLength);
+// Labels this script may need to create on first use. The workflow token has
+// issues:write, which covers label creation.
+const LABEL_DEFINITIONS = {
+  [NEEDS_HUMAN_LABEL]: {
+    color: "D93F0B",
+    description:
+      "The triage bot could not help with this issue; a person needs to reply",
+  },
+  [FAILED_LABEL]: {
+    color: "B60205",
+    description: "The triage bot failed to run on this issue",
+  },
+};
 
-const labels = [...new Set(triage.labels ?? [])].map((label) =>
-  cleanText(label, 80),
-);
-if (!Array.isArray(triage.labels)) {
-  throw new Error("labels must be an array");
-}
-for (const label of labels) {
-  if (!allowedLabels.has(label)) {
-    throw new Error(`Invalid label: ${label}`);
-  }
-}
-
-const selectedTypes = labels.filter((label) => issueTypeLabels.has(label));
-if (selectedTypes.length !== 1) {
-  throw new Error("Exactly one issue type label is required");
-}
-
-const nonEnglish = triage.nonEnglish === true;
-const incomplete = triage.incomplete === true;
-if (nonEnglish && !labels.includes("issue/lang")) {
-  throw new Error("nonEnglish requires issue/lang label");
-}
-if (incomplete && !labels.includes("issue/incomplete")) {
-  throw new Error("incomplete requires issue/incomplete label");
-}
-
-const duplicatesRaw = triage.duplicates ?? [];
-if (!Array.isArray(duplicatesRaw)) {
-  throw new Error("duplicates must be an array");
-}
-
-const duplicates = duplicatesRaw.slice(0, 5).map((duplicate, index) => {
-  if (!duplicate || typeof duplicate !== "object" || Array.isArray(duplicate)) {
-    throw new Error(`duplicates[${index}] must be an object`);
-  }
-
-  const number = Number(duplicate.number);
-  if (!Number.isInteger(number) || number <= 0 || number === issueNumber) {
-    throw new Error(`duplicates[${index}].number is invalid`);
-  }
-
-  const confidence = cleanText(duplicate.confidence, 20).toLowerCase();
-  if (!allowedConfidence.has(confidence)) {
-    throw new Error(`duplicates[${index}].confidence is invalid`);
-  }
-
-  const description = cleanText(duplicate.description, 180);
-  if (!description) {
-    throw new Error(`duplicates[${index}].description is required`);
-  }
-
-  const helpfulSuggestion = cleanText(duplicate.helpfulSuggestion, 220);
-  const helpfulCommentUrl = cleanText(duplicate.helpfulCommentUrl, 300);
-  if (helpfulSuggestion || helpfulCommentUrl) {
-    const expectedPrefix = `https://github.com/${repository}/issues/${number}#issuecomment-`;
-    if (!helpfulSuggestion || !helpfulCommentUrl.startsWith(expectedPrefix)) {
-      throw new Error(
-        `duplicates[${index}] helpful suggestion must include a matching issue comment URL`,
-      );
-    }
-  }
-
-  return {
-    number,
-    description,
-    confidence,
-    ...(helpfulSuggestion ? { helpfulSuggestion, helpfulCommentUrl } : {}),
-  };
-});
-
-const title =
-  typeof triage.title === "string" && triage.title.trim()
-    ? cleanText(triage.title, 80)
-    : null;
-
-const api = async (pathname, options = {}) => {
+const api = async (pathname, options = {}, { allowNotFound = false } = {}) => {
   const response = await fetch(`https://api.github.com/${pathname}`, {
     ...options,
     headers: {
@@ -122,6 +57,7 @@ const api = async (pathname, options = {}) => {
       ...options.headers,
     },
   });
+  if (response.status === 404 && allowNotFound) return null;
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 600);
     throw new Error(
@@ -131,7 +67,25 @@ const api = async (pathname, options = {}) => {
   return response;
 };
 
-if (labels.length > 0) {
+async function ensureLabelExists(name) {
+  const definition = LABEL_DEFINITIONS[name];
+  if (!definition) return;
+  const existing = await api(
+    `repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`,
+    {},
+    { allowNotFound: true },
+  );
+  if (existing) return;
+  await api(`repos/${owner}/${repo}/labels`, {
+    method: "POST",
+    body: JSON.stringify({ name, ...definition }),
+  });
+  console.log(`Created label: ${name}`);
+}
+
+async function addLabels(labels) {
+  if (labels.length === 0) return;
+  for (const label of labels) await ensureLabelExists(label);
   await api(`repos/${owner}/${repo}/issues/${issueNumber}/labels`, {
     method: "POST",
     body: JSON.stringify({ labels }),
@@ -139,7 +93,7 @@ if (labels.length > 0) {
   console.log(`Applied labels: ${labels.join(", ")}`);
 }
 
-if (title) {
+async function setTitle(title) {
   await api(`repos/${owner}/${repo}/issues/${issueNumber}`, {
     method: "PATCH",
     body: JSON.stringify({ title }),
@@ -147,40 +101,70 @@ if (title) {
   console.log(`Updated issue title to: ${title}`);
 }
 
-const comments = [];
-if (nonEnglish) {
-  comments.push(
-    "Hi! We're only able to respond to issues in English. Please translate your issue with ChatGPT so we can help you. Thanks!",
-  );
-}
-if (incomplete) {
-  comments.push(
-    "Hi! Please fill in all the fields in the issue so we can help you. A screenshot is very helpful!",
-  );
-}
-if (duplicates.length > 0) {
-  const duplicateLines = duplicates.map((duplicate) => {
-    const base = `- #${duplicate.number}: ${duplicate.description} (confidence: ${duplicate.confidence})`;
-    if (duplicate.helpfulSuggestion) {
-      return `${base}\n  You might want to try ${duplicate.helpfulSuggestion} based on this earlier [comment](${duplicate.helpfulCommentUrl}).`;
-    }
-    return base;
-  });
-  comments.push(
-    [
-      "This issue might be a duplicate of existing issues. Please check:",
-      "",
-      ...duplicateLines,
-      "",
-      "Feel free to ignore if none of these address your specific case.",
-    ].join("\n"),
-  );
-}
-
-for (const body of comments) {
+async function postComment(body) {
   await api(`repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
     method: "POST",
     body: JSON.stringify({ body }),
   });
+  console.log("Posted issue comment.");
 }
-console.log(`Posted ${comments.length} issue comment(s).`);
+
+function loadReleases() {
+  if (!contextPath || !fs.existsSync(contextPath)) return null;
+  try {
+    const context = JSON.parse(fs.readFileSync(contextPath, "utf8"));
+    return Array.isArray(context.releases)
+      ? context.releases.map((release) => release.version)
+      : null;
+  } catch (error) {
+    console.warn(`::warning::Could not read triage context: ${error.message}`);
+    return null;
+  }
+}
+
+function loadTriage() {
+  if (!fs.existsSync(triagePath)) {
+    return { ok: false, reason: `${triagePath} is missing` };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(triagePath, "utf8"));
+  } catch (error) {
+    return { ok: false, reason: `not valid JSON: ${error.message}` };
+  }
+  try {
+    const triage = normalizeTriage(raw, {
+      issueNumber,
+      repository,
+      author: issueAuthor,
+      releases: loadReleases(),
+    });
+    return { ok: true, triage };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+const result = loadTriage();
+if (!result.ok) {
+  console.error(
+    `::error::Issue triage produced no usable decision: ${result.reason}`,
+  );
+  await postComment(composeFallbackComment({ author: issueAuthor }));
+  await addLabels([FAILED_LABEL]);
+  process.exit(1);
+}
+
+const { triage } = result;
+await addLabels([
+  ...triage.labels,
+  ...(triage.needsHuman ? [NEEDS_HUMAN_LABEL] : []),
+]);
+if (triage.title) await setTitle(triage.title);
+
+const comment = composeComment(triage, { author: issueAuthor });
+if (comment) {
+  await postComment(comment);
+} else {
+  console.log("No comment posted: feature request without an existing route.");
+}

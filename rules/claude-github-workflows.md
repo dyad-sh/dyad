@@ -52,3 +52,13 @@ This has two consequences that bite in CI:
 4. **For untrusted-input jobs, combine all three.** `closed-issue-comment.yml` is the reference example: no checkout, defensive `rm` tripwire (in case checkout gets re-added), and an inline deny-all `settings:`.
 
 **Verify before merging a new claude-code-action workflow:** mentally compute the effective allowlist as `project .claude/settings.json` ∪ `allowed_tools input` ∪ `inline settings allow`, minus any `deny`. If that union is wider than the job actually needs — especially if the job handles untrusted input or checks out a fork — apply the mitigations above.
+
+## Scope `Write`/`Edit`/`Read` rules to workspace-relative paths
+
+`--allowedTools` path patterns without a leading `/` resolve relative to the checkout; a leading `/` is absolute. `claude-triage.yml` granted `Edit(/tmp/issue-triage/**)` while the decision file was `tmp/issue-triage/triage.json` inside the workspace, so every write was denied (`permission_denials_count: 13`, then `Claude did not write tmp/issue-triage/triage.json`, dyad-sh/dyad#4427) unless the model happened to use `Bash(echo:*)` redirection — 41 issues went unlabeled that way. Name the exact workspace-relative file and grant both `Write(...)` (new file) and `Edit(...)`: `Write(tmp/issue-triage/triage.json),Edit(tmp/issue-triage/triage.json)`.
+
+## Issue triage (`claude-triage.yml`) layout
+
+- The agent only writes `tmp/issue-triage/triage.json`; `scripts/issue-triage/triage-comment.mjs` validates it (enum fields, link-host allowlist, @-mention stripping, length caps, `fixedIn` must be a published release) and composes the single reporter-facing comment. To change what the bot tells reporters, add or edit an entry in `.github/prompts/triage-playbook.md` first; edit the prompt only for behavior rules.
+- Trusted context (current version, `gh release list` minus drafts, GitHub/Supabase `status.json`, playbook) comes from `scripts/issue-triage/prepare-context.mjs` in a trusted step and reaches the prompt through `TEMPLATE_VARS_PATH` in `render-template.mjs`; the apply job rebuilds it rather than trusting the agent's artifact.
+- Preview a decision without posting: `node scripts/issue-triage/preview.mjs scripts/issue-triage/examples/node-not-found.json`. A missing or invalid decision still posts a fallback comment and adds `triage/failed`; `apply-triage` runs with `if: always()` for that reason.

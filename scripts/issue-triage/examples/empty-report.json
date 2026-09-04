@@ -1,0 +1,18 @@
+{
+  "labels": ["bug", "issue/incomplete"],
+  "nonEnglish": false,
+  "incomplete": true,
+  "title": "[session report] No description (Dyad 1.9.0, Windows)",
+  "filedFromApp": true,
+  "assessment": "needs_info",
+  "summary": "Your report came through without a description, so we can't tell yet what went wrong. The logs show that Dyad's automatic update check failed, which is probably not what you noticed, but it does mean you're on an older version.",
+  "steps": [
+    "Download the latest version from https://www.dyad.sh/download and try again. A lot has been fixed since 1.9.0."
+  ],
+  "fixedIn": null,
+  "related": [],
+  "possiblyRelated": [],
+  "infoNeeded": ["description", "screenshot"],
+  "developerNotes": "- Empty session report. 1.9.0 (current 1.13.0), win32, auto:auto, Build mode. Screenshot status: none.\n- Only error in logs: Squirrel Update.exe CheckForUpdate returned HTTP 404. Background update check, tracked in #4466; not treated as the reported problem.\n- No defect identified from this report.",
+  "playbookMatch": "empty-report"
+}

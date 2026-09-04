@@ -10,13 +10,12 @@ jobs:
   triage:
     environment: ai-bots
     runs-on: ubuntu-latest
-    outputs:
-      triage_artifact: issue-triage-${{ github.event.issue.number }}
     permissions:
       contents: read
       issues: read
     env:
       TRIAGE_OUTPUT_PATH: tmp/issue-triage/triage.json
+      TRIAGE_CONTEXT_PATH: tmp/issue-triage-context/context.json
     steps:
       - name: Checkout trusted workflow repo
         uses: actions/checkout@v5
@@ -38,6 +37,18 @@ jobs:
         with:
           node-version: v24.13.1
 
+      # Trusted context (current version, release list, service status, playbook)
+      # is gathered here so the agent never needs network access of its own.
+      - name: Prepare triage context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TRIAGE_CONTEXT_PATH: ${{ env.TRIAGE_CONTEXT_PATH }}
+          PLAYBOOK_PATH: .github/prompts/triage-playbook.md
+        run: |
+          mkdir -p "$(dirname "$TRIAGE_OUTPUT_PATH")"
+          node scripts/issue-triage/prepare-context.mjs
+
       - name: Render triage prompt
         id: render-prompt
         env:
@@ -45,6 +56,7 @@ jobs:
           OUTPUT_NAME: prompt
           GITHUB_REPOSITORY: ${{ github.repository }}
           TRIAGE_OUTPUT_PATH: ${{ env.TRIAGE_OUTPUT_PATH }}
+          TEMPLATE_VARS_PATH: ${{ env.TRIAGE_CONTEXT_PATH }}
         run: node scripts/issue-agent/render-template.mjs
 
       - name: Triage issue
@@ -59,16 +71,26 @@ jobs:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-prompt.outputs.prompt }}
+          # Write/Edit are scoped to the single decision file, relative to the
+          # workspace. The old absolute /tmp pattern never matched the workspace
+          # path, so writes were denied unless the model happened to use echo.
           claude_args: |
             --model claude-opus-5
             --setting-sources user
-            --allowedTools "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Edit(/tmp/issue-triage/**)"
+            --allowedTools "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh release view:*),Bash(gh release list:*),Read(src/**),Read(docs/**),Read(.github/prompts/**),Read(tmp/issue-triage/**),Grep,Glob,Write(tmp/issue-triage/triage.json),Edit(tmp/issue-triage/triage.json)"
 
+      # Always leave a file behind so the apply job can post a fallback comment
+      # and label the issue when the agent produced nothing.
       - name: Verify issue triage output
+        id: verify
         run: |
-          if [[ ! -s "$TRIAGE_OUTPUT_PATH" ]]; then
+          if [[ -s "$TRIAGE_OUTPUT_PATH" ]]; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          else
             echo "::error::Claude did not write $TRIAGE_OUTPUT_PATH"
-            exit 1
+            mkdir -p "$(dirname "$TRIAGE_OUTPUT_PATH")"
+            echo '{"triageFailed": true, "reason": "agent wrote no output"}' > "$TRIAGE_OUTPUT_PATH"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload issue triage artifact
@@ -79,20 +101,28 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Fail the job if the agent produced no decision
+        if: steps.verify.outputs.failed == 'true'
+        run: exit 1
+
   apply-triage:
     environment: ai-bots
     needs: triage
+    # Run even when the agent failed so the reporter still gets a reply.
+    if: always() && needs.triage.result != 'cancelled' && needs.triage.result != 'skipped'
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
     env:
       TRIAGE_OUTPUT_PATH: tmp/issue-triage/triage.json
+      TRIAGE_CONTEXT_PATH: tmp/issue-triage-context/context.json
     steps:
       - name: Download issue triage artifact
+        continue-on-error: true
         uses: actions/download-artifact@v7
         with:
-          name: ${{ needs.triage.outputs.triage_artifact }}
+          name: issue-triage-${{ github.event.issue.number }}
           path: tmp/issue-triage
 
       - name: Checkout trusted workflow repo
@@ -103,6 +133,17 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
           path: tmp/issue-triage/trusted
+
+      # Rebuilt here from trusted code so the agent cannot feed the apply step a
+      # fabricated release list.
+      - name: Rebuild release index
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TRIAGE_CONTEXT_PATH: ${{ env.TRIAGE_CONTEXT_PATH }}
+          PACKAGE_JSON_PATH: tmp/issue-triage/trusted/package.json
+          FETCH_SERVICE_STATUS: "false"
+        run: node tmp/issue-triage/trusted/scripts/issue-triage/prepare-context.mjs
 
       - name: Create issue triage token
         id: app-token
@@ -117,5 +158,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
           TRIAGE_OUTPUT_PATH: ${{ env.TRIAGE_OUTPUT_PATH }}
+          TRIAGE_CONTEXT_PATH: ${{ env.TRIAGE_CONTEXT_PATH }}
         run: node tmp/issue-triage/trusted/scripts/issue-triage/apply-triage.mjs

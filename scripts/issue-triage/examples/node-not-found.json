@@ -1,0 +1,25 @@
+{
+  "labels": ["bug", "issue/incomplete"],
+  "nonEnglish": false,
+  "incomplete": true,
+  "title": "[session report] Node.js not found on Windows (Dyad 1.13.0)",
+  "filedFromApp": true,
+  "assessment": "environment_setup",
+  "summary": "Dyad can't find Node.js on your computer, which it needs to run your app. This is a setup problem rather than something wrong with your app, and it has a known fix.",
+  "steps": [
+    "Install Node.js from https://nodejs.org (pick the LTS version).",
+    "Quit Dyad completely and open it again.",
+    "If it still doesn't work, open **Settings**, find **Node.js Path Configuration**, and click **Browse for Node.js** to point Dyad at the folder where you installed it."
+  ],
+  "fixedIn": null,
+  "related": [
+    { "number": 3665, "outcome": "resolved_with_workaround" },
+    { "number": 3348, "outcome": "resolved_with_workaround" }
+  ],
+  "possiblyRelated": [
+    { "number": 3612, "note": "corrupted PATH entry, same symptom" }
+  ],
+  "infoNeeded": ["screenshot_not_attached"],
+  "developerNotes": "- 1.13.0 (current), win32, auto:free, Ask mode. Screenshot status: captured, no image attached.\n- Log: `'node' is not recognized as an internal or external command` from runShellCommand; managed pnpm install exited 1. Node Path reports C:\\Program Files\\nodejs\\node.exe, so Node is installed but not on PATH.\n- Confidence: high.",
+  "playbookMatch": "node-not-found-windows"
+}

@@ -406,3 +406,7 @@ If a `package-lock.json` conflict during rebase isn't a pure version-bump and yo
 Even without an explicit lockfile conflict, if a rebase brings in a new local package dependency and tests fail with Vite import resolution like `Failed to resolve import "pg" from "packages/ts-pg-schema-diff/..."`, run `npm install` before retrying tests so `node_modules` matches the rebased lockfile.
 
 This applies equally to **published npm dependencies added upstream when `package-lock.json` merged cleanly (no conflict at all)**: a clean rebase does not run `npm install` for you, so `npm run ts` fails with `Cannot find module '@xterm/...'` (or similar) for packages you never touched. Don't assume a missing-module typecheck error is a code problem — `grep` the package in `package.json` and `ls node_modules/<pkg>`; if it's listed but absent, run `npm install`. Rule of thumb: after any rebase whose merged lockfile differs from your pre-rebase `node_modules`, run `npm install` before `npm run ts` / tests.
+
+## Label creation is blocked locally
+
+`.claude/hooks/gh-permission-hook.py` denies `gh label create|edit|delete` ("Destructive gh command blocked: Label modification"). When a workflow needs a new label, have the workflow create it with its app token on first use (see `ensureLabelExists` in `scripts/issue-triage/apply-triage.mjs`) instead of creating it from the agent session.

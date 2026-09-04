@@ -63,37 +63,12 @@ async function matchesWorkspacePatterns(
   return false;
 }
 
-/**
- * Positive and negated workspace globs declared at `workspaceRoot`, from either
- * manifest. Empty when the directory is not a workspace root.
- */
-async function readWorkspacePatterns(workspaceRoot: string): Promise<{
+interface WorkspaceGlobs {
   positive: string[];
   ignored: string[];
-}> {
-  const collected: unknown[] = [];
-  try {
-    const parsed = parseYaml(
-      await fs.readFile(
-        path.join(workspaceRoot, "pnpm-workspace.yaml"),
-        "utf8",
-      ),
-    ) as { packages?: unknown } | null;
-    if (Array.isArray(parsed?.packages)) collected.push(...parsed.packages);
-  } catch {
-    // Not a pnpm workspace root; fall through to the npm manifest.
-  }
-  try {
-    const packageJson = JSON.parse(
-      await fs.readFile(path.join(workspaceRoot, "package.json"), "utf8"),
-    ) as { workspaces?: unknown[] | { packages?: unknown[] } };
-    const workspaces = Array.isArray(packageJson.workspaces)
-      ? packageJson.workspaces
-      : packageJson.workspaces?.packages;
-    if (Array.isArray(workspaces)) collected.push(...workspaces);
-  } catch {
-    // Not an npm workspace root either.
-  }
+}
+
+function splitWorkspacePatterns(collected: readonly unknown[]): WorkspaceGlobs {
   const patterns = collected.filter(
     (workspace): workspace is string => typeof workspace === "string",
   );
@@ -103,6 +78,63 @@ async function readWorkspacePatterns(workspaceRoot: string): Promise<{
       .filter((workspace) => workspace.startsWith("!"))
       .map((workspace) => workspace.slice(1)),
   };
+}
+
+/** `pnpm-workspace.yaml` `packages`, or null when there is no such manifest. */
+async function readPnpmWorkspacePatterns(
+  workspaceRoot: string,
+): Promise<WorkspaceGlobs | null> {
+  try {
+    const parsed = parseYaml(
+      await fs.readFile(
+        path.join(workspaceRoot, "pnpm-workspace.yaml"),
+        "utf8",
+      ),
+    ) as { packages?: unknown } | null;
+    return Array.isArray(parsed?.packages)
+      ? splitWorkspacePatterns(parsed.packages)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `package.json` `workspaces`, or null when the manifest declares none. */
+async function readNpmWorkspacePatterns(
+  workspaceRoot: string,
+): Promise<WorkspaceGlobs | null> {
+  try {
+    const packageJson = JSON.parse(
+      await fs.readFile(path.join(workspaceRoot, "package.json"), "utf8"),
+    ) as { workspaces?: unknown[] | { packages?: unknown[] } };
+    const workspaces = Array.isArray(packageJson.workspaces)
+      ? packageJson.workspaces
+      : packageJson.workspaces?.packages;
+    return Array.isArray(workspaces)
+      ? splitWorkspacePatterns(workspaces)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `workspaceRoot` declares a pnpm workspace. The two manifests are NOT
+ * interchangeable: npm cannot resolve members declared only in
+ * `pnpm-workspace.yaml`, so the bootstrap has to know which one is in play
+ * before choosing an invocation.
+ */
+export async function declaresPnpmWorkspace(
+  workspaceRoot: string,
+): Promise<boolean> {
+  return (await readPnpmWorkspacePatterns(workspaceRoot)) !== null;
+}
+
+/** Whether `workspaceRoot` declares npm/yarn workspaces in its `package.json`. */
+export async function declaresNpmWorkspaces(
+  workspaceRoot: string,
+): Promise<boolean> {
+  return (await readNpmWorkspacePatterns(workspaceRoot)) !== null;
 }
 
 /**
@@ -120,18 +152,31 @@ async function readWorkspacePatterns(workspaceRoot: string): Promise<{
 export async function findWorkspacePackageDirectories(
   workspaceRoot: string,
 ): Promise<string[]> {
-  const { positive, ignored } = await readWorkspacePatterns(workspaceRoot);
-  if (positive.length === 0) return [];
-  let matches: string[];
-  try {
-    matches = await glob(positive, {
-      cwd: workspaceRoot,
-      absolute: true,
-      follow: false,
-      ignore: ignored,
-    });
-  } catch {
-    return [];
+  // Each manifest is evaluated on its own and the results are UNIONED. Merging
+  // the pattern lists first would let a `!` negation from one manifest hide a
+  // member the other manifest still declares — and whichever manager runs, it
+  // installs that member and runs its lifecycle scripts, so a hidden member is
+  // a live credential source nothing withholds.
+  const manifests = await Promise.all([
+    readPnpmWorkspacePatterns(workspaceRoot),
+    readNpmWorkspacePatterns(workspaceRoot),
+  ]);
+  const matches = new Set<string>();
+  for (const manifest of manifests) {
+    if (!manifest || manifest.positive.length === 0) continue;
+    try {
+      for (const match of await glob(manifest.positive, {
+        cwd: workspaceRoot,
+        absolute: true,
+        follow: false,
+        ignore: manifest.ignored,
+      })) {
+        matches.add(match);
+      }
+    } catch {
+      // A malformed glob in one manifest must not lose the other's members.
+      continue;
+    }
   }
   const directories: string[] = [];
   for (const match of matches) {

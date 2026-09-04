@@ -4,7 +4,11 @@ import path from "node:path";
 import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
-import { findPackageManagerRoot } from "@/ipc/services/isolated_package_install";
+import {
+  declaresNpmWorkspaces,
+  declaresPnpmWorkspace,
+  findPackageManagerRoot,
+} from "@/ipc/services/isolated_package_install";
 import {
   PNPM_INSTALL_POLICY_ARGS,
   getPackageManagerCommandEnv,
@@ -74,7 +78,14 @@ async function playwrightInstallCommand(appPath: string): Promise<{
   // server runs against, workspace membership or not.
   const lockRoot = ownsLockfile ? appPath : installRoot;
   const viaWorkspaceRoot = lockRoot !== appPath;
-  if (has(lockRoot, "pnpm-lock.yaml")) {
+  // A workspace that has never been installed has no lockfile at all, so the
+  // lockfile check below cannot tell pnpm from npm. The DECLARATION can: npm
+  // has no way to resolve members declared only in `pnpm-workspace.yaml`, so
+  // falling through to `npm install -w <member>` there would fail outright.
+  if (
+    has(lockRoot, "pnpm-lock.yaml") ||
+    (viaWorkspaceRoot && (await declaresPnpmWorkspace(lockRoot)))
+  ) {
     return {
       command: "pnpm",
       args: [
@@ -104,6 +115,8 @@ async function playwrightInstallCommand(appPath: string): Promise<{
     };
   }
   // npm (package-lock.json) or unknown — mirror the app runtime's npm install.
+  const useNpmWorkspaceFlag =
+    viaWorkspaceRoot && (await declaresNpmWorkspaces(lockRoot));
   return {
     command: "npm",
     args: [
@@ -113,8 +126,10 @@ async function playwrightInstallCommand(appPath: string): Promise<{
       // npm, unlike pnpm and yarn, does not detect the workspace from the cwd:
       // run inside a member it would create a nested lockfile and node_modules
       // instead of updating the root. `-w <path>` from the root is the
-      // documented way to add a dependency to one member.
-      ...(viaWorkspaceRoot
+      // documented way to add a dependency to one member — but only when npm
+      // itself declares that member, so the flag is gated on the declaration
+      // rather than on this add merely happening above the app.
+      ...(useNpmWorkspaceFlag
         ? ["-w", path.relative(lockRoot, appPath).split(path.sep).join("/")]
         : []),
       // Match the app runtime's npm install (app_runtime_service): tolerate the
@@ -127,8 +142,11 @@ async function playwrightInstallCommand(appPath: string): Promise<{
       "--no-fund",
       "--progress=false",
     ],
-    cwd: lockRoot,
-    viaWorkspaceRoot,
+    // Without the workspace flag npm has no idea the member exists, so running
+    // at the root would add the dependency to the WRONG package. Fall back to
+    // the app directory, which is what the pre-workspace behaviour did.
+    cwd: useNpmWorkspaceFlag ? lockRoot : appPath,
+    viaWorkspaceRoot: useNpmWorkspaceFlag,
   };
 }
 

@@ -28,7 +28,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
 > = {
   name: "get_database_table_schema",
   description:
-    "Get database table schema as PostgreSQL SQL/DDL. If tableName is provided, returns schema for that specific table and relevant constraints/indexes/triggers/policies. If omitted, returns schema for all public tables.",
+    "Get database table schema as PostgreSQL SQL/DDL. If tableName is provided, returns schema for that specific table and relevant constraints/indexes/triggers/policies. If omitted, returns schema for all application tables. Neon results include both the public schema and the neon_auth schema used by Better Auth.",
   inputSchema: getDatabaseTableSchemaSchema,
   defaultConsent: "always",
   isEnabled: canUseLinkedDatabaseTools,

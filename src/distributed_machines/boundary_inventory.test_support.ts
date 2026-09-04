@@ -280,6 +280,9 @@ export const nonRemoteDispatchOrEnqueueInventory = [
   owned("coolify_deploy/controller.ts", 7),
   owned("coolify_setup/controller.ts", 6),
   owned("hooks/useRunApp.ts", 1),
+  // Runtime output delivery during an already-locked restart is local
+  // presentation plumbing, not distributed-machine dispatch.
+  owned("ipc/services/app_run_actor_service.ts", 1),
   owned("ipc/services/app_runtime_service.ts", 2),
   owned("ipc/services/app_runtime_transport.ts", 1),
   owned("ipc/services/main_app_runtime_output.ts", 1),

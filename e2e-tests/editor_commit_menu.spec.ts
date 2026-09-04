@@ -109,6 +109,10 @@ test("editor commit menu commits multiple staged files at once", async ({
 }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("foo");
+  // CodeView intentionally stays in its runtime-loading state while the first
+  // app start installs dependencies. That install can exceed the UI timeout
+  // on Windows, so wait on the underlying readiness signal first.
+  await po.appManagement.ensurePnpmInstall();
 
   const appPath = await po.appManagement.getCurrentAppPath();
   if (!appPath) {

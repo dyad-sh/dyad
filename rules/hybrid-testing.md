@@ -228,6 +228,11 @@ before the transport emits `chat:stream:end`. If a test asserts the latter
 channel, also await `harness.waitForEvent("chat:stream:end")` before inspecting
 the recorded bridge events.
 
+When a pause/resume test must cancel immediately after resumed work starts,
+snapshot `harness.eventCount("chat:stream:start")`, resume, wait for that count
+to advance, and then cancel. Waiting for queue UI to render first can let a fast
+fake response drain the queue on a loaded runner before cancellation occurs.
+
 When a hybrid suite shares its harness app between tests, keep any test that
 deletes that app last. Creating a later chat against the deleted app fails the
 database foreign-key constraint before the behavior under test can run.

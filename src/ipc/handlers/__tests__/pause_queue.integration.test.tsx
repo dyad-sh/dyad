@@ -209,11 +209,17 @@ describe("pause queue (integration)", () => {
     await waitForStreamTermination();
     expect(queueHeader.textContent).toMatch(queuedCountText(3));
 
-    // Resuming clears the pause latch but dispatches only the first item, so
-    // the remaining prompts are unprotected until the next stop re-parks them.
+    // Resuming clears the pause latch and dispatches only the first item. Gate
+    // on the new stream itself, then stop immediately: waiting for the queue's
+    // render first lets a fast response drain the remaining prompts on a busy
+    // runner before the cancellation click is delivered.
+    const streamStartCount = harness.eventCount("chat:stream:start");
     fireEvent.click(screen.getByRole("button", { name: /resume queue/i }));
     await waitFor(
-      () => expect(queueHeader.textContent).toMatch(queuedCountText(2)),
+      () =>
+        expect(harness.eventCount("chat:stream:start")).toBeGreaterThan(
+          streamStartCount,
+        ),
       { timeout: 20_000 },
     );
 

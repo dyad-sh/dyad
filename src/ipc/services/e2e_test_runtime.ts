@@ -410,7 +410,7 @@ export async function buildE2eTestStartCommand({
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new Error("Test run stopped."));
+      reject(new DyadError("Test run stopped.", DyadErrorKind.UserCancelled));
       return;
     }
     // `{ once: true }` only removes the listener when it FIRES. The readiness
@@ -419,7 +419,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
     // on the run's signal, and Node logs MaxListenersExceededWarning past 10.
     const onAbort = () => {
       clearTimeout(timer);
-      reject(new Error("Test run stopped."));
+      reject(new DyadError("Test run stopped.", DyadErrorKind.UserCancelled));
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
@@ -470,7 +470,8 @@ async function waitForReady({
   // A port clash is the exception: the retry loop turns it into a fresh port,
   // and only a repeat failure reaches the user.
   const assertStillStarting = () => {
-    if (signal?.aborted) throw new Error("Test run stopped.");
+    if (signal?.aborted)
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     const startError = spawnError();
     if (startError) {
       if (reportsPortInUse(startError.message, port)) {
@@ -605,7 +606,8 @@ async function startE2eTestRuntimeOnce({
   onOutput?: (chunk: string) => void;
   excludePorts?: ReadonlySet<number>;
 }): Promise<E2eTestRuntime> {
-  if (signal?.aborted) throw new Error("Test run stopped.");
+  if (signal?.aborted)
+    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
   const port = await allocateE2eTestPort(excludePorts);
   // Every exit from here on must hand the port back. Without this, anything
   // that throws before the try/catch below — a workspace read, the pnpm version
@@ -724,7 +726,24 @@ async function startServerOnPort({
           if (child.exitCode === null && child.signalCode === null) {
             return false;
           }
-          return (await probePort(port)) !== null;
+          // `probePort` rejects for any bind errno it did not expect (and for a
+          // failed `server.close`). Contained HERE rather than only at the call
+          // sites, which now log a rejection instead of dropping it: the
+          // contract of this function is that the caller decides whether to
+          // DELETE the sandbox from the boolean it returns, and `stopPromise`
+          // memoizes — so one unexpected errno would throw away that verdict
+          // and make every later `stop()` throw too, on the one path that has
+          // to be reliable before the workspace is removed. A probe that could
+          // not answer is not a confirmation, which is exactly what `false`
+          // means here.
+          try {
+            return (await probePort(port)) !== null;
+          } catch (error) {
+            logger.warn(
+              `Could not probe port ${port} to confirm the test server stopped; treating it as still running: ${error}`,
+            );
+            return false;
+          }
         };
         // `killProcess` resolves on its own 5s timeout with the tree still
         // alive, and the caller deletes the sandbox — this tree's cwd — the

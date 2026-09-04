@@ -220,14 +220,31 @@ function pathIsInside(rootPath: string, candidatePath: string): boolean {
   );
 }
 
+const NO_EXCLUDED_PACKAGE_PATHS: ReadonlySet<string> = new Set();
+
 function isExcludedRelativePath(
   normalized: string,
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
+  /**
+   * Repo-relative generated-output roots belonging to OTHER package roots in
+   * the repository, resolved once by `collectPackageAnchoredExcludedPaths`.
+   * Whole paths, not names: matching a bare name at every depth is what
+   * `rules/local-agent-tools.md` forbids, because `app/out/page.tsx` is source.
+   */
+  excludedPackagePaths: ReadonlySet<string> = NO_EXCLUDED_PACKAGE_PATHS,
 ): boolean {
   const segments = normalized.split("/");
   if (segments.includes(".git") || alwaysExcludedRootEnd(segments) >= 0) {
     return true;
+  }
+  for (const excludedPath of excludedPackagePaths) {
+    if (
+      normalized === excludedPath ||
+      normalized.startsWith(`${excludedPath}/`)
+    ) {
+      return true;
+    }
   }
   const normalizedTargetPath = targetRelativePath
     ? path.posix.normalize(targetRelativePath)
@@ -254,6 +271,7 @@ function normalizeRelativePath(
   rawPath: string,
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
+  excludedPackagePaths?: ReadonlySet<string>,
 ): string | null {
   const withoutTrailingSlash = rawPath.replace(/\/$/, "");
   const normalized = path.posix.normalize(withoutTrailingSlash);
@@ -270,6 +288,7 @@ function normalizeRelativePath(
     normalized,
     targetRelativePath,
     excludedTargetRootNames,
+    excludedPackagePaths,
   )
     ? null
     : normalized;
@@ -279,6 +298,7 @@ export function parseGitOverlayPaths(
   statusOutput: string,
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
+  excludedPackagePaths?: ReadonlySet<string>,
 ): string[] {
   const fields = statusOutput.split("\0");
   const paths = new Set<string>();
@@ -290,6 +310,7 @@ export function parseGitOverlayPaths(
       field.slice(3),
       targetRelativePath,
       excludedTargetRootNames,
+      excludedPackagePaths,
     );
     if (currentPath) paths.add(currentPath);
     if (status.includes("R") || status.includes("C")) {
@@ -297,6 +318,7 @@ export function parseGitOverlayPaths(
         fields[index + 1] ?? "",
         targetRelativePath,
         excludedTargetRootNames,
+        excludedPackagePaths,
       );
       if (previousPath) paths.add(previousPath);
       index += 1;
@@ -325,7 +347,8 @@ async function overlayPath(
   relativePath: string,
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  excludedPackagePaths: ReadonlySet<string>,
 ): Promise<void> {
   throwIfCancelled(signal);
   const nativeRelativePath = toNativePath(relativePath);
@@ -347,6 +370,7 @@ async function overlayPath(
       signal,
       targetRelativePath,
       excludedTargetRootNames,
+      excludedPackagePaths,
     });
     return;
   }
@@ -364,6 +388,7 @@ async function overlayPath(
         candidateRelativePath,
         targetRelativePath,
         excludedTargetRootNames,
+        excludedPackagePaths,
       );
     },
   });
@@ -375,7 +400,8 @@ async function overlayWorkspaceState(
   workspaceRoot: string,
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  excludedPackagePaths: ReadonlySet<string> = NO_EXCLUDED_PACKAGE_PATHS,
 ): Promise<void> {
   const status = await runWorkspaceGit(
     sourceRoot,
@@ -394,6 +420,7 @@ async function overlayWorkspaceState(
     status.stdout,
     targetRelativePath,
     excludedTargetRootNames,
+    excludedPackagePaths,
   );
   const realSourceRoot = await fs.realpath(sourceRoot);
   for (
@@ -413,6 +440,7 @@ async function overlayWorkspaceState(
             targetRelativePath,
             excludedTargetRootNames,
             signal,
+            excludedPackagePaths,
           ),
         ),
     );
@@ -427,6 +455,7 @@ export async function copyGitOverlayEntriesOnWindows({
   signal,
   targetRelativePath = "",
   excludedTargetRootNames = new Set<string>(),
+  excludedPackagePaths = NO_EXCLUDED_PACKAGE_PATHS,
 }: {
   sourceRoot: string;
   realSourceRoot: string;
@@ -435,6 +464,7 @@ export async function copyGitOverlayEntriesOnWindows({
   signal?: AbortSignal;
   targetRelativePath?: string;
   excludedTargetRootNames?: ReadonlySet<string>;
+  excludedPackagePaths?: ReadonlySet<string>;
 }): Promise<void> {
   const pendingPaths = [...initialPaths];
   while (pendingPaths.length > 0) {
@@ -450,6 +480,7 @@ export async function copyGitOverlayEntriesOnWindows({
           signal,
           targetRelativePath,
           excludedTargetRootNames,
+          excludedPackagePaths,
         }),
       ),
     );
@@ -473,6 +504,7 @@ async function copyWindowsEntry({
   signal,
   targetRelativePath,
   excludedTargetRootNames,
+  excludedPackagePaths,
 }: {
   sourceRoot: string;
   realSourceRoot: string;
@@ -481,6 +513,7 @@ async function copyWindowsEntry({
   signal?: AbortSignal;
   targetRelativePath: string;
   excludedTargetRootNames: ReadonlySet<string>;
+  excludedPackagePaths: ReadonlySet<string>;
 }): Promise<string[]> {
   throwIfCancelled(signal);
   const sourceRelativePath = path
@@ -492,6 +525,7 @@ async function copyWindowsEntry({
       sourceRelativePath,
       targetRelativePath,
       excludedTargetRootNames,
+      excludedPackagePaths,
     )
   ) {
     return [];
@@ -868,15 +902,15 @@ async function removeAlwaysExcludedRoots(
   sourceRepoPath: string,
   worktreePath: string,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<string[]> {
   const tracked = await runWorkspaceGit(
     sourceRepoPath,
     ["ls-files", "-z"],
     signal,
   );
+  const trackedPaths = tracked.stdout.split("\0").filter(Boolean);
   const roots = new Set<string>();
-  for (const trackedPath of tracked.stdout.split("\0")) {
-    if (!trackedPath) continue;
+  for (const trackedPath of trackedPaths) {
     const segments = trackedPath.split("/");
     const index = alwaysExcludedRootEnd(segments);
     if (index >= 0) roots.add(segments.slice(0, index + 1).join("/"));
@@ -889,6 +923,66 @@ async function removeAlwaysExcludedRoots(
       }),
     ),
   );
+  // Returned so the caller can derive the repository's package roots from the
+  // same listing rather than paying for a second full `ls-files`.
+  return trackedPaths;
+}
+
+/**
+ * Generated-output roots belonging to the repository's OTHER package roots.
+ *
+ * `excludedTargetRootNames` is anchored at the app directory, but the overlay
+ * runs from the repository top level: in a monorepo a sibling package's ignored
+ * `.next`, `dist`, `coverage` or `test-results` is neither excluded nor removed,
+ * and gets copied into the sandbox on every single run. That is the acceptance
+ * criterion this feature is measured against ("filtered workspace creation is
+ * faster than test-server startup"), paid on every user-triggered run.
+ *
+ * Anchored at package roots rather than matched at any depth, which is what
+ * `rules/local-agent-tools.md` forbids: `app/out/page.tsx` is application
+ * source, and `app/` is not a package root. A directory with its own
+ * `package.json` is the one place these names unambiguously mean build output.
+ *
+ * A root Git tracks content under is preserved, exactly as
+ * `removeExcludedTargetRoots` preserves the app's own: committed output is a
+ * build INPUT, and dropping it from the overlay would pin the sandbox to its
+ * `HEAD` contents and silently discard every live edit beneath it.
+ */
+export function collectPackageAnchoredExcludedPaths({
+  trackedPaths,
+  targetRelativePath,
+  excludedTargetRootNames,
+}: {
+  trackedPaths: readonly string[];
+  targetRelativePath: string;
+  excludedTargetRootNames: ReadonlySet<string>;
+}): ReadonlySet<string> {
+  if (excludedTargetRootNames.size === 0) return NO_EXCLUDED_PACKAGE_PATHS;
+  const packageRoots = new Set<string>();
+  for (const trackedPath of trackedPaths) {
+    if (!trackedPath.endsWith("package.json")) continue;
+    const separatorIndex = trackedPath.lastIndexOf("/");
+    const root = separatorIndex < 0 ? "" : trackedPath.slice(0, separatorIndex);
+    // The app's own roots are already handled — and removed rather than merely
+    // filtered — by `removeExcludedTargetRoots`.
+    if (root === targetRelativePath) continue;
+    // An always-excluded ancestor (a committed `node_modules`) is dropped
+    // wholesale; the manifests inside it are not package roots of this repo.
+    if (alwaysExcludedRootEnd(root.split("/")) >= 0) continue;
+    packageRoots.add(root);
+  }
+  const excluded = new Set<string>();
+  for (const root of packageRoots) {
+    for (const name of excludedTargetRootNames) {
+      const candidate = root ? `${root}/${name}` : name;
+      const tracked = trackedPaths.some(
+        (trackedPath) =>
+          trackedPath === candidate || trackedPath.startsWith(`${candidate}/`),
+      );
+      if (!tracked) excluded.add(candidate);
+    }
+  }
+  return excluded;
 }
 
 async function materializeInitializedSubmodules({
@@ -1003,7 +1097,7 @@ async function materializeInitializedSubmodules({
     // Against the submodule's own index. The parent only records a gitlink, so
     // the top-level sweep cannot see a `node_modules` or `.venv` committed
     // *inside* this submodule — and Node resolves up through it just the same.
-    await removeAlwaysExcludedRoots(
+    const submoduleTrackedPaths = await removeAlwaysExcludedRoots(
       realSubmodulePath,
       snapshotSubmodulePath,
       signal,
@@ -1014,6 +1108,13 @@ async function materializeInitializedSubmodules({
       childTargetRelativePath,
       excludedTargetRootNames,
       signal,
+      // From the submodule's OWN index: its package roots are invisible to the
+      // parent, which records only a gitlink.
+      collectPackageAnchoredExcludedPaths({
+        trackedPaths: submoduleTrackedPaths,
+        targetRelativePath: childTargetRelativePath,
+        excludedTargetRootNames,
+      }),
     );
     await materializeInitializedSubmodules({
       sourceRepoPath: realSubmodulePath,
@@ -1091,13 +1192,23 @@ export async function createGitOverlayWorkspace({
       excludedTargetRootNames,
       signal,
     );
-    await removeAlwaysExcludedRoots(sourceRepoPath, worktreePath, signal);
+    const trackedPaths = await removeAlwaysExcludedRoots(
+      sourceRepoPath,
+      worktreePath,
+      signal,
+    );
+    const excludedPackagePaths = collectPackageAnchoredExcludedPaths({
+      trackedPaths,
+      targetRelativePath: targetRelativePosix,
+      excludedTargetRootNames,
+    });
     await overlayWorkspaceState(
       sourceRepoPath,
       worktreePath,
       targetRelativePosix,
       overlayExcludedRootNames,
       signal,
+      excludedPackagePaths,
     );
     await materializeInitializedSubmodules({
       sourceRepoPath,

@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
@@ -12,6 +13,7 @@ import {
   removeGitOverlayWorkspace,
 } from "@/ipc/services/git_overlay_workspace";
 import {
+  findWorkspacePackageDirectories,
   resolvePackageManager,
   runCleanPackageInstall,
   type IsolatedPackageManager,
@@ -23,6 +25,7 @@ import {
   isDatabaseEnvKey,
   withoutInheritedDatabaseEnv,
 } from "@/ipc/utils/sandbox_env";
+import { forceKillProcessTree } from "@/ipc/utils/process_manager";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("e2e_test_workspace");
@@ -133,7 +136,8 @@ export async function createE2eTestWorkspace({
   hasCustomCommands?: boolean;
   signal?: AbortSignal;
 }): Promise<E2eTestWorkspace> {
-  if (signal?.aborted) throw new Error("Test run stopped.");
+  if (signal?.aborted)
+    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
 
   const sandboxRoot = await realpathRoot(
     path.join(getUserDataPath(), E2E_TEST_SANDBOX_DIR),
@@ -184,7 +188,8 @@ export async function createE2eTestWorkspace({
   };
 
   try {
-    if (signal?.aborted) throw new Error("Test run stopped.");
+    if (signal?.aborted)
+      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     let packageManager: IsolatedPackageManager | undefined;
     let dependencyInstallPath: string | undefined;
     let usesWorkspaceInstallRoot = false;
@@ -249,9 +254,32 @@ export async function createE2eTestWorkspace({
  * thing they must not reach. A script that genuinely needs the database fails
  * loudly, which is the right way round.
  */
-/** Rewrite `.env.local` without the database credentials; return the original. */
-async function withheldEnvFile(directory: string): Promise<string | null> {
-  const envPath = path.join(directory, ENV_FILE_NAME);
+/**
+ * Every dotenv file an install script may load, not just the one Dyad writes.
+ *
+ * `ENV_FILE_NAME` is the only file provider isolation rewrites, but a
+ * `postinstall` that calls `dotenv.config()` reads `.env` by default, and
+ * framework loaders (Next.js, Vite) walk a whole cascade. A credential left in
+ * any of them is read from disk by the script regardless of what the process
+ * environment says — which is why sanitizing `process.env` alone is not enough.
+ */
+const DOTENV_FILE_NAMES: readonly string[] = [
+  ".env",
+  ENV_FILE_NAME,
+  ".env.development",
+  ".env.development.local",
+  ".env.test",
+  ".env.test.local",
+  ".env.production",
+  ".env.production.local",
+];
+
+/** Rewrite one dotenv file without the database credentials; return the original. */
+async function withheldEnvFile(
+  directory: string,
+  fileName: string,
+): Promise<string | null> {
+  const envPath = path.join(directory, fileName);
   let original: string;
   try {
     original = await fs.readFile(envPath, "utf8");
@@ -275,31 +303,52 @@ async function withheldEnvFile(directory: string): Promise<string | null> {
 
 /**
  * Run `install` with the workspace's database credentials withheld from every
- * directory in `directories`, and put them back afterwards.
+ * dotenv file in every directory the install can reach, and put them back
+ * afterwards.
  *
- * Both the app directory and the resolved install root need this: a monorepo's
- * root `postinstall` reads the ROOT `.env.local`, which no provider isolation
- * rewrites — so protecting only the app's would leave that script pointed at
- * the live database.
+ * The app directory alone is not the reachable set. A monorepo's root
+ * `postinstall` reads the ROOT dotenv files, which no provider isolation
+ * rewrites, and both package managers install *every* workspace member from
+ * that root and run each member's lifecycle scripts — so a sibling package's
+ * copied `.env` is a live credential source for this install too.
+ *
+ * `settle` runs before anything is restored. `spawnStreaming` starts a
+ * `treeKill` and returns without waiting for the tree on a Stop or a timeout,
+ * so restoring immediately would hand the real credentials back to an install
+ * script that is still running — and `rules/app-operation-coordination.md`
+ * requires the barrier before the caller can go on to delete the workspace and
+ * release its claim.
  */
 async function withWithheldDatabaseEnv<T>(
   directories: readonly string[],
   install: () => Promise<T>,
+  settle?: () => Promise<void>,
 ): Promise<T> {
   const restore = new Map<string, string>();
   try {
     for (const directory of new Set(directories)) {
-      const original = await withheldEnvFile(directory);
-      if (original !== null) restore.set(directory, original);
+      for (const fileName of DOTENV_FILE_NAMES) {
+        const original = await withheldEnvFile(directory, fileName);
+        if (original !== null) {
+          restore.set(path.join(directory, fileName), original);
+        }
+      }
     }
     return await install();
   } finally {
-    for (const [directory, original] of restore) {
+    if (settle) {
+      await settle().catch((error) =>
+        logger.warn(
+          `Failed to confirm the sandbox install had stopped before restoring its environment: ${error}`,
+        ),
+      );
+    }
+    for (const [envPath, original] of restore) {
       await fs
-        .writeFile(path.join(directory, ENV_FILE_NAME), original, "utf8")
+        .writeFile(envPath, original, "utf8")
         .catch((error) =>
           logger.warn(
-            `Failed to restore the sandbox environment in ${directory} after installing: ${error}`,
+            `Failed to restore the sandbox environment in ${envPath} after installing: ${error}`,
           ),
         );
     }
@@ -324,16 +373,26 @@ export async function installE2eTestWorkspaceDependencies({
 }): Promise<void> {
   const { dependencyInstallPath, packageManager } = workspace;
   if (!dependencyInstallPath || !packageManager) return;
-  if (signal?.aborted) throw new Error("Test run stopped.");
+  if (signal?.aborted)
+    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
 
   const startedAt = Date.now();
+  // Every package this one install touches. The manager installs all workspace
+  // members from the root and runs each one's lifecycle scripts, so a sibling's
+  // dotenv files are as reachable from this install as the app's own.
+  const installedPackagePaths = [
+    dependencyInstallPath,
+    ...(await findWorkspacePackageDirectories(dependencyInstallPath)),
+  ];
+  let installChild: ChildProcess | undefined;
   const installResult = await withWithheldDatabaseEnv(
     withholdDatabaseEnv
-      ? [workspace.workspacePath, dependencyInstallPath]
-      : // The install root's own `.env.local` is never rewritten by provider
-        // isolation, so a monorepo root script would read live credentials even
-        // for a Neon app whose app-level env WAS swapped.
-        [dependencyInstallPath].filter(
+      ? [workspace.workspacePath, ...installedPackagePaths]
+      : // The install root's and the siblings' own dotenv files are never
+        // rewritten by provider isolation, so a monorepo root or sibling script
+        // would read live credentials even for a Neon app whose app-level env
+        // WAS swapped.
+        installedPackagePaths.filter(
           (directory) => directory !== workspace.workspacePath,
         ),
     () =>
@@ -355,11 +414,25 @@ export async function installE2eTestWorkspaceDependencies({
         // 15 minutes — alive past the quit, holding the sandbox directory as its
         // cwd. That is exactly the state that makes the next launch's orphan sweep
         // fail on Windows.
-        onProcess: trackE2eTestProcess,
+        onProcess: (child) => {
+          installChild = child;
+          trackE2eTestProcess(child);
+        },
       }),
+    // On a Stop or a timeout `spawnStreaming` fires `treeKill` and returns
+    // immediately, so the install tree can outlive this call. Nothing may
+    // restore the live credentials — or delete the workspace afterwards — while
+    // a lifecycle script is still running in it.
+    async () => {
+      if (!installChild || installChild.pid === undefined) return;
+      if (installChild.exitCode !== null || installChild.signalCode !== null) {
+        return;
+      }
+      await forceKillProcessTree(installChild);
+    },
   );
   if (installResult.aborted || signal?.aborted) {
-    throw new Error("Test run stopped.");
+    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
   }
   const output = installOutputTail(installResult.stdout, installResult.stderr);
   if (installResult.timedOut) {

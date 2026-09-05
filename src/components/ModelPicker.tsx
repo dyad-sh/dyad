@@ -13,6 +13,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useSetAtom } from "jotai";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useClaudeCodeStatus } from "@/hooks/useClaudeCodeStatus";
+import { BackendSwitchDialog } from "@/components/BackendSwitchDialog";
+import {
+  CLAUDE_CODE_CHARGE_DISCLOSURE,
+  ClaudeCodeChargeDialog,
+} from "@/components/ClaudeCodeChargeDialog";
+import {
+  CLAUDE_CODE_EFFORT_SETTINGS,
+  CLAUDE_CODE_MODEL_OPTIONS,
+  CLAUDE_CODE_PROVIDER_ID,
+  getBackendForModel,
+  getClaudeCodeModelDisplayName,
+  isClaudeCodeModel,
+  wouldChangeChatBackend,
+  type ClaudeCodeModelOption,
+} from "@/shared/chat_backend";
+import { showError as showErrorToast } from "@/lib/toast";
 import { usePostHog } from "posthog-js/react";
 import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
@@ -86,6 +105,9 @@ const PRO_PILL_CLASS = cn(
   PILL_CLASS,
   "bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white",
 );
+
+const SECTION_LABEL_CLASS =
+  "px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-medium text-muted-foreground";
 
 const DYAD_PRO_UPGRADE_BASE_URL =
   "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app";
@@ -182,6 +204,18 @@ export function ModelPicker() {
   const hasEstablishedChat = Boolean(
     chat && (chat.modelSelection || chat.messages.length > 0),
   );
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const [open, setOpen] = useState(false);
+  const claudeCode = useClaudeCodeStatus({ enabled: open });
+  // Pending selection that would move the current chat to another backend.
+  const [backendSwitchTarget, setBackendSwitchTarget] = useState<
+    (ModelSelectParams & { label: string }) | null
+  >(null);
+  const [isStartingNewChat, setIsStartingNewChat] = useState(false);
+  // Selection waiting on the first-use Dyad charge acknowledgement.
+  const [chargeDialogPending, setChargeDialogPending] = useState<
+    (ModelSelectParams & { label: string }) | null
+  >(null);
   const performModelSelect = async ({
     model,
     catalogModel,
@@ -255,7 +289,6 @@ export function ModelPicker() {
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   };
 
-  const [open, setOpen] = useState(false);
   const [unlockTarget, setUnlockTarget] = useState<{
     providerId: string;
     model: LanguageModel;
@@ -340,6 +373,9 @@ export function ModelPicker() {
   const getModelDisplayName = () => {
     if (isAutoSidekickModel(selectedModel)) {
       return AUTO_SIDEKICK_DISPLAY_NAME;
+    }
+    if (isClaudeCodeModel(selectedModel)) {
+      return getClaudeCodeModelDisplayName(selectedModel.name);
     }
     if (selectedModel.provider === "ollama") {
       return (
@@ -630,6 +666,121 @@ export function ModelPicker() {
   const onModelSelect = (params: ModelSelectParams) =>
     performModelSelect({ ...params, recentModels: normalizedRecentModels });
 
+  /**
+   * Route every selection through the backend rule: changing the model
+   * inside the current backend applies immediately, while a selection that
+   * would move an established chat to a different backend asks the user to
+   * start a new chat instead (the current chat is never switched or cleared).
+   */
+  const selectWithBackendGuard = (
+    params: ModelSelectParams & { label: string },
+  ) => {
+    if (
+      hasEstablishedChat &&
+      chat &&
+      wouldChangeChatBackend(chat, params.model)
+    ) {
+      setOpen(false);
+      setBackendSwitchTarget(params);
+      return;
+    }
+    void onModelSelect(params);
+  };
+
+  const selectClaudeCodeModel = (
+    option: ClaudeCodeModelOption,
+    effortLevel?: string,
+  ) => {
+    const params: ModelSelectParams & { label: string } = {
+      model: { provider: CLAUDE_CODE_PROVIDER_ID, name: option.name },
+      catalogModel: {
+        apiName: option.name,
+        displayName: option.displayName,
+        description: option.description,
+        effortSettings: {
+          defaultEffortLevel: CLAUDE_CODE_EFFORT_SETTINGS.defaultEffortLevel,
+          possibleEffortLevels: [
+            ...CLAUDE_CODE_EFFORT_SETTINGS.possibleEffortLevels,
+          ],
+        },
+        type: "cloud",
+      },
+      effortLevel,
+      rememberEffort: effortLevel !== undefined,
+      label: `Claude Code (${option.displayName})`,
+    };
+    setOpen(false);
+    if (!claudeCode.status?.chargeAcknowledged) {
+      // Explain the separate Dyad charge before the first subscription use.
+      setChargeDialogPending(params);
+      return;
+    }
+    selectWithBackendGuard(params);
+  };
+
+  const acknowledgeChargeAndContinue = async () => {
+    const pending = chargeDialogPending;
+    if (!pending) return;
+    try {
+      await claudeCode.acknowledgeCharge();
+      posthog.capture("claude-code:charge-acknowledged");
+      setChargeDialogPending(null);
+      selectWithBackendGuard(pending);
+    } catch (error) {
+      showErrorToast(
+        `Could not save the acknowledgement: ${(error as Error).message}`,
+      );
+    }
+  };
+
+  const startNewChatWithBackend = async () => {
+    const target = backendSwitchTarget;
+    if (!target || !chat || !settings) return;
+    setIsStartingNewChat(true);
+    try {
+      const modelSelection = createModelSelection({
+        model: target.model,
+        catalogModel: target.catalogModel,
+        preferredEffortLevel:
+          target.effortLevel ??
+          settings.modelEffortPreferences?.[
+            getModelPreferenceKey(target.model)
+          ],
+      });
+      const newChatId = await ipc.chat.createChat({ appId: chat.appId });
+      await ipc.chat.updateChat({
+        chatId: newChatId,
+        modelSelection,
+        executionBackend: getBackendForModel(target.model),
+      });
+      await updateSettings({
+        selectedModel: target.model,
+        ...(target.model.provider === "auto"
+          ? {}
+          : {
+              recentModels: addRecentModel(
+                normalizedRecentModels,
+                target.model,
+              ),
+            }),
+      });
+      posthog.capture("model-picker:backend-switch-new-chat", {
+        backend: getBackendForModel(target.model),
+        provider: target.model.provider,
+        model: target.model.name,
+      });
+      setBackendSwitchTarget(null);
+      setSelectedChatId(newChatId);
+      navigate({ to: "/chat", search: { id: newChatId } });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
+    } catch (error) {
+      showErrorToast(`Failed to start a new chat: ${(error as Error).message}`);
+    } finally {
+      setIsStartingNewChat(false);
+    }
+  };
+
   const getProviderDisplayName = (providerId: string) => {
     const provider = providers?.find((p) => p.id === providerId);
     return provider?.name ?? providerId;
@@ -721,7 +872,8 @@ export function ModelPicker() {
     }
 
     const customModelId = model.type === "custom" ? model.id : undefined;
-    void onModelSelect({
+    setOpen(false);
+    selectWithBackendGuard({
       model: {
         name: model.apiName,
         provider: providerId,
@@ -730,8 +882,8 @@ export function ModelPicker() {
       catalogModel: model,
       effortLevel,
       rememberEffort: effortLevel !== undefined,
+      label: model.displayName,
     });
-    setOpen(false);
   };
 
   const renderCloudModelItem = ({
@@ -1084,12 +1236,13 @@ export function ModelPicker() {
     const effortLabel = formatEffortLevel(currentEffort);
     const compactEffortLabel = formatCompactEffortLevel(currentEffort);
     const selectLocalModel = (effortLevel?: string) => {
-      void onModelSelect({
+      setOpen(false);
+      selectWithBackendGuard({
         model: modelRef,
         effortLevel,
         rememberEffort: effortLevel !== undefined,
+        label: model.displayName,
       });
-      setOpen(false);
     };
 
     return (
@@ -1261,6 +1414,240 @@ export function ModelPicker() {
     );
   };
 
+  const claudeCodeStatus = claudeCode.status;
+  const claudeCodeReady = claudeCodeStatus?.ready === true;
+  const claudeCodeStatusLabel = claudeCode.isLoading
+    ? "Checking"
+    : !claudeCodeStatus
+      ? "Unknown"
+      : claudeCodeStatus.ready
+        ? "Connected"
+        : !claudeCodeStatus.installed
+          ? "Not installed"
+          : !claudeCodeStatus.versionSupported
+            ? "Update needed"
+            : claudeCodeStatus.auth.state === "unauthenticated"
+              ? "Sign in required"
+              : !claudeCodeStatus.billingReady
+                ? "Dyad Pro required"
+                : "Setup needed";
+  const isClaudeCodeSelected = isClaudeCodeModel(selectedModel);
+
+  const renderClaudeCodeModelItem = (option: ClaudeCodeModelOption) => {
+    const modelRef = { provider: CLAUDE_CODE_PROVIDER_ID, name: option.name };
+    const isSelected = isSameModel(normalizedSelectedModel, modelRef);
+    const currentEffort = isSelected
+      ? selectedEffortLevel
+      : (settings.modelEffortPreferences?.[getModelPreferenceKey(modelRef)] ??
+        CLAUDE_CODE_EFFORT_SETTINGS.defaultEffortLevel);
+    const effortLabel = formatEffortLevel(currentEffort);
+    const compactEffortLabel = formatCompactEffortLevel(currentEffort);
+    const disabled = !claudeCodeReady;
+    const modelKey = `claude-code-${option.name}`;
+    const commonProps = {
+      "data-model-provider": CLAUDE_CODE_PROVIDER_ID,
+      "data-model-name": option.name,
+      "data-locked": disabled || undefined,
+      className: cn(
+        "relative px-2 py-1.5",
+        disabled && "opacity-60",
+        isSelected &&
+          "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
+      ),
+    };
+    const rowContent = (
+      <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <span className="min-w-0 flex items-center gap-2">
+          <ProviderIcon providerId="anthropic" apiName={option.name} />
+          <span className="min-w-0 flex flex-col items-start">
+            <span className="block max-w-full truncate text-[13px] leading-tight">
+              {option.displayName}
+            </span>
+            <span className="block max-w-full truncate text-xs text-muted-foreground">
+              {option.description}
+            </span>
+          </span>
+        </span>
+        <span className="flex min-w-fit items-center gap-1.5">
+          {isSelected && (
+            <CheckIcon className="size-3.5 text-primary shrink-0" />
+          )}
+          {!disabled && (
+            <>
+              <span
+                data-effort-level
+                className="text-xs text-muted-foreground"
+                title={`Reasoning effort: ${effortLabel}`}
+              >
+                {compactEffortLabel}
+              </span>
+              <span
+                data-effort-chevron
+                className="-mr-1 flex size-6 items-center justify-center rounded-sm hover:bg-muted"
+                aria-hidden="true"
+              >
+                <ChevronRightIcon className="size-4" />
+              </span>
+            </>
+          )}
+        </span>
+      </div>
+    );
+    if (disabled) {
+      return (
+        <DropdownMenuItem
+          key={modelKey}
+          {...commonProps}
+          disabled
+          aria-label={`${option.displayName}. Unavailable: ${claudeCodeStatusLabel}`}
+        >
+          {rowContent}
+        </DropdownMenuItem>
+      );
+    }
+    return (
+      <DropdownMenuSub key={modelKey}>
+        <DropdownMenuSubTrigger
+          {...commonProps}
+          hideChevron
+          aria-label={`${option.displayName}. Claude Code subscription. ${
+            isSelected ? "Selected. " : ""
+          }Effort: ${effortLabel}. Press Enter to select; press Right Arrow to configure effort.`}
+          onMouseDown={(event) => {
+            if (!isEffortChevronTarget(event.target)) {
+              event.preventBaseUIHandler();
+            }
+          }}
+          onClick={(event) => {
+            if (!isEffortChevronTarget(event.target)) {
+              event.preventBaseUIHandler();
+              selectClaudeCodeModel(option);
+            }
+          }}
+        >
+          {rowContent}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-52">
+          <DropdownMenuLabel>Effort</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {CLAUDE_CODE_EFFORT_SETTINGS.possibleEffortLevels.map(
+            (effortLevel) => (
+              <DropdownMenuItem
+                key={effortLevel}
+                onClick={() => selectClaudeCodeModel(option, effortLevel)}
+              >
+                <span>{formatEffortLevel(effortLevel)}</span>
+                {effortLevel ===
+                  CLAUDE_CODE_EFFORT_SETTINGS.defaultEffortLevel && (
+                  <span className="text-xs text-muted-foreground">
+                    (default)
+                  </span>
+                )}
+                {effortLevel === currentEffort && (
+                  <CheckIcon className="ml-auto size-3.5 text-primary" />
+                )}
+              </DropdownMenuItem>
+            ),
+          )}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    );
+  };
+
+  const renderClaudeCodeSubmenu = () => (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        className="w-full font-normal"
+        data-testid="claude-code-submenu-trigger"
+        data-provider-id={CLAUDE_CODE_PROVIDER_ID}
+        aria-label={`Claude Code. ${claudeCodeStatusLabel}. ${
+          isClaudeCodeSelected ? "Selected. " : ""
+        }Opens submenu`}
+        {...NAVIGATION_SUBMENU_HOVER_PROPS}
+      >
+        <div className="flex flex-col items-start w-full">
+          <div className="flex items-center gap-2">
+            <ProviderIcon providerId="anthropic" />
+            <span>Claude Code</span>
+            <span
+              className={cn(
+                PILL_CLASS,
+                claudeCodeReady
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                  : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+              )}
+              data-testid="claude-code-status-pill"
+            >
+              {claudeCodeStatusLabel}
+            </span>
+            {isClaudeCodeSelected && (
+              <CheckIcon className="size-3.5 text-primary shrink-0" />
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Your Claude subscription + a separate Dyad charge
+          </span>
+        </div>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent
+        className={cn(MODEL_MENU_WIDTH_CLASS, SCROLL_AREA_CLASS)}
+        data-testid="claude-code-models-submenu"
+      >
+        <DropdownMenuLabel>Claude Code (Subscription)</DropdownMenuLabel>
+        <div className="px-2 pb-1.5 text-[11px] text-muted-foreground">
+          {CLAUDE_CODE_CHARGE_DISCLOSURE}
+        </div>
+        {claudeCodeStatus && !claudeCodeStatus.ready && (
+          <div
+            className="mx-2 mb-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-200"
+            data-testid="claude-code-setup-guidance"
+          >
+            <div className="font-medium">{claudeCodeStatusLabel}</div>
+            <div>{claudeCodeStatus.setupGuidance}</div>
+          </div>
+        )}
+        {claudeCode.isLoading && !claudeCodeStatus && (
+          <div className="text-xs text-center py-2 text-muted-foreground">
+            Checking Claude Code...
+          </div>
+        )}
+        <DropdownMenuSeparator />
+        {CLAUDE_CODE_MODEL_OPTIONS.map((option) =>
+          renderClaudeCodeModelItem(option),
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          data-testid="claude-code-refresh-status"
+          onClick={(event) => {
+            event.preventBaseUIHandler?.();
+            void claudeCode.refresh();
+          }}
+        >
+          <span className="text-xs">Re-check status</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          data-testid="claude-code-open-settings"
+          onClick={() => {
+            setOpen(false);
+            navigate({ to: "/settings" });
+          }}
+        >
+          <span className="text-xs">Claude Code settings and usage</span>
+        </DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+
+  // API-key section: every configured provider (user key or env var), plus
+  // custom providers. Dyad Pro routes are listed under Pro credits instead.
+  const apiKeyProviderEntries = providerEntries.filter(([providerId]) => {
+    const provider = providers?.find(
+      (candidate) => candidate.id === providerId,
+    );
+    if (!provider || provider.type === "local") return false;
+    return isProviderSetup(providerId);
+  });
+
   const cloudCatalogGroups = PRICE_TIERS.map((tier) => ({
     tier,
     entries: primaryModelEntries
@@ -1334,13 +1721,14 @@ export function ModelPicker() {
                   onClick={(event) => {
                     if (!isEffortChevronTarget(event.target)) {
                       event.preventBaseUIHandler();
-                      void onModelSelect({
+                      setOpen(false);
+                      selectWithBackendGuard({
                         model: { name: "auto", provider: "auto" },
                         catalogModel: autoModels.find(
                           (model) => model.apiName === "auto",
                         ),
+                        label: "Auto",
                       });
-                      setOpen(false);
                     }
                   }}
                 >
@@ -1378,13 +1766,14 @@ export function ModelPicker() {
                       <DropdownMenuItem
                         key={effortLevel}
                         onClick={() => {
-                          void onModelSelect({
+                          setOpen(false);
+                          selectWithBackendGuard({
                             model: { name: "auto", provider: "auto" },
                             catalogModel: trialAutoModel,
                             effortLevel,
                             rememberEffort: true,
+                            label: "Auto",
                           });
-                          setOpen(false);
                         }}
                       >
                         <span>{formatEffortLevel(effortLevel)}</span>
@@ -1405,9 +1794,24 @@ export function ModelPicker() {
             </>
           )}
 
-          {/* Non-trial users get a compact quick switcher. */}
+          {/* Non-trial users get a compact quick switcher grouped by how
+              execution is paid for: Subscription, Pro credits, API key. */}
           {!isTrial && (
             <>
+              <div
+                className={SECTION_LABEL_CLASS}
+                data-testid="section-subscription"
+              >
+                Subscription
+              </div>
+              {renderClaudeCodeSubmenu()}
+              <DropdownMenuSeparator />
+              <div
+                className={SECTION_LABEL_CLASS}
+                data-testid="section-pro-credits"
+              >
+                Pro credits
+              </div>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger
                   className="w-full font-normal"
@@ -1511,28 +1915,20 @@ export function ModelPicker() {
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 
-              <DropdownMenuSeparator />
-
               {loading ? (
                 <div className="text-xs text-center py-2 text-muted-foreground">
                   Loading models...
                 </div>
               ) : (
                 <>
-                  {autoModels.length > 0 && (
-                    <>
-                      {autoModels.map((model) =>
-                        renderCloudModelItem({
-                          providerId: "auto",
-                          model,
-                          showPrice: false,
-                        }),
-                      )}
-                      {recentModelEntries.length > 0 && (
-                        <DropdownMenuSeparator />
-                      )}
-                    </>
-                  )}
+                  {autoModels.length > 0 &&
+                    autoModels.map((model) =>
+                      renderCloudModelItem({
+                        providerId: "auto",
+                        model,
+                        showPrice: false,
+                      }),
+                    )}
 
                   {cloudCatalogError && autoModels.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">
@@ -1540,8 +1936,35 @@ export function ModelPicker() {
                     </div>
                   )}
 
+                  <DropdownMenuSeparator />
+                  <div
+                    className={SECTION_LABEL_CLASS}
+                    data-testid="section-api-key"
+                  >
+                    API key
+                  </div>
+                  {apiKeyProviderEntries.length > 0 ? (
+                    apiKeyProviderEntries.map(([providerId, models]) =>
+                      renderProviderSubmenu(providerId, models),
+                    )
+                  ) : (
+                    <DropdownMenuItem
+                      data-testid="api-key-add-provider"
+                      onClick={() => {
+                        setOpen(false);
+                        navigate({ to: "/settings" });
+                      }}
+                    >
+                      <span className="text-[13px]">Add an API key…</span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        Settings
+                      </span>
+                    </DropdownMenuItem>
+                  )}
+
                   {recentModelEntries.length > 0 && (
                     <>
+                      <DropdownMenuSeparator />
                       <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
                         Recent
                       </DropdownMenuLabel>
@@ -1669,6 +2092,30 @@ export function ModelPicker() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* A selection that would move this chat to another backend. */}
+      <BackendSwitchDialog
+        open={backendSwitchTarget !== null}
+        onOpenChange={(dialogOpen) => {
+          if (!dialogOpen && !isStartingNewChat) {
+            setBackendSwitchTarget(null);
+          }
+        }}
+        targetLabel={backendSwitchTarget?.label ?? ""}
+        onStartNewChat={() => void startNewChatWithBackend()}
+        isStarting={isStartingNewChat}
+      />
+
+      {/* First-use disclosure of the separate Dyad charge. */}
+      <ClaudeCodeChargeDialog
+        open={chargeDialogPending !== null}
+        onOpenChange={(dialogOpen) => {
+          if (!dialogOpen) {
+            setChargeDialogPending(null);
+          }
+        }}
+        onAcknowledge={() => void acknowledgeChargeAndContinue()}
+      />
     </>
   );
 }

@@ -11,6 +11,7 @@ import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 import type { ModelSelection, StoredChatMode } from "@/lib/schemas";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
+import type { ChatExecutionBackend } from "@/shared/chat_backend";
 import {
   CHAT_TURN_TERMINAL_OUTCOMES,
   type ChatTurnTerminalOutcome,
@@ -161,6 +162,15 @@ export const chats = sqliteTable("chats", {
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  // Execution backend the chat is bound to ("dyad" or "claude-code"). Latched
+  // atomically with the first accepted turn; null until then. Switching
+  // backends requires a new chat, so this never changes after latching.
+  executionBackend: text(
+    "execution_backend",
+  ).$type<ChatExecutionBackend | null>(),
+  // Claude Code CLI session id owned by this chat. Each chat stores its own
+  // explicit session so resumption never touches the "most recent" session.
+  claudeCodeSessionId: text("claude_code_session_id"),
 });
 
 export const messages = sqliteTable(
@@ -186,8 +196,14 @@ export const messages = sqliteTable(
     chatTurnIntentId: text("chat_turn_intent_id"),
     // Max tokens used for this message (only for assistant messages)
     maxTokensUsed: integer("max_tokens_used"),
-    // Model name used for this message (only for assistant messages)
+    // Model name used for this message (only for assistant messages). For
+    // Claude Code turns this is the resolved model id the CLI reported, or
+    // null when the CLI never reported one.
     model: text("model"),
+    // Execution backend that actually produced this assistant message.
+    executionBackend: text(
+      "execution_backend",
+    ).$type<ChatExecutionBackend | null>(),
     // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
     aiMessagesJson: text("ai_messages_json", {
       mode: "json",
@@ -829,6 +845,44 @@ export const chatSearchMeta = sqliteTable("chat_search_meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+// --- Claude Code usage reports ---
+// Durable outbox for subscription-backed usage events. Each row is one
+// idempotent usage event for the engine `track-usage` endpoint. Rows stay
+// pending until the engine acknowledges them, so a crash or offline period
+// never loses or double-reports usage; the engine dedupes on `id`.
+export const claudeCodeUsageReports = sqliteTable(
+  "claude_code_usage_reports",
+  {
+    // Stable usage-event id (UUID minted when the turn starts).
+    id: text("id").primaryKey(),
+    chatId: integer("chat_id"),
+    messageId: integer("message_id"),
+    appId: integer("app_id"),
+    // Serialized `ClaudeCodeUsageEvent` (the exact engine payload).
+    payloadJson: text("payload_json").notNull(),
+    status: text("status", {
+      enum: ["pending", "reported", "rejected"],
+    })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp" }),
+    reportedAt: integer("reported_at", { mode: "timestamp" }),
+    // Engine-reported charge in USD once acknowledged (null until then).
+    chargedUsd: text("charged_usd"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    index("claude_code_usage_reports_status_idx").on(
+      table.status,
+      table.nextAttemptAt,
+    ),
+  ],
+);
 
 // --- Custom Themes table ---
 export const customThemes = sqliteTable("custom_themes", {

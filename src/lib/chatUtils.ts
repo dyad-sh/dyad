@@ -71,16 +71,3 @@ export async function resolveAppNameForAppId(
 
   return "Dyad";
 }
-
-/**
- * Resolves the appId for a given chatId by checking the TanStack Query cache
- * and falling back to a direct IPC fetch if necessary.
- */
-export async function resolveAppIdForChat(
-  chatId: number,
-  queryClient: QueryClient,
-  options: ResolveChatSummaryOptions = {},
-): Promise<number | null> {
-  const summary = await resolveChatSummary(chatId, queryClient, options);
-  return summary?.appId ?? null;
-}

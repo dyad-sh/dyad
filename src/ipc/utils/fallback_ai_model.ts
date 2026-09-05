@@ -843,18 +843,6 @@ class FallbackModel implements LanguageModelV3 {
 // Export utility functions
 export { defaultShouldRetryThisError as isRetryableError };
 
-// Type guards for better error handling
-export function isNetworkError(error: any): boolean {
-  const networkErrorCodes = [
-    "ECONNREFUSED",
-    "ENOTFOUND",
-    "ECONNRESET",
-    "EPIPE",
-    "ETIMEDOUT",
-  ];
-  return error?.code && networkErrorCodes.includes(error.code);
-}
-
 export function isRateLimitError(error: any): boolean {
   const statusCode = error?.statusCode || error?.status;
   return (

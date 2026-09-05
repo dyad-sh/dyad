@@ -21,15 +21,3 @@ export function applyPreviewChunk(
   const { content } = streamingPreview;
   setPreview(chatId, content);
 }
-
-/**
- * Clear any active preview overlay for `chatId`. Call on stream end,
- * error, and cancellation so a stale overlay never outlives the stream
- * that produced it.
- */
-export function clearPreviewForChat(
-  setPreview: SetPreview,
-  chatId: number,
-): void {
-  setPreview(chatId, "");
-}

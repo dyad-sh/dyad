@@ -210,6 +210,16 @@
     "security": "보안",
     "publish": "게시",
     "tests": "테스트",
+    "testGate": {
+      "settingsUnavailable": "Dyad가 설정을 불러오지 못해 테스트가 어떻게 실행될지 알 수 없습니다.",
+      "retry": "다시 시도",
+      "startApp": "테스트를 실행하려면 앱을 시작하세요.",
+      "start": "시작",
+      "neonRefusalRuntime": "이 앱에서는 테스트를 실행할 수 없습니다: 격리된 테스트 서버는 아직 {{runtime}} 런타임에서 사용할 수 없으며, Dyad는 실제 데이터베이스를 대상으로 Neon 테스트를 실행하지 않습니다. 실행하려면 호스트 런타임으로 전환하세요.",
+      "neonRefusalDisabled": "이 앱에서는 테스트를 실행할 수 없습니다: 격리된 테스트 서버가 설정에서 꺼져 있으며, Dyad는 실제 데이터베이스를 대상으로 Neon 테스트를 실행하지 않습니다. 실행하려면 다시 켜세요.",
+      "turnOnSandbox": "켜기",
+      "openSettings": "설정 열기"
+    },
     "plan": "계획",
     "moreOptions": "추가 옵션",
     "rebuild": "다시 빌드",

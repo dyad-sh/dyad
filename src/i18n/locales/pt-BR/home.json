@@ -211,6 +211,16 @@
     "security": "Segurança",
     "publish": "Publicar",
     "tests": "Testes",
+    "testGate": {
+      "settingsUnavailable": "O Dyad não conseguiu carregar suas configurações, então não sabe como os testes seriam executados.",
+      "retry": "Tentar novamente",
+      "startApp": "Inicie o app para executar os testes.",
+      "start": "Iniciar",
+      "neonRefusalRuntime": "Os testes não podem ser executados neste app: servidores de teste isolados ainda não estão disponíveis no runtime {{runtime}}, e o Dyad não executará testes do Neon no seu banco de dados real. Mude para o runtime host para executá-los.",
+      "neonRefusalDisabled": "Os testes não podem ser executados neste app: servidores de teste isolados estão desativados nas Configurações, e o Dyad não executará testes do Neon no seu banco de dados real. Ative-os novamente para executá-los.",
+      "turnOnSandbox": "Ativar",
+      "openSettings": "Abrir Configurações"
+    },
     "plan": "Plano",
     "moreOptions": "Mais opções",
     "rebuild": "Reconstruir",

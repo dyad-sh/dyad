@@ -111,9 +111,12 @@ function makePrepared(overrides: Record<string, unknown> = {}) {
   return {
     isolation: { mode: "neon-branch" },
     // Must be the real `TeardownResult` shape: the handler reads `.envRestored`
-    // off it, so a mock resolving to `undefined` throws into the teardown catch
-    // and every assertion below would be checking the failure path by accident.
-    teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+    // AND `.remoteCleanupCompleted` off it, and both fail closed — a partial
+    // mock resolves the missing field to `undefined` and every assertion below
+    // would be checking a failure path by accident.
+    teardown: vi
+      .fn()
+      .mockResolvedValue({ envRestored: true, remoteCleanupCompleted: true }),
     ...overrides,
   };
 }

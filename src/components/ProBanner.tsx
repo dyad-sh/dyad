@@ -7,10 +7,7 @@ import googleLogo from "../../assets/ai-logos/google-logo.svg";
 import anthropicLogo from "../../assets/ai-logos/anthropic-logo.svg";
 import { ipc } from "@/ipc/types";
 import { useState } from "react";
-import { ArrowUpRight, KeyRound, Wallet } from "lucide-react";
-
-import { Button } from "./ui/button";
-import { cn } from "@/lib/utils";
+import { KeyRound } from "lucide-react";
 import { hasDyadProKey } from "@/lib/schemas";
 import { useSettings } from "@/hooks/useSettings";
 
@@ -30,27 +27,6 @@ export function ProBanner() {
     <div className="mt-6 max-w-2xl mx-auto">
       {selectedBanner === "ai" ? <AiAccessBanner /> : <SmartContextBanner />}
     </div>
-  );
-}
-
-export function ManageDyadProButton({ className }: { className?: string }) {
-  const { t } = useTranslation("home");
-  return (
-    <Button
-      variant="outline"
-      size="lg"
-      className={cn(
-        "cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary",
-        className,
-      )}
-      onClick={() => {
-        ipc.system.openExternalUrl("https://academy.dyad.sh/subscription");
-      }}
-    >
-      <Wallet aria-hidden="true" className="w-5 h-5" />
-      {t("proBanner.manageDyadPro")}
-      <ArrowUpRight aria-hidden="true" className="w-5 h-5" />
-    </Button>
   );
 }
 

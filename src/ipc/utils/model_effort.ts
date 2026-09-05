@@ -13,6 +13,8 @@ export async function resolveModelSelection({
   model: LargeLanguageModel;
   preferredEffortLevel?: string | null;
 }): Promise<ModelSelection> {
+  if (model.provider === "claude-code")
+    return { ...model, effortLevel: preferredEffortLevel ?? "medium" };
   const catalogModel = await findLanguageModel(model);
   return createModelSelection({
     model,

@@ -720,7 +720,9 @@ export function getEffectiveDefaultChatMode(
  */
 export function isBasicAgentMode(settings: UserSettings): boolean {
   return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+    settings.selectedModel.provider !== "claude-code" &&
+    !isDyadProEnabled(settings) &&
+    settings.selectedChatMode === "local-agent"
   );
 }
 

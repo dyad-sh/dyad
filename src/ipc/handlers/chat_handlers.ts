@@ -1,3 +1,9 @@
+import { claudeStatus } from "@/ipc/services/claude_code/runtime";
+import { retryClaudeUsage } from "@/ipc/services/claude_code/accounting";
+import {
+  hasClaudeDisclosure,
+  acceptClaudeDisclosure,
+} from "@/ipc/services/claude_code/disclosure";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
@@ -18,6 +24,10 @@ import {
   rendererMessageColumns,
   toRendererMessage,
 } from "../utils/renderer_chat_message";
+import {
+  executionBackendForModel,
+  BACKEND_SWITCH_MESSAGE,
+} from "@/shared/execution_backend";
 import { createChatForApp } from "../utils/chat_creation_utils";
 import {
   getReferencedAppsForDisplay,
@@ -92,6 +102,16 @@ async function mutateChatAfterDrainingStreams({
 }
 
 export function registerChatHandlers() {
+  createTypedHandler(chatContracts.claudeCodeStatus, async () => ({
+    ...(await claudeStatus()),
+    disclosed: await hasClaudeDisclosure(),
+  }));
+  createTypedHandler(chatContracts.acceptClaudeCodeDisclosure, async () =>
+    acceptClaudeDisclosure(),
+  );
+  createTypedHandler(chatContracts.retryClaudeCodeUsage, async () =>
+    retryClaudeUsage(),
+  );
   createTypedHandler(
     chatContracts.observeSubmissionStopPolicy,
     async (_, chatId) => observeChatSubmissionStopPolicy(chatId),
@@ -114,7 +134,12 @@ export function registerChatHandlers() {
     }
     let chatId: number | undefined;
     try {
-      chatId = await createChatForApp({ appId, initialChatMode });
+      chatId = await createChatForApp({
+        appId,
+        initialChatMode,
+        modelSelection:
+          typeof input === "number" ? undefined : input.modelSelection,
+      });
       return chatId;
     } finally {
       if (firstPromptCreationOperationId) {
@@ -143,6 +168,7 @@ export function registerChatHandlers() {
         initialCommitHash: true,
         chatMode: true,
         modelSelection: true,
+        executionBackend: true,
         referencedAppIds: true,
       },
       with: {
@@ -167,6 +193,7 @@ export function registerChatHandlers() {
       initialCommitHash: chat.initialCommitHash,
       chatMode: normalizeStoredChatMode(chat.chatMode),
       modelSelection: chat.modelSelection ?? null,
+      executionBackend: chat.executionBackend,
       referencedApps: await getReferencedAppsForDisplay(chat.referencedAppIds),
       messages: chat.messages.map(toRendererMessage),
     };
@@ -325,9 +352,22 @@ export function registerChatHandlers() {
       return;
     }
     if (chatMode !== undefined || modelSelection !== undefined) {
-      await withChatQueueLock(chatId, () =>
-        db.update(chats).set(updates).where(eq(chats.id, chatId)),
-      );
+      await withChatQueueLock(chatId, async () => {
+        const current = await db.query.chats.findFirst({
+          where: eq(chats.id, chatId),
+        });
+        if (!current)
+          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+        if (
+          modelSelection &&
+          executionBackendForModel(modelSelection) !== current.executionBackend
+        )
+          throw new DyadError(
+            BACKEND_SWITCH_MESSAGE,
+            DyadErrorKind.Precondition,
+          );
+        await db.update(chats).set(updates).where(eq(chats.id, chatId));
+      });
     } else {
       await db.update(chats).set(updates).where(eq(chats.id, chatId));
     }

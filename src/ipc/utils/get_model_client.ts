@@ -174,6 +174,9 @@ export async function getModelClient(
   },
   // files?: File[],
 ): Promise<ModelClientResult> {
+  // Explicit picker payment source is turn-local; never rewrite global settings.
+  if ((modelSelectionOverride ?? selectedModel).billingSource === "api-key")
+    settings = { ...settings, enableDyadPro: false };
   const selectedModelSelection =
     modelSelectionOverride ??
     (await resolveModelSelection({

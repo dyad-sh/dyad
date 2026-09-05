@@ -13,14 +13,75 @@ import {
   AlignLeft,
   ExternalLink,
 } from "lucide-react";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
-import { useAtom } from "jotai";
+import { chatInputValueAtom, chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { useAtom, useAtomValue } from "jotai";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { ipc } from "@/ipc/types";
 
 interface TokenBarProps {
   chatId?: number;
 }
 
 export function TokenBar({ chatId }: TokenBarProps) {
+  const { data: chat } = useQuery({
+    queryKey: queryKeys.chats.detail({ chatId: chatId ?? null }),
+    queryFn: () => ipc.chat.getChat(chatId!),
+    enabled: chatId != null,
+  });
+  const messages =
+    useAtomValue(chatMessagesByIdAtom).get(chatId ?? -1) ??
+    chat?.messages ??
+    [];
+  if (chat?.executionBackend === "claude-code") {
+    const latest = messages
+      .filter((message) => message.role === "assistant")
+      .at(-1);
+    return <SubscriptionUsage receipt={latest?.executionUsage} />;
+  }
+  return <DyadTokenBar chatId={chatId} />;
+}
+
+export function SubscriptionUsage({ receipt }: { receipt?: string | null }) {
+  let cost: string | undefined;
+  let test = false;
+  try {
+    const value = JSON.parse(receipt ?? "null");
+    if (
+      (value?.status === "settled" || value?.status === "test-settled") &&
+      typeof value.chargeUsd === "string" &&
+      /^\d+(?:\.\d+)?$/.test(value.chargeUsd)
+    ) {
+      cost = value.chargeUsd;
+      test = value.status === "test-settled";
+    }
+  } catch {
+    /* Missing/corrupt receipts are not zero-cost usage. */
+  }
+  return (
+    <div
+      className="px-4 pb-2 text-xs text-muted-foreground space-y-1"
+      data-testid="subscription-usage"
+    >
+      <div>
+        {cost
+          ? `${test ? "Test charge (no live debit)" : "Latest Dyad charge"}: $${cost}`
+          : "Final usage cost unavailable or pending reconciliation."}
+      </div>
+      <div>
+        Claude subscription usage and a separate Dyad charge apply. Known
+        models: 25% of category-specific API list prices. Unknown to both
+        catalogs: $0.10 per million tokens.
+      </div>
+      <div>
+        CLI context is managed separately; Dyad's context estimate is not a
+        billing measurement.
+      </div>
+    </div>
+  );
+}
+
+function DyadTokenBar({ chatId }: TokenBarProps) {
   const [inputValue] = useAtom(chatInputValueAtom);
   const { result, error } = useCountTokens(chatId ?? null, inputValue);
 

@@ -45,6 +45,10 @@ import { resolveModelSelection } from "./model_effort";
 import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 import { usesOpenAIResponsesApiInLocalAgent } from "./openai_responses_utils";
+import {
+  createCodexSubscriptionModel,
+  withPortableHistory,
+} from "./codex_subscription_provider";
 
 // The test-only fetch seam lives in ./test_fetch_override (dependency-free,
 // so secondary factories can use it without import cycles). Re-exported here
@@ -140,6 +144,22 @@ export async function getModelClient(
     }));
   const model = getAutoSidekickRuntimeModel(selectedModel);
   const modelSelection = getAutoSidekickRuntimeModel(selectedModelSelection);
+  const connection = modelSelection.connection;
+  if (connection === "subscription") {
+    if (model.provider !== "openai")
+      throw new DyadError(
+        "Subscription supports OpenAI models only. Choose a ChatGPT model.",
+        DyadErrorKind.Validation,
+      );
+    return {
+      modelClient: {
+        model: await createCodexSubscriptionModel(model.name),
+        builtinProviderId: "openai",
+      },
+      runtimeModel: model,
+      isEngineEnabled: false,
+    };
+  }
   const allProviders = await getLanguageModelProviders();
 
   const dyadApiKey = settings.enableDyadPro
@@ -148,9 +168,13 @@ export async function getModelClient(
         "Dyad",
       )
     : undefined;
-  const isDyadProEnabledForRequest = Boolean(
-    dyadApiKey && settings.enableDyadPro,
-  );
+  const isDyadProEnabledForRequest =
+    connection !== "api-key" && Boolean(dyadApiKey && settings.enableDyadPro);
+  if (connection === "pro" && !isDyadProEnabledForRequest)
+    throw new DyadError(
+      "Enable Dyad Pro before using Pro credits.",
+      DyadErrorKind.Auth,
+    );
 
   if (
     model.provider === "auto" &&
@@ -223,12 +247,24 @@ export async function getModelClient(
       });
 
       return {
-        modelClient: proModelClient,
+        modelClient: connection
+          ? {
+              ...proModelClient,
+              model: withPortableHistory(
+                proModelClient.model as import("@ai-sdk/provider").LanguageModelV3,
+              ),
+            }
+          : proModelClient,
         runtimeModel: model,
         isEngineEnabled: true,
         isSmartContextEnabled: enableSmartFilesContext,
       };
     } else {
+      if (connection === "pro")
+        throw new DyadError(
+          "This provider does not support Pro credits. Select API key explicitly.",
+          DyadErrorKind.Validation,
+        );
       logger.warn(
         `Dyad Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
       );
@@ -309,6 +345,7 @@ export async function getModelClient(
           {
             provider: resolvedModel.providerId,
             name: resolvedModel.apiName,
+            ...(connection ? { connection } : {}),
           },
           settings,
         );
@@ -319,8 +356,20 @@ export async function getModelClient(
       "No API keys available for any model supported by the 'auto' provider.",
     );
   }
+  const regular = getRegularModelClient(model, settings, providerConfig);
   return {
-    ...getRegularModelClient(model, settings, providerConfig),
+    ...regular,
+    ...(connection
+      ? {
+          modelClient: {
+            ...regular.modelClient,
+            model: withPortableHistory(
+              regular.modelClient
+                .model as import("@ai-sdk/provider").LanguageModelV3,
+            ),
+          },
+        }
+      : {}),
     runtimeModel: model,
   };
 }

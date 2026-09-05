@@ -9,6 +9,7 @@ export function isSameModel(
   return (
     left.provider === right.provider &&
     left.name === right.name &&
+    left.connection === right.connection &&
     left.customModelId === right.customModelId
   );
 }

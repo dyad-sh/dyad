@@ -1732,7 +1732,10 @@ ${componentSnippet}
           // replay tool XML after an error or cancellation.
           approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
-          model: settings.selectedModel.name,
+          model:
+            selectedModel.connection === "subscription"
+              ? `ChatGPT subscription (${selectedModel.name})`
+              : selectedModel.name,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),

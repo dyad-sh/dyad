@@ -90,6 +90,8 @@ export const LargeLanguageModelSchema = z.object({
   name: z.string(),
   provider: z.string(),
   customModelId: z.number().optional(),
+  // Absent preserves legacy routing; explicit choices are authoritative per turn.
+  connection: z.enum(["subscription", "pro", "api-key"]).optional(),
 });
 
 /**

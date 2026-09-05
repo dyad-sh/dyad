@@ -1505,6 +1505,14 @@ export async function handleLocalAgentStream(
               return result;
             },
             onStepFinish: async (step) => {
+              if (selectedModel.connection === "subscription") {
+                await db
+                  .update(messages)
+                  .set({
+                    model: `ChatGPT subscription (${step.response.modelId || selectedModel.name})`,
+                  })
+                  .where(eq(messages.id, placeholderMessageId));
+              }
               if (!hasInjectedPlanningQuestionnaireReflection) {
                 const questionnaireError =
                   getPlanningQuestionnaireErrorFromStep(step);

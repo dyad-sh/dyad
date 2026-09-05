@@ -42,6 +42,8 @@ export const MessageSchema = z.object({
   requestId: z.string().nullable().optional(),
   totalTokens: z.number().nullable().optional(),
   model: z.string().nullable().optional(),
+  executionBackend: z.enum(["dyad", "claude-code"]).nullable().optional(),
+  executionUsage: z.string().nullable().optional(),
 });
 
 export type Message = z.infer<typeof MessageSchema>;
@@ -69,6 +71,7 @@ export const ChatSchema = z.object({
   dbTimestamp: z.string().nullable().optional(),
   chatMode: NullableChatModeSchema,
   modelSelection: ModelSelectionSchema.nullable().optional(),
+  executionBackend: z.enum(["dyad", "claude-code"]).optional(),
   /**
    * Apps referenced via `@app:Name` that stay readable for the rest of the
    * chat in agent-backed modes.
@@ -410,6 +413,28 @@ export const chatContracts = {
     }),
   }),
 
+  claudeCodeStatus: defineContract({
+    channel: "claude-code:status",
+    input: z.void(),
+    output: z.object({
+      installed: z.boolean(),
+      connected: z.boolean(),
+      compatible: z.boolean(),
+      version: z.string().nullable(),
+      detail: z.string(),
+      disclosed: z.boolean(),
+    }),
+  }),
+  acceptClaudeCodeDisclosure: defineContract({
+    channel: "claude-code:accept-disclosure",
+    input: z.void(),
+    output: z.void(),
+  }),
+  retryClaudeCodeUsage: defineContract({
+    channel: "claude-code:retry-usage",
+    input: z.void(),
+    output: z.void(),
+  }),
   createChat: defineContract({
     channel: "create-chat",
     input: z.union([
@@ -417,6 +442,7 @@ export const chatContracts = {
       z.object({
         appId: z.number(),
         initialChatMode: ChatModeSchema.optional(),
+        modelSelection: ModelSelectionSchema.optional(),
         firstPromptCreationOperationId: z.string().min(1).optional(),
       }),
     ]),

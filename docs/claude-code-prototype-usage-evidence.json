@@ -1,0 +1,142 @@
+{
+  "cli": "2.1.261",
+  "liveCharging": false,
+  "events": [
+    {
+      "schemaVersion": 1,
+      "eventId": "1f2b40df-f223-49c0-9e71-a15467277e31",
+      "backend": "claude-code",
+      "appId": 1,
+      "chatId": 2,
+      "turnId": "chat-turn:6f02bd4c-2a7f-437a-9cda-b657ef58e270",
+      "sessionId": "fcd0123b-40fe-45e7-bd45-85a773959f5a",
+      "reservationId": "6f549886-5fc9-4741-ae18-662696fde788",
+      "pricingSnapshotId": "synthetic-test-v1",
+      "outcome": "completed",
+      "coverage": "complete",
+      "models": [
+        {
+          "actualModelId": "claude-haiku-4-5-20251001",
+          "reportedCanonicalModelId": "claude-haiku-4-5",
+          "uncachedInputTokens": 1235,
+          "outputTokens": 13,
+          "cacheReadInputTokens": 0,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 0,
+          "cacheWriteUnclassifiedInputTokens": 0
+        },
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 8,
+          "outputTokens": 660,
+          "cacheReadInputTokens": 39796,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 4860,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "736ed0fe-cd3f-4aea-9c79-b17cfcf06c31",
+      "backend": "claude-code",
+      "appId": 1,
+      "chatId": 2,
+      "turnId": "chat-turn:c46f4bb8-830b-4e2e-bf57-d770050a5c22",
+      "sessionId": "fcd0123b-40fe-45e7-bd45-85a773959f5a",
+      "reservationId": "da5c24fb-1413-492b-ada6-3caaafb79ff5",
+      "pricingSnapshotId": "synthetic-test-v1",
+      "outcome": "completed",
+      "coverage": "complete",
+      "models": [
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 4,
+          "outputTokens": 393,
+          "cacheReadInputTokens": 28206,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 1295,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "e3fa78ef-3727-4463-ab87-40b67a8a3158",
+      "backend": "claude-code",
+      "appId": 1,
+      "chatId": 2,
+      "turnId": "chat-turn:4a531bd8-f1ca-485e-aba7-43fd1d7edc8f",
+      "sessionId": "fcd0123b-40fe-45e7-bd45-85a773959f5a",
+      "reservationId": "ccc0573f-3388-4928-a00d-f6854d936683",
+      "pricingSnapshotId": "synthetic-test-v1",
+      "outcome": "completed",
+      "coverage": "complete",
+      "models": [
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 2,
+          "outputTokens": 61,
+          "cacheReadInputTokens": 7495,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 6668,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "478b4aae-ee8a-42d9-98dc-5c8088c8f01b",
+      "backend": "claude-code",
+      "appId": 1,
+      "chatId": 2,
+      "turnId": "chat-turn:b53834d0-1e07-4d70-ab3e-3270f35a6006",
+      "sessionId": "fcd0123b-40fe-45e7-bd45-85a773959f5a",
+      "reservationId": "37643ee2-b521-4742-b9fa-8bf5fa8a6d47",
+      "pricingSnapshotId": "synthetic-test-v1",
+      "outcome": "completed",
+      "coverage": "complete",
+      "models": [
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 2,
+          "outputTokens": 16,
+          "cacheReadInputTokens": 14163,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 510,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    }
+  ],
+  "receipts": [
+    {
+      "eventId": "1f2b40df-f223-49c0-9e71-a15467277e31",
+      "status": "test-settled",
+      "chargeUsd": "0.013730700000",
+      "pricingSnapshotId": "synthetic-test-v1"
+    },
+    {
+      "eventId": "736ed0fe-cd3f-4aea-9c79-b17cfcf06c31",
+      "status": "test-settled",
+      "chargeUsd": "0.005534700000",
+      "pricingSnapshotId": "synthetic-test-v1"
+    },
+    {
+      "eventId": "e3fa78ef-3727-4463-ab87-40b67a8a3158",
+      "status": "test-settled",
+      "chargeUsd": "0.010794375000",
+      "pricingSnapshotId": "synthetic-test-v1"
+    },
+    {
+      "eventId": "478b4aae-ee8a-42d9-98dc-5c8088c8f01b",
+      "status": "test-settled",
+      "chargeUsd": "0.001888725000",
+      "pricingSnapshotId": "synthetic-test-v1"
+    }
+  ]
+}

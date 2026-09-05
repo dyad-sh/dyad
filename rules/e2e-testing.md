@@ -391,6 +391,8 @@ nothing and needs a different fixture (or no E2E at all).
 
 ## E2E test fixtures with .dyad directories
 
+- Restart smoke tests must reopen the same user-data profile and explicitly verify the persisted session ID. Electron teardown must tolerate an already-disposed Playwright process channel; otherwise a successful restart can fail again during fixture cleanup.
+
 When adding E2E test fixtures that need a `.dyad` directory for testing:
 
 - The `.dyad` directory is git-ignored by default in test fixtures

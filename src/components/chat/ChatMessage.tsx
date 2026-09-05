@@ -1,3 +1,4 @@
+import { assistantAttribution } from "@/shared/execution_backend";
 import { type Message } from "@/ipc/types";
 import {
   DyadMarkdownParser,
@@ -419,12 +420,19 @@ const ChatMessage = ({
                       <span>Rejected</span>
                     </div>
                   )}
-                  {message.role === "assistant" && message.model && (
-                    <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
-                      <Bot className="h-4 w-4 flex-shrink-0" />
-                      <span>{message.model}</span>
-                    </div>
-                  )}
+                  {message.role === "assistant" &&
+                    (message.model ||
+                      message.executionBackend === "claude-code") && (
+                      <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
+                        <Bot className="h-4 w-4 flex-shrink-0" />
+                        <span>
+                          {assistantAttribution(
+                            message.executionBackend,
+                            message.model,
+                          )}
+                        </span>
+                      </div>
+                    )}
                 </div>
               </div>
             ) : null}

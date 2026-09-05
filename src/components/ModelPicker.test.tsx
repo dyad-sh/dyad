@@ -11,6 +11,17 @@ import { ModelPicker } from "./ModelPicker";
 
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
+  claudeStatus: {
+    installed: true,
+    connected: true,
+    compatible: true,
+    version: "2.1.260",
+    detail: "Connected",
+    disclosed: true,
+  },
+  acceptDisclosure: vi.fn(),
+  createChat: vi.fn(async () => 55),
+  selectChat: vi.fn(),
   setChatMode: vi.fn(),
   setChatModelSelection: vi.fn(),
   setChatSelection: vi.fn(),
@@ -34,6 +45,8 @@ const mocks = vi.hoisted(() => ({
   chatLoading: false,
   chat: null as null | {
     id: number;
+    appId?: number;
+    executionBackend?: "dyad" | "claude-code";
     messages: Array<{ id: number }>;
     modelSelection?: {
       provider: string;
@@ -108,7 +121,18 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("@/hooks/useSelectChat", () => ({
+  useSelectChat: () => ({ selectChat: mocks.selectChat }),
+}));
 vi.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: mocks.claudeStatus, refetch: vi.fn() }),
+  useMutation: ({ mutationFn }: { mutationFn: () => Promise<unknown> }) => ({
+    mutate: () => {
+      void mutationFn();
+    },
+    isPending: false,
+    error: null,
+  }),
   useQueryClient: () => ({
     invalidateQueries: mocks.invalidateQueries,
   }),
@@ -149,6 +173,9 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   ipc: {
     chat: {
+      acceptClaudeCodeDisclosure: mocks.acceptDisclosure,
+      createChat: mocks.createChat,
+      retryClaudeCodeUsage: vi.fn(),
       updateChat: mocks.updateChat,
     },
     system: {
@@ -530,6 +557,10 @@ describe("ModelPicker", () => {
     mocks.settingsLoading = false;
     mocks.chatLoading = false;
     mocks.chat = null;
+    mocks.claudeStatus.connected = true;
+    mocks.claudeStatus.disclosed = true;
+    mocks.createChat.mockClear();
+    mocks.selectChat.mockClear();
     mocks.pathname = "/";
     mocks.search = {};
     mocks.envVars = {};
@@ -625,7 +656,7 @@ describe("ModelPicker", () => {
 
     expect(screen.getByText("Recent")).toBeTruthy();
     expect(screen.getByText("GPT 5")).toBeTruthy();
-    expect(screen.getByText("Claude Sonnet 4.5")).toBeTruthy();
+    expect(screen.getAllByText("Claude Sonnet 4.5")[0]).toBeTruthy();
     const gptRow = screen.getByText("GPT 5").closest("button")!;
     expect(within(gptRow).queryByText("OpenAI")).toBeNull();
     expect(gptRow.getAttribute("aria-label")).not.toContain("OpenAI");
@@ -1274,7 +1305,8 @@ describe("ModelPicker", () => {
         ?.querySelector("[data-effort-chevron]"),
     ).toBeNull();
     expect(
-      screen.getByText("Claude Sonnet 4.5").closest("button")?.dataset.locked,
+      screen.getAllByText("Claude Sonnet 4.5")[0].closest("button")?.dataset
+        .locked,
     ).toBeUndefined();
     expect(
       document.querySelector<HTMLElement>(
@@ -1349,7 +1381,9 @@ describe("ModelPicker", () => {
 
     render(<ModelPicker />);
 
-    fireEvent.click(screen.getByText("Claude Sonnet 4.5").closest("button")!);
+    fireEvent.click(
+      screen.getAllByText("Claude Sonnet 4.5")[0].closest("button")!,
+    );
 
     expect(mocks.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1618,5 +1652,52 @@ describe("ModelPicker", () => {
 
     expect(screen.getByText("Unavailable")).toBeTruthy();
     expect(screen.queryByText("10/10 left")).toBeNull();
+  });
+});
+
+describe("Claude Code subscription picker", () => {
+  beforeEach(() => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 7 };
+    mocks.chat = {
+      id: 7,
+      appId: 9,
+      executionBackend: "dyad",
+      messages: [{ id: 1 }],
+      modelSelection: { provider: "auto", name: "auto", effortLevel: "medium" },
+    };
+    mocks.claudeStatus.connected = true;
+    mocks.claudeStatus.disclosed = true;
+    mocks.createChat.mockClear();
+    mocks.setChatSelection.mockClear();
+  });
+  it("preserves the existing chat when backend switching is cancelled", () => {
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Claude Code — sonnet"));
+    expect(
+      screen.getByText(
+        "Switching backends requires a new chat. Your current chat will stay unchanged.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(mocks.createChat).not.toHaveBeenCalled();
+    expect(mocks.setChatSelection).not.toHaveBeenCalled();
+  });
+  it("creates a new chat in the same app with the chosen backend model", async () => {
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Claude Code — sonnet"));
+    fireEvent.click(screen.getByText("Start new chat"));
+    await waitFor(() =>
+      expect(mocks.createChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appId: 9,
+          modelSelection: expect.objectContaining({
+            provider: "claude-code",
+            name: "sonnet",
+          }),
+        }),
+      ),
+    );
+    expect(mocks.setChatSelection).not.toHaveBeenCalled();
   });
 });

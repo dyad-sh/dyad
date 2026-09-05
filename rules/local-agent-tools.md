@@ -4,6 +4,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## Read-only / plan-only mode
 
+- External CLI adapters must enforce read-only mode in both the CLI's actual built-in inventory and the host MCP bridge. Permission allowlists alone are not tool removal; approved checks, installs and preview still execute project code.
+- Claude Code result `modelUsage` can include auxiliary model calls even with subagents disabled. Do not add top-level `usage` to it; use a top-level cache-TTL split only when it matches one model's complete category totals uniquely.
+
 - **`modifiesState: true`** must be set on any tool that writes to disk or modifies external state (files, database, etc.). This flag controls whether the tool is available in read-only (ask) mode and plan-only mode — see `buildAgentToolSet` in `tool_definitions.ts`.
 - A durable orchestration tool that changes only main-process metadata may use `allowInReadOnlyModes` to remain available in Ask and Plan, but its turn-scoped schema must exclude every app- or external-state-mutating capability. Keep `modifiesState: true`; the exception does not make metadata writes read-only.
 - If a read/inspection wrapper tool gains a state-changing host function (for example a new sandbox `write_file` capability inside `execute_sandbox_script`), either mark the parent tool `modifiesState: true` or make `modifiesState` a context predicate that returns true whenever the writable host function is exposed. Otherwise read-only / plan-only filtering can still expose writes through the wrapper tool. Prompt descriptions, tool filtering, and runtime capability injection should all derive from the same turn-scoped flag so ask/plan mode can keep the read-only surface without advertising or exposing writes.

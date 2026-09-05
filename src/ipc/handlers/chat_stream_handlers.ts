@@ -1,3 +1,14 @@
+import {
+  executionBackendForModel,
+  BACKEND_SWITCH_MESSAGE,
+} from "@/shared/execution_backend";
+import { claudeStatus } from "@/ipc/services/claude_code/runtime";
+import { hasClaudeDisclosure } from "@/ipc/services/claude_code/disclosure";
+import { authorizeClaudeTurn } from "@/ipc/services/claude_code/accounting";
+import {
+  claudeChatBackend,
+  dyadChatBackend,
+} from "@/ipc/services/chat_execution_backend";
 import { v4 as uuidv4 } from "uuid";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { createTypedHandler } from "./base";
@@ -100,7 +111,6 @@ import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import {
   clearPendingLocalAgentInputsForChat,
-  handleLocalAgentStream,
   hasCompletedAppBlueprintQuestionnaire,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { isPreCommitHookAvailable } from "../services/pre_commit_service";
@@ -1147,6 +1157,36 @@ export function registerChatStreamHandlers() {
           settings: { ...baseSettings, selectedModel },
         });
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+      if (
+        executionBackendForModel(selectedModel) !==
+        (chat.executionBackend ?? "dyad")
+      )
+        throw new DyadError(BACKEND_SWITCH_MESSAGE, DyadErrorKind.Precondition);
+      let claudeReservation:
+        | Awaited<ReturnType<typeof authorizeClaudeTurn>>
+        | undefined;
+      if (chat.executionBackend === "claude-code") {
+        const status = await claudeStatus();
+        if (!status.connected || !status.compatible)
+          throw new DyadError(status.detail, DyadErrorKind.Precondition);
+        if (!(await hasClaudeDisclosure()))
+          throw new DyadError(
+            "Select Subscription in the model picker and accept the pricing disclosure first.",
+            DyadErrorKind.Precondition,
+          );
+        if (
+          chat.claudeSessionState === "running" ||
+          chat.claudeSessionState === "interrupted"
+        )
+          throw new DyadError(
+            "Claude Code was interrupted. Start a new chat; review or undo the existing changes first.",
+            DyadErrorKind.Precondition,
+          );
+        claudeReservation = await authorizeClaudeTurn(
+          req.chatId,
+          req.intentId ?? uuidv4(),
+        );
+      }
 
       // Reserve quota before redo or attachment persistence. The reservation
       // is converted to a durable message mark only after turn acceptance.
@@ -1732,7 +1772,8 @@ ${componentSnippet}
           // replay tool XML after an error or cancellation.
           approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
-          model: settings.selectedModel.name,
+          model: claudeReservation ? null : settings.selectedModel.name,
+          executionBackend: chat.executionBackend,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),
@@ -1767,6 +1808,21 @@ ${componentSnippet}
         streamId: req.streamId,
         messages: updatedChat.messages.map(toRendererMessage),
       } satisfies ChatStreamChunkPayload);
+
+      if (claudeReservation) {
+        finishedNaturally = await claudeChatBackend.runTurn(
+          event,
+          req,
+          abortController,
+          {
+            messageId: placeholderAssistantMessage.id,
+            prompt: localAgentAiUserPrompt,
+            readOnly: selectedChatMode === "ask" || selectedChatMode === "plan",
+            reservation: claudeReservation,
+          },
+        );
+        return;
+      }
 
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
@@ -2610,7 +2666,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Return value indicates success/failure for quota tracking.
           // Ask mode doesn't consume quota, but we still capture it for
           // consistent error handling.
-          const streamSuccess = await handleLocalAgentStream(
+          const streamSuccess = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,
@@ -2664,7 +2720,7 @@ This conversation includes one or more image attachments. When the user uploads 
             planModeSystemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
           }
 
-          finishedNaturally = await handleLocalAgentStream(
+          finishedNaturally = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,
@@ -2692,7 +2748,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // logs, verification commands, sandbox scripts, or MCP servers.
         if (isBuildMode) {
           const readOnlyBuildTurn = isSecurityReviewIntent || isSummarizeIntent;
-          finishedNaturally = await handleLocalAgentStream(
+          finishedNaturally = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,
@@ -2724,7 +2780,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // injects a `<system-reminder>` into the user's latest message telling
         // the agent which `app_name` values are valid.
         if (isLocalAgentMode) {
-          const streamSuccess = await handleLocalAgentStream(
+          const streamSuccess = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,

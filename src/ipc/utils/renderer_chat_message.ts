@@ -18,6 +18,8 @@ export const rendererMessageColumns = {
   requestId: true,
   maxTokensUsed: true,
   model: true,
+  executionBackend: true,
+  executionUsage: true,
   createdAt: true,
 } as const;
 
@@ -37,6 +39,8 @@ export function toRendererMessage(message: RendererMessageRow): Message {
     requestId: message.requestId,
     totalTokens: message.maxTokensUsed,
     model: message.model,
+    executionBackend: message.executionBackend,
+    executionUsage: message.executionUsage,
     createdAt: message.createdAt,
   };
 }

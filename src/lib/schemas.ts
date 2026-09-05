@@ -90,6 +90,7 @@ export const LargeLanguageModelSchema = z.object({
   name: z.string(),
   provider: z.string(),
   customModelId: z.number().optional(),
+  billingSource: z.enum(["api-key", "pro"]).optional(),
 });
 
 /**
@@ -715,7 +716,9 @@ export function getEffectiveDefaultChatMode(
  */
 export function isBasicAgentMode(settings: UserSettings): boolean {
   return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+    settings.selectedModel.provider !== "claude-code" &&
+    !isDyadProEnabled(settings) &&
+    settings.selectedChatMode === "local-agent"
   );
 }
 

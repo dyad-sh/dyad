@@ -1,0 +1,75 @@
+{
+  "version": "2.1.261",
+  "scenarios": [
+    {
+      "index": 0,
+      "approvals": 1,
+      "diagnostics": 1,
+      "deltas": 34,
+      "sessionMatches": true,
+      "result": "hello.txt has been created with \"hello prototype\". Diagnostics returned: `{\"marker\":\"dyad-preview-healthy\"}`.",
+      "usage": [
+        {
+          "actualModelId": "claude-haiku-4-5-20251001",
+          "reportedCanonicalModelId": "claude-haiku-4-5",
+          "uncachedInputTokens": 926,
+          "outputTokens": 13,
+          "cacheReadInputTokens": 0,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 0,
+          "cacheWriteUnclassifiedInputTokens": 0
+        },
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 6,
+          "outputTokens": 211,
+          "cacheReadInputTokens": 27791,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 900,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "approvals": 0,
+      "diagnostics": 0,
+      "deltas": 24,
+      "sessionMatches": true,
+      "result": "You asked me to remember \"violet lighthouse.\" hello.txt contains: `hello prototype`.",
+      "usage": [
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 4,
+          "outputTokens": 147,
+          "cacheReadInputTokens": 16012,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 1186,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "approvals": 0,
+      "diagnostics": 0,
+      "deltas": 45,
+      "sessionMatches": true,
+      "result": "Neither Bash nor Write is available to me in this session (Write is disabled, and I have no Bash tool). I can't create forbidden.txt.",
+      "usage": [
+        {
+          "actualModelId": "claude-sonnet-5",
+          "reportedCanonicalModelId": "claude-sonnet-5",
+          "uncachedInputTokens": 4,
+          "outputTokens": 376,
+          "cacheReadInputTokens": 17474,
+          "cacheWrite5mInputTokens": 0,
+          "cacheWrite1hInputTokens": 535,
+          "cacheWriteUnclassifiedInputTokens": 0
+        }
+      ]
+    }
+  ]
+}

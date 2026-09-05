@@ -96,6 +96,7 @@ export async function handleFetchFromGithub(
     path: appPath,
     remote: "origin",
     accessToken,
+    prune: true,
   });
 }
 

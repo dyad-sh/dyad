@@ -2888,9 +2888,10 @@ export async function gitFetch({
   path,
   remote = "origin",
   accessToken,
+  prune,
 }: GitFetchParams): Promise<void> {
   await execOrThrow(
-    ["fetch", remote],
+    ["fetch", ...(prune ? ["--prune"] : []), remote],
     path,
     "Failed to fetch from remote",
     undefined,

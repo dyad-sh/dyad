@@ -8,6 +8,25 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelPicker } from "./ModelPicker";
+// Connection selection has its own real-query component coverage.
+vi.mock("./ConnectionModelMenu", () => ({
+  ConnectionModelMenu: ({
+    onSelect,
+  }: {
+    onSelect: (model: unknown, catalog: unknown) => void;
+  }) => (
+    <button
+      onClick={() =>
+        onSelect(
+          { provider: "openai", name: "gpt-5", connection: "subscription" },
+          undefined,
+        )
+      }
+    >
+      Select subscription test model
+    </button>
+  ),
+}));
 
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
@@ -1197,6 +1216,29 @@ describe("ModelPicker", () => {
       recentModels: [{ name: "gpt-5", provider: "openai" }],
     });
     expect(mocks.updateChat).not.toHaveBeenCalled();
+  });
+
+  it("switches an established chat to subscription without replacing its history", async () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      messages: [{ id: 1 }],
+      modelSelection: { provider: "auto", name: "auto", effortLevel: "medium" },
+    };
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Select subscription test model"));
+    await waitFor(() =>
+      expect(mocks.setChatSelection).toHaveBeenCalledWith({
+        modelSelection: expect.objectContaining({
+          provider: "openai",
+          name: "gpt-5",
+          connection: "subscription",
+        }),
+      }),
+    );
+    expect(mocks.chat.messages).toEqual([{ id: 1 }]);
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("sorts the All models catalog by price and provider", () => {

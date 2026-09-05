@@ -101,6 +101,50 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 }));
 
 describe("getModelClient", () => {
+  test("explicit API key selection bypasses enabled Pro credits", async () => {
+    const { modelClient, isEngineEnabled } = await getModelClient(
+      { provider: "openai", name: "gpt-5.4", connection: "api-key" },
+      {
+        enableDyadPro: true,
+        providerSettings: {
+          auto: { apiKey: { value: "test-pro" } },
+          openai: { apiKey: { value: "test-api" } },
+        },
+      } as unknown as UserSettings,
+    );
+    expect(isEngineEnabled).toBeFalsy();
+    expect((modelClient.model as { provider: string }).provider).toContain(
+      "openai",
+    );
+  });
+  test("explicit Pro selection does not fall back to a configured API key", async () => {
+    await expect(
+      getModelClient(
+        { provider: "openai", name: "gpt-5.4", connection: "pro" },
+        {
+          enableDyadPro: false,
+          providerSettings: { openai: { apiKey: { value: "test-api" } } },
+        } as unknown as UserSettings,
+      ),
+    ).rejects.toThrow("Enable Dyad Pro");
+  });
+  test("an explicit auxiliary model does not inherit the default subscription connection", async () => {
+    const { modelClient } = await getModelClient(
+      { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+      {
+        selectedModel: {
+          provider: "openai",
+          name: "gpt-5.4",
+          connection: "subscription",
+        },
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "test-pro" } } },
+      } as unknown as UserSettings,
+    );
+    expect((modelClient.model as { modelId: string }).modelId).toBe(
+      "anthropic/claude-sonnet-4-20250514",
+    );
+  });
   afterEach(() => {
     setModelClientFetchForTesting(undefined);
     vi.mocked(getLanguageModels).mockResolvedValue([]);

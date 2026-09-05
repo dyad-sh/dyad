@@ -44,6 +44,7 @@ export const queryKeys = {
   // Settings
   // ─────────────────────────────────────────────────────────────────────────────
   settings: {
+    codexSubscription: ["settings", "codex-subscription"] as const,
     all: ["settings"] as const,
     user: ["settings", "user"] as const,
     envVars: ["settings", "envVars"] as const,

@@ -23,6 +23,8 @@ import {
 } from "../../shared/chatAttachmentLimits";
 import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
 
+export const ChatExecutionBackendSchema = z.enum(["dyad", "claude-code"]);
+
 // =============================================================================
 // Chat Schemas
 // =============================================================================
@@ -42,6 +44,8 @@ export const MessageSchema = z.object({
   requestId: z.string().nullable().optional(),
   totalTokens: z.number().nullable().optional(),
   model: z.string().nullable().optional(),
+  /** Backend that produced this assistant message (`dyad` when omitted). */
+  executionBackend: ChatExecutionBackendSchema.nullable().optional(),
 });
 
 export type Message = z.infer<typeof MessageSchema>;
@@ -69,6 +73,11 @@ export const ChatSchema = z.object({
   dbTimestamp: z.string().nullable().optional(),
   chatMode: NullableChatModeSchema,
   modelSelection: ModelSelectionSchema.nullable().optional(),
+  /**
+   * Execution backend the chat is bound to. Null until the first accepted
+   * turn latches it (or until the new-chat flow sets it explicitly).
+   */
+  executionBackend: ChatExecutionBackendSchema.nullable().optional(),
   /**
    * Apps referenced via `@app:Name` that stay readable for the rest of the
    * chat in agent-backed modes.
@@ -321,6 +330,12 @@ export const UpdateChatParamsSchema = z.object({
   title: z.string().optional(),
   chatMode: ChatModeSchema.nullable().optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  /**
+   * Bind a not-yet-latched chat to an execution backend. Rejected when the
+   * chat is already bound to a different backend: switching requires a new
+   * chat.
+   */
+  executionBackend: ChatExecutionBackendSchema.optional(),
 });
 
 export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;

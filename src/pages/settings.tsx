@@ -32,6 +32,7 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
+import { ClaudeCodeSettings } from "@/components/ClaudeCodeSettings";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
@@ -542,6 +543,14 @@ export function AISettings() {
         <p className={hint}>
           Automatically compact long conversations to stay within context
           limits. Original messages are preserved in the app data directory.
+        </p>
+      </div>
+
+      <div id={SETTING_IDS.claudeCode} className="space-y-1.5">
+        <ClaudeCodeSettings />
+        <p className={hint}>
+          Run chats on your Claude Code subscription through the official local
+          CLI. Select it from the Subscription section of the model picker.
         </p>
       </div>
     </SettingsSection>

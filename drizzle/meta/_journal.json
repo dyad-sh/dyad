@@ -351,6 +351,13 @@
       "when": 1787112815219,
       "tag": "0049_high_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1788583851788,
+      "tag": "0050_thin_clint_barton",
+      "breakpoints": true
     }
   ]
 }

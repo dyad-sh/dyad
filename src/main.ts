@@ -90,6 +90,7 @@ import {
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import { startClaudeCodeUsageReportRetries } from "./claude_code/usage_tracking";
 import { cleanupStaleBuildSnapshots } from "./pro/main/ipc/handlers/local_agent/tools/run_build";
 import {
   startChatSearchIndexer,
@@ -470,6 +471,10 @@ export async function onReady() {
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
+
+  // Re-send any Claude Code usage reports that were pending when the app
+  // last closed (idempotent on event id; see docs/claude-code-integration.md).
+  startClaudeCodeUsageReportRetries();
 
   // Start the chat-search FTS index maintenance (backfill runs in the
   // background; never blocks startup)

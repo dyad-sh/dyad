@@ -40,6 +40,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/state-machines.md](rules/state-machines.md)                         | Adding or modifying explicit state machines, transition functions, controllers, command runners, keyed hosts, or renderer bindings                                             |
 | [rules/windows-spawn.md](rules/windows-spawn.md)                           | Spawning child processes with arguments on Windows — `.cmd` shim resolution and what `cmd.exe` quoting can and cannot contain                                                  |
 | [rules/i18n.md](rules/i18n.md)                                             | Adding translation keys to `src/i18n/locales/*/chat.json` or building i18n-aware chat tool cards                                                                               |
+| [rules/claude-code-backend.md](rules/claude-code-backend.md)               | Working on the Claude Code (Subscription) execution backend: CLI launch and tool restrictions, per-chat session ids, usage reporting, fake-CLI tests                           |
 
 ## Project setup and lints
 

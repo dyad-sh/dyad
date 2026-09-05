@@ -290,6 +290,16 @@ export const queryKeys = {
     info: ["userBudgetInfo"] as const,
   },
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Claude Code (Subscription backend)
+  // ─────────────────────────────────────────────────────────────────────────────
+  claudeCode: {
+    all: ["claudeCode"] as const,
+    status: ["claudeCode", "status"] as const,
+    usage: ({ limit }: { limit: number | null }) =>
+      ["claudeCode", "usage", limit] as const,
+  },
+
   cloudSandboxes: {
     status: ({ appId }: { appId: number | null }) =>
       ["cloudSandboxStatus", appId] as const,
@@ -527,6 +537,7 @@ export type AppQueryKey =
       (typeof queryKeys.languageModels)[keyof typeof queryKeys.languageModels]
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
+  | QueryKeyOf<(typeof queryKeys.claudeCode)[keyof typeof queryKeys.claudeCode]>
   | QueryKeyOf<
       (typeof queryKeys.cloudSandboxes)[keyof typeof queryKeys.cloudSandboxes]
     >

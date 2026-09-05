@@ -155,10 +155,13 @@ import {
 import { isFreeProModel } from "@/lib/freeProModel";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
 import {
+  assertChatBackendCompatibleWithModel,
   assertChatModeCompatibleWithModel,
   normalizeStoredChatMode,
   resolveChatModeForTurn,
 } from "./chat_mode_resolution";
+import { getBackendForModel } from "@/shared/chat_backend";
+import { runClaudeCodeChatTurn } from "@/claude_code/chat_turn";
 import {
   acceptChatTurn,
   isChatTurnAlreadyAccepted,
@@ -1147,6 +1150,10 @@ export function registerChatStreamHandlers() {
           settings: { ...baseSettings, selectedModel },
         });
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+      assertChatBackendCompatibleWithModel(
+        chat.executionBackend,
+        selectedModel,
+      );
 
       // Reserve quota before redo or attachment persistence. The reservation
       // is converted to a durable message mark only after turn acceptance.
@@ -1515,6 +1522,7 @@ ${componentSnippet}
             .select({
               chatMode: chats.chatMode,
               modelSelection: chats.modelSelection,
+              executionBackend: chats.executionBackend,
             })
             .from(chats)
             .where(eq(chats.id, req.chatId))
@@ -1539,6 +1547,10 @@ ${componentSnippet}
           ({ settings: storedSettings, mode: selectedChatMode } =
             latestResolution);
           assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+          assertChatBackendCompatibleWithModel(
+            latestChat.executionBackend,
+            selectedModel,
+          );
           isBasicAgentModeRequest = isBasicAgentMode({
             ...storedSettings,
             selectedChatMode,
@@ -1579,6 +1591,7 @@ ${componentSnippet}
               storedChatMode: latestChat.chatMode,
               selectedChatMode,
               selectedModel,
+              executionBackend: getBackendForModel(selectedModel),
               content:
                 implementPlanDisplayPrompt ??
                 displayUserPrompt ??
@@ -1785,6 +1798,23 @@ ${componentSnippet}
           abortController,
           placeholderAssistantMessage.id,
         );
+      } else if (getBackendForModel(selectedModel) === "claude-code") {
+        // Subscription backend: Claude Code runs the agent through the
+        // official CLI. It never enters Dyad's model/tool loop below.
+        finishedNaturally = await runClaudeCodeChatTurn({
+          event,
+          req,
+          abortController,
+          chat: updatedChat,
+          appPath: getDyadAppPath(updatedChat.app.path),
+          placeholderMessageId: placeholderAssistantMessage.id,
+          selectedModel,
+          chatMode: selectedChatMode,
+          userPrompt,
+          storedAttachments,
+          settings,
+        });
+        return;
       } else {
         // Normal AI processing for non-test prompts
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =

@@ -83,6 +83,7 @@ export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { freeModelQuotaContracts } from "./free_model_quota";
+export { claudeCodeContracts } from "./claude_code";
 export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export {
@@ -148,6 +149,7 @@ export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { freeAgentQuotaClient } from "./free_agent_quota";
 export { freeModelQuotaClient } from "./free_model_quota";
+export { claudeCodeClient } from "./claude_code";
 export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export {
@@ -431,6 +433,11 @@ export type {
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 export type { FreeModelQuotaStatus } from "./free_model_quota";
+export type {
+  ClaudeCodeStatus,
+  ClaudeCodeUsageSummary,
+  ClaudeCodeUsageSummaryEvent,
+} from "./claude_code";
 
 // Pro types
 export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
@@ -550,6 +557,7 @@ import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { freeAgentQuotaClient } from "./free_agent_quota";
 import { freeModelQuotaClient } from "./free_model_quota";
+import { claudeCodeClient } from "./claude_code";
 import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import {
@@ -636,6 +644,7 @@ export const ipc = {
   misc: miscClient,
   freeAgentQuota: freeAgentQuotaClient,
   freeModelQuota: freeModelQuotaClient,
+  claudeCode: claudeCodeClient,
   audio: audioClient,
   media: mediaClient,
   appBlueprint: appBlueprintClient,

@@ -36,6 +36,11 @@ import {
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
 import {
+  BACKEND_SWITCH_REQUIRES_NEW_CHAT_MESSAGE,
+  getBackendForModel,
+  resolveChatExecutionBackend,
+} from "@/shared/chat_backend";
+import {
   blockSubagentAdmissionsForChat,
   settleSubagentsForChatDeletion,
 } from "@/pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
@@ -143,6 +148,7 @@ export function registerChatHandlers() {
         initialCommitHash: true,
         chatMode: true,
         modelSelection: true,
+        executionBackend: true,
         referencedAppIds: true,
       },
       with: {
@@ -167,6 +173,7 @@ export function registerChatHandlers() {
       initialCommitHash: chat.initialCommitHash,
       chatMode: normalizeStoredChatMode(chat.chatMode),
       modelSelection: chat.modelSelection ?? null,
+      executionBackend: chat.executionBackend ?? null,
       referencedApps: await getReferencedAppsForDisplay(chat.referencedAppIds),
       messages: chat.messages.map(toRendererMessage),
     };
@@ -310,7 +317,8 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
-    const { chatId, title, chatMode, modelSelection } = params;
+    const { chatId, title, chatMode, modelSelection, executionBackend } =
+      params;
     const updates: Partial<typeof chats.$inferInsert> = {};
     if (title !== undefined) {
       updates.title = title;
@@ -321,13 +329,48 @@ export function registerChatHandlers() {
     if (modelSelection !== undefined) {
       updates.modelSelection = modelSelection;
     }
+    if (executionBackend !== undefined) {
+      updates.executionBackend = executionBackend;
+    }
     if (Object.keys(updates).length === 0) {
       return;
     }
-    if (chatMode !== undefined || modelSelection !== undefined) {
-      await withChatQueueLock(chatId, () =>
-        db.update(chats).set(updates).where(eq(chats.id, chatId)),
-      );
+    if (
+      chatMode !== undefined ||
+      modelSelection !== undefined ||
+      executionBackend !== undefined
+    ) {
+      await withChatQueueLock(chatId, async () => {
+        const current = db
+          .select({
+            executionBackend: chats.executionBackend,
+            modelSelection: chats.modelSelection,
+          })
+          .from(chats)
+          .where(eq(chats.id, chatId))
+          .get();
+        if (!current) {
+          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+        }
+        // A chat never changes backend after it is bound; the renderer offers
+        // "Start new chat" instead. Reject both an explicit re-bind and a
+        // model selection whose backend disagrees with the bound one.
+        const boundBackend = resolveChatExecutionBackend(current);
+        const requestedBackend =
+          executionBackend ??
+          (modelSelection ? getBackendForModel(modelSelection) : null);
+        if (
+          boundBackend !== null &&
+          requestedBackend !== null &&
+          requestedBackend !== boundBackend
+        ) {
+          throw new DyadError(
+            BACKEND_SWITCH_REQUIRES_NEW_CHAT_MESSAGE,
+            DyadErrorKind.Precondition,
+          );
+        }
+        await db.update(chats).set(updates).where(eq(chats.id, chatId));
+      });
     } else {
       await db.update(chats).set(updates).where(eq(chats.id, chatId));
     }

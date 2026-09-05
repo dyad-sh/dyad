@@ -38,6 +38,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { ConnectionModelMenu } from "@/components/ConnectionModelMenu";
 import {
   Dialog,
   DialogContent,
@@ -150,6 +151,7 @@ const toRecentModelIdentity = (
 ): LargeLanguageModel => ({
   provider: model.provider,
   name: model.name,
+  ...(model.connection ? { connection: model.connection } : {}),
   ...(model.customModelId !== undefined
     ? { customModelId: model.customModelId }
     : {}),
@@ -442,7 +444,7 @@ export function ModelPicker() {
       chat?.modelSelection?.effortLevel ??
       settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
   }).effortLevel;
-  const modelDisplayName = getModelDisplayName();
+  const modelDisplayName = `${getModelDisplayName()}${selectedModel.connection ? ` · ${selectedModel.connection === "subscription" ? "Subscription" : selectedModel.connection === "pro" ? "Pro credits" : "API key"}` : ""}`;
   const trialAutoModel = autoModels.find((model) => model.apiName === "auto");
   const trialAutoEffortSettings = getEffortSettings(trialAutoModel);
   const trialAutoEffort = createModelSelection({
@@ -513,6 +515,9 @@ export function ModelPicker() {
   );
   const recentModelEntries = effectiveRecentModels.flatMap<RecentModelEntry>(
     (recentModel) => {
+      // Legacy rows reconstruct provider/name only. Explicit billing choices
+      // must be selected in their connection section, never silently downgraded.
+      if (recentModel.connection) return [];
       if (recentModel.provider === "ollama") {
         if (ollamaError) {
           return [];
@@ -1299,8 +1304,28 @@ export function ModelPicker() {
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent className={MODEL_MENU_WIDTH_CLASS} align="start">
+          <ConnectionModelMenu
+            open={open}
+            selected={selectedModel}
+            providers={providers ?? []}
+            modelsByProviders={modelsByProviders ?? {}}
+            proEnabled={dyadProEnabled && !isTrial}
+            isProviderSetup={isProviderSetup}
+            onUpgrade={handleUnlockAllClick}
+            onSetup={(providerId) => {
+              setOpen(false);
+              navigate({
+                to: providerSettingsRoute.id,
+                params: { provider: providerId },
+              });
+            }}
+            onSelect={(model, catalogModel) => {
+              void onModelSelect({ model, catalogModel });
+              setOpen(false);
+            }}
+          />
           {/* Trial user upgrade banner */}
-          {isTrial && (
+          {isTrial && !selectedModel.connection && (
             <>
               <div className="px-2 py-3 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50">
                 <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-2">

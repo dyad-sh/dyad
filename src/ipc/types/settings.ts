@@ -17,6 +17,33 @@ export const ProviderApiKeyValidationProviderSchema = z.enum([
  * These are the simplest endpoints - no complex input, just get/set operations.
  */
 export const settingsContracts = {
+  getCodexSubscriptionStatus: defineContract({
+    channel: "codex-subscription:status",
+    input: z.void(),
+    output: z.object({
+      connected: z.boolean(),
+      pending: z.boolean(),
+      error: z.string().optional(),
+      pendingReports: z.number(),
+      chargedUsd: z.number(),
+      missingUsage: z.boolean(),
+    }),
+  }),
+  connectCodexSubscription: defineContract({
+    channel: "codex-subscription:connect",
+    input: z.object({ acceptCharges: z.literal(true) }),
+    output: z.void(),
+  }),
+  disconnectCodexSubscription: defineContract({
+    channel: "codex-subscription:disconnect",
+    input: z.void(),
+    output: z.void(),
+  }),
+  retryCodexSubscriptionUsage: defineContract({
+    channel: "codex-subscription:retry-usage",
+    input: z.void(),
+    output: z.void(),
+  }),
   /**
    * Get current user settings.
    * Returns the full UserSettings object.

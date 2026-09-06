@@ -211,6 +211,20 @@ describe("readChatTool.execute", () => {
     expect(parsed.has_more_after).toBe(false);
   });
 
+  it("reports has_more_before true when paging past the end of the chat", async () => {
+    const { appId, chatId } = seedChat(5);
+    const { parsed } = await run(
+      { chat_id: chatId, offset: 5, limit: 5 },
+      { appId, chatId: chatId + 999 },
+    );
+    expect(parsed.chat.total_messages).toBe(5);
+    expect(parsed.mode.offset).toBe(5);
+    expect(parsed.messages).toEqual([]);
+    // SQL returns no rows, but all 5 messages precede firstPos = 6.
+    expect(parsed.has_more_before).toBe(true);
+    expect(parsed.has_more_after).toBe(false);
+  });
+
   it("returns a window around a message", async () => {
     const { appId, chatId, messageIds } = seedChat(15);
     const { parsed } = await run(
@@ -431,6 +445,38 @@ describe("readChatTool.execute", () => {
     );
     expect(parsed.output_truncated).toBe(true);
     expect(parsed.messages.map((m: any) => m.message_id)).toContain(targetId);
+  });
+
+  it("reports has_more_before after around-mode budget truncation drops leading context", async () => {
+    const appId = harness.insertApp();
+    const chatId = harness.insertChat(appId, "Bulky shifted window");
+    // With `before: 10, after: 0` the window starts at pos 1 and the target
+    // is the last visible row, so the budget loop trims leading context via
+    // rows.shift() (rather than trailing context via rows.pop()). Multibyte
+    // content near the per-message cap pushes the default window over the
+    // 20KB byte budget.
+    const bulky = "字".repeat(2_300);
+    const ids: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      ids.push(
+        harness.insertMessage({
+          chatId,
+          role: "user",
+          content: `msg ${i} ${bulky}`,
+          createdAt: 40_000 + i,
+        }),
+      );
+    }
+    const targetId = ids[3];
+    const { parsed } = await run(
+      { chat_id: chatId, around_message_id: targetId, before: 10, after: 0 },
+      { appId, chatId: chatId + 999 },
+    );
+    expect(parsed.output_truncated).toBe(true);
+    expect(parsed.messages.map((m: any) => m.message_id)).toContain(targetId);
+    // Leading context (pos 1, 2) was dropped via rows.shift(); the visible
+    // window now starts at pos 3, so messages still exist before it.
+    expect(parsed.has_more_before).toBe(true);
   });
 
   it("emits a completed XML card with the range", async () => {

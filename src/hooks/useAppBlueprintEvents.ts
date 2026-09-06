@@ -22,22 +22,19 @@ export function useAppBlueprintEvents() {
         setAppBlueprintState((prev) => {
           const nextPlans = new Map(prev.plansByChatId);
           nextPlans.set(payload.chatId, payload.data);
-          // A fresh blueprint update supersedes any prior timeout/readiness
-          // and approval state for this chat — otherwise a regenerated
-          // blueprint could stay stuck as "timed out", carry over stale
-          // visuals readiness, or remain in the approved UI state even though
-          // main-process state was just reset to `approved: false`.
+          // A fresh blueprint update supersedes any prior timeout and
+          // approval state for this chat — otherwise a regenerated
+          // blueprint could stay stuck as "timed out" or remain in the
+          // approved UI state even though main-process state was just
+          // reset to `approved: false`.
           const nextTimedOut = new Set(prev.timedOutChatIds);
           nextTimedOut.delete(payload.chatId);
-          const nextVisualsReady = new Set(prev.visualsReadyChatIds);
-          nextVisualsReady.delete(payload.chatId);
           const nextApproved = new Set(prev.approvedChatIds);
           nextApproved.delete(payload.chatId);
           return {
             ...prev,
             plansByChatId: nextPlans,
             timedOutChatIds: nextTimedOut,
-            visualsReadyChatIds: nextVisualsReady,
             approvedChatIds: nextApproved,
           };
         });
@@ -55,16 +52,10 @@ export function useAppBlueprintEvents() {
               visuals: payload.visuals,
             });
           }
-          const next: typeof prev = {
+          return {
             ...prev,
             plansByChatId: nextPlans,
           };
-          if (payload.complete) {
-            const nextReady = new Set(prev.visualsReadyChatIds);
-            nextReady.add(payload.chatId);
-            next.visualsReadyChatIds = nextReady;
-          }
-          return next;
         });
       },
     );

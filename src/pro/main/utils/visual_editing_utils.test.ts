@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { transformContent, analyzeComponent } from "./visual_editing_utils";
+import { stylesToTailwind, extractClassPrefixes } from "@/utils/style-utils";
 
 describe("transformContent", () => {
   describe("className manipulation", () => {
@@ -348,6 +349,205 @@ function Component() {
       // Should not have added an extra mx- or my- with the original value
       expect(result.match(/mx-/g)?.length).toBe(1);
       expect(result.match(/my-/g)?.length).toBe(1);
+    });
+  });
+
+  describe("border editing", () => {
+    it("should replace border width and color while preserving border-style and per-side widths (real pipeline)", () => {
+      const content = `
+function Component() {
+  return <div className="p-4 border-2 border-dashed border-t-4 border-x-2 border-red-500 rounded-lg">Box</div>;
+}`;
+
+      const classes = stylesToTailwind({
+        border: { width: "3px", color: "#ff0000" },
+      } as any);
+      const prefixes = extractClassPrefixes(classes);
+      const changes = new Map([[3, { classes, prefixes }]]);
+      const result = transformContent(content, changes);
+
+      // Old all-sides width / color are replaced
+      expect(result).not.toContain("border-2");
+      expect(result).not.toContain("border-red-500");
+      // New border classes are present
+      expect(result).toContain("border-[3px]");
+      expect(result).toContain("border-[#ff0000]");
+      // Unrelated border utilities the edit does not touch must survive
+      expect(result).toContain("border-dashed");
+      expect(result).toContain("border-t-4");
+      expect(result).toContain("border-x-2");
+      // Unrelated non-border utilities must survive
+      expect(result).toContain("p-4");
+      expect(result).toContain("rounded-lg");
+    });
+
+    it("should preserve border-dotted and border-double on a width+color edit", () => {
+      const content = `
+function Component() {
+  return <div className="border-4 border-double border-blue-500">Box</div>;
+}`;
+
+      const classes = stylesToTailwind({
+        border: { width: "1px", color: "#111111" },
+      } as any);
+      const prefixes = extractClassPrefixes(classes);
+      const changes = new Map([[3, { classes, prefixes }]]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-4");
+      expect(result).not.toContain("border-blue-500");
+      expect(result).toContain("border-[1px]");
+      expect(result).toContain("border-[#111111]");
+      expect(result).toContain("border-double");
+    });
+
+    it("should replace only border-width when only width prefix is applied", () => {
+      const content = `
+function Component() {
+  return <div className="border-2 border-dashed border-red-500">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[3px]"], prefixes: ["border-width-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-2");
+      expect(result).toContain("border-[3px]");
+      // color and style untouched when only width is edited
+      expect(result).toContain("border-red-500");
+      expect(result).toContain("border-dashed");
+    });
+
+    it("should replace only border-color when only color prefix is applied", () => {
+      const content = `
+function Component() {
+  return <div className="border-2 border-dashed border-red-500">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[#00ff00]"], prefixes: ["border-color-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-red-500");
+      expect(result).toContain("border-[#00ff00]");
+      // width and style untouched when only color is edited
+      expect(result).toContain("border-2");
+      expect(result).toContain("border-dashed");
+    });
+
+    it("should replace arbitrary border widths but not arbitrary border colors in the width branch", () => {
+      const content = `
+function Component() {
+  return <div className="border-[2px] border-[#00ff00]">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[3px]"], prefixes: ["border-width-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-[2px]");
+      expect(result).toContain("border-[3px]");
+      // arbitrary color is NOT a width; must survive a width-only edit
+      expect(result).toContain("border-[#00ff00]");
+    });
+
+    it("should replace arbitrary border colors but not arbitrary border widths in the color branch", () => {
+      const content = `
+function Component() {
+  return <div className="border-[2px] border-[#00ff00]">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[#ff0000]"], prefixes: ["border-color-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-[#00ff00]");
+      expect(result).toContain("border-[#ff0000]");
+      // arbitrary width is NOT a color; must survive a color-only edit
+      expect(result).toContain("border-[2px]");
+    });
+
+    it("should remove bare border width and numeric width scale in the width branch", () => {
+      const content = `
+function Component() {
+  return <div className="border border-0 border-2 border-4 border-8 border-dashed border-t-4 border-collapse">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[3px]"], prefixes: ["border-width-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-0");
+      expect(result).not.toContain("border-2");
+      expect(result).not.toContain("border-4");
+      expect(result).not.toContain("border-8");
+      // bare "border" width must be removed, while border-X utilities may remain
+      expect(result).toContain("border-[3px]");
+      expect(result).not.toMatch(/className="[^"]*\bborder\b(?![\w-])/);
+      // style, per-side width, and table utility preserved
+      expect(result).toContain("border-dashed");
+      expect(result).toContain("border-t-4");
+      expect(result).toContain("border-collapse");
+    });
+
+    it("should remove named border colors and border-opacity in the color branch", () => {
+      const content = `
+function Component() {
+  return <div className="border-2 border-dashed border-red-500 border-black border-opacity-50 border-t-4">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[#ff0000]"], prefixes: ["border-color-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      expect(result).not.toContain("border-red-500");
+      expect(result).not.toContain("border-black");
+      expect(result).not.toContain("border-opacity-50");
+      expect(result).toContain("border-[#ff0000]");
+      // width, style, and per-side width must survive a color-only edit
+      expect(result).toContain("border-2");
+      expect(result).toContain("border-dashed");
+      expect(result).toContain("border-t-4");
+    });
+
+    it("should not remove non-border classes that merely contain 'border'", () => {
+      const content = `
+function Component() {
+  return <div className="p-4 hover:border-red-500 border-dashed">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-[#ff0000]"], prefixes: ["border-color-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      // variant-prefixed classes start with "hover:", not "border-"; left intact
+      expect(result).toContain("hover:border-red-500");
+      expect(result).toContain("border-dashed");
+      expect(result).toContain("border-[#ff0000]");
+    });
+
+    it("should add a className when editing border on an element without one", () => {
+      const content = `
+function Component() {
+  return <div>Box</div>;
+}`;
+
+      const classes = stylesToTailwind({
+        border: { width: "3px", color: "#ff0000" },
+      } as any);
+      const prefixes = extractClassPrefixes(classes);
+      const changes = new Map([[3, { classes, prefixes }]]);
+      const result = transformContent(content, changes);
+
+      expect(result).toContain("border-[3px]");
+      expect(result).toContain("border-[#ff0000]");
     });
   });
 

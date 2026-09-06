@@ -72,9 +72,15 @@ export const useCopyToClipboard = () => {
       }
     });
 
-    // Clean up the final result
+    // Clean up the final result. Only collapse runs of newlines OUTSIDE
+    // fenced code blocks so that verbatim file content inside ``` fences
+    // (e.g. PEP-8 blank lines) round-trips to the clipboard unchanged.
     return result
-      .replace(/\n{3,}/g, "\n\n") // Max 2 consecutive newlines
+      .split(/(```[\s\S]*?```)/) // keep fenced spans as their own segments
+      .map((seg) =>
+        seg.startsWith("```") ? seg : seg.replace(/\n{3,}/g, "\n\n"),
+      )
+      .join("")
       .trim();
   };
 

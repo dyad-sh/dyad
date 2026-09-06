@@ -755,6 +755,14 @@ async function revertCodebaseToVersion({
         // handled via `.catch()` rather than a surrounding try/catch
         // because, without an `await`, a try/catch would not catch the
         // promise rejection and it would surface as an unhandled rejection.
+        //
+        // Note: the preserve branch always has the development branch as a
+        // child after a restore (the restore endpoint reparents dev under the
+        // preserve branch), and Neon exposes no way to reparent an existing
+        // branch, so this delete may fail permanently with HTTP 422. Such a
+        // permanent failure now surfaces immediately (one error log) instead of
+        // being retried for ~63s of guaranteed-fail backoff; freeing the
+        // preserve branch requires detangling its dev child first.
         retryOnLocked(
           () =>
             neonClient.deleteProjectBranch(
@@ -762,7 +770,6 @@ async function revertCodebaseToVersion({
               preserveBranchId,
             ),
           `Delete preserve branch ${preserveBranchId} for app ${appId}`,
-          { retryBranchWithChildError: true },
         ).catch((error) => {
           const errorMessage = getNeonErrorMessage(error);
           logger.error("Error in deleteProjectBranch:", errorMessage);

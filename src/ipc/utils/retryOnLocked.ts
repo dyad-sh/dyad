@@ -37,14 +37,19 @@ const RETRY_CONFIG = {
 /**
  * Retries an async operation with exponential backoff on transient Neon
  * management API errors: locked branches (423) and rate limits (429).
+ *
+ * Non-retryable errors (including HTTP 422, e.g. the "branch has a child"
+ * precondition returned by `deleteProjectBranch`) are thrown immediately
+ * rather than swallowed and retried. Neon's OpenAPI spec documents `DELETE`
+ * as non-idempotent and states a branch with a child cannot be deleted, and
+ * the API exposes no way to reparent an existing branch (`BranchUpdateRequest`
+ * only permits `name`/`protected`/`expires_at`), so such failures are
+ * permanent — retrying them only burns ~63s of backoff before rejecting.
  */
 
 export async function retryOnLocked<T>(
   operation: () => Promise<T>,
   context: string,
-  {
-    retryBranchWithChildError = false,
-  }: { retryBranchWithChildError?: boolean } = {},
 ): Promise<T> {
   let lastError: any;
 
@@ -56,15 +61,11 @@ export async function retryOnLocked<T>(
     } catch (error: any) {
       lastError = error;
 
-      // Only retry on locked (423) or rate-limit (429) errors
+      // Only retry on locked (423) or rate-limit (429) errors. Any other
+      // status (e.g. 422 "branch has a child") is a permanent failure and
+      // must surface immediately instead of being retried.
       if (!isRetryableError(error)) {
-        if (retryBranchWithChildError && error.response?.status === 422) {
-          logger.info(
-            `${context}: Branch with child error (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1})`,
-          );
-        } else {
-          throw error;
-        }
+        throw error;
       }
 
       // Don't retry if we've exhausted all attempts

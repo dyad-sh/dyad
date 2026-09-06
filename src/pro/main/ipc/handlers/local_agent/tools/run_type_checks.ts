@@ -103,11 +103,23 @@ function matchesPaths(
 
     const normalizedRelative = normalizePath(relative).replace(/\/$/, "");
 
-    if (normalizedProblemFile === normalizedRelative) {
+    // On Windows, path segments may differ only in casing; compare
+    // case-insensitively so that e.g. SRC/foo.ts matches src/foo.ts.
+    const cmp = looksLikeWin32Path
+      ? (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+      : (a: string, b: string) => a === b;
+
+    if (cmp(normalizedProblemFile, normalizedRelative)) {
       return true;
     }
 
-    if (normalizedProblemFile.startsWith(normalizedRelative + "/")) {
+    if (
+      looksLikeWin32Path
+        ? normalizedProblemFile
+            .toLowerCase()
+            .startsWith(normalizedRelative.toLowerCase() + "/")
+        : normalizedProblemFile.startsWith(normalizedRelative + "/")
+    ) {
       return true;
     }
   }

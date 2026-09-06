@@ -506,6 +506,43 @@ describe("runTypeChecksTool precondition guidance", () => {
       );
     });
 
+    it("matches a Windows path case-insensitively when the agent uses different casing", async () => {
+      const ctx = makeCtx(String.raw`C:\Users\app`);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts")],
+      });
+
+      // Agent passes path with uppercase SRC segment
+      const result = await runTypeChecksTool.execute(
+        { paths: [String.raw`C:\Users\app\SRC\foo.ts`] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "Found 1 type error in `C:/Users/app/SRC/foo.ts`:\n\nsrc/foo.ts:1:1: Type mismatch",
+      );
+    });
+
+    it("matches a Windows directory path case-insensitively", async () => {
+      const ctx = makeCtx(String.raw`C:\Users\app`);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/lib/foo.ts"), problem("src/Other.tsx")],
+      });
+
+      // Agent passes directory with uppercase SRC segment
+      const result = await runTypeChecksTool.execute(
+        { paths: [String.raw`C:\Users\app\SRC\lib`] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "Found 1 type error in `C:/Users/app/SRC/lib`:\n\nsrc/lib/foo.ts:1:1: Type mismatch\n\nThe project also has 1 type error outside this scope.",
+      );
+      expect(result).not.toContain("src/Other.tsx:1:1");
+    });
+
     it("still matches a relative path with a leading ./ and preserves it in the scope label", async () => {
       const appPath = await makeApp({
         devDependencies: { typescript: "^7.0.0" },

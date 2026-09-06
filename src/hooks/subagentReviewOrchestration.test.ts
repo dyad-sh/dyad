@@ -69,6 +69,7 @@ import {
   useBackgroundAutoReview,
 } from "./subagentReviewOrchestration";
 import {
+  clearPendingReviewContinuation,
   hasPendingReviewContinuation,
   resumePendingReviewContinuation,
   setPendingReviewContinuation,
@@ -80,6 +81,10 @@ describe("sub-agent review orchestration", () => {
     mocks.queue = [{ itemId: "queued-1" }];
     mocks.streamFinishedCallback = undefined;
     mocks.dispatchQueueEvent.mockResolvedValue(undefined);
+    mocks.skipReviewAutoFix.mockResolvedValue(undefined);
+    for (const chatId of [7, 8, 9, 10, 12]) {
+      clearPendingReviewContinuation(chatId);
+    }
   });
 
   it("leaves queued-message barrier ownership in the main actor", async () => {
@@ -204,7 +209,7 @@ describe("sub-agent review orchestration", () => {
 
   it("resumes a paused remediation with exactly one verification", async () => {
     const verify = vi.fn(async () => {});
-    setPendingReviewContinuation(8, verify);
+    setPendingReviewContinuation(8, "thread-8", verify);
 
     expect(hasPendingReviewContinuation(8)).toBe(true);
     await expect(resumePendingReviewContinuation(8)).resolves.toBe(true);
@@ -212,6 +217,85 @@ describe("sub-agent review orchestration", () => {
 
     expect(verify).toHaveBeenCalledTimes(1);
     expect(hasPendingReviewContinuation(8)).toBe(false);
+  });
+
+  it("clearPendingReviewContinuation returns the stashed thread id", () => {
+    setPendingReviewContinuation(8, "thread-8", async () => {});
+    expect(clearPendingReviewContinuation(8)).toBe("thread-8");
+    expect(hasPendingReviewContinuation(8)).toBe(false);
+  });
+
+  it("clearPendingReviewContinuation returns undefined when nothing is stashed", () => {
+    expect(clearPendingReviewContinuation(404)).toBe(undefined);
+  });
+
+  it("stashes the in-flight barrier thread id for a step-limited remediation", async () => {
+    mocks.runAutoReviewBarrier
+      .mockResolvedValueOnce({ outcome: "released" })
+      .mockResolvedValueOnce({
+        outcome: "fix_required",
+        threadId: "review-1",
+        prompt: "fix it",
+      });
+
+    await runBackgroundAutoReview({
+      chatId: 12,
+      getAutoFix: () => true,
+      streamFix: async () => "paused",
+    });
+
+    expect(hasPendingReviewContinuation(12)).toBe(true);
+    expect(clearPendingReviewContinuation(12)).toBe("review-1");
+  });
+
+  it("settles the in-flight review when an unrelated turn is cancelled after a step-limit pause", async () => {
+    renderHook(() => useBackgroundAutoReview());
+
+    // Simulate the step-limit pause: the renderer stashed a pending
+    // continuation bound to an in-flight review thread.
+    const continuation = vi.fn(async () => {});
+    setPendingReviewContinuation(7, "review-7", continuation);
+    expect(hasPendingReviewContinuation(7)).toBe(true);
+
+    // The user starts an unrelated prompt after the step-limit pause and
+    // cancels it (chat:response:end with wasCancelled:true, no barrier).
+    mocks.streamFinishedCallback?.({
+      chatId: 7,
+      outcome: "cancelled",
+      updatedFiles: false,
+      reviewBarrierRequested: false,
+      wasCancelled: true,
+    });
+    await Promise.resolve();
+
+    expect(hasPendingReviewContinuation(7)).toBe(false);
+    expect(continuation).not.toHaveBeenCalled();
+    expect(mocks.skipReviewAutoFix).toHaveBeenCalledWith({
+      chatId: 7,
+      threadId: "review-7",
+      remediationFailed: true,
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call skipReviewAutoFix when a cancelled turn drops a threadless continuation", async () => {
+    renderHook(() => useBackgroundAutoReview());
+
+    // A continuation stashed without a remediation-bound thread id.
+    setPendingReviewContinuation(7, undefined, async () => {});
+
+    mocks.streamFinishedCallback?.({
+      chatId: 7,
+      outcome: "cancelled",
+      updatedFiles: false,
+      reviewBarrierRequested: false,
+      wasCancelled: true,
+    });
+    await Promise.resolve();
+
+    expect(hasPendingReviewContinuation(7)).toBe(false);
+    expect(mocks.skipReviewAutoFix).not.toHaveBeenCalled();
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledTimes(1);
   });
 
   it("auto-fixes a background review only when enabled, then verifies", async () => {

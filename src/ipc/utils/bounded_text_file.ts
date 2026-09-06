@@ -10,7 +10,6 @@ export const AGENT_READ_FILE_TRUNCATION_NOTICE =
   "\n\n[Output truncated at 256 KiB. Read a smaller range with start_line_one_indexed and end_line_one_indexed_inclusive.]";
 
 const STREAM_CHUNK_BYTES = 64 * 1024;
-const BINARY_SAMPLE_BYTES = 8 * 1024;
 const AGENT_READ_FILE_CONTENT_LIMIT_BYTES =
   AGENT_READ_FILE_RESULT_LIMIT_BYTES -
   Buffer.byteLength(AGENT_READ_FILE_TRUNCATION_NOTICE, "utf8");
@@ -190,20 +189,45 @@ export async function readContainedTextFile({
   }
 }
 
-async function assertTextSample(
+// Rejects binary files up front by scanning the *entire* file in bounded
+// `STREAM_CHUNK_BYTES` chunks, reusing a single buffer (no OOM risk). This is a
+// whole-file pre-scan: a NUL byte or invalid UTF-8 anywhere in the file is
+// rejected regardless of the line range or output truncation the caller later
+// requests. Without it, binary content past the previously-sampled first 8 KiB
+// and outside the requested in-range / in-budget region would never be
+// inspected and the file would be misclassified as text.
+async function assertTextFile(
   handle: FileHandle,
   size: number,
   displayPath: string,
 ): Promise<void> {
   if (size === 0) return;
-  const sample = Buffer.allocUnsafe(Math.min(size, BINARY_SAMPLE_BYTES));
-  const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
-  const bytes = sample.subarray(0, bytesRead);
-  assertNoNullBytes(bytes, displayPath);
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const buffer = Buffer.allocUnsafe(STREAM_CHUNK_BYTES);
+  let position = 0;
+  while (position < size) {
+    const { bytesRead } = await handle.read(
+      buffer,
+      0,
+      Math.min(buffer.length, size - position),
+      position,
+    );
+    if (bytesRead === 0) break;
+    position += bytesRead;
+    const chunk = buffer.subarray(0, bytesRead);
+    assertNoNullBytes(chunk, displayPath);
+    try {
+      // `stream: true` permits a valid multi-byte character to cross chunk
+      // boundaries while still rejecting malformed UTF-8 within a chunk.
+      decoder.decode(chunk, { stream: true });
+    } catch {
+      throwBinaryFileError(displayPath);
+    }
+  }
+  // Flush the decoder so a truncated multi-byte sequence at EOF is rejected,
+  // matching the whole-buffer `decodeUtf8` used by the sibling readers.
   try {
-    // `stream: true` permits a valid multi-byte character to cross the sample
-    // boundary while still rejecting malformed UTF-8 within the sample.
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: true });
+    decoder.decode();
   } catch {
     throwBinaryFileError(displayPath);
   }
@@ -259,7 +283,7 @@ export async function readTextFileLines({
   const opened = await openContainedFile({ rootPath, filePath, displayPath });
   try {
     validateRealPath?.(opened.realPath, opened.realRootPath);
-    await assertTextSample(opened.handle, opened.size, displayPath);
+    await assertTextFile(opened.handle, opened.size, displayPath);
 
     const output: string[] = [];
     const decoder = new TextDecoder("utf-8", { fatal: true });

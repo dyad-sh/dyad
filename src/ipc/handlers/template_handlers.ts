@@ -116,7 +116,19 @@ async function applyTemplateInPlace({
       }
 
       await clearAppDirectoryForTemplateSwap(appPath);
-      await fsPromises.cp(stagedTemplatePath, appPath, { recursive: true });
+      await fsPromises.cp(stagedTemplatePath, appPath, {
+        recursive: true,
+        filter: (src, dest) => {
+          const name = path.basename(src);
+          if (
+            shouldPreservePath(name) &&
+            path.dirname(path.relative(stagedTemplatePath, src)) === "."
+          ) {
+            return !fs.existsSync(dest);
+          }
+          return true;
+        },
+      });
     } catch (error) {
       logger.error(
         `Failed to stage template ${templateId} for app ${appId} at ${appPath}:`,

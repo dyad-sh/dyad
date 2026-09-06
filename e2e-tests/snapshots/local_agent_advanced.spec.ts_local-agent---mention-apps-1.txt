@@ -811,7 +811,7 @@
           "type": "object",
           "properties": {
             "paths": {
-              "description": "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
+              "description": "Optional. An array of paths to files or directories to read type errors for, relative to the app root (e.g. 'src/App.tsx' or 'src/lib'). Absolute paths and '.' are resolved against the app root. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
               "type": "array",
               "items": {
                 "type": "string"

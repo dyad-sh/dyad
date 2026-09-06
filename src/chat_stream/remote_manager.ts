@@ -257,15 +257,19 @@ export class ChatStreamRemoteManager {
     expectedQueueRevision?: number,
   ): Promise<void> {
     const actor = this.actor(chatId);
-    // Preserve the revision that produced the mutation. Resync is only for
-    // transport freshness; it must not silently rebase stale renderer intent.
+    // Preserve the revision and stop policy that produced the mutation.
+    // Resync is only for transport freshness; it must not silently rebase
+    // stale renderer intent. A Stop landing in main during the resync
+    // round-trip can bump stopPolicyVersion without bumping queueRevision, so
+    // reading it after resync would let a stale RESUME_QUEUE defeat the host's
+    // stop-policy staleness guard.
     const mutationQueueRevision =
       expectedQueueRevision ?? actor.getSnapshot().queueRevision;
+    const observedStopPolicyVersion = actor.getSnapshot().stopPolicyVersion;
     const release = this.retainSubscription(chatId, actor);
     let releaseSettlement = IDLE_UNSUBSCRIBE;
     try {
       await actor.resync();
-      const observedStopPolicyVersion = actor.getSnapshot().stopPolicyVersion;
       const mutationId = this.ids.next("chat-queue");
       const settlement = new Promise<
         NonNullable<ChatStreamRemoteSnapshot["lastQueueMutation"]>

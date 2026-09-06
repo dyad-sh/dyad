@@ -74,14 +74,37 @@ export const useCopyToClipboard = () => {
 
     // Clean up the final result. Only collapse runs of newlines OUTSIDE
     // fenced code blocks so that verbatim file content inside ``` fences
-    // (e.g. PEP-8 blank lines) round-trips to the clipboard unchanged.
-    return result
-      .split(/(```[\s\S]*?```)/) // keep fenced spans as their own segments
-      .map((seg) =>
-        seg.startsWith("```") ? seg : seg.replace(/\n{3,}/g, "\n\n"),
-      )
-      .join("")
-      .trim();
+    // (e.g. PEP-8 blank lines, or fences containing nested ``` sequences)
+    // round-trips to the clipboard unchanged.
+    // Track fence boundaries line-by-line. The closing fence is the bare
+    // ``` line (no info string) that follows an opening ```<lang> line, so
+    // we record the opening delimiter and only close on an exact bare match.
+    const lines = result.split("\n");
+    let collapsed = "";
+    let openingFence: string | null = null; // null means not inside a fence
+    let consecutiveBlankLines = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (openingFence === null && /^```/.test(line)) {
+        // Opening fence — record the bare ``` prefix so we close correctly.
+        openingFence = line.match(/^(`+)/)![1];
+      } else if (openingFence !== null && line === openingFence) {
+        // Closing fence — must exactly match the opening backtick run.
+        openingFence = null;
+      }
+      const inFence = openingFence !== null;
+      if (!inFence && line === "") {
+        consecutiveBlankLines++;
+        if (consecutiveBlankLines >= 2) {
+          // Would produce 3+ consecutive newlines (2+ blank lines) — skip it.
+          continue;
+        }
+      } else {
+        consecutiveBlankLines = 0;
+      }
+      collapsed += (i === 0 ? "" : "\n") + line;
+    }
+    return collapsed.trim();
   };
 
   // Convert individual custom tags to markdown (reuse the same logic from DyadMarkdownParser)

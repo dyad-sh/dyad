@@ -296,6 +296,66 @@ describe("github_ops transition", () => {
     expect(commandsOf(result)).toEqual([{ type: "probe-conflicts" }]);
   });
 
+  it("clears the synthesized REBASE_IN_PROGRESS banner when a rebase finishes without conflicts (reconciliation path)", () => {
+    const rebasePaused = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "GIT_STATE",
+      mergeInProgress: false,
+      rebaseInProgress: true,
+    }).state;
+    expect(rebasePaused).toMatchObject({
+      type: "rebase-paused",
+      banner: { kind: "error", code: "REBASE_IN_PROGRESS" },
+    });
+
+    const finished = transition(rebasePaused, {
+      type: "GIT_STATE",
+      mergeInProgress: false,
+      rebaseInProgress: false,
+    });
+    expect(finished.state).toEqual({ type: "idle", banner: null });
+    expect(commandsOf(finished)).toEqual([{ type: "probe-conflicts" }]);
+
+    const afterConflicts = transition(finished.state, {
+      type: "CONFLICTS",
+      files: [],
+    });
+    expect(afterConflicts.state).toEqual({ type: "idle", banner: null });
+    expect(afterConflicts.state).toBe(finished.state);
+  });
+
+  it("clears the operationFailed REBASE_IN_PROGRESS banner when a rebase finishes without conflicts", () => {
+    const failureMessage = "git: rebase already in progress";
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: { type: "push", mode: "normal" },
+    }).state;
+    const rebasePaused = transition(running, {
+      type: "OP_FAILED",
+      op: { type: "push", mode: "normal" },
+      failure: {
+        kind: "known",
+        code: "REBASE_IN_PROGRESS",
+        message: failureMessage,
+      },
+    }).state;
+    expect(rebasePaused).toMatchObject({
+      type: "rebase-paused",
+      banner: {
+        kind: "error",
+        code: "REBASE_IN_PROGRESS",
+        message: failureMessage,
+      },
+    });
+
+    const finished = transition(rebasePaused, {
+      type: "GIT_STATE",
+      mergeInProgress: false,
+      rebaseInProgress: false,
+    });
+    expect(finished.state).toEqual({ type: "idle", banner: null });
+    expect(commandsOf(finished)).toEqual([{ type: "probe-conflicts" }]);
+  });
+
   it.each([
     { type: "rebase" },
     { type: "rebase-continue" },

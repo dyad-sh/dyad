@@ -109,7 +109,7 @@ export function SubagentTeamCard({
         },
       );
       if (remediated === "paused") {
-        setPendingReviewContinuation(chatId, async () => {
+        setPendingReviewContinuation(chatId, thread.id, async () => {
           try {
             await ipc.agent.runAutoReviewBarrier({
               chatId,

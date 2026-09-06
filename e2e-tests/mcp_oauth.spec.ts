@@ -201,14 +201,16 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "mcp - oauth disable-and-retry when server doesn't support OAuth",
+  "mcp - oauth failure shows no alert when server is reachable without auth",
   async ({ po }) => {
     // The fake server starts in NO_OAUTH mode: every OAuth endpoint
     // 404s and /mcp serves requests without a bearer. Default-on OAuth
     // means Add Server kicks off auto-connect, discovery 404s, and the
-    // "Server doesn't support OAuth" alert appears with the
-    // Disable OAuth & retry button. Clicking it must clear the alert
-    // and leave the server usable.
+    // one-time "OAuth connection failed" toast fires. Because /mcp is
+    // reachable, listTools succeeds and statusByServer flips to "ok",
+    // so the persistent "Server doesn't support OAuth" alert must NOT
+    // appear — a working server is not an error. The server stays
+    // usable in chat without needing a "Disable OAuth & retry" click.
     const fakePath = path.join(
       __dirname,
       "..",
@@ -264,26 +266,24 @@ testSkipIfWindows(
       await po.plugins.submitAddPluginDialog();
 
       // Toast fires once at registration and auto-dismisses; assert it
-      // before the persistent panel below.
+      // before the absence of the persistent panel below.
       await po.toastNotifications.waitForToastWithText(
         "OAuth connection failed. This server doesn't support OAuth.",
       );
 
-      // The full alert with the retry action lives on the detail page.
+      // The persistent alert would live on the detail page. The
+      // server is reachable without a bearer, so listTools succeeds
+      // (statusByServer === "ok") and a stored discovery_failed alert
+      // is stale by the time the detail page renders. The alert must
+      // NOT appear, mirroring the auth kinds (64e040e4): a working
+      // server is not an error.
       await po.plugins.openPluginDetail("testing-mcp-server");
-      await expect(
-        po.page.getByText("Server doesn't support OAuth", { exact: true }),
-      ).toBeVisible({ timeout: 15_000 });
-
-      await po.page
-        .getByRole("button", { name: "Disable OAuth & retry" })
-        .click();
-
       await expect(
         po.page.getByText("Server doesn't support OAuth", { exact: true }),
       ).toBeHidden({ timeout: 15_000 });
 
-      // Drive a tool call to prove the server is actually usable now.
+      // Drive a tool call to prove the server is usable without
+      // needing to click "Disable OAuth & retry".
       await po.navigation.goToAppsTab();
       await po.chatActions.selectChatMode("local-agent");
       await po.sendPrompt("tc=local-agent/mcp-calculator", {

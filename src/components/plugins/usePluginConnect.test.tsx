@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getToolConsents: vi.fn(),
   probeConnection: vi.fn(),
   updateServer: vi.fn(),
+  startOAuth: vi.fn(),
   listCatalog: vi.fn(),
   showError: vi.fn(),
 }));
@@ -24,6 +25,7 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
       getToolConsents: mocks.getToolConsents,
       probeConnection: mocks.probeConnection,
       updateServer: mocks.updateServer,
+      startOAuth: mocks.startOAuth,
       listCatalog: mocks.listCatalog,
     },
   },
@@ -100,6 +102,7 @@ describe("usePluginConnect feedback ownership", () => {
     mocks.getToolConsents.mockResolvedValue([]);
     mocks.listCatalog.mockResolvedValue({ entries: [] });
     mocks.updateServer.mockImplementation(async () => makeServer());
+    mocks.startOAuth.mockResolvedValue({ success: true, error: null });
   });
 
   it("drops the auth alert once credentials make discovery succeed", async () => {
@@ -175,6 +178,139 @@ describe("usePluginConnect feedback ownership", () => {
       expect(result.current.connect.feedbackFor(makeServer())?.kind).toBe(
         "unauthorized",
       ),
+    );
+  });
+
+  it("drops a stored discovery_failed alert once a PAT header makes discovery succeed (Headers-editor repair, OAuth still enabled)", async () => {
+    // AddPluginDialog defaults "Use OAuth" ON, so an OAuth-less PAT
+    // server hits discovery_failed before the user opens the Headers
+    // editor — exactly the state that creates the stale atom.
+    const server = makeServer({ oauthEnabled: true, oauthConnected: false });
+    mocks.listServers.mockResolvedValue([server]);
+    mocks.startOAuth.mockResolvedValue({
+      success: false,
+      error: "Incompatible OAuth metadata: no authorization endpoint",
+      errorKind: "discovery_failed",
+    });
+    mocks.listTools.mockResolvedValue(UNAUTHORIZED);
+
+    const { result } = renderConnect();
+    await waitFor(() => expect(result.current.mcp.servers).toHaveLength(1));
+
+    // Connect starts the OAuth flow, which fails discovery and stores
+    // a discovery_failed alert.
+    await act(async () => {
+      await result.current.connect.onConnect(SERVER_ID);
+    });
+    await waitFor(() =>
+      expect(result.current.connect.feedbackFor(server)?.kind).toBe(
+        "discovery_failed",
+      ),
+    );
+
+    // Repair via the Headers-editor save path: updateServer triggers
+    // re-discovery, and the mock now returns tools (status "ok").
+    mocks.updateServer.mockResolvedValue({
+      ...server,
+      headersJson: { Authorization: "Bearer ghp_example" },
+    });
+    mocks.listTools.mockResolvedValue(AUTHORIZED);
+    await act(async () => {
+      await result.current.mcp.updateServer({
+        id: SERVER_ID,
+        headersJson: { Authorization: "Bearer ghp_example" },
+      });
+    });
+
+    // The server is genuinely working, so the stale discovery_failed
+    // alert must clear — it should no longer shadow the live status.
+    await waitFor(() =>
+      expect(result.current.mcp.statusByServer[SERVER_ID]).toBe("ok"),
+    );
+    expect(result.current.connect.feedbackFor(server)).toBeNull();
+  });
+
+  it("keeps the stored discovery_failed alert while discovery still fails after an updateServer", async () => {
+    const server = makeServer({ oauthEnabled: true, oauthConnected: false });
+    mocks.listServers.mockResolvedValue([server]);
+    mocks.startOAuth.mockResolvedValue({
+      success: false,
+      error: "Incompatible OAuth metadata: no authorization endpoint",
+      errorKind: "discovery_failed",
+    });
+    mocks.listTools.mockResolvedValue(UNAUTHORIZED);
+
+    const { result } = renderConnect();
+    await waitFor(() => expect(result.current.mcp.servers).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.connect.onConnect(SERVER_ID);
+    });
+    await waitFor(() =>
+      expect(result.current.connect.feedbackFor(server)?.kind).toBe(
+        "discovery_failed",
+      ),
+    );
+
+    // An updateServer that does NOT repair discovery (e.g. a wrong
+    // header) must leave the stored discovery_failed alert in place —
+    // the fix only clears it when live status is "ok".
+    mocks.updateServer.mockResolvedValue({
+      ...server,
+      headersJson: { Authorization: "Bearer wrong" },
+    });
+    await act(async () => {
+      await result.current.mcp.updateServer({
+        id: SERVER_ID,
+        headersJson: { Authorization: "Bearer wrong" },
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.mcp.statusByServer[SERVER_ID]).toBe("unauthorized"),
+    );
+    expect(result.current.connect.feedbackFor(server)?.kind).toBe(
+      "discovery_failed",
+    );
+  });
+
+  it("keeps the stored discovery_failed alert when discovery reports an error (not ok) after an updateServer", async () => {
+    const server = makeServer({ oauthEnabled: true, oauthConnected: false });
+    mocks.listServers.mockResolvedValue([server]);
+    mocks.startOAuth.mockResolvedValue({
+      success: false,
+      error: "Incompatible OAuth metadata: no authorization endpoint",
+      errorKind: "discovery_failed",
+    });
+    mocks.listTools.mockResolvedValue(UNAUTHORIZED);
+
+    const { result } = renderConnect();
+    await waitFor(() => expect(result.current.mcp.servers).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.connect.onConnect(SERVER_ID);
+    });
+    await waitFor(() =>
+      expect(result.current.connect.feedbackFor(server)?.kind).toBe(
+        "discovery_failed",
+      ),
+    );
+
+    // Discovery now errors (unreachable server) — still not "ok", so
+    // the discovery_failed alert must survive.
+    mocks.listTools.mockResolvedValue({ tools: [], status: "error" });
+    await act(async () => {
+      await result.current.mcp.updateServer({
+        id: SERVER_ID,
+        headersJson: { Authorization: "Bearer ghp_example" },
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.mcp.statusByServer[SERVER_ID]).toBe("error"),
+    );
+    expect(result.current.connect.feedbackFor(server)?.kind).toBe(
+      "discovery_failed",
     );
   });
 });

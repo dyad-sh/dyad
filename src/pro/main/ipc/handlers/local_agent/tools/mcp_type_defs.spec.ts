@@ -340,6 +340,7 @@ describe("buildMcpCapabilityMap", () => {
       { name: "World" },
       expect.objectContaining({ toolCallId: "mcp-sandbox-srv__hello" }),
     );
+    expect(ctx.mcpToolRan).toBe(true);
     const xmls = vi.mocked(ctx.onXmlComplete).mock.calls.map((c) => c[0]);
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-call"))).toBe(true);
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-result"))).toBe(true);
@@ -550,7 +551,7 @@ describe("buildMcpCapabilityMap", () => {
     });
 
     await expect(map.srv__hello({})).rejects.toThrow("upstream boom");
-    expect(ctx.mcpToolRan).toBe(true);
+    expect(ctx.mcpToolRan).toBeUndefined();
     const xmls = vi.mocked(ctx.onXmlComplete).mock.calls.map((c) => c[0]);
     expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-call"))).toBe(true);
     expect(

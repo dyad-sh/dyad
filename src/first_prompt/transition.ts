@@ -41,6 +41,20 @@ function startCheckingProviders(
   };
 }
 
+function armForSetup(
+  payload: FirstPromptPayload,
+): Extract<FirstPromptTransitionResult, { kind: "applied" }> {
+  return {
+    kind: "applied",
+    state: {
+      type: "awaitingProviderSetup",
+      payload,
+      reason: "manual",
+    },
+    commands: [{ type: "ShowSetupDialog" }],
+  };
+}
+
 function applyProviderDefaultChatMode(
   payload: FirstPromptPayload,
   defaultChatMode: FirstPromptPayload["chatMode"],
@@ -165,15 +179,7 @@ export function transition(
         case "SUBMIT":
           return startCheckingProviders(event.payload);
         case "ARM_FOR_SETUP":
-          return {
-            kind: "applied",
-            state: {
-              type: "awaitingProviderSetup",
-              payload: event.payload,
-              reason: "manual",
-            },
-            commands: [{ type: "ShowSetupDialog" }],
-          };
+          return armForSetup(event.payload);
         case "RESET":
         case "DISARM":
           return ignore(state, "invalid-in-current-state");
@@ -447,6 +453,8 @@ export function transition(
           return startCheckingProviders(event.payload);
         case "RETRY":
           return startCreating(state.payload);
+        case "ARM_FOR_SETUP":
+          return armForSetup(event.payload);
         case "RESET":
         case "DISARM":
           return { kind: "applied", state: { type: "idle" }, commands: [] };
@@ -464,6 +472,8 @@ export function transition(
             : resumePartial(state, event.payload);
         case "RETRY":
           return resumePartial(state);
+        case "ARM_FOR_SETUP":
+          return armForSetup(event.payload);
         case "RESET":
         case "DISARM":
           return { kind: "applied", state: { type: "idle" }, commands: [] };

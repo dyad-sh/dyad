@@ -334,6 +334,127 @@ describe("runTypeScriptCheck", () => {
     );
   });
 
+  describe("version-gated CLI flags (--explainFiles, --incremental)", () => {
+    function typeCheckArgs(): string[] {
+      // call[0] is the `--version` probe, call[1] is the actual type check.
+      return runBufferedProcessMock.mock.calls[1][0].args as string[];
+    }
+
+    it("includes --explainFiles false on TypeScript 4.2.0", async () => {
+      mockVersion("4.2.0");
+      runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+      await runTypeScriptCheck({ appPath });
+
+      const args = typeCheckArgs();
+      expect(args).toContain("--explainFiles");
+      expect(args[args.indexOf("--explainFiles") + 1]).toBe("false");
+    });
+
+    it("includes --explainFiles false on TypeScript 5.x", async () => {
+      mockVersion("5.5.3");
+      runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+      await runTypeScriptCheck({ appPath });
+
+      const args = typeCheckArgs();
+      expect(args).toContain("--explainFiles");
+      expect(args[args.indexOf("--explainFiles") + 1]).toBe("false");
+    });
+
+    for (const legacyVersion of ["3.9.10", "4.0.5", "4.1.5"]) {
+      it(`omits --explainFiles on TypeScript ${legacyVersion}`, async () => {
+        mockVersion(legacyVersion);
+        runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+        await runTypeScriptCheck({ appPath });
+
+        const args = typeCheckArgs();
+        expect(args).not.toContain("--explainFiles");
+        // The remaining defensive flags are still passed intact.
+        expect(args).toContain("--traceResolution");
+        expect(args).toContain("--noEmit");
+      });
+    }
+
+    // TypeScript 3.9 rejects --incremental + --noEmit with TS5053 and
+    // --tsBuildInfoFile (without --incremental) with TS5069, maskinng real
+    // diagnostics just like TS5023 did. 4.0 lifted the noEmit restriction, so
+    // both flags are gated on >= 4.0.
+    it("omits --incremental and --tsBuildInfoFile on TypeScript 3.9.10", async () => {
+      mockVersion("3.9.10");
+      runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+      await runTypeScriptCheck({ appPath });
+
+      const args = typeCheckArgs();
+      expect(args).not.toContain("--incremental");
+      expect(args).not.toContain("--tsBuildInfoFile");
+      // --noEmit and --project are still passed so the check still runs.
+      expect(args).toContain("--noEmit");
+      expect(args).toContain("--project");
+    });
+
+    it("keeps --incremental and --tsBuildInfoFile on TypeScript 4.0.5", async () => {
+      mockVersion("4.0.5");
+      runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+      await runTypeScriptCheck({ appPath });
+
+      const args = typeCheckArgs();
+      expect(args).toContain("--incremental");
+      expect(args).toContain("--tsBuildInfoFile");
+      expect(args[args.indexOf("--tsBuildInfoFile") + 1]).toMatch(
+        /\.tsbuildinfo$/,
+      );
+    });
+
+    it("surfaces real type errors instead of the TS5023 flag rejection on legacy TypeScript", async () => {
+      // Before the fix, dyad unconditionally passed `--explainFiles false`,
+      // so tsc < 4.2 aborted with `error TS5023: Unknown compiler option
+      // '--explainFiles'.` and the user's real diagnostics never appeared.
+      // With the flag omitted, tsc runs normally and reports real errors.
+      mockVersion("4.1.5");
+      runBufferedProcessMock.mockResolvedValueOnce(
+        processResult({
+          code: 2,
+          stdout:
+            "src/App.ts(2,7): error TS2322: Type 'number' is not assignable to type 'string'.\n",
+        }),
+      );
+
+      const report = await runTypeScriptCheck({ appPath });
+
+      const args = typeCheckArgs();
+      expect(args).not.toContain("--explainFiles");
+      expect(report.outcome).toBe("errors");
+      expect(report.problems).toHaveLength(1);
+      expect(report.problems[0]).toMatchObject({
+        file: "src/App.ts",
+        line: 2,
+        column: 7,
+        code: 2322,
+        message: "Type 'number' is not assignable to type 'string'.",
+      });
+    });
+
+    it("does not misclassify a passing pre-4.2 tsc as a config error", async () => {
+      mockVersion("4.0.5");
+      runBufferedProcessMock.mockResolvedValueOnce(
+        processResult({
+          code: 2,
+          stdout:
+            "src/App.ts(2,7): error TS2322: Type 'number' is not assignable to type 'string'.\n",
+        }),
+      );
+
+      const report = await runTypeScriptCheck({ appPath });
+
+      expect(report.outcome).toBe("errors");
+      expect(report.problems.some((p) => p.code === 5023)).toBe(false);
+    });
+  });
+
   it("resolves a TypeScript install hoisted to an ancestor node_modules", async () => {
     const workspaceRoot = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-hoist-")),

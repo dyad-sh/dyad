@@ -30,6 +30,10 @@ function normalizePattern(pattern: string): string {
 function isCoveringPattern(line: string, entryDir: string): boolean {
   const t = line.trim();
   if (t === "" || t.startsWith("#") || t.startsWith("!")) return false;
+  // Git treats leading whitespace as literal characters, so a pattern with
+  // leading spaces would not match the same paths as the unindented form.
+  // Only consider a pattern covering if it has no leading whitespace.
+  if (line !== line.trimStart()) return false;
   return normalizePattern(t) === entryDir;
 }
 

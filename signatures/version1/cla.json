@@ -207,6 +207,14 @@
       "created_at": "2026-08-30T13:53:38Z",
       "repoId": 964395174,
       "pullRequestNo": 4424
+    },
+    {
+      "name": "detail-app[bot]",
+      "id": 180357370,
+      "comment_id": 5562186187,
+      "created_at": "2026-09-06T21:08:41Z",
+      "repoId": 964395174,
+      "pullRequestNo": 4494
     }
   ]
 }

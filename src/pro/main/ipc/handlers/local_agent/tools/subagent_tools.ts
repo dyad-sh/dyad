@@ -462,6 +462,13 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
         ctx.spawnedImplementerThreadIds.push(args.thread_id);
       }
     }
+    if (persona === "explorer") {
+      ctx.deliveredExplorerThreadIds ??= [];
+      const at = ctx.deliveredExplorerThreadIds.indexOf(args.thread_id);
+      if (at >= 0) {
+        ctx.deliveredExplorerThreadIds.splice(at, 1);
+      }
+    }
     return "Follow-up queued durably.";
   },
 };

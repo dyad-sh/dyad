@@ -214,6 +214,12 @@ export function usePluginConnect() {
   // on each read, so they clear as soon as discovery stops seeing a 401.
   const feedbackFor = (server: McpServer): ConnectFeedback | null => {
     if (connectFeedback && connectFeedback.serverId === server.id) {
+      // A discovery_failed alert means an OAuth flow failed. If live
+      // discovery has since succeeded (e.g. the user saved a working
+      // PAT header via the Headers editor while leaving OAuth enabled),
+      // the alert is stale — let the live status speak. Mirrors the
+      // auth kinds, which recompute from statusByServer on each read.
+      if (statusByServer[server.id] === "ok") return null;
       return connectFeedback;
     }
     if (!server.oauthEnabled && statusByServer[server.id] === "unauthorized") {

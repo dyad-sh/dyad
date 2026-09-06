@@ -398,7 +398,11 @@ export const appContracts = {
     channel: "create-app",
     input: CreateAppParamsSchema,
     output: CreateAppResultSchema,
-    invalidates: () => [{ family: "apps" }, { family: "chats" }],
+    invalidates: () => [
+      { family: "apps" },
+      { family: "chats" },
+      { family: "app-name" },
+    ],
   }),
 
   getApp: defineContract({
@@ -421,6 +425,7 @@ export const appContracts = {
       { family: "apps" },
       { family: "chats" },
       { family: "app-collections" },
+      { family: "app-name" },
     ],
     originHandles: () => [{ family: "apps" }, { family: "app-collections" }],
   }),
@@ -435,6 +440,7 @@ export const appContracts = {
             { family: "apps" },
             { family: "chats" },
             { family: "app-collections" },
+            { family: "app-name" },
           ]
         : [],
     originHandles: (_input, output) =>
@@ -447,7 +453,11 @@ export const appContracts = {
     channel: "copy-app",
     input: CopyAppParamsSchema,
     output: CopyAppResultSchema,
-    invalidates: () => [{ family: "apps" }, { family: "chats" }],
+    invalidates: () => [
+      { family: "apps" },
+      { family: "chats" },
+      { family: "app-name" },
+    ],
   }),
 
   renameApp: defineContract({
@@ -457,6 +467,7 @@ export const appContracts = {
     invalidates: (input) => [
       { family: "apps" },
       { family: "app", appId: input.appId },
+      { family: "app-name" },
     ],
     originHandles: () => [{ family: "apps" }],
   }),
@@ -529,6 +540,7 @@ export const appContracts = {
     invalidates: (input) => [
       { family: "apps" },
       { family: "app", appId: input.appId },
+      { family: "app-name" },
     ],
   }),
 

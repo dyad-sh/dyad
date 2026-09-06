@@ -12,7 +12,10 @@ export class RendererQueryInvalidationConsumer {
   private lastEpoch = 0;
 
   constructor(
-    private readonly queryClient: Pick<QueryClient, "invalidateQueries">,
+    private readonly queryClient: Pick<
+      QueryClient,
+      "invalidateQueries" | "removeQueries"
+    >,
     private readonly sessionId: WindowSessionId,
   ) {}
 
@@ -66,8 +69,23 @@ export class RendererQueryInvalidationConsumer {
       unique.set(queryInvalidationScopeKey(scope), scope);
     }
     for (const scope of unique.values()) {
-      for (const queryKey of queryKeysForInvalidationScope(scope)) {
-        void this.queryClient.invalidateQueries({ queryKey });
+      const queryKeys = queryKeysForInvalidationScope(scope);
+      if (scope.family === "app-name") {
+        // The app-name check and folder-preview hooks turn off every React
+        // Query refetch trigger (refetchOnMount/focus/reconnect) so reopening a
+        // dialog never spams the IPC. `invalidateQueries` would only mark those
+        // entries stale, which `refetchOnMount: false` then serves verbatim on
+        // the next dialog open even when the collision set has changed.
+        // Removing the entries instead forces a fresh fetch the next time a
+        // dialog mounts, while preserving the no-refetch-on-stale intent for
+        // the common case where no lifecycle change actually occurred.
+        for (const queryKey of queryKeys) {
+          void this.queryClient.removeQueries({ queryKey });
+        }
+      } else {
+        for (const queryKey of queryKeys) {
+          void this.queryClient.invalidateQueries({ queryKey });
+        }
       }
     }
   }

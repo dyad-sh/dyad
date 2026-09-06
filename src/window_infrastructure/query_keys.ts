@@ -12,6 +12,11 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.chats.all];
     case "app-collections":
       return [queryKeys.appCollections.all];
+    case "app-name":
+      // Covers both the folder-preview and name-check caches. The hooks that
+      // own these keys disable refetch-on-mount/focus/reconnect, so the
+      // consumer purges their entries rather than just marking them stale.
+      return [queryKeys.appName.checkAll, queryKeys.appName.folderPreviewAll];
     case "media":
       return [queryKeys.media.all];
     case "token-count":

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
+import { appContracts } from "@/ipc/types/app";
 import { coolifyContracts } from "@/ipc/types/coolify";
 import { supabaseContracts } from "@/ipc/types/supabase";
 import { coolifySetupContracts } from "@/ipc/types/coolify_setup";
@@ -22,9 +23,10 @@ describe("queryInvalidationScopeKey", () => {
 describe("RendererQueryInvalidationConsumer", () => {
   it("dedupes epochs, defaults origin handling to empty, and recovers on gaps", () => {
     const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
     const ownSession = randomUUID() as WindowSessionId;
     const consumer = new RendererQueryInvalidationConsumer(
-      { invalidateQueries },
+      { invalidateQueries, removeQueries },
       ownSession,
     );
 
@@ -67,9 +69,10 @@ describe("RendererQueryInvalidationConsumer", () => {
 
   it("invalidates only scopes that the origin did not handle locally", () => {
     const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
     const ownSession = randomUUID() as WindowSessionId;
     const consumer = new RendererQueryInvalidationConsumer(
-      { invalidateQueries },
+      { invalidateQueries, removeQueries },
       ownSession,
     );
 
@@ -93,8 +96,9 @@ describe("RendererQueryInvalidationConsumer", () => {
 
   it("maps durable completion, provider, and MCP scopes after reload recovery", () => {
     const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
     const consumer = new RendererQueryInvalidationConsumer(
-      { invalidateQueries },
+      { invalidateQueries, removeQueries },
       randomUUID() as WindowSessionId,
     );
 
@@ -133,8 +137,9 @@ describe("RendererQueryInvalidationConsumer", () => {
 
   it("maps app-scoped uncommitted-file invalidations", () => {
     const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
     const consumer = new RendererQueryInvalidationConsumer(
-      { invalidateQueries },
+      { invalidateQueries, removeQueries },
       randomUUID() as WindowSessionId,
     );
 
@@ -150,6 +155,96 @@ describe("RendererQueryInvalidationConsumer", () => {
 
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.uncommittedFiles.byApp({ appId: 7 }),
+    });
+  });
+
+  // The app-name check and folder-preview hooks disable every React Query
+  // refetch trigger, so a stale (but still cached) entry would be served
+  // verbatim on the next dialog open even after `invalidateQueries` marks it
+  // stale. The consumer therefore removes those entries entirely, which
+  // forces a fresh fetch the next time a dialog mounts.
+  it("purges app-name entries instead of invalidating them", () => {
+    const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
+    const consumer = new RendererQueryInvalidationConsumer(
+      { invalidateQueries, removeQueries },
+      randomUUID() as WindowSessionId,
+    );
+
+    consumer.consume({
+      invalidations: [
+        {
+          epoch: 1,
+          scopes: [{ family: "app-name" }],
+        },
+      ],
+      recoveryScopes: [],
+    });
+
+    expect(removeQueries).toHaveBeenCalledTimes(2);
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.appName.checkAll,
+    });
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.appName.folderPreviewAll,
+    });
+    // The whole point is that invalidation alone is insufficient: assert it is
+    // never called for an app-name scope so a future refactor cannot silently
+    // regress to the stale-on-reopen behavior.
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it("purges app-name entries reached through recovery scopes too", () => {
+    const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
+    const consumer = new RendererQueryInvalidationConsumer(
+      { invalidateQueries, removeQueries },
+      randomUUID() as WindowSessionId,
+    );
+
+    consumer.recover(9, [], [{ family: "app-name" }]);
+
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.appName.checkAll,
+    });
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.appName.folderPreviewAll,
+    });
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it("purges app-name entries even when the acting window published them", () => {
+    // app-name is never claimed back via originHandles (no caller refreshes
+    // those caches locally), so the origin window must still receive the
+    // purge — otherwise the window that just renamed/created/deleted would
+    // keep showing its own stale preview.
+    const invalidateQueries = vi.fn(() => Promise.resolve());
+    const removeQueries = vi.fn();
+    const ownSession = randomUUID() as WindowSessionId;
+    const consumer = new RendererQueryInvalidationConsumer(
+      { invalidateQueries, removeQueries },
+      ownSession,
+    );
+
+    consumer.consume({
+      invalidations: [
+        {
+          epoch: 1,
+          scopes: [{ family: "apps" }, { family: "app-name" }],
+          originWindowSessionId: ownSession,
+          originHandledScopes: [{ family: "apps" }],
+        },
+      ],
+      recoveryScopes: [],
+    });
+
+    // apps is claimed back, so only app-name reaches the queryClient.
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.appName.checkAll,
+    });
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.appName.folderPreviewAll,
     });
   });
 });
@@ -314,6 +409,100 @@ describe("Supabase create-project invalidation", () => {
           { family: "apps" },
           { family: "app", appId: 7 },
         ]),
+      );
+    }
+  });
+});
+
+/**
+ * App lifecycle mutations (create / copy / rename / delete / move) reshape the
+ * set of folder names a display name resolves to, so each must publish the
+ * `app-name` scope. The check and folder-preview hooks disable every React
+ * Query refetch trigger, so the only thing that clears a stale preview after a
+ * lifecycle change is the consumer's purge, which only fires when the contract
+ * publishes the scope. None of these contracts claim `app-name` back via
+ * `originHandles`: no caller refreshes those caches locally, so the origin
+ * window must still receive the purge.
+ */
+describe("app lifecycle contracts publish the app-name scope", () => {
+  const scopesFor = (
+    channel: keyof typeof appContracts,
+    input: unknown,
+  ): { family: string; appId?: number }[] => {
+    const contract = appContracts[channel] as {
+      invalidates?: (
+        input: unknown,
+        output: unknown,
+      ) => Array<{
+        family: string;
+        appId?: number;
+      }>;
+    };
+    return contract.invalidates?.(input, {}) ?? [];
+  };
+
+  it.each([
+    ["createApp", { name: "my-app" }],
+    ["copyApp", { appId: 1, newAppName: "copy", withHistory: false }],
+    ["renameApp", { appId: 1, appName: "renamed", appPath: "renamed" }],
+    ["deleteApp", { appId: 1 }],
+    ["changeAppLocation", { appId: 1, parentDirectory: "/tmp" }],
+  ] as const)("publishes app-name from %s", (channel, input) => {
+    const families = scopesFor(channel, input).map((scope) => scope.family);
+    expect(families, `${channel} must publish app-name`).toContain("app-name");
+  });
+
+  it("publishes app-name from deleteApps only when at least one app was deleted", () => {
+    const contract = appContracts.deleteApps as {
+      invalidates?: (
+        input: unknown,
+        output: unknown,
+      ) => Array<{ family: string }>;
+    };
+    expect(
+      (
+        contract.invalidates?.(
+          { appIds: [1] },
+          { results: [{ appId: 1, success: true }] },
+        ) ?? []
+      ).map((scope) => scope.family),
+    ).toContain("app-name");
+    expect(
+      (
+        contract.invalidates?.(
+          { appIds: [1] },
+          { results: [{ appId: 1, success: false }] },
+        ) ?? []
+      ).map((scope) => scope.family),
+    ).not.toContain("app-name");
+  });
+
+  it("never claims app-name back via originHandles", () => {
+    // Every caller relies on the cross-window purge to clear its own cache,
+    // so claiming app-name would suppress the purge in the acting window and
+    // leave its own rename/create dialog showing a stale preview.
+    const representativeOutput: Record<string, unknown> = {
+      deleteApps: { results: [{ appId: 1, success: true }] },
+    };
+    for (const channel of [
+      "createApp",
+      "copyApp",
+      "renameApp",
+      "deleteApp",
+      "deleteApps",
+      "changeAppLocation",
+    ] as const) {
+      const contract = appContracts[channel] as {
+        originHandles?: (
+          input: unknown,
+          output: unknown,
+        ) => Array<{ family: string }>;
+      };
+      const claimed = (
+        contract.originHandles?.({}, representativeOutput[channel] ?? {}) ?? []
+      ).map((scope) => scope.family);
+      expect(claimed, `${channel} must not claim app-name`).not.toContain(
+        "app-name",
       );
     }
   });

@@ -242,6 +242,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
     case "PROXY_READY":
       if (
         state.type !== "idle" &&
+        state.type !== "errored" &&
         !sameInvocationRef(state.invocationRef, event.invocationRef)
       ) {
         return ignore(state, "stale-operation");

@@ -233,6 +233,16 @@ export function createFakeLlmApp(getPort: () => number) {
   };
   let hangingWebCrawlResponse: express.Response | null = null;
 
+  // Test-only cloud-sandbox failure injection. Gated off by default; only
+  // explicit /test/cloud-sandbox-control requests ever flip these flags, so
+  // existing E2E tests are unaffected. Used to reproduce the failed-stop +
+  // credential-rotation recovery chain (PROXY_READY stale-ref guard).
+  interface CloudSandboxControl {
+    failNextDestroy?: boolean;
+    rotatedPreviewAuthToken?: string;
+  }
+  const cloudSandboxControl = new Map<string, CloudSandboxControl>();
+
   const getFakeCloudPreviewUrl = (sandboxId: string) =>
     `http://localhost:${getPort()}/cloud-preview/${sandboxId}`;
 
@@ -857,7 +867,20 @@ export function createFakeLlmApp(getPort: () => number) {
   });
 
   app.delete("/engine/v1/sandboxes/:sandboxId", (req, res) => {
+    const control = cloudSandboxControl.get(req.params.sandboxId);
+    if (control?.failNextDestroy) {
+      // Simulate a failed cloud teardown: the destroy RPC rejects and the
+      // sandbox survives (matches the real "destroyCloudSandbox failed"
+      // path where runningApps[appId] is left intact). Clear the flag so a
+      // later, user-initiated Stop can still destroy it.
+      delete control.failNextDestroy;
+      res
+        .status(500)
+        .json({ error: "destroy sandbox failed (test injection)" });
+      return;
+    }
     cloudSandboxes.delete(req.params.sandboxId);
+    cloudSandboxControl.delete(req.params.sandboxId);
     res.status(204).end();
   });
 
@@ -910,12 +933,21 @@ export function createFakeLlmApp(getPort: () => number) {
 
     sandbox.lastActiveAt = Date.now();
 
+    // Test-only credential rotation: when injected, the status response
+    // returns a different previewAuthToken than the one cached at startup,
+    // so the cloud-status poll observes `previewChanged=true` and re-emits
+    // the proxy line. This reproduces the backend rotating credentials
+    // after a failed stop.
+    const control = cloudSandboxControl.get(req.params.sandboxId);
+    const statusPreviewAuthToken =
+      control?.rotatedPreviewAuthToken ?? sandbox.previewAuthToken;
+
     res.json(
       createServiceResponse({
         sandboxId: sandbox.id,
         status: "running",
         previewUrl: getFakeCloudPreviewUrl(sandbox.id),
-        previewAuthToken: sandbox.previewAuthToken,
+        previewAuthToken: statusPreviewAuthToken,
         previewPort: getPort(),
         syncRevision: sandbox.syncRevision,
         initialSyncCompleted: sandbox.initialSyncCompleted,
@@ -941,6 +973,31 @@ export function createFakeLlmApp(getPort: () => number) {
         lastErrorMessage: null,
       }),
     );
+  });
+
+  // Test-only control endpoint for cloud-sandbox failure injection. Only
+  // affects the named sandbox and only when explicitly toggled, so existing
+  // E2E suites are unaffected.
+  app.post("/test/cloud-sandbox-control", (req, res) => {
+    const { sandboxId, failNextDestroy, rotatedPreviewAuthToken } = (req.body ??
+      {}) as {
+      sandboxId?: string;
+      failNextDestroy?: boolean;
+      rotatedPreviewAuthToken?: string;
+    };
+    if (!sandboxId) {
+      res.status(400).json({ error: "sandboxId is required" });
+      return;
+    }
+    const control = cloudSandboxControl.get(sandboxId) ?? {};
+    if (failNextDestroy !== undefined) {
+      control.failNextDestroy = failNextDestroy;
+    }
+    if (rotatedPreviewAuthToken !== undefined) {
+      control.rotatedPreviewAuthToken = rotatedPreviewAuthToken;
+    }
+    cloudSandboxControl.set(sandboxId, control);
+    res.json({ ok: true, control });
   });
 
   app.post("/engine/v1/sandboxes/:sandboxId/restart", (req, res) => {

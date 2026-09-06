@@ -1065,6 +1065,77 @@ describe("executeApp", () => {
     });
   });
 
+  it("re-establishes the proxy through the surviving run ref after a failed cloud stop rotates the preview credentials", async () => {
+    // Cloud stop-failure recovery at the service level: a failed stop leaves
+    // runningApps[appId] intact under the original START ref. The status poll
+    // then observes rotated preview credentials (previewChanged=true) and calls
+    // ensureProxyForRunningApp with the surviving START ref. The stale-callback
+    // guard must pass (both refs match), the cached re-emit branch must NOT
+    // fire (the URL changed), and the terminate-and-restart branch must call
+    // startProxy and re-emit the proxy line stamped with the START ref.
+    const startRef = {
+      kind: "app-run",
+      entityKey: 42,
+      operationId: "app-run:start",
+    } as const;
+    const terminateSurvivor = vi.fn();
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      opts.onStarted?.("http://localhost:42142");
+      return { terminate: vi.fn() };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      invocationRef: startRef,
+      mode: "cloud",
+      cloudSandboxId: "sb-1",
+      cloudPreviewUrl: "http://localhost:32142",
+      cloudPreviewAuthToken: "old-token",
+      proxyWorker: {
+        terminate: terminateSurvivor,
+      } as unknown as Worker,
+      proxyUrl: "http://localhost:42142",
+      originalUrl: "http://localhost:32142",
+      proxyAuthToken: "old-token",
+      authBootstrapToken: "bootstrap",
+      lastViewedAt: Date.now(),
+    });
+
+    const event = createEvent();
+    await ensureProxyForRunningApp({
+      appId: 42,
+      output: createOutput(event),
+      // Rotated credentials: the URL differs from the cached one, so the
+      // cached re-emit branch cannot fire.
+      originalUrl: "http://localhost:39999",
+      mode: "cloud",
+      // The status handler routes through the surviving run entry, which
+      // still carries the START ref.
+      invocationRef: startRef,
+    });
+
+    // The stale-callback guard passed (both refs match): the surviving worker
+    // was terminated and startProxy was invoked on the new URL.
+    expect(terminateSurvivor).toHaveBeenCalledOnce();
+    expect(startProxyMock).toHaveBeenCalledWith(
+      "http://localhost:39999",
+      expect.objectContaining({ port: 42142 }),
+    );
+    // The new proxy line is re-emitted stamped with the surviving START ref,
+    // which is what transition consumes as PROXY_READY(START ref).
+    expect(safeSendMock).toHaveBeenCalledWith(
+      event.sender,
+      "app:output",
+      expect.objectContaining({
+        message: expect.stringContaining(
+          "[dyad-proxy-server]started=[http://localhost:42142]",
+        ),
+        appId: 42,
+        invocationRef: startRef,
+      }),
+    );
+  });
+
   it("surfaces a proxy port-exhaustion error to the renderer", async () => {
     const terminate = vi.fn();
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {

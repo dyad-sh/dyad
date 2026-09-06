@@ -127,6 +127,17 @@ export interface PtyCommandExecutionOptions {
   name?: string;
   displayCommand?: string;
   maxOutputBytes?: number;
+  /**
+   * When true, `args` is a pre-escaped command line that node-pty must forward
+   * VERBATIM (instead of running its `argsToCommandLine` MSVC `\"` argv-quoting
+   * on top). Used for the Windows `.cmd`/`.bat` shim path, where
+   * `buildWindowsCommandInvocation` already cmd-escaped the `/c` payload; a
+   * second escaping layer would corrupt every quoted argument. node-pty is
+   * handed the args as a single `string`, which its `argsToCommandLine` treats
+   * as an already-formed command line and only MSVC-quotes the executable
+   * path before appending.
+   */
+  useVerbatimArguments?: boolean;
 }
 
 export interface PtyCommandExecutionResult {
@@ -177,7 +188,7 @@ interface SpawnedProcessLike {
 
 export type PtySpawner = (
   file: string,
-  args: string[],
+  args: string[] | string,
   options: {
     cols: number;
     cwd?: string;
@@ -371,7 +382,19 @@ export async function runPtyCommand(
 
     let ptyProcess: PtyProcessLike;
     try {
-      ptyProcess = ptySpawner(command, args, {
+      // On the Windows batch path (`useVerbatimArguments`), `args` is the
+      // cmd-escaped `/d /s /c "..."` payload that `buildWindowsCommandInvocation`
+      // already quoted. Pass it as a single string so node-pty's
+      // `argsToCommandLine` treats it as a pre-formed command line (it only
+      // MSVC-quotes the executable path, then appends the string verbatim)
+      // instead of re-applying MSVC `\"` escaping on top of the cmd-style `""`
+      // doubling — which would corrupt every quoted argument. Otherwise pass
+      // the array so node-pty applies its normal argv-quoting for real
+      // executables (e.g. `git`, `node.exe`).
+      const ptyArgs: string[] | string = options.useVerbatimArguments
+        ? args.join(" ")
+        : args;
+      ptyProcess = ptySpawner(command, ptyArgs, {
         cols: options.cols ?? DEFAULT_PTY_COLS,
         cwd: options.cwd,
         env: options.env ?? process.env,

@@ -1345,7 +1345,8 @@ describe("buildPtyInvocation", () => {
       buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32", "cmd.exe"),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
+      args: ["/d", "/s", "/c", '"npx.cmd --yes sfw@2.0.4"'],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1363,8 +1364,9 @@ describe("buildPtyInvocation", () => {
         "/d",
         "/s",
         "/c",
-        'npx.cmd --message "value with spaces and ""quotes"""',
+        '"npx.cmd --message "value with spaces and ""quotes""""',
       ],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1378,7 +1380,8 @@ describe("buildPtyInvocation", () => {
       ),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", 'npx.cmd --filter "name&echo^(injected)"'],
+      args: ["/d", "/s", "/c", '"npx.cmd --filter "name&echo^(injected)""'],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1387,7 +1390,8 @@ describe("buildPtyInvocation", () => {
       buildPtyInvocation("npx", ["--flag", ""], "win32", "cmd.exe"),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", 'npx.cmd --flag ""'],
+      args: ["/d", "/s", "/c", '"npx.cmd --flag """'],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1420,9 +1424,12 @@ describe("runCommand", () => {
 
       expect(runPtyCommandMock).toHaveBeenCalledWith(
         expect.stringMatching(/cmd\.exe$/i),
-        ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
+        ["/d", "/s", "/c", '"npx.cmd --yes sfw@2.0.4"'],
         expect.objectContaining({
           displayCommand: "npx --yes sfw@2.0.4",
+          // runCommand forwards the verbatim flag so node-pty doesn't
+          // re-escape the cmd-quoted `/c` payload.
+          useVerbatimArguments: true,
         }),
       );
     });

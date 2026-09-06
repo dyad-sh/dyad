@@ -1115,7 +1115,7 @@ export function buildPtyInvocation(
   args: string[],
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec ?? "cmd.exe",
-): { command: string; args: string[] } {
+): { command: string; args: string[]; useVerbatimArguments?: true } {
   return buildWindowsCommandInvocation(command, args, platform, comSpec);
 }
 
@@ -1134,6 +1134,9 @@ export async function runCommand(
         displayCommand: buildCommandDisplay(command, args),
         env: options.env,
         timeoutMs: options.timeoutMs,
+        // Forward the verbatim flag so node-pty doesn't re-escape the cmd-quoted
+        // `/c` payload built by `buildWindowsCommandInvocation`.
+        useVerbatimArguments: invocation.useVerbatimArguments === true,
       },
     );
 

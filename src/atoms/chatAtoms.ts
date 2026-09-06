@@ -401,25 +401,6 @@ export const pushRecentViewedChatIdAtom = atom(
     addToSessionSet(get, set, chatId);
   },
 );
-export const removeRecentViewedChatIdAtom = atom(
-  null,
-  (get, set, record: ClosedTabRecord) => {
-    const { chatId } = record;
-    set(
-      recentViewedChatIdsAtom,
-      get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
-    );
-    // Add to closed set so it doesn't reappear
-    const closedIds = get(closedChatIdsAtom);
-    const newClosedIds = new Set(closedIds);
-    newClosedIds.add(chatId);
-    set(closedChatIdsAtom, newClosedIds);
-    // Also remove from session tracking (consistent with closeMultipleTabsAtom)
-    removeFromSessionSet(get, set, [chatId]);
-
-    pushClosedTabHistory(get, set, [record]);
-  },
-);
 export const removeTransferredChatTabAtom = atom(
   null,
   (get, set, chatId: number) => {

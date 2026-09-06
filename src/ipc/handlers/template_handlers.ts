@@ -124,7 +124,12 @@ async function applyTemplateInPlace({
             shouldPreservePath(name) &&
             path.dirname(path.relative(stagedTemplatePath, src)) === "."
           ) {
-            return !fs.existsSync(dest);
+            try {
+              fs.lstatSync(dest);
+              return false;
+            } catch {
+              return true;
+            }
           }
           return true;
         },

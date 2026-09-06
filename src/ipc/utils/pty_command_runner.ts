@@ -120,14 +120,14 @@ class StreamingAnsiStripper {
           break;
         case "osc-discard":
           // Discard the remainder of an oversized OSC until a real ST
-          // terminator (BEL or ESC \) or a line feed arrives, then resume
-          // visible text. Command output contains line feeds at every line
-          // boundary, so a genuinely unterminated producer still recovers at
-          // the next line — and the bounded output buffer plus command
-          // timeout cap any runaway that never emits a delimiter.
+          // terminator (BEL or ESC \) or a line feed/carriage-return arrives,
+          // then resume visible text. Command output contains line feeds at
+          // every line boundary, so a genuinely unterminated producer still
+          // recovers at the next line — and the bounded output buffer plus
+          // command timeout cap any runaway that never emits a delimiter.
           if (code === 0x07) {
             resumeText(index + 1);
-          } else if (code === 0x0a) {
+          } else if (code === 0x0a || code === 0x0d) {
             resumeText(index + 1);
           } else if (code === 0x1b) {
             this.state = "osc-discard-escape";
@@ -136,7 +136,7 @@ class StreamingAnsiStripper {
         case "osc-discard-escape":
           if (value[index] === "\\") {
             resumeText(index + 1);
-          } else if (code === 0x0a) {
+          } else if (code === 0x0a || code === 0x0d) {
             resumeText(index + 1);
           } else if (code !== 0x1b) {
             this.state = "osc-discard";

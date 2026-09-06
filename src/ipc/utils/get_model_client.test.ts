@@ -186,6 +186,19 @@ describe("getModelClient", () => {
     });
   });
 
+  test("throws 'No API keys available' when Pro is disabled with a lingering auto key and no fallback (bug state)", async () => {
+    await expect(
+      getModelClient({ provider: "auto", name: "auto" }, {
+        enableDyadPro: false,
+        providerSettings: {
+          auto: { apiKey: { value: "stale-pro-token" } },
+        },
+      } as unknown as UserSettings),
+    ).rejects.toThrow(
+      "No API keys available for any model supported by the 'auto' provider.",
+    );
+  });
+
   test("builds catalog-derived call options in fallback-model order", async () => {
     vi.mocked(getLanguageModels).mockImplementation(async ({ providerId }) => {
       const catalogEntries = {

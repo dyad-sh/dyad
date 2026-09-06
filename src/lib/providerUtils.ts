@@ -59,6 +59,13 @@ export function isProviderSetup(
     return false;
   }
 
+  if (provider === "auto") {
+    return (
+      Boolean(settings?.enableDyadPro) &&
+      Boolean(providerSettings?.apiKey?.value)
+    );
+  }
+
   // Check API key in settings
   if (providerSettings?.apiKey?.value) {
     return true;

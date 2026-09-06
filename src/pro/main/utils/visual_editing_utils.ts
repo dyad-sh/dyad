@@ -170,9 +170,30 @@ export function transformContent(
                   if (cls === "border" || /^border-(0|2|4|8)$/.test(cls)) {
                     return false;
                   }
-                  // Exclude per-side widths and per-side styles: border-{t|r|b|l|x|y|s|e|is|ie}[-...]
-                  if (/^border-(t|r|b|l|x|y|s|e|is|ie)(-|$)/.test(cls)) {
-                    return false;
+                  // Exclude per-side widths (e.g. border-t-4, border-x-2) but
+                  // remove per-side colors (e.g. border-t-red-500, border-x-blue-500).
+                  const perSideMatch = cls.match(
+                    /^border-(t|r|b|l|x|y|s|e|is|ie)-(.+)$/,
+                  );
+                  if (perSideMatch) {
+                    const after = perSideMatch[2];
+                    // Numeric Tailwind width scale (0, 1, 2, 4, 8, ...)
+                    if (/^\d+$/.test(after)) {
+                      return false; // per-side width scale → keep
+                    }
+                    // Arbitrary value: length → keep, color → remove
+                    const arbMatch = after.match(/^\[([^\]]+)\]$/);
+                    if (arbMatch) {
+                      return !/^\d*\.?\d+(px|rem|em|%)?$/.test(arbMatch[1]);
+                    }
+                    // Per-side style keywords (e.g. border-t-dashed) → keep
+                    if (
+                      /^(solid|dashed|dotted|double|none|hidden)$/.test(after)
+                    ) {
+                      return false;
+                    }
+                    // Everything else is treated as a per-side color → remove
+                    return true;
                   }
                   // Exclude border-style keywords
                   if (

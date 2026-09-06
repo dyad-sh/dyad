@@ -516,6 +516,29 @@ function Component() {
       expect(result).toContain("border-t-4");
     });
 
+    it("should remove per-side colors but preserve per-side widths during a color edit", () => {
+      const content = `
+function Component() {
+  return <div className="border-2 border-t-red-500 border-x-blue-300 border-t-4 border-x-2 border-dashed">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-green-500"], prefixes: ["border-color-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      // per-side colors should be removed so they don't override the new all-sides color
+      expect(result).not.toContain("border-t-red-500");
+      expect(result).not.toContain("border-x-blue-300");
+      // per-side widths and style must survive
+      expect(result).toContain("border-t-4");
+      expect(result).toContain("border-x-2");
+      expect(result).toContain("border-dashed");
+      // all-sides width and new color added
+      expect(result).toContain("border-2");
+      expect(result).toContain("border-green-500");
+    });
+
     it("should not remove non-border classes that merely contain 'border'", () => {
       const content = `
 function Component() {

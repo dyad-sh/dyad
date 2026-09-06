@@ -758,6 +758,200 @@ describe("exploreCode", () => {
       "platform/client/src/client.ts",
     );
   });
+
+  it("top-level bare wiring surfaces the wiring module only when the file node owns top-level edges", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "src/healthCheck.ts": [
+        "export function healthCheckHandler() {",
+        "  return { status: 'ok' };",
+        "}",
+        "",
+      ].join("\n"),
+      "src/routes.ts": [
+        "import { healthCheckHandler } from './healthCheck';",
+        "export const router: any = {};",
+        "router.get('/health', healthCheckHandler);",
+        "export default router;",
+        "",
+      ].join("\n"),
+    });
+    const result = exploreCode(ts, {
+      appPath,
+      query: "healthCheckHandler",
+      maxFiles: 8,
+      maxDepth: 3,
+    });
+    expect(result.files.map((f) => f.path)).toContain("src/routes.ts");
+  });
+
+  it("does not mis-attribute bare top-level statements to a position-0 declaration", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "src/thing.ts": [
+        "export function configure() {",
+        "  return 1;",
+        "}",
+        "export const thing = { configure };",
+        "",
+      ].join("\n"),
+      "src/health.ts": [
+        "export function healthCheckHandler() {",
+        "  return { status: 'ok' };",
+        "}",
+        "import { thing } from './thing';",
+        "thing.configure();",
+        "",
+      ].join("\n"),
+    });
+    const built = buildCodeExplorerIndex(ts, { appPath });
+    const healthCheckNode = [...built.index.nodes.values()].find(
+      (n) => n.name === "healthCheckHandler" && n.filePath === "src/health.ts",
+    );
+    expect(healthCheckNode).toBeDefined();
+    const outEdges = built.index.edgesOut.get(healthCheckNode!.id) ?? [];
+    expect(outEdges.some((e) => e.kind === "references")).toBe(false);
+    expect(outEdges.some((e) => e.kind === "imports")).toBe(false);
+    const fileNode = [...built.index.nodes.values()].find(
+      (n) => n.kind === "file" && n.filePath === "src/health.ts",
+    );
+    const fileEdges = built.index.edgesOut.get(fileNode!.id) ?? [];
+    expect(
+      fileEdges.some(
+        (e) =>
+          e.kind === "references" &&
+          [...built.index.nodes.values()].some(
+            (n) => n.id === e.to && n.name === "thing",
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      fileEdges.some(
+        (e) =>
+          e.kind === "imports" &&
+          [...built.index.nodes.values()].some(
+            (n) => n.id === e.to && n.name === "configure",
+          ),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps attributing VariableDeclaration initializers to the variable, not the file", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "src/policy.ts": [
+        "export function shouldQuitAfterAllWindowsClosed() {",
+        "  return true;",
+        "}",
+        "",
+      ].join("\n"),
+      "src/app.ts": [
+        "import { shouldQuitAfterAllWindowsClosed } from './policy';",
+        "export const shouldQuit = shouldQuitAfterAllWindowsClosed();",
+        "",
+      ].join("\n"),
+    });
+    const built = buildCodeExplorerIndex(ts, { appPath });
+    const shouldQuitNode = [...built.index.nodes.values()].find(
+      (n) => n.name === "shouldQuit" && n.filePath === "src/app.ts",
+    );
+    expect(shouldQuitNode).toBeDefined();
+    const outEdges = built.index.edgesOut.get(shouldQuitNode!.id) ?? [];
+    expect(outEdges.some((e) => e.kind === "calls")).toBe(true);
+    expect(
+      outEdges.some(
+        (e) =>
+          e.kind === "references" &&
+          [...built.index.nodes.values()].some(
+            (n) =>
+              n.id === e.to && n.name === "shouldQuitAfterAllWindowsClosed",
+          ),
+      ),
+    ).toBe(true);
+  });
+
+  it("emits references for bare statements inside top-level arrow-function callbacks", () => {
+    const appPath = createTempProject({
+      "tsconfig.json": JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            strict: true,
+          },
+          include: ["src/**/*.ts"],
+        },
+        null,
+        2,
+      ),
+      "src/logger.ts": [
+        "export function logLifecycle() {",
+        "  return;",
+        "}",
+        "",
+      ].join("\n"),
+      "src/main.ts": [
+        "import { logLifecycle } from './logger';",
+        "const app: any = {};",
+        "app.on('ready', () => {",
+        "  logLifecycle();",
+        "});",
+        "",
+      ].join("\n"),
+    });
+    const built = buildCodeExplorerIndex(ts, { appPath });
+    const fileNode = [...built.index.nodes.values()].find(
+      (n) => n.kind === "file" && n.filePath === "src/main.ts",
+    );
+    expect(fileNode).toBeDefined();
+    const outEdges = built.index.edgesOut.get(fileNode!.id) ?? [];
+    expect(
+      outEdges.some(
+        (e) =>
+          e.kind === "references" &&
+          [...built.index.nodes.values()].some(
+            (n) => n.id === e.to && n.name === "logLifecycle",
+          ),
+      ),
+    ).toBe(true);
+  });
 });
 
 function createTempProject(files: Record<string, string>): string {

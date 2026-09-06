@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteFileTool } from "./delete_file";
 
-const { gitRemove } = vi.hoisted(() => ({ gitRemove: vi.fn() }));
+const { gitRemove, queueCloudSandboxSnapshotSync } = vi.hoisted(() => ({
+  gitRemove: vi.fn(),
+  queueCloudSandboxSnapshotSync: vi.fn(),
+}));
 
 vi.mock("electron-log", () => ({
   default: {
@@ -17,7 +20,7 @@ vi.mock("electron-log", () => ({
 }));
 vi.mock("@/ipc/utils/git_utils", () => ({ gitRemove }));
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
-  queueCloudSandboxSnapshotSync: vi.fn(),
+  queueCloudSandboxSnapshotSync,
 }));
 vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
   deleteSupabaseFunction: vi.fn(),
@@ -110,7 +113,7 @@ describe.runIf(process.platform !== "win32")(
       await fs.symlink(outsidePath, path.join(appPath, "outside-link"), "dir");
 
       await expect(
-        deleteFileTool.execute({ path: "outside-link/victim.txt" }, context()),
+        deleteFileTool.execute({ path: "outside-link/victim.ts" }, context()),
       ).rejects.toThrow("outside the app");
       await expect(
         deleteFileTool.execute({ path: "outside-link/victim-link" }, context()),
@@ -119,6 +122,34 @@ describe.runIf(process.platform !== "win32")(
         "outside",
       );
       await expect(fs.lstat(outsideVictimLinkPath)).resolves.toMatchObject({});
+    });
+
+    it("requests a full cloud sandbox sync when deleting a directory", async () => {
+      await fs.mkdir(path.join(appPath, "src", "dir"), { recursive: true });
+      await fs.writeFile(
+        path.join(appPath, "src", "dir", "child.ts"),
+        "export const x = 1;",
+      );
+
+      await deleteFileTool.execute({ path: "src/dir" }, context());
+
+      expect(queueCloudSandboxSnapshotSync).toHaveBeenCalledWith({
+        appId: 1,
+        deletedPaths: ["src/dir"],
+        fullSync: true,
+      });
+    });
+
+    it("does not request a full cloud sandbox sync when deleting a file", async () => {
+      await fs.mkdir(path.join(appPath, "src"), { recursive: true });
+      await fs.writeFile(path.join(appPath, "src", "file.ts"), "content");
+
+      await deleteFileTool.execute({ path: "src/file.ts" }, context());
+
+      expect(queueCloudSandboxSnapshotSync).toHaveBeenCalledWith({
+        appId: 1,
+        deletedPaths: ["src/file.ts"],
+      });
     });
   },
 );

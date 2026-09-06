@@ -160,10 +160,14 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
           }
 
           if (didRename) {
+            const isDir =
+              fs.existsSync(toFullPath) &&
+              fs.lstatSync(toFullPath).isDirectory();
             queueCloudSandboxSnapshotSync({
               appId: ctx.appId,
               changedPaths: [toOperationPath],
               deletedPaths: [fromOperationPath],
+              ...(isDir ? { fullSync: true } : {}),
             });
           }
 

@@ -178,4 +178,14 @@ describe("StreamingAnsiStripper OSC size-cap handling", () => {
   it("strips a small BEL-terminated OSC (no regression)", async () => {
     expect(await runSingleChunk("\u001b]0;title\u0007VISIBLE")).toBe("VISIBLE");
   });
+
+  it("strips an oversized OSC whose payload ends with ESC and is terminated by BEL", async () => {
+    // osc-discard-escape + BEL: the last payload byte is ESC (so the parser
+    // transitions to osc-discard-escape), then a standalone BEL terminates the
+    // OSC. The BEL must be recognized as a terminator rather than going back to
+    // osc-discard, which would silently swallow VISIBLE.
+    const fill = "x".repeat(9000 - 3); // payload: "0;" + fill + ESC
+    const input = `\u001b]0;${fill}\u001b\u0007VISIBLE`;
+    expect(await runSingleChunk(input)).toBe("VISIBLE");
+  });
 });

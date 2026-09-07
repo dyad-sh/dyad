@@ -136,6 +136,10 @@ class StreamingAnsiStripper {
         case "osc-discard-escape":
           if (value[index] === "\\") {
             resumeText(index + 1);
+          } else if (code === 0x07) {
+            // ESC followed by BEL: the payload happened to end with ESC and the
+            // OSC is terminated by a standalone BEL — treat it as ST and resume.
+            resumeText(index + 1);
           } else if (code === 0x0a || code === 0x0d) {
             resumeText(index + 1);
           } else if (code !== 0x1b) {

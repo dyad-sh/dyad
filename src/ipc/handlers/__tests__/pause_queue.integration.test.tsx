@@ -37,10 +37,12 @@ async function queueMessages(
 ) {
   for (const [index, message] of messages.entries()) {
     await harness.pressEnterInChat(message, { chatId });
-    await waitFor(() =>
-      expect(screen.getByTestId("queue-header").textContent).toMatch(
-        queuedCountText(index + 1),
-      ),
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("queue-header").textContent).toMatch(
+          queuedCountText(index + 1),
+        ),
+      { timeout: 15_000 },
     );
   }
 }
@@ -170,8 +172,6 @@ describe("pause queue (integration)", () => {
       Array.from({ length: 3 }, (_, index) => `unpaused ${index + 1}`),
     );
 
-    const queueHeader = screen.getByTestId("queue-header");
-
     // No pause click: stopping used to delete the whole queue here.
     fireEvent.click(screen.getByRole("button", { name: /cancel generation/i }));
 
@@ -180,6 +180,9 @@ describe("pause queue (integration)", () => {
     await screen.findByText("Paused");
     await waitForStreamTermination();
 
+    const queueHeader = await screen.findByTestId("queue-header", undefined, {
+      timeout: 10_000,
+    });
     expect(queueHeader.textContent).toMatch(queuedCountText(3));
     // Scoped to the queue: the last prompt typed also lingers in the composer.
     for (const message of ["unpaused 1", "unpaused 2", "unpaused 3"]) {

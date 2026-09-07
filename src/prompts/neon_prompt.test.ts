@@ -77,7 +77,7 @@ describe("getNeonAvailableSystemPrompt", () => {
       const guide = filterGuideByFramework(
         addAuthenticationGuide,
         "vite-nitro",
-      );
+      ).replace(/\r\n/g, "\n");
       const allowlistIndex = guide.indexOf(
         "const forwardedHeaders = new Headers();",
       );

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNeonClient } from "./neon_management_client";
-import { getConnectionUri, getNeonTableSchema } from "./neon_context";
+import {
+  getConnectionUri,
+  getNeonProjectInfo,
+  getNeonTableSchema,
+} from "./neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   filterSchemaForTable,
@@ -83,6 +87,44 @@ describe("Neon context", () => {
     });
   });
 
+  it("lists public and Better Auth tables with schema-qualified names", async () => {
+    const neonClient = {
+      listProjectBranchRoles: vi.fn().mockResolvedValue({
+        data: { roles: [{ name: "neondb_owner", protected: false }] },
+      }),
+      listProjectBranchDatabases: vi.fn().mockResolvedValue({
+        data: { databases: [{ name: "neondb" }] },
+      }),
+      getConnectionUri: vi.fn().mockResolvedValue({
+        data: { uri: "postgresql://test" },
+      }),
+      getProject: vi.fn().mockResolvedValue({
+        data: { project: { name: "test-project" } },
+      }),
+      listProjectBranches: vi.fn().mockResolvedValue({
+        data: { branches: [] },
+      }),
+    };
+    getNeonClientMock.mockResolvedValue(
+      neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
+    );
+    neonQueryMock.mockResolvedValue([
+      { table_schema: "neon_auth", table_name: "user" },
+      { table_schema: "public", table_name: "posts" },
+    ]);
+
+    const result = await getNeonProjectInfo({
+      projectId: "project-id",
+      branchId: "branch-id",
+    });
+
+    expect(neonQueryMock).toHaveBeenCalledWith(
+      expect.stringMatching(/table_schema IN \('public', 'neon_auth'\)/u),
+      [],
+    );
+    expect(result).toContain('["neon_auth.user","public.posts"]');
+  });
+
   it("renders table schema as SQL through ts-pg-schema-diff", async () => {
     const neonClient = {
       listProjectBranchRoles: vi.fn().mockResolvedValue({
@@ -119,23 +161,73 @@ describe("Neon context", () => {
     expect(neonQueryMock).toHaveBeenCalledTimes(1);
     expect(neonQueryMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /snapshot_scope\.table_schema_name IN \('public'\)[\s\S]*snapshot_scope\.table_name = 'users'[\s\S]*AS schema_snapshot/u,
+        /snapshot_scope\.table_schema_name IN \('public', 'neon_auth'\)[\s\S]*snapshot_scope\.table_name = 'users'[\s\S]*AS schema_snapshot/u,
       ),
       [],
     );
     expect(getSchemaFromSnapshotMock).toHaveBeenCalledWith({ tables: [] });
     expect(filterSchemaForTableMock).toHaveBeenCalledWith(schema, {
+      schemaName: "public",
       tableName: "users",
     });
     expect(renderSchemaSqlMock).toHaveBeenCalledWith(
       filteredSchema,
       expect.objectContaining({
-        emptySchemaComment: '-- No public table named "users" found.',
+        emptySchemaComment:
+          '-- No table named "users" found in public or neon_auth.',
       }),
     );
   });
 
-  it("returns the empty-table comment when public has no tables", async () => {
+  it("falls back to the Better Auth schema for a named table", async () => {
+    const neonClient = {
+      listProjectBranchRoles: vi.fn().mockResolvedValue({
+        data: { roles: [{ name: "neondb_owner", protected: false }] },
+      }),
+      listProjectBranchDatabases: vi.fn().mockResolvedValue({
+        data: { databases: [{ name: "neondb" }] },
+      }),
+      getConnectionUri: vi.fn().mockResolvedValue({
+        data: { uri: "postgresql://test" },
+      }),
+    };
+    const schema = { tables: [{ name: "user" }] } as any;
+    const neonAuthSchema = { tables: [{ name: "neon-auth-user" }] } as any;
+    getNeonClientMock.mockResolvedValue(
+      neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
+    );
+    neonQueryMock.mockResolvedValue([{ schema_snapshot: { tables: [] } }]);
+    getSchemaFromSnapshotMock.mockResolvedValue(schema);
+    filterSchemaForTableMock
+      .mockReturnValueOnce({ tables: [] } as any)
+      .mockReturnValueOnce(neonAuthSchema);
+    renderSchemaSqlMock.mockReturnValue(
+      'CREATE TABLE "neon_auth"."user" ("id" text);',
+    );
+
+    await expect(
+      getNeonTableSchema({
+        projectId: "project-id",
+        branchId: "branch-id",
+        tableName: "user",
+      }),
+    ).resolves.toBe('CREATE TABLE "neon_auth"."user" ("id" text);');
+
+    expect(filterSchemaForTableMock).toHaveBeenNthCalledWith(1, schema, {
+      schemaName: "public",
+      tableName: "user",
+    });
+    expect(filterSchemaForTableMock).toHaveBeenNthCalledWith(2, schema, {
+      schemaName: "neon_auth",
+      tableName: "user",
+    });
+    expect(renderSchemaSqlMock).toHaveBeenCalledWith(
+      neonAuthSchema,
+      expect.any(Object),
+    );
+  });
+
+  it("returns the empty-table comment when app schemas have no tables", async () => {
     const neonClient = {
       listProjectBranchRoles: vi.fn().mockResolvedValue({
         data: { roles: [{ name: "neondb_owner", protected: false }] },
@@ -158,7 +250,7 @@ describe("Neon context", () => {
         projectId: "project-id",
         branchId: "branch-id",
       }),
-    ).resolves.toBe("-- No public tables found.");
+    ).resolves.toBe("-- No tables found in public or neon_auth.");
     expect(renderSchemaSqlMock).not.toHaveBeenCalled();
   });
 
@@ -193,7 +285,7 @@ describe("Neon context", () => {
         tableName: "missing\nCREATE ROLE admin",
       }),
     ).resolves.toBe(
-      '-- No public table named "missing CREATE ROLE admin" found.',
+      '-- No table named "missing CREATE ROLE admin" found in public or neon_auth.',
     );
   });
 

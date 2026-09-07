@@ -9,11 +9,17 @@ import {
   buildSchemaSnapshotSql,
   filterSchemaForTable,
   getSchemaFromSnapshot,
-  missingPublicTableComment,
   renderSchemaSql,
 } from "ts-pg-schema-diff";
 
 const logger = log.scope("neon_context");
+
+const NEON_APP_SCHEMA_NAMES = ["public", "neon_auth"] as const;
+
+function missingNeonTableComment(tableName: string): string {
+  const singleLineName = tableName.replace(/[\r\n]+/gu, " ");
+  return `-- No table named "${singleLineName}" found in public or neon_auth.`;
+}
 
 function getNeonErrorStatus(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null) {
@@ -234,10 +240,10 @@ export async function executeNeonStatementsInTransaction({
 // =============================================================================
 
 const TABLE_NAMES_QUERY = `
-  SELECT table_name
+  SELECT table_schema, table_name
   FROM information_schema.tables
-  WHERE table_schema = 'public'
-  ORDER BY table_name;
+  WHERE table_schema IN ('public', 'neon_auth')
+  ORDER BY table_schema, table_name;
 `;
 
 // =============================================================================
@@ -290,9 +296,10 @@ ${projectId}
     const connectionUri = await getConnectionUri({ projectId, branchId });
     const sql = neon(connectionUri);
     const tableResult = await sql.query(TABLE_NAMES_QUERY, []);
-    const tableNames = tableResult.map(
-      (row) => (row as Record<string, string>).table_name,
-    );
+    const tableNames = tableResult.map((row) => {
+      const table = row as Record<string, string>;
+      return `${table.table_schema}.${table.table_name}`;
+    });
 
     return `# Neon Project Info
 
@@ -346,7 +353,7 @@ export async function getNeonTableSchema({
     const sql = neon(connectionUri);
     const snapshotRows = await sql.query(
       buildSchemaSnapshotSql({
-        includeSchemas: ["public"],
+        includeSchemas: [...NEON_APP_SCHEMA_NAMES],
         tableName,
       }),
       [],
@@ -362,15 +369,25 @@ export async function getNeonTableSchema({
     }
     const schema = await getSchemaFromSnapshot(snapshot);
     if (!tableName && schema.tables.length === 0) {
-      return "-- No public tables found.";
+      return "-- No tables found in public or neon_auth.";
     }
-    const filteredSchema = tableName
-      ? filterSchemaForTable(schema, { tableName })
-      : schema;
+    let filteredSchema = schema;
+    if (tableName) {
+      filteredSchema = filterSchemaForTable(schema, {
+        schemaName: "public",
+        tableName,
+      });
+      if (filteredSchema.tables.length === 0) {
+        filteredSchema = filterSchemaForTable(schema, {
+          schemaName: "neon_auth",
+          tableName,
+        });
+      }
+    }
     return renderSchemaSql(filteredSchema, {
       emptySchemaComment: tableName
-        ? missingPublicTableComment(tableName)
-        : "-- No public tables found.",
+        ? missingNeonTableComment(tableName)
+        : "-- No tables found in public or neon_auth.",
     });
   } catch (error) {
     logger.error("Error getting Neon table schema:", error);

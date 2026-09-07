@@ -211,6 +211,13 @@ export const queryKeys = {
   // App Name Check
   // ─────────────────────────────────────────────────────────────────────────────
   appName: {
+    // Prefix roots used only for invalidation: the check and folder-preview
+    // hooks both disable every React Query refetch trigger, so a lifecycle
+    // change must drop their cached entries entirely (see
+    // `RendererQueryInvalidationConsumer`). The per-name keys below are what
+    // the hooks read from; these roots are the prefixes that reach them all.
+    checkAll: ["checkAppName"] as const,
+    folderPreviewAll: ["appFolderPreview"] as const,
     check: ({ name }: { name: string }) => ["checkAppName", name] as const,
     folderPreview: ({ name, appId }: { name: string; appId?: number }) =>
       ["appFolderPreview", name, appId ?? null] as const,

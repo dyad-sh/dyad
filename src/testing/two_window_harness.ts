@@ -135,6 +135,9 @@ export class TwoWindowHarness {
           invalidatedKeys.push(filters?.queryKey ?? []);
           return Promise.resolve();
         },
+        removeQueries: (filters) => {
+          invalidatedKeys.push(filters?.queryKey ?? []);
+        },
       },
       sessionId,
     );

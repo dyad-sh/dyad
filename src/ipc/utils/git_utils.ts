@@ -1205,11 +1205,6 @@ export async function restoreGitIndexEntries({
   );
 }
 
-export async function gitReset({ path }: GitBaseParams): Promise<void> {
-  // Reset the staging area to match HEAD (unstage files but keep working directory changes)
-  await execOrThrow(["reset", "HEAD"], path, "Failed to reset staging area");
-}
-
 export async function gitDiscardAllChanges({
   path,
 }: GitBaseParams): Promise<void> {

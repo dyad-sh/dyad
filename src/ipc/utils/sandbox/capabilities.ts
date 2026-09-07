@@ -466,10 +466,6 @@ export async function sandboxListFiles(
     .sort();
 }
 
-export function buildSandboxCapabilities(appPath: string) {
-  return buildSandboxCapabilitiesWithObserver(appPath);
-}
-
 export function buildSandboxCapabilitiesWithObserver(
   appPath: string,
   onHostCall?: SandboxHostCallObserver,

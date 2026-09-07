@@ -19,10 +19,6 @@ import {
 import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
 
-export function getRandomNumberId() {
-  return Math.floor(Math.random() * 1_000_000_000_000_000);
-}
-
 /**
  * Chat streaming facade for React components.
  *

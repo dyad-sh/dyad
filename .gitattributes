@@ -5,6 +5,10 @@
 # Otherwise we'll get diffs in the snapshots when running on Windows.
 e2e-tests/snapshots/** text eol=lf
 
+# Guide markdown files are imported as raw strings in tests; keep LF so
+# string-literal assertions are not broken by Windows CRLF checkout.
+src/prompts/guides/*.md text eol=lf
+
 # we do NOT want github to automatically collapse the diff because
 # we should review package-lock.json for security-sensitive changes.
 # https://docs.github.com/en/repositories/working-with-files/managing-files/customizing-how-changed-files-appear-on-github

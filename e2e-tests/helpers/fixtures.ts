@@ -73,7 +73,14 @@ export async function launchElectronApp({
 // connections as well as the OS process. Some Electron states can still leave
 // close() pending, so retain a bounded process-group kill as a fallback.
 export async function terminateElectronApp(electronApp: ElectronApplication) {
-  const childProcess = electronApp.process();
+  let childProcess;
+  try {
+    childProcess = electronApp.process();
+  } catch {
+    // A restart test may already have closed this Playwright channel. Teardown
+    // is idempotent even after Playwright disposes its process handle.
+    return;
+  }
   const pid = childProcess.pid;
   console.log(
     `[cleanup:start] Terminating Electron app${pid ? ` ${pid}` : ""}`,

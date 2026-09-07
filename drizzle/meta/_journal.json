@@ -351,6 +351,13 @@
       "when": 1787112815219,
       "tag": "0049_high_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1788585982811,
+      "tag": "0050_brainy_white_tiger",
+      "breakpoints": true
     }
   ]
 }

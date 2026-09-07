@@ -108,6 +108,28 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 }));
 
 describe("getModelClient", () => {
+  test("explicit API-key selection bypasses Pro without changing user settings", async () => {
+    const settings = {
+      enableDyadPro: true,
+      providerSettings: {
+        auto: { apiKey: { value: "test-pro-key" } },
+        anthropic: { apiKey: { value: "test-api-key" } },
+      },
+    } as unknown as UserSettings;
+    const result = await getModelClient(
+      {
+        provider: "anthropic",
+        name: "claude-sonnet-4-20250514",
+        billingSource: "api-key",
+      },
+      settings,
+    );
+    expect(result.isEngineEnabled).toBeFalsy();
+    expect((result.modelClient.model as { modelId: string }).modelId).toBe(
+      "claude-sonnet-4-20250514",
+    );
+    expect(settings.enableDyadPro).toBe(true);
+  });
   afterEach(() => {
     setModelClientFetchForTesting(undefined);
     vi.mocked(getLanguageModels).mockResolvedValue([]);

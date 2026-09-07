@@ -39,6 +39,7 @@ export function ChatModeSelector() {
     hasManuallySelectedChatModeAtom,
   );
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  const isSubscription = selectedModel?.provider === "claude-code";
   const { messagesRemaining, messagesLimit, isQuotaExceeded } =
     useFreeAgentQuota();
   const isDyadFreeSelected = isFreeProModel(selectedModel);
@@ -74,6 +75,7 @@ export function ChatModeSelector() {
   };
 
   const getModeDisplayName = (mode: ChatMode) => {
+    if (isSubscription && mode === "local-agent") return "Agent";
     return getChatModeDisplayName(mode, isProEnabled);
   };
 
@@ -131,12 +133,14 @@ export function ChatModeSelector() {
           </TooltipContent>
         </Tooltip>
         <SelectContent align="start">
-          {isProEnabled && (
+          {(isProEnabled || isSubscription) && (
             <SelectItem value="local-agent">
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />
-                  <span className="font-medium">Agent v2</span>
+                  <span className="font-medium">
+                    {isSubscription ? "Claude Code agent" : "Agent v2"}
+                  </span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-[22px]">
                   Better at bigger tasks and debugging
@@ -155,7 +159,7 @@ export function ChatModeSelector() {
               </span>
             </div>
           </SelectItem>
-          {!isProEnabled && (
+          {!isProEnabled && !isSubscription && (
             <SelectItem value="local-agent" disabled={isQuotaExceeded}>
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">

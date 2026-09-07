@@ -846,6 +846,14 @@ async function revertCodebaseToVersion({
       // Continue with the revert operation even if function deployment fails
     }
   }
+  // The restored working tree no longer matches any existing CLI transcript.
+  // Keep visible history, but require a fresh explicit session after undo.
+  await db
+    .update(chats)
+    .set({ claudeSessionState: "interrupted" })
+    .where(
+      and(eq(chats.appId, appId), eq(chats.executionBackend, "claude-code")),
+    );
   await syncCloudSandboxSnapshotBestEffort(appId);
 
   const restoreCompletion = {
@@ -1649,6 +1657,8 @@ export function registerVersionHandlers() {
             | "requestId"
             | "maxTokensUsed"
             | "model"
+            | "executionBackend"
+            | "executionUsage"
             | "aiMessagesJson"
             | "isCompactionSummary"
             | "createdAt";
@@ -1702,6 +1712,12 @@ export function registerVersionHandlers() {
                 title: restoredTitle,
                 chatMode: latestChat.chatMode,
                 modelSelection: latestChat.modelSelection,
+                executionBackend: latestChat.executionBackend,
+                // A fork cannot reuse a CLI session whose filesystem history differs.
+                claudeSessionState:
+                  latestChat.executionBackend === "claude-code"
+                    ? "interrupted"
+                    : null,
                 initialCommitHash: forkInitialCommitHash,
                 // Carry over the sticky referenced apps. The fork copies the
                 // history containing the `@app:` mentions, so dropping these
@@ -1740,6 +1756,8 @@ export function registerVersionHandlers() {
                     requestId: m.requestId,
                     maxTokensUsed: m.maxTokensUsed,
                     model: m.model,
+                    executionBackend: m.executionBackend,
+                    executionUsage: m.executionUsage,
                     aiMessagesJson: m.aiMessagesJson,
                     // Don't carry over the free-agent quota flag. The copied
                     // messages represent already-completed turns; preserving the

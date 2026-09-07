@@ -1,0 +1,217 @@
+{
+  "date": "2026-09-04",
+  "cliVersion": "2.1.260",
+  "authentication": {
+    "loggedIn": true,
+    "authMethod": "claude.ai",
+    "apiProvider": "firstParty",
+    "subscriptionType": "max"
+  },
+  "throughDyad": false,
+  "probes": [
+    {
+      "name": "first",
+      "init": {
+        "model": "claude-opus-5[1m]",
+        "tools": ["Glob", "Grep", "Read"],
+        "mcp_servers": [],
+        "plugins": [],
+        "session_id": "a80501fb-24b6-4b66-a948-2cf79244bcee"
+      },
+      "streamEventCount": 7,
+      "assistantModels": ["claude-opus-5"],
+      "result": {
+        "uuid": "6a96cfc3-ffc9-4af2-b92e-6e7db7d8b3c2",
+        "session_id": "a80501fb-24b6-4b66-a948-2cf79244bcee",
+        "is_error": false,
+        "result": "violet lighthouse",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 2407,
+          "cache_read_input_tokens": 2800,
+          "output_tokens": 9,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 2407,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 9,
+              "cache_read_input_tokens": 2800,
+              "cache_creation_input_tokens": 2407,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 2407
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "modelUsage": {
+          "claude-haiku-4-5-20251001": {
+            "inputTokens": 904,
+            "outputTokens": 10,
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0,
+            "webSearchRequests": 0,
+            "costUSD": 0.000954,
+            "contextWindow": 200000,
+            "maxOutputTokens": 32000,
+            "thinkingTokens": 0,
+            "canonicalModel": "claude-haiku-4-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          },
+          "claude-opus-5[1m]": {
+            "inputTokens": 2,
+            "outputTokens": 9,
+            "cacheReadInputTokens": 2800,
+            "cacheCreationInputTokens": 2407,
+            "webSearchRequests": 0,
+            "costUSD": 0.025705,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 64000,
+            "thinkingTokens": 0,
+            "canonicalModel": "claude-opus-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        },
+        "total_cost_usd": 0.026659,
+        "permission_denials": [],
+        "subagent_stats": {
+          "spawned": 0,
+          "requested": {
+            "background": 0,
+            "foreground": 0,
+            "unset": 0
+          },
+          "started_in_background": 0,
+          "max_depth": 0,
+          "spawned_by_subagents": 0,
+          "completed": 0,
+          "failed": 0,
+          "killed": {
+            "parent": 0,
+            "user": 0,
+            "system": 0
+          },
+          "refused": {
+            "depth_limit": 0,
+            "concurrency_limit": 0,
+            "budget": 0
+          },
+          "by_type": {}
+        }
+      }
+    },
+    {
+      "name": "resume",
+      "init": {
+        "model": "claude-opus-5",
+        "tools": ["Glob", "Grep", "Read"],
+        "mcp_servers": [],
+        "plugins": [],
+        "session_id": "a80501fb-24b6-4b66-a948-2cf79244bcee"
+      },
+      "streamEventCount": 12,
+      "assistantModels": ["claude-opus-5", "claude-opus-5"],
+      "result": {
+        "uuid": "d0bf6dd5-80e9-48e1-867f-c54f61ab8448",
+        "session_id": "a80501fb-24b6-4b66-a948-2cf79244bcee",
+        "is_error": false,
+        "result": "The phrase was **violet lighthouse**.\n\nI can't do the file creation part: my available tools in this session are only Glob, Grep, and Read. There's no Bash tool and no Write tool, so neither `forbidden-shell.txt` nor `forbidden-write.txt` was created. As instructed, I didn't substitute another tool to work around it.",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 146,
+          "cache_read_input_tokens": 5207,
+          "output_tokens": 186,
+          "output_tokens_details": {
+            "thinking_tokens": 71
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 146,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 186,
+              "cache_read_input_tokens": 5207,
+              "cache_creation_input_tokens": 146,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 146
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "modelUsage": {
+          "claude-opus-5": {
+            "inputTokens": 2,
+            "outputTokens": 186,
+            "cacheReadInputTokens": 5207,
+            "cacheCreationInputTokens": 146,
+            "webSearchRequests": 0,
+            "costUSD": 0.008723499999999999,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 64000,
+            "thinkingTokens": 71,
+            "canonicalModel": "claude-opus-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        },
+        "total_cost_usd": 0.008723499999999999,
+        "permission_denials": [],
+        "subagent_stats": {
+          "spawned": 0,
+          "requested": {
+            "background": 0,
+            "foreground": 0,
+            "unset": 0
+          },
+          "started_in_background": 0,
+          "max_depth": 0,
+          "spawned_by_subagents": 0,
+          "completed": 0,
+          "failed": 0,
+          "killed": {
+            "parent": 0,
+            "user": 0,
+            "system": 0
+          },
+          "refused": {
+            "depth_limit": 0,
+            "concurrency_limit": 0,
+            "budget": 0
+          },
+          "by_type": {}
+        }
+      }
+    }
+  ],
+  "mutationChecks": {
+    "shellFileExists": false,
+    "writeFileExists": false
+  }
+}

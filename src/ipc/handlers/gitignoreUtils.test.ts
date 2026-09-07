@@ -133,9 +133,9 @@ describe("ensureDyadGitignored", () => {
       expect(result).toBe(initial);
     });
 
-    it("ignores leading/trailing whitespace around a covering pattern", async () => {
-      const result = await runTwice("  .dyad/  \n");
-      expect(result).toBe("  .dyad/  \n");
+    it("treats a pattern with only trailing whitespace as covered", async () => {
+      const result = await runTwice(".dyad/  \n");
+      expect(result).toBe(".dyad/  \n");
     });
   });
 

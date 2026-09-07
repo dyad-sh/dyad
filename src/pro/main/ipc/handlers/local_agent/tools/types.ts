@@ -168,6 +168,12 @@ export interface AgentContext {
   /** Explorer reports already returned directly to the root as tool results. */
   deliveredExplorerThreadIds?: string[];
   /**
+   * Explorer threads whose report has already been injected into the message
+   * history for synthesis. Cleared when a follow-up task re-arms the thread so
+   * a second synthesis pass can pick up the new report.
+   */
+  synthesizedExplorerThreadIds?: Set<string>;
+  /**
    * Whether file tools may deploy server functions immediately. Implementer
    * children disable this so deployment stays owned by the root turn.
    */

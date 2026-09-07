@@ -1042,6 +1042,7 @@ export async function handleLocalAgentStream(
       spawnedImplementerThreadIds,
       cancelledImplementerNames,
       deliveredExplorerThreadIds,
+      synthesizedExplorerThreadIds,
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,

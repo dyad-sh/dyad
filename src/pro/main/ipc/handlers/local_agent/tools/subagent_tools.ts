@@ -468,6 +468,9 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       if (at >= 0) {
         ctx.deliveredExplorerThreadIds.splice(at, 1);
       }
+      // Also clear from the synthesis-pass exclusion set so a second follow-up
+      // on the same Explorer thread triggers a new synthesis pass.
+      ctx.synthesizedExplorerThreadIds?.delete(args.thread_id);
     }
     return "Follow-up queued durably.";
   },

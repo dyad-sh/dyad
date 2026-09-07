@@ -12,6 +12,7 @@ import {
   runBufferedProcess,
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
+import { isVersionAtLeast } from "@/shared/version_utils";
 import {
   isMissingPathError,
   resolveTypeScriptPackageJsonPath,
@@ -509,7 +510,11 @@ export async function runTypeScriptCheck({
       await fs.mkdir(path.dirname(buildInfoPath), { recursive: true });
 
       logger.info(`Starting TypeScript ${version} CLI check for ${appPath}`);
-      const result = await runCli(cli, appPath, [
+      // Defensive "off" toggles: keep the bounded diagnostics parser from being
+      // corrupted by user-configured output flags. Two of them are version-gated.
+      // --explainFiles: added in TypeScript 4.2; earlier tsc rejects it with
+      //   error TS5023 and aborts before reporting any diagnostics.
+      const args = [
         "--pretty",
         "false",
         "--diagnostics",
@@ -520,17 +525,22 @@ export async function runTypeScriptCheck({
         "false",
         "--listEmittedFiles",
         "false",
-        "--explainFiles",
-        "false",
-        "--traceResolution",
-        "false",
-        "--noEmit",
-        "--incremental",
-        "--tsBuildInfoFile",
-        buildInfoPath,
-        "--project",
-        configPath,
-      ]);
+      ];
+      if (isVersionAtLeast(version, "4.2.0")) {
+        args.push("--explainFiles", "false");
+      }
+      args.push("--traceResolution", "false", "--noEmit");
+      // --incremental + --noEmit: TypeScript 4.0 lifted the restriction that
+      // --incremental required emit. On 3.9, --incremental + --noEmit errors
+      // with TS5053, and --tsBuildInfoFile alone errors with TS5069 (it
+      // requires --incremental or --composite), so skip both on < 4.0 and run
+      // a full, non-incremental check. Incremental caching is a perf
+      // optimization, not a correctness need.
+      if (isVersionAtLeast(version, "4.0.0")) {
+        args.push("--incremental", "--tsBuildInfoFile", buildInfoPath);
+      }
+      args.push("--project", configPath);
+      const result = await runCli(cli, appPath, args);
 
       if (result.timedOut) {
         throw new Error(`Type check timed out after ${TSC_TIMEOUT_MS / 1000}s`);

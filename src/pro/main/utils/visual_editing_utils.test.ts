@@ -556,6 +556,28 @@ function Component() {
       expect(result).toContain("border-[#ff0000]");
     });
 
+    it("should preserve bare per-side border widths during a color edit", () => {
+      const content = `
+function Component() {
+  return <div className="border-t border-b border-x border-red-500 border-dashed">Box</div>;
+}`;
+
+      const changes = new Map([
+        [3, { classes: ["border-green-500"], prefixes: ["border-color-"] }],
+      ]);
+      const result = transformContent(content, changes);
+
+      // bare per-side widths must survive
+      expect(result).toContain("border-t");
+      expect(result).toContain("border-b");
+      expect(result).toContain("border-x");
+      // all-sides style must survive
+      expect(result).toContain("border-dashed");
+      // per-side color (red-500) should be removed, new color added
+      expect(result).not.toContain("border-red-500");
+      expect(result).toContain("border-green-500");
+    });
+
     it("should add a className when editing border on an element without one", () => {
       const content = `
 function Component() {

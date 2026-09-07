@@ -170,6 +170,12 @@ export function transformContent(
                   if (cls === "border" || /^border-(0|2|4|8)$/.test(cls)) {
                     return false;
                   }
+                  // Exclude bare per-side widths (e.g. border-t, border-x, border-l)
+                  if (
+                    /^border-(t|r|b|l|x|y|s|e|is|ie)$/.test(cls)
+                  ) {
+                    return false;
+                  }
                   // Exclude per-side widths (e.g. border-t-4, border-x-2) but
                   // remove per-side colors (e.g. border-t-red-500, border-x-blue-500).
                   const perSideMatch = cls.match(

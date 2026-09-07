@@ -687,4 +687,44 @@ describe("followup_task execute bookkeeping", () => {
 
     expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
   });
+
+  it("clears synthesizedExplorerThreadIds so a second follow-up triggers another synthesis pass", async () => {
+    const synthesizedExplorerThreadIds = new Set(["explorer-1"]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: ["explorer-1"],
+      deliveredExplorerThreadIds: [],
+      synthesizedExplorerThreadIds,
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "explorer-1", message: "go deeper on JWT" },
+      ctx,
+    );
+
+    expect(synthesizedExplorerThreadIds.has("explorer-1")).toBe(false);
+  });
+
+  it("does not clear synthesizedExplorerThreadIds for an Implementer follow-up", async () => {
+    subagentManagerMocks.followupSubagent.mockResolvedValueOnce(
+      "implementer" as any,
+    );
+    const synthesizedExplorerThreadIds = new Set(["explorer-1"]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: [],
+      deliveredExplorerThreadIds: ["explorer-1"],
+      synthesizedExplorerThreadIds,
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "implementer-1", message: "also fix the memory leak" },
+      ctx,
+    );
+
+    expect(synthesizedExplorerThreadIds.has("explorer-1")).toBe(true);
+  });
 });

@@ -7,8 +7,6 @@ import type {
   RunUrl,
 } from "./state";
 import {
-  APP_RUN_REMOTE_INTENT_CLASS,
-  AppRunDispatchSchema,
   AppRunIntentEventSchema,
   AppRunKeySchema,
   AppRunProducerEventSchema,
@@ -136,8 +134,6 @@ describe("app-run transport codecs", () => {
   it.each(intentEvents)("round-trips intent $type", (event) => {
     expect(roundTrip(AppRunIntentEventSchema, event)).toEqual(event);
     expect(roundTrip(AppRunWireEventSchema, event)).toEqual(event);
-    const dispatch = { key: { appId: APP_ID }, event };
-    expect(roundTrip(AppRunDispatchSchema, dispatch)).toEqual(dispatch);
   });
 
   it.each(producerEvents)("round-trips producer $type", (event) => {
@@ -280,18 +276,6 @@ describe("app-run transport codecs", () => {
       }),
     ).toThrow();
     expect(() =>
-      AppRunDispatchSchema.parse({
-        key: { appId: APP_ID },
-        event: {
-          ...intentEvents[3],
-          activeInvocationRef: {
-            ...invocationRef,
-            entityKey: APP_ID + 1,
-          },
-        },
-      }),
-    ).toThrow();
-    expect(() =>
       AppRunIntentEventSchema.parse({
         ...intentEvents[0],
         appId: APP_ID,
@@ -338,12 +322,6 @@ describe("app-run transport codecs", () => {
         operationError: new Error("boom"),
       }),
     ).toThrow();
-  });
-
-  it("classifies every remotely dispatchable event", () => {
-    expect(Object.keys(APP_RUN_REMOTE_INTENT_CLASS).sort()).toEqual(
-      [...new Set(intentEvents.map((event) => event.type))].sort(),
-    );
   });
 });
 

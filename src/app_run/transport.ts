@@ -144,32 +144,6 @@ export const AppRunIntentEventSchema = z.union([
 ]);
 export type AppRunIntentEvent = z.infer<typeof AppRunIntentEventSchema>;
 
-/**
- * Per-definition admission boundary assembled after the generic actor
- * transport decodes its key and event independently. The key is the sole app
- * identity for renderer intents; cancellation additionally proves that its
- * active invocation belongs to that key.
- */
-export const AppRunDispatchSchema = z
-  .object({
-    key: AppRunKeySchema,
-    event: AppRunIntentEventSchema,
-  })
-  .strict()
-  .superRefine((dispatch, context) => {
-    if (
-      dispatch.event.type === "STOP_REQUESTED" &&
-      dispatch.event.activeInvocationRef.entityKey !== dispatch.key.appId
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["event", "activeInvocationRef", "entityKey"],
-        message: "Cancellation target must belong to the routed app",
-      });
-    }
-  });
-export type AppRunDispatch = z.infer<typeof AppRunDispatchSchema>;
-
 const externalRestartStartedSchema = z
   .object({
     type: z.literal("EXTERNAL_RESTART_STARTED"),
@@ -267,26 +241,6 @@ export const AppRunWireEventSchema = z.union([
   AppRunProducerEventSchema,
 ]);
 export type AppRunWireEvent = z.infer<typeof AppRunWireEventSchema>;
-
-export type AppRunRemoteIntentClass =
-  | "idempotent"
-  | "state-sensitive"
-  | "cancellation"
-  | "presentation-only";
-
-/**
- * Admission annotations for every renderer-dispatchable event. Producer
- * events are deliberately absent because their admission is host-only.
- *
- * No current RunEvent is presentation-only: presentation effects are commands
- * today and become post-commit consumers in C1.3.
- */
-export const APP_RUN_REMOTE_INTENT_CLASS = {
-  START: "state-sensitive",
-  RESTART: "state-sensitive",
-  STOP_REQUESTED: "cancellation",
-  MANUAL_RELOAD: "idempotent",
-} as const satisfies Record<AppRunIntentEvent["type"], AppRunRemoteIntentClass>;
 
 const appRunCapabilitiesSchema = z
   .object({

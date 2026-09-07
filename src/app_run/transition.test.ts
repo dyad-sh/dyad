@@ -605,6 +605,149 @@ describe("transition scenarios", () => {
     }
   });
 
+  it("re-establishes ready from errored even when the proxy line carries a different ref", () => {
+    // After a cloud stop fails, the `errored` state carries the stop ref
+    // while the still-alive sandbox re-emits the proxy line under the
+    // original run ref. The guard must exempt `errored` precisely as it
+    // already exempts `idle`, so the intended re-establish branch fires.
+    const erroredFromFailedStop: RunState = {
+      type: "errored",
+      appId: APP_ID,
+      invocationRef: FRESH_REF,
+      error: { message: "stop failed" },
+    };
+    const result = transition(erroredFromFailedStop, {
+      type: "PROXY_READY",
+      appId: APP_ID,
+      invocationRef: CURRENT_REF,
+      url: makeUrl(7),
+    });
+    expect(result.state).toEqual({
+      type: "ready",
+      appId: APP_ID,
+      invocationRef: CURRENT_REF,
+      url: makeUrl(7),
+    });
+    expect(commandsOf(result)).toEqual([
+      { type: "applyUrl", appId: APP_ID, url: makeUrl(7) },
+    ]);
+  });
+
+  it("still rejects stale-ref proxy lines for non-idle, non-errored states", () => {
+    // The guard exemption is scoped to `idle`/`errored`; every other active
+    // or settled state with a ref mismatch must keep rejecting the line as
+    // a stale operation from a torn-down process.
+    const guardedFixtures: RunState[] = [
+      {
+        type: "starting",
+        appId: APP_ID,
+        invocationRef: CURRENT_REF,
+        operation: "run",
+        startedAt: 100,
+        pendingUrl: null,
+      },
+      {
+        type: "ready",
+        appId: APP_ID,
+        invocationRef: CURRENT_REF,
+        url: makeUrl(1),
+      },
+      {
+        type: "reloading",
+        appId: APP_ID,
+        invocationRef: CURRENT_REF,
+        reason: "hmr",
+        url: makeUrl(1),
+      },
+      {
+        type: "stopping",
+        appId: APP_ID,
+        invocationRef: CURRENT_REF,
+        startedAt: 100,
+      },
+      {
+        type: "stopped",
+        appId: APP_ID,
+        invocationRef: CURRENT_REF,
+        exitCode: 0,
+        timestamp: 100,
+      },
+    ];
+    for (const state of guardedFixtures) {
+      const result = transition(state, {
+        type: "PROXY_READY",
+        appId: APP_ID,
+        invocationRef: STALE_REF,
+        url: makeUrl(8),
+      });
+      expect(result.state).toBe(state);
+      expect(commandsOf(result)).toEqual([]);
+      expect(ignoreReasonOf(result)).toBe("stale-operation");
+    }
+  });
+
+  it("recovers to ready when a cloud status poll re-emits the proxy line after a failed stop", () => {
+    // Full lifecycle: a running app's stop fails (cloud), leaving `errored`
+    // under the stop ref while the live sandbox's proxy line keeps the
+    // original run ref. The status-poll re-emission must re-establish ready.
+    const runStarted = transition(
+      { type: "idle" },
+      {
+        type: "START",
+        appId: APP_ID,
+        invocationRef: CURRENT_REF,
+        startedAt: 100,
+      },
+    );
+    const ready = transition(runStarted.state, {
+      type: "RUN_IPC_RESOLVED",
+      invocationRef: CURRENT_REF,
+    });
+    expect(ready.state).toMatchObject({
+      type: "ready",
+      invocationRef: CURRENT_REF,
+    });
+
+    const stop = transition(ready.state, {
+      type: "STOP",
+      appId: APP_ID,
+      invocationRef: FRESH_REF,
+      startedAt: 200,
+    });
+    expect(stop.state).toMatchObject({
+      type: "stopping",
+      invocationRef: FRESH_REF,
+    });
+
+    const failedStop = transition(stop.state, {
+      type: "STOP_IPC_FAILED",
+      invocationRef: FRESH_REF,
+      error: { message: "destroyCloudSandbox failed" },
+    });
+    expect(failedStop.state).toMatchObject({
+      type: "errored",
+      invocationRef: FRESH_REF,
+      error: { message: "destroyCloudSandbox failed" },
+    });
+
+    // The surviving sandbox re-emits its proxy line under the original run ref.
+    const recovered = transition(failedStop.state, {
+      type: "PROXY_READY",
+      appId: APP_ID,
+      invocationRef: CURRENT_REF,
+      url: makeUrl(9),
+    });
+    expect(recovered.state).toEqual({
+      type: "ready",
+      appId: APP_ID,
+      invocationRef: CURRENT_REF,
+      url: makeUrl(9),
+    });
+    expect(commandsOf(recovered)).toEqual([
+      { type: "applyUrl", appId: APP_ID, url: makeUrl(9) },
+    ]);
+  });
+
   it("ignores proxy lines while stopping", () => {
     const stopping: RunState = {
       type: "stopping",

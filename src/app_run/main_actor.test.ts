@@ -435,6 +435,77 @@ describe("main-hosted app-run actor", () => {
     failingManager.dispose();
   });
 
+  it("recovers to ready when the surviving run ref re-emits a proxy line after a failed stop", async () => {
+    // Reproduces the cloud stop-failure recovery chain end-to-end through the
+    // real actor host (real transition). A dispatched stop mints a fresh stop
+    // ref and runtime.stop rejects, landing the app in errored under the stop
+    // ref. The still-alive sandbox's proxy is bound to the original run ref
+    // (the output captured at START), so a re-emitted proxy line stamps
+    // PROXY_READY with the run ref. transition must recover errored -> ready
+    // despite the ref mismatch — the exact shape the stale-ref guard used to
+    // reject before the errored exemption.
+    const { duplex, host } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    const unsubscribe = manager.subscribeKey(7, () => undefined);
+
+    // 1. Start under the run ref; capture the output bound to that ref.
+    await manager.dispatch(7, { type: "START", startedAt: 10 });
+    const [[startOptions]] = runtime.start.mock.calls as unknown as [
+      [{ output: { enqueue(output: unknown): void } }],
+    ];
+    const actor = host.ensure(appRunDefinition, appRunKey(7));
+    {
+      const runState = actor.getSnapshot().runState;
+      if (runState.type !== "ready")
+        throw new Error("Expected ready after start");
+      const runRef = runState.invocationRef;
+      expect(runRef).toBeTruthy();
+
+      // 2. Stop fails; the stop ref supersedes the run ref in the errored state.
+      runtime.stop.mockRejectedValueOnce(
+        new Error("destroyCloudSandbox failed"),
+      );
+      await expect(
+        manager.dispatch(7, { type: "STOP", startedAt: 20 }),
+      ).rejects.toThrow("destroyCloudSandbox failed");
+      expect(appRunOperationRegistry.inspect().total).toBe(0);
+      const erroredState = actor.getSnapshot().runState;
+      if (erroredState.type !== "errored") {
+        throw new Error("Expected errored after failed stop");
+      }
+      const stopRef = erroredState.invocationRef;
+      expect(stopRef).not.toEqual(runRef);
+      expect(erroredState.error).toMatchObject({
+        message: "destroyCloudSandbox failed",
+      });
+
+      // 3. The surviving sandbox re-emits its proxy line under the original run ref.
+      startOptions.output.enqueue({
+        type: "stdout",
+        appId: 7,
+        message:
+          "[dyad-proxy-server]started=[http://localhost:9999] original=[http://localhost:5173] mode=[cloud]",
+      });
+
+      // 4. The app recovers to ready under the run ref with the live URL applied.
+      await vi.waitFor(() => {
+        const recovered = actor.getSnapshot().runState;
+        expect(recovered).toMatchObject({
+          type: "ready",
+          invocationRef: runRef,
+          url: { appUrl: "http://localhost:9999" },
+        });
+      });
+    }
+
+    unsubscribe();
+    manager.dispose();
+  });
+
   it("treats actor disposal as an expected renderer cancellation", async () => {
     const pending = deferred<void>();
     runtime.start.mockReturnValue(pending.promise);

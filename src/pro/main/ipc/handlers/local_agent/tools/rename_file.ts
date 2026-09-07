@@ -13,6 +13,7 @@ import {
   extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
+  supabaseFunctionEntryExists,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
@@ -112,14 +113,28 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                   ctx.onDeferredFunctionDelete?.(functionName);
                 } else {
                   try {
-                    await deleteSupabaseFunction({
-                      supabaseProjectId: ctx.supabaseProjectId,
-                      functionName,
-                      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-                    });
+                    if (
+                      await supabaseFunctionEntryExists(
+                        ctx.appPath,
+                        functionName,
+                      )
+                    ) {
+                      await deploySupabaseFunction({
+                        supabaseProjectId: ctx.supabaseProjectId,
+                        functionName,
+                        appPath: ctx.appPath,
+                        organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                      });
+                    } else {
+                      await deleteSupabaseFunction({
+                        supabaseProjectId: ctx.supabaseProjectId,
+                        functionName,
+                        organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                      });
+                    }
                   } catch (error) {
                     logger.warn(
-                      `Failed to delete old Supabase function: ${args.from}`,
+                      `Failed to reconcile old Supabase function: ${args.from}`,
                       error,
                     );
                   }

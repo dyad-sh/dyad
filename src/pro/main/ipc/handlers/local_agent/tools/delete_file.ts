@@ -54,6 +54,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       return withLock(await getFileWriteKey(fullFilePath), async () => {
         const currentStat = lstatIfExists(fullFilePath);
         const didDelete = currentStat !== null;
+        const deletedDirectory = currentStat?.isDirectory() ?? false;
         if (currentStat) {
           // Track if this is a shared module
           if (isSharedServerModule(operationPath)) {
@@ -115,6 +116,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
           queueCloudSandboxSnapshotSync({
             appId: ctx.appId,
             deletedPaths: [operationPath],
+            ...(deletedDirectory ? { fullSync: true } : {}),
           });
         }
 

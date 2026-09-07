@@ -372,6 +372,87 @@ describe("cloud_sandbox_provider incremental sync", () => {
     });
   });
 
+  it("treats a directory changed path as a deletion without uploading its descendants", async () => {
+    await fs.mkdir(path.join(appPath, "src", "newdir", "deep"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(appPath, "src", "newdir", "child.ts"),
+      "export const x = 1;",
+    );
+    await fs.writeFile(
+      path.join(appPath, "src", "newdir", "deep", "grandchild.ts"),
+      "export const z = 3;",
+    );
+
+    await syncCloudSandboxDirtyPaths({
+      appId: 1,
+      changedPaths: ["src/newdir"],
+      deletedPaths: ["src/olddir"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const upload = await parseMultipartUpload(init);
+    // The directory changedPath is mis-routed into deletedFiles and no
+    // descendant content is read or uploaded. This is why directory mutations
+    // must request a fullSync from the caller (see rename_file / delete_file).
+    expect(upload.manifest.replaceAll).toBe(false);
+    expect(upload.manifest.files).toEqual([]);
+    expect(upload.files).toEqual({});
+    expect(upload.manifest.deletedFiles).toEqual(["src/newdir", "src/olddir"]);
+    expect(
+      upload.manifest.files.find((f) => f.path === "src/newdir/child.ts"),
+    ).toBeUndefined();
+    expect(
+      upload.manifest.files.find(
+        (f) => f.path === "src/newdir/deep/grandchild.ts",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("uploads a full snapshot with renamed directory descendants when fullSync is queued", async () => {
+    vi.useRealTimers();
+
+    await fs.mkdir(path.join(appPath, "src", "newdir", "deep"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(appPath, "src", "newdir", "child.ts"),
+      "export const x = 1;",
+    );
+    await fs.writeFile(
+      path.join(appPath, "src", "newdir", "deep", "grandchild.ts"),
+      "export const z = 3;",
+    );
+    await fs.writeFile(path.join(appPath, "other.ts"), "kept");
+
+    queueCloudSandboxSnapshotSync({
+      appId: 1,
+      changedPaths: ["src/newdir"],
+      deletedPaths: ["src/olddir"],
+      fullSync: true,
+      immediate: true,
+    });
+
+    await vi.waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2_000 },
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest.replaceAll).toBe(true);
+    expect(upload.manifest.deletedFiles).toEqual([]);
+    expect(upload.files).toEqual({
+      "other.ts": Buffer.from("kept"),
+      "src/newdir/child.ts": Buffer.from("export const x = 1;"),
+      "src/newdir/deep/grandchild.ts": Buffer.from("export const z = 3;"),
+    });
+  });
+
   it("notifies listeners when syncs fail and later recover", async () => {
     const syncUpdateListener = vi.fn();
     setCloudSandboxSyncUpdateListener(syncUpdateListener);

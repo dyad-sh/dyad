@@ -129,6 +129,26 @@ describe.runIf(process.platform !== "win32")(
       });
     });
 
+    it("requests a full cloud sandbox sync when renaming a directory", async () => {
+      await fs.mkdir(path.join(appPath, "src", "olddir"), { recursive: true });
+      await fs.writeFile(
+        path.join(appPath, "src", "olddir", "child.ts"),
+        "export const x = 1;",
+      );
+
+      await renameFileTool.execute(
+        { from: "src/olddir", to: "src/newdir" },
+        context(),
+      );
+
+      expect(queueCloudSandboxSnapshotSync).toHaveBeenCalledWith({
+        appId: 123456,
+        changedPaths: ["src/newdir"],
+        deletedPaths: ["src/olddir"],
+        fullSync: true,
+      });
+    });
+
     it("renames a direct final symlink entry without moving its target", async () => {
       await fs.writeFile(path.join(appPath, "target.txt"), "target");
       await fs.symlink("target.txt", path.join(appPath, "source-link"));

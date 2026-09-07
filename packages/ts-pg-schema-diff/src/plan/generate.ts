@@ -1,7 +1,6 @@
 import { buildSchemaDiff } from "../diff/schemaDiff.js";
 import { generateStatements } from "../generators/schema.js";
 import type { Schema } from "../schema/model.js";
-import { schemaHash } from "../schema/hash.js";
 import { toPublicStatement } from "./classify.js";
 import type { InternalStatement, SchemaDiffResult } from "./types.js";
 
@@ -13,7 +12,6 @@ export type GeneratePlanOptions = {
 
 export type InternalPlan = {
   readonly statements: readonly InternalStatement[];
-  readonly currentSchemaHash: string;
 };
 
 export function generatePlan(
@@ -24,7 +22,6 @@ export function generatePlan(
   const diff = buildSchemaDiff(currentSchema, desiredSchema);
   return {
     statements: generateStatements(diff, options),
-    currentSchemaHash: schemaHash(currentSchema),
   };
 }
 

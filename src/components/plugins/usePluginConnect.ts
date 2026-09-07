@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { atom, useAtom } from "jotai";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
@@ -41,6 +41,18 @@ export function usePluginConnect() {
   const [connectFeedback, setConnectFeedback] = useAtom(connectFeedbackAtom);
 
   const callbackPort = useOauthCallbackPort();
+
+  // Permanently clear a stored discovery_failed once the affected server
+  // reports a successful discovery, so a later transient failure cannot
+  // resurface a stale "doesn't support OAuth" alert.
+  useEffect(() => {
+    if (
+      connectFeedback !== null &&
+      statusByServer[connectFeedback.serverId] === "ok"
+    ) {
+      setConnectFeedback(null);
+    }
+  }, [connectFeedback, statusByServer, setConnectFeedback]);
 
   const catalogQuery = useMcpCatalog();
   // Catalog slugs whose entries authenticate via a user-supplied key, so

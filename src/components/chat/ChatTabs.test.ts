@@ -5,7 +5,6 @@ import {
   closedChatIdsAtom,
   closedTabHistoryAtom,
   pushRecentViewedChatIdAtom,
-  removeRecentViewedChatIdAtom,
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   addSessionOpenedChatIdAtom,
@@ -340,28 +339,6 @@ describe("recent viewed chat atoms", () => {
     expect(store.get(recentViewedChatIdsAtom)).toEqual([2, 1, 3]);
   });
 
-  it("removes closed tab from tab state only", () => {
-    const store = createStore();
-    store.set(recentViewedChatIdsAtom, [3, 2, 1]);
-    store.set(removeRecentViewedChatIdAtom, {
-      chatId: 2,
-      appId: 1,
-      title: "Chat 2",
-    });
-    expect(store.get(recentViewedChatIdsAtom)).toEqual([3, 1]);
-  });
-
-  it("adds chat to closedChatIds when removed", () => {
-    const store = createStore();
-    store.set(recentViewedChatIdsAtom, [3, 2, 1]);
-    store.set(removeRecentViewedChatIdAtom, {
-      chatId: 2,
-      appId: 1,
-      title: "Chat 2",
-    });
-    expect(store.get(closedChatIdsAtom).has(2)).toBe(true);
-  });
-
   it("removes chat from closedChatIds when pushed", () => {
     const store = createStore();
     store.set(recentViewedChatIdsAtom, [3, 1]);
@@ -390,14 +367,6 @@ describe("recent viewed chat atoms", () => {
 });
 
 describe("closed tab history", () => {
-  it("stores closed tab records when provided", () => {
-    const store = createStore();
-    const record = { chatId: 2, appId: 1, title: "Chat 2" };
-    store.set(recentViewedChatIdsAtom, [3, 2, 1]);
-    store.set(removeRecentViewedChatIdAtom, record);
-    expect(store.get(closedTabHistoryAtom)).toEqual([record]);
-  });
-
   it("pops the most recent closed tab", () => {
     const store = createStore();
     const first = { chatId: 2, appId: 1, title: "Chat 2" };

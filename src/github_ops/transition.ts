@@ -438,7 +438,7 @@ function gitStateReceived(
                 } satisfies GithubOpsBanner),
             }
         : state.type === "rebase-paused"
-          ? { type: "idle", banner: state.banner }
+          ? { type: "idle", banner: null }
           : state;
       return {
         kind: "applied",

@@ -211,6 +211,20 @@ describe("readChatTool.execute", () => {
     expect(parsed.has_more_after).toBe(false);
   });
 
+  it("reports has_more_before false for an empty chat with a positive offset", async () => {
+    const appId = harness.insertApp();
+    const chatId = harness.insertChat(appId, "Empty chat");
+    const { parsed } = await run(
+      { chat_id: chatId, offset: 5, limit: 5 },
+      { appId, chatId: chatId + 999 },
+    );
+    expect(parsed.chat.total_messages).toBe(0);
+    expect(parsed.messages).toEqual([]);
+    // shownFirst would be 6 > 1, but no messages exist so has_more_before must be false.
+    expect(parsed.has_more_before).toBe(false);
+    expect(parsed.has_more_after).toBe(false);
+  });
+
   it("reports has_more_before true when paging past the end of the chat", async () => {
     const { appId, chatId } = seedChat(5);
     const { parsed } = await run(

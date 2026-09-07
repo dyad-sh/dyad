@@ -4,6 +4,8 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { normalizePath } from "../../../../../../../shared/normalizePath";
+
 import type { AgentContext } from "./types";
 import {
   runTypeScriptCheck,
@@ -407,7 +409,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       const result = await runTypeChecksTool.execute({ paths: [absPath] }, ctx);
 
       expect(result).toBe(
-        `Found 1 type error in \`${absPath}\`:\n\nsrc/foo.ts:1:1: Type mismatch`,
+        `Found 1 type error in \`${normalizePath(absPath)}\`:\n\nsrc/foo.ts:1:1: Type mismatch`,
       );
     });
 
@@ -425,7 +427,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       const result = await runTypeChecksTool.execute({ paths: [absDir] }, ctx);
 
       expect(result).toBe(
-        `Found 1 type error in \`${absDir}\`:\n\nsrc/lib/foo.ts:1:1: Type mismatch\n\nThe project also has 1 type error outside this scope.`,
+        `Found 1 type error in \`${normalizePath(absDir)}\`:\n\nsrc/lib/foo.ts:1:1: Type mismatch\n\nThe project also has 1 type error outside this scope.`,
       );
       expect(result).not.toContain("src/Other.tsx:1:1");
     });
@@ -447,7 +449,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       );
 
       expect(result).toBe(
-        `No type errors found in \`${absClean}\`, but the project has 1 type error outside this scope.`,
+        `No type errors found in \`${normalizePath(absClean)}\`, but the project has 1 type error outside this scope.`,
       );
     });
 

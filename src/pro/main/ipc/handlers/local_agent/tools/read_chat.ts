@@ -299,7 +299,7 @@ export const readChatTool: ToolDefinition<ReadChatArgs> = {
               ? { around_message_id: args.around_message_id }
               : { offset: shownFirst - 1 },
           messages: projected,
-          has_more_before: shownFirst > 1,
+          has_more_before: totalMessages > 0 && shownFirst > 1,
           has_more_after: shownLast < totalMessages,
           ...(outputTruncated ? { output_truncated: true } : {}),
           notice,

@@ -1,5 +1,4 @@
 import type {
-  PreviewRunState,
   ReloadReason,
   RunCommand,
   RunEvent,
@@ -397,30 +396,6 @@ export function ignore(
   reason: Extract<TransitionResult, { kind: "ignored" }>["reason"],
 ): TransitionResult {
   return ignoreTransition(state, reason);
-}
-
-/**
- * Selects the in-flight operation details used by preview loading UI.
- * `undefined` means that no run/restart/stop operation is in flight.
- */
-export function projectRunState(state: RunState): PreviewRunState | undefined {
-  switch (state.type) {
-    case "starting":
-      return {
-        operation: state.operation === "run" ? "run" : "restart",
-        startedAt: state.startedAt,
-      };
-    case "stopping":
-      return { operation: "stop", startedAt: state.startedAt };
-    case "idle":
-    case "ready":
-    case "reloading":
-    case "stopped":
-    case "errored":
-      return undefined;
-    default:
-      return assertNever(state);
-  }
 }
 
 function assertNever(value: never): never {

@@ -6,7 +6,7 @@ import type {
   RunState,
   RunUrl,
 } from "./state";
-import { ignore, projectRunState, transition } from "./transition";
+import { ignore, transition } from "./transition";
 import {
   assertReferenceStability,
   assertAllCommandsProducible,
@@ -708,58 +708,6 @@ describe("transition scenarios", () => {
     expect(commandsOf(resolved)).toEqual([
       { type: "clearError", appId: APP_ID },
     ]);
-  });
-});
-
-describe("projectRunState", () => {
-  it("projects starting/stopping to the legacy PreviewRunState shape", () => {
-    expect(
-      projectRunState({
-        type: "starting",
-        appId: APP_ID,
-        invocationRef: REF_1,
-        operation: "run",
-        startedAt: 42,
-        pendingUrl: null,
-      }),
-    ).toEqual({ operation: "run", startedAt: 42 });
-    expect(
-      projectRunState({
-        type: "starting",
-        appId: APP_ID,
-        invocationRef: REF_1,
-        operation: "restart",
-        startedAt: 42,
-        pendingUrl: null,
-      }),
-    ).toEqual({ operation: "restart", startedAt: 42 });
-    expect(
-      projectRunState({
-        type: "starting",
-        appId: APP_ID,
-        invocationRef: REF_1,
-        operation: "rebuild",
-        startedAt: 42,
-        pendingUrl: null,
-      }),
-    ).toEqual({ operation: "restart", startedAt: 42 });
-    expect(
-      projectRunState({
-        type: "stopping",
-        appId: APP_ID,
-        invocationRef: REF_1,
-        startedAt: 42,
-      }),
-    ).toEqual({ operation: "stop", startedAt: 42 });
-  });
-
-  it("projects every non-loading state to undefined", () => {
-    for (const state of STATE_FIXTURES) {
-      if (state.type === "starting" || state.type === "stopping") {
-        continue;
-      }
-      expect(projectRunState(state)).toBeUndefined();
-    }
   });
 });
 

@@ -522,6 +522,74 @@ describe("ChatStreamRemoteManager", () => {
     manager.dispose();
   });
 
+  it("captures the RESUME_QUEUE stop policy before resync, not after", async () => {
+    let subscribeCallCount = 0;
+    const subscribe = vi.fn(async (address: MachineAddress) => {
+      subscribeCallCount += 1;
+      const stopPolicyVersion = subscribeCallCount === 1 ? 1 : 2;
+      return {
+        ...address,
+        actorInstanceId: "actor",
+        revision: 4 + subscribeCallCount,
+        encodedState: {
+          ...unavailableChatStreamSnapshot(7),
+          revision: 4 + subscribeCallCount,
+          queueRevision: 5,
+          queuePaused: true,
+          queuePauseReason: "stop",
+          stopPolicyVersion,
+        },
+      };
+    });
+    let capturedResumeEvent:
+      | {
+          type?: string;
+          observedStopPolicyVersion?: number;
+          expectedQueueRevision?: number;
+        }
+      | undefined;
+    const dispatch = vi.fn(async (envelope: MachineDispatchEnvelope) => {
+      capturedResumeEvent = envelope.encodedEvent as typeof capturedResumeEvent;
+      return {
+        kind: "rejected" as const,
+        messageId: envelope.messageId,
+        reason: "revision-conflict" as const,
+      };
+    });
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: () => () => undefined,
+      onDisposed: () => () => undefined,
+      subscribe,
+      unsubscribe: () => Promise.resolve(),
+      dispatch,
+    };
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+    const release = manager.ensure(7).subscribe(() => undefined);
+    await vi.waitFor(() =>
+      expect(manager.getSnapshot(7).stopPolicyVersion).toBe(1),
+    );
+
+    await expect(
+      manager.dispatchQueueEvent(7, { type: "RESUME_QUEUE" }, 5),
+    ).rejects.toThrow("Chat queue request rejected: revision-conflict");
+
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(capturedResumeEvent).toBeDefined();
+    expect(capturedResumeEvent!.type).toBe("RESUME_QUEUE");
+    expect(capturedResumeEvent!.expectedQueueRevision).toBe(5);
+    expect(capturedResumeEvent!.observedStopPolicyVersion).toBe(1);
+
+    release();
+    manager.dispose();
+  });
+
   it("does not unsubscribe across an immediate renderer remount", async () => {
     const subscribe = vi.fn(async () => ({
       protocolVersion: 1,

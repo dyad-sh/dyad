@@ -15,8 +15,11 @@ import path from "node:path";
  * mis-handled.
  */
 function normalizePattern(pattern: string): string {
+  // Git discards only trailing *spaces* from patterns — not tabs or other
+  // whitespace — so we must not use String.prototype.trim() here.
   return pattern
-    .trim()
+    .replace(/^[ \t]+/, "")  // leading whitespace (already guarded by callers)
+    .replace(/ +$/, "")      // trailing spaces only (matches git behaviour)
     .replace(/^\/+/, "")
     .replace(/\/+\*+$/, "")
     .replace(/\/+$/, "");
@@ -46,6 +49,9 @@ function isCoveringPattern(line: string, entryDir: string): boolean {
  */
 function hasNegationFor(lines: string[], entryDir: string): boolean {
   return lines.some((line) => {
+    // Git treats leading whitespace as literal characters, so a line such as
+    // "  !.dyad/keep.txt" is NOT a negation from git's point of view.
+    if (line !== line.trimStart()) return false;
     const t = line.trim();
     if (!t.startsWith("!")) return false;
     const base = normalizePattern(t.slice(1));

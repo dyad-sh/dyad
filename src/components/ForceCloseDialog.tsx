@@ -11,7 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Upload } from "lucide-react";
+import { AlertTriangle, Bug } from "lucide-react";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { earlyForceCloseEvents } from "@/app_wiring/early_renderer_events";
 
@@ -51,7 +51,7 @@ export function ForceCloseDialog() {
 
   const onClose = () => setIsOpen(false);
 
-  const handleUploadChatSession = () => {
+  const handleReportCrash = () => {
     if (activeChatId == null) return;
     onClose();
     setHelpDialog({ open: true, uploadChatId: activeChatId });
@@ -158,9 +158,9 @@ export function ForceCloseDialog() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           {activeChatId != null && (
-            <Button variant="outline" onClick={handleUploadChatSession}>
-              <Upload className="h-4 w-4" />
-              {t("home:help.uploadChatSession")}
+            <Button variant="outline" onClick={handleReportCrash}>
+              <Bug className="h-4 w-4" />
+              {t("home:reportThisCrash")}
             </Button>
           )}
           <AlertDialogAction onClick={onClose}>

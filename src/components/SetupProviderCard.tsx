@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 
-type SetupProviderVariant = "google" | "openrouter" | "dyad";
+type SetupProviderVariant = "openrouter";
 
 export function SetupProviderCard({
   variant,
@@ -75,17 +75,6 @@ export function SetupProviderCard({
 
 function getVariantStyles(variant: SetupProviderVariant) {
   switch (variant) {
-    case "google":
-      return {
-        container:
-          "bg-blue-50/50 dark:bg-blue-900/20 border-blue-200/50 dark:border-blue-800/30 hover:bg-blue-50 dark:hover:bg-blue-900/30",
-        iconWrapper: "bg-blue-100/50 dark:bg-blue-800/30",
-        titleColor: "text-zinc-700 dark:text-zinc-300",
-        subtitleColor: "text-blue-500/70 dark:text-blue-400/70",
-        chipColor:
-          "text-zinc-600 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700",
-        chevronColor: "text-zinc-400 dark:text-zinc-500",
-      } as const;
     case "openrouter":
       return {
         container:
@@ -96,17 +85,6 @@ function getVariantStyles(variant: SetupProviderVariant) {
         chipColor:
           "text-zinc-600 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700",
         chevronColor: "text-zinc-400 dark:text-zinc-500",
-      } as const;
-    case "dyad":
-      return {
-        container:
-          "bg-primary/10 border-primary/50 dark:bg-violet-800/50 dark:border-violet-700 hover:bg-violet-100 dark:hover:bg-violet-900/70",
-        iconWrapper: "bg-primary/5 dark:bg-violet-800",
-        titleColor: "text-violet-800 dark:text-violet-300",
-        subtitleColor: "text-violet-600 dark:text-violet-400",
-        chipColor:
-          "text-violet-700 dark:text-violet-200 bg-violet-100 dark:bg-violet-900 border border-violet-200 dark:border-violet-700",
-        chevronColor: "text-violet-600 dark:text-violet-400",
       } as const;
   }
 }

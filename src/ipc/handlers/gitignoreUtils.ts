@@ -18,8 +18,8 @@ function normalizePattern(pattern: string): string {
   // Git discards only trailing *spaces* from patterns — not tabs or other
   // whitespace — so we must not use String.prototype.trim() here.
   return pattern
-    .replace(/^[ \t]+/, "")  // leading whitespace (already guarded by callers)
-    .replace(/ +$/, "")      // trailing spaces only (matches git behaviour)
+    .replace(/^[ \t]+/, "") // leading whitespace (already guarded by callers)
+    .replace(/ +$/, "") // trailing spaces only (matches git behaviour)
     .replace(/^\/+/, "")
     .replace(/\/+\*+$/, "")
     .replace(/\/+$/, "");

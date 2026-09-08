@@ -74,10 +74,11 @@ describe("getNeonAvailableSystemPrompt", () => {
     });
 
     it("orders and constrains preview cookie normalization", () => {
+      // Normalize to LF so indexOf searches work on Windows (CRLF checkout).
       const guide = filterGuideByFramework(
         addAuthenticationGuide,
         "vite-nitro",
-      );
+      ).replace(/\r\n/g, "\n");
       const allowlistIndex = guide.indexOf(
         "const forwardedHeaders = new Headers();",
       );

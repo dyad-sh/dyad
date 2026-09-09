@@ -539,6 +539,58 @@ describe("running a command", () => {
     await expect(session.run("preflight")).resolves.toMatchObject({ code: 1 });
   });
 
+  it("surfaces the signal a command was killed by, not `exit null`", async () => {
+    // ssh2 emits `close(null, signalName, coreDumped, description)` when sshd
+    // reports an exit-signal. The first arg is null — distinct from the
+    // undefined it emits when nothing arrived — so the signal name is the
+    // only thing that says the shell was killed. Dropping it (the bug)
+    // resolved as { code: null }, indistinguishable from a lost link.
+    const session = await connectSsh(
+      TARGET,
+      trustOnFirstUse(() => {}),
+    );
+    scriptStream(h.clients[0], (s) => {
+      s.emit("data", Buffer.from("1/6 Installing Docker...\n"));
+      // The shape ssh2's utils.js doClose emits on the exit-signal branch:
+      // code=null, plus signal/dump/desc that the wrapper chose not to keep.
+      s.emit("close", null, "SIGKILL", false, "Killed");
+    });
+
+    const result = await session.run("install.sh");
+
+    expect(result.code).toBeNull();
+    expect(result.signal).toBe("SIGKILL");
+    expect(result.stdout).toBe("1/6 Installing Docker...\n");
+  });
+
+  it("keeps a signal kill rather than blaming a link that died too", async () => {
+    // The misattribution: a connection that has already latched a keepalive
+    // error, then a channel killed by a signal over it. The old `== null`
+    // check folded `null` (signal DID report) into `undefined` (never said),
+    // so the connection error won and the kill was reported as a lost link.
+    // Strict `=== undefined` lets the command's own verdict stand.
+    const session = await connectSsh(
+      TARGET,
+      trustOnFirstUse(() => {}),
+    );
+    let stream!: FakeStream;
+    scriptStream(h.clients[0], (s) => {
+      stream = s;
+    });
+
+    const running = session.run("install.sh");
+    h.clients[0].emit("error", {
+      level: "client-timeout",
+      message: "Keepalive timeout",
+    });
+    stream.emit("close", null, "SIGTERM", false, "Terminated");
+
+    await expect(running).resolves.toMatchObject({
+      code: null,
+      signal: "SIGTERM",
+    });
+  });
+
   it("reports a channel error instead of letting it take the process down", async () => {
     // A stream with no error listener throws where it stands, which in the
     // main process means the whole app rather than the command.

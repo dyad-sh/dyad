@@ -88,6 +88,62 @@ describe("what the installer is sent", () => {
   });
 });
 
+describe("rendering an install failure", () => {
+  const CREDENTIALS = {
+    username: "dyad",
+    email: "me@gmail.com",
+    password: "Abc123@xyz",
+  };
+
+  // What the message says is all that matters here, so the session hands back
+  // a fixed result and installCoolify renders it.
+  function runReturning(result: {
+    code: number | null;
+    stdout?: string;
+    stderr?: string;
+    signal?: string | null;
+  }): SshSession["run"] {
+    return (async () => ({
+      code: result.code,
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
+      signal: result.signal ?? null,
+    })) as SshSession["run"];
+  }
+
+  it("says the exit code for an ordinary failure", async () => {
+    const session = sessionAnswering(
+      runReturning({ code: 1, stdout: "1/6 Installing Docker...", stderr: "" }),
+    );
+
+    await expect(installCoolify(session, CREDENTIALS)).rejects.toThrow(
+      /Installing Coolify failed \(exit 1\)/,
+    );
+  });
+
+  it("says which signal killed the install rather than `exit null`", async () => {
+    // A signal kill carries no exit code, so the only thing that separates
+    // "the shell was killed" from "the link died under it" (both null) is the
+    // signal name. Rendering `exit null` there said nothing.
+    const session = sessionAnswering(
+      runReturning({
+        code: null,
+        signal: "SIGKILL",
+        stdout: "1/6 Installing Docker...\n6/6 Coolify is up",
+        stderr: "",
+      }),
+    );
+
+    await expect(installCoolify(session, CREDENTIALS)).rejects.toThrow(
+      /Installing Coolify failed \(killed by SIGKILL\)/,
+    );
+    // The installer's own last words still travel beside the signal name.
+    await expect(installCoolify(session, CREDENTIALS)).rejects.toThrow(
+      /Coolify is up/,
+    );
+  });
+});
+
 describe("preflight", () => {
   it("reads a healthy server as ready", async () => {
     const session = sessionAnswering(

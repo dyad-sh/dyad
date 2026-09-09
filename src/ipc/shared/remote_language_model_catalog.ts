@@ -136,6 +136,10 @@ type ResolvedBuiltinModel = {
 let builtinCatalogCache: BuiltinLanguageModelCatalog | null = null;
 let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
   null;
+// Tracks whether the current cache has already been extended through one
+// stale-while-revalidate grace cycle. Bounds stale-remote service so a
+// transient outage does not serve server-expired data indefinitely.
+let staleCatalogGraceExtended = false;
 
 const DEFAULT_THEME_GENERATION_OPTIONS: ThemeGenerationModelOption[] = [
   { id: "dyad/theme-generator/google", label: "Google" },
@@ -419,7 +423,36 @@ function triggerBackgroundRefresh(): void {
     builtinCatalogFetchPromise = (async () => {
       try {
         const remoteCatalog = await fetchRemoteCatalog();
-        builtinCatalogCache = remoteCatalog ?? getFallbackCatalog();
+        if (remoteCatalog) {
+          builtinCatalogCache = remoteCatalog;
+          staleCatalogGraceExtended = false;
+        } else if (!builtinCatalogCache) {
+          builtinCatalogCache = getFallbackCatalog();
+          staleCatalogGraceExtended = false;
+        } else if (
+          builtinCatalogCache.source === "remote" &&
+          !staleCatalogGraceExtended
+        ) {
+          // The remote catalog is server-mutable and may diverge from the
+          // app-release-pinned fallback (see the alias sync commits in
+          // language_model_constants.ts). Preserve the stale-but-known remote
+          // data across one bounded grace revalidation cycle so a transient
+          // outage does not immediately re-route Auto mode to different upstream
+          // models. The next failed refresh falls through to the app-vetted
+          // fallback so we do not serve server-expired data indefinitely.
+          builtinCatalogCache = {
+            ...builtinCatalogCache,
+            expiresAt: Date.now() + FALLBACK_CACHE_TTL_MS,
+          };
+          staleCatalogGraceExtended = true;
+          logger.info(
+            "Preserved stale remote language model catalog for one grace revalidation cycle",
+            { version: builtinCatalogCache.version },
+          );
+        } else {
+          builtinCatalogCache = getFallbackCatalog();
+          staleCatalogGraceExtended = false;
+        }
         logger.info("Background refresh completed for language model catalog", {
           source: builtinCatalogCache.source,
           version: builtinCatalogCache.version,

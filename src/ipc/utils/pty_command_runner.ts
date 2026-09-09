@@ -15,7 +15,14 @@ const ANSI_CSI_PATTERN = /(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]/g;
 const ANSI_SINGLE_CHAR_PATTERN = /\u001B[@-Z\\-_]/g;
 const MAX_UNTERMINATED_OSC_CHARACTERS = 8 * 1024;
 
-type AnsiParserState = "text" | "escape" | "csi" | "osc" | "osc-escape";
+type AnsiParserState =
+  | "text"
+  | "escape"
+  | "csi"
+  | "osc"
+  | "osc-escape"
+  | "osc-discard"
+  | "osc-discard-escape";
 
 /**
  * Removes terminal control sequences before output enters the bounded buffer.
@@ -87,12 +94,16 @@ class StreamingAnsiStripper {
             // output so an unterminated title sequence cannot hide every
             // later user-visible error line.
             resumeText(index + 1);
-          } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
-            // Also recover when a producer never emits a line break or OSC
-            // terminator. Discard the bounded malformed prefix and resume.
-            resumeText(index + 1);
           } else if (code === 0x1b) {
+            // Check the ST terminator introducer before the size cap so an
+            // oversized-but-terminated OSC is not split at the boundary.
             this.state = "osc-escape";
+          } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
+            // The OSC exceeded the recovery cap. A long-but-terminated OSC must
+            // still be stripped in full, so do not resume text in the middle
+            // of the sequence. Switch to discard mode and keep consuming bytes
+            // until a real ST terminator (BEL or ESC \) or a line feed arrives.
+            this.state = "osc-discard";
           }
           break;
         case "osc-escape":
@@ -102,9 +113,37 @@ class StreamingAnsiStripper {
           } else if (code === 0x0a) {
             resumeText(index + 1);
           } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
-            resumeText(index + 1);
+            this.state = "osc-discard";
           } else if (code !== 0x1b) {
             this.state = "osc";
+          }
+          break;
+        case "osc-discard":
+          // Discard the remainder of an oversized OSC until a real ST
+          // terminator (BEL or ESC \) or a line feed/carriage-return arrives,
+          // then resume visible text. Command output contains line feeds at
+          // every line boundary, so a genuinely unterminated producer still
+          // recovers at the next line — and the bounded output buffer plus
+          // command timeout cap any runaway that never emits a delimiter.
+          if (code === 0x07) {
+            resumeText(index + 1);
+          } else if (code === 0x0a || code === 0x0d) {
+            resumeText(index + 1);
+          } else if (code === 0x1b) {
+            this.state = "osc-discard-escape";
+          }
+          break;
+        case "osc-discard-escape":
+          if (value[index] === "\\") {
+            resumeText(index + 1);
+          } else if (code === 0x07) {
+            // ESC followed by BEL: the payload happened to end with ESC and the
+            // OSC is terminated by a standalone BEL — treat it as ST and resume.
+            resumeText(index + 1);
+          } else if (code === 0x0a || code === 0x0d) {
+            resumeText(index + 1);
+          } else if (code !== 0x1b) {
+            this.state = "osc-discard";
           }
           break;
       }

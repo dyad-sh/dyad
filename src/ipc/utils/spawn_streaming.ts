@@ -28,7 +28,7 @@ export function buildSpawnStreamingInvocation(
   args: string[],
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec ?? "cmd.exe",
-): { command: string; args: string[] } {
+): { command: string; args: string[]; useVerbatimArguments?: true } {
   return buildWindowsCommandInvocation(command, args, platform, comSpec);
 }
 
@@ -118,6 +118,12 @@ export async function spawnStreaming({
     // metacharacters in arguments (e.g. a test path containing `$(...)` or
     // backticks), enabling command injection. Windows `.cmd` shims are handled
     // by buildSpawnStreamingInvocation above.
+    // `windowsVerbatimArguments` forwards each arg UNCHANGED — required for the
+    // Windows batch path, where `buildWindowsCommandInvocation` already
+    // cmd-escaped the `/c` payload (the outer pair is stripped by `/s`). Left
+    // at its default (false) for real executables and non-Windows, so libuv's
+    // MSVC argv-quoting still applies to raw args like a path containing spaces
+    // passed to `node.exe`.
     // stdin is 'ignore', not 'pipe': an open, never-written stdin pipe lets a
     // child (notably `npm install`) block forever if it ever tries to prompt —
     // e.g. a registry auth prompt or an ERESOLVE confirmation. Giving it EOF
@@ -125,6 +131,7 @@ export async function spawnStreaming({
     const child = spawn(invocation.command, invocation.args, {
       cwd,
       shell: false,
+      windowsVerbatimArguments: invocation.useVerbatimArguments === true,
       stdio: ["ignore", "pipe", "pipe"],
       env: spawnEnv,
     });

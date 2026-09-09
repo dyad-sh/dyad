@@ -73,41 +73,44 @@ describe("getNeonAvailableSystemPrompt", () => {
       ).toMatchSnapshot();
     });
 
-    it("orders and constrains preview cookie normalization", () => {
-      const guide = filterGuideByFramework(
-        addAuthenticationGuide,
-        "vite-nitro",
-      );
-      const allowlistIndex = guide.indexOf(
-        "const forwardedHeaders = new Headers();",
-      );
-      const allowlistLoopEndIndex = guide.indexOf(
-        "    forwardedHeaders.set(headerName, value);\n  }",
-      );
-      const normalizationIndex = guide.indexOf(
-        'const cookieHeader = forwardedHeaders.get("cookie");',
-      );
-      const nullCheckIndex = guide.indexOf("if (!cookieHeader) return null;");
-      const sessionNormalizationIndex = guide.indexOf(
-        "const cookie = normalizeAuthCookieHeader(cookieHeader, isHttp);",
-      );
+    it.each(["\n", "\r\n"])(
+      "orders and constrains preview cookie normalization with %j newlines",
+      (newline) => {
+        const guide = filterGuideByFramework(
+          addAuthenticationGuide.replace(/\r?\n/g, newline),
+          "vite-nitro",
+        ).replace(/\r\n/g, "\n");
+        const allowlistIndex = guide.indexOf(
+          "const forwardedHeaders = new Headers();",
+        );
+        const allowlistLoopEndIndex = guide.indexOf(
+          "    forwardedHeaders.set(headerName, value);\n  }",
+        );
+        const normalizationIndex = guide.indexOf(
+          'const cookieHeader = forwardedHeaders.get("cookie");',
+        );
+        const nullCheckIndex = guide.indexOf("if (!cookieHeader) return null;");
+        const sessionNormalizationIndex = guide.indexOf(
+          "const cookie = normalizeAuthCookieHeader(cookieHeader, isHttp);",
+        );
 
-      expect(allowlistIndex).toBeGreaterThan(-1);
-      expect(allowlistLoopEndIndex).toBeGreaterThan(allowlistIndex);
-      expect(normalizationIndex).toBeGreaterThan(allowlistLoopEndIndex);
-      expect(nullCheckIndex).toBeGreaterThan(-1);
-      expect(sessionNormalizationIndex).toBeGreaterThan(nullCheckIndex);
-      expect(guide).toContain(
-        'name.startsWith("__Secure-") || name.startsWith("__Host-")',
-      );
-      expect(guide).toContain("seenPreviewCookieNames.has(restoredName)");
-      expect(guide).not.toContain("NEON_AUTH_COOKIE_MODE");
-      expect(guide).toContain("if (isHttp)");
-      expect(guide).toContain("isHttp: boolean");
-      expect(guide).toContain(
-        "getSessionFromCookie(cookie, getRequestURL(event).protocol === 'http:')",
-      );
-    });
+        expect(allowlistIndex).toBeGreaterThan(-1);
+        expect(allowlistLoopEndIndex).toBeGreaterThan(allowlistIndex);
+        expect(normalizationIndex).toBeGreaterThan(allowlistLoopEndIndex);
+        expect(nullCheckIndex).toBeGreaterThan(-1);
+        expect(sessionNormalizationIndex).toBeGreaterThan(nullCheckIndex);
+        expect(guide).toContain(
+          'name.startsWith("__Secure-") || name.startsWith("__Host-")',
+        );
+        expect(guide).toContain("seenPreviewCookieNames.has(restoredName)");
+        expect(guide).not.toContain("NEON_AUTH_COOKIE_MODE");
+        expect(guide).toContain("if (isHttp)");
+        expect(guide).toContain("isHttp: boolean");
+        expect(guide).toContain(
+          "getSessionFromCookie(cookie, getRequestURL(event).protocol === 'http:')",
+        );
+      },
+    );
   });
 
   it("plain vite falls back to the generic framework path", () => {

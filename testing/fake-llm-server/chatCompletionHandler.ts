@@ -24,12 +24,9 @@ import {
   matchAssertionsVerifyTurn,
 } from "./testAssertionsFixtures";
 
-let globalCounter = 0;
+import { respondToInvalidApiKey } from "./apiKeyValidation";
 
-function hasInvalidApiKey(req: Request): boolean {
-  const authorization = req.headers.authorization;
-  return typeof authorization === "string" && /invalid/i.test(authorization);
-}
+let globalCounter = 0;
 
 async function waitForDelayOrDisconnect(
   res: Response,
@@ -216,35 +213,7 @@ export const createChatCompletionHandler =
     const { stream = false, messages = [] } = req.body;
     fakeLlmLog("* Received messages", messages);
 
-    if (hasInvalidApiKey(req)) {
-      // The Dyad engine (a LiteLLM proxy) reports auth failures as an SSE
-      // error event on an HTTP 200 response rather than an HTTP 401.
-      if (prefix === "engine") {
-        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache");
-        res.write(
-          `event: error\ndata: ${JSON.stringify({
-            error: {
-              message:
-                "401 LiteLLM Virtual Key expected. Received=inva****-key, expected to start with 'sk-'.",
-              type: "server_error",
-              param: null,
-            },
-          })}\n\n`,
-        );
-        res.write("data: [DONE]\n\n");
-        res.end();
-        return;
-      }
-      return res.status(401).json({
-        error: {
-          message: "Invalid API key",
-          type: "authentication_error",
-          param: null,
-          code: "invalid_api_key",
-        },
-      });
-    }
+    if (respondToInvalidApiKey(req, res, prefix)) return;
 
     const lastMessage = messages[messages.length - 1];
 

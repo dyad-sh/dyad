@@ -8,6 +8,7 @@ import fs from "fs";
 import path from "path";
 import { CANNED_MESSAGE } from "./index";
 import { fakeLlmLog } from "./log";
+import { respondToInvalidApiKey } from "./apiKeyValidation";
 import { resolveDumpDir, resolveFixturesDir } from "./paths";
 import {
   matchConsentClassifierPayload,
@@ -255,6 +256,8 @@ async function streamResponsesToolCalls(params: {
  */
 export const createResponsesHandler =
   (prefix: string) => async (req: Request, res: Response) => {
+    if (respondToInvalidApiKey(req, res, prefix)) return;
+
     const { input, messages, stream = false } = req.body ?? {};
     fakeLlmLog(`* [responses/${prefix}] Received request`, {
       hasInput: input != null,
@@ -296,13 +299,22 @@ export const createResponsesHandler =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
     }
 
+    // Classifier context can quote tc= markers from earlier user turns.
+    // Dump probes must also take precedence over legacy fixture adapters.
+    const consentMatch = isCompactionRequest
+      ? null
+      : matchConsentClassifierPayload(lastUserText);
+    const isDumpRequest =
+      !isCompactionRequest && !consentMatch && lastUserText.includes("[dump]");
+    const skipFixture = isCompactionRequest || !!consentMatch || isDumpRequest;
+
     // Load a fixture file when the prompt includes tc=<name>
-    const localAgentFixture = isCompactionRequest
+    const localAgentFixture = skipFixture
       ? null
       : extractLocalAgentFixture(lastUserText);
     const testCaseName = localAgentFixture
       ? `local-agent/${localAgentFixture}`
-      : isCompactionRequest
+      : skipFixture
         ? null
         : extractTestCaseName(lastUserText);
     const localAgentTurn = await responsesFixtureTurn(testCaseName, input);
@@ -325,7 +337,7 @@ export const createResponsesHandler =
     // Check if the message contains "[dump]" to generate a dump. Skipped for
     // compaction requests: the summarized transcript can embed "[dump]" from
     // earlier turns, which must not overwrite the canned summary.
-    if (!isCompactionRequest && lastUserText.includes("[dump]")) {
+    if (isDumpRequest) {
       messageContent = generateDump(req);
     }
 
@@ -350,27 +362,13 @@ export const createResponsesHandler =
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
     // classifier, shared with the chat-completions fake route. Also gated off
     // for compaction requests, whose transcript can quote classifier payloads.
-    const consentMatch = isCompactionRequest
-      ? null
-      : matchConsentClassifierPayload(lastUserText);
     if (consentMatch) {
       messageContent = consentMatch.content;
       // Answer slowly for print_envs so e2e can observe the "AI reviewing"
       // spinner and exercise the user-decides-before-the-AI path. Race the delay
       // against the client disconnecting so we don't write to a closed response.
       if (consentMatch.toolName === SLOW_CONSENT_TOOL) {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(() => {
-            req.off("close", onClose);
-            resolve();
-          }, 4000);
-          const onClose = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          req.on("close", onClose);
-        });
-        if (req.destroyed) return;
+        if (await waitForDelayOrDisconnect(res, 4000)) return;
       }
     }
 

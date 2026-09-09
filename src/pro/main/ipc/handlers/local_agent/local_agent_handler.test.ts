@@ -346,6 +346,7 @@ vi.mock(
 
 const mockSubagentManager = vi.hoisted(() => ({
   cancelSubagent: vi.fn(async () => {}),
+  followupSubagent: vi.fn(async () => "explorer" as "explorer" | "implementer"),
   isAcceptableImplementerJoinStatus: vi.fn(() => true),
   waitForSubagents: vi.fn(async () => []),
   waitForOwnedSubagentsAndSealTurn: vi.fn(async (): Promise<any[]> => []),
@@ -407,6 +408,7 @@ import {
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import { followupTaskTool } from "@/pro/main/ipc/handlers/local_agent/tools/subagent_tools";
 import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
@@ -4082,6 +4084,100 @@ describe("handleLocalAgentStream", () => {
 
       expect(streamText).toHaveBeenCalledTimes(1);
       expect(mockSubagentManager.waitForSubagents).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a follow-up Explorer report at end of turn after spawn→followup on the same thread (the fix)", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      let capturedCtx: AgentContext | undefined;
+      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+        capturedCtx = ctx;
+        // Simulate spawn_agent (explorer) during this turn: it returns the
+        // original report as a blocking tool result and marks the thread as
+        // delivered so synthesis would otherwise skip it.
+        if (!ctx.spawnedSubagentThreadIds?.includes("explorer-1")) {
+          ctx.spawnedSubagentThreadIds?.push("explorer-1");
+        }
+        ctx.deliveredExplorerThreadIds ??= [];
+        if (!ctx.deliveredExplorerThreadIds.includes("explorer-1")) {
+          ctx.deliveredExplorerThreadIds.push("explorer-1");
+        }
+        return {};
+      });
+      mockSubagentManager.followupSubagent.mockResolvedValue(
+        "explorer" as "explorer" | "implementer",
+      );
+      (mockSubagentManager.waitForSubagents as any).mockResolvedValueOnce([
+        {
+          id: "explorer-1",
+          taskName: "Trace auth",
+          status: "completed",
+          result: {
+            report:
+              "Follow-up: JWT verification is HS256, validated in src/auth.ts:88.",
+          },
+          error: null,
+        } as any,
+      ]);
+      const streamOptions: Array<Record<string, any>> = [];
+      mockStreamTextImpl = (options) => {
+        streamOptions.push(options);
+        return {
+          fullStream: (async function* () {
+            // Simulate the model calling followup_task on the same Explorer
+            // during this pass: run the REAL tool, whose fix re-arms
+            // end-of-turn synthesis by splicing the id out of the delivered
+            // set. Before the fix the id stays delivered and synthesis drops
+            // the follow-up report.
+            if (capturedCtx) {
+              await followupTaskTool.execute(
+                {
+                  thread_id: "explorer-1",
+                  message: "go deeper on JWT verification",
+                },
+                capturedCtx,
+              );
+            }
+            yield { type: "text-delta", text: "Done" };
+          })(),
+          response: Promise.resolve({ messages: [] as any[] }),
+          steps: Promise.resolve([] as any[]),
+        } as FakeStreamResult;
+      };
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "trace auth then go deeper" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // The real followup_task ran and (with the fix) re-armed synthesis.
+      expect(mockSubagentManager.followupSubagent).toHaveBeenCalledWith(
+        1,
+        "explorer-1",
+        "go deeper on JWT verification",
+        expect.objectContaining({ ctx: expect.anything() }),
+      );
+      // The re-armed thread is consumed by the synthesis pass — the path the
+      // bug defeated.
+      expect(mockSubagentManager.waitForSubagents).toHaveBeenCalledWith(
+        1,
+        ["explorer-1"],
+        expect.any(AbortSignal),
+      );
+      // An extra synthesis pass ran after the initial pass.
+      expect(streamOptions).toHaveLength(2);
+      // The NEW follow-up report reached the root conversation as a synthesis
+      // message — distinct from the original blocking spawn report.
+      expect(JSON.stringify(streamOptions[1].messages)).toContain(
+        "Follow-up: JWT verification is HS256, validated in src/auth.ts:88.",
+      );
     });
 
     it("releases the root finalization fence when cancellation wins after the join", async () => {

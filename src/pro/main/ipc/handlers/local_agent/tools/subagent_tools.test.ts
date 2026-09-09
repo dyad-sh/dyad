@@ -539,3 +539,192 @@ describe("spawn_agent schema", () => {
     ).toBe(false);
   });
 });
+
+describe("followup_task execute bookkeeping", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    subagentManagerMocks.followupSubagent.mockResolvedValue(
+      "explorer" as "explorer" | "implementer",
+    );
+  });
+
+  it("re-arms end-of-turn synthesis for a follow-up on a previously-spawned Explorer", async () => {
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: ["explorer-1"],
+      deliveredExplorerThreadIds: ["explorer-1"],
+      spawnedImplementerThreadIds: [],
+    } as unknown as AgentContext;
+
+    const result = await followupTaskTool.execute(
+      {
+        thread_id: "explorer-1",
+        message: "tell me more about JWT verification",
+      },
+      ctx,
+    );
+
+    expect(result).toBe("Follow-up queued durably.");
+    expect(subagentManagerMocks.followupSubagent).toHaveBeenCalledWith(
+      7,
+      "explorer-1",
+      "tell me more about JWT verification",
+      expect.objectContaining({ ctx }),
+    );
+    expect(ctx.spawnedSubagentThreadIds).toContain("explorer-1");
+    expect(ctx.deliveredExplorerThreadIds).toEqual([]);
+    expect(ctx.spawnedImplementerThreadIds).toEqual([]);
+  });
+
+  it("does not duplicate the thread id already present in spawnedSubagentThreadIds", async () => {
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: ["explorer-1"],
+      deliveredExplorerThreadIds: ["explorer-1"],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "explorer-1", message: "go deeper" },
+      ctx,
+    );
+
+    expect(ctx.spawnedSubagentThreadIds).toEqual(["explorer-1"]);
+    expect(ctx.deliveredExplorerThreadIds).toEqual([]);
+  });
+
+  it("adds a never-before-seen Explorer thread to spawnedSubagentThreadIds", async () => {
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: [],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "explorer-2", message: "fresh follow-up, never spawned" },
+      ctx,
+    );
+
+    expect(ctx.spawnedSubagentThreadIds).toEqual(["explorer-2"]);
+    expect(ctx.deliveredExplorerThreadIds).toEqual([]);
+  });
+
+  it("removes only the followed-up Explorer, leaving other delivered Explorers excluded", async () => {
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: ["explorer-1", "explorer-2"],
+      deliveredExplorerThreadIds: ["explorer-1", "explorer-2"],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "explorer-2", message: "follow up on explorer-2 only" },
+      ctx,
+    );
+
+    expect(ctx.deliveredExplorerThreadIds).toEqual(["explorer-1"]);
+    expect(ctx.spawnedSubagentThreadIds).toEqual(["explorer-1", "explorer-2"]);
+  });
+
+  it("does not touch deliveredExplorerThreadIds for an Implementer follow-up", async () => {
+    subagentManagerMocks.followupSubagent.mockResolvedValueOnce(
+      "implementer" as any,
+    );
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: [],
+      deliveredExplorerThreadIds: ["explorer-1"],
+      spawnedImplementerThreadIds: [],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "implementer-1", message: "also fix the memory leak" },
+      ctx,
+    );
+
+    expect(ctx.spawnedSubagentThreadIds).toContain("implementer-1");
+    expect(ctx.spawnedImplementerThreadIds).toContain("implementer-1");
+    expect(ctx.deliveredExplorerThreadIds).toEqual(["explorer-1"]);
+  });
+
+  it("registers an Implementer follow-up in the end-of-turn join set", async () => {
+    subagentManagerMocks.followupSubagent.mockResolvedValueOnce(
+      "implementer" as any,
+    );
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: [],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "implementer-1", message: "fix the leak" },
+      ctx,
+    );
+
+    expect(ctx.spawnedSubagentThreadIds).toEqual(["implementer-1"]);
+    expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
+  });
+
+  it("dedupes an Implementer already registered in the join set", async () => {
+    subagentManagerMocks.followupSubagent.mockResolvedValueOnce(
+      "implementer" as any,
+    );
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: ["implementer-1"],
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "implementer-1", message: "second follow-up" },
+      ctx,
+    );
+
+    expect(ctx.spawnedImplementerThreadIds).toEqual(["implementer-1"]);
+  });
+
+  it("clears synthesizedExplorerThreadIds so a second follow-up triggers another synthesis pass", async () => {
+    const synthesizedExplorerThreadIds = new Set(["explorer-1"]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: ["explorer-1"],
+      deliveredExplorerThreadIds: [],
+      synthesizedExplorerThreadIds,
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "explorer-1", message: "go deeper on JWT" },
+      ctx,
+    );
+
+    expect(synthesizedExplorerThreadIds.has("explorer-1")).toBe(false);
+  });
+
+  it("does not clear synthesizedExplorerThreadIds for an Implementer follow-up", async () => {
+    subagentManagerMocks.followupSubagent.mockResolvedValueOnce(
+      "implementer" as any,
+    );
+    const synthesizedExplorerThreadIds = new Set(["explorer-1"]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds: [],
+      deliveredExplorerThreadIds: ["explorer-1"],
+      synthesizedExplorerThreadIds,
+    } as unknown as AgentContext;
+
+    await followupTaskTool.execute(
+      { thread_id: "implementer-1", message: "also fix the memory leak" },
+      ctx,
+    );
+
+    expect(synthesizedExplorerThreadIds.has("explorer-1")).toBe(true);
+  });
+});

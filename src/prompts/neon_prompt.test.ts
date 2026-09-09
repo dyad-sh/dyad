@@ -74,10 +74,12 @@ describe("getNeonAvailableSystemPrompt", () => {
     });
 
     it("orders and constrains preview cookie normalization", () => {
+      // Normalise CRLF → LF so the string searches below work on Windows CI
+      // even when the guide file is checked out with CRLF line endings.
       const guide = filterGuideByFramework(
         addAuthenticationGuide,
         "vite-nitro",
-      );
+      ).replace(/\r\n/g, "\n");
       const allowlistIndex = guide.indexOf(
         "const forwardedHeaders = new Headers();",
       );

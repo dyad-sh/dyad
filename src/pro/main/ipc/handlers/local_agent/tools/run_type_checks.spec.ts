@@ -4,6 +4,8 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { normalizePath } from "../../../../../../../shared/normalizePath";
+
 import type { AgentContext } from "./types";
 import {
   runTypeScriptCheck,
@@ -385,5 +387,182 @@ describe("runTypeChecksTool precondition guidance", () => {
         '<dyad-status title="Type check passed" state="finished">',
       ),
     );
+  });
+
+  describe("scoped path filtering resolves agent-supplied paths against the app root", () => {
+    // The mock returns workspace-relative `problem.file` values exactly like the
+    // real TypeScript parser (see tsc.ts), so these exercise matchesPaths end
+    // to end through execute — including the scope label that is built from the
+    // raw agent path.
+
+    it("reports an in-scope error for an absolute POSIX path to the errored file", async () => {
+      const appPath = await makeApp({
+        devDependencies: { typescript: "^7.0.0" },
+      });
+      const ctx = makeCtx(appPath);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts")],
+      });
+
+      const absPath = path.join(appPath, "src/foo.ts");
+      const result = await runTypeChecksTool.execute({ paths: [absPath] }, ctx);
+
+      expect(result).toBe(
+        `Found 1 type error in \`${normalizePath(absPath)}\`:\n\nsrc/foo.ts:1:1: Type mismatch`,
+      );
+    });
+
+    it("matches every file under an absolute POSIX directory path", async () => {
+      const appPath = await makeApp({
+        devDependencies: { typescript: "^7.0.0" },
+      });
+      const ctx = makeCtx(appPath);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/lib/foo.ts"), problem("src/Other.tsx")],
+      });
+
+      const absDir = path.join(appPath, "src/lib");
+      const result = await runTypeChecksTool.execute({ paths: [absDir] }, ctx);
+
+      expect(result).toBe(
+        `Found 1 type error in \`${normalizePath(absDir)}\`:\n\nsrc/lib/foo.ts:1:1: Type mismatch\n\nThe project also has 1 type error outside this scope.`,
+      );
+      expect(result).not.toContain("src/Other.tsx:1:1");
+    });
+
+    it("discloses out-of-scope errors when an absolute path points at a clean file", async () => {
+      const appPath = await makeApp({
+        devDependencies: { typescript: "^7.0.0" },
+      });
+      const ctx = makeCtx(appPath);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/Other.tsx")],
+      });
+
+      const absClean = path.join(appPath, "src/Clean.ts");
+      const result = await runTypeChecksTool.execute(
+        { paths: [absClean] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        `No type errors found in \`${normalizePath(absClean)}\`, but the project has 1 type error outside this scope.`,
+      );
+    });
+
+    it("treats '.' as a whole-project scope and never hides an error as out-of-scope", async () => {
+      const appPath = await makeApp({
+        devDependencies: { typescript: "^7.0.0" },
+      });
+      const ctx = makeCtx(appPath);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts"), problem("src/Other.tsx")],
+      });
+
+      const result = await runTypeChecksTool.execute({ paths: ["."] }, ctx);
+
+      expect(result).toBe(
+        "Found 2 type errors in `.`:\n\nsrc/foo.ts:1:1: Type mismatch\nsrc/Other.tsx:1:1: Type mismatch",
+      );
+      expect(result).not.toContain("outside this scope");
+    });
+
+    it("treats an absolute path outside the app root as out of scope", async () => {
+      const appPath = await makeApp({
+        devDependencies: { typescript: "^7.0.0" },
+      });
+      const ctx = makeCtx(appPath);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts")],
+      });
+
+      const result = await runTypeChecksTool.execute(
+        { paths: ["/some/other/path/foo.ts"] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "No type errors found in `/some/other/path/foo.ts`, but the project has 1 type error outside this scope.",
+      );
+    });
+
+    it("resolves a backslash absolute Windows path against a Windows app root", async () => {
+      const ctx = makeCtx(String.raw`C:\Users\app`);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts")],
+      });
+
+      const result = await runTypeChecksTool.execute(
+        { paths: [String.raw`C:\Users\app\src\foo.ts`] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "Found 1 type error in `C:/Users/app/src/foo.ts`:\n\nsrc/foo.ts:1:1: Type mismatch",
+      );
+    });
+
+    it("matches a Windows path case-insensitively when the agent uses different casing", async () => {
+      const ctx = makeCtx(String.raw`C:\Users\app`);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts")],
+      });
+
+      // Agent passes path with uppercase SRC segment
+      const result = await runTypeChecksTool.execute(
+        { paths: [String.raw`C:\Users\app\SRC\foo.ts`] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "Found 1 type error in `C:/Users/app/SRC/foo.ts`:\n\nsrc/foo.ts:1:1: Type mismatch",
+      );
+    });
+
+    it("matches a Windows directory path case-insensitively", async () => {
+      const ctx = makeCtx(String.raw`C:\Users\app`);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/lib/foo.ts"), problem("src/Other.tsx")],
+      });
+
+      // Agent passes directory with uppercase SRC segment
+      const result = await runTypeChecksTool.execute(
+        { paths: [String.raw`C:\Users\app\SRC\lib`] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "Found 1 type error in `C:/Users/app/SRC/lib`:\n\nsrc/lib/foo.ts:1:1: Type mismatch\n\nThe project also has 1 type error outside this scope.",
+      );
+      expect(result).not.toContain("src/Other.tsx:1:1");
+    });
+
+    it("still matches a relative path with a leading ./ and preserves it in the scope label", async () => {
+      const appPath = await makeApp({
+        devDependencies: { typescript: "^7.0.0" },
+      });
+      const ctx = makeCtx(appPath);
+      vi.mocked(runTypeScriptCheck).mockResolvedValue({
+        outcome: "errors",
+        problems: [problem("src/foo.ts")],
+      });
+
+      const result = await runTypeChecksTool.execute(
+        { paths: ["./src/foo.ts"] },
+        ctx,
+      );
+
+      expect(result).toBe(
+        "Found 1 type error in `./src/foo.ts`:\n\nsrc/foo.ts:1:1: Type mismatch",
+      );
+    });
   });
 });

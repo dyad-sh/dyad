@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import {
   buildCustomProviderModelDiscoveryUrl,
+  discoverCustomProviderModels,
   normalizeDiscoveredCustomProviderModels,
 } from "@/ipc/shared/custom_provider_model_probe";
 
@@ -63,5 +64,54 @@ describe("normalizeDiscoveredCustomProviderModels", () => {
       displayName: "model-a",
       contextWindow: 128_000,
     });
+  });
+
+  it("uses each Ollama model's own context window instead of reusing the first model", () => {
+    const result = normalizeDiscoveredCustomProviderModels(
+      {
+        data: [
+          { id: "llama3.1:8b", object: "model", created: 1, owned_by: "me" },
+          { id: "llama3.1:70b", object: "model", created: 1, owned_by: "me" },
+        ],
+      },
+      {
+        models: [
+          { name: "llama3.1:8b", context_length: 32_768 },
+          { name: "llama3.1:70b", context_length: 131_072 },
+        ],
+      },
+      {
+        "llama3.1:8b": { contextWindow: 32_768, temperature: 0.1 },
+        "llama3.1:70b": { contextWindow: 131_072, temperature: 0.2 },
+      },
+    );
+
+    expect(result.map((model) => model.contextWindow)).toEqual([
+      32_768, 131_072,
+    ]);
+  });
+});
+
+describe("discoverCustomProviderModels", () => {
+  it("adds the configured bearer token when probing a protected custom provider", async () => {
+    vi.stubEnv("MY_PROVIDER_KEY", "secret-token");
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+
+    await discoverCustomProviderModels(
+      "http://localhost:11434/v1",
+      "MY_PROVIDER_KEY",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:11434/v1/models",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer secret-token",
+        }),
+      }),
+    );
   });
 });

@@ -5,9 +5,11 @@ import {
 } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { LanguageModel } from "@/ipc/types";
+import { getEnvVar } from "../utils/read_env";
 import { and, eq } from "drizzle-orm";
 
 const DEFAULT_CUSTOM_PROVIDER_CONTEXT_WINDOW = 128_000;
+const CUSTOM_PROVIDER_PROBE_TIMEOUT_MS = 4_000;
 
 function normalizeCustomProviderId(providerId: string): string {
   return providerId.startsWith("custom::") ? providerId : `custom::${providerId}`;
@@ -34,6 +36,44 @@ function asNumber(value: unknown): number | undefined {
 
 function toJson<T>(payload: Response): Promise<T> {
   return payload.json() as Promise<T>;
+}
+
+function buildCustomProviderRequestHeaders(
+  envVarName?: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+
+  const apiKey = envVarName ? getEnvVar(envVarName)?.trim() : "";
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+    headers["X-API-Key"] = apiKey;
+  }
+
+  return headers;
+}
+
+async function fetchJsonWithTimeout<T>(
+  url: string,
+  init: RequestInit,
+  timeoutMs = CUSTOM_PROVIDER_PROBE_TIMEOUT_MS,
+): Promise<{ response: Response; json: T } | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    const json = (await response.json().catch(() => null)) as T;
+    return { response, json };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function trimBaseUrl(baseUrl: string): string {
@@ -89,7 +129,7 @@ function parseOllamaPsContextLength(payload: unknown): number | undefined {
 
   const psPayload = payload as {
     context_length?: unknown;
-    models?: Array<{ context_length?: unknown; name?: string }>; 
+    models?: Array<{ context_length?: unknown; name?: string }>;
   };
 
   const directValue = asNumber(psPayload.context_length);
@@ -99,6 +139,32 @@ function parseOllamaPsContextLength(payload: unknown): number | undefined {
 
   const firstModel = psPayload.models?.find((model) => model != null);
   return asNumber(firstModel?.context_length);
+}
+
+function parseOllamaPsContextLengths(
+  payload: unknown,
+): Record<string, number> {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+
+  const psPayload = payload as {
+    models?: Array<{ context_length?: unknown; name?: string }>;
+  };
+
+  const byModel: Record<string, number> = {};
+  for (const model of psPayload.models ?? []) {
+    if (!model || typeof model.name !== "string") {
+      continue;
+    }
+
+    const contextLength = asNumber(model.context_length);
+    if (contextLength != null) {
+      byModel[model.name] = contextLength;
+    }
+  }
+
+  return byModel;
 }
 
 function parseOllamaShowMetadata(
@@ -166,6 +232,39 @@ function determineModelContextWindow(
   return Math.min(...candidateValues);
 }
 
+function getOllamaMetadataForModel(
+  modelName: string,
+  ollamaShowResponse: unknown,
+): { contextWindow?: number; temperature?: number; vision?: boolean } {
+  if (
+    ollamaShowResponse != null &&
+    typeof ollamaShowResponse === "object" &&
+    !Array.isArray(ollamaShowResponse)
+  ) {
+    const showResponseMap = ollamaShowResponse as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(showResponseMap, modelName)) {
+      const metadata = showResponseMap[modelName];
+      if (metadata && typeof metadata === "object") {
+        const modelMetadata = metadata as {
+          contextWindow?: unknown;
+          context_length?: unknown;
+          temperature?: unknown;
+          vision?: unknown;
+        };
+
+        return {
+          contextWindow: asNumber(modelMetadata.contextWindow) ??
+            asNumber(modelMetadata.context_length),
+          temperature: asNumber(modelMetadata.temperature),
+          vision: Boolean(modelMetadata.vision),
+        };
+      }
+    }
+  }
+
+  return parseOllamaShowMetadata(ollamaShowResponse ?? {}, modelName);
+}
+
 export function normalizeDiscoveredCustomProviderModels(
   openAiModelsResponse: unknown,
   ollamaPsResponse: unknown | null,
@@ -174,8 +273,8 @@ export function normalizeDiscoveredCustomProviderModels(
   const discoveredModels = getModelListFromOpenAICompatiblePayload(
     openAiModelsResponse,
   );
-
-  const serverWindow = parseOllamaPsContextLength(ollamaPsResponse);
+  const serverWindowsByModel = parseOllamaPsContextLengths(ollamaPsResponse);
+  const defaultServerWindow = parseOllamaPsContextLength(ollamaPsResponse);
 
   return discoveredModels.map((model) => {
     const item = model as {
@@ -194,16 +293,19 @@ export function normalizeDiscoveredCustomProviderModels(
     const displayName = item.display_name ?? item.displayName ?? apiName;
     const openAiContextWindow =
       asNumber(item.max_model_len) ?? asNumber(item.maxModelLen);
-
-    const ollamaModelWindow =
+    const modelMetadata =
       ollamaShowResponse != null
-        ? parseOllamaShowMetadata(ollamaShowResponse, apiName).contextWindow
-        : undefined;
+        ? getOllamaMetadataForModel(apiName, ollamaShowResponse)
+        : {};
+    const serverWindow =
+      apiName in serverWindowsByModel
+        ? serverWindowsByModel[apiName]
+        : defaultServerWindow;
 
     const effectiveContextWindow = determineModelContextWindow(
       openAiContextWindow,
       serverWindow,
-      ollamaModelWindow,
+      modelMetadata.contextWindow,
     );
 
     return {
@@ -212,35 +314,28 @@ export function normalizeDiscoveredCustomProviderModels(
       description: item.owned_by ? `Owned by ${item.owned_by}` : undefined,
       contextWindow: effectiveContextWindow,
       maxOutputTokens: undefined,
-      temperature:
-        ollamaShowResponse != null
-          ? parseOllamaShowMetadata(ollamaShowResponse, apiName).temperature
-          : undefined,
-      vision:
-        ollamaShowResponse != null
-          ? parseOllamaShowMetadata(ollamaShowResponse, apiName).vision
-          : undefined,
+      temperature: modelMetadata.temperature,
+      vision: modelMetadata.vision,
     };
   });
 }
 
 export async function discoverCustomProviderModels(
   apiBaseUrl: string,
+  envVarName?: string,
 ): Promise<DiscoveredCustomProviderModel[]> {
   const modelsUrl = buildCustomProviderModelDiscoveryUrl(apiBaseUrl);
-  const modelsResponse = await fetch(modelsUrl, {
+  const requestHeaders = buildCustomProviderRequestHeaders(envVarName);
+  const modelsResult = await fetchJsonWithTimeout<unknown>(modelsUrl, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: requestHeaders,
   });
 
-  if (!modelsResponse.ok) {
-    throw new DyadError(
-      `Failed to discover models for provider at ${apiBaseUrl}: ${modelsResponse.status}`,
-      DyadErrorKind.External,
-    );
+  if (!modelsResult || !modelsResult.response.ok) {
+    return [];
   }
 
-  const modelsPayload = await toJson<unknown>(modelsResponse);
+  const modelsPayload = modelsResult.json;
   const discoveredModels = getModelListFromOpenAICompatiblePayload(modelsPayload);
 
   if (discoveredModels.length === 0) {
@@ -248,40 +343,63 @@ export async function discoverCustomProviderModels(
   }
 
   const versionUrl = buildOllamaApiUrl(apiBaseUrl, "/api/version");
-  const versionResponse = await fetch(versionUrl, {
+  const versionResult = await fetchJsonWithTimeout<unknown>(versionUrl, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: requestHeaders,
   });
 
-  const isOllamaServer = versionResponse.ok;
+  const isOllamaServer =
+    versionResult != null &&
+    versionResult.response.ok &&
+    typeof versionResult.json === "object" &&
+    versionResult.json != null &&
+    "version" in versionResult.json;
+
   let ollamaPsResponse: unknown | null = null;
-  let ollamaShowResponse: unknown | null = null;
+  const ollamaShowResponsesByModel: Record<string, unknown> = {};
 
   if (isOllamaServer) {
-    const versionPayload = await toJson<unknown>(versionResponse);
-    const isOllama = typeof versionPayload === "object" && versionPayload != null && "version" in versionPayload;
-    if (isOllama) {
-      const psResponse = await fetch(buildOllamaApiUrl(apiBaseUrl, "/api/ps"), {
+    const psResult = await fetchJsonWithTimeout<unknown>(
+      buildOllamaApiUrl(apiBaseUrl, "/api/ps"),
+      {
         method: "GET",
-        headers: { Accept: "application/json" },
-      });
-      if (psResponse.ok) {
-        ollamaPsResponse = await toJson<unknown>(psResponse);
-      }
+        headers: requestHeaders,
+      },
+    );
+    if (psResult && psResult.response.ok) {
+      ollamaPsResponse = psResult.json;
+    }
 
-      const firstModelName = (discoveredModels[0] as { id?: string; name?: string; model?: string })?.id ?? (discoveredModels[0] as { id?: string; name?: string; model?: string })?.name ?? (discoveredModels[0] as { id?: string; name?: string; model?: string })?.model;
-      if (firstModelName) {
-        const showResponse = await fetch(buildOllamaApiUrl(apiBaseUrl, "/api/show"), {
+    const modelNames = Array.from(
+      new Set(
+        discoveredModels
+          .map((model) => {
+            const item = model as {
+              id?: string;
+              name?: string;
+              model?: string;
+            };
+            return item.id ?? item.name ?? item.model ?? "";
+          })
+          .filter((modelName): modelName is string => !!modelName),
+      ),
+    );
+
+    for (const modelName of modelNames) {
+      const showResult = await fetchJsonWithTimeout<unknown>(
+        buildOllamaApiUrl(apiBaseUrl, "/api/show"),
+        {
           method: "POST",
           headers: {
-            Accept: "application/json",
+            ...requestHeaders,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ name: firstModelName }),
-        });
-        if (showResponse.ok) {
-          ollamaShowResponse = await toJson<unknown>(showResponse);
-        }
+          body: JSON.stringify({ name: modelName }),
+        },
+      );
+
+      if (showResult && showResult.response.ok) {
+        ollamaShowResponsesByModel[modelName] = showResult.json;
       }
     }
   }
@@ -289,7 +407,7 @@ export async function discoverCustomProviderModels(
   return normalizeDiscoveredCustomProviderModels(
     modelsPayload,
     ollamaPsResponse,
-    ollamaShowResponse,
+    ollamaShowResponsesByModel,
   );
 }
 
@@ -311,7 +429,10 @@ export async function refreshCustomProviderModels(
     );
   }
 
-  const discoveredModels = await discoverCustomProviderModels(provider.api_base_url);
+  const discoveredModels = await discoverCustomProviderModels(
+    provider.api_base_url,
+    provider.env_var_name ?? undefined,
+  );
   const syncedModels: LanguageModel[] = [];
 
   for (const model of discoveredModels) {

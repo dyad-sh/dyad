@@ -41,9 +41,11 @@ export function useCustomLanguageModelProvider() {
         envVarName: params.envVarName?.trim() || undefined,
       });
 
-      await ipc.languageModel.refreshCustomProviderModels({
-        providerId: provider.id,
-      });
+      void ipc.languageModel
+        .refreshCustomProviderModels({
+          providerId: provider.id,
+        })
+        .catch(() => undefined);
 
       return provider;
     },
@@ -91,9 +93,11 @@ export function useCustomLanguageModelProvider() {
         envVarName: params.envVarName?.trim() || undefined,
       });
 
-      await ipc.languageModel.refreshCustomProviderModels({
-        providerId: provider.id,
-      });
+      void ipc.languageModel
+        .refreshCustomProviderModels({
+          providerId: provider.id,
+        })
+        .catch(() => undefined);
 
       return provider;
     },

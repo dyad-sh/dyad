@@ -1,0 +1,10 @@
+{
+  "unknown": "Bilinmeyen bir hata oluştu",
+  "failedToCreate": "Oluşturulamadı: {{error}}",
+  "failedToUpdate": "Güncellenemedi: {{error}}",
+  "failedToDelete": "Silinemedi: {{error}}",
+  "failedToLoad": "Yüklenemedi: {{error}}",
+  "networkError": "Bir ağ hatası oluştu. Lütfen bağlantınızı kontrol edin.",
+  "copyError": "Hata mesajını kopyala",
+  "errorOccurred": "Bir hata oluştu"
+}

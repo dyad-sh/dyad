@@ -36,6 +36,13 @@ import koChat from "./locales/ko/chat.json";
 import koHome from "./locales/ko/home.json";
 import koErrors from "./locales/ko/errors.json";
 
+// Turkish
+import trCommon from "./locales/tr/common.json";
+import trSettings from "./locales/tr/settings.json";
+import trChat from "./locales/tr/chat.json";
+import trHome from "./locales/tr/home.json";
+import trErrors from "./locales/tr/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -71,6 +78,13 @@ const resources = {
     chat: koChat,
     home: koHome,
     errors: koErrors,
+  },
+  tr: {
+    common: trCommon,
+    settings: trSettings,
+    chat: trChat,
+    home: trHome,
+    errors: trErrors,
   },
 };
 

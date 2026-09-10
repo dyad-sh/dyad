@@ -34,17 +34,26 @@ export function useCustomLanguageModelProvider() {
         );
       }
 
-      return ipc.languageModel.createCustomProvider({
+      const provider = await ipc.languageModel.createCustomProvider({
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
         envVarName: params.envVarName?.trim() || undefined,
       });
+
+      await ipc.languageModel.refreshCustomProviderModels({
+        providerId: provider.id,
+      });
+
+      return provider;
     },
     onSuccess: () => {
       // Invalidate and refetch
       queryClient.invalidateQueries({
         queryKey: queryKeys.languageModels.providers,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.languageModels.byProviders,
       });
     },
     onError: (error) => {
@@ -75,17 +84,26 @@ export function useCustomLanguageModelProvider() {
         );
       }
 
-      return ipc.languageModel.editCustomProvider({
+      const provider = await ipc.languageModel.editCustomProvider({
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
         envVarName: params.envVarName?.trim() || undefined,
       });
+
+      await ipc.languageModel.refreshCustomProviderModels({
+        providerId: provider.id,
+      });
+
+      return provider;
     },
     onSuccess: () => {
       // Invalidate and refetch
       queryClient.invalidateQueries({
         queryKey: queryKeys.languageModels.providers,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.languageModels.byProviders,
       });
     },
     onError: (error) => {

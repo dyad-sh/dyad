@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   getCompactionThreshold,
+  getContextWindow,
   getTemperature,
   estimateToolResultTokens,
   shouldTriggerCompaction,
@@ -87,6 +88,20 @@ describe("estimateToolResultTokens", () => {
     expect(estimateToolResultTokens([], toolErrors)).toBe(
       Math.ceil(serializedResult.length / 4),
     );
+  });
+});
+
+describe("getContextWindow", () => {
+  it("keeps the default 128k window when the model metadata does not specify one", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "cloud-model",
+      displayName: "Cloud Model",
+      type: "cloud",
+    });
+
+    await expect(
+      getContextWindow({ provider: "provider", name: "cloud-model" }),
+    ).resolves.toBe(128_000);
   });
 });
 

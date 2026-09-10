@@ -14,6 +14,7 @@ import {
   getLanguageModels,
   getLanguageModelsByProviders,
 } from "../shared/language_model_helpers";
+import { refreshCustomProviderModels } from "../shared/custom_provider_model_probe";
 import { db } from "@/db";
 import {
   language_models,
@@ -91,12 +92,37 @@ export function registerLanguageModelHandlers() {
 
       // Return the newly created provider
       return {
-        id,
+        id: CUSTOM_PROVIDER_PREFIX + id,
         name,
         apiBaseUrl,
         envVarName,
         type: "custom",
       };
+    },
+  );
+
+  handleTyped(
+    languageModelContracts.refreshCustomProviderModels,
+    async (_event, params): Promise<LanguageModel[]> => {
+      const { providerId } = params;
+      const providers = await getLanguageModelProviders();
+      const provider = providers.find((candidate) => candidate.id === providerId);
+
+      if (!provider) {
+        throw new DyadError(
+          `Provider with ID "${providerId}" not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      if (provider.type !== "custom") {
+        throw new DyadError(
+          `Provider "${providerId}" is not a custom provider`,
+          DyadErrorKind.Validation,
+        );
+      }
+
+      return refreshCustomProviderModels(providerId);
     },
   );
 
@@ -307,7 +333,7 @@ export function registerLanguageModelHandlers() {
         }
 
         return {
-          id,
+          id: CUSTOM_PROVIDER_PREFIX + id,
           name,
           apiBaseUrl,
           envVarName,

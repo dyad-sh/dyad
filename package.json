@@ -1,8 +1,8 @@
 {
-  "name": "dyad",
+  "name": "cat",
   "version": "1.15.0-beta.1",
-  "description": "Free, local, open-source AI app builder",
-  "keywords": [],
+  "description": "Cat — a free, local, open-source AI app builder",
+  "keywords": ["ai", "app-builder", "open-source", "local", "cat"],
   "license": "MIT",
   "author": {
     "name": "Will Chen",
@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dyad-sh/dyad.git"
+    "url": "https://github.com/Rahulchaube1/dyad.git"
   },
   "main": ".vite/build/main_bootstrap.js",
   "scripts": {
@@ -225,5 +225,5 @@
   "engines": {
     "node": ">=24 <26"
   },
-  "productName": "dyad"
+  "productName": "Cat"
 }

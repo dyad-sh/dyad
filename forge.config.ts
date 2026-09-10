@@ -70,7 +70,7 @@ function isRuntimeDependency(
   });
 }
 
-// Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
+// Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin-vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
   if (!file) return false;
   // `file` always starts with `/`
@@ -189,8 +189,8 @@ const config: ForgeConfig = {
     ],
     protocols: [
       {
-        name: "Dyad",
-        schemes: ["dyad"],
+        name: "Cat",
+        schemes: ["cat", "dyad"],
       },
     ],
     icon: "./assets/icon/logo",
@@ -235,25 +235,25 @@ const config: ForgeConfig = {
         ? {
             windowsSign,
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/Rahulchaube1/dyad/rebrand/cat-ui/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           }
         : {
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/Rahulchaube1/dyad/rebrand/cat-ui/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           },
     ),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/cat", "x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),
     new MakerDeb({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/cat", "x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),
@@ -266,7 +266,7 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
+          owner: "Rahulchaube1",
           name: "dyad",
         },
         draft: true,

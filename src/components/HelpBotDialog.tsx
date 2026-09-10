@@ -18,7 +18,6 @@ interface HelpBotDialogProps {
 interface Message {
   role: "user" | "assistant";
   content: string;
-  reasoning?: string;
 }
 
 export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
@@ -27,7 +26,6 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const assistantBufferRef = useRef("");
-  const reasoningBufferRef = useRef("");
   const flushTimerRef = useRef<number | null>(null);
   const FLUSH_INTERVAL_MS = 100;
 
@@ -40,7 +38,6 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
       setInput("");
       setError(null);
       assistantBufferRef.current = "";
-      reasoningBufferRef.current = "";
 
       // Clear the flush timer
       if (flushTimerRef.current) {
@@ -68,10 +65,9 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
     setMessages((prev) => [
       ...prev,
       { role: "user", content: trimmed },
-      { role: "assistant", content: "", reasoning: "" },
+      { role: "assistant", content: "" },
     ]);
     assistantBufferRef.current = "";
-    reasoningBufferRef.current = "";
     setInput("");
     setStreaming(true);
 
@@ -91,7 +87,6 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
               next[lastIdx] = {
                 ...next[lastIdx],
                 content: assistantBufferRef.current,
-                reasoning: reasoningBufferRef.current,
               };
             }
             return next;
@@ -114,7 +109,6 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
 
           // Clear the buffers
           assistantBufferRef.current = "";
-          reasoningBufferRef.current = "";
 
           // Remove the empty assistant message that was added optimistically
           setMessages((prev) => {
@@ -143,14 +137,10 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
         if (lastIdx >= 0 && next[lastIdx].role === "assistant") {
           const current = next[lastIdx];
           // Only update if there's any new data to apply
-          if (
-            current.content !== assistantBufferRef.current ||
-            current.reasoning !== reasoningBufferRef.current
-          ) {
+          if (current.content !== assistantBufferRef.current) {
             next[lastIdx] = {
               ...current,
               content: assistantBufferRef.current,
-              reasoning: reasoningBufferRef.current,
             };
           }
         }

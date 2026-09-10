@@ -449,6 +449,45 @@ describe("tryEnableHttps", () => {
     expect(result.instanceUrl).toBe("https://203.0.113.5.sslip.io");
   });
 
+  it("does not ask DNS about a name it derived from the host's own hostname", async () => {
+    // A hostname host's derived name is the hostname itself, so a custom
+    // domain equal to it is that same by-construction name. The advisory
+    // check that would resolve it a second time is skipped — a second lookup
+    // could only fail for reasons unrelated to where the name points, and
+    // the advice would be to fix a name that is right.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "coolify.example.com", {
+      ...FAST,
+      customDomain: "coolify.example.com",
+      resolve: async () => ({ addresses: [], failed: true }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(true);
+    expect(result.instanceUrl).toBe("https://coolify.example.com");
+  });
+
+  it("still checks a custom domain that differs from a hostname host", async () => {
+    // The derived name for a hostname is the hostname; a different custom
+    // domain is the user's own and can point elsewhere, so it is still
+    // checked — distinct from the equal-to-host case above.
+    const { session } = fakeSession();
+    const result = await tryEnableHttps(session, "box.example.com", {
+      ...FAST,
+      customDomain: "old-site.example.com",
+      resolve: async (name: string) => ({
+        addresses:
+          name === "box.example.com" ? ["203.0.113.5"] : ["198.51.100.9"],
+        failed: false,
+      }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.instanceUrl).toBe("http://box.example.com:8000");
+    expect(result.reason).toMatch(/does not point at this server/i);
+  });
+
   it("still checks an address typed there that is not this server", async () => {
     // Derived the same way, but from somewhere else — so it resolves
     // somewhere else by construction, which is exactly what to object to.

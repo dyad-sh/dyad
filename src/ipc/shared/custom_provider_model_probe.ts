@@ -8,7 +8,6 @@ import type { LanguageModel } from "@/ipc/types";
 import { getEnvVar } from "../utils/read_env";
 import { and, eq } from "drizzle-orm";
 
-const DEFAULT_CUSTOM_PROVIDER_CONTEXT_WINDOW = 128_000;
 const CUSTOM_PROVIDER_PROBE_TIMEOUT_MS = 4_000;
 
 function normalizeCustomProviderId(providerId: string): string {
@@ -32,6 +31,11 @@ function asNumber(value: unknown): number | undefined {
 
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+function asPositiveFiniteNumber(value: unknown): number | undefined {
+  const numericValue = asNumber(value);
+  return numericValue != null && numericValue > 0 ? numericValue : undefined;
 }
 
 function toJson<T>(payload: Response): Promise<T> {
@@ -219,10 +223,13 @@ function determineModelContextWindow(
     serverContextWindow,
     modelCeiling,
     openAiContextWindow,
-  ].filter((value): value is number => value != null && Number.isFinite(value));
+  ].filter(
+    (value): value is number =>
+      value != null && Number.isFinite(value) && value > 0,
+  );
 
   if (candidateValues.length === 0) {
-    return DEFAULT_CUSTOM_PROVIDER_CONTEXT_WINDOW;
+    return undefined;
   }
 
   if (candidateValues.length === 1) {
@@ -292,7 +299,8 @@ export function normalizeDiscoveredCustomProviderModels(
     const apiName = item.id ?? item.name ?? item.model ?? "";
     const displayName = item.display_name ?? item.displayName ?? apiName;
     const openAiContextWindow =
-      asNumber(item.max_model_len) ?? asNumber(item.maxModelLen);
+      asPositiveFiniteNumber(item.max_model_len) ??
+      asPositiveFiniteNumber(item.maxModelLen);
     const modelMetadata =
       ollamaShowResponse != null
         ? getOllamaMetadataForModel(apiName, ollamaShowResponse)
@@ -302,10 +310,15 @@ export function normalizeDiscoveredCustomProviderModels(
         ? serverWindowsByModel[apiName]
         : defaultServerWindow;
 
+    const positiveServerWindow = asPositiveFiniteNumber(serverWindow);
+    const positiveModelMetadataWindow = asPositiveFiniteNumber(
+      modelMetadata.contextWindow,
+    );
+
     const effectiveContextWindow = determineModelContextWindow(
       openAiContextWindow,
-      serverWindow,
-      modelMetadata.contextWindow,
+      positiveServerWindow,
+      positiveModelMetadataWindow,
     );
 
     return {
@@ -451,12 +464,11 @@ export async function refreshCustomProviderModels(
       db.update(language_models)
         .set({
           displayName: model.displayName,
-          description: model.description ?? null,
-          max_output_tokens: model.maxOutputTokens ?? null,
+          description: model.description ?? modelQuery.description ?? null,
+          max_output_tokens:
+            model.maxOutputTokens ?? modelQuery.max_output_tokens ?? null,
           context_window:
-            model.contextWindow ??
-            modelQuery.context_window ??
-            DEFAULT_CUSTOM_PROVIDER_CONTEXT_WINDOW,
+            model.contextWindow ?? modelQuery.context_window ?? null,
           updatedAt: new Date(),
         })
         .where(
@@ -475,8 +487,7 @@ export async function refreshCustomProviderModels(
           customProviderId: normalizedProviderId,
           description: model.description ?? null,
           max_output_tokens: model.maxOutputTokens ?? null,
-          context_window:
-            model.contextWindow ?? DEFAULT_CUSTOM_PROVIDER_CONTEXT_WINDOW,
+          context_window: model.contextWindow ?? null,
         })
         .run();
 
@@ -497,12 +508,9 @@ export async function refreshCustomProviderModels(
       id: modelQuery.id,
       apiName: model.apiName,
       displayName: model.displayName,
-      description: model.description,
-      maxOutputTokens: model.maxOutputTokens,
-      contextWindow:
-        model.contextWindow ??
-        modelQuery.context_window ??
-        DEFAULT_CUSTOM_PROVIDER_CONTEXT_WINDOW,
+      description: model.description ?? modelQuery.description ?? undefined,
+      maxOutputTokens: model.maxOutputTokens ?? modelQuery.max_output_tokens ?? undefined,
+      contextWindow: model.contextWindow ?? modelQuery.context_window ?? undefined,
       temperature: model.temperature,
       type: "custom",
     });

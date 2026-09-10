@@ -322,6 +322,7 @@ const getProposalHandler = async (
         );
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;
+        const tooLongHistory = chat.messages.length > 10;
         const contextWindow = await getContextWindow(selectedModel);
         if (contextWindow != null && Number.isFinite(contextWindow)) {
           const boundedContextWindow = Math.min(contextWindow, 100_000);
@@ -329,8 +330,10 @@ const getProposalHandler = async (
             `Token usage: ${totalTokens}/${boundedContextWindow} (${(totalTokens / boundedContextWindow) * 100}%)`,
           );
 
-          // If we're using more than 80% of the context window, suggest summarizing
-          if (totalTokens > boundedContextWindow * 0.8 || chat.messages.length > 10) {
+          // If we're using more than 80% of the context window, suggest summarizing.
+          // Long history remains a separate trigger regardless of how much of the
+          // known context window is left.
+          if (totalTokens > boundedContextWindow * 0.8 || tooLongHistory) {
             logger.debug(
               `Token usage is high (${totalTokens}/${boundedContextWindow}) OR long chat history (${chat.messages.length} messages), suggesting summarize action`,
             );
@@ -338,6 +341,13 @@ const getProposalHandler = async (
               id: "summarize-in-new-chat",
             });
           }
+        } else if (tooLongHistory) {
+          logger.debug(
+            `Long chat history (${chat.messages.length} messages) suggests summarize action even without a known context window`,
+          );
+          actions.push({
+            id: "summarize-in-new-chat",
+          });
         }
       }
       if (latestAssistantMessage) {

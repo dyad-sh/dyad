@@ -65,12 +65,23 @@ export const estimateMessagesTokens = (messages: Message[]): number => {
   );
 };
 
+function isPositiveFiniteContextWindow(
+  value: number | undefined,
+): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export async function getContextWindow(
   model?: LargeLanguageModel,
 ): Promise<number | undefined> {
   const selectedModel = model ?? readSettings().selectedModel;
   const modelOption = await findLanguageModel(selectedModel);
-  return modelOption?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+
+  if (isPositiveFiniteContextWindow(modelOption?.contextWindow)) {
+    return modelOption.contextWindow;
+  }
+
+  return DEFAULT_CONTEXT_WINDOW;
 }
 
 export async function getMaxTokens(
@@ -103,7 +114,7 @@ export function getCompactionThreshold(
   contextWindow: number | undefined,
   provider: string,
 ): number {
-  if (contextWindow == null || !Number.isFinite(contextWindow)) {
+  if (!isPositiveFiniteContextWindow(contextWindow)) {
     return 0;
   }
 
@@ -120,7 +131,7 @@ export function shouldTriggerCompaction(
   contextWindow: number | undefined,
   provider: string,
 ): boolean {
-  if (contextWindow == null || !Number.isFinite(contextWindow)) {
+  if (!isPositiveFiniteContextWindow(contextWindow)) {
     return false;
   }
 

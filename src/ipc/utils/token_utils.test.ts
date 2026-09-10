@@ -103,6 +103,19 @@ describe("getContextWindow", () => {
       getContextWindow({ provider: "provider", name: "cloud-model" }),
     ).resolves.toBe(128_000);
   });
+
+  it("rejects zero and negative configured values instead of trusting them", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "bad-model",
+      displayName: "Bad Model",
+      type: "cloud",
+      contextWindow: 0,
+    });
+
+    await expect(
+      getContextWindow({ provider: "provider", name: "bad-model" }),
+    ).resolves.toBe(128_000);
+  });
 });
 
 describe("getTemperature", () => {
@@ -190,5 +203,10 @@ describe("shouldTriggerCompaction", () => {
     expect(shouldTriggerCompaction(175_000, 200_000, "openai")).toBe(true);
     expect(shouldTriggerCompaction(174_999, 200_000, "openai")).toBe(false);
     expect(shouldTriggerCompaction(175_000, 200_000, "google")).toBe(true);
+  });
+
+  it("does not trigger compaction when the context window is zero or negative", () => {
+    expect(shouldTriggerCompaction(1, 0, "openai")).toBe(false);
+    expect(shouldTriggerCompaction(1, -1, "openai")).toBe(false);
   });
 });

@@ -50,7 +50,7 @@ describe("normalizeDiscoveredCustomProviderModels", () => {
     });
   });
 
-  it("keeps the default 128k window when no real window is available", () => {
+  it("omits the context window when no positive server or model value is available", () => {
     const result = normalizeDiscoveredCustomProviderModels(
       {
         data: [{ id: "model-a", object: "model", created: 1, owned_by: "me" }],
@@ -62,8 +62,24 @@ describe("normalizeDiscoveredCustomProviderModels", () => {
     expect(result[0]).toMatchObject({
       apiName: "model-a",
       displayName: "model-a",
-      contextWindow: 128_000,
+      contextWindow: undefined,
     });
+  });
+
+  it("ignores zero and negative context lengths from the server", () => {
+    const result = normalizeDiscoveredCustomProviderModels(
+      {
+        data: [{ id: "model-b", object: "model", created: 1, owned_by: "me" }],
+      },
+      {
+        models: [{ name: "model-b", context_length: 0 }],
+      },
+      {
+        "model-b": { context_length: -5 },
+      },
+    );
+
+    expect(result[0].contextWindow).toBeUndefined();
   });
 
   it("uses each Ollama model's own context window instead of reusing the first model", () => {

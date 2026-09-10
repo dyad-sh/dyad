@@ -300,7 +300,7 @@ const config: ForgeConfig = {
         {
           entry:
             "workers/supabase_dependency_analysis/supabase_dependency_analysis_worker.ts",
-          config: "vite.sandbox-worker.config.mts",
+          config: "vite.supabase-dependency-analysis-worker.config.mts",
           target: "main",
         },
         {

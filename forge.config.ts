@@ -44,14 +44,6 @@ const pgRuntimeDependencies = [
   "xtend",
 ] as const;
 
-/**
- * What ssh2 needs at runtime, and only that.
- *
- * Its optional native helpers — cpu-features, nan, buildcheck — are left out
- * on purpose. ssh2 guards those requires and falls back to pure JavaScript,
- * so leaving them behind costs some speed and avoids shipping a binding
- * compiled against whatever Node the build machine happened to have.
- */
 const ssh2RuntimeDependencies = [
   "ssh2",
   "asn1",
@@ -60,89 +52,37 @@ const ssh2RuntimeDependencies = [
   "tweetnacl",
 ] as const;
 
-function isRuntimeDependency(
-  file: string,
-  packages: readonly string[],
-): boolean {
+function isRuntimeDependency(file: string, packages: readonly string[]): boolean {
   return packages.some((dependency) => {
     const modulePath = `/node_modules/${dependency}`;
     return file === modulePath || file.startsWith(`${modulePath}/`);
   });
 }
 
-// Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
   if (!file) return false;
-  // `file` always starts with `/`
-  // @see - https://github.com/electron/packager/blob/v18.1.3/src/copy-filter.ts#L89-L93
-  if (file === "/node_modules") {
-    return false;
-  }
-  if (file.startsWith("/drizzle")) {
-    return false;
-  }
-  if (file.startsWith("/scaffold")) {
-    return false;
-  }
-
-  if (file.startsWith("/worker") && !file.startsWith("/workers")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/stacktrace-js")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/stacktrace-js/dist")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/html-to-image")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/better-sqlite3")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/dyad-keychain-reader")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/node-pty")) {
-    return false;
-  }
-  if (isRuntimeDependency(file, ssh2RuntimeDependencies)) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/mustardscript")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/@mustardscript")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/node-addon-api")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/bindings")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/file-uri-to-path")) {
-    return false;
-  }
-  if (file === "/node_modules/@typescript") {
-    return false;
-  }
-  if (file.startsWith("/node_modules/@typescript/typescript6")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/@typescript/old")) {
-    return false;
-  }
-  if (isRuntimeDependency(file, pgRuntimeDependencies)) {
-    return false;
-  }
-  if (file === "/node_modules/ws" || file.startsWith("/node_modules/ws/")) {
-    return false;
-  }
-  if (file.startsWith("/.vite")) {
-    return false;
-  }
-
+  if (file === "/node_modules") return false;
+  if (file.startsWith("/drizzle")) return false;
+  if (file.startsWith("/scaffold")) return false;
+  if (file.startsWith("/worker") && !file.startsWith("/workers")) return false;
+  if (file.startsWith("/node_modules/stacktrace-js")) return false;
+  if (file.startsWith("/node_modules/stacktrace-js/dist")) return false;
+  if (file.startsWith("/node_modules/html-to-image")) return false;
+  if (file.startsWith("/node_modules/better-sqlite3")) return false;
+  if (file.startsWith("/node_modules/dyad-keychain-reader")) return false;
+  if (file.startsWith("/node_modules/node-pty")) return false;
+  if (isRuntimeDependency(file, ssh2RuntimeDependencies)) return false;
+  if (file.startsWith("/node_modules/mustardscript")) return false;
+  if (file.startsWith("/node_modules/@mustardscript")) return false;
+  if (file.startsWith("/node_modules/node-addon-api")) return false;
+  if (file.startsWith("/node_modules/bindings")) return false;
+  if (file.startsWith("/node_modules/file-uri-to-path")) return false;
+  if (file === "/node_modules/@typescript") return false;
+  if (file.startsWith("/node_modules/@typescript/typescript6")) return false;
+  if (file.startsWith("/node_modules/@typescript/old")) return false;
+  if (isRuntimeDependency(file, pgRuntimeDependencies)) return false;
+  if (file === "/node_modules/ws" || file.startsWith("/node_modules/ws/")) return false;
+  if (file.startsWith("/.vite")) return false;
   return true;
 };
 
@@ -158,17 +98,12 @@ const nativeRebuildModules = [
 
 if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
   throw new Error(
-    "WINDOWS_SIGN is enabled but AZURE_CODE_SIGNING_DLIB is not set. " +
-      "Ensure Azure Trusted Signing tools are installed.",
+    "WINDOWS_SIGN is enabled but AZURE_CODE_SIGNING_DLIB is not set. Ensure Azure Trusted Signing tools are installed.",
   );
 }
 
 const config: ForgeConfig = {
   packagerConfig: {
-    // E2E test builds install local file: dependencies as links on Windows.
-    // Dereference them so packaging does not require symlink privileges in the temp app.
-    // Local file: native packages install as symlinks; dereference them so the
-    // packaged app contains loadable runtime files.
     derefSymlinks: true,
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
     afterCopy: [
@@ -189,21 +124,16 @@ const config: ForgeConfig = {
     ],
     protocols: [
       {
-        name: "Dyad",
-        schemes: ["dyad"],
+        name: "Cat",
+        schemes: ["cat", "dyad"],
       },
     ],
     icon: "./assets/icon/logo",
-
     osxSign: isEndToEndTestBuild
       ? undefined
       : ({
           identity: process.env.APPLE_TEAM_ID,
-          // Surface the actual signing error instead of silently continuing
-          // (@electron/packager defaults continueOnError to true, which masks failures)
           continueOnError: false,
-          // Skip provisioning profile search (not needed for Developer ID distribution,
-          // and the cwd scan crashes on broken symlinks like CLAUDE.md)
           preEmbedProvisioningProfile: false,
         } as Record<string, unknown>),
     osxNotarize: isEndToEndTestBuild
@@ -214,20 +144,15 @@ const config: ForgeConfig = {
           teamId: process.env.APPLE_TEAM_ID!,
         },
     asar: {
-      // Native modules and node-pty helper binaries must be loadable from disk.
       unpackDir:
         "{node_modules/dyad-keychain-reader,node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
     },
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
-    // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: shouldSkipNativeRebuild
     ? { onlyModules: [] }
-    : {
-        extraModules: nativeRebuildModules,
-        force: true,
-      },
+    : { extraModules: nativeRebuildModules, force: true },
   makers: [
     new MakerSquirrel(
       // @ts-expect-error - incorrect types exported by MakerSquirrel
@@ -235,38 +160,36 @@ const config: ForgeConfig = {
         ? {
             windowsSign,
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/Rahulchaube1/dyad/rebrand/cat-ui/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           }
         : {
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/Rahulchaube1/dyad/rebrand/cat-ui/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           },
     ),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/cat", "x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),
     new MakerDeb({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/cat", "x-scheme-handler/dyad"],
         icon: "./assets/icon/logo.png",
       },
     }),
-    new MakerAppImage({
-      icon: "./assets/icon/logo.png",
-    }),
+    new MakerAppImage({ icon: "./assets/icon/logo.png" }),
   ],
   publishers: [
     {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
+          owner: "Rahulchaube1",
           name: "dyad",
         },
         draft: true,
@@ -278,46 +201,15 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
       build: [
-        {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: "src/main_bootstrap.ts",
-          config: "vite.main.config.mts",
-          target: "main",
-        },
-        {
-          entry: "src/preload.ts",
-          config: "vite.preload.config.mts",
-          target: "preload",
-        },
-        {
-          entry: "workers/code_explorer/code_explorer_worker.ts",
-          config: "vite.code-explorer-worker.config.mts",
-          target: "main",
-        },
-        {
-          entry:
-            "workers/supabase_dependency_analysis/supabase_dependency_analysis_worker.ts",
-          config: "vite.supabase-dependency-analysis-worker.config.mts",
-          target: "main",
-        },
-        {
-          entry: "src/ipc/utils/sandbox/sandbox_worker.ts",
-          config: "vite.sandbox-worker.config.mts",
-          target: "main",
-        },
+        { entry: "src/main_bootstrap.ts", config: "vite.main.config.mts", target: "main" },
+        { entry: "src/preload.ts", config: "vite.preload.config.mts", target: "preload" },
+        { entry: "workers/code_explorer/code_explorer_worker.ts", config: "vite.code-explorer-worker.config.mts", target: "main" },
+        { entry: "workers/supabase_dependency_analysis/supabase_dependency_analysis_worker.ts", config: "vite.supabase-dependency-analysis-worker.config.mts", target: "main" },
+        { entry: "src/ipc/utils/sandbox/sandbox_worker.ts", config: "vite.sandbox-worker.config.mts", target: "main" },
       ],
-      renderer: [
-        {
-          name: "main_window",
-          config: "vite.renderer.config.mts",
-        },
-      ],
+      renderer: [{ name: "main_window", config: "vite.renderer.config.mts" }],
     }),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
     new FusesPlugin({
       version: FuseVersion.V1,
       [FuseV1Options.RunAsNode]: false,

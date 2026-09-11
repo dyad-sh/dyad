@@ -1,5 +1,7 @@
 # Dyad Pro Free Model
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 ## Goal
 
 Add a new Dyad-hosted "free" model for Dyad Pro users with a hard limit of 10 successful user messages per day. The limit is enforced by `../dyad-llm-engine`, while the desktop app shows the user how many free-model messages remain.

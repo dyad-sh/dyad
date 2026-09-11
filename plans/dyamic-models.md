@@ -1,5 +1,7 @@
 # Dynamic Models Plan
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 ## Goal
 
 Replace the baked-in builtin language model catalog in `src/ipc/shared/language_model_constants.ts` with an API-first catalog fetched from `api.dyad.sh`, while preserving `language_model_constants.ts` as a local fallback when the API is unavailable or invalid.

@@ -1,5 +1,7 @@
 # Explore V2: Single-Conversation Explorer With a Schema-Bound Finish
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 > Written 2026-06-09 after reviewing the candidate-selection implementation in
 > `src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent.ts` on the
 > `explore-code-subagent` branch. Builds on `GENERALIZABLE_EXPLORER_AGENT.md` and

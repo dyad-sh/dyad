@@ -1,5 +1,7 @@
 # Long-Term Explore Architecture
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 > Written 2026-06-09 after the deterministic-report experiment in
 > `src/pro/main/ipc/handlers/local_agent/tools/explore_code_subagent.ts` and the follow-up
 > discussion about generalizability, main-context density, and model-authored source references.

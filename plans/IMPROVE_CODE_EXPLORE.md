@@ -1,5 +1,7 @@
 # Improve `explore_code`: optimize for cost and lean main-model context
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 > Written 2026-06-06, from analysis of benchmark run `run-2026-06-06T07-17-48-930Z`
 > (4 repos × 12 tasks, baseline vs explore arm). Companion to
 > [`plans/codex_code_explorer.md`](./codex_code_explorer.md) (original design) and

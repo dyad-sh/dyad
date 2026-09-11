@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   getCompactionThreshold,
+  getContextWindow,
   getTemperature,
   estimateToolResultTokens,
   shouldTriggerCompaction,
@@ -90,6 +91,33 @@ describe("estimateToolResultTokens", () => {
   });
 });
 
+describe("getContextWindow", () => {
+  it("keeps the default 128k window when the model metadata does not specify one", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "cloud-model",
+      displayName: "Cloud Model",
+      type: "cloud",
+    });
+
+    await expect(
+      getContextWindow({ provider: "provider", name: "cloud-model" }),
+    ).resolves.toBe(128_000);
+  });
+
+  it("rejects zero and negative configured values instead of trusting them", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "bad-model",
+      displayName: "Bad Model",
+      type: "cloud",
+      contextWindow: 0,
+    });
+
+    await expect(
+      getContextWindow({ provider: "provider", name: "bad-model" }),
+    ).resolves.toBe(128_000);
+  });
+});
+
 describe("getTemperature", () => {
   it("does not set a default temperature for models without metadata", async () => {
     mockFindLanguageModel.mockResolvedValueOnce({
@@ -175,5 +203,10 @@ describe("shouldTriggerCompaction", () => {
     expect(shouldTriggerCompaction(175_000, 200_000, "openai")).toBe(true);
     expect(shouldTriggerCompaction(174_999, 200_000, "openai")).toBe(false);
     expect(shouldTriggerCompaction(175_000, 200_000, "google")).toBe(true);
+  });
+
+  it("does not trigger compaction when the context window is zero or negative", () => {
+    expect(shouldTriggerCompaction(1, 0, "openai")).toBe(false);
+    expect(shouldTriggerCompaction(1, -1, "openai")).toBe(false);
   });
 });

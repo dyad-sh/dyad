@@ -13,7 +13,7 @@ const logger = log.scope("supabase_app_key");
 
 /**
  * Where the AI is told to write the generated Supabase client
- * (`src/prompts/supabase_prompt.ts`). That prompt allows "the most appropriate
+ * (`the retired source treempts/supabase_prompt.ts`). That prompt allows "the most appropriate
  * path for the project structure", so a miss here is expected and stays silent
  * rather than guessing at other locations.
  */

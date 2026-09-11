@@ -18,10 +18,6 @@ import {
 import { assertChatActorAdmissionOpen } from "@/ipc/services/chat_actor_deletion_fence";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import { readSettings } from "@/main/settings";
-import {
-  runAutoReviewBarrier,
-  skipReviewAutoFix,
-} from "@/pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
 import type { ChatStreamHostCommand, ChatStreamHostState } from "./host_state";
 import {
   initialChatStreamHostState,
@@ -505,83 +501,20 @@ function createCommandRunner(
         return;
       }
       case "run-review-barrier": {
-        try {
-          const result = await runAutoReviewBarrier({
-            chatId: context.key.chatId,
-            verification: command.verification,
-            autoFix:
-              command.autoFixPolicy === "queued-override"
-                ? true
-                : command.autoFixPolicy === "user-setting"
-                  ? readSettings().autoFixReviewIssues === true
-                  : undefined,
-          });
-          if (result.outcome === "waiting") {
-            emit({
-              type: "REVIEW_BARRIER_FAILED",
-              error: "Automatic review timed out.",
-            });
-            return;
-          }
-          emit({
-            type: "REVIEW_BARRIER_RESULT",
-            ...result,
-            autoFixPolicy: command.autoFixPolicy,
-          });
-        } catch (error) {
-          emit({
-            type: "REVIEW_BARRIER_FAILED",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+        emit({
+          type: "REVIEW_BARRIER_FAILED",
+          error: "Automatic review is unavailable in this build.",
+        });
         return;
       }
       case "submit-review-remediation": {
-        try {
-          const appId = await requireExistingChat(context.key.chatId);
-          const intentId = `review-remediation:${command.threadId}:${randomUUID()}`;
-          const withoutHash = {
-            schemaVersion: 1 as const,
-            intentId,
-            chatId: context.key.chatId,
-            appId,
-            invocationRef: {
-              kind: "chat-stream" as const,
-              entityKey: context.key.chatId,
-              operationId: randomUUID(),
-            },
-            prompt: command.prompt,
-            requestedChatMode: "local-agent" as const,
-            owner: {
-              kind: "review-remediation" as const,
-              threadId: command.threadId,
-            },
-          };
-          emit({
-            type: "SUBMIT",
-            intent: {
-              ...withoutHash,
-              payloadHash: computeChatTurnPayloadHash(withoutHash),
-            },
-            observedStopPolicyVersion: command.observedStopPolicyVersion,
-          });
-        } catch (error) {
-          emit({
-            type: "REVIEW_BARRIER_FAILED",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+        emit({
+          type: "REVIEW_BARRIER_FAILED",
+          error: "Review remediation is unavailable in this build.",
+        });
         return;
       }
       case "fail-review-remediation": {
-        try {
-          await skipReviewAutoFix(context.key.chatId, command.threadId, true);
-        } catch (error) {
-          console.error(
-            "[chat-stream] Failed to settle review remediation",
-            error,
-          );
-        }
         await resumeReviewQueue();
         return;
       }

@@ -35,10 +35,6 @@ import {
 } from "@/ipc/services/chat_actor_service";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
-import {
-  blockSubagentAdmissionsForChat,
-  settleSubagentsForChatDeletion,
-} from "@/pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
 
 const logger = log.scope("chat_handlers");
 
@@ -283,21 +279,13 @@ export function registerChatHandlers() {
     // in this synchronous turn prevents either new sub-agents or a deletion
     // race from changing the follow-up outcome from swept to rejected.
     const userInputSettlement = userInputRegistry.settleChat(chatId);
-    const releaseSubagentAdmission = blockSubagentAdmissionsForChat(chatId);
     try {
       await mutateChatAfterDrainingStreams({
         chatId,
         sender: event.sender,
         beforeLock: async () => {
           await userInputSettlement;
-          const releaseSubagents = await settleSubagentsForChatDeletion(chatId);
-          try {
-            await settleChatActorsForDeletion(chatId);
-            return releaseSubagents;
-          } catch (error) {
-            releaseSubagents();
-            throw error;
-          }
+          await settleChatActorsForDeletion(chatId);
         },
         mutation: async () => {
           await db.delete(chats).where(eq(chats.id, chatId));
@@ -305,7 +293,6 @@ export function registerChatHandlers() {
         },
       });
     } finally {
-      releaseSubagentAdmission();
     }
   });
 

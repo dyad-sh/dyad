@@ -19,7 +19,6 @@ import {
 
 import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
-import { scheduleChatSearchIndexing } from "../../pro/main/ipc/handlers/local_agent/chat_search_indexer";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   hasSupabaseCredentialsForOrganization,
@@ -98,11 +97,6 @@ import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
-import {
-  clearPendingLocalAgentInputsForChat,
-  handleLocalAgentStream,
-  hasCompletedAppBlueprintQuestionnaire,
-} from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { isPreCommitHookAvailable } from "../services/pre_commit_service";
 import { userInputRegistry } from "../../user_input/main";
 import { getAppBlueprintForChat } from "./app_blueprint_handlers";
@@ -677,7 +671,6 @@ async function cancelTrackedStreams(
   // consent prompt cannot unwind until that prompt is resolved.
   for (const { chatId, streams } of trackedStreams) {
     streams.forEach(({ abortController }) => abortController.abort());
-    clearPendingLocalAgentInputsForChat(chatId);
     logger.log(`Aborted ${streams.length} stream(s) for chat ${chatId}`);
   }
 
@@ -2057,7 +2050,7 @@ ${componentSnippet}
         const appBlueprint = getAppBlueprintForChat(updatedChat.id);
         const hasAppBlueprint = Boolean(appBlueprint);
         const appBlueprintQuestionnaireCompleted =
-          hasCompletedAppBlueprintQuestionnaire(updatedChat.messages);
+          false;
         const initialSupabaseProviderToolsAvailable = Boolean(
           updatedChat.app.supabaseProjectId &&
           hasSupabaseCredentialsForOrganization(
@@ -2185,7 +2178,6 @@ ${componentSnippet}
         // referenced-app codebases.
         //
         // Tool-backed modes don't need anything in the system prompt —
-        // handleLocalAgentStream injects a `<system-reminder>` into the
         // user's latest message so the system prompt stays static.
         if (otherAppsCodebaseInfo) {
           const mentionedAppsList = mentionedAppsCodebases
@@ -2367,7 +2359,6 @@ This conversation includes one or more image attachments. When the user uploads 
                 },
               );
             }
-            // Save aiMessagesJson for modes that use handleLocalAgentStream
             // (which reads from DB and needs structured image content)
 
             if (willUseLocalAgentStream) {
@@ -2585,176 +2576,6 @@ This conversation includes one or more image attachments. When the user uploads 
           return fullResponse;
         };
 
-        // Handle ask mode: use local-agent in read-only mode
-        // This gives users access to code reading tools while in ask mode
-        // Ask mode does not consume free agent quota
-        if (isAskMode) {
-          // Reconstruct system prompt for local-agent read-only mode
-          let readOnlySystemPrompt = constructSystemPrompt({
-            aiRules,
-            chatMode: "local-agent",
-            enableTurboEditsV2: false,
-            themePrompt,
-            readOnly: true,
-            freeModelMode,
-            codeExplorerAvailable,
-            historyExplorerAvailable,
-          });
-          if (rootDatabasePromptState === "supabase-disconnected") {
-            readOnlySystemPrompt +=
-              "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
-          } else if (rootDatabasePromptState === "neon-disconnected") {
-            readOnlySystemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
-          }
-
-          // Return value indicates success/failure for quota tracking.
-          // Ask mode doesn't consume quota, but we still capture it for
-          // consistent error handling.
-          const streamSuccess = await handleLocalAgentStream(
-            event,
-            req,
-            abortController,
-            {
-              placeholderMessageId: placeholderAssistantMessage.id,
-              // Note: this is using the read-only system prompt rather than the
-              // regular system prompt which gets overrides for special intents
-              // like summarize chat, security review, etc.
-              //
-              // This is OK because those intents should always happen in a new chat
-              // and new chats will default to non-ask modes.
-              systemPrompt: readOnlySystemPrompt,
-              dyadRequestId: dyadRequestId ?? "[no-request-id]",
-              readOnly: true,
-              messageOverride: isSummarizeIntent ? chatMessages : undefined,
-              settingsOverride: settings,
-              modelSelectionOverride: selectedModel,
-              freeModelMode,
-              referencedApps: referencedAppsForAgent,
-              currentTurnHasOnDiskAttachment:
-                hasScriptReadableAttachment(storedAttachments),
-              supabaseProviderToolsAvailable:
-                initialSupabaseProviderToolsAvailable,
-              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
-            },
-          );
-          if (!streamSuccess) {
-            logger.warn(
-              "Ask mode local agent stream did not complete successfully",
-            );
-          }
-          finishedNaturally = streamSuccess;
-          return;
-        }
-
-        // Handle plan mode: use local-agent with plan tools only
-        // Plan mode is for requirements gathering and creating implementation plans
-        if (isPlanMode) {
-          // Reconstruct system prompt for plan mode
-          let planModeSystemPrompt = constructSystemPrompt({
-            aiRules,
-            chatMode: "plan",
-            enableTurboEditsV2: false,
-            themePrompt,
-            freeModelMode,
-          });
-          if (rootDatabasePromptState === "supabase-disconnected") {
-            planModeSystemPrompt +=
-              "\n\n" + SUPABASE_DISCONNECTED_SYSTEM_PROMPT;
-          } else if (rootDatabasePromptState === "neon-disconnected") {
-            planModeSystemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
-          }
-
-          finishedNaturally = await handleLocalAgentStream(
-            event,
-            req,
-            abortController,
-            {
-              placeholderMessageId: placeholderAssistantMessage.id,
-              systemPrompt: planModeSystemPrompt,
-              dyadRequestId: dyadRequestId ?? "[no-request-id]",
-              planModeOnly: true,
-              messageOverride: isSummarizeIntent ? chatMessages : undefined,
-              settingsOverride: settings,
-              modelSelectionOverride: selectedModel,
-              freeModelMode,
-              referencedApps: referencedAppsForAgent,
-              currentTurnHasOnDiskAttachment: false,
-              supabaseProviderToolsAvailable:
-                initialSupabaseProviderToolsAvailable,
-              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
-            },
-          );
-          return;
-        }
-
-        // Build uses the same multi-step tool-calling loop as Agent, but with
-        // a fail-closed app-building tool profile: no sub-agents, Engine tools,
-        // logs, verification commands, sandbox scripts, or MCP servers.
-        if (isBuildMode) {
-          const readOnlyBuildTurn = isSecurityReviewIntent || isSummarizeIntent;
-          finishedNaturally = await handleLocalAgentStream(
-            event,
-            req,
-            abortController,
-            {
-              placeholderMessageId: placeholderAssistantMessage.id,
-              systemPrompt,
-              dyadRequestId: dyadRequestId ?? "[no-request-id]",
-              readOnly: readOnlyBuildTurn,
-              toolProfile: "build",
-              messageOverride: isSummarizeIntent ? chatMessages : undefined,
-              settingsOverride: settings,
-              modelSelectionOverride: selectedModel,
-              freeModelMode,
-              referencedApps: referencedAppsForAgent,
-              currentTurnHasOnDiskAttachment:
-                hasScriptReadableAttachment(storedAttachments),
-              supabaseProviderToolsAvailable:
-                initialSupabaseProviderToolsAvailable,
-              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
-            },
-          );
-          return;
-        }
-
-        // Handle local-agent mode (Agent v2).
-        // Referenced apps (from `@app:Name` mentions) are accessed by the
-        // agent via tool calls with an `app_name` parameter — see
-        // resolveTargetAppPath in the local agent tools. handleLocalAgentStream
-        // injects a `<system-reminder>` into the user's latest message telling
-        // the agent which `app_name` values are valid.
-        if (isLocalAgentMode) {
-          const streamSuccess = await handleLocalAgentStream(
-            event,
-            req,
-            abortController,
-            {
-              placeholderMessageId: placeholderAssistantMessage.id,
-              systemPrompt,
-              dyadRequestId: dyadRequestId ?? "[no-request-id]",
-              messageOverride: isSummarizeIntent ? chatMessages : undefined,
-              settingsOverride: settings,
-              modelSelectionOverride: selectedModel,
-              freeModelMode,
-              preCommitHookAvailable,
-              refreshImplementerContext,
-              implementerFallbackSystemPrompt,
-              supabaseProviderToolsAvailable:
-                initialSupabaseProviderToolsAvailable,
-              neonProviderToolsAvailable: initialNeonProviderToolsAvailable,
-              referencedApps: referencedAppsForAgent,
-              currentTurnHasOnDiskAttachment:
-                hasScriptReadableAttachment(storedAttachments),
-            },
-          );
-          if (streamSuccess) {
-            reservedFreeAgentQuotaMessageId = null;
-          }
-
-          finishedNaturally = streamSuccess;
-          return;
-        }
-
         let modelRefused = false;
 
         // When calling streamText, the messages need to be properly formatted for mixed content
@@ -2971,7 +2792,6 @@ This conversation includes one or more image attachments. When the user uploads 
             })
             .where(eq(messages.id, placeholderAssistantMessage.id));
           // Settled (cancelled): index this turn's messages for chat search
-          scheduleChatSearchIndexing();
         } catch (error) {
           logger.error(
             `Error saving cancelled response for chat ${req.chatId}:`,
@@ -3003,7 +2823,6 @@ This conversation includes one or more image attachments. When the user uploads 
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
         // Settled: index this turn's messages for chat search
-        scheduleChatSearchIndexing();
         const latestSettings = readSettings();
         const shouldAutoApply =
           latestSettings.autoApproveChanges && selectedChatMode !== "ask";

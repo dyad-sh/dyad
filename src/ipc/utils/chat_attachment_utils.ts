@@ -6,7 +6,6 @@ import {
   type UserSettings,
 } from "@/lib/schemas";
 import { isSandboxSupportedPlatform } from "@/ipc/utils/sandbox/runner";
-import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
 import {
   toAttachmentLogicalPath,
   type StoredAttachmentInfo,
@@ -153,8 +152,7 @@ export function resolveAttachmentDeliveryConfig({
     includeSandboxScriptHint:
       mode !== "build" &&
       useOnDiskAttachmentBlock &&
-      isSandboxScriptExecutionEnabled(settings) &&
-      isSandboxSupportedPlatform(),
+      false,
     includeCopyFileHint: mode === "build" || mode === "local-agent",
     addSystemCopyInstructions:
       !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",

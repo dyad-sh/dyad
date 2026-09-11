@@ -1,5 +1,5 @@
 # Prompt Guides
 
-- When editing `src/prompts/guides/*.md`, run the prompt snapshot tests that consume those guides. For Neon auth guide changes, use `npm test -- src/prompts/neon_prompt.test.ts -u` and commit the updated `src/prompts/__snapshots__/neon_prompt.test.ts.snap`; otherwise `npm test` fails with `Snapshot ... mismatched`.
+- When editing `the retired source treempts/guides/*.md`, run the prompt snapshot tests that consume those guides. For Neon auth guide changes, use `npm test -- the retired source treempts/neon_prompt.test.ts -u` and commit the updated `the retired source treempts/__snapshots__/neon_prompt.test.ts.snap`; otherwise `npm test` fails with `Snapshot ... mismatched`.
 - When prompt templates interpolate serialized user-controlled data before replacing reserved markers such as `[[AI_RULES]]` or `[[SERVER_LAYER]]`, escape those marker strings in the data first. Otherwise a blueprint field or similar value can consume the later placeholder replacement and corrupt both the data and the generated prompt.
 - When generated code must transform a value after copying or constructing it, place the instruction and exact snippet in execution order and add a test that compares their positions. Contradictory bullet order can make the generated code overwrite the transformed value with the raw input.

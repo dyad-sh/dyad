@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Search, ArrowLeftRight } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
-import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
 import {
   DyadCard,
   DyadCardHeader,
@@ -37,10 +36,9 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
   const inProgress = state === "pending";
   const aborted = state === "aborted";
 
-  const blocks = useMemo(
-    () => parseSearchReplaceBlocks(String(children ?? "")),
-    [children],
-  );
+  // Search/replace parsing was provided by the removed Pro implementation.
+  // Render the returned operation as plain code instead of depending on it.
+  const blocks = useMemo(() => [], []);
 
   const fileName = path ? path.split("/").pop() : "";
 

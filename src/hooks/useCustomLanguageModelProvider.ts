@@ -41,7 +41,7 @@ export function useCustomLanguageModelProvider() {
         envVarName: params.envVarName?.trim() || undefined,
       });
 
-      void ipc.languageModel
+      await ipc.languageModel
         .refreshCustomProviderModels({
           providerId: provider.id,
         })
@@ -93,7 +93,7 @@ export function useCustomLanguageModelProvider() {
         envVarName: params.envVarName?.trim() || undefined,
       });
 
-      void ipc.languageModel
+      await ipc.languageModel
         .refreshCustomProviderModels({
           providerId: provider.id,
         })

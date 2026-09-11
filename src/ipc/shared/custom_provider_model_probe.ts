@@ -5,10 +5,13 @@ import {
 } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { LanguageModel } from "@/ipc/types";
+import { readSettings } from "@/main/settings";
 import { getEnvVar } from "../utils/read_env";
 import { and, eq } from "drizzle-orm";
 
 const CUSTOM_PROVIDER_PROBE_TIMEOUT_MS = 4_000;
+const MAX_OLLAMA_SHOW_PROBES = 5;
+const OLLAMA_SHOW_PROBE_DEADLINE_MS = 12_000;
 
 function normalizeCustomProviderId(providerId: string): string {
   return providerId.startsWith("custom::") ? providerId : `custom::${providerId}`;
@@ -43,13 +46,30 @@ function toJson<T>(payload: Response): Promise<T> {
 }
 
 function buildCustomProviderRequestHeaders(
+  providerId?: string,
   envVarName?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
 
-  const apiKey = envVarName ? getEnvVar(envVarName)?.trim() : "";
+  const candidateProviderIds = new Set<string>();
+  if (providerId) {
+    candidateProviderIds.add(providerId);
+    candidateProviderIds.add(providerId.replace(/^custom::/, ""));
+  }
+
+  const settings = readSettings();
+  const configuredApiKey = [...candidateProviderIds].find((candidate) =>
+    Boolean(settings.providerSettings?.[candidate]?.apiKey?.value?.trim()),
+  );
+  const apiKey =
+    (configuredApiKey
+      ? settings.providerSettings?.[configuredApiKey]?.apiKey?.value?.trim()
+      : undefined) ||
+    (envVarName ? getEnvVar(envVarName)?.trim() : "") ||
+    "";
+
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
     headers["X-API-Key"] = apiKey;
@@ -258,12 +278,17 @@ function getOllamaMetadataForModel(
           temperature?: unknown;
           vision?: unknown;
         };
+        const parsedMetadata = parseOllamaShowMetadata(metadata, modelName);
 
         return {
-          contextWindow: asNumber(modelMetadata.contextWindow) ??
-            asNumber(modelMetadata.context_length),
-          temperature: asNumber(modelMetadata.temperature),
-          vision: Boolean(modelMetadata.vision),
+          contextWindow:
+            asPositiveFiniteNumber(modelMetadata.contextWindow) ??
+            asPositiveFiniteNumber(modelMetadata.context_length) ??
+            parsedMetadata.contextWindow,
+          temperature:
+            asNumber(modelMetadata.temperature) ?? parsedMetadata.temperature,
+          vision:
+            Boolean(modelMetadata.vision) || parsedMetadata.vision || false,
         };
       }
     }
@@ -336,9 +361,10 @@ export function normalizeDiscoveredCustomProviderModels(
 export async function discoverCustomProviderModels(
   apiBaseUrl: string,
   envVarName?: string,
+  providerId?: string,
 ): Promise<DiscoveredCustomProviderModel[]> {
   const modelsUrl = buildCustomProviderModelDiscoveryUrl(apiBaseUrl);
-  const requestHeaders = buildCustomProviderRequestHeaders(envVarName);
+  const requestHeaders = buildCustomProviderRequestHeaders(providerId, envVarName);
   const modelsResult = await fetchJsonWithTimeout<unknown>(modelsUrl, {
     method: "GET",
     headers: requestHeaders,
@@ -398,7 +424,13 @@ export async function discoverCustomProviderModels(
       ),
     );
 
-    for (const modelName of modelNames) {
+    const boundedModelNames = modelNames.slice(0, MAX_OLLAMA_SHOW_PROBES);
+    const showDeadlineMs = Date.now() + OLLAMA_SHOW_PROBE_DEADLINE_MS;
+
+    for (const modelName of boundedModelNames) {
+      if (Date.now() >= showDeadlineMs) {
+        break;
+      }
       const showResult = await fetchJsonWithTimeout<unknown>(
         buildOllamaApiUrl(apiBaseUrl, "/api/show"),
         {
@@ -445,6 +477,7 @@ export async function refreshCustomProviderModels(
   const discoveredModels = await discoverCustomProviderModels(
     provider.api_base_url,
     provider.env_var_name ?? undefined,
+    normalizedProviderId,
   );
   const syncedModels: LanguageModel[] = [];
 

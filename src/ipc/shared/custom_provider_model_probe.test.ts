@@ -1,12 +1,24 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
+import { readSettings } from "@/main/settings";
 import {
   buildCustomProviderModelDiscoveryUrl,
   discoverCustomProviderModels,
   normalizeDiscoveredCustomProviderModels,
 } from "@/ipc/shared/custom_provider_model_probe";
 
+vi.mock("@/main/settings", () => ({
+  readSettings: vi.fn(() => ({ providerSettings: {} })),
+}));
+
+const mockReadSettings = vi.mocked(readSettings);
+
 describe("buildCustomProviderModelDiscoveryUrl", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    mockReadSettings.mockReturnValue({ providerSettings: {} } as any);
+  });
   it("adds /v1/models when the base URL is a plain server URL", () => {
     expect(buildCustomProviderModelDiscoveryUrl("http://localhost:11434")).toBe(
       "http://localhost:11434/v1/models",
@@ -106,9 +118,44 @@ describe("normalizeDiscoveredCustomProviderModels", () => {
       32_768, 131_072,
     ]);
   });
+
+  it("reads the configured API key from provider settings when no env var is set", async () => {
+    mockReadSettings.mockReturnValue({
+      providerSettings: {
+        "custom::my-provider": {
+          apiKey: { value: "settings-key" },
+        },
+      },
+    } as any);
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+
+    await discoverCustomProviderModels(
+      "http://localhost:11434/v1",
+      undefined,
+      "custom::my-provider",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:11434/v1/models",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer settings-key",
+        }),
+      }),
+    );
+  });
 });
 
 describe("discoverCustomProviderModels", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    mockReadSettings.mockReturnValue({ providerSettings: {} } as any);
+  });
+
   it("adds the configured bearer token when probing a protected custom provider", async () => {
     vi.stubEnv("MY_PROVIDER_KEY", "secret-token");
 
@@ -129,5 +176,50 @@ describe("discoverCustomProviderModels", () => {
         }),
       }),
     );
+  });
+
+  it("caps Ollama show probes to a bounded best-effort set", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: string | URL | Request) => {
+        const target = String(url);
+        if (target.endsWith("/v1/models")) {
+          return new Response(
+            JSON.stringify({
+              data: Array.from({ length: 20 }, (_, index) => ({
+                id: `model-${index}`,
+                object: "model",
+                created: 1,
+                owned_by: "me",
+              })),
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (target.endsWith("/api/version")) {
+          return new Response(JSON.stringify({ version: "0.7.0" }), {
+            status: 200,
+          });
+        }
+
+        if (target.endsWith("/api/ps")) {
+          return new Response(JSON.stringify({ models: [] }), { status: 200 });
+        }
+
+        if (target.endsWith("/api/show")) {
+          return new Response(JSON.stringify({ model: {} }), { status: 200 });
+        }
+
+        return new Response("{}", { status: 200 });
+      },
+    );
+
+    await discoverCustomProviderModels("http://localhost:11434/v1");
+
+    const showCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith("/api/show"),
+    );
+
+    expect(showCalls.length).toBeLessThanOrEqual(5);
   });
 });

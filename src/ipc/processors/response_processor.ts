@@ -49,7 +49,6 @@ import {
   getDyadSearchReplaceTags,
   getDyadCopyTags,
 } from "../utils/dyad_tag_parser";
-import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeNeonSql } from "../../neon_admin/neon_context";
 import { executeCopyFile } from "../utils/copy_file_utils";
@@ -107,41 +106,11 @@ export async function dryRunSearchReplace({
   fullResponse: string;
   appPath: string;
 }) {
-  const issues: { filePath: string; error: string }[] = [];
-  const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
-  for (const tag of dyadSearchReplaceTags) {
-    const filePath = tag.path;
-    const fullFilePath = safeJoin(appPath, filePath);
-    try {
-      if (!fs.existsSync(fullFilePath)) {
-        issues.push({
-          filePath,
-          error: `Search-replace target file does not exist: ${filePath}`,
-        });
-        continue;
-      }
-
-      const original = await readFile(fullFilePath, "utf8");
-      const result = applySearchReplace(original, tag.content);
-      if (!result.success || typeof result.content !== "string") {
-        issues.push({
-          filePath,
-          error:
-            "Unable to apply search-replace to file because: " + result.error,
-        });
-        logger.warn(
-          `Unable to apply search-replace to file ${filePath} because: ${result.error}. Original content:\n${original}\n Diff content:\n${tag.content}`,
-        );
-        continue;
-      }
-    } catch (error) {
-      issues.push({
-        filePath,
-        error: error?.toString() ?? "Unknown error",
-      });
-    }
-  }
-  return issues;
+  void appPath;
+  return getDyadSearchReplaceTags(fullResponse).map((tag) => ({
+    filePath: tag.path,
+    error: "Search-replace edits are unavailable because the retired implementation was removed.",
+  }));
 }
 
 export async function processFullResponseActions(
@@ -515,67 +484,6 @@ export async function processFullResponseActions(
         } else {
           pendingFunctionDeploys.push(functionName);
         }
-      }
-    }
-
-    // Process all search-replace edits
-    const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
-    for (const tag of dyadSearchReplaceTags) {
-      const filePath = tag.path;
-      const fullFilePath = safeJoin(appPath, filePath);
-
-      // Track if this is a shared module
-      if (isSharedServerModule(filePath)) {
-        sharedModulesChanged = true;
-        changedSharedModulePaths.push(filePath);
-      }
-
-      try {
-        if (!fs.existsSync(fullFilePath)) {
-          // Do not show warning to user because we already attempt to do a <dyad-write> tag to fix it.
-          logger.warn(`Search-replace target file does not exist: ${filePath}`);
-          continue;
-        }
-        const original = await readFile(fullFilePath, "utf8");
-        const result = applySearchReplace(original, tag.content);
-        if (!result.success || typeof result.content !== "string") {
-          // Do not show warning to user because we already attempt to do a <dyad-write> and/or a subsequent <dyad-search-replace> tag to fix it.
-          logger.warn(
-            `Failed to apply search-replace to ${filePath}: ${result.error ?? "unknown"}`,
-          );
-          continue;
-        }
-        // Write modified content
-        fs.writeFileSync(fullFilePath, result.content);
-        writtenFiles.push(filePath);
-
-        // If server function (not shared), redeploy (skip if shared modules changed)
-        if (chatWithApp.app.supabaseProjectId && isServerFunction(filePath)) {
-          const functionName = extractFunctionNameFromPath(filePath);
-          if (!sharedModulesChanged) {
-            try {
-              await deploySupabaseFunction({
-                supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-                functionName,
-                appPath,
-                organizationSlug:
-                  chatWithApp.app.supabaseOrganizationSlug ?? null,
-              });
-            } catch (error) {
-              errors.push({
-                message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
-                error: error,
-              });
-            }
-          } else {
-            pendingFunctionDeploys.push(functionName);
-          }
-        }
-      } catch (error) {
-        errors.push({
-          message: `Error applying search-replace to ${filePath}`,
-          error: error,
-        });
       }
     }
 

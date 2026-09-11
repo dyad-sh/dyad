@@ -27,7 +27,6 @@ import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
-import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
@@ -187,7 +186,6 @@ export default function SettingsPage() {
             title="Build and Agent Permissions"
             description="Control what Build and Agent tools can do on your behalf."
           >
-            <AgentToolsSettings />
           </SettingsSection>
 
           <SettingsSection

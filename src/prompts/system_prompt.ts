@@ -1,7 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
 import log from "electron-log";
-import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 import {
   constructBuildAgentPrompt,
   constructLocalAgentPrompt,
@@ -907,7 +906,11 @@ export const getSystemPromptForChatMode = ({
   const buildPrompt =
     BUILD_SYSTEM_PROMPT_BASE +
     (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");
-  return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
+  // Turbo Edits v2 was part of the removed Pro source tree. Retain the
+  // setting parameter for persisted settings compatibility, but do not expose
+  // an unavailable prompt extension.
+  void enableTurboEditsV2;
+  return buildPrompt;
 };
 
 export const readAiRules = async (dyadAppPath: string) => {

@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { TestingForNewAppsSwitch } from "@/components/TestingForNewAppsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
+import { LocalhostPreviewIsolationSwitch } from "@/components/LocalhostPreviewIsolationSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
@@ -504,6 +505,18 @@ export function WorkflowSettings() {
         <AutoExpandPreviewSwitch />
         <p className={hint}>
           Automatically expand the preview panel when code changes are made.
+        </p>
+      </div>
+
+      <div id={SETTING_IDS.localhostPreviewIsolation} className="space-y-1.5">
+        <LocalhostPreviewIsolationSwitch />
+        <p className={hint}>
+          Give each app a stable localhost hostname so cookies and browser data
+          cannot collide between previews. Disable only when an integration
+          requires an exact localhost callback; the change applies when a
+          preview next rebuilds or restarts. After upgrading, a one-time preview
+          sign-out is expected because existing shared localhost data is not
+          migrated.
         </p>
       </div>
 

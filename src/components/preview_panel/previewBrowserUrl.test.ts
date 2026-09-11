@@ -21,7 +21,7 @@ describe("resolvePreviewBrowserUrl", () => {
     });
   });
 
-  it("returns the existing preview URL for non-cloud previews", async () => {
+  it("returns the raw runtime URL for external non-cloud browsers", async () => {
     const createCloudSandboxShareLink = vi.fn();
 
     await expect(

@@ -528,6 +528,7 @@ const BaseUserSettingsFields = {
   testParallel: z.boolean().optional(),
   testSlowMo: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
+  enableLocalhostPreviewIsolation: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),

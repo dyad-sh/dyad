@@ -124,7 +124,7 @@ beforeEach(() => {
   resetRecordedTestDrafts();
   mocks.runningApps.clear();
   mocks.runningApps.set(1, {
-    proxyUrl: "http://localhost:42100",
+    proxyUrl: "http://app-1.localhost:42100",
     authBootstrapToken: "00000000-0000-4000-8000-000000000001",
   });
   mocks.findFirst.mockResolvedValue({
@@ -379,7 +379,7 @@ describe("recording:start / recording:stop", () => {
     );
     expect(result.infraError).toBeUndefined();
     expect(mocks.clearStorageData).toHaveBeenCalledWith(
-      expect.objectContaining({ origin: "http://localhost:42100" }),
+      expect.objectContaining({ origin: "http://app-1.localhost:42100" }),
     );
     // The lock is still held (session running) until stop.
     expect(activeRecordings.has(1)).toBe(true);
@@ -394,6 +394,38 @@ describe("recording:start / recording:stop", () => {
       "recording:ended",
       expect.objectContaining({ appId: 1, reason: "stopped" }),
     );
+  });
+
+  it("refuses to clear an unisolated recording origin by default", async () => {
+    mocks.runningApps.get(1).proxyUrl = "http://localhost:42100";
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.warning).toMatch(/stored session/i);
+    expect(mocks.clearStorageData).not.toHaveBeenCalled();
+
+    await stopHandler(event, { appId: 1 });
+    expect(mocks.clearStorageData).not.toHaveBeenCalled();
+  });
+
+  it("allows a validated loopback recording origin after explicit opt-out", async () => {
+    mocks.readSettings.mockReturnValue({
+      runtimeMode2: "host",
+      enableLocalhostPreviewIsolation: false,
+    });
+    mocks.runningApps.get(1).proxyUrl = "http://localhost:42100";
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.warning).toBeUndefined();
+    expect(mocks.clearStorageData).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "http://localhost:42100" }),
+    );
+    await stopHandler(event, { appId: 1 });
   });
 
   it("abandons a session whose window closed while setup was awaiting", async () => {
@@ -442,7 +474,7 @@ describe("recording:start / recording:stop", () => {
     expect(mocks.clearStorageData).toHaveBeenCalledTimes(2);
     expect(mocks.clearStorageData).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        origin: "http://localhost:42100",
+        origin: "http://app-1.localhost:42100",
         storages: expect.arrayContaining(["localstorage", "cookies"]),
       }),
     );
@@ -465,7 +497,7 @@ describe("recording:start / recording:stop", () => {
 
     expect(mocks.clearStorageData).toHaveBeenCalledTimes(2);
     expect(mocks.clearStorageData).toHaveBeenLastCalledWith(
-      expect.objectContaining({ origin: "http://localhost:42100" }),
+      expect.objectContaining({ origin: "http://app-1.localhost:42100" }),
     );
   });
 

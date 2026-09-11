@@ -89,13 +89,6 @@ import {
   stopAllAppsSync,
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
-import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
-import { cleanupStaleBuildSnapshots } from "./pro/main/ipc/handlers/local_agent/tools/run_build";
-import {
-  startChatSearchIndexer,
-  stopChatSearchIndexer,
-} from "./pro/main/ipc/handlers/local_agent/chat_search_indexer";
-import { recoverInterruptedSubagents } from "./pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import { encryptStoredMcpSecrets } from "./ipc/utils/mcp_secret_encryption";
@@ -455,25 +448,11 @@ export async function onReady() {
     return;
   }
 
-  void recoverInterruptedSubagents().catch((error) =>
-    logger.error("Failed to reconcile interrupted sub-agents", error),
-  );
-  void cleanupStaleBuildSnapshots().catch((error) =>
-    logger.error("Failed to clean stale production build snapshots", error),
-  );
-
   // Reconcile any Neon test branches / Supabase test users leaked by a previous
   // session that crashed mid test-run. Fire-and-forget: best-effort cleanup
   // must not block startup.
   void reconcileOrphanTestBranches();
   void reconcileOrphanTestUsers();
-
-  // Cleanup old ai_messages_json entries to prevent database bloat
-  cleanupOldAiMessagesJson();
-
-  // Start the chat-search FTS index maintenance (backfill runs in the
-  // background; never blocks startup)
-  startChatSearchIndexer();
 
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
@@ -1700,8 +1679,6 @@ app.on("will-quit", () => {
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();
 
-  // Stop the chat-search index maintenance timers
-  stopChatSearchIndexer();
 });
 
 app.on("quit", (_event, exitCode) => {

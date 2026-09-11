@@ -118,22 +118,6 @@ export const SubagentStatusSchema = z.enum([
 ]);
 export type SubagentStatus = z.infer<typeof SubagentStatusSchema>;
 
-// Keep the pure lifecycle machine's hand-written domain status in lockstep
-// with this wire schema without importing Zod into state.ts.
-type LifecycleSubagentStatus =
-  import("@/pro/main/ipc/handlers/local_agent/subagents/state").SubagentStatus;
-type _WireStatusCoversLifecycle = SubagentStatus extends LifecycleSubagentStatus
-  ? true
-  : never;
-type _LifecycleStatusCoversWire = LifecycleSubagentStatus extends SubagentStatus
-  ? true
-  : never;
-const _subagentStatusMutualAssignability: [
-  _WireStatusCoversLifecycle,
-  _LifecycleStatusCoversWire,
-] = [true, true];
-void _subagentStatusMutualAssignability;
-
 export const SUBAGENT_ACTIVE_STATUSES = [
   "queued",
   "running",

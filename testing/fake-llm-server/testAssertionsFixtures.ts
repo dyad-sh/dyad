@@ -53,7 +53,7 @@ const VERIFY_REQUEST_RE =
 
 /**
  * Markers from the `generate_test_assertions` tool result (see
- * src/pro/main/ipc/handlers/local_agent/tools/generate_test_assertions.ts).
+ * the removed local-agent test-assertion implementation).
  * Keep these in sync — they're how this fixture knows the card has been
  * answered and the tool call must not be repeated.
  */

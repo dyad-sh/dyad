@@ -31,21 +31,11 @@ import {
 } from "@/ipc/utils/model_effort";
 import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
 import {
-  isDyadProEnabled,
-  isBasicAgentMode,
-  isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
   hasSupabaseCredentialsForOrganization,
 } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
-import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
-import { estimateAgentToolTokens } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
-import {
-  buildChatMessageHistory,
-  hasCompletedAppBlueprintQuestionnaire,
-} from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
-import { getCachedMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
 import { resolveRootDatabasePromptState } from "@/shared/database_provider";
 import { getAppBlueprintForChat } from "./app_blueprint_handlers";
 
@@ -93,12 +83,10 @@ export function registerTokenCountHandlers() {
         selectedModel,
         selectedChatMode,
       };
-      const willUseLocalAgentStream = isLocalAgentBackedMode(selectedChatMode);
-      const messageHistoryTokens = willUseLocalAgentStream
-        ? estimateTokens(JSON.stringify(buildChatMessageHistory(chat.messages)))
-        : estimateTokens(
-            chat.messages.map((message) => message.content).join(""),
-          );
+      const willUseLocalAgentStream = false;
+      const messageHistoryTokens = estimateTokens(
+        chat.messages.map((message) => message.content).join(""),
+      );
 
       // Count system prompt tokens
       // Migration on read converts "agent" to "build", so no need to check for it here
@@ -110,8 +98,7 @@ export function registerTokenCountHandlers() {
       const hasAppBlueprint = Boolean(appBlueprint);
       const planningQuestionnaireAvailable =
         settings.agentToolConsents?.["planning_questionnaire"] !== "never";
-      const appBlueprintQuestionnaireCompleted =
-        hasCompletedAppBlueprintQuestionnaire(chat.messages);
+      const appBlueprintQuestionnaireCompleted = false;
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode: selectedChatMode === "ask" ? "local-agent" : selectedChatMode,
@@ -120,10 +107,7 @@ export function registerTokenCountHandlers() {
         readOnly: selectedChatMode === "ask",
         frameworkType,
         hasSupabaseProject: !!chat.app?.supabaseProjectId,
-        implementerAvailable:
-          selectedChatMode === "local-agent" &&
-          isDyadProEnabled(settings) &&
-          isImplementerSubagentEnabled(settings),
+        implementerAvailable: false,
         testingEnabled: !!chat.app?.testingEnabled,
         enableAppBlueprint,
         hasAppBlueprint,
@@ -186,40 +170,7 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
       }
 
-      const isDyadPro = isDyadProEnabled(settings);
-      const mcpToolDefs =
-        selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
-      const toolDefinitionTokens = await estimateAgentToolTokens({
-        toolProfile: selectedChatMode === "build" ? "build" : "agent",
-        readOnly: selectedChatMode === "ask",
-        planModeOnly: selectedChatMode === "plan",
-        basicAgentMode:
-          selectedChatMode === "local-agent" && isBasicAgentMode(settings),
-        enableAppBlueprint,
-        isDyadPro,
-        frameworkType,
-        supabaseProjectId: chat.app.supabaseProjectId,
-        supabaseProviderToolsAvailable,
-        neonProjectId: chat.app.neonProjectId,
-        neonActiveBranchId,
-        neonProviderToolsAvailable,
-        testingEnabled: !!chat.app.testingEnabled,
-        canUseExplorerSubagent:
-          selectedChatMode !== "build" &&
-          isDyadPro &&
-          settings.enableExplorerSubagent !== false,
-        canUseImplementerSubagent:
-          selectedChatMode === "local-agent" &&
-          isDyadPro &&
-          isImplementerSubagentEnabled(settings),
-        mcpToolDefs,
-        canUseAdvancedSubagentTools:
-          selectedChatMode === "local-agent" &&
-          isDyadPro &&
-          settings.enableAdvancedSubagents === true,
-        runTypeScriptForWholeProject:
-          settings.runTypeScriptForWholeProject === true,
-      });
+      const toolDefinitionTokens = 0;
       const systemPromptTokens =
         estimateTokens(systemPrompt + supabaseContext) + toolDefinitionTokens;
 

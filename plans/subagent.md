@@ -1,5 +1,7 @@
 # Dyad Sub-agent System
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 > Updated 2026-07-13 after reviewing OpenAI Codex commit `c39520f3d1522f2587694b52eba7d3eb39460137` and resolving the initial product decisions.
 
 ## Summary

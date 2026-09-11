@@ -1,5 +1,7 @@
 # More state-machine candidates
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 ## Status
 
 Planning only. This document does not authorize implementation. It is a survey

@@ -1,5 +1,7 @@
 # Fine-Grained Supabase Edge Function Redeploys
 
+> **Historical note:** This planning document predates the removal of the former Pro source tree. Any paths below that point into that deleted tree are archival context only and are not current implementation targets.
+
 ## Summary
 
 Avoid redeploying every Supabase Edge Function when a file under `supabase/functions/_shared/` changes. Instead, use TypeScript-based static dependency analysis to identify which functions transitively import the changed shared module, redeploy only those functions, and fall back to the current all-functions redeploy whenever analysis is ambiguous.

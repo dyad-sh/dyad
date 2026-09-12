@@ -1,5 +1,6 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   memo,
@@ -87,6 +88,11 @@ import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
+import {
+  isNeonOnlyApp,
+  refusesUnsandboxedTestRun,
+  usesSandboxedE2eTests,
+} from "@/lib/e2eSandbox";
 import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
 import { sameOriginStartPath } from "./previewAddressPath";
 
@@ -646,6 +652,7 @@ function FileRow({
 
 export function TestsPanel() {
   const { t } = useTranslation("home");
+  const navigate = useNavigate();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
@@ -666,7 +673,12 @@ export function TestsPanel() {
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const requestRecording = useSetAtom(recordingStartRequestAtom);
   const { app } = useLoadApp(selectedAppId);
-  const { settings, updateSettings } = useSettings();
+  const {
+    settings,
+    updateSettings,
+    loading: settingsLoading,
+    refreshSettings,
+  } = useSettings();
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -732,6 +744,68 @@ export function TestsPanel() {
   const slowMo = settings?.testSlowMo ?? false;
 
   const devServerRunning = appUrl.appUrl !== null;
+  // A sandboxed run serves the app itself, on its own port, from its own copy —
+  // the user's preview is not involved, so requiring it would block the whole
+  // point of the feature. The fallback path (Docker/cloud runtime, or the
+  // opt-out) still runs Playwright against the preview and still needs it up.
+  // Recording is unaffected either way: it drives the live preview.
+  //
+  // While settings are still loading there is nothing to disclose yet:
+  // `usesSandboxedE2eTests` answers false for absent settings, which would
+  // flash the amber "Start the app to run tests." banner and a disabled Run
+  // button on every mount for a state that may not apply at all.
+  //
+  // Tri-state on purpose: `undefined` means settings haven't loaded, and that
+  // is neither a refusal nor a promise. `usesSandboxedE2eTests` answers false
+  // for absent settings, so reading it directly would flash the amber gate on
+  // every mount — and the Neon disclosure below has the opposite default, so
+  // reading `!disableSandboxedE2eTests` there would briefly promise sandboxing
+  // to a user who turned it off. One value, two explicit comparisons.
+  const sandboxAvailable = settings
+    ? usesSandboxedE2eTests(settings)
+    : undefined;
+  // A Neon app with no sandbox available cannot run tests at all: the main
+  // process refuses every such run rather than pointing Playwright at the
+  // user's real database. Disclosed here, before the click, because the refusal
+  // is otherwise only discoverable by pressing Run and reading the error — and
+  // the Settings hint doesn't cover the Docker/cloud case at all.
+  // Which remedy the refusal has, so the banner can offer it in one click
+  // instead of describing it. `null` when there is no refusal at all.
+  const neonRefusalRemedy =
+    sandboxAvailable === false && refusesUnsandboxedTestRun(app)
+      ? (settings?.runtimeMode2 ?? "host") !== "host"
+        ? ("runtime" as const)
+        : ("sandbox-setting" as const)
+      : null;
+  const neonSandboxRefusal =
+    neonRefusalRemedy === "runtime"
+      ? t("preview.testGate.neonRefusalRuntime", {
+          runtime: settings?.runtimeMode2,
+        })
+      : neonRefusalRemedy === "sandbox-setting"
+        ? t("preview.testGate.neonRefusalDisabled")
+        : null;
+  // Disabled while settings are still loading too. The banners stay gated on
+  // `false` so nothing amber flashes on mount, but leaving Run *clickable* in a
+  // state we can't evaluate sends the user into the main-process refusal — the
+  // discoverable-only-by-pressing-Run path this block exists to remove.
+  // What the amber "Start the app" banner keys off: an evaluated `false`, never
+  // the loading state. Nothing should flash on mount for a gate that may not
+  // apply once settings arrive.
+  const showDevServerGate = sandboxAvailable === false && !devServerRunning;
+  // Settled without settings — the query errored, or resolved to nothing. The
+  // gates above stay quiet for `undefined` so nothing amber flashes during the
+  // brief load, but that same silence would otherwise make a permanent failure
+  // indistinguishable from it: a greyed-out Run, greyed-out per-file and
+  // per-test buttons, and not a word about why. Per **Principle #4: Transparent
+  // Over Magical**, a control that refuses to act has to say what it is waiting
+  // for.
+  const settingsUnavailable =
+    sandboxAvailable === undefined && !settingsLoading;
+  const testRunBlocked =
+    neonSandboxRefusal !== null ||
+    sandboxAvailable === undefined ||
+    showDevServerGate;
   // Owns the run's whole lifecycle, teardown included. Gates every action that
   // must not interleave with it (Run, Record, Delete), because the per-app lock
   // is still held during `cleaning-up`.
@@ -745,7 +819,11 @@ export function TestsPanel() {
     (runState.phase === "cleaning-up" && !runState.wasStopped);
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
-  const isRestoringApp =
+  // Nothing about the user's app is restored any more: the run had its own
+  // sandbox copy and its own server, so cleanup is deleting that sandbox and
+  // the temporary database it was pointed at. The real `.env.local` and the
+  // preview were never touched.
+  const isRemovingTestDatabase =
     isCleaningUp && runState.isolation?.mode === "neon-branch";
 
   // With the experiment enabled, "headed" means visible in Dyad's preview
@@ -786,10 +864,16 @@ export function TestsPanel() {
   });
 
   const loadingSpecs = specsQuery.isLoading && specs.length === 0;
-  const showNeonRestartDisclosure =
-    specs.length > 0 &&
-    !!app?.neonProjectId &&
-    (settings?.runtimeMode2 ?? "host") === "host";
+  // Host runs get the sandbox: a throwaway copy of the app, its own server, and
+  // a temporary Neon branch that only that copy points at. Worth saying, since
+  // the alternative a user would assume is "my tests hit my real database" —
+  // but it must not promise the preview restart the old env-swap path did.
+  // Neon-only, using the same precedence the runner applies: an app carrying
+  // both provider ids takes the Supabase path, which creates no temporary
+  // database, so promising one here would be the kind of overstated safety copy
+  // this work set out to remove.
+  const showNeonSandboxDisclosure =
+    specs.length > 0 && sandboxAvailable === true && isNeonOnlyApp(app);
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it
@@ -902,6 +986,10 @@ export function TestsPanel() {
         testLine: line,
         startedAt,
         source: "panel",
+        // Read here, at the click, from the same helper the main process routes
+        // on. Reading it again while the run is in flight would let a Settings
+        // toggle relabel a run that already chose its path.
+        sandboxed: sandboxAvailable === true,
       });
 
       try {
@@ -953,6 +1041,9 @@ export function TestsPanel() {
       headed,
       parallel,
       slowMo,
+      // Settings resolve after mount, so without this the click keeps
+      // dispatching the sandbox expectation from before they loaded.
+      sandboxAvailable,
       runsInPreviewWebContentsView,
       setPreviewMode,
       setPreviewNativeViewAppId,
@@ -1492,8 +1583,8 @@ export function TestsPanel() {
             disabled={showStopping || isCleaningUp}
             aria-label={
               isCleaningUp
-                ? isRestoringApp
-                  ? "Restoring your app"
+                ? isRemovingTestDatabase
+                  ? "Removing the temporary test database"
                   : "Cleaning up test data"
                 : showStopping
                   ? "Stopping tests"
@@ -1512,9 +1603,7 @@ export function TestsPanel() {
               <Square size={14} />
             )}
             {isCleaningUp
-              ? isRestoringApp
-                ? "Restoring…"
-                : "Cleaning up…"
+              ? "Cleaning up…"
               : showStopping
                 ? "Stopping…"
                 : "Stop"}
@@ -1524,15 +1613,13 @@ export function TestsPanel() {
           specs.length > 0 && (
             <button
               onClick={() => runTests()}
-              disabled={!devServerRunning}
-              title={
-                "During database-isolated runs, other app operations may wait until the run finishes."
-              }
+              disabled={testRunBlocked}
+              title="During database-isolated runs, other app operations may wait until the run finishes."
               aria-label="Run all tests"
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                !devServerRunning && "opacity-40 cursor-not-allowed",
+                testRunBlocked && "opacity-40 cursor-not-allowed",
               )}
             >
               <Play size={14} />
@@ -1565,16 +1652,32 @@ export function TestsPanel() {
                   )}
                 >
                   {isCleaningUp
-                    ? // The Neon teardown restarts the dev server, so the
-                      // preview visibly reloads and the copy has to account for
-                      // it. The Supabase teardown only deletes the test user.
+                    ? // The Neon teardown deletes the throwaway branch on
+                      // Neon's side, which retries with backoff and is the
+                      // slowest case worth naming. Otherwise it's the local
+                      // sandbox — when this run took one — and, for Supabase,
+                      // the temporary test user.
                       runState.isolation?.mode === "neon-branch"
-                      ? "Restoring your database and preview… "
-                      : "Cleaning up the test data… "
+                      ? "Removing the temporary test database… "
+                      : runState.sandboxed
+                        ? "Cleaning up the test sandbox… "
+                        : "Cleaning up the test data… "
                     : showStopping
                       ? "Stopping the tests… "
                       : runState.phase === "setup"
-                        ? "Setting up testing… "
+                        ? // A sandboxed run copies the app and installs its
+                          // dependencies from scratch before a single test
+                          // executes. That is minutes on a large project, and
+                          // naming it here is the difference between a wait and
+                          // an apparent hang — the streamed detail is in the
+                          // output drawer, but the header is what the user
+                          // watches.
+                          // The run's OWN recorded expectation, not the current
+                          // setting: a toggle mid-run must not relabel a run
+                          // that already picked its path.
+                          runState.sandboxed
+                          ? "Setting up the test sandbox — installing dependencies can take a few minutes… "
+                          : "Setting up testing… "
                         : "Running… "}
                 </span>
               )}
@@ -1658,28 +1761,75 @@ export function TestsPanel() {
               </div>
             )}
 
-          {!isRunning && showNeonRestartDisclosure && (
+          {!isRunning && showNeonSandboxDisclosure && (
             <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
               <ShieldCheck size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">
-                Neon test runs restart the preview to switch to a temporary
-                database, then restart it again afterward.
+                Neon test runs use a copy of your app and a temporary database.
+                Your preview keeps running against your real one.
               </span>
             </div>
           )}
 
-          {/* Dev-server gate banner */}
-          {!devServerRunning && specs.length > 0 && (
+          {/* Settings never arrived. Rendered before the gates below because
+          none of them can be evaluated without settings, and this is the only
+          banner that explains the disabled Run button in that state. */}
+          {settingsUnavailable && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
-              <span className="flex-1">Start the app to run tests.</span>
+              <span className="flex-1">
+                {t("preview.testGate.settingsUnavailable")}
+              </span>
+              <button
+                onClick={() => void refreshSettings()}
+                className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+              >
+                {t("preview.testGate.retry")}
+              </button>
+            </div>
+          )}
+
+          {/* Neon refusal — no Start button, because starting the preview would
+          not make this run possible. */}
+          {neonSandboxRefusal && specs.length > 0 && (
+            <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span className="flex-1">{neonSandboxRefusal}</span>
+              {/* The disclosed remedy, one click away. Without this the user is
+              told to change a setting and left to find it — and for the
+              Docker/cloud case that setting is not even in this panel. */}
+              {neonRefusalRemedy === "sandbox-setting" ? (
+                <button
+                  onClick={() =>
+                    updateSettings({ disableSandboxedE2eTests: false })
+                  }
+                  className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+                >
+                  {t("preview.testGate.turnOnSandbox")}
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate({ to: "/settings" })}
+                  className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+                >
+                  {t("preview.testGate.openSettings")}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Dev-server gate banner — only when the run actually needs it. */}
+          {showDevServerGate && !neonSandboxRefusal && specs.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0" />
+              <span className="flex-1">{t("preview.testGate.startApp")}</span>
               <button
                 onClick={() =>
                   runAppLifecycleInBackground("start", runApp(selectedAppId))
                 }
                 className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
               >
-                Start
+                {t("preview.testGate.start")}
               </button>
             </div>
           )}
@@ -1694,10 +1844,10 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isRunning || !devServerRunning}
+                disabled={isRunning || testRunBlocked}
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-                  (isRunning || !devServerRunning) &&
+                  (isRunning || testRunBlocked) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -1807,7 +1957,7 @@ export function TestsPanel() {
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
                 result={runState.results[spec.file]}
-                disabled={isRunning || !devServerRunning}
+                disabled={isRunning || testRunBlocked}
                 deleteDisabled={isRunning || isDeleting}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}

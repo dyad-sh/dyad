@@ -211,6 +211,16 @@
     "security": "安全",
     "publish": "发布",
     "tests": "测试",
+    "testGate": {
+      "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",
+      "retry": "重试",
+      "startApp": "启动应用以运行测试。",
+      "start": "启动",
+      "neonRefusalRuntime": "此应用无法运行测试：隔离测试服务器尚不支持 {{runtime}} 运行时，且 Dyad 不会针对你的真实数据库运行 Neon 测试。请切换到 host 运行时以运行测试。",
+      "neonRefusalDisabled": "此应用无法运行测试：隔离测试服务器已在设置中关闭，且 Dyad 不会针对你的真实数据库运行 Neon 测试。请重新开启以运行测试。",
+      "turnOnSandbox": "开启",
+      "openSettings": "打开设置"
+    },
     "plan": "计划",
     "moreOptions": "更多选项",
     "rebuild": "重新构建",

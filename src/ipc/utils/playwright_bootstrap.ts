@@ -5,6 +5,10 @@ import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
 import {
+  findPackageManagerRoot,
+  workspaceMembershipFor,
+} from "@/ipc/services/isolated_package_install";
+import {
   PNPM_INSTALL_POLICY_ARGS,
   getPackageManagerCommandEnv,
 } from "./socket_firewall";
@@ -19,18 +23,69 @@ import { E2E_TEST_DIR, TEST_SPEC_GLOB } from "../types/tests";
 const logger = log.scope("playwright_bootstrap");
 
 /**
- * The command + args that add `@playwright/test` as a dev dependency using the
- * app's OWN package manager, detected from its lockfile. Matching the app's
- * package manager avoids dirtying a pnpm/yarn project with npm artifacts (a
- * stray `package-lock.json` and a divergent dependency tree vs. the dev server).
- * Defaults to npm when no lockfile is recognized.
+ * The Git top level containing `appPath`, or `appPath` when there is none.
+ *
+ * The boundary for the workspace-root walk below, and the same one
+ * `createGitOverlayWorkspace` derives from `git rev-parse --show-toplevel` —
+ * read from the filesystem here so bootstrap does not need a subprocess.
  */
-function playwrightInstallCommand(appPath: string): {
+function findRepoRoot(appPath: string): string {
+  let candidate = appPath;
+  for (;;) {
+    if (fs.existsSync(path.join(candidate, ".git"))) return candidate;
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return appPath;
+    candidate = parent;
+  }
+}
+
+/**
+ * The command + args that add `@playwright/test` as a dev dependency using the
+ * package manager that ACTUALLY installs this app.
+ *
+ * Resolved through the workspace root, not from the app directory alone. A
+ * pnpm workspace member has no lockfile of its own — the only `pnpm-lock.yaml`
+ * is at the root — so inspecting the app directory would fall through to npm,
+ * write a nested `package-lock.json` and a member `node_modules`, and leave the
+ * ROOT lockfile without the new dependency. The sandbox then resolves the same
+ * ancestor root, runs `pnpm install --frozen-lockfile`, and fails outright
+ * because the lockfile needs an update — so the app's very first sandboxed run
+ * would break deterministically.
+ *
+ * Matching the app's real package manager also avoids dirtying a pnpm/yarn
+ * project with npm artifacts and a dependency tree that diverges from the dev
+ * server's. Defaults to npm when no lockfile is recognized.
+ */
+async function playwrightInstallCommand(appPath: string): Promise<{
   command: string;
   args: string[];
-} {
-  const has = (file: string) => fs.existsSync(path.join(appPath, file));
-  if (has("pnpm-lock.yaml")) {
+  cwd: string;
+  /** Whether the add lands in a workspace root above the app. */
+  viaWorkspaceRoot: boolean;
+}> {
+  const installRoot = await findPackageManagerRoot(
+    appPath,
+    findRepoRoot(appPath),
+  );
+  const has = (directory: string, file: string) =>
+    fs.existsSync(path.join(directory, file));
+  const ownsLockfile =
+    has(appPath, "pnpm-lock.yaml") ||
+    has(appPath, "yarn.lock") ||
+    has(appPath, "package-lock.json");
+  // The app's own lockfile wins when it has one: that is the tree the dev
+  // server runs against, workspace membership or not.
+  const lockRoot = ownsLockfile ? appPath : installRoot;
+  const viaWorkspaceRoot = lockRoot !== appPath;
+  // A workspace that has never been installed has no lockfile at all, so the
+  // lockfile check below cannot tell pnpm from npm. MEMBERSHIP can: a root may
+  // carry both manifests, and npm has no way to resolve a member declared only
+  // in `pnpm-workspace.yaml`, so what matters is which manifest claims THIS
+  // app — not which ones the root happens to declare for other packages.
+  const membership = viaWorkspaceRoot
+    ? await workspaceMembershipFor(lockRoot, appPath)
+    : null;
+  if (has(lockRoot, "pnpm-lock.yaml") || membership === "pnpm") {
     return {
       command: "pnpm",
       args: [
@@ -39,22 +94,43 @@ function playwrightInstallCommand(appPath: string): {
         // Dyad can generate a pnpm-workspace.yaml (for install policy), which
         // makes pnpm treat the app as a workspace root and refuse a plain
         // `pnpm add` without this opt-in. Matches the add-dependency path.
-        "--ignore-workspace-root-check",
+        // Omitted for a member: pnpm run from a member directory adds to that
+        // member and updates the ROOT lockfile, which is the whole point here.
+        ...(viaWorkspaceRoot ? [] : ["--ignore-workspace-root-check"]),
         "--save-dev",
         "@playwright/test",
       ],
+      cwd: appPath,
+      viaWorkspaceRoot,
     };
   }
-  if (has("yarn.lock")) {
-    return { command: "yarn", args: ["add", "--dev", "@playwright/test"] };
+  if (has(lockRoot, "yarn.lock")) {
+    // Yarn resolves the workspace from the cwd upward and writes the root
+    // lockfile, so a member is handled by running in the member directory.
+    return {
+      command: "yarn",
+      args: ["add", "--dev", "@playwright/test"],
+      cwd: appPath,
+      viaWorkspaceRoot,
+    };
   }
   // npm (package-lock.json) or unknown — mirror the app runtime's npm install.
+  const useNpmWorkspaceFlag = membership === "npm";
   return {
     command: "npm",
     args: [
       "install",
       "--save-dev",
       "@playwright/test",
+      // npm, unlike pnpm and yarn, does not detect the workspace from the cwd:
+      // run inside a member it would create a nested lockfile and node_modules
+      // instead of updating the root. `-w <path>` from the root is the
+      // documented way to add a dependency to one member — but only when npm
+      // itself declares that member, so the flag is gated on the declaration
+      // rather than on this add merely happening above the app.
+      ...(useNpmWorkspaceFlag
+        ? ["-w", path.relative(lockRoot, appPath).split(path.sep).join("/")]
+        : []),
       // Match the app runtime's npm install (app_runtime_service): tolerate the
       // peer-dependency conflicts common in generated apps instead of failing
       // or prompting on ERESOLVE.
@@ -65,6 +141,11 @@ function playwrightInstallCommand(appPath: string): {
       "--no-fund",
       "--progress=false",
     ],
+    // Without the workspace flag npm has no idea the member exists, so running
+    // at the root would add the dependency to the WRONG package. Fall back to
+    // the app directory, which is what the pre-workspace behaviour did.
+    cwd: useNpmWorkspaceFlag ? lockRoot : appPath,
+    viaWorkspaceRoot: useNpmWorkspaceFlag,
   };
 }
 
@@ -382,10 +463,10 @@ export function buildPlaywrightConfig(channel: BrowserChannel | null): string {
     : `// Uses Playwright's bundled Chromium (downloaded on first run).`;
   return `import { defineConfig } from "@playwright/test";
 
-// ${DYAD_CONFIG_SENTINEL}. The dev server is started separately by Dyad's
-// preview, so we point baseURL at the already-running proxy URL (passed via
-// env) rather than using Playwright's \`webServer\` (which would double-start
-// the app).
+// ${DYAD_CONFIG_SENTINEL}. Dyad starts the server for the run itself — an
+// isolated run-scoped one when sandboxing is on, otherwise your normal preview
+// — so we point baseURL at whichever it selected (passed via env) rather than
+// using Playwright's \`webServer\` (which would double-start the app).
 // ${browserNote}
 export default defineConfig({
   testDir: "./${E2E_TEST_DIR}",
@@ -1145,6 +1226,25 @@ export function isPlaywrightInstalled(appPath: string): boolean {
 }
 
 /**
+ * Whether the Playwright runner can resolve `@playwright/test` from here, the
+ * way Node does: walking up through every parent `node_modules`.
+ *
+ * Deliberately NOT `isPlaywrightInstalled`. That one answers "should I install
+ * into this exact directory?", where a copy hoisted to a monorepo's workspace
+ * root is not the answer and a false negative costs a redundant install. This
+ * one answers "can the run start at all?", where the same false negative would
+ * refuse a sandbox `npx playwright` would have resolved fine.
+ */
+export function canResolvePlaywrightRunner(appPath: string): boolean {
+  try {
+    resolveNodeModulePackageJsonPathSync(appPath, ["@playwright", "test"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Marker written after a successful `playwright install chromium`. Lives inside
  * node_modules so it's gitignored and disappears if node_modules is wiped
  * (which would also drop the package, forcing a clean reinstall). The browser
@@ -1532,15 +1632,22 @@ export async function ensurePlaywrightBootstrap({
     );
   }
 
-  const packageInstalled = isPlaywrightInstalled(appPath);
+  const install = await playwrightInstallCommand(appPath);
+  // Which "installed?" question to ask depends on where the add lands. For a
+  // workspace member npm hoists to the root and leaves no member symlink, so
+  // the exact-directory check would answer false forever and re-run the add on
+  // every single test run.
+  const packageInstalled = install.viaWorkspaceRoot
+    ? canResolvePlaywrightRunner(appPath)
+    : isPlaywrightInstalled(appPath);
 
   if (!packageInstalled) {
     onOutput?.("Installing @playwright/test...\n");
-    const { command, args } = playwrightInstallCommand(appPath);
+    const { command, args } = install;
     const installDep = await spawnStreaming({
       command,
       args,
-      cwd: appPath,
+      cwd: install.cwd,
       signal,
       onOutput,
       // Disable Corepack's project spec so a stale `packageManager` pin can't

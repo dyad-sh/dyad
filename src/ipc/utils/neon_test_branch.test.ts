@@ -138,6 +138,88 @@ describe("createTempTestBranch", () => {
     });
   });
 
+  it("persists the cleanup-only marker before provisioning, when asked", async () => {
+    // The E2E sandbox never points the real app at this branch. Everything
+    // after this write — Neon Auth provisioning, the cookie secret, their
+    // retries — takes seconds, and a crash in that window would otherwise leave
+    // a RAW marker that `restoreAppFromTestBranch` reads as the recorder's env
+    // swap and "restores" by rewriting the user's real `.env.local`.
+    //
+    // An auth-enabled app, so provisioning actually runs, and the assertion
+    // lives INSIDE it: checking the marker after the call returns would pass
+    // just as happily if the write had come second.
+    mocks.ensureNeonAuth.mockImplementationOnce(async () => {
+      expect(mocks.set).toHaveBeenCalledWith({
+        neonTestBranchId: "dyad-cleanup-only:v1:test-new-branch-id",
+      });
+      return "https://auth.example";
+    });
+
+    await createTempTestBranch(
+      makeApp({ neonDevelopmentAuthCookieSecret: "dev-secret" }),
+      { cleanupOnly: true },
+    );
+
+    expect(mocks.ensureNeonAuth).toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalledWith({
+      neonTestBranchId: "test-new-branch-id",
+    });
+  });
+
+  it("refuses a cleanup-only run when a raw marker is still on the row", async () => {
+    // The raw marker means the user's own `.env.local` is still pointed at that
+    // branch. Deleting it and relabelling the row cleanup-only would leave the
+    // app configured against a branch that no longer exists, with the one
+    // record startup recovery uses to fix it overwritten.
+    //
+    // Refused rather than repaired here: the repair rewrites the live working
+    // tree, and this runs inside a run stage whose coordinator claims
+    // deliberately do not cover it. The caller performs the recovery under its
+    // own claim before the snapshot; this is the guard for when it did not.
+    await expect(
+      createTempTestBranch(makeApp({ neonTestBranchId: "leaked-branch-id" }), {
+        cleanupOnly: true,
+      }),
+    ).rejects.toThrow(/real database settings pointing at a previous session/i);
+
+    // Nothing touched: the row still names the leaked branch for the sweep.
+    expect(mocks.updateNeonEnvVars).not.toHaveBeenCalled();
+    expect(mocks.deleteProjectBranch).not.toHaveBeenCalled();
+    expect(mocks.createProjectBranch).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("still deletes a prior branch for the recorder's own run", async () => {
+    // The recorder path swaps the real env itself and snapshots it first, so a
+    // prior raw marker is its own to clean up and overwrite.
+    await createTempTestBranch(
+      makeApp({ neonTestBranchId: "leaked-branch-id" }),
+    );
+
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "leaked-branch-id",
+    );
+    expect(mocks.set).toHaveBeenCalledWith({
+      neonTestBranchId: "test-new-branch-id",
+    });
+  });
+
+  it("leaves a cleanup-only marker to the plain delete path", async () => {
+    // Nothing pointed the real app at that branch, so there is no env to put
+    // back — restoring one would rewrite a file this run never touched.
+    await createTempTestBranch(
+      makeApp({ neonTestBranchId: "dyad-cleanup-only:v1:leaked-branch-id" }),
+      { cleanupOnly: true },
+    );
+
+    expect(mocks.updateNeonEnvVars).not.toHaveBeenCalled();
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "leaked-branch-id",
+    );
+  });
+
   it("falls back to the development branch when there is no active branch", async () => {
     await createTempTestBranch(makeApp({ neonActiveBranchId: null }));
     expect(mocks.createProjectBranch).toHaveBeenCalledWith(
@@ -278,6 +360,18 @@ describe("deleteTempTestBranch", () => {
     expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 
+  it("reports success when only the marker write fails after the delete", async () => {
+    // The branch IS gone, which is what this reports. The stale marker is
+    // re-read by the next sweep, whose 404 clears it — so calling this a failed
+    // cleanup would warn the user about a leak that doesn't exist.
+    mocks.where.mockRejectedValue(new Error("database is locked"));
+
+    await expect(
+      deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" })),
+    ).resolves.toBe(true);
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");
+  });
+
   it("strips a cleanup-only marker before calling Neon", async () => {
     await deleteTempTestBranch(
       makeApp({ neonTestBranchId: "dyad-cleanup-only:v1:test-br" }),
@@ -375,7 +469,9 @@ describe("markAndDeleteTempTestBranch", () => {
     expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");
   });
 
-  it("does not throw when the remote delete fails", async () => {
+  it("reports the failure without throwing when the remote delete fails", async () => {
+    // Callers promise the user "Dyad will retry remote cleanup on next
+    // startup", so they need the verdict — but a teardown must never throw.
     mocks.deleteProjectBranch.mockRejectedValueOnce({
       response: { status: 500 },
     });
@@ -384,7 +480,16 @@ describe("markAndDeleteTempTestBranch", () => {
         makeApp({ neonTestBranchId: "test-br" }),
         "test-br",
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
+  });
+
+  it("reports success when the branch is gone", async () => {
+    await expect(
+      markAndDeleteTempTestBranch(
+        makeApp({ neonTestBranchId: "test-br" }),
+        "test-br",
+      ),
+    ).resolves.toBe(true);
   });
 });
 

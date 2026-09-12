@@ -49,6 +49,8 @@ import { apps } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { reconcileOrphanTestBranches } from "./ipc/utils/neon_test_branch";
 import { reconcileOrphanTestUsers } from "./ipc/utils/supabase_test_user";
+import { reconcileOrphanE2eTestWorkspaces } from "./ipc/services/e2e_test_workspace";
+import { stopAllAppTestsSync } from "./ipc/handlers/tests_handlers";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
 import {
@@ -467,6 +469,21 @@ export async function onReady() {
   // must not block startup.
   void reconcileOrphanTestBranches();
   void reconcileOrphanTestUsers();
+  // Also prunes retained test artifacts whose app no longer exists — nothing
+  // else ever removes them, and the user has no surface that shows they exist.
+  // Read when the prune is about to run, not now: the sandbox sweep it happens
+  // after can take a long time, and an app created in the meantime must not
+  // have its first run's artifacts deleted as orphans.
+  void reconcileOrphanE2eTestWorkspaces({
+    refreshKnownAppIds: async () =>
+      new Set(
+        (await db.query.apps.findMany({ columns: { id: true } })).map(
+          (row) => row.id,
+        ),
+      ),
+  }).catch((error) =>
+    logger.error("Failed to reconcile abandoned E2E test workspaces", error),
+  );
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
@@ -1695,6 +1712,7 @@ app.on("will-quit", () => {
 
   // Synchronously send kill signals to all running apps (fire-and-forget).
   // We cannot use async/await here because Electron won't wait for it.
+  stopAllAppTestsSync();
   stopAllAppsSync();
 
   // Stop performance monitoring and capture final metrics

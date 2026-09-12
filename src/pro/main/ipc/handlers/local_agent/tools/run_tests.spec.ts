@@ -639,39 +639,54 @@ describe("runTestsTool", () => {
     expect(emittedXml(ctx)).toContain("Invalid grep pattern");
   });
 
-  it("refuses grep patterns containing percent signs on Windows", async () => {
+  it("accepts grep patterns containing percent signs on Windows", async () => {
+    // The spawn uses `node.exe` with `shell: false` (no cmd.exe), so `%` in a
+    // grep pattern is plain argv to Playwright. The old `npx.cmd` → cmd.exe
+    // path that justified rejecting `%` is gone; a regression test in
+    // tests_handlers.preview.test.ts pins `command: "node.exe"` on win32.
     const platformSpy = vi
       .spyOn(process, "platform", "get")
       .mockReturnValue("win32");
+    caseLister.mockResolvedValue([{ title: "100% complete", line: 3 }]);
+    runner.mockResolvedValue(passedResult);
     try {
       const ctx = makeCtx();
       const out = await runTestsTool.execute(
         { testFile: "e2e-tests/a.spec.ts", grep: "100% complete" },
         ctx,
       );
-      expect(runner).not.toHaveBeenCalled();
-      expect(out).toContain("cmd.exe expands `%` characters");
-      expect(out).toContain("did NOT count");
-      expect(emittedXml(ctx)).toContain("Unsupported Windows grep pattern");
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(runner.mock.calls[0][0]).toMatchObject({
+        testFile: "e2e-tests/a.spec.ts",
+        grep: "100% complete",
+      });
+      expect(out).toContain("matching /100% complete/ passed");
+      expect(out).not.toContain("cmd.exe");
+      expect(out).not.toContain("did NOT count");
     } finally {
       platformSpy.mockRestore();
     }
   });
 
-  it("refuses grep patterns containing newlines on Windows", async () => {
+  it("accepts grep patterns containing newlines on Windows", async () => {
+    // Same rationale as `%`: `node.exe` (shell: false) takes the value as a
+    // single argv element, so CR/LF no longer act as cmd.exe separators.
     const platformSpy = vi
       .spyOn(process, "platform", "get")
       .mockReturnValue("win32");
+    runner.mockResolvedValue(passedResult);
     try {
       const ctx = makeCtx();
       const out = await runTestsTool.execute(
         { testFile: "e2e-tests/a.spec.ts", grep: "first\r\nsecond" },
         ctx,
       );
-      expect(runner).not.toHaveBeenCalled();
-      expect(out).toContain("cmd.exe treats them as command separators");
-      expect(out).toContain("did NOT count");
-      expect(emittedXml(ctx)).toContain("Unsupported Windows grep pattern");
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(runner.mock.calls[0][0]).toMatchObject({
+        grep: "first\r\nsecond",
+      });
+      expect(out).not.toContain("cmd.exe");
+      expect(out).not.toContain("did NOT count");
     } finally {
       platformSpy.mockRestore();
     }

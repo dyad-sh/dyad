@@ -191,6 +191,38 @@ describe("preview runs", () => {
     expect(invocation.args).toContain(titleGrep);
   });
 
+  it("pins node.exe on win32 so grep never routes through cmd.exe", () => {
+    // Regression guard for the agent's run_tests validateGrep, which dropped
+    // its Windows `%`/newline preflight guards because the spawn no longer
+    // touches cmd.exe. That is safe only while `command` stays `node.exe`: a
+    // bare `node` is rewritten to `node.cmd` by resolveWindowsExecutableName,
+    // which routes grep back through `cmd.exe /d /s /c` and makes
+    // quoteWindowsCmdArg throw on `%`/CR/LF mid-run. Fail here, not there.
+    const winInvocation = buildPlaywrightCliInvocation(
+      "C:\\app\\node_modules\\@playwright\\test\\cli.js",
+      ["test", "-g", "shows 50% off"],
+      "win32",
+    );
+    expect(winInvocation.command).toBe("node.exe");
+    // Must NOT be wrapped in a cmd.exe /d /s /c invocation.
+    expect(
+      buildWindowsCommandInvocation(
+        winInvocation.command,
+        winInvocation.args,
+        "win32",
+        "cmd.exe",
+      ),
+    ).toEqual(winInvocation);
+
+    // Non-Windows platforms use bare `node` (no `.cmd` shim there).
+    const nixInvocation = buildPlaywrightCliInvocation(
+      "/app/node_modules/@playwright/test/cli.js",
+      ["test", "-g", "shows 50% off"],
+      "darwin",
+    );
+    expect(nixInvocation.command).toBe("node");
+  });
+
   it("hands the fixture shim the CDP endpoint", async () => {
     await runAppTestsCore({ appId: 1, previewCdpEndpoint: CDP_ENDPOINT });
 

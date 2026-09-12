@@ -137,17 +137,13 @@ async function validateGrep(
   testFile: string,
   grep: string,
 ): Promise<{ ok: true; targetKey: string | null } | { error: string }> {
-  if (process.platform === "win32" && grep.includes("%")) {
-    const body = `\`${grep}\` can't be used as a grep pattern on Windows because cmd.exe expands \`%\` characters. I did NOT start a run, and this did NOT count as a fix attempt.\n\nUse a pattern without \`%\`, or omit \`grep\` to run the whole file.`;
-    completeWarning(ctx, "Unsupported Windows grep pattern", body);
-    return { error: body };
-  }
-  if (process.platform === "win32" && /[\r\n]/.test(grep)) {
-    const body = `Newline characters can't be used in a grep pattern on Windows because cmd.exe treats them as command separators. I did NOT start a run, and this did NOT count as a fix attempt.\n\nUse a single-line pattern, or omit \`grep\` to run the whole file.`;
-    completeWarning(ctx, "Unsupported Windows grep pattern", body);
-    return { error: body };
-  }
-
+  // The Playwright spawn uses `node.exe` with `shell: false` (see
+  // buildPlaywrightCliInvocation in tests_handlers.ts), so `grep` reaches
+  // Playwright as a direct argv element — no cmd.exe `"%VAR%"` expansion or
+  // CR/LF command separators. Earlier Windows guards that rejected `%` and
+  // newlines were written for the old `npx.cmd` → cmd.exe path and are no
+  // longer correct; tests_handlers.preview.test.ts pins the `node.exe`
+  // invariant so a change back fails loudly.
   let _regex: RegExp;
   try {
     _regex = new RegExp(grep);

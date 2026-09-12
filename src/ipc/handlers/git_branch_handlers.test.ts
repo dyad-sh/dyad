@@ -118,13 +118,16 @@ vi.mock("@/main/settings", () => ({
 
 import {
   handleDeleteBranch,
+  handleFetchFromGithub,
   registerGithubBranchHandlers,
 } from "@/ipc/handlers/git_branch_handlers";
 import {
+  gitFetch,
   gitListBranches,
   gitListRemoteBranches,
   gitDeleteBranch,
 } from "@/ipc/utils/git_utils";
+import { readSettings } from "@/main/settings";
 import { db } from "@/db";
 import { gitContracts, gitEvents } from "@/ipc/types/github";
 import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
@@ -496,5 +499,26 @@ describe("handleDeleteBranch", () => {
     await expect(
       handleDeleteBranch(mockEvent, { appId: 999, branch: "feature" }),
     ).rejects.toThrow("App not found");
+  });
+});
+
+describe("handleFetchFromGithub", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(mockApp as any);
+    vi.mocked(readSettings).mockReturnValue({
+      githubAccessToken: { value: "token" },
+    } as any);
+  });
+
+  it("prunes so branches deleted on GitHub leave the branch list", async () => {
+    await handleFetchFromGithub(mockEvent, { appId: 1 });
+
+    expect(gitFetch).toHaveBeenCalledWith({
+      path: "/mock/apps/test-app",
+      remote: "origin",
+      accessToken: "token",
+      prune: true,
+    });
   });
 });

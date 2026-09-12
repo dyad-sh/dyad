@@ -15,6 +15,8 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { ipc } from "@/ipc/types";
 import { useSystemPlatform } from "@/hooks/useSystemPlatform";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { useClaudeCodeUsageSummary } from "@/hooks/useClaudeCodeStatus";
+import { formatUsd } from "@/shared/claude_code_pricing";
 import type { UserBudgetInfo } from "@/ipc/types";
 import {
   Tooltip,
@@ -288,11 +290,31 @@ export function AICreditStatus({
             remaining
           </p>
           {resetDate && <p className="opacity-80">Resets on {resetDate}</p>}
+          <ClaudeCodeUsageLine />
           <p className="opacity-60">
             Note: credit status may take a moment to update.
           </p>
         </div>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * Subscription-backed (Claude Code) usage inside the credit tooltip: the
+ * pricing rule and the estimated Dyad charge so far, alongside Pro credits.
+ */
+function ClaudeCodeUsageLine() {
+  const { summary } = useClaudeCodeUsageSummary({ limit: 1 });
+  if (!summary || summary.events.length === 0) {
+    return null;
+  }
+  const { totals } = summary;
+  return (
+    <p className="opacity-80" data-testid="claude-code-usage-line">
+      Claude Code usage: est. {formatUsd(totals.estimatedDyadChargeUsd)} Dyad
+      charge ({Math.round(summary.dyadChargeRatio * 100)}% of API list price
+      {totals.pendingCount > 0 ? `, ${totals.pendingCount} pending` : ""})
+    </p>
   );
 }

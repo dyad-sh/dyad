@@ -549,6 +549,11 @@ const BaseUserSettingsFields = {
   // it has always had.
   enableOwnServerDeployment: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
+  // Claude Code subscription backend: the user acknowledged that Claude
+  // subscription usage and a separate Dyad charge both apply.
+  claudeCodeChargeAcknowledged: z.boolean().optional(),
+  // Optional explicit path to the official `claude` CLI executable.
+  claudeCodeExecutablePath: z.string().optional().nullable(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

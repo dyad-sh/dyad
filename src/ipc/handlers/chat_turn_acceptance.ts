@@ -12,6 +12,10 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { ChatMode, ModelSelection, StoredChatMode } from "@/lib/schemas";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
+import {
+  getBackendForModel,
+  type ChatExecutionBackend,
+} from "@/shared/chat_backend";
 
 type ChatTurnDatabase = Pick<
   BetterSQLite3Database<typeof schema>,
@@ -65,6 +69,12 @@ export interface AcceptChatTurnInput {
   storedChatMode: StoredChatMode | null;
   selectedChatMode: ChatMode;
   selectedModel: ModelSelection;
+  /**
+   * Execution backend for this turn. Latched onto the chat (when still
+   * unbound) in the same transaction as the mode/model latch. Defaults to
+   * the backend implied by `selectedModel`.
+   */
+  executionBackend?: ChatExecutionBackend;
   content: string;
   userInputRequestId?: string;
   chatTurnIntentId?: string;
@@ -76,6 +86,7 @@ export interface AcceptedChatTurn {
   userMessageId: number | null;
   authoritativeChatMode: StoredChatMode | null;
   authoritativeModel: ModelSelection | null;
+  authoritativeBackend: ChatExecutionBackend | null;
 }
 
 export function acceptChatTurn(
@@ -83,6 +94,8 @@ export function acceptChatTurn(
   input: AcceptChatTurnInput,
 ): AcceptedChatTurn {
   const selectedModel = input.selectedModel;
+  const executionBackend =
+    input.executionBackend ?? getBackendForModel(selectedModel);
   if (input.chatTurnIntent) {
     ensureIntentRecord(input.chatTurnIntent);
   }
@@ -94,6 +107,7 @@ export function acceptChatTurn(
       userMessageId: null,
       authoritativeChatMode: null,
       authoritativeModel: null,
+      authoritativeBackend: null,
     };
   }
   const accepted = database.transaction((tx) => {
@@ -159,11 +173,16 @@ export function acceptChatTurn(
         .set({ modelSelection: selectedModel })
         .where(and(eq(chats.id, input.chatId), isNull(chats.modelSelection)))
         .run();
+      tx.update(chats)
+        .set({ executionBackend })
+        .where(and(eq(chats.id, input.chatId), isNull(chats.executionBackend)))
+        .run();
       return {
         userMessageId: null,
         acceptedMessageId,
         authoritativeChatMode: null,
         authoritativeModel: null,
+        authoritativeBackend: null,
       };
     }
 
@@ -175,11 +194,16 @@ export function acceptChatTurn(
       .set({ chatMode: input.selectedChatMode })
       .where(and(eq(chats.id, input.chatId), isNull(chats.chatMode)))
       .run();
+    tx.update(chats)
+      .set({ executionBackend })
+      .where(and(eq(chats.id, input.chatId), isNull(chats.executionBackend)))
+      .run();
 
     const winningChat = tx
       .select({
         chatMode: chats.chatMode,
         modelSelection: chats.modelSelection,
+        executionBackend: chats.executionBackend,
       })
       .from(chats)
       .where(eq(chats.id, input.chatId))
@@ -201,6 +225,7 @@ export function acceptChatTurn(
       acceptedMessageId,
       authoritativeChatMode: winningChat.chatMode,
       authoritativeModel: winningChat.modelSelection,
+      authoritativeBackend: winningChat.executionBackend ?? executionBackend,
     };
   });
   if (input.chatTurnIntentId) {

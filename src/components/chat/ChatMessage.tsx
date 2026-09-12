@@ -55,6 +55,7 @@ import {
 } from "./messageApprovalStatus";
 import { ChatMessageAnnotationLayer } from "./ChatMessageAnnotationLayer";
 import { isChatMessageAnnotatable } from "./chatAnnotationEligibility";
+import { formatAssistantModelAttribution } from "@/shared/chat_backend";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -143,11 +144,19 @@ const ChatMessage = ({
   const visibleApprovalState = getVisibleMessageApprovalState(
     message.approvalState,
   );
+  // Persisted per message so historical footers stay accurate after the
+  // chat's selection changes; subscription turns read "Claude Code (model)".
+  const modelAttribution =
+    message.role === "assistant"
+      ? formatAssistantModelAttribution(message)
+      : null;
   const showMessageFooter = shouldShowMessageFooter({
     hasAssistantText,
     isStreaming,
     hasHistoricalAssistantModel:
-      message.role === "assistant" && !isLastMessage && Boolean(message.model),
+      message.role === "assistant" &&
+      !isLastMessage &&
+      modelAttribution !== null,
     visibleApprovalState,
   });
   //handle copy chat
@@ -419,10 +428,13 @@ const ChatMessage = ({
                       <span>Rejected</span>
                     </div>
                   )}
-                  {message.role === "assistant" && message.model && (
-                    <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
+                  {message.role === "assistant" && modelAttribution && (
+                    <div
+                      className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto"
+                      data-testid="message-model-attribution"
+                    >
                       <Bot className="h-4 w-4 flex-shrink-0" />
-                      <span>{message.model}</span>
+                      <span>{modelAttribution}</span>
                     </div>
                   )}
                 </div>

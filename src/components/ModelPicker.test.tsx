@@ -16,6 +16,32 @@ const mocks = vi.hoisted(() => ({
   setChatSelection: vi.fn(),
   updateSettings: vi.fn(),
   updateChat: vi.fn(),
+  createChat: vi.fn(),
+  showError: vi.fn(),
+  claudeCodeRefresh: vi.fn(),
+  claudeCodeAcknowledge: vi.fn(),
+  claudeCodeLoading: false,
+  claudeCodeStatus: null as null | {
+    installed: boolean;
+    executablePath: string | null;
+    version: string | null;
+    versionSupported: boolean;
+    minimumVersion: string;
+    testedVersion: string;
+    auth: {
+      state: "authenticated" | "unauthenticated" | "unknown";
+      method: string | null;
+      subscriptionType: string | null;
+      email: string | null;
+      detail: string | null;
+    };
+    chargeAcknowledged: boolean;
+    billingReady: boolean;
+    billingBlockedReason: string | null;
+    setupGuidance: string | null;
+    ready: boolean;
+    models: Array<{ name: string; displayName: string; description: string }>;
+  },
   navigate: vi.fn(),
   posthogCapture: vi.fn(),
   openExternalUrl: vi.fn(),
@@ -34,12 +60,14 @@ const mocks = vi.hoisted(() => ({
   chatLoading: false,
   chat: null as null | {
     id: number;
+    appId?: number;
     messages: Array<{ id: number }>;
     modelSelection?: {
       provider: string;
       name: string;
       effortLevel: string;
     };
+    executionBackend?: "dyad" | "claude-code" | null;
   },
   pathname: "/",
   search: {} as { id?: number },
@@ -150,12 +178,112 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
   ipc: {
     chat: {
       updateChat: mocks.updateChat,
+      createChat: mocks.createChat,
     },
     system: {
       openExternalUrl: mocks.openExternalUrl,
     },
   },
 }));
+
+vi.mock("@/lib/toast", () => ({ showError: mocks.showError }));
+
+vi.mock("@/hooks/useClaudeCodeStatus", () => ({
+  useClaudeCodeStatus: () => ({
+    status: mocks.claudeCodeStatus,
+    isLoading: mocks.claudeCodeLoading,
+    error: null,
+    refresh: mocks.claudeCodeRefresh,
+    isRefreshing: false,
+    acknowledgeCharge: mocks.claudeCodeAcknowledge,
+  }),
+  useClaudeCodeUsageSummary: () => ({
+    summary: null,
+    isLoading: false,
+    error: null,
+    retryReports: vi.fn(),
+    isRetrying: false,
+    refetch: vi.fn(),
+  }),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: ({
+    open,
+    children,
+  }: {
+    open: boolean;
+    children: React.ReactNode;
+  }) => (open ? <div>{children}</div> : null),
+  AlertDialogContent: ({
+    children,
+    ...props
+  }: {
+    children: React.ReactNode;
+  }) => <div {...props}>{children}</div>,
+  AlertDialogHeader: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  AlertDialogTitle: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  AlertDialogDescription: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  AlertDialogFooter: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  AlertDialogCancel: ({
+    children,
+    ...props
+  }: {
+    children: React.ReactNode;
+  }) => <button {...props}>{children}</button>,
+  AlertDialogAction: ({
+    children,
+    ...props
+  }: {
+    children: React.ReactNode;
+  }) => <button {...props}>{children}</button>,
+}));
+
+function readyClaudeCodeStatus(
+  overrides: Partial<NonNullable<typeof mocks.claudeCodeStatus>> = {},
+): NonNullable<typeof mocks.claudeCodeStatus> {
+  return {
+    installed: true,
+    executablePath: "/usr/local/bin/claude",
+    version: "2.1.260",
+    versionSupported: true,
+    minimumVersion: "2.0.0",
+    testedVersion: "2.1.260",
+    auth: {
+      state: "authenticated",
+      method: "claude.ai",
+      subscriptionType: "max",
+      email: null,
+      detail: null,
+    },
+    chargeAcknowledged: true,
+    billingReady: true,
+    billingBlockedReason: null,
+    setupGuidance: null,
+    ready: true,
+    models: [
+      {
+        name: "opus",
+        displayName: "Claude Opus (latest)",
+        description: "Most capable",
+      },
+      {
+        name: "sonnet",
+        displayName: "Claude Sonnet (latest)",
+        description: "Fast",
+      },
+    ],
+    ...overrides,
+  };
+}
 
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
@@ -512,6 +640,15 @@ describe("ModelPicker", () => {
     mocks.updateSettings.mockResolvedValue(mocks.settings);
     mocks.updateChat.mockReset();
     mocks.updateChat.mockResolvedValue(undefined);
+    mocks.createChat.mockReset();
+    mocks.createChat.mockResolvedValue(99);
+    mocks.showError.mockReset();
+    mocks.claudeCodeRefresh.mockReset();
+    mocks.claudeCodeRefresh.mockResolvedValue(undefined);
+    mocks.claudeCodeAcknowledge.mockReset();
+    mocks.claudeCodeAcknowledge.mockResolvedValue(undefined);
+    mocks.claudeCodeLoading = false;
+    mocks.claudeCodeStatus = readyClaudeCodeStatus();
     mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openExternalUrl.mockReset();
@@ -601,14 +738,280 @@ describe("ModelPicker", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("keeps All models as the only catalog entry before quick choices", () => {
+  it("groups the root menu into Subscription, Pro credits, and API key sections", () => {
     render(<ModelPicker />);
 
+    const follows = (before: Element, after: Element) =>
+      Boolean(
+        before.compareDocumentPosition(after) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
     const allModels = screen.getByText("All models").closest("button")!;
     expect(screen.queryByText("Local models")).toBeNull();
+    const subscription = screen.getByTestId("section-subscription");
+    const claudeCode = screen.getByTestId("claude-code-submenu-trigger");
+    const proCredits = screen.getByTestId("section-pro-credits");
+    const apiKey = screen.getByTestId("section-api-key");
+    const autoRow = document.querySelector(
+      '[data-model-provider="auto"][data-model-name="auto"]',
+    )!;
+    expect(follows(subscription, claudeCode)).toBe(true);
+    expect(follows(claudeCode, proCredits)).toBe(true);
+    expect(follows(proCredits, allModels)).toBe(true);
+    expect(follows(allModels, autoRow)).toBe(true);
+    expect(follows(autoRow, apiKey)).toBe(true);
+    // The Claude Code row discloses both charges up front.
+    expect(claudeCode.textContent).toContain("separate Dyad charge");
+    expect(screen.getByTestId("claude-code-status-pill").textContent).toBe(
+      "Connected",
+    );
+  });
+
+  it("lists only configured providers under API key", () => {
+    mocks.settings.providerSettings.openrouter.apiKey.value = "sk-or";
+    render(<ModelPicker />);
+
+    const apiKey = screen.getByTestId("section-api-key");
+    const openrouter = document.querySelector(
+      '[data-provider-id="openrouter"]',
+    );
+    expect(openrouter).not.toBeNull();
     expect(
-      allModels.parentElement?.nextElementSibling?.getAttribute("data-slot"),
-    ).toBe("dropdown-menu-separator");
+      Boolean(
+        apiKey.compareDocumentPosition(openrouter!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(document.querySelector('[data-provider-id="openai"]')).toBeNull();
+    expect(screen.queryByTestId("api-key-add-provider")).toBeNull();
+  });
+
+  it("offers to add an API key when no provider key is configured", () => {
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByTestId("api-key-add-provider"));
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/settings" });
+  });
+
+  it("shows Claude Code setup guidance and disables its models until ready", () => {
+    mocks.renderSubContent = true;
+    mocks.claudeCodeStatus = readyClaudeCodeStatus({
+      installed: false,
+      executablePath: null,
+      version: null,
+      versionSupported: false,
+      auth: {
+        state: "unknown",
+        method: null,
+        subscriptionType: null,
+        email: null,
+        detail: null,
+      },
+      setupGuidance: "Install Claude Code, then sign in.",
+      ready: false,
+    });
+
+    render(<ModelPicker />);
+
+    expect(screen.getByTestId("claude-code-status-pill").textContent).toBe(
+      "Not installed",
+    );
+    expect(
+      screen.getByTestId("claude-code-setup-guidance").textContent,
+    ).toContain("Install Claude Code, then sign in.");
+    const opusRow = document.querySelector(
+      '[data-model-provider="claude-code"][data-model-name="opus"]',
+    ) as HTMLButtonElement;
+    expect(opusRow.getAttribute("data-locked")).toBe("true");
+    fireEvent.click(opusRow);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("reports the exact blocker when the CLI is installed but not signed in", () => {
+    mocks.claudeCodeStatus = readyClaudeCodeStatus({
+      auth: {
+        state: "unauthenticated",
+        method: null,
+        subscriptionType: null,
+        email: null,
+        detail: null,
+      },
+      ready: false,
+    });
+    render(<ModelPicker />);
+    expect(screen.getByTestId("claude-code-status-pill").textContent).toBe(
+      "Sign in required",
+    );
+  });
+
+  it("explains the separate Dyad charge before the first subscription selection", async () => {
+    mocks.renderSubContent = true;
+    mocks.claudeCodeStatus = readyClaudeCodeStatus({
+      chargeAcknowledged: false,
+    });
+
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Claude Opus (latest)"));
+
+    expect(
+      screen.getByText("Using your Claude Code subscription in Dyad"),
+    ).toBeTruthy();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("I understand, continue"));
+    await waitFor(() => {
+      expect(mocks.claudeCodeAcknowledge).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selectedModel: { provider: "claude-code", name: "opus" },
+        }),
+      );
+    });
+  });
+
+  it("remembers the Claude Code selection for new chats", async () => {
+    mocks.renderSubContent = true;
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("Claude Sonnet (latest)"));
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selectedModel: { provider: "claude-code", name: "sonnet" },
+          recentModels: [{ provider: "claude-code", name: "sonnet" }],
+        }),
+      );
+    });
+    expect(screen.queryByTestId("backend-switch-dialog")).toBeNull();
+  });
+
+  it("requires a new chat before moving an established Dyad chat to Claude Code", async () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      appId: 7,
+      messages: [{ id: 1 }],
+      modelSelection: { provider: "auto", name: "auto", effortLevel: "medium" },
+      executionBackend: "dyad",
+    };
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Claude Opus (latest)"));
+
+    const dialog = screen.getByTestId("backend-switch-dialog");
+    expect(dialog.textContent).toContain(
+      "Switching backends requires a new chat. Your current chat will stay unchanged.",
+    );
+    expect(mocks.setChatSelection).not.toHaveBeenCalled();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("backend-switch-cancel"));
+    expect(mocks.createChat).not.toHaveBeenCalled();
+    expect(mocks.setChatSelection).not.toHaveBeenCalled();
+  });
+
+  it("starts a new chat in the same app with the chosen backend and model", async () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      appId: 7,
+      messages: [{ id: 1 }],
+      modelSelection: { provider: "auto", name: "auto", effortLevel: "medium" },
+      executionBackend: "dyad",
+    };
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByText("Claude Opus (latest)"));
+    fireEvent.click(screen.getByTestId("backend-switch-start-new-chat"));
+
+    await waitFor(() => {
+      expect(mocks.createChat).toHaveBeenCalledWith({ appId: 7 });
+    });
+    expect(mocks.updateChat).toHaveBeenCalledWith({
+      chatId: 99,
+      modelSelection: {
+        provider: "claude-code",
+        name: "opus",
+        effortLevel: "high",
+      },
+      executionBackend: "claude-code",
+    });
+    expect(mocks.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedModel: { provider: "claude-code", name: "opus" },
+      }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/chat",
+      search: { id: 99 },
+    });
+    // The original chat is left untouched.
+    expect(mocks.setChatSelection).not.toHaveBeenCalled();
+  });
+
+  it("changes the model inside the Claude Code backend without a new chat", async () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      appId: 7,
+      messages: [{ id: 1 }],
+      modelSelection: {
+        provider: "claude-code",
+        name: "opus",
+        effortLevel: "high",
+      },
+      executionBackend: "claude-code",
+    };
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+    expect(screen.getByTestId("model-picker").textContent).toContain(
+      "Claude Opus (latest)",
+    );
+    fireEvent.click(screen.getByText("Claude Sonnet (latest)"));
+
+    await waitFor(() => {
+      expect(mocks.setChatSelection).toHaveBeenCalledWith({
+        modelSelection: {
+          provider: "claude-code",
+          name: "sonnet",
+          effortLevel: "high",
+        },
+      });
+    });
+    expect(screen.queryByTestId("backend-switch-dialog")).toBeNull();
+    expect(mocks.createChat).not.toHaveBeenCalled();
+  });
+
+  it("requires a new chat before moving a Claude Code chat back to Dyad", () => {
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      appId: 7,
+      messages: [{ id: 1 }],
+      modelSelection: {
+        provider: "claude-code",
+        name: "opus",
+        effortLevel: "high",
+      },
+      executionBackend: "claude-code",
+    };
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+    fireEvent.click(screen.getAllByText("GPT 5")[0]);
+
+    expect(screen.getByTestId("backend-switch-dialog")).toBeTruthy();
+    expect(mocks.setChatSelection).not.toHaveBeenCalled();
   });
 
   it("shows up to five persisted specific models in a Recent section", () => {
@@ -1096,7 +1499,11 @@ describe("ModelPicker", () => {
       gpt5Row.querySelector("[data-effort-level]")?.getAttribute("title"),
     ).toBeNull();
     fireEvent.click(gpt5Row.querySelector("[data-effort-chevron]")!);
-    fireEvent.click(screen.getAllByText("Xhigh")[0]);
+    fireEvent.click(
+      within(screen.getByTestId("more-models-submenu")).getAllByText(
+        "Xhigh",
+      )[0],
+    );
 
     await waitFor(() => {
       expect(mocks.updateSettings).toHaveBeenCalledWith({
@@ -1185,7 +1592,11 @@ describe("ModelPicker", () => {
     mocks.renderSubContent = true;
 
     render(<ModelPicker />);
-    fireEvent.click(screen.getAllByText("Xhigh")[0]);
+    fireEvent.click(
+      within(screen.getByTestId("more-models-submenu")).getAllByText(
+        "Xhigh",
+      )[0],
+    );
 
     await waitFor(() => {
       expect(mocks.setChatSelection).toHaveBeenCalledWith({
@@ -1274,7 +1685,9 @@ describe("ModelPicker", () => {
         ?.querySelector("[data-effort-chevron]"),
     ).toBeNull();
     expect(
-      screen.getByText("Claude Sonnet 4.5").closest("button")?.dataset.locked,
+      within(screen.getByTestId("more-models-submenu"))
+        .getByText("Claude Sonnet 4.5")
+        .closest("button")?.dataset.locked,
     ).toBeUndefined();
     expect(
       document.querySelector<HTMLElement>(
@@ -1349,7 +1762,11 @@ describe("ModelPicker", () => {
 
     render(<ModelPicker />);
 
-    fireEvent.click(screen.getByText("Claude Sonnet 4.5").closest("button")!);
+    fireEvent.click(
+      within(screen.getByTestId("more-models-submenu"))
+        .getByText("Claude Sonnet 4.5")
+        .closest("button")!,
+    );
 
     expect(mocks.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({

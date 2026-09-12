@@ -13,6 +13,11 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
 import { getEnvVar } from "@/ipc/utils/read_env";
+import {
+  BACKEND_SWITCH_REQUIRES_NEW_CHAT_MESSAGE,
+  getBackendForModel,
+  type ChatExecutionBackend,
+} from "@/shared/chat_backend";
 
 export { normalizeStoredChatMode };
 
@@ -22,6 +27,23 @@ export function assertChatModeCompatibleWithModel(
 ): void {
   if (isFreeProBuildModeCombination(settings.selectedModel, chatMode)) {
     throw new DyadError(FREE_PRO_BUILD_MODE_ERROR, DyadErrorKind.Precondition);
+  }
+}
+
+/**
+ * A chat bound to one execution backend never runs a turn on another one.
+ * Runs before turn acceptance so a mismatch rejects the request without
+ * inserting a user message or latching anything.
+ */
+export function assertChatBackendCompatibleWithModel(
+  chatBackend: ChatExecutionBackend | null | undefined,
+  selectedModel: Pick<UserSettings["selectedModel"], "provider">,
+): void {
+  if (chatBackend && chatBackend !== getBackendForModel(selectedModel)) {
+    throw new DyadError(
+      BACKEND_SWITCH_REQUIRES_NEW_CHAT_MESSAGE,
+      DyadErrorKind.Precondition,
+    );
   }
 }
 

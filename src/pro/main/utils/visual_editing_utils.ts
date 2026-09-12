@@ -141,6 +141,81 @@ export function transformContent(
                     cls.startsWith(`${type}x-`) ||
                     cls.match(new RegExp(`^${type}-\\[`)) // Match m-[...] or p-[...]
                   );
+                } else if (prefix === "border-width-") {
+                  // Remove only all-sides border-width utilities so that per-side
+                  // widths (border-t-4, border-x-2), border-style (border-dashed)
+                  // and border-color are preserved untouched.
+                  // Bare border (1px) and numeric width scale: border, border-0/2/4/8
+                  if (cls === "border" || /^border-(0|2|4|8)$/.test(cls)) {
+                    return true;
+                  }
+                  // Arbitrary width: border-[<length>], but NOT arbitrary color border-[#hex]/border-[rgb()]
+                  const widthArb = cls.match(/^border-\[([^\]]+)\]$/);
+                  if (widthArb) {
+                    return /^\d*\.?\d+(px|rem|em|%)?$/.test(widthArb[1]);
+                  }
+                  return false;
+                } else if (prefix === "border-color-") {
+                  // Remove only border-color utilities (and v3 border-opacity-*)
+                  // so that width, per-side widths, and border-style are preserved.
+                  if (cls.startsWith("border-opacity-")) {
+                    return true;
+                  }
+                  // Arbitrary color: border-[<non-length>] (e.g. #hex, rgb(...), var(...))
+                  const colorArb = cls.match(/^border-\[([^\]]+)\]$/);
+                  if (colorArb) {
+                    return !/^\d*\.?\d+(px|rem|em|%)?$/.test(colorArb[1]);
+                  }
+                  // Exclude all-sides width: border, border-0/2/4/8
+                  if (cls === "border" || /^border-(0|2|4|8)$/.test(cls)) {
+                    return false;
+                  }
+                  // Exclude bare per-side widths (e.g. border-t, border-x, border-l)
+                  if (
+                    /^border-(t|r|b|l|x|y|s|e|is|ie)$/.test(cls)
+                  ) {
+                    return false;
+                  }
+                  // Exclude per-side widths (e.g. border-t-4, border-x-2) but
+                  // remove per-side colors (e.g. border-t-red-500, border-x-blue-500).
+                  const perSideMatch = cls.match(
+                    /^border-(t|r|b|l|x|y|s|e|is|ie)-(.+)$/,
+                  );
+                  if (perSideMatch) {
+                    const after = perSideMatch[2];
+                    // Numeric Tailwind width scale (0, 1, 2, 4, 8, ...)
+                    if (/^\d+$/.test(after)) {
+                      return false; // per-side width scale → keep
+                    }
+                    // Arbitrary value: length → keep, color → remove
+                    const arbMatch = after.match(/^\[([^\]]+)\]$/);
+                    if (arbMatch) {
+                      return !/^\d*\.?\d+(px|rem|em|%)?$/.test(arbMatch[1]);
+                    }
+                    // Per-side style keywords (e.g. border-t-dashed) → keep
+                    if (
+                      /^(solid|dashed|dotted|double|none|hidden)$/.test(after)
+                    ) {
+                      return false;
+                    }
+                    // Everything else is treated as a per-side color → remove
+                    return true;
+                  }
+                  // Exclude border-style keywords
+                  if (
+                    /^border-(solid|dashed|dotted|double|none|hidden)$/.test(
+                      cls,
+                    )
+                  ) {
+                    return false;
+                  }
+                  // Exclude table border utilities (border-collapse/separate/spacing*)
+                  if (/^border-(collapse|separate|spacing)/.test(cls)) {
+                    return false;
+                  }
+                  // Everything else border-* is treated as a named color
+                  // (border-red-500, border-black, border-transparent, ...)
+                  return cls.startsWith("border-");
                 } else {
                   // For other prefixes, use simple startsWith
                   return cls.startsWith(prefix);

@@ -190,6 +190,17 @@ export function extractClassPrefixes(classes: string[]): string[] {
           }
         }
 
+        // Special handling for border-[...] classes
+        // We need to distinguish between border-width and border-color
+        if (cls.startsWith("border-[")) {
+          const value = cls.match(/^border-\[([^\]]+)\]/);
+          if (value) {
+            // Widths are lengths (e.g. "2px", "0.5rem"); colors (from rgbToHex) are "#rrggbb".
+            const isLength = /^\d*\.?\d+(px|rem|em|%)?$/.test(value[1]);
+            return isLength ? "border-width-" : "border-color-";
+          }
+        }
+
         // Handle regular Tailwind classes
         const match = cls.match(/^([a-z]+[-])/);
         return match ? match[1] : cls.split("-")[0] + "-";

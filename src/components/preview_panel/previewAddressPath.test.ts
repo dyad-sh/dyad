@@ -83,6 +83,31 @@ describe("previewAddressPath", () => {
     it("reports the app root as a route rather than as no hint", () => {
       expect(sameOriginStartPath(APP, APP)).toBe("/");
     });
+
+    it("gives no hint for a same-origin blob: URL (not a replayable route)", () => {
+      // A `blob:` URL is a WHATWG non-special scheme: its `.origin` is the
+      // origin embedded after `blob:` (so it equals the app's and would pass
+      // an origin-only guard), but its `.pathname` is the entire absolute
+      // URL. Returning that as a route hands the recorder an absolute URL
+      // where an app-relative path is expected — `navigatePreview` is skipped
+      // and the seeded navigate entry fails the app-relative schema, so
+      // recording silently arms on the blob page while the spec opens at /.
+      expect(
+        sameOriginStartPath(
+          "blob:http://localhost:5173/7c9f3a2e-1234-5678-9abc-def012345678",
+          APP,
+        ),
+      ).toBeUndefined();
+      // A blob URL whose embedded origin differs from the app is rejected by
+      // the origin check, but the protocol guard must not let it through
+      // either — covering a future app origin change by construction.
+      expect(
+        sameOriginStartPath(
+          "blob:https://example.com/7c9f3a2e-1234-5678-9abc-def012345678",
+          APP,
+        ),
+      ).toBeUndefined();
+    });
   });
 
   it("rejects non-relative address bar input", () => {

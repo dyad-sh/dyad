@@ -21,9 +21,12 @@ export function formatPreviewAddressPath(url: string | null | undefined) {
 
 /**
  * The preview's current route, but only while it is still on the app's own
- * origin — otherwise undefined. Used as the recorder's starting-route hint,
- * where an off-origin path would generate a `page.goto` to somewhere the user
- * never was.
+ * origin AND on a scheme the recorder can re-navigate to (http/https) —
+ * otherwise undefined. Used as the recorder's starting-route hint, where an
+ * off-origin path would generate a `page.goto` to somewhere the user never
+ * was. A same-origin `blob:` URL is rejected here even though its origin
+ * matches: its pathname is the entire absolute URL, and a blob URL is not a
+ * route the spec can re-open.
  */
 export function sameOriginStartPath(
   currentHistoryUrl: string | null | undefined,
@@ -31,7 +34,12 @@ export function sameOriginStartPath(
 ): string | undefined {
   if (!currentHistoryUrl || !appUrl) return undefined;
   try {
-    if (new URL(currentHistoryUrl).origin !== new URL(appUrl).origin) {
+    const current = new URL(currentHistoryUrl);
+    const app = new URL(appUrl);
+    if (current.protocol !== "http:" && current.protocol !== "https:") {
+      return undefined;
+    }
+    if (current.origin !== app.origin) {
       return undefined;
     }
   } catch {

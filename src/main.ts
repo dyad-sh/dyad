@@ -55,6 +55,7 @@ import {
   disposeConnectionFlowsForShutdown,
   runOAuthReturnExchange,
 } from "./ipc/handlers/connection_flow_handlers";
+import { parseOAuthCallbackInvocationRef } from "./connection_flow/oauth_deep_link";
 import {
   AddMcpServerConfigSchema,
   AddMcpServerPayload,
@@ -1455,20 +1456,33 @@ async function handleDeepLinkReturn(url: string) {
       );
       return;
     }
+    const expectedInvocationRef = parseOAuthCallbackInvocationRef(
+      "neon",
+      parsed.searchParams.get("state"),
+    );
+    if (!expectedInvocationRef) {
+      dialog.showErrorBox(
+        "Invalid URL",
+        "This Neon sign-in could not be verified. Please connect again from Dyad.",
+      );
+      return;
+    }
     {
-      // Runs the token write through the connection flow machine: an active
-      // flow advances (awaiting-return -> exchanging-token -> ...), while a
-      // return with no matching flow (cold start, restart mid-flow, or a
-      // return that lost the race against a timeout) still stores tokens and
-      // is broadcast as unsolicited so the renderer refreshes.
-      const outcome = await runOAuthReturnExchange("neon", () => {
-        handleNeonOAuthReturn({ token, refreshToken, expiresIn });
-      });
+      // Runs the token write through the connection flow machine. Only the
+      // exact active invocation may advance and persist credentials.
+      const outcome = await runOAuthReturnExchange(
+        "neon",
+        () => {
+          handleNeonOAuthReturn({ token, refreshToken, expiresIn });
+        },
+        { expectedInvocationRef },
+      );
       if (!outcome.ok) {
-        // A claimed failure is surfaced by the renderer as a flow-failure
-        // toast; only unclaimed (unsolicited) failures need the dialog.
         if (!outcome.claimed) {
-          showDeepLinkSettingsError("save Neon credentials", outcome.error);
+          dialog.showErrorBox(
+            "Sign-in Could Not Be Verified",
+            "This Neon sign-in expired or no longer matches the connection started by Dyad. Please connect again.",
+          );
         }
         return;
       }
@@ -1486,17 +1500,33 @@ async function handleDeepLinkReturn(url: string) {
       );
       return;
     }
+    const expectedInvocationRef = parseOAuthCallbackInvocationRef(
+      "supabase",
+      parsed.searchParams.get("state"),
+    );
+    if (!expectedInvocationRef) {
+      dialog.showErrorBox(
+        "Invalid URL",
+        "This Supabase sign-in could not be verified. Please connect again from Dyad.",
+      );
+      return;
+    }
     {
       // See the neon-oauth-return branch above for why the token write is
       // wrapped by the connection flow machine.
-      const outcome = await runOAuthReturnExchange("supabase", async () => {
-        await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
-      });
+      const outcome = await runOAuthReturnExchange(
+        "supabase",
+        async () => {
+          await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+        },
+        { expectedInvocationRef },
+      );
       if (!outcome.ok) {
-        // A claimed failure is surfaced by the renderer as a flow-failure
-        // toast; only unclaimed (unsolicited) failures need the dialog.
         if (!outcome.claimed) {
-          showDeepLinkSettingsError("save Supabase credentials", outcome.error);
+          dialog.showErrorBox(
+            "Sign-in Could Not Be Verified",
+            "This Supabase sign-in expired or no longer matches the connection started by Dyad. Please connect again.",
+          );
         }
         return;
       }

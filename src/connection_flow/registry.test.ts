@@ -132,7 +132,7 @@ describe("connection flow registry", () => {
     });
   });
 
-  it("structurally claims deep-link returns that cannot echo the ref", () => {
+  it("structurally claims trusted callbacks that cannot echo the ref", () => {
     const { registry } = setup();
     const started = admittedStart(registry, "supabase");
     registry.markPrepared("supabase", started.invocationRef);

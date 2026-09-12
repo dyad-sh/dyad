@@ -4,8 +4,8 @@ import {
   cancelConnectionFlow,
   startConnectionFlow,
   useConnectionFlow,
-  useUnsolicitedConnectionReturn,
 } from "@/hooks/useConnectionFlow";
+import { buildOAuthLoginUrl } from "@/connection_flow/oauth_deep_link";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -136,18 +136,6 @@ export function NeonConnector({ appId }: { appId: number }) {
     }
   }, [flowState, t]);
 
-  // A dyad://neon-oauth-return processed with no active flow (cold start,
-  // app restarted mid-flow, or a return that arrived after the flow timed
-  // out): tokens are already stored — refresh what we show and confirm the
-  // (late but real) success, matching the pre-machine behavior where every
-  // processed return toasted success.
-  useUnsolicitedConnectionReturn("neon", () => {
-    void (async () => {
-      await refreshAfterConnectRef.current();
-      toast.success(t("integrations.neon.connectedSuccess"));
-    })();
-  });
-
   const handleConnect = async () => {
     try {
       // Starting is a no-op while a flow is already active (double-click).
@@ -160,7 +148,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           await ipc.neon.fakeConnect();
         } else {
           await ipc.system.openExternalUrl(
-            "https://oauth.dyad.sh/api/integrations/neon/login",
+            buildOAuthLoginUrl("neon", invocationRef),
           );
         }
       } catch (error) {

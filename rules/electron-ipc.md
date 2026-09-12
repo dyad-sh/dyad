@@ -168,6 +168,13 @@ pre-hydration atoms can erase unrelated restored entities.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 
+Custom-protocol delivery (`open-url`, argv, or `second-instance`) carries only
+the callback URL, not a trustworthy web origin. Credential-bearing callbacks
+must present a provider-bound, expiring, single-use correlation value minted at
+the authoritative flow-start boundary; an unmatched or unsolicited callback
+must not perform the credential write. Browser protocol-launch prompts are UX,
+not an authentication boundary.
+
 ## Handler expectations
 
 - Keep handler registration free of database-dependent startup work. Handlers

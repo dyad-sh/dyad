@@ -22,9 +22,11 @@ usage is selected. Unsupported models continue through Pro credits.
 The Pro menu's **Model usage** preference is global across chats (`subscription`
 or `pro`). Connecting selects subscription; disconnecting selects Pro credits.
 Changing it affects the next turn in the same chat, never an in-flight turn.
-While Pro is enabled, direct provider API keys are not used (including legacy
-per-chat API-key choices). Turn Pro off to use your own keys. Auxiliary Pro
-services keep their existing billing path.
+While Pro is enabled, gateway-supported providers use Pro inference. Custom
+providers retain their own API keys and endpoints, and Ollama/LM Studio remain
+local; their usage is reported to Engine for billing. With Pro off, local and
+custom requests have no Dyad usage reporting. Legacy per-chat API-key choices
+do not override this policy. Auxiliary Pro services keep their existing billing path.
 
 Browser OAuth success returns a static celebration page with automatic
 `dyad://chatgpt-connected` navigation and a manual Open Dyad button. No credentials
@@ -41,7 +43,7 @@ use existing destination-specific transcript sanitizers.
 ## BYO credit preflight
 
 Before durable turn acceptance, Dyad resolves the global source and validates
-subscription credentials and credits. Before every subscription model request
+subscription credentials where applicable and credits. Before every billed direct model request
 (including subsequent agent steps), Dyad
 fetches the existing `GET https://api.dyad.sh/v1/user/info` using the same Dyad
 billing key captured for that request. This uses a fresh main-process lookup,
@@ -55,8 +57,8 @@ not the five-minute UI cache or the UI's test-build mock balance.
   invalid response: log a redacted warning and **allow generation**. No retry.
 - User cancellation is not an outage; it stops the request.
 
-Only BYO subscription generation is gated. Existing API-key/Pro inference routes
-are unchanged, and the account display still returns null on lookup failure.
+Subscription, local, and custom-provider generation with Pro enabled is gated.
+Existing gateway inference routes are unchanged, and the account display still returns null on lookup failure.
 This is an eligibility check, not a reservation: spend may lag, concurrent calls
 can pass together, and outages intentionally fail open. Post-generation usage
 reporting remains a single attempt with no replay.
@@ -81,6 +83,12 @@ Example body (all values are illustrative, not credentials):
   "outputTokens": 50
 }
 ```
+
+The same contract accepts `connection: "local"` for Ollama/LM Studio and
+`connection: "byok"` for custom providers, with their actual provider identifiers.
+These routes report both streaming and nonstreaming usage. Streaming requests ask
+OpenAI-compatible providers to include usage; missing counts are never estimated.
+Deploy the paired Engine change accepting these connection values before the client.
 
 Engine validates counts, authenticates the billing account, and attempts one
 charge through `dyad/dyad-synthetic-cost-tracking`. On success it responds:

@@ -1,5 +1,8 @@
+vi.mock("../services/codex_subscription_credit_check", () => ({
+  checkSubscriptionCredits: vi.fn(async () => {}),
+}));
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 
 import type { UserSettings } from "../../lib/schemas";
 import {
@@ -39,6 +42,12 @@ vi.mock("../shared/language_model_helpers", () => ({
   // conservative path without inventing model entries these tests don't need.
   getLanguageModels: vi.fn(async () => []),
   getLanguageModelProviders: vi.fn(async () => [
+    ...["custom", "lmstudio", "ollama"].map((id) => ({
+      id,
+      name: id,
+      type: id === "custom" ? "custom" : "local",
+      apiBaseUrl: "http://localhost:1234/v1",
+    })),
     {
       id: "auto",
       name: "Dyad",
@@ -108,6 +117,101 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 }));
 
 describe("getModelClient", () => {
+  test.each(["custom", "lmstudio", "ollama"])(
+    "reports %s streaming usage only with Pro enabled",
+    async (provider) => {
+      for (const enableDyadPro of [true, false]) {
+        const reports = vi.fn<typeof fetch>(async () =>
+          Response.json({ chargedUsd: 0.1 }),
+        );
+        vi.stubGlobal("fetch", reports);
+        let requestBody: Record<string, unknown> = {};
+        let providerHeaders: unknown;
+        setModelClientFetchForTesting(async (_url, init) => {
+          requestBody = JSON.parse(String(init?.body));
+          providerHeaders = init?.headers;
+          const chunks = [
+            {
+              id: "test",
+              model: "resolved-model",
+              choices: [
+                { index: 0, delta: { content: "hello" }, finish_reason: null },
+              ],
+            },
+            {
+              id: "test",
+              model: "resolved-model",
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+              usage: {
+                prompt_tokens: 100,
+                completion_tokens: 50,
+                total_tokens: 150,
+              },
+            },
+          ];
+          return new Response(
+            chunks.map((c) => "data: " + JSON.stringify(c) + "\n\n").join("") +
+              "data: [DONE]\n\n",
+            { headers: { "Content-Type": "text/event-stream" } },
+          );
+        });
+        try {
+          const result = await getModelClient(
+            { provider, name: "test-model" },
+            {
+              enableDyadPro,
+              providerSettings: {
+                auto: { apiKey: { value: "test-pro" } },
+                custom: { apiKey: { value: "test-custom" } },
+              },
+            } as unknown as UserSettings,
+          );
+          expect(
+            await streamText({
+              model: result.modelClient.model,
+              prompt: "hello",
+            }).text,
+          ).toBe("hello");
+          expect(JSON.stringify(providerHeaders)).not.toContain("test-pro");
+          if (provider === "custom")
+            expect(JSON.stringify(providerHeaders)).toContain("test-custom");
+          expect(reports).toHaveBeenCalledTimes(enableDyadPro ? 1 : 0);
+          expect(requestBody.stream_options).toEqual(
+            enableDyadPro ? { include_usage: true } : undefined,
+          );
+          if (enableDyadPro)
+            expect(
+              JSON.parse(String(reports.mock.calls[0][1]?.body)),
+            ).toMatchObject({
+              connection: provider === "custom" ? "byok" : "local",
+              modelProvider: provider,
+              totalTokens: 150,
+            });
+        } finally {
+          setModelClientFetchForTesting(undefined);
+          vi.unstubAllGlobals();
+        }
+      }
+    },
+  );
+  test.each(["custom", "lmstudio", "ollama"])(
+    "keeps %s direct with Pro enabled and disabled",
+    async (provider) => {
+      for (const enableDyadPro of [true, false]) {
+        const result = await getModelClient({ provider, name: "test-model" }, {
+          enableDyadPro,
+          providerSettings: {
+            auto: { apiKey: { value: "test-pro" } },
+            custom: { apiKey: { value: "test-custom" } },
+          },
+        } as unknown as UserSettings);
+        expect(
+          (result.modelClient.model as { provider: string }).provider,
+        ).toContain(provider);
+        expect(result.isEngineEnabled).not.toBe(true);
+      }
+    },
+  );
   test("legacy API key selection cannot bypass enabled Pro credits", async () => {
     const { modelClient, isEngineEnabled } = await getModelClient(
       { provider: "openai", name: "gpt-5.4", connection: "api-key" },

@@ -12,6 +12,7 @@ export interface OllamaProviderOptions {
    * If undefined, defaults to http://localhost:11434/api
    */
   baseURL?: string;
+  includeUsage?: boolean;
   headers?: Record<string, string>;
   fetch?: FetchFunction;
 }
@@ -31,6 +32,7 @@ export function createOllamaProvider(
   const v1Base = (base.endsWith("/v1") ? base : `${base}/v1`) as string;
   const provider = createOpenAICompatible({
     name: "ollama",
+    includeUsage: options?.includeUsage,
     baseURL: v1Base,
     headers: options?.headers,
     fetch: options?.fetch,

@@ -1,3 +1,6 @@
+vi.mock("../shared/language_model_helpers", () => ({
+  getLanguageModelProviders: async () => [{ id: "custom", type: "custom" }],
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelSelection, UserSettings } from "@/lib/schemas";
 const mocks = vi.hoisted(() => ({
@@ -40,6 +43,24 @@ describe("global subscription turn routing", () => {
     ).toMatchObject({ connection: "subscription" });
     expect(mocks.credits).toHaveBeenCalledWith("test-key", signal);
   });
+  it.each(["ollama", "lmstudio", "custom"])(
+    "checks credits and keeps %s direct",
+    async (provider) => {
+      expect(
+        await preflightSubscriptionTurn(
+          { ...model, provider },
+          settings,
+          signal,
+        ),
+      ).toMatchObject({ connection: "api-key" });
+      expect(mocks.credits).toHaveBeenCalledWith("test-key", signal);
+      expect(mocks.account).not.toHaveBeenCalled();
+      mocks.credits.mockRejectedValue(new Error("Out of credits"));
+      await expect(
+        preflightSubscriptionTurn({ ...model, provider }, settings, signal),
+      ).rejects.toThrow("Out of credits");
+    },
+  );
   it("uses Pro for non-ChatGPT and ineligible models", async () => {
     for (const m of [
       { ...model, provider: "anthropic" },

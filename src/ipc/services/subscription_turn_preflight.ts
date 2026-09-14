@@ -1,3 +1,4 @@
+import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import type { ModelSelection, UserSettings } from "@/lib/schemas";
 import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
 import { getSubscriptionAccount } from "./codex_subscription_account";
@@ -17,6 +18,20 @@ export async function preflightSubscriptionTurn(
     !settings.providerSettings?.auto?.apiKey?.value
   )
     return identity;
+  const provider = (await getLanguageModelProviders()).find(
+    (p) => p.id === model.provider,
+  );
+  if (
+    ["ollama", "lmstudio"].includes(model.provider) ||
+    provider?.type === "custom"
+  ) {
+    await checkSubscriptionCredits(
+      settings.providerSettings.auto.apiKey.value,
+      signal,
+    );
+    signal.throwIfAborted();
+    return { ...identity, connection: "api-key" };
+  }
   if (settings.proModelUsage === "pro" || model.provider !== "openai")
     return { ...identity, connection: "pro" };
   const account = await getSubscriptionAccount();

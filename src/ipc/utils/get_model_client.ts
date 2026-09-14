@@ -1,3 +1,4 @@
+import { wrapExternalModelBilling } from "./external_model_billing";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -201,6 +202,35 @@ export async function getModelClient(
       "Dyad Free requires an active Dyad Pro API key. Switch to another model or enable Dyad Pro.",
       DyadErrorKind.Auth,
     );
+  }
+
+  // Direct providers retain their transport while Engine bills reported usage.
+  if (
+    isDyadProEnabledForRequest &&
+    (isLocalProvider || providerConfig.type === "custom")
+  ) {
+    const regular = getRegularModelClient(
+      model,
+      settings,
+      providerConfig,
+      true,
+    );
+    return {
+      ...regular,
+      modelClient: {
+        ...regular.modelClient,
+        model: wrapExternalModelBilling(
+          regular.modelClient.model,
+          {
+            connection: isLocalProvider ? "local" : "byok",
+            modelProvider: model.provider,
+          },
+          dyadApiKey!,
+        ),
+      },
+      runtimeModel: model,
+      isEngineEnabled: false,
+    };
   }
 
   // Handle Dyad Pro override
@@ -533,6 +563,7 @@ function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
+  includeUsage = false,
 ): {
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
@@ -732,6 +763,7 @@ function getRegularModelClient(
     case "ollama": {
       const provider = createOllamaProvider({
         baseURL: getOllamaApiUrl(),
+        includeUsage,
         ...getModelClientFetchOption(),
       });
       return {
@@ -748,6 +780,7 @@ function getRegularModelClient(
       const baseURL = providerConfig.apiBaseUrl || getLmStudioBaseUrl() + "/v1";
       const provider = createOpenAICompatible({
         name: "lmstudio",
+        includeUsage,
         baseURL,
         ...getModelClientFetchOption(),
       });
@@ -802,6 +835,7 @@ function getRegularModelClient(
         // Assume custom providers are OpenAI compatible for now
         const provider = createOpenAICompatible({
           name: providerConfig.id,
+          includeUsage,
           baseURL: providerConfig.apiBaseUrl,
           apiKey,
           ...getModelClientFetchOption(),

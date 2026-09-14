@@ -6,12 +6,14 @@ const mocks = vi.hoisted(() => ({
   attachments: [] as any[],
   effectiveDefaultChatMode: "build",
   hasManuallySelectedChatMode: false,
+  hasDyadProApiKey: false,
   inputValue: "Build a notes app",
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: false,
   isSettingsLoading: false,
   isExistingAppSubmission: false,
   navigate: vi.fn(),
+  openExternalUrl: vi.fn(),
   phase: "idle",
   posthogCapture: vi.fn(),
   selectedApp: null as any,
@@ -46,6 +48,10 @@ vi.mock("@/first_prompt/FirstPromptProvider", () => ({
 vi.mock("posthog-js/react", () => ({
   usePostHog: () => ({ capture: mocks.posthogCapture }),
 }));
+vi.mock("@/ipc/types", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/types")>()),
+  ipc: { system: { openExternalUrl: mocks.openExternalUrl } },
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -73,7 +79,7 @@ vi.mock("@/hooks/useFreeAgentQuota", () => ({
 vi.mock("@/lib/schemas", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/schemas")>()),
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
-  hasDyadProKey: () => false,
+  hasDyadProKey: () => mocks.hasDyadProApiKey,
 }));
 vi.mock("@/lib/homeChatMode", () => ({
   getHomeDefaultChatMode: () => mocks.effectiveDefaultChatMode,
@@ -113,18 +119,38 @@ describe("HomePage first-prompt projection", () => {
     mocks.attachments = [];
     mocks.effectiveDefaultChatMode = "build";
     mocks.hasManuallySelectedChatMode = false;
+    mocks.hasDyadProApiKey = false;
     mocks.inputValue = "Build a notes app";
     mocks.isAnyProviderSetup = false;
     mocks.isLoadingLanguageModelProviders = false;
     mocks.isSettingsLoading = false;
     mocks.isExistingAppSubmission = false;
     mocks.phase = "idle";
+    mocks.openExternalUrl.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.selectedApp = null;
     mocks.send.mockReset();
     mocks.send.mockReturnValue(true);
     mocks.settings = { selectedChatMode: "build" };
     mocks.updateSettings.mockReset();
+  });
+
+  it("opens the Pro AI page from the upgrade button", () => {
+    render(<HomePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+
+    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
+      "https://www.dyad.sh/pro#ai",
+    );
+  });
+
+  it("does not prompt existing Pro users to upgrade", () => {
+    mocks.hasDyadProApiKey = true;
+
+    render(<HomePage />);
+
+    expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
   });
 
   it("submits a captured payload to the machine", () => {

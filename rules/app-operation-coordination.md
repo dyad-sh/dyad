@@ -34,6 +34,10 @@ subprocess to settle before returning or throwing. `Promise.all` rejects early
 and can release the claim while sibling processes are still mutating or reading
 the protected resource; use an all-settled barrier and rethrow afterward.
 
+Keep copied live dotenv credentials stripped throughout a disposable test
+workspace's lifetime, preserving only provider-isolated credentials. Restoring
+after install lets the dev server's dotenv loader bypass child-env sanitization.
+
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only

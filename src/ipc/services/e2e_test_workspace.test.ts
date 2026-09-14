@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { config as loadDotenv } from "dotenv";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/paths/paths", () => ({ getUserDataPath: vi.fn() }));
@@ -306,60 +307,65 @@ describe("E2E test workspace", () => {
     await workspace.dispose();
   });
 
-  it("withholds database credentials from install scripts, then restores them", async () => {
-    // `--ignore-scripts` would also break `prisma generate` and native
-    // rebuilds; taking the database out of the environment leaves the scripts
-    // running and denies them only what they must not reach.
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(path.join(appPath, "package.json"), "{}");
-    await ensureGitRepo(appPath);
-    const env =
-      "# keep me\nDATABASE_URL=postgres://real\nNEXT_PUBLIC_SUPABASE_URL=https://real\nAPI_BASE=https://example.test\n";
-    await fs.writeFile(path.join(appPath, ".env.local"), env);
+  it.each([false, true])(
+    "keeps database credentials stripped after setup (custom commands: %s)",
+    async (hasCustomCommands) => {
+      // `--ignore-scripts` would also break `prisma generate` and native
+      // rebuilds; taking the database out of the environment leaves the scripts
+      // running and denies them only what they must not reach.
+      const root = await tempRoot();
+      const appPath = path.join(root, "app");
+      vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+      await fs.mkdir(appPath, { recursive: true });
+      await fs.writeFile(path.join(appPath, "package.json"), "{}");
+      await ensureGitRepo(appPath);
+      const env =
+        "# keep me\nDATABASE_URL=postgres://real\nNEXT_PUBLIC_SUPABASE_URL=https://real\nAPI_BASE=https://example.test\n";
+      await fs.writeFile(path.join(appPath, ".env.local"), env);
 
-    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
-    let duringInstall = "";
-    vi.mocked(runCleanPackageInstall).mockImplementationOnce(async () => {
-      duringInstall = await fs.readFile(
-        path.join(workspace.workspacePath, ".env.local"),
-        "utf8",
+      const workspace = await createWorkspaceUnderTest({
+        appId: 7,
+        appPath,
+        hasCustomCommands,
+      });
+      let duringInstall = "";
+      vi.mocked(runCleanPackageInstall).mockImplementation(async () => {
+        duringInstall = await fs.readFile(
+          path.join(workspace.workspacePath, ".env.local"),
+          "utf8",
+        );
+        return {
+          code: 0,
+          stdout: "",
+          stderr: "",
+          aborted: false,
+          timedOut: false,
+          hasLockfile: false,
+        };
+      });
+
+      await installE2eTestWorkspaceDependencies({
+        workspace,
+      });
+
+      const sanitizedEnv = "# keep me\nAPI_BASE=https://example.test\n";
+      if (!hasCustomCommands) expect(duringInstall).toBe(sanitizedEnv);
+      // The server must not regain access to live credentials after installation.
+      expect(
+        await fs.readFile(
+          path.join(workspace.workspacePath, ".env.local"),
+          "utf8",
+        ),
+      ).toBe(sanitizedEnv);
+      expect(await fs.readFile(path.join(appPath, ".env.local"), "utf8")).toBe(
+        env,
       );
-      return {
-        code: 0,
-        stdout: "",
-        stderr: "",
-        aborted: false,
-        timedOut: false,
-        hasLockfile: false,
-      };
-    });
-
-    await installE2eTestWorkspaceDependencies({
-      workspace,
-      withholdDatabaseEnv: true,
-    });
-
-    expect(duringInstall).not.toContain("DATABASE_URL");
-    expect(duringInstall).not.toContain("SUPABASE");
-    // Only the database reaches for the door; everything else the scripts may
-    // legitimately need stays.
-    expect(duringInstall).toContain("API_BASE=https://example.test");
-    expect(duringInstall).toContain("# keep me");
-    // And the run itself gets the real thing back.
-    expect(
-      await fs.readFile(
-        path.join(workspace.workspacePath, ".env.local"),
-        "utf8",
-      ),
-    ).toBe(env);
-    await workspace.dispose();
-  });
+      await workspace.dispose();
+    },
+  );
 
   it.each([false, true])(
-    "withholds copied dotenv credentials during Neon installs (monorepo: %s)",
+    "keeps copied dotenv credentials stripped for the Neon server (monorepo: %s)",
     async (monorepo) => {
       const root = await tempRoot();
       const repoRoot = path.join(root, "repo");
@@ -446,7 +452,23 @@ describe("E2E test workspace", () => {
                 ),
                 "utf8",
               ),
-            ).toBe(preserved ? isolatedEnv : liveEnv);
+            ).toBe(preserved ? isolatedEnv : "API_BASE=keep\n");
+            // Exercise a server loading dotenv from disk after install, with
+            // an empty process environment just like the sanitized child.
+            const serverEnv = {};
+            loadDotenv({
+              path: path.join(
+                workspace.dependencyInstallPath!,
+                directory,
+                fileName,
+              ),
+              processEnv: serverEnv,
+            });
+            expect(serverEnv).toEqual(
+              preserved
+                ? { DATABASE_URL: "postgres://temporary/db", API_BASE: "keep" }
+                : { API_BASE: "keep" },
+            );
             expect(
               await fs.readFile(
                 path.join(repoRoot, directory, fileName),
@@ -754,7 +776,7 @@ describe("E2E test workspace", () => {
     await workspace.dispose();
   });
 
-  it("waits for a killed install tree before restoring the credentials", async () => {
+  it("waits for a killed install tree and leaves credentials stripped", async () => {
     // On a Stop or a timeout `spawnStreaming` fires `treeKill` and returns
     // without waiting, so the install tree can outlive the call. Restoring the
     // real credentials — or deleting the workspace — while a lifecycle script
@@ -811,6 +833,12 @@ describe("E2E test workspace", () => {
     // The credentials were still withheld when the tree was settled, not
     // already handed back to a script that had not stopped.
     expect(withheldAtSettle).toBe(true);
+    expect(
+      await fs.readFile(
+        path.join(workspace.workspacePath, ".env.local"),
+        "utf8",
+      ),
+    ).toBe("PUBLIC_KEY=keep\n");
     await workspace.dispose();
   });
 

@@ -772,6 +772,39 @@ describe("run_build", () => {
     expect((await fs.lstat(danglingLink)).isSymbolicLink()).toBe(true);
   });
 
+  it("keeps an absolute dangling link naming the unresolved source root", async () => {
+    // A dangling target exists only as the text written into the link, which
+    // carries whatever spelling of the root the caller used — the UNRESOLVED
+    // one whenever it sits behind a symlink (`/var` on macOS) or under an 8.3
+    // short name (Windows `RUNNER~1`). Judging containment against the resolved
+    // root alone deletes a link the repository legitimately contains. Remapping
+    // it is the point: left alone it would still name the user's checkout, and
+    // whatever later creates that path would read and write straight through.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const realRoot = path.join(root, "real");
+    await fs.mkdir(path.join(realRoot, "app"), { recursive: true });
+    await fs.mkdir(path.join(realRoot, "snapshot"), { recursive: true });
+    const linkedRoot = path.join(root, "linked");
+    await fs.symlink(realRoot, linkedRoot, "dir");
+    const sourceRoot = path.join(linkedRoot, "app");
+    const snapshotRoot = path.join(linkedRoot, "snapshot");
+    const danglingLink = path.join(snapshotRoot, "missing-package");
+    await fs.symlink(
+      path.join(sourceRoot, "missing-package"),
+      danglingLink,
+      "file",
+    );
+
+    await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
+
+    expect((await fs.lstat(danglingLink)).isSymbolicLink()).toBe(true);
+    const realSnapshotRoot = await fs.realpath(snapshotRoot);
+    expect(
+      path.resolve(realSnapshotRoot, await fs.readlink(danglingLink)),
+    ).toBe(path.join(realSnapshotRoot, "missing-package"));
+  });
+
   it("cleans only marked Dyad-owned snapshot directories", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
     temporaryDirectories.push(root);

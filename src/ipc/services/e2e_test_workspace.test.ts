@@ -93,8 +93,38 @@ async function ensureGitRepo(appPath: string): Promise<void> {
   await execFileAsync("git", ["config", "user.name", "Test User"], {
     cwd: appPath,
   });
+  // Git for Windows installs `core.autocrlf=true` globally, which would check
+  // the fixture back out with CRLF and break the byte-for-byte content
+  // assertions below. The fixture writes its files directly rather than through
+  // Git, so its working tree is LF on every platform; pinning the repo to match
+  // keeps checkout a faithful reproduction of it. This is fixture hermeticity,
+  // like the identity above — a real app's own conversion settings are its own
+  // business, and the sandbox deliberately inherits them.
+  await execFileAsync("git", ["config", "core.autocrlf", "false"], {
+    cwd: appPath,
+  });
   await execFileAsync("git", ["add", "-A"], { cwd: appPath });
   await execFileAsync("git", ["commit", "-m", "initial"], { cwd: appPath });
+}
+
+/**
+ * The worktrees a repository still has registered, as resolved absolute paths.
+ *
+ * `--porcelain` so that a path containing spaces stays one field instead of
+ * being split from the sha beside it, and `path.resolve` so the comparison is
+ * about directories rather than about how Git happens to spell them.
+ */
+async function listWorktreePaths(repoPath: string): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["worktree", "list", "--porcelain"],
+    { cwd: repoPath },
+  );
+  const prefix = "worktree ";
+  return stdout
+    .split("\n")
+    .filter((line) => line.startsWith(prefix))
+    .map((line) => path.resolve(line.slice(prefix.length).trim()));
 }
 
 async function createE2eTestWorkspace(
@@ -159,13 +189,18 @@ describe("E2E test workspace", () => {
     await expect(
       fs.stat(path.join(workspace.workspacePath, "node_modules", "pkg", "x")),
     ).rejects.toThrow();
+    // Through `path.resolve` on both sides: Git prints POSIX separators even on
+    // Windows, so comparing its output to an OS-shaped path fails there over
+    // slashes alone, while both name the same directory.
     expect(
-      (
-        await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
-          cwd: workspace.workspacePath,
-        })
-      ).stdout.trim(),
-    ).toBe(await fs.realpath(workspace.workspacePath));
+      path.resolve(
+        (
+          await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+            cwd: workspace.workspacePath,
+          })
+        ).stdout.trim(),
+      ),
+    ).toBe(path.resolve(await fs.realpath(workspace.workspacePath)));
 
     await workspace.dispose();
     await expect(fs.stat(workspace.workspacePath)).rejects.toThrow();
@@ -892,18 +927,22 @@ describe("E2E test workspace", () => {
         submoduleWorktrees: [],
       }),
     );
-    expect(
-      (await execFileAsync("git", ["worktree", "list"], { cwd: realAppPath }))
-        .stdout,
-    ).toContain(orphan);
+    // Compared as resolved paths, not as a substring of the listing: on Windows
+    // Git answers with POSIX separators and the long user name, while `orphan`
+    // is built from `os.tmpdir()` and so carries backslashes and an 8.3 short
+    // name (`RUNNER~1`). Same directory, no textual overlap.
+    const registeredOrphan = path.join(
+      await fs.realpath(sandboxRoot),
+      "9-orphan",
+    );
+    expect(await listWorktreePaths(realAppPath)).toContain(registeredOrphan);
 
     await reconcileOrphanE2eTestWorkspaces();
 
     await expect(fs.stat(orphan)).rejects.toThrow();
-    expect(
-      (await execFileAsync("git", ["worktree", "list"], { cwd: realAppPath }))
-        .stdout,
-    ).not.toContain(orphan);
+    expect(await listWorktreePaths(realAppPath)).not.toContain(
+      registeredOrphan,
+    );
     await expect(fs.stat(`${orphan}.owner.json`)).rejects.toThrow();
     expect((await fs.stat(unmarked)).isDirectory()).toBe(true);
     expect(

@@ -220,6 +220,33 @@ function pathIsInside(rootPath: string, candidatePath: string): boolean {
   );
 }
 
+/**
+ * Where `candidatePath` sits inside a root, accepting either spelling of that
+ * root, or null when it is outside.
+ *
+ * A dangling link's target exists only as text, so it cannot be canonicalized
+ * the way `fs.realpath` canonicalizes a live one: the roots are resolved but
+ * the text is whatever was written into the link. An absolute target naming
+ * the UNRESOLVED spelling of a root really is inside it, yet fails a
+ * resolved-only comparison whenever the root has a symlinked ancestor (macOS
+ * `/var` → `/private/var`, or any user-data directory behind a link) or an 8.3
+ * short name (Windows `RUNNER~1` → `runneradmin`). Judging it outside would
+ * silently delete a link the repository legitimately contains.
+ */
+function relativeToEitherSpelling(
+  rootPath: string,
+  realRootPath: string,
+  candidatePath: string,
+): string | null {
+  if (pathIsInside(realRootPath, candidatePath)) {
+    return path.relative(realRootPath, candidatePath);
+  }
+  if (pathIsInside(rootPath, candidatePath)) {
+    return path.relative(rootPath, candidatePath);
+  }
+  return null;
+}
+
 const NO_EXCLUDED_PACKAGE_PATHS: ReadonlySet<string> = new Set();
 
 function isExcludedRelativePath(
@@ -701,16 +728,24 @@ export async function secureGitOverlaySymlinks(
             path.dirname(realEntryPath),
             linkText,
           );
-          if (pathIsInside(realWorkspaceRoot, textualTarget)) {
+          if (
+            relativeToEitherSpelling(
+              workspaceRoot,
+              realWorkspaceRoot,
+              textualTarget,
+            ) !== null
+          ) {
             // Already points inside the copy — relative links that stayed
             // relative land here, and there is nothing to rewrite.
             continue;
           }
-          if (pathIsInside(realSourceRoot, textualTarget)) {
-            const mapped = path.join(
-              realWorkspaceRoot,
-              path.relative(realSourceRoot, textualTarget),
-            );
+          const sourceRelative = relativeToEitherSpelling(
+            sourceRoot,
+            realSourceRoot,
+            textualTarget,
+          );
+          if (sourceRelative !== null) {
+            const mapped = path.join(realWorkspaceRoot, sourceRelative);
             await fs.rm(entry.entryPath, { force: true });
             await preserveDanglingWorkspaceLink({
               targetPath:

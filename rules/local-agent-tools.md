@@ -147,6 +147,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Do not run a host-side production build while the active preview uses a cloud
   sandbox. Refuse with guidance to switch to the Host runtime until build
   execution is supported inside the active cloud sandbox.
+- `run_tests` only short-circuits on its dev-server pre-check when sandboxing is
+  off — a sandboxed run serves the app itself and needs no preview. A test that
+  relies on that short-circuit for a fast deterministic outcome must set
+  `disableSandboxedE2eTests: true` in its settings; otherwise the tool performs a
+  real sandboxed run and fails differently on every machine (`spawn pnpm ENOENT`
+  without pnpm, a download failure without network, a timeout locally).
 - Snapshot teardown is best-effort and must not delay a cancelled or timed-out
   turn. Start cleanup without awaiting it; the marked-directory startup sweep
   remains the fallback for interrupted cleanup.

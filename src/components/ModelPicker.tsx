@@ -803,8 +803,8 @@ export function ModelPicker() {
     );
     const unlockedAriaLabel = [
       model.displayName,
-      subscriptionEligible ? "ChatGPT sub" : null,
-      showPrice && model.dollarSigns != null
+      subscriptionEligible ? "ChatGPT plan" : null,
+      showPrice && !subscriptionEligible && model.dollarSigns != null
         ? model.dollarSigns === 0
           ? "Free"
           : `Price: ${(model.dollarSigns / 2).toFixed(1)}`
@@ -845,16 +845,18 @@ export function ModelPicker() {
                   <span
                     className={cn(PILL_CLASS, "bg-primary/10 text-primary")}
                   >
-                    ChatGPT sub
+                    ChatGPT plan
                   </span>
                 }
               />
               <TooltipContent>
-                Using this model will use your ChatGPT subscription
+                Uses your connected ChatGPT subscription
               </TooltipContent>
             </Tooltip>
           )}
-          {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
+          {showPrice && !subscriptionEligible && (
+            <PriceBadge dollarSigns={model.dollarSigns} />
+          )}
           {model.tag && !isFreeProRow && (
             <span
               className={cn(

@@ -544,6 +544,43 @@ describe("Explorer synthesis", () => {
   });
 });
 
+describe("buildChatMessageHistory subscription history", () => {
+  it("preserves persisted reasoning and provider metadata on subscription messages", () => {
+    const persisted: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "Previous reasoning",
+            providerOptions: {
+              openai: { reasoningEncryptedContent: "encrypted-history" },
+            },
+          },
+          { type: "text", text: "Previous answer" },
+        ],
+        providerOptions: { openai: { responseId: "previous-response" } },
+      },
+    ];
+
+    expect(
+      buildChatMessageHistory([
+        {
+          id: 1,
+          role: "assistant",
+          model: "ChatGPT subscription (gpt-5)",
+          content: "Previous answer",
+          aiMessagesJson: persisted,
+          sourceCommitHash: null,
+          commitHash: null,
+          isCompactionSummary: false,
+          createdAt: new Date("2025-01-01"),
+        },
+      ]),
+    ).toEqual(persisted);
+  });
+});
+
 describe("buildChatMessageHistory Git context", () => {
   const createdAt = new Date("2025-01-01");
 
@@ -1472,6 +1509,7 @@ describe("handleLocalAgentStream", () => {
         modelSelectionOverride,
         expect.objectContaining({ selectedModel: modelSelectionOverride }),
         modelSelectionOverride,
+        { chatId: 1 },
       );
     });
   });

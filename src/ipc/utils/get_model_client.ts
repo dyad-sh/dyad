@@ -131,6 +131,7 @@ export async function getModelClient(
   selectedModel: LargeLanguageModel,
   settings: UserSettings,
   modelSelectionOverride?: ModelSelection,
+  context?: { chatId: number },
   // files?: File[],
 ): Promise<ModelClientResult> {
   const selectedModelSelection =
@@ -151,7 +152,7 @@ export async function getModelClient(
       );
     return {
       modelClient: {
-        model: await createCodexSubscriptionModel(model.name),
+        model: await createCodexSubscriptionModel(model.name, context),
         builtinProviderId: "openai",
       },
       runtimeModel: model,

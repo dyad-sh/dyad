@@ -15,7 +15,7 @@ import {
   PromoMessage,
   type PromoMessageConfig,
 } from "@/components/chat/PromoMessage";
-import { language_models } from "@/db/schema";
+import { language_models, messages } from "@/db/schema";
 import type { UserBudgetInfo } from "@/ipc/types";
 import { writeSettings } from "@/main/settings";
 import {
@@ -84,6 +84,7 @@ describe("promo message (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       autoApprove: true,
       settings: {
         enableDyadPro: false,
@@ -126,25 +127,40 @@ describe("promo message (integration)", () => {
     expect(screen.getByTestId("promo-message")).toBe(promo);
   }, 60_000);
 
-  it("does not show a promo when the user has a Pro key", async () => {
-    writeSettings({
-      // Pro account holders should not see promos even when using their own provider.
-      enableDyadPro: false,
-      providerSettings: {
-        auto: { apiKey: { value: "dyad-pro-key" } },
-      },
-      isTestMode: false,
-    });
-    setBudgetHandler(harness, null);
-    const chatId = await harness.createChat();
-    harness.mount({ chatId });
+  it.each([true, false])(
+    "does not show a promo when the user has a Pro key and enableDyadPro is %s",
+    async (enableDyadPro) => {
+      writeSettings({
+        enableDyadPro,
+        providerSettings: {
+          auto: { apiKey: { value: "dyad-pro-key" } },
+        },
+        isTestMode: false,
+      });
+      setBudgetHandler(harness, null);
+      const chatId = await harness.createChat();
+      harness.mount({ chatId });
 
-    await sendFixtureTurn(harness, chatId);
+      const eventBaseline = harness.bridge.sentEvents.length;
+      await sendFixtureTurn(harness, chatId);
 
-    await waitFor(() =>
-      expect(screen.queryByTestId("promo-message")).toBeNull(),
-    );
-  }, 60_000);
+      const storedMessages = await harness.db.query.messages.findMany({
+        where: eq(messages.chatId, chatId),
+      });
+      expect(
+        storedMessages.find((message) => message.role === "assistant")?.content,
+      ).toContain("This is a response without any code changes.");
+      expect(
+        harness.bridge.sentEvents
+          .slice(eventBaseline)
+          .filter((event) => event.channel === "chat:response:error"),
+      ).toHaveLength(0);
+      await waitFor(() =>
+        expect(screen.queryByTestId("promo-message")).toBeNull(),
+      );
+    },
+    60_000,
+  );
 
   it("does not show a promo when the user has budget info", async () => {
     resetNonProSettings();

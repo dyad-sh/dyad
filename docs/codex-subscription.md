@@ -36,9 +36,17 @@ unchanged. Usage limits show an informational banner, never an automatic payment
 source switch.
 
 Subscription replies are labeled `ChatGPT subscription (resolved model)`.
-Persisted subscription history is portable across accounts, retaining visible
-content and paired tools. Same-turn reasoning and signatures remain intact and
-use existing destination-specific transcript sanitizers.
+Persisted history retains reasoning and provider metadata when using a
+subscription. Existing destination-specific transcript sanitizers still apply.
+On HTTP 400 with the structured code `invalid_encrypted_content`, the adapter
+retries that HTTP request once without encrypted reasoning items, preserving
+visible messages and tool calls/results. It does not restart the agent or tools.
+After the retried stream completes successfully, a bounded in-memory cache
+remembers hashes of the excluded items for that chat, subscription account,
+endpoint, and model. Later requests omit those items while preserving new
+reasoning. Original database history stays intact. Restarting Dyad or evicting
+old cache entries may require another recovery retry. Live verification of
+account and connection switches remains necessary.
 
 ## BYO credit preflight
 
@@ -136,7 +144,7 @@ is best-effort single-attempt reporting, not exactly-once server processing.
 ## Verification
 
 Unit/component coverage includes source routing, OAuth state/PKCE, secure-storage
-refusal, portable history, real AI SDK SSE parsing against a fake response,
+refusal, history preservation, real AI SDK SSE parsing against a fake response,
 resolved model usage, single-attempt failures, restart/no-replay behavior,
 nonblocking stream completion, and normalized usage payloads.
 

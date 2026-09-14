@@ -649,17 +649,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // Not streaming - send immediately. Keep the submitted payload in the
-    // composer until main confirms durable acceptance so admission errors
-    // (including exhausted Basic Agent quota) never discard the user's work.
+    // Clear text immediately, even when admission waits on network preflight.
+    // Keep the submitted draft in this request's closure so rejection can
+    // restore it without discarding anything typed while admission was pending.
     void openPreviewIfSetupRequired(appId);
+    setInputValue("");
+    let didRestoreSubmittedInput = false;
+    const restoreSubmittedInput = () => {
+      if (didRestoreSubmittedInput) return;
+      didRestoreSubmittedInput = true;
+      setInputValue((current) =>
+        current && submittedInputValue
+          ? `${submittedInputValue}\n\n${current}`
+          : submittedInputValue || current,
+      );
+    };
     let didClearAcceptedPayload = false;
     const clearAcceptedPayload = () => {
       if (didClearAcceptedPayload) return;
       didClearAcceptedPayload = true;
-      setInputValue((current) =>
-        current === submittedInputValue ? "" : current,
-      );
       const currentComponents = store.get(selectedComponentsPreviewAtom);
       if (
         currentComponents.length === componentsToSend.length &&
@@ -697,12 +705,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       },
       onAcceptanceRejected: () => {
         isAwaitingTurnAcceptanceRef.current = false;
+        restoreSubmittedInput();
         restoreSubmittedAnnotations();
       },
       onSettled: ({ success, queued }) => {
         isAwaitingTurnAcceptanceRef.current = false;
         if (queued) clearAcceptedPayload();
         if (!success && !queued && !wasAccepted) {
+          restoreSubmittedInput();
           restoreSubmittedAnnotations();
         }
       },

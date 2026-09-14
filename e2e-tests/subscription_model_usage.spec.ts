@@ -110,5 +110,4 @@ test("subscription model usage UX", async ({ po, electronApp }) => {
       { exact: true },
     ),
   ).toBeVisible();
-  await po.page.screenshot({ path: ".claude/tmp/subscription-connected.png" });
 });

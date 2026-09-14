@@ -1801,7 +1801,12 @@ ${componentSnippet}
       } else {
         // Normal AI processing for non-test prompts
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =
-          await getModelClient(settings.selectedModel, settings, selectedModel);
+          await getModelClient(
+            settings.selectedModel,
+            settings,
+            selectedModel,
+            { chatId: req.chatId },
+          );
 
         const isBuildMode = selectedChatMode === "build";
         const isLocalAgentMode = selectedChatMode === "local-agent";

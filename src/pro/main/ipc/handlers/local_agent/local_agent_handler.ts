@@ -1,4 +1,3 @@
-import { portableSubscriptionHistory } from "@/ipc/utils/subscription_history";
 /**
  * Local Agent v2 Handler
  * Main orchestrator for tool-based agent mode with parallel execution
@@ -312,7 +311,7 @@ export function buildChatMessageHistory(
       createdAt: Date;
     }
   >,
-  options?: { excludeMessageIds?: Set<number>; subscription?: boolean },
+  options?: { excludeMessageIds?: Set<number> },
 ): ModelMessage[] {
   const excludedIds = options?.excludeMessageIds;
   const relevantMessages = getPostCompactionMessages(chatMessages);
@@ -388,11 +387,6 @@ export function buildChatMessageHistory(
 
   for (const msg of filtered) {
     let parsed = parseAiMessagesJson(msg);
-    if (
-      options?.subscription ||
-      msg.model?.startsWith("ChatGPT subscription (")
-    )
-      parsed = portableSubscriptionHistory(parsed);
     if (pendingReminder && msg.role === "user") {
       const withReminders = appendGitReminderToUserMessage(
         parsed,
@@ -942,6 +936,7 @@ export async function handleLocalAgentStream(
       settings.selectedModel,
       settings,
       selectedModel,
+      { chatId: req.chatId },
     );
     const normalizeToolCallIdsForTarget = <T extends ModelMessage>(
       messages: T[],
@@ -1212,10 +1207,7 @@ export async function handleLocalAgentStream(
     // If a compaction summary exists, only include messages from that point onward
     // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
     const messageHistory: ModelMessage[] =
-      messageOverride ??
-      buildChatMessageHistory(chat.messages, {
-        subscription: selectedModel.connection === "subscription",
-      });
+      messageOverride ?? buildChatMessageHistory(chat.messages);
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");
@@ -1433,7 +1425,6 @@ export async function handleLocalAgentStream(
                       // Keep the structured in-flight assistant/tool messages from
                       // the current stream instead of the placeholder DB content.
                       excludeMessageIds: new Set([placeholderMessageId]),
-                      subscription: selectedModel.connection === "subscription",
                     },
                   );
                   // The referenced-apps reminder lives only in-memory on the

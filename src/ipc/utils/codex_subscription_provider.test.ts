@@ -19,12 +19,112 @@ import {
   shapeSubscriptionRequest,
 } from "./codex_subscription_provider";
 import { finishSubscriptionUsage } from "../services/codex_subscription_usage";
+import {
+  DyadErrorKind,
+  isDyadErrorKindFilteredFromTelemetry,
+} from "@/errors/dyad_error";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 describe("Codex subscription Responses adapter", () => {
+  async function rejectedRequest(body: string, status = 400) {
+    vi.stubGlobal("fetch", async () => new Response(body, { status }));
+    const model = await createCodexSubscriptionModel("test");
+    return model.doStream({
+      prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    });
+  }
+
+  it.each([
+    {
+      error: {
+        message: "Encrypted content could not be verified.",
+        code: "invalid_encrypted_content",
+      },
+    },
+    {
+      message: "Encrypted content could not be verified.",
+      code: "invalid_encrypted_content",
+    },
+  ])(
+    "includes the provider message and code for HTTP 400: %j",
+    async (body) => {
+      await expect(rejectedRequest(JSON.stringify(body))).rejects.toMatchObject(
+        {
+          name: "DyadError",
+          kind: DyadErrorKind.Validation,
+          message:
+            "ChatGPT subscription request failed (HTTP 400). Encrypted content could not be verified. (code: invalid_encrypted_content)",
+        },
+      );
+      expect(
+        isDyadErrorKindFilteredFromTelemetry(DyadErrorKind.Validation),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    { detail: "Unsupported parameter: temperature" },
+    { error: "Unsupported parameter: temperature" },
+  ])("supports alternate provider error envelopes: %j", async (body) => {
+    await expect(rejectedRequest(JSON.stringify(body))).rejects.toThrow(
+      "Unsupported parameter: temperature",
+    );
+  });
+
+  it("redacts credentials and excludes unrelated response fields", async () => {
+    await expect(
+      rejectedRequest(
+        JSON.stringify({
+          error: {
+            message:
+              "Rejected test-access for test-account; bearer another-secret-token",
+            code: "invalid_request",
+          },
+          request: { prompt: "private prompt", authorization: "test-access" },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      message:
+        "ChatGPT subscription request failed (HTTP 400). Rejected [redacted] for [redacted]; Bearer [redacted secret] (code: invalid_request)",
+      cause: undefined,
+    });
+  });
+
+  it.each([
+    "",
+    "<html>Proxy error</html>",
+    "{invalid json",
+    JSON.stringify({ error: { message: 42 } }),
+    "x".repeat(20_000),
+  ])("falls back to HTTP status for unusable bodies (%#)", async (body) => {
+    await expect(rejectedRequest(body)).rejects.toThrow(
+      "ChatGPT subscription request failed (HTTP 400).",
+    );
+  });
+
+  it("bounds displayed provider details", async () => {
+    const error = await rejectedRequest(
+      JSON.stringify({ error: { message: "Invalid input. ".repeat(500) } }),
+    ).catch((error: Error) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message.length).toBeLessThanOrEqual(2_100);
+  });
+
+  it("keeps upstream details out of reportable server errors", async () => {
+    await expect(
+      rejectedRequest(
+        JSON.stringify({ error: { message: "private upstream context" } }),
+        500,
+      ),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: "ChatGPT subscription request failed (HTTP 500).",
+    });
+  });
+
   it("shapes requests without dropping user text or tools", () => {
     const body = shapeSubscriptionRequest({
       model: "test",

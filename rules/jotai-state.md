@@ -99,6 +99,9 @@ Components should usually read `currentTestSpecsAtom` rather than repeat
 - One-shot external event callbacks that must observe atom writes from the same
   React batch should read with the provider-bound `useStore().get(...)` instead
   of relying on a render-captured atom value.
+- Chat admission can await network preflight. Clear composer text optimistically,
+  restore rejected drafts once into their original chat without overwriting new
+  text, and never clear a newer draft when delayed acceptance arrives.
 
 ## Cleanup
 

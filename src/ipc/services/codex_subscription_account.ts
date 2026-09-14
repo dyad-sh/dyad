@@ -92,7 +92,8 @@ export async function getSubscriptionAccount() {
         // Protocols used by the official Codex ModelsClient and backend-client.
         const [models, limits] = await Promise.allSettled([
           read(
-            "https://chatgpt.com/backend-api/codex/models?client_version=1.15.0",
+            // Pin the Codex client compatibility version, independently of Dyad's app version.
+            "https://chatgpt.com/backend-api/codex/models?client_version=0.154.0",
           ).then((raw) =>
             z
               .object({

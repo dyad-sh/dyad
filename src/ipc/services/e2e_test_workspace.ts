@@ -304,7 +304,7 @@ async function withheldEnvFile(
 /**
  * Run `install` with the workspace's database credentials withheld from every
  * dotenv file in every directory the install can reach, and put them back
- * afterwards.
+ * afterwards. Only the target app's provider-rewritten env file may be preserved.
  *
  * The app directory alone is not the reachable set. A monorepo's root
  * `postinstall` reads the ROOT dotenv files, which no provider isolation
@@ -325,7 +325,10 @@ async function withheldEnvFile(
  * demonstrably still alive.
  */
 async function withWithheldDatabaseEnv<T>(
-  directories: readonly string[],
+  {
+    directories,
+    preservedEnvPath,
+  }: { directories: readonly string[]; preservedEnvPath?: string },
   install: () => Promise<T>,
   settle?: () => Promise<boolean>,
 ): Promise<T> {
@@ -333,9 +336,11 @@ async function withWithheldDatabaseEnv<T>(
   try {
     for (const directory of new Set(directories)) {
       for (const fileName of DOTENV_FILE_NAMES) {
+        const envPath = path.join(directory, fileName);
+        if (envPath === preservedEnvPath) continue;
         const original = await withheldEnvFile(directory, fileName);
         if (original !== null) {
-          restore.set(path.join(directory, fileName), original);
+          restore.set(envPath, original);
         }
       }
     }
@@ -382,7 +387,8 @@ export async function installE2eTestWorkspaceDependencies({
   /**
    * Withhold the workspace's database credentials for the duration of the
    * install, so lifecycle scripts run but cannot reach the user's real data.
-   * See the caller for which isolation modes need it.
+   * When false, preserve only the target app's provider-rewritten .env.local;
+   * database credentials in all other dotenv files are always withheld.
    */
   withholdDatabaseEnv?: boolean;
 }): Promise<void> {
@@ -404,15 +410,15 @@ export async function installE2eTestWorkspaceDependencies({
   // result to read — settles rather than restores.
   let installEndedNormally = false;
   const installResult = await withWithheldDatabaseEnv(
-    withholdDatabaseEnv
-      ? [workspace.workspacePath, ...installedPackagePaths]
-      : // The install root's and the siblings' own dotenv files are never
-        // rewritten by provider isolation, so a monorepo root or sibling script
-        // would read live credentials even for a Neon app whose app-level env
-        // WAS swapped.
-        installedPackagePaths.filter(
-          (directory) => directory !== workspace.workspacePath,
-        ),
+    {
+      directories: [workspace.workspacePath, ...installedPackagePaths],
+      // Neon isolation rewrites only the target app's .env.local. Its other
+      // dotenv files, and every root/sibling dotenv file, may still hold live
+      // credentials that lifecycle scripts can load directly.
+      preservedEnvPath: withholdDatabaseEnv
+        ? undefined
+        : path.join(workspace.workspacePath, ENV_FILE_NAME),
+    },
     () =>
       runCleanPackageInstall({
         cwd: dependencyInstallPath,

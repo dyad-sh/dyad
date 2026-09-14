@@ -760,17 +760,13 @@ async function startServerOnPort({
       // alive. Untracking then would remove the one child `will-quit` still
       // needs to tree-kill — exactly the leak the registry exists to prevent —
       // and that survivor still holds the workspace cwd `dispose()` is about to
-      // remove. Leave it registered; `trackE2eTestProcess`'s own exit/error
-      // listeners drop it whenever it does die.
+      // remove. Keep it registered until settlement is confirmed, even when
+      // the wrapper has exited while its descendants remain alive.
       //
       // A child with no pid never started, so there is nothing for quit to kill
       // and nothing that could later exit to drop it: untrack it here or it
       // sits in the registry for the life of the process.
-      if (
-        child.pid === undefined ||
-        child.exitCode !== null ||
-        child.signalCode !== null
-      ) {
+      if (stopped) {
         untrack();
       }
       return stopped;

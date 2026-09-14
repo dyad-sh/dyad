@@ -5,6 +5,14 @@
 // isn't running" warning (uncounted) — a deterministic path that avoids running
 // Playwright-inside-Playwright. Asserts the tool XML + narration land in the
 // persisted assistant message.
+//
+// Sandboxing is turned OFF for that reason: a sandboxed run does not need the
+// preview, so the pre-check no longer short-circuits and the tool would go on
+// to copy the app and install Playwright for real — minutes of work inside a
+// unit-test run, and a different failure on every machine (`spawn pnpm ENOENT`
+// on a runner without pnpm, a download failure on one without network). The
+// guard's two branches are covered as units in `run_tests.spec.ts`; what this
+// file is for is the wiring around them.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
@@ -30,6 +38,7 @@ describe("local-agent run_tests (integration)", () => {
         enableDyadPro: true,
         providerSettings: { auto: { apiKey: { value: "testdyadkey" } } },
         enableCodeExplorer: false,
+        disableSandboxedE2eTests: true,
       },
     });
     // The run_tests tool is gated on the app having opted into testing.

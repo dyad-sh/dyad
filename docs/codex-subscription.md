@@ -1,4 +1,4 @@
-# Codex subscription prototype
+# Codex subscription
 
 ## Architecture and UX
 
@@ -32,34 +32,37 @@ are illustrative, not credentials):
 ```json
 {
   "version": 1,
-  "id": "usage-event-uuid",
-  "provider": "openai",
+  "id": "f6d2a682-63bd-4e0a-a36a-78be594c3f93",
+  "modelProvider": "openai",
   "connection": "subscription",
-  "model": "resolved-model-name",
+  "modelId": "gpt-5.6-astra",
   "createdAt": "2026-09-04T00:00:00.000Z",
-  "tokens": { "input": 70, "cacheRead": 20, "cacheWrite": 10, "output": 50 },
-  "catalog": { "knownModel": true, "version": "catalog-version" },
-  "pricingPolicy": "subscription-v1"
+  "totalTokens": 150,
+  "cachedInputTokens": 20,
+  "uncachedInputTokens": 80,
+  "outputTokens": 50
 }
 ```
 
 Engine must validate counts, authenticate the billing account, authorize charges,
-and atomically debit once per account/event ID. Repeat requests must return the
-same receipt, including after a timeout following a successful debit:
+and claim each account/event ID before debiting. Confirmed receipts return
+unchanged on retry. An ambiguous gateway timeout stays pending for reconciliation
+rather than risking a duplicate debit:
 
 ```json
-{ "id": "usage-event-uuid", "chargedUsd": 0.000123 }
+{ "id": "f6d2a682-63bd-4e0a-a36a-78be594c3f93", "chargedUsd": 0.000015 }
 ```
 
-Known local/remote catalog models cost **25% of their API list token rates**, per
-category. Unknown models cost **$0.10 per million tokens across all categories**,
-without an additional 25% multiplier. Categories are disjoint: `input` excludes
-cache reads/writes; `output` already includes reasoning. Never add reasoning
-tokens again. The pure calculator in `src/lib/subscriptionUsage.ts` defines this
-arithmetic; Engine owns actual price lookup, model alias recognition, rounding,
-balance enforcement and authoritative receipts. Current client catalogs do not
-contain exact list prices. The client's catalog hint must not be trusted as a
-billing authorization or price source.
+Engine charges **$0.033 per million total tokens** for model IDs containing
+`-luna`, `-mini`, or `-nano`; **$0.10 per million total tokens** for all other
+models, including uncatalogued models. Matching uses the resolved model ID, not
+the display name. Dyad does not calculate or submit a price.
+
+`totalTokens = cachedInputTokens + uncachedInputTokens + outputTokens`. Cached
+input means cache reads; cache creation/write tokens count as uncached input.
+Output already includes reasoning: never add reasoning tokens again. Existing
+local ledger records retain their disjoint categories and are converted on send,
+so pending usage survives the contract change without losing its event ID.
 
 Each streamed model step has a durable report. Complete token usage is saved
 before reporting; failures preserve the same ID for retry. New requests wait for
@@ -67,11 +70,11 @@ unsettled reports, and reports cannot be settled under a different Dyad key.
 The device UI displays receipted charges and pending reports, not an estimate of
 the user's full account balance. Engine is not implemented in this repository.
 
-### Prototype limitations / release blockers
+### Remaining limitations and verification
 
 - A cancelled/crashed request without final usage is marked unresolved, never
   silently charged as zero. Subsequent subscription requests are blocked until
-  reconciliation. This prototype has no Engine reconciliation protocol yet;
+  reconciliation. There is no automatic Engine reconciliation protocol yet;
   the Retry action cannot recover missing token counts. Other connections remain
   usable. Production needs a recoverable cancellation/accounting design.
 - Direct client-reported usage is not tamper-proof. Production billing needs an
@@ -91,7 +94,7 @@ the user's full account balance. Engine is not implemented in this repository.
 
 Unit/component coverage includes source routing, OAuth state/PKCE, secure-storage
 refusal, portable history, real AI SDK SSE parsing against a fake response,
-resolved model usage, idempotent report retries, cancellation, and pricing math.
+resolved model usage, idempotent report retries, cancellation, and normalized usage payloads.
 
 For a real inference smoke, on an interactive machine with an available OS
 keyring and a ChatGPT subscription:

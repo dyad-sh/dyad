@@ -24,8 +24,12 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
   );
   const reports: Array<{
     id: string;
-    model: string;
-    tokens: Record<string, number>;
+    modelId: string;
+    modelProvider: string;
+    totalTokens: number;
+    cachedInputTokens: number;
+    uncachedInputTokens: number;
+    outputTokens: number;
   }> = [];
   const receipts = new Map<string, number>();
   const billing = createServer(async (req, res) => {
@@ -128,10 +132,18 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
     expect(
       reports.every(
         (report) =>
-          report.model &&
-          Object.values(report.tokens).every(
-            (value) => Number.isInteger(value) && value >= 0,
-          ),
+          report.modelId &&
+          report.modelProvider === "openai" &&
+          report.totalTokens ===
+            report.cachedInputTokens +
+              report.uncachedInputTokens +
+              report.outputTokens &&
+          [
+            report.totalTokens,
+            report.cachedInputTokens,
+            report.uncachedInputTokens,
+            report.outputTokens,
+          ].every((value) => Number.isInteger(value) && value >= 0),
       ),
     ).toBe(true);
     console.log(

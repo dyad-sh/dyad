@@ -7,19 +7,15 @@ import { getUserDataPath } from "@/paths/paths";
 import { readSettings } from "@/main/settings";
 import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getBuiltinLanguageModelCatalog } from "@/ipc/shared/remote_language_model_catalog";
-import { MODEL_OPTIONS } from "@/ipc/shared/language_model_constants";
 import type { SubscriptionTokens } from "@/lib/subscriptionUsage";
 
-const Count = z.number().int().nonnegative();
+const Count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const ReportSchema = z.object({
   id: z.string(),
   billingOwner: z.string(),
   model: z.string(),
   createdAt: z.string(),
   status: z.enum(["started", "ready", "unknown"]),
-  knownModel: z.boolean().optional(),
-  catalogVersion: z.string().optional(),
   tokens: z
     .object({
       input: Count,
@@ -68,6 +64,7 @@ export function normalizeSubscriptionUsage(
   const cacheRead = usage.inputTokens.cacheRead ?? 0;
   const cacheWrite = usage.inputTokens.cacheWrite ?? 0;
   const input = inputTotal - cacheRead - cacheWrite;
+  Count.parse(inputTotal + output);
   return ReportSchema.shape.tokens
     .unwrap()
     .parse({ input, cacheRead, cacheWrite, output });
@@ -117,16 +114,19 @@ export async function flushSubscriptionUsage() {
             body: JSON.stringify({
               version: 1,
               id: report.id,
-              provider: "openai",
+              modelProvider: "openai",
               connection: "subscription",
-              model: report.model,
+              modelId: report.model,
               createdAt: report.createdAt,
-              tokens: report.tokens,
-              catalog: {
-                knownModel: report.knownModel,
-                version: report.catalogVersion,
-              },
-              pricingPolicy: "subscription-v1",
+              totalTokens:
+                report.tokens.input +
+                report.tokens.cacheRead +
+                report.tokens.cacheWrite +
+                report.tokens.output,
+              cachedInputTokens: report.tokens.cacheRead,
+              uncachedInputTokens:
+                report.tokens.input + report.tokens.cacheWrite,
+              outputTokens: report.tokens.output,
             }),
           },
         );
@@ -183,19 +183,12 @@ export async function finishSubscriptionUsage(
 ) {
   try {
     const tokens = normalizeSubscriptionUsage(usage);
-    const catalog = await getBuiltinLanguageModelCatalog();
-    const knownModel = Boolean(
-      catalog.modelsByProvider.openai?.some((m) => m.apiName === model) ||
-      MODEL_OPTIONS.openai?.some((m) => m.name === model),
-    );
     const ledger = readLedger();
     const report = ledger.reports.find((r) => r.id === id);
     if (report)
       Object.assign(report, {
         model,
         tokens,
-        knownModel,
-        catalogVersion: catalog.version,
         status: "ready",
       });
     writeLedger(ledger);

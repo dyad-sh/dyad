@@ -1,3 +1,4 @@
+import { checkSubscriptionCredits } from "./codex_subscription_credit_check";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import log from "electron-log";
@@ -20,13 +21,17 @@ const Tokens = z.object({
 // Capture the billing account at request start, so a settings change cannot
 // redirect an in-flight request's charge to another account.
 const active = new Map<string, { key: string; createdAt: string }>();
-export function startSubscriptionUsage(_model: string) {
+export async function startSubscriptionUsage(
+  _model: string,
+  signal?: AbortSignal,
+) {
   const key = readSettings().providerSettings?.auto?.apiKey?.value;
   if (!key)
     throw new DyadError(
       "Add your Dyad Pro key before using Subscription. Dyad usage is billed separately from your ChatGPT plan.",
       DyadErrorKind.Auth,
     );
+  await checkSubscriptionCredits(key, signal);
   const id = randomUUID();
   active.set(id, { key, createdAt: new Date().toISOString() });
   return id;

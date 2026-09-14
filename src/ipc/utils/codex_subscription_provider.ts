@@ -145,8 +145,8 @@ export async function createCodexSubscriptionModel(
           openai: { ...params.providerOptions?.openai, store: false },
         },
       }),
-      wrapStream: async ({ doStream }) => {
-        const id = await startSubscriptionUsage(modelName);
+      wrapStream: async ({ doStream, params }) => {
+        const id = await startSubscriptionUsage(modelName, params.abortSignal);
         let result;
         try {
           result = await doStream();

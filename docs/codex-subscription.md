@@ -23,6 +23,27 @@ Legacy model choices retain their existing routing behavior. Separate auxiliary
 services such as code exploration/review retain their existing billing routes;
 the subscription is not a promise that every Dyad service uses ChatGPT.
 
+## BYO credit preflight
+
+Before every subscription model request (including subsequent agent steps), Dyad
+fetches the existing `GET https://api.dyad.sh/v1/user/info` using the same Dyad
+billing key captured for that request. This uses a fresh main-process lookup,
+not the five-minute UI cache or the UI's test-build mock balance.
+
+- Positive `totalCredits - usedCredits`: proceed.
+- Confirmed exhausted balance (including HTTP 200 with exhausted counts) or HTTP
+  402: block before inference and ask the user to add credits.
+- HTTP 401/403: block and ask the user to update the Dyad key.
+- Timeout (five seconds), network failure, rate limiting, service errors, or
+  invalid response: log a redacted warning and **allow generation**. No retry.
+- User cancellation is not an outage; it stops the request.
+
+Only BYO subscription generation is gated. Existing API-key/Pro inference routes
+are unchanged, and the account display still returns null on lookup failure.
+This is an eligibility check, not a reservation: spend may lag, concurrent calls
+can pass together, and outages intentionally fail open. Post-generation usage
+reporting remains a single attempt with no replay.
+
 ## Engine contract: POST /track-usage
 
 Authentication is the user's **Dyad Pro key**, never their ChatGPT token. The UUID

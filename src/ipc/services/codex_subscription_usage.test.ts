@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   key: "test-dyad-key",
   warn: vi.fn(),
 }));
+vi.mock("./codex_subscription_credit_check", () => ({
+  checkSubscriptionCredits: vi.fn(async () => {}),
+}));
 vi.mock("@/paths/paths", () => ({ getUserDataPath: () => mocks.directory }));
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
@@ -58,7 +61,7 @@ describe("single-attempt subscription usage", () => {
     ).toThrow();
   });
   it("sends the six fields once, without an idempotency header or local persistence", async () => {
-    const id = startSubscriptionUsage("gpt-5.6-luna");
+    const id = await startSubscriptionUsage("gpt-5.6-luna");
     await Promise.all([
       finishSubscriptionUsage(id, "gpt-5.6-luna", usage),
       finishSubscriptionUsage(id, "gpt-5.6-luna", usage),
@@ -84,14 +87,14 @@ describe("single-attempt subscription usage", () => {
         if (failure === "network") throw new Error("sensitive-network-details");
         return new Response("", { status: 503 });
       });
-      const id = startSubscriptionUsage("model");
+      const id = await startSubscriptionUsage("model");
       await expect(
         finishSubscriptionUsage(id, "model", usage),
       ).resolves.toBeUndefined();
       await finishSubscriptionUsage(id, "model", usage);
       expect(fetch).toHaveBeenCalledTimes(1);
       await finishSubscriptionUsage(
-        startSubscriptionUsage("model"),
+        await startSubscriptionUsage("model"),
         "model",
         usage,
       );
@@ -102,10 +105,10 @@ describe("single-attempt subscription usage", () => {
     },
   );
   it("does not guess missing usage or replay cancelled requests", async () => {
-    const cancelled = startSubscriptionUsage("model");
+    const cancelled = await startSubscriptionUsage("model");
     interruptSubscriptionUsage(cancelled);
     await finishSubscriptionUsage(cancelled, "model", usage);
-    const missing = startSubscriptionUsage("model");
+    const missing = await startSubscriptionUsage("model");
     await expect(
       finishSubscriptionUsage(missing, "model", {
         ...usage,
@@ -115,14 +118,14 @@ describe("single-attempt subscription usage", () => {
     await finishSubscriptionUsage(missing, "model", usage);
     expect(fetch).not.toHaveBeenCalled();
     await finishSubscriptionUsage(
-      startSubscriptionUsage("model"),
+      await startSubscriptionUsage("model"),
       "model",
       usage,
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("keeps the billing account selected at request start", async () => {
-    const id = startSubscriptionUsage("model");
+    const id = await startSubscriptionUsage("model");
     mocks.key = "other-test-account";
     await finishSubscriptionUsage(id, "model", usage);
     expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({
@@ -138,13 +141,13 @@ describe("single-attempt subscription usage", () => {
         chargedUsd: 1,
       }),
     );
-    const abandoned = startSubscriptionUsage("model");
+    const abandoned = await startSubscriptionUsage("model");
     vi.resetModules();
     const restarted = await import("./codex_subscription_usage");
     await restarted.finishSubscriptionUsage(abandoned, "model", usage);
     expect(fetch).not.toHaveBeenCalled();
     await restarted.finishSubscriptionUsage(
-      restarted.startSubscriptionUsage("model"),
+      await restarted.startSubscriptionUsage("model"),
       "model",
       usage,
     );

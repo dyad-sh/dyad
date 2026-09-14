@@ -11,7 +11,6 @@ import {
   UserBudgetInfoSchema,
 } from "@/ipc/types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import { z } from "zod";
 import {
   AUDIO_REQUEST_ID_PATTERN,
   audioContracts,
@@ -24,14 +23,11 @@ import { transcribeWithDyadEngine } from "../utils/llm_engine_provider";
 import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
-export const UserInfoResponseSchema = z.object({
-  usedCredits: z.number(),
-  totalCredits: z.number(),
-  budgetResetDate: z.string(), // ISO date string from API
-  userId: z.string(),
-  isTrial: z.boolean().optional().default(false),
-});
-export type UserInfoResponse = z.infer<typeof UserInfoResponseSchema>;
+import { fetchUserInfo } from "../services/user_budget_service";
+export {
+  UserInfoResponseSchema,
+  type UserInfoResponse,
+} from "../services/user_budget_service";
 
 const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
@@ -70,14 +66,6 @@ function validateAudioTranscriptionRequest(input: TranscribeAudioParams) {
       DyadErrorKind.Validation,
     );
   }
-}
-
-function getUserInfoUrl() {
-  // Overridable so tests point at the fake LLM server instead of the real API.
-  if (process.env.DYAD_USER_INFO_URL) {
-    return process.env.DYAD_USER_INFO_URL;
-  }
-  return "https://api.dyad.sh/v1/user/info";
 }
 
 function getSubscriptionStatusUrl() {
@@ -154,31 +142,8 @@ export function registerProHandlers() {
       return null;
     }
 
-    const url = getUserInfoUrl();
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    };
-
     try {
-      // Use native fetch if available, otherwise node-fetch will be used via import
-      const response = await fetch(url, {
-        method: "GET",
-        headers: headers,
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        logger.error(
-          `Failed to fetch user budget. Status: ${response.status}. Body: ${errorBody}`,
-        );
-        return null;
-      }
-
-      const rawData = await response.json();
-
-      // Validate the API response structure
-      const data = UserInfoResponseSchema.parse(rawData);
+      const data = await fetchUserInfo(apiKey);
 
       // Turn user_abc1234 =>  "****1234"
       // Preserve the last 4 characters so we can correlate bug reports

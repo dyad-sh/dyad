@@ -364,10 +364,21 @@ describe("E2E test workspace", () => {
     },
   );
 
-  it.each([false, true])(
-    "keeps copied dotenv credentials stripped for the Neon server (monorepo: %s)",
-    async (monorepo) => {
-      const root = await tempRoot();
+  it.each([
+    { monorepo: false, linkedRoot: false },
+    { monorepo: true, linkedRoot: false },
+    { monorepo: false, linkedRoot: true },
+    { monorepo: true, linkedRoot: true },
+  ])(
+    "keeps copied dotenv credentials stripped for the Neon server (monorepo: $monorepo, linked root: $linkedRoot)",
+    async ({ monorepo, linkedRoot }) => {
+      const temp = await tempRoot();
+      const root = linkedRoot ? path.join(temp, "linked-root") : temp;
+      if (linkedRoot) {
+        const realRoot = path.join(temp, "real-root");
+        await fs.mkdir(realRoot);
+        await fs.symlink(realRoot, root, "junction");
+      }
       const repoRoot = path.join(root, "repo");
       const appRelativePath = monorepo ? path.join("packages", "app") : "";
       const appPath = path.join(repoRoot, appRelativePath);
@@ -402,7 +413,9 @@ describe("E2E test workspace", () => {
       await ensureGitRepo(repoRoot);
       vi.mocked(resolvePackageManager).mockResolvedValueOnce({
         packageManager: "npm",
-        sourceInstallPath: repoRoot,
+        // The resolver receives canonical paths from the Git snapshot. Match
+        // that contract even when the temp directory has a symlink or 8.3 alias.
+        sourceInstallPath: await fs.realpath(repoRoot),
       });
       const workspace = await createWorkspaceUnderTest({ appId: 7, appPath });
       try {

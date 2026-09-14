@@ -35,14 +35,19 @@ export async function preflightSubscriptionTurn(
   if (settings.proModelUsage === "pro" || model.provider !== "openai")
     return { ...identity, connection: "pro" };
   const account = await getSubscriptionAccount();
-  if (account.error) throw new DyadError(account.error, DyadErrorKind.Auth);
-  if (account.connected && account.modelsError && !account.models.length)
+  // An abandoned sign-in can leave a status error without a connection. It
+  // belongs in the account UI and must not block ordinary Pro-credit turns.
+  if (!account.connected) return { ...identity, connection: "pro" };
+  // With no catalog, eligibility is unknown. Do not silently change the
+  // billing source of a potentially subscription-eligible model on an outage.
+  if (account.modelsError && !account.models.length)
     throw new DyadError(
       "Subscription model availability is unavailable. Try again or select Pro credits in the Pro menu.",
       DyadErrorKind.External,
     );
   if (!usesChatGPTSubscription(model, settings, account))
     return { ...identity, connection: "pro" };
+  if (account.error) throw new DyadError(account.error, DyadErrorKind.Auth);
   await getCodexSubscriptionCredentials();
   const key = settings.providerSettings?.auto?.apiKey?.value;
   if (!key)

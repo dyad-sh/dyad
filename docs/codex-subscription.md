@@ -16,8 +16,11 @@ catalog; unavailable models fail without switching to a paid API automatically.
 
 The picker keeps a single model catalog. Its hover-open Subscription submenu
 connects/disconnects ChatGPT and displays account-reported usage windows. Models
-present in the account's Codex catalog show a `ChatGPT sub` chip when subscription
-usage is selected. Unsupported models continue through Pro credits.
+present in the account's Codex catalog show a `ChatGPT plan` chip when subscription
+usage is selected, with the tooltip `Uses your connected ChatGPT subscription`.
+Unsupported models continue through Pro credits. Cancelled or timed-out sign-in
+attempts leave Pro-credit routing available. A connected account with no loaded
+catalog reports an availability error instead of guessing the billing source.
 
 The Pro menu's **Model usage** preference is global across chats (`subscription`
 or `pro`). Connecting selects subscription; disconnecting selects Pro credits.

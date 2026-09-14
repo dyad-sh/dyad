@@ -81,6 +81,60 @@ describe("global subscription turn routing", () => {
     ).toMatchObject({ connection: "pro" });
     expect(mocks.account).not.toHaveBeenCalled();
   });
+  it.each([
+    "Sign-in was not completed. Try connecting again.",
+    "Sign-in timed out. Try again.",
+  ])("uses Pro after abandoned sign-in: %s", async (error) => {
+    mocks.account.mockResolvedValue({ connected: false, models: [], error });
+    expect(
+      await preflightSubscriptionTurn(model, settings, signal),
+    ).toMatchObject({
+      connection: "pro",
+    });
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.credits).not.toHaveBeenCalled();
+  });
+  it("ignores subscription errors for a known ineligible model", async () => {
+    mocks.account.mockResolvedValue({
+      connected: true,
+      models: ["eligible-model"],
+      error: "Reconnect your ChatGPT subscription to continue.",
+      modelsError:
+        "Subscription model availability is temporarily unavailable.",
+    });
+    expect(
+      await preflightSubscriptionTurn(
+        { ...model, name: "gpt-4o" },
+        settings,
+        signal,
+      ),
+    ).toMatchObject({ connection: "pro" });
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.credits).not.toHaveBeenCalled();
+  });
+  it("still reports authentication errors for an eligible subscription model", async () => {
+    mocks.account.mockResolvedValue({
+      connected: true,
+      models: ["eligible-model"],
+      error: "Reconnect your ChatGPT subscription to continue.",
+    });
+    await expect(
+      preflightSubscriptionTurn(model, settings, signal),
+    ).rejects.toThrow("Reconnect your ChatGPT subscription");
+    expect(mocks.credits).not.toHaveBeenCalled();
+  });
+  it("does not guess Pro routing when a connected account has no catalog", async () => {
+    mocks.account.mockResolvedValue({
+      connected: true,
+      models: [],
+      modelsError:
+        "Subscription model availability is temporarily unavailable.",
+    });
+    await expect(
+      preflightSubscriptionTurn(model, settings, signal),
+    ).rejects.toThrow("Subscription model availability is unavailable");
+    expect(mocks.credits).not.toHaveBeenCalled();
+  });
   it("preserves own-key routing when Pro is off", async () => {
     expect(
       await preflightSubscriptionTurn(

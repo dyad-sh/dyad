@@ -3,7 +3,7 @@ import { test } from "./helpers/test_helper";
 
 test("subscription model usage UX", async ({ po, electronApp }) => {
   await po.setUpDyadPro();
-  await electronApp.evaluate(({ ipcMain }) => {
+  await electronApp.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler("codex-subscription:status");
     ipcMain.handle("codex-subscription:status", () => ({
       connected: true,
@@ -23,15 +23,16 @@ test("subscription model usage UX", async ({ po, electronApp }) => {
         },
       ],
     }));
-  });
-  // Refocus causes the shared account query to refresh without reloading an SPA file route.
-  await po.page.evaluate(() => {
-    window.dispatchEvent(new Event("focus"));
+    BrowserWindow.getAllWindows()[0].webContents.send("deep-link-received", {
+      type: "chatgpt-connected",
+    });
   });
   await po.page.getByTestId("model-picker").click();
-  await po.page
-    .getByRole("menuitem", { name: /Subscription.*Open submenu/ })
-    .hover();
+  const subscriptionMenu = po.page.getByRole("menuitem", {
+    name: "Subscription, ChatGPT connected. Open submenu.",
+  });
+  await expect(subscriptionMenu).toBeVisible();
+  await subscriptionMenu.hover();
   await expect(
     po.page.getByRole("menuitem", { name: "Disconnect ChatGPT" }),
   ).toBeVisible({ timeout: 40000 });
@@ -56,12 +57,12 @@ test("subscription model usage UX", async ({ po, electronApp }) => {
     .first()
     .click();
   const eligible = po.page
-    .getByRole("menuitem", { name: /GPT 5\.2.*ChatGPT sub/ })
+    .getByRole("menuitem", { name: /GPT 5\.2.*ChatGPT plan/ })
     .first();
   await expect(eligible).toBeVisible();
-  await eligible.getByText("ChatGPT sub", { exact: true }).hover();
+  await eligible.getByText("ChatGPT plan", { exact: true }).hover();
   await expect(
-    po.page.getByText("Using this model will use your ChatGPT subscription", {
+    po.page.getByText("Uses your connected ChatGPT subscription", {
       exact: true,
     }),
   ).toBeVisible();

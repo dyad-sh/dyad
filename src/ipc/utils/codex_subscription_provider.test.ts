@@ -1,3 +1,6 @@
+vi.mock("../services/codex_subscription_account", () => ({
+  markSubscriptionLimited: vi.fn(),
+}));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { streamText } from "ai";
 vi.mock("../services/codex_subscription_auth", () => ({
@@ -13,7 +16,6 @@ vi.mock("../services/codex_subscription_usage", () => ({
 }));
 import {
   createCodexSubscriptionModel,
-  portableModelParams,
   shapeSubscriptionRequest,
 } from "./codex_subscription_provider";
 import { finishSubscriptionUsage } from "../services/codex_subscription_usage";
@@ -44,48 +46,6 @@ describe("Codex subscription Responses adapter", () => {
     });
     expect(body).not.toHaveProperty("previous_response_id");
     expect(body).not.toHaveProperty("max_output_tokens");
-  });
-  it("keeps portable tool history but removes account-bound reasoning and IDs", () => {
-    const params = portableModelParams({
-      prompt: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "reasoning",
-              text: "private",
-              providerOptions: {
-                openai: { itemId: "r1", reasoningEncryptedContent: "opaque" },
-              },
-            },
-            {
-              type: "tool-call",
-              toolCallId: "call1",
-              toolName: "read_file",
-              input: { path: "a" },
-              providerOptions: { openai: { itemId: "fc1" } },
-            },
-          ],
-        },
-        {
-          role: "tool",
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "call1",
-              toolName: "read_file",
-              output: { type: "text", value: "file contents" },
-            },
-          ],
-        },
-      ],
-    });
-    expect(JSON.stringify(params)).not.toContain("opaque");
-    expect(JSON.stringify(params)).not.toContain("fc1");
-    expect(params.prompt).toHaveLength(2);
-    expect(params.prompt[0].content).toHaveLength(1);
-    expect(JSON.stringify(params)).toContain("call1");
-    expect(JSON.stringify(params)).toContain("file contents");
   });
   it("finishes the real AI SDK stream without waiting for usage reporting", async () => {
     vi.mocked(finishSubscriptionUsage).mockImplementationOnce(

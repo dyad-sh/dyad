@@ -1527,6 +1527,14 @@ async function handleDeepLinkReturn(url: string) {
   // Fired by the OAuth callback page to hand focus back to Dyad
   // after consent. Tokens land via the loopback listener; focusing
   // the window is the only side-effect needed here.
+  if (parsed.hostname === "chatgpt-connected") {
+    if (mainWindow?.isMinimized()) mainWindow.restore();
+    mainWindow?.focus();
+    mainWindow?.webContents.send("deep-link-received", {
+      type: "chatgpt-connected",
+    });
+    return;
+  }
   if (parsed.hostname === "mcp-oauth-return") {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();

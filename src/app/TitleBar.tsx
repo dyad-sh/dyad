@@ -1,3 +1,4 @@
+import { SubscriptionConnectionStatus } from "@/components/SubscriptionConnectionStatus";
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
@@ -138,6 +139,7 @@ export const TitleBar = () => {
         {showWindowControls && <WindowsControls />}
       </div>
 
+      <SubscriptionConnectionStatus />
       <DyadProSuccessDialog
         isOpen={isSuccessDialogOpen}
         onClose={() => setIsSuccessDialogOpen(false)}

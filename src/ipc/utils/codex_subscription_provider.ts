@@ -1,10 +1,9 @@
+import { markSubscriptionLimited } from "../services/codex_subscription_account";
 import { createOpenAI } from "@ai-sdk/openai";
 import { wrapLanguageModel } from "ai";
 import type {
   LanguageModelV3,
-  LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
-  LanguageModelV3Message,
 } from "@ai-sdk/provider";
 import { getCodexSubscriptionCredentials } from "../services/codex_subscription_auth";
 import {
@@ -15,34 +14,6 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
-
-/** Portable history only: no account-bound encrypted reasoning or server IDs.
- * Keep visible text and paired function calls/results. Opaque reasoning is not
- * a portable conversation transcript and must never cross authentication lanes.
- */
-export function portableModelParams(
-  params: LanguageModelV3CallOptions,
-): LanguageModelV3CallOptions {
-  return {
-    ...params,
-    prompt: params.prompt.flatMap<LanguageModelV3Message>((message) => {
-      if (message.role === "system")
-        return [{ ...message, providerOptions: undefined }];
-      const content = message.content
-        .filter((part) => part.type !== "reasoning")
-        .map((part) => ({ ...part, providerOptions: undefined }));
-      return content.length
-        ? [
-            {
-              ...message,
-              providerOptions: undefined,
-              content,
-            } as typeof message,
-          ]
-        : [];
-    }),
-  };
-}
 
 export function shapeSubscriptionRequest(raw: Record<string, unknown>) {
   const body = { ...raw, store: false, stream: true };
@@ -76,16 +47,6 @@ export function shapeSubscriptionRequest(raw: Record<string, unknown>) {
   return body;
 }
 
-export function withPortableHistory(model: LanguageModelV3): LanguageModelV3 {
-  return wrapLanguageModel({
-    model,
-    middleware: {
-      specificationVersion: "v3",
-      transformParams: async ({ params }) => portableModelParams(params),
-    },
-  });
-}
-
 export async function createCodexSubscriptionModel(
   modelName: string,
 ): Promise<LanguageModelV3> {
@@ -111,6 +72,7 @@ export async function createCodexSubscriptionModel(
         },
         body: JSON.stringify(body),
       });
+      if (response.status === 429) markSubscriptionLimited();
       if (!response.ok) {
         await response.body?.cancel();
         // Never let SDK errors retain an OAuth request or upstream error body.
@@ -118,7 +80,7 @@ export async function createCodexSubscriptionModel(
           response.status === 401 || response.status === 403
             ? "ChatGPT subscription access was rejected. Reconnect or choose an available model."
             : response.status === 429
-              ? "ChatGPT subscription limit reached. Wait or explicitly choose another connection."
+              ? "ChatGPT subscription limit reached. Upgrade your ChatGPT subscription tier or select Pro credits under Model usage in the Pro menu."
               : `ChatGPT subscription request failed (HTTP ${response.status}).`,
           response.status === 429
             ? DyadErrorKind.RateLimited
@@ -139,10 +101,14 @@ export async function createCodexSubscriptionModel(
     middleware: {
       specificationVersion: "v3",
       transformParams: async ({ params }) => ({
-        ...portableModelParams(params),
+        ...params,
         providerOptions: {
           ...params.providerOptions,
-          openai: { ...params.providerOptions?.openai, store: false },
+          openai: {
+            ...params.providerOptions?.openai,
+            store: false,
+            include: ["reasoning.encrypted_content"],
+          },
         },
       }),
       wrapStream: async ({ doStream, params }) => {

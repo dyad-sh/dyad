@@ -1,3 +1,4 @@
+import { getSubscriptionAccount } from "../services/codex_subscription_account";
 import { createTypedHandler } from "./base";
 import { settingsContracts } from "../types/settings";
 import { writeSettings, readEffectiveSettings } from "../../main/settings";
@@ -5,12 +6,16 @@ import { validateProviderApiKey } from "../services/provider_api_key_validation_
 import {
   connectCodexSubscription,
   disconnectCodexSubscription,
-  getCodexSubscriptionStatus,
+  acknowledgeSubscriptionConnection,
 } from "../services/codex_subscription_auth";
 
 export function registerSettingsHandlers() {
+  createTypedHandler(
+    settingsContracts.acknowledgeSubscriptionConnection,
+    async () => acknowledgeSubscriptionConnection(),
+  );
   createTypedHandler(settingsContracts.getCodexSubscriptionStatus, async () =>
-    getCodexSubscriptionStatus(),
+    getSubscriptionAccount(),
   );
   createTypedHandler(settingsContracts.connectCodexSubscription, async () =>
     connectCodexSubscription(),

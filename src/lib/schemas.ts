@@ -496,6 +496,8 @@ const BaseUserSettingsFields = {
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
+  // Global across chats. Unset prefers a connected subscription.
+  proModelUsage: z.enum(["subscription", "pro"]).optional(),
   enableDyadPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),

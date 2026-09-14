@@ -1,0 +1,6 @@
+/** Static HTML only: no authorization codes, tokens, or reflected query values. */
+export const subscriptionConnectedPage = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ChatGPT connected · Dyad</title>
+<style>body{margin:0;background:#f5f3ff;color:#27203b;font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}main{max-width:440px;margin:24px;padding:48px;border-radius:28px;background:white;box-shadow:0 20px 80px #51339118;text-align:center}.mark{font-size:48px;color:#7455db}h1{font-size:28px;letter-spacing:-1px}p{line-height:1.6;color:#676174}a{display:inline-block;margin-top:16px;padding:14px 28px;background:#7150d5;color:white;border-radius:12px;text-decoration:none;font-weight:600}.hint{font-size:13px}</style></head>
+<body><main><div class="mark" aria-hidden="true">✦</div><h1>You're connected!</h1><p>Your ChatGPT subscription is ready in Dyad.<br>Enjoy your extra Dyad usage.</p><a href="dyad://chatgpt-connected">Open Dyad</a><p class="hint">Returning to the app… If nothing happens, click Open Dyad.</p></main>
+<script>history.replaceState(null,"","/connected");window.location.href="dyad://chatgpt-connected";</script></body></html>`;

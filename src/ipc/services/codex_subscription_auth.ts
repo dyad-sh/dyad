@@ -1,10 +1,16 @@
-import { app, safeStorage, shell } from "electron";
+import { safeStorage, shell } from "electron";
 import { createServer, type Server } from "node:http";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
+import { getUserDataPath } from "@/paths/paths";
+import { readSettings, writeSettings } from "@/main/settings";
+import { hasDyadProKey } from "@/lib/schemas";
+import { resetSubscriptionAccount } from "./codex_subscription_account";
+import { subscriptionConnectedPage } from "./codex_subscription_return_page";
 
 // Public native-client registration used by Codex/OpenCode; not a client secret.
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -23,6 +29,11 @@ const Tokens = z.object({
   expires_in: z.number().positive().optional(),
 });
 let generation = 0;
+let credentialCache: Credentials | null | undefined;
+let celebrationPending = false;
+export function acknowledgeSubscriptionConnection() {
+  celebrationPending = false;
+}
 let server: Server | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending = false;
@@ -30,7 +41,7 @@ let lastError: string | undefined;
 let refreshing: Promise<Credentials> | undefined;
 
 function credentialPath() {
-  return path.join(app.getPath("userData"), "codex-subscription.enc");
+  return path.join(getUserDataPath(), "codex-subscription.enc");
 }
 function requireEncryption() {
   if (
@@ -45,13 +56,21 @@ function requireEncryption() {
   }
 }
 function load(): Credentials | undefined {
-  if (!fs.existsSync(credentialPath())) return undefined;
+  if (credentialCache !== undefined) return credentialCache ?? undefined;
+  if (!fs.existsSync(credentialPath())) {
+    credentialCache = null;
+    return undefined;
+  }
   requireEncryption();
   try {
-    return Credentials.parse(
+    credentialCache = Credentials.parse(
       JSON.parse(safeStorage.decryptString(fs.readFileSync(credentialPath()))),
     );
+    return credentialCache;
   } catch {
+    credentialCache = null;
+    lastError =
+      "Reconnect your ChatGPT subscription; its saved credentials could not be opened.";
     throw new DyadError(
       "Reconnect your ChatGPT subscription; its saved credentials could not be opened.",
       DyadErrorKind.Auth,
@@ -68,17 +87,24 @@ function save(credentials: Credentials) {
     { mode: 0o600 },
   );
   fs.renameSync(`${target}.tmp`, target);
+  credentialCache = credentials;
 }
 function stopLogin() {
   clearTimeout(timer);
   timer = undefined;
   server?.close();
+  server?.closeIdleConnections();
   server = undefined;
   pending = false;
 }
 export function getCodexSubscriptionStatus() {
   try {
-    return { connected: Boolean(load()), pending, error: lastError };
+    return {
+      connected: Boolean(load()),
+      pending,
+      error: lastError,
+      celebrationPending,
+    };
   } catch {
     return {
       connected: false,
@@ -90,6 +116,10 @@ export function getCodexSubscriptionStatus() {
 }
 export function disconnectCodexSubscription() {
   generation++;
+  credentialCache = undefined;
+  celebrationPending = false;
+  resetSubscriptionAccount();
+  writeSettings({ proModelUsage: "pro" });
   stopLogin();
   refreshing = undefined;
   lastError = undefined;
@@ -168,7 +198,14 @@ export async function getCodexSubscriptionCredentials(): Promise<Credentials> {
   }
   return refreshing;
 }
-export async function connectCodexSubscription() {
+export async function connectCodexSubscription(
+  options: { port?: number } = {},
+) {
+  if (!hasDyadProKey(readSettings()))
+    throw new DyadError(
+      "Connect Dyad Pro before connecting ChatGPT.",
+      DyadErrorKind.Precondition,
+    );
   requireEncryption();
   if (pending) return;
   const current = ++generation;
@@ -178,11 +215,16 @@ export async function connectCodexSubscription() {
   const state = randomBytes(32).toString("base64url");
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
+  let consumed = false;
+  let redirect = REDIRECT;
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", REDIRECT);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Connection", "close");
+    res.setHeader("Referrer-Policy", "no-referrer");
     if (
+      consumed ||
       req.method !== "GET" ||
       url.pathname !== "/auth/callback" ||
       !validateOAuthState(state, url.searchParams.get("state"))
@@ -191,6 +233,7 @@ export async function connectCodexSubscription() {
       res.end("Invalid sign-in callback.");
       return;
     }
+    consumed = true;
     const code = url.searchParams.get("code");
     if (!code || url.searchParams.has("error")) {
       lastError = "Sign-in was not completed. Try connecting again.";
@@ -205,7 +248,7 @@ export async function connectCodexSubscription() {
       grant_type: "authorization_code",
       code,
       code_verifier: verifier,
-      redirect_uri: REDIRECT,
+      redirect_uri: redirect,
     })
       .then((credentials) => {
         if (generation !== current) {
@@ -213,7 +256,11 @@ export async function connectCodexSubscription() {
           return;
         }
         save(credentials);
-        res.end("ChatGPT connected. Return to Dyad.");
+        writeSettings({ proModelUsage: "subscription" });
+        resetSubscriptionAccount();
+        celebrationPending = true;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end(subscriptionConnectedPage);
       })
       .catch(() => {
         if (generation === current)
@@ -227,7 +274,13 @@ export async function connectCodexSubscription() {
   try {
     await new Promise<void>((resolve, reject) => {
       server!.once("error", reject);
-      server!.listen(1455, "127.0.0.1", resolve);
+      server!.keepAliveTimeout = 1;
+      server!.listen(options.port ?? 1455, "127.0.0.1", () => {
+        const address = server!.address();
+        if (address && typeof address !== "string")
+          redirect = `http://localhost:${address.port}/auth/callback`;
+        resolve();
+      });
     });
     timer = setTimeout(() => {
       if (generation === current) {
@@ -240,7 +293,7 @@ export async function connectCodexSubscription() {
     const params = new URLSearchParams({
       response_type: "code",
       client_id: CLIENT_ID,
-      redirect_uri: REDIRECT,
+      redirect_uri: redirect,
       scope: "openid profile email offline_access",
       state,
       code_challenge: challenge,

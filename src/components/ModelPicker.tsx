@@ -38,7 +38,9 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { ConnectionModelMenu } from "@/components/ConnectionModelMenu";
+import { SubscriptionModelMenu } from "@/components/SubscriptionModelMenu";
+import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
+import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
 import {
   Dialog,
   DialogContent,
@@ -151,7 +153,6 @@ const toRecentModelIdentity = (
 ): LargeLanguageModel => ({
   provider: model.provider,
   name: model.name,
-  ...(model.connection ? { connection: model.connection } : {}),
   ...(model.customModelId !== undefined
     ? { customModelId: model.customModelId }
     : {}),
@@ -257,6 +258,7 @@ export function ModelPicker() {
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   };
 
+  const subscription = useSubscriptionAccount();
   const [open, setOpen] = useState(false);
   const [unlockTarget, setUnlockTarget] = useState<{
     providerId: string;
@@ -444,7 +446,7 @@ export function ModelPicker() {
       chat?.modelSelection?.effortLevel ??
       settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
   }).effortLevel;
-  const modelDisplayName = `${getModelDisplayName()}${selectedModel.connection ? ` · ${selectedModel.connection === "subscription" ? "Subscription" : selectedModel.connection === "pro" ? "Pro credits" : "API key"}` : ""}`;
+  const modelDisplayName = getModelDisplayName();
   const trialAutoModel = autoModels.find((model) => model.apiName === "auto");
   const trialAutoEffortSettings = getEffortSettings(trialAutoModel);
   const trialAutoEffort = createModelSelection({
@@ -515,9 +517,6 @@ export function ModelPicker() {
   );
   const recentModelEntries = effectiveRecentModels.flatMap<RecentModelEntry>(
     (recentModel) => {
-      // Legacy rows reconstruct provider/name only. Explicit billing choices
-      // must be selected in their connection section, never silently downgraded.
-      if (recentModel.connection) return [];
       if (recentModel.provider === "ollama") {
         if (ollamaError) {
           return [];
@@ -797,8 +796,14 @@ export function ModelPicker() {
         }).effortLevel;
     const effortLabel = formatEffortLevel(currentEffort);
     const compactEffortLabel = formatCompactEffortLevel(currentEffort);
+    const subscriptionEligible = usesChatGPTSubscription(
+      { provider: providerId, name: model.apiName },
+      settings,
+      subscription.data ?? { connected: false, models: [] },
+    );
     const unlockedAriaLabel = [
       model.displayName,
+      subscriptionEligible ? "ChatGPT sub" : null,
       showPrice && model.dollarSigns != null
         ? model.dollarSigns === 0
           ? "Free"
@@ -833,6 +838,22 @@ export function ModelPicker() {
           </span>
         </span>
         <span className="flex min-w-fit items-center gap-1.5">
+          {subscriptionEligible && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className={cn(PILL_CLASS, "bg-primary/10 text-primary")}
+                  >
+                    ChatGPT sub
+                  </span>
+                }
+              />
+              <TooltipContent>
+                Using this model will use your ChatGPT subscription
+              </TooltipContent>
+            </Tooltip>
+          )}
           {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
           {model.tag && !isFreeProRow && (
             <span
@@ -1304,28 +1325,10 @@ export function ModelPicker() {
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent className={MODEL_MENU_WIDTH_CLASS} align="start">
-          <ConnectionModelMenu
-            open={open}
-            selected={selectedModel}
-            providers={providers ?? []}
-            modelsByProviders={modelsByProviders ?? {}}
-            proEnabled={dyadProEnabled && !isTrial}
-            isProviderSetup={isProviderSetup}
-            onUpgrade={handleUnlockAllClick}
-            onSetup={(providerId) => {
-              setOpen(false);
-              navigate({
-                to: providerSettingsRoute.id,
-                params: { provider: providerId },
-              });
-            }}
-            onSelect={(model, catalogModel) => {
-              void onModelSelect({ model, catalogModel });
-              setOpen(false);
-            }}
-          />
+          <SubscriptionModelMenu />
+          <DropdownMenuSeparator />
           {/* Trial user upgrade banner */}
-          {isTrial && !selectedModel.connection && (
+          {isTrial && (
             <>
               <div className="px-2 py-3 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50">
                 <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-2">

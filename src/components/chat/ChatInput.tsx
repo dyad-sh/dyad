@@ -1,3 +1,4 @@
+import { SubscriptionLimitBanner } from "@/components/SubscriptionConnectionStatus";
 import {
   StopCircleIcon,
   X,
@@ -906,6 +907,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onClose={() => decideConsent(pendingToolConsent, "decline")}
             />
           )}
+          <SubscriptionLimitBanner />
           {/* Show queued messages list */}
           {queuedMessages.length > 0 && (
             <QueuedMessagesList

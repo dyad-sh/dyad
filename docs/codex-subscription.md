@@ -14,18 +14,35 @@ No extra shell tool is introduced. Existing Dyad tool permissions still apply.
 Model availability is ultimately decided by the subscription service, not the API
 catalog; unavailable models fail without switching to a paid API automatically.
 
-Subscription, Pro credits and API key selections are persisted on the existing
-chat. A switch applies to the next message, without creating a new chat. Portable
-visible history and tool-call/result pairs are retained; account-bound reasoning
-and provider item metadata are stripped at explicit connection boundaries.
+The picker keeps a single model catalog. Its hover-open Subscription submenu
+connects/disconnects ChatGPT and displays account-reported usage windows. Models
+present in the account's Codex catalog show a `ChatGPT sub` chip when subscription
+usage is selected. Unsupported models continue through Pro credits.
+
+The Pro menu's **Model usage** preference is global across chats (`subscription`
+or `pro`). Connecting selects subscription; disconnecting selects Pro credits.
+Changing it affects the next turn in the same chat, never an in-flight turn.
+While Pro is enabled, direct provider API keys are not used (including legacy
+per-chat API-key choices). Turn Pro off to use your own keys. Auxiliary Pro
+services keep their existing billing path.
+
+Browser OAuth success returns a static celebration page with automatic
+`dyad://chatgpt-connected` navigation and a manual Open Dyad button. No credentials
+are in that link. The app only shows success for a verified pending local
+connection. Copy discloses **up to 1.5 Pro credits / 1M tokens**; rates below are
+unchanged. Usage limits show an informational banner, never an automatic payment
+source switch.
+
 Subscription replies are labeled `ChatGPT subscription (resolved model)`.
-Legacy model choices retain their existing routing behavior. Separate auxiliary
-services such as code exploration/review retain their existing billing routes;
-the subscription is not a promise that every Dyad service uses ChatGPT.
+Persisted subscription history is portable across accounts, retaining visible
+content and paired tools. Same-turn reasoning and signatures remain intact and
+use existing destination-specific transcript sanitizers.
 
 ## BYO credit preflight
 
-Before every subscription model request (including subsequent agent steps), Dyad
+Before durable turn acceptance, Dyad resolves the global source and validates
+subscription credentials and credits. Before every subscription model request
+(including subsequent agent steps), Dyad
 fetches the existing `GET https://api.dyad.sh/v1/user/info` using the same Dyad
 billing key captured for that request. This uses a fresh main-process lookup,
 not the five-minute UI cache or the UI's test-build mock balance.

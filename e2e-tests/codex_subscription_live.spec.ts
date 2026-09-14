@@ -20,8 +20,12 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
   });
   await po.importApp("minimal");
   const previousEngine = await electronApp.evaluate(
-    () => process.env.DYAD_ENGINE_URL!,
+    () => process.env.DYAD_ENGINE_URL,
   );
+  if (!previousEngine)
+    throw new Error(
+      "Live smoke requires DYAD_ENGINE_URL for auxiliary requests.",
+    );
   const reports: Array<{
     id: string;
     modelId: string;
@@ -46,7 +50,29 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
     const response = await fetch(`${previousEngine}${req.url}`, {
       method: req.method,
       ...(body.length ? { body } : {}),
-      headers: { "Content-Type": "application/json" },
+      headers: Object.fromEntries(
+        Object.entries(req.headers)
+          .filter(
+            ([key, value]) =>
+              value &&
+              ![
+                "host",
+                "connection",
+                "content-length",
+                "transfer-encoding",
+                "keep-alive",
+                "upgrade",
+                "proxy-authorization",
+                "proxy-authenticate",
+                "te",
+                "trailer",
+              ].includes(key),
+          )
+          .map(([key, value]) => [
+            key,
+            Array.isArray(value) ? value.join(", ") : value!,
+          ]),
+      ),
     });
     res.writeHead(response.status, {
       "Content-Type":
@@ -61,6 +87,8 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
   try {
     await electronApp.evaluate((_, url) => {
       process.env.DYAD_ENGINE_URL = url;
+      // Billing and balance are fixtures; only subscription inference is live.
+      process.env.DYAD_USER_INFO_URL = `http://localhost:${process.env.FAKE_LLM_PORT}/api/user/info`;
     }, `http://127.0.0.1:${address.port}`);
     await po.page.evaluate(async () => {
       await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
@@ -104,7 +132,20 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
       },
       { chatId, model: process.env.DYAD_LIVE_SUBSCRIPTION_MODEL ?? "gpt-5.4" },
     );
-    await po.page.reload();
+    await electronApp.evaluate(async ({ app, BrowserWindow }) => {
+      const path = await import("node:path");
+      try {
+        await BrowserWindow.getAllWindows()[0].loadFile(
+          path.join(app.getAppPath(), ".vite/renderer/main_window/index.html"),
+        );
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("ERR_ABORTED"))
+          throw error;
+      }
+    });
+    await po.page.waitForLoadState("domcontentloaded");
+    const celebration = po.page.getByRole("button", { name: "Let's build" });
+    if (await celebration.isVisible()) await celebration.click();
     await po.sendPrompt(
       "Use write_file to create subscription-smoke.txt in the app root with exactly DYAD_SUBSCRIPTION_OK. Do not install packages or delegate. Then reply Done.",
       { timeout: 120_000 },

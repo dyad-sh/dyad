@@ -9,7 +9,6 @@ export function isSameModel(
   return (
     left.provider === right.provider &&
     left.name === right.name &&
-    left.connection === right.connection &&
     left.customModelId === right.customModelId
   );
 }
@@ -22,6 +21,7 @@ export function getEffectiveRecentModels(
     recentModels ?? (selectedModel.provider === "auto" ? [] : [selectedModel]);
 
   return candidates
+    .map(({ connection: _connection, ...model }) => model)
     .filter((model) => model.provider !== "auto")
     .filter(
       (model, index, models) =>

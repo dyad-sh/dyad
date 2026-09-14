@@ -108,7 +108,7 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 }));
 
 describe("getModelClient", () => {
-  test("explicit API key selection bypasses enabled Pro credits", async () => {
+  test("legacy API key selection cannot bypass enabled Pro credits", async () => {
     const { modelClient, isEngineEnabled } = await getModelClient(
       { provider: "openai", name: "gpt-5.4", connection: "api-key" },
       {
@@ -119,9 +119,9 @@ describe("getModelClient", () => {
         },
       } as unknown as UserSettings,
     );
-    expect(isEngineEnabled).toBeFalsy();
+    expect(isEngineEnabled).toBe(true);
     expect((modelClient.model as { provider: string }).provider).toContain(
-      "openai",
+      "dyad-engine",
     );
   });
   test("explicit Pro selection does not fall back to a configured API key", async () => {

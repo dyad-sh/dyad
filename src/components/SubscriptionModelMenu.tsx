@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ipc, type LanguageModel } from "@/ipc/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import {
   DropdownMenuItem,
@@ -9,53 +9,43 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { LargeLanguageModel } from "@/lib/schemas";
+import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
+import { useSettings } from "@/hooks/useSettings";
+import { hasDyadProKey } from "@/lib/schemas";
 
-export function SubscriptionModelMenu({
-  open,
-  models,
-  selected,
-  onSelect,
-}: {
-  open: boolean;
-  models: LanguageModel[];
-  selected: LargeLanguageModel;
-  onSelect: (model: LargeLanguageModel, catalogModel: LanguageModel) => void;
-}) {
+export function SubscriptionModelMenu() {
   const client = useQueryClient();
-  const status = useQuery({
-    queryKey: queryKeys.settings.codexSubscription,
-    queryFn: () => ipc.settings.getCodexSubscriptionStatus(),
-    enabled: open,
-    refetchInterval: open ? 2000 : false,
-    retry: false,
-  });
+  const status = useSubscriptionAccount();
+  const { settings } = useSettings();
+  const hasPro = settings && hasDyadProKey(settings);
   const action = useMutation({
     mutationFn: (kind: "connect" | "disconnect") =>
       kind === "connect"
         ? ipc.settings.connectCodexSubscription({ acceptCharges: true })
         : ipc.settings.disconnectCodexSubscription(),
-    onSuccess: () =>
-      client.invalidateQueries({
-        queryKey: queryKeys.settings.codexSubscription,
-      }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.settings.all });
+    },
   });
   const connected = status.data?.connected;
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
-        Subscription{selected.connection === "subscription" ? " ✓" : ""}
+      <DropdownMenuSubTrigger
+        openOnHover
+        delay={100}
+        closeDelay={150}
+        aria-label={`Subscription${connected ? ", ChatGPT connected" : ""}. Open submenu.`}
+      >
+        Subscription
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-80 max-h-100 overflow-y-auto scrollbar-on-hover">
+      <DropdownMenuSubContent className="w-80">
         <DropdownMenuLabel>ChatGPT subscription</DropdownMenuLabel>
-        <p className="px-2 py-1 text-xs text-muted-foreground">
-          Uses your ChatGPT plan. Dyad separately charges $0.02 per million
-          total tokens for model IDs containing -luna, -mini, or -nano; $0.10
-          for all other models. Cached input, uncached input, and output count
-          equally. A Dyad Pro key is required.
+        <p className="px-2 py-2 text-sm text-muted-foreground">
+          Get up to 5x usage with Pro credits by connecting your ChatGPT
+          subscription
         </p>
-        <p className="px-2 py-1 text-xs text-muted-foreground">
-          Continue this chat. Your choice applies to the next message.
+        <p className="px-2 pb-2 text-xs text-muted-foreground">
+          Uses up to 1.5 Pro credits / 1M tokens
         </p>
         {(status.error || action.error || status.data?.error) && (
           <p role="alert" className="px-2 py-1 text-xs text-destructive">
@@ -65,64 +55,74 @@ export function SubscriptionModelMenu({
           </p>
         )}
         <DropdownMenuItem
+          closeOnClick={false}
           disabled={
-            action.isPending || status.isLoading || status.data?.pending
+            action.isPending ||
+            status.isLoading ||
+            status.data?.pending ||
+            (!connected && !hasPro)
           }
-          onClick={(event) => {
-            event.preventDefault();
-            action.mutate(connected ? "disconnect" : "connect");
-          }}
+          onClick={() => action.mutate(connected ? "disconnect" : "connect")}
         >
           {status.data?.pending
             ? "Waiting for browser sign-in…"
             : connected
               ? "Disconnect ChatGPT"
-              : "Agree to charges and connect ChatGPT"}
+              : "Connect with ChatGPT"}
         </DropdownMenuItem>
+        {!hasPro && !connected && (
+          <p className="px-2 py-1 text-xs text-muted-foreground">
+            Connect Dyad Pro first to use this feature.
+          </p>
+        )}
         {status.data?.pending && (
           <DropdownMenuItem
-            onClick={(event) => {
-              event.preventDefault();
-              action.mutate("disconnect");
-            }}
+            closeOnClick={false}
+            onClick={() => action.mutate("disconnect")}
           >
             Cancel sign-in
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-        <p className="px-2 py-1 text-xs text-muted-foreground">
-          Catalog models below; availability depends on your ChatGPT plan. Other
-          Dyad services, including code exploration and review, may use Pro
-          credits or configured API keys separately.
-        </p>
-        {models
-          .filter(
-            (model) =>
-              model.apiName.startsWith("gpt-") &&
-              !model.apiName.endsWith("-pro"),
-          )
-          .map((model) => (
-            <DropdownMenuItem
-              key={model.apiName}
-              disabled={!connected || action.isPending}
-              onClick={() =>
-                onSelect(
-                  {
-                    provider: "openai",
-                    name: model.apiName,
-                    connection: "subscription",
-                  },
-                  model,
-                )
-              }
-            >
-              {model.displayName}
-              {selected.connection === "subscription" &&
-              selected.name === model.apiName
-                ? " ✓"
-                : ""}
-            </DropdownMenuItem>
-          ))}
+        {connected && status.data && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Usage limits</DropdownMenuLabel>
+            {status.data.windows.map((window) => (
+              <div key={window.windowSeconds} className="px-2 py-2 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span>
+                    {window.windowSeconds === 18000
+                      ? "5-hour"
+                      : window.windowSeconds === 604800
+                        ? "Weekly"
+                        : `${window.windowSeconds / 3600}-hour`}
+                  </span>
+                  <span>{Math.round(window.usedPercent)}% used</span>
+                </div>
+                <progress
+                  aria-label={`${window.windowSeconds / 3600}-hour usage`}
+                  className="w-full h-1.5 accent-primary"
+                  max={100}
+                  value={Math.min(100, window.usedPercent)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Resets {new Date(window.resetsAt).toLocaleString()}
+                </p>
+              </div>
+            ))}
+            {(status.data.limitsError || !status.data.windows.length) && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                {status.data.limitsError ??
+                  "Usage limits are not available for this account."}
+              </p>
+            )}
+            {status.data.modelsError && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                {status.data.modelsError}
+              </p>
+            )}
+          </>
+        )}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );

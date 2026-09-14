@@ -1,3 +1,4 @@
+import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
 import { v4 as uuidv4 } from "uuid";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { createTypedHandler } from "./base";
@@ -1529,6 +1530,13 @@ ${componentSnippet}
           selectedModel = latestChat.modelSelection
             ? await normalizeModelSelection(latestChat.modelSelection)
             : selectedModel;
+          if (!isAcceptedReplay) {
+            selectedModel = await preflightSubscriptionTurn(
+              selectedModel,
+              baseSettings,
+              abortController.signal,
+            );
+          }
           const latestResolution = await resolveChatModeForTurn({
             storedChatMode: latestChat.chatMode,
             requestedChatMode:
@@ -1642,9 +1650,11 @@ ${componentSnippet}
       }
 
       if (acceptedTurn.authoritativeModel) {
-        selectedModel = await normalizeModelSelection(
-          acceptedTurn.authoritativeModel,
-        );
+        const connection = selectedModel.connection;
+        selectedModel = {
+          ...(await normalizeModelSelection(acceptedTurn.authoritativeModel)),
+          connection,
+        };
         storedSettings = { ...storedSettings, selectedModel };
       }
 

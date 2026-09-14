@@ -128,7 +128,8 @@ describe("promo message (integration)", () => {
 
   it("does not show a promo when the user has a Pro key", async () => {
     writeSettings({
-      enableDyadPro: true,
+      // Pro account holders should not see promos even when using their own provider.
+      enableDyadPro: false,
       providerSettings: {
         auto: { apiKey: { value: "dyad-pro-key" } },
       },

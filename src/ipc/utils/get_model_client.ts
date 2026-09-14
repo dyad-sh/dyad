@@ -45,10 +45,7 @@ import { resolveModelSelection } from "./model_effort";
 import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 import { usesOpenAIResponsesApi } from "./openai_responses_utils";
-import {
-  createCodexSubscriptionModel,
-  withPortableHistory,
-} from "./codex_subscription_provider";
+import { createCodexSubscriptionModel } from "./codex_subscription_provider";
 
 // The test-only fetch seam lives in ./test_fetch_override (dependency-free,
 // so secondary factories can use it without import cycles). Re-exported here
@@ -168,8 +165,10 @@ export async function getModelClient(
         "Dyad",
       )
     : undefined;
-  const isDyadProEnabledForRequest =
-    connection !== "api-key" && Boolean(dyadApiKey && settings.enableDyadPro);
+  const isLocalProvider = ["ollama", "lmstudio"].includes(model.provider);
+  const isDyadProEnabledForRequest = Boolean(
+    dyadApiKey && settings.enableDyadPro,
+  );
   if (connection === "pro" && !isDyadProEnabledForRequest)
     throw new DyadError(
       "Enable Dyad Pro before using Pro credits.",
@@ -205,7 +204,7 @@ export async function getModelClient(
   }
 
   // Handle Dyad Pro override
-  if (isDyadProEnabledForRequest) {
+  if (isDyadProEnabledForRequest && !isLocalProvider) {
     const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
@@ -247,28 +246,16 @@ export async function getModelClient(
       });
 
       return {
-        modelClient: connection
-          ? {
-              ...proModelClient,
-              model: withPortableHistory(
-                proModelClient.model as import("@ai-sdk/provider").LanguageModelV3,
-              ),
-            }
-          : proModelClient,
+        modelClient: proModelClient,
         runtimeModel: model,
         isEngineEnabled: true,
         isSmartContextEnabled: enableSmartFilesContext,
       };
     } else {
-      if (connection === "pro")
-        throw new DyadError(
-          "This provider does not support Pro credits. Select API key explicitly.",
-          DyadErrorKind.Validation,
-        );
-      logger.warn(
-        `Dyad Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
+      throw new DyadError(
+        "This provider is not available through Pro credits. Turn off Dyad Pro to use your own API key.",
+        DyadErrorKind.Validation,
       );
-      // Fall through to regular provider logic if gateway prefix is missing
     }
   }
   // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
@@ -359,17 +346,6 @@ export async function getModelClient(
   const regular = getRegularModelClient(model, settings, providerConfig);
   return {
     ...regular,
-    ...(connection
-      ? {
-          modelClient: {
-            ...regular.modelClient,
-            model: withPortableHistory(
-              regular.modelClient
-                .model as import("@ai-sdk/provider").LanguageModelV3,
-            ),
-          },
-        }
-      : {}),
     runtimeModel: model,
   };
 }

@@ -1,3 +1,5 @@
+import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Popover,
   PopoverContent,
@@ -17,6 +19,7 @@ import { hasDyadProKey } from "@/lib/schemas";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
+  const subscription = useSubscriptionAccount();
 
   const toggleProEnabled = () => {
     updateSettings({
@@ -61,10 +64,48 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
+          {hasProKey && (
+            <div className="space-y-2">
+              <Label>Model usage</Label>
+              <ToggleGroup
+                aria-label="Model usage"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                value={[
+                  subscription.data?.connected &&
+                  settings?.proModelUsage !== "pro"
+                    ? "subscription"
+                    : "pro",
+                ]}
+                onValueChange={(value) => {
+                  if (
+                    value[0] === "pro" ||
+                    (value[0] === "subscription" &&
+                      subscription.data?.connected)
+                  )
+                    void updateSettings({
+                      proModelUsage: value[0] as "pro" | "subscription",
+                    });
+                }}
+              >
+                <ToggleGroupItem
+                  value="subscription"
+                  disabled={!subscription.data?.connected}
+                  className="text-xs"
+                >
+                  ChatGPT Subscription
+                </ToggleGroupItem>
+                <ToggleGroupItem value="pro" className="text-xs">
+                  Pro credits
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          )}
           <SelectorRow
             id="pro-enabled"
             label="Enable Dyad Pro"
-            tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
+            tooltip="Uses your selected model usage source and Dyad Pro credits for Pro features."
             isTogglable={hasProKey}
             settingEnabled={Boolean(settings?.enableDyadPro)}
             toggle={toggleProEnabled}

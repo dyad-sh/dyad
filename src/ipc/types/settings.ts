@@ -23,8 +23,25 @@ export const settingsContracts = {
     output: z.object({
       connected: z.boolean(),
       pending: z.boolean(),
+      celebrationPending: z.boolean().optional(),
+      models: z.array(z.string()),
+      modelsError: z.string().optional(),
+      limitsError: z.string().optional(),
+      limitReached: z.boolean(),
+      windows: z.array(
+        z.object({
+          usedPercent: z.number(),
+          windowSeconds: z.number(),
+          resetsAt: z.number(),
+        }),
+      ),
       error: z.string().optional(),
     }),
+  }),
+  acknowledgeSubscriptionConnection: defineContract({
+    channel: "codex-subscription:acknowledge",
+    input: z.void(),
+    output: z.void(),
   }),
   connectCodexSubscription: defineContract({
     channel: "codex-subscription:connect",

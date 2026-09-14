@@ -24,9 +24,6 @@ export const settingsContracts = {
       connected: z.boolean(),
       pending: z.boolean(),
       error: z.string().optional(),
-      pendingReports: z.number(),
-      chargedUsd: z.number(),
-      missingUsage: z.boolean(),
     }),
   }),
   connectCodexSubscription: defineContract({
@@ -36,11 +33,6 @@ export const settingsContracts = {
   }),
   disconnectCodexSubscription: defineContract({
     channel: "codex-subscription:disconnect",
-    input: z.void(),
-    output: z.void(),
-  }),
-  retryCodexSubscriptionUsage: defineContract({
-    channel: "codex-subscription:retry-usage",
     input: z.void(),
     output: z.void(),
   }),

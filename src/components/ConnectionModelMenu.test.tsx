@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
-  retry: vi.fn(),
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: {
@@ -14,7 +13,6 @@ vi.mock("@/ipc/types", () => ({
       getCodexSubscriptionStatus: mocks.status,
       connectCodexSubscription: mocks.connect,
       disconnectCodexSubscription: mocks.disconnect,
-      retryCodexSubscriptionUsage: mocks.retry,
     },
   },
 }));
@@ -69,9 +67,6 @@ beforeEach(() => {
   mocks.status.mockResolvedValue({
     connected: true,
     pending: false,
-    pendingReports: 0,
-    chargedUsd: 0,
-    missingUsage: false,
   });
 });
 describe("connection selection", () => {
@@ -96,9 +91,6 @@ describe("connection selection", () => {
     mocks.status.mockResolvedValue({
       connected: false,
       pending: false,
-      pendingReports: 0,
-      chargedUsd: 0,
-      missingUsage: false,
     });
     setup();
     const connect = await screen.findByText(
@@ -111,17 +103,13 @@ describe("connection selection", () => {
     );
     expect(screen.getByText(/\$0.02 per million total/)).toBeTruthy();
   });
-  it("shows pending billing and retries without changing the model", async () => {
-    mocks.status.mockResolvedValue({
-      connected: true,
-      pending: false,
-      pendingReports: 1,
-      chargedUsd: 0,
-      missingUsage: false,
-    });
-    const { onSelect } = setup();
-    fireEvent.click(await screen.findByText("Retry usage reporting"));
-    await waitFor(() => expect(mocks.retry).toHaveBeenCalled());
-    expect(onSelect).not.toHaveBeenCalled();
+  it("does not offer usage replay or reconciliation controls", async () => {
+    setup();
+    await screen.findByText("Disconnect ChatGPT");
+    expect(
+      screen.queryByText(
+        /Retry usage reporting|pending reports|reconciliation/i,
+      ),
+    ).toBeNull();
   });
 });

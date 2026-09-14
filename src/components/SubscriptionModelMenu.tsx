@@ -31,12 +31,10 @@ export function SubscriptionModelMenu({
     retry: false,
   });
   const action = useMutation({
-    mutationFn: (kind: "connect" | "disconnect" | "retry") =>
+    mutationFn: (kind: "connect" | "disconnect") =>
       kind === "connect"
         ? ipc.settings.connectCodexSubscription({ acceptCharges: true })
-        : kind === "disconnect"
-          ? ipc.settings.disconnectCodexSubscription()
-          : ipc.settings.retryCodexSubscriptionUsage(),
+        : ipc.settings.disconnectCodexSubscription(),
     onSuccess: () =>
       client.invalidateQueries({
         queryKey: queryKeys.settings.codexSubscription,
@@ -90,31 +88,6 @@ export function SubscriptionModelMenu({
           >
             Cancel sign-in
           </DropdownMenuItem>
-        )}
-        {status.data && (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            Tracked Dyad charges on this device: $
-            {status.data.chargedUsd.toFixed(4)} · {status.data.pendingReports}{" "}
-            pending reports
-          </p>
-        )}
-        {!!status.data?.pendingReports && (
-          <>
-            <p className="px-2 py-1 text-xs text-muted-foreground">
-              {status.data.missingUsage
-                ? "A request ended without usage. Billing reconciliation is required before continuing."
-                : "Usage is saved locally. Settle pending reports before the next request."}
-            </p>
-            <DropdownMenuItem
-              disabled={action.isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                action.mutate("retry");
-              }}
-            >
-              Retry usage reporting
-            </DropdownMenuItem>
-          </>
         )}
         <DropdownMenuSeparator />
         <p className="px-2 py-1 text-xs text-muted-foreground">

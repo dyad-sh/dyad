@@ -31,7 +31,6 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
     uncachedInputTokens: number;
     outputTokens: number;
   }> = [];
-  const receipts = new Map<string, number>();
   const billing = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -40,11 +39,8 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
       const report = JSON.parse(body.toString());
       reports.push(report);
       // Contract receipt only: this is NOT a real engine charge.
-      receipts.set(report.id, receipts.get(report.id) ?? 0.001);
       res.setHeader("Content-Type", "application/json");
-      res.end(
-        JSON.stringify({ id: report.id, chargedUsd: receipts.get(report.id) }),
-      );
+      res.end(JSON.stringify({ id: report.id, chargedUsd: 0.001 }));
       return;
     }
     const response = await fetch(`${previousEngine}${req.url}`, {
@@ -146,8 +142,9 @@ test("live Codex subscription through Dyad", async ({ po, electronApp }) => {
           ].every((value) => Number.isInteger(value) && value >= 0),
       ),
     ).toBe(true);
+    expect(new Set(reports.map((r) => r.id)).size).toBe(reports.length);
     console.log(
-      `Live subscription completed: ${reports.length} usage reports, ${receipts.size} unique billing receipts (stub only).`,
+      `Live subscription completed: ${reports.length} usage reports, ${new Set(reports.map((r) => r.id)).size} unique report IDs (stub only).`,
     );
   } finally {
     await po.page

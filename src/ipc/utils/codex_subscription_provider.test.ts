@@ -87,7 +87,10 @@ describe("Codex subscription Responses adapter", () => {
     expect(JSON.stringify(params)).toContain("call1");
     expect(JSON.stringify(params)).toContain("file contents");
   });
-  it("runs the real AI SDK stream parser against the subscription transport and reports actual usage", async () => {
+  it("finishes the real AI SDK stream without waiting for usage reporting", async () => {
+    vi.mocked(finishSubscriptionUsage).mockImplementationOnce(
+      () => new Promise<void>(() => {}),
+    );
     let sent: Record<string, unknown> | undefined;
     vi.stubGlobal(
       "fetch",

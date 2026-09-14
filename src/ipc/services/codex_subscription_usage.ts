@@ -1,58 +1,35 @@
-import { randomUUID, createHash } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import log from "electron-log";
 import type { LanguageModelV3Usage } from "@ai-sdk/provider";
-import { getUserDataPath } from "@/paths/paths";
 import { readSettings } from "@/main/settings";
 import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { SubscriptionTokens } from "@/lib/subscriptionUsage";
 
-const Count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const ReportSchema = z.object({
-  id: z.string(),
-  billingOwner: z.string(),
-  model: z.string(),
-  createdAt: z.string(),
-  status: z.enum(["started", "ready", "unknown"]),
-  tokens: z
-    .object({
-      input: Count,
-      cacheRead: Count,
-      cacheWrite: Count,
-      output: Count,
-    })
-    .optional(),
+const logger = log.scope("codex_subscription_usage");
+const Count = z.number().int().nonnegative().max(1_000_000_000_000);
+const Tokens = z.object({
+  input: Count,
+  cacheRead: Count,
+  cacheWrite: Count,
+  output: Count,
 });
-const LedgerSchema = z.object({
-  reports: z.array(ReportSchema),
-  chargedUsd: z.number().nonnegative(),
-});
-function ledgerPath() {
-  return path.join(getUserDataPath(), "codex-subscription-usage.json");
-}
-function readLedger(): z.infer<typeof LedgerSchema> {
-  if (!fs.existsSync(ledgerPath())) return { reports: [], chargedUsd: 0 };
-  return LedgerSchema.parse(JSON.parse(fs.readFileSync(ledgerPath(), "utf8")));
-}
-function writeLedger(ledger: z.infer<typeof LedgerSchema>) {
-  const target = ledgerPath();
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(`${target}.tmp`, JSON.stringify(ledger), { mode: 0o600 });
-  fs.renameSync(`${target}.tmp`, target);
-}
-function billingKey() {
+
+// Only live requests are tracked. Nothing is persisted or restored on restart.
+// Capture the billing account at request start, so a settings change cannot
+// redirect an in-flight request's charge to another account.
+const active = new Map<string, { key: string; createdAt: string }>();
+export function startSubscriptionUsage(_model: string) {
   const key = readSettings().providerSettings?.auto?.apiKey?.value;
   if (!key)
     throw new DyadError(
       "Add your Dyad Pro key before using Subscription. Dyad usage is billed separately from your ChatGPT plan.",
       DyadErrorKind.Auth,
     );
-  return key;
-}
-function owner(key: string) {
-  return createHash("sha256").update(key).digest("hex");
+  const id = randomUUID();
+  active.set(id, { key, createdAt: new Date().toISOString() });
+  return id;
 }
 export function normalizeSubscriptionUsage(
   usage: LanguageModelV3Usage,
@@ -63,148 +40,69 @@ export function normalizeSubscriptionUsage(
     throw new Error("Subscription usage was not reported");
   const cacheRead = usage.inputTokens.cacheRead ?? 0;
   const cacheWrite = usage.inputTokens.cacheWrite ?? 0;
-  const input = inputTotal - cacheRead - cacheWrite;
   Count.parse(inputTotal + output);
-  return ReportSchema.shape.tokens
-    .unwrap()
-    .parse({ input, cacheRead, cacheWrite, output });
-}
-const active = new Set<string>();
-let flushing: Promise<void> | undefined;
-export function getSubscriptionUsageStatus() {
-  const ledger = readLedger();
-  return {
-    pendingReports: ledger.reports.length,
-    chargedUsd: ledger.chargedUsd,
-    missingUsage: ledger.reports.some(
-      (r) =>
-        r.status === "unknown" || (r.status === "started" && !active.has(r.id)),
-    ),
-  };
-}
-export async function flushSubscriptionUsage() {
-  if (flushing) return flushing;
-  flushing = (async () => {
-    const key = billingKey();
-    for (const report of readLedger().reports) {
-      if (active.has(report.id)) continue;
-      if (report.status !== "ready" || !report.tokens)
-        throw new DyadError(
-          "A previous subscription request ended without token usage. Usage reconciliation is required before continuing.",
-          DyadErrorKind.Precondition,
-        );
-      if (report.billingOwner !== owner(key))
-        throw new DyadError(
-          "Reconnect the original Dyad billing account to settle pending subscription usage.",
-          DyadErrorKind.Auth,
-        );
-      let response: Response;
-      try {
-        response = await fetch(
-          `${getDyadEngineBaseUrl().replace(/\/$/, "")}/track-usage`,
-          {
-            method: "POST",
-            redirect: "error",
-            signal: AbortSignal.timeout(15_000),
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${key}`,
-              "Idempotency-Key": report.id,
-            },
-            body: JSON.stringify({
-              version: 1,
-              id: report.id,
-              modelProvider: "openai",
-              connection: "subscription",
-              modelId: report.model,
-              createdAt: report.createdAt,
-              totalTokens:
-                report.tokens.input +
-                report.tokens.cacheRead +
-                report.tokens.cacheWrite +
-                report.tokens.output,
-              cachedInputTokens: report.tokens.cacheRead,
-              uncachedInputTokens:
-                report.tokens.input + report.tokens.cacheWrite,
-              outputTokens: report.tokens.output,
-            }),
-          },
-        );
-      } catch {
-        throw new DyadError(
-          "Subscription usage reporting is unavailable. Your usage is saved; retry before continuing.",
-          DyadErrorKind.External,
-        );
-      }
-      if (!response.ok)
-        throw new DyadError(
-          `Subscription usage could not be settled (HTTP ${response.status}). Check your Dyad balance or retry later.`,
-          response.status === 402
-            ? DyadErrorKind.Precondition
-            : DyadErrorKind.External,
-        );
-      const result = z
-        .object({ id: z.string(), chargedUsd: z.number().nonnegative() })
-        .parse(await response.json());
-      if (result.id !== report.id)
-        throw new Error("Usage receipt did not match request");
-      const ledger = readLedger();
-      if (ledger.reports.some((r) => r.id === report.id)) {
-        writeLedger({
-          reports: ledger.reports.filter((r) => r.id !== report.id),
-          chargedUsd: ledger.chargedUsd + result.chargedUsd,
-        });
-      }
-    }
-  })().finally(() => {
-    flushing = undefined;
+  return Tokens.parse({
+    input: inputTotal - cacheRead - cacheWrite,
+    cacheRead,
+    cacheWrite,
+    output,
   });
-  return flushing;
 }
-export async function startSubscriptionUsage(model: string) {
-  await flushSubscriptionUsage();
-  const ledger = readLedger();
-  const id = randomUUID();
-  ledger.reports.push({
-    id,
-    billingOwner: owner(billingKey()),
-    model,
-    createdAt: new Date().toISOString(),
-    status: "started",
-  });
-  writeLedger(ledger);
-  active.add(id);
-  return id;
-}
+
+/** Best effort: consume before sending, never retry or reject into the chat. */
 export async function finishSubscriptionUsage(
   id: string,
   model: string,
   usage: LanguageModelV3Usage,
 ) {
+  const request = active.get(id);
+  if (!request) return;
+  active.delete(id);
   try {
     const tokens = normalizeSubscriptionUsage(usage);
-    const ledger = readLedger();
-    const report = ledger.reports.find((r) => r.id === id);
-    if (report)
-      Object.assign(report, {
-        model,
-        tokens,
-        status: "ready",
+    const response = await fetch(
+      `${getDyadEngineBaseUrl().replace(/\/$/, "")}/track-usage`,
+      {
+        method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(15_000),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${request.key}`,
+        },
+        body: JSON.stringify({
+          version: 1,
+          id,
+          connection: "subscription",
+          modelProvider: "openai",
+          modelId: model,
+          createdAt: request.createdAt,
+          totalTokens:
+            tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output,
+          cachedInputTokens: tokens.cacheRead,
+          uncachedInputTokens: tokens.input + tokens.cacheWrite,
+          outputTokens: tokens.output,
+        }),
+      },
+    );
+    if (!response.ok)
+      logger.warn("Subscription usage report failed; not retrying", {
+        id,
+        status: response.status,
       });
-    writeLedger(ledger);
-  } finally {
-    active.delete(id);
+    // No local receipts, queue, or reconciliation. The engine owns account spend.
+    await response.body?.cancel();
+  } catch {
+    // Do not log fetch errors or request objects: they may contain credentials.
+    logger.warn(
+      "Subscription usage unavailable or report failed; not retrying",
+      { id },
+    );
   }
-  // Generation has completed; retain unsettled reports for explicit retry in UI.
-  void flushSubscriptionUsage().catch(() => {});
 }
 export function interruptSubscriptionUsage(id: string, notSent = false) {
-  active.delete(id);
-  const ledger = readLedger();
-  if (notSent) ledger.reports = ledger.reports.filter((r) => r.id !== id);
-  else {
-    const report = ledger.reports.find((r) => r.id === id);
-    if (report?.status === "started") report.status = "unknown";
-  }
-  writeLedger(ledger);
+  if (active.delete(id) && !notSent)
+    logger.warn("Subscription request ended without usage; not reporting", {
+      id,
+    });
 }

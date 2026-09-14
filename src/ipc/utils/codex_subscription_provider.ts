@@ -182,7 +182,7 @@ export async function createCodexSubscriptionModel(
                 )
                   actualModel = chunk.value.modelId;
                 if (chunk.value.type === "finish" && !finished) {
-                  await finishSubscriptionUsage(
+                  void finishSubscriptionUsage(
                     id,
                     actualModel,
                     chunk.value.usage,

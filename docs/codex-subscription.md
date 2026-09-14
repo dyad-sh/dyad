@@ -25,9 +25,9 @@ the subscription is not a promise that every Dyad service uses ChatGPT.
 
 ## Engine contract: POST /track-usage
 
-Authentication is the user's **Dyad Pro key**, never their ChatGPT token. The
-`Idempotency-Key` header equals the persisted UUID `id`. Example body (all values
-are illustrative, not credentials):
+Authentication is the user's **Dyad Pro key**, never their ChatGPT token. The UUID
+`id` is for correlation only, not idempotency. There is no idempotency header.
+Example body (all values are illustrative, not credentials):
 
 ```json
 {
@@ -44,10 +44,8 @@ are illustrative, not credentials):
 }
 ```
 
-Engine must validate counts, authenticate the billing account, authorize charges,
-and claim each account/event ID before debiting. Confirmed receipts return
-unchanged on retry. An ambiguous gateway timeout stays pending for reconciliation
-rather than risking a duplicate debit:
+Engine validates counts, authenticates the billing account, and attempts one
+charge through `dyad/dyad-synthetic-cost-tracking`. On success it responds:
 
 ```json
 { "id": "f6d2a682-63bd-4e0a-a36a-78be594c3f93", "chargedUsd": 0.000015 }
@@ -60,27 +58,26 @@ the display name. Dyad does not calculate or submit a price.
 
 `totalTokens = cachedInputTokens + uncachedInputTokens + outputTokens`. Cached
 input means cache reads; cache creation/write tokens count as uncached input.
-Output already includes reasoning: never add reasoning tokens again. Existing
-local ledger records retain their disjoint categories and are converted on send,
-so pending usage survives the contract change without losing its event ID.
+Output already includes reasoning: never add reasoning tokens again.
 
-Each streamed model step has a durable report. Complete token usage is saved
-before reporting; failures preserve the same ID for retry. New requests wait for
-unsettled reports, and reports cannot be settled under a different Dyad key.
-The device UI displays receipted charges and pending reports, not an estimate of
-the user's full account balance. Engine is not implemented in this repository.
+Each completed streamed model step triggers one background reporting attempt.
+The billing account is captured when that request starts. A failure or missing
+usage never blocks chat, and the stream does not wait for billing to finish.
+There are no persisted reports, retries, local charge totals, reconciliation
+controls, or startup replay. Old `codex-subscription-usage.json` files are ignored,
+not read or replayed. Active request context is kept only in memory and consumed
+before sending, preventing duplicate completion callbacks from reporting twice.
+
+Engine makes one synthetic debit attempt per received report and has no usage
+table or deduplication. Two separately submitted copies can charge twice; this
+is best-effort single-attempt reporting, not exactly-once server processing.
 
 ### Remaining limitations and verification
 
-- A cancelled/crashed request without final usage is marked unresolved, never
-  silently charged as zero. Subsequent subscription requests are blocked until
-  reconciliation. There is no automatic Engine reconciliation protocol yet;
-  the Retry action cannot recover missing token counts. Other connections remain
-  usable. Production needs a recoverable cancellation/accounting design.
-- Direct client-reported usage is not tamper-proof. Production billing needs an
-  explicit trust/abuse policy, preflight balance/reservation handling, and the
-  deployed Engine endpoint. The first request can run before endpoint availability
-  is known, but subsequent requests block on its unsettled receipt.
+- Network failures, cancellation without final usage, crashes, and shutdown can
+  lose charges. This is an accepted trade-off; neither side replays them.
+- Client-reported usage is not tamper-proof. Engine checks the balance at report
+  time, but this is not an inference reservation or an account-wide spend lock.
 - Public native-client OAuth registration/transport follows the OpenCode pattern;
   that is not proof of authorization for a distributed, surcharged commercial
   integration. Confirm provider authorization before release.
@@ -94,7 +91,8 @@ the user's full account balance. Engine is not implemented in this repository.
 
 Unit/component coverage includes source routing, OAuth state/PKCE, secure-storage
 refusal, portable history, real AI SDK SSE parsing against a fake response,
-resolved model usage, idempotent report retries, cancellation, and normalized usage payloads.
+resolved model usage, single-attempt failures, restart/no-replay behavior,
+nonblocking stream completion, and normalized usage payloads.
 
 For a real inference smoke, on an interactive machine with an available OS
 keyring and a ChatGPT subscription:
@@ -113,4 +111,4 @@ removed on exit. `DYAD_LIVE_SUBSCRIPTION_MODEL` can select an available model.
 
 Before release, additionally exercise subscription-to-API/Pro switches with
 real history, cancellation recovery, read-only modes, preview and undo on the
-real subscription, plus a real Engine debit/retry test.
+real subscription, plus a real Engine single-attempt debit test.

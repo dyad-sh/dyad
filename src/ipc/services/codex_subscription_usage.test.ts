@@ -3,18 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-const mocks = vi.hoisted(() => ({ directory: "", key: "test-dyad-key" }));
+const mocks = vi.hoisted(() => ({
+  directory: "",
+  key: "test-dyad-key",
+  warn: vi.fn(),
+}));
 vi.mock("@/paths/paths", () => ({ getUserDataPath: () => mocks.directory }));
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
     providerSettings: { auto: { apiKey: { value: mocks.key } } },
   }),
 }));
+vi.mock("electron-log", () => ({
+  default: { scope: () => ({ warn: mocks.warn }) },
+}));
 import {
   startSubscriptionUsage,
   finishSubscriptionUsage,
-  flushSubscriptionUsage,
-  getSubscriptionUsageStatus,
   interruptSubscriptionUsage,
   normalizeSubscriptionUsage,
 } from "./codex_subscription_usage";
@@ -22,19 +27,23 @@ const usage = {
   inputTokens: { total: 100, noCache: 70, cacheRead: 20, cacheWrite: 10 },
   outputTokens: { total: 50, text: 30, reasoning: 20 },
 };
-describe("subscription usage ledger", () => {
+describe("single-attempt subscription usage", () => {
   beforeEach(() => {
+    mocks.key = "test-dyad-key";
+    mocks.warn.mockClear();
     mocks.directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "dyad-usage-test-"),
     );
-    mocks.key = "test-dyad-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ chargedUsd: 0.000003 })),
+    );
   });
-  afterEach(async () => {
-    await flushSubscriptionUsage().catch(() => {});
+  afterEach(() => {
     vi.unstubAllGlobals();
     fs.rmSync(mocks.directory, { recursive: true, force: true });
   });
-  it("normalizes disjoint categories without double-counting reasoning", () => {
+  it("normalizes tokens without double-counting cached input or reasoning", () => {
     expect(normalizeSubscriptionUsage(usage)).toEqual({
       input: 70,
       cacheRead: 20,
@@ -48,85 +57,101 @@ describe("subscription usage ledger", () => {
       }),
     ).toThrow();
   });
-  it("retries the same idempotent report after an outage", async () => {
-    const fetchMock = vi.fn(async () => new Response("", { status: 503 }));
-    vi.stubGlobal("fetch", fetchMock);
-    const id = await startSubscriptionUsage("known");
-    await finishSubscriptionUsage(id, "known", usage);
-    await expect(flushSubscriptionUsage()).rejects.toThrow("503");
-    expect(getSubscriptionUsageStatus().pendingReports).toBe(1);
-    await expect(startSubscriptionUsage("known")).rejects.toThrow("503");
-    fetchMock.mockImplementation(async () =>
-      Response.json({ id, chargedUsd: 0.001 }),
-    );
-    await flushSubscriptionUsage();
-    await flushSubscriptionUsage();
-    expect(getSubscriptionUsageStatus()).toEqual({
-      pendingReports: 0,
-      chargedUsd: 0.001,
-      missingUsage: false,
+  it("sends the six fields once, without an idempotency header or local persistence", async () => {
+    const id = startSubscriptionUsage("gpt-5.6-luna");
+    await Promise.all([
+      finishSubscriptionUsage(id, "gpt-5.6-luna", usage),
+      finishSubscriptionUsage(id, "gpt-5.6-luna", usage),
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      id,
+      modelId: "gpt-5.6-luna",
+      modelProvider: "openai",
+      totalTokens: 150,
+      cachedInputTokens: 20,
+      uncachedInputTokens: 80,
+      outputTokens: 50,
     });
-    for (const call of fetchMock.mock.calls as unknown as [
-      string,
-      RequestInit,
-    ][]) {
-      const body = JSON.parse(call[1].body as string);
-      expect(body.id).toBe(id);
-      expect(body).toMatchObject({
-        modelId: "known",
-        modelProvider: "openai",
-        totalTokens: 150,
-        cachedInputTokens: 20,
-        uncachedInputTokens: 80,
-        outputTokens: 50,
-      });
-      expect(body).not.toHaveProperty("billingOwner");
-      expect(body).not.toHaveProperty("catalog");
-      expect(body).not.toHaveProperty("pricingPolicy");
-      expect(body).not.toHaveProperty("chargedUsd");
-    }
+    expect(options?.headers).not.toHaveProperty("Idempotency-Key");
+    expect(fs.readdirSync(mocks.directory)).toEqual([]);
   });
-  it("settles a persisted pre-change ledger without catalog lookup or a new event ID", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("", { status: 503 })),
+  it.each(["network", "http"])(
+    "does not retry %s failures or block later requests",
+    async (failure) => {
+      vi.mocked(fetch).mockImplementationOnce(async () => {
+        if (failure === "network") throw new Error("sensitive-network-details");
+        return new Response("", { status: 503 });
+      });
+      const id = startSubscriptionUsage("model");
+      await expect(
+        finishSubscriptionUsage(id, "model", usage),
+      ).resolves.toBeUndefined();
+      await finishSubscriptionUsage(id, "model", usage);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      await finishSubscriptionUsage(
+        startSubscriptionUsage("model"),
+        "model",
+        usage,
+      );
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain(
+        "sensitive-network-details",
+      );
+    },
+  );
+  it("does not guess missing usage or replay cancelled requests", async () => {
+    const cancelled = startSubscriptionUsage("model");
+    interruptSubscriptionUsage(cancelled);
+    await finishSubscriptionUsage(cancelled, "model", usage);
+    const missing = startSubscriptionUsage("model");
+    await expect(
+      finishSubscriptionUsage(missing, "model", {
+        ...usage,
+        inputTokens: { ...usage.inputTokens, total: undefined },
+      }),
+    ).resolves.toBeUndefined();
+    await finishSubscriptionUsage(missing, "model", usage);
+    expect(fetch).not.toHaveBeenCalled();
+    await finishSubscriptionUsage(
+      startSubscriptionUsage("model"),
+      "model",
+      usage,
     );
-    const id = await startSubscriptionUsage("gpt-5.6-luna");
-    await finishSubscriptionUsage(id, "gpt-5.6-luna", usage);
-    await flushSubscriptionUsage().catch(() => {});
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("keeps the billing account selected at request start", async () => {
+    const id = startSubscriptionUsage("model");
+    mocks.key = "other-test-account";
+    await finishSubscriptionUsage(id, "model", usage);
+    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({
+      Authorization: "Bearer test-dyad-key",
+    });
+  });
+  it("never loads legacy saved reports or restores active reports after restart", async () => {
     const file = path.join(mocks.directory, "codex-subscription-usage.json");
-    const ledger = JSON.parse(fs.readFileSync(file, "utf8"));
-    Object.assign(ledger.reports[0], {
-      knownModel: true,
-      catalogVersion: "old-catalog",
-    });
-    fs.writeFileSync(file, JSON.stringify(ledger));
-    const send = vi.fn(async (_url: unknown, options: RequestInit) => {
-      expect(JSON.parse(options.body as string)).toEqual({
-        version: 1,
-        id,
-        modelId: "gpt-5.6-luna",
-        modelProvider: "openai",
-        connection: "subscription",
-        createdAt: ledger.reports[0].createdAt,
-        totalTokens: 150,
-        cachedInputTokens: 20,
-        uncachedInputTokens: 80,
-        outputTokens: 50,
-      });
-      return Response.json({ id, chargedUsd: 0.000003 });
-    });
-    vi.stubGlobal("fetch", send);
-    await flushSubscriptionUsage();
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(getSubscriptionUsageStatus().pendingReports).toBe(0);
-  });
-  it("does not guess usage after cancellation", async () => {
-    const id = await startSubscriptionUsage("unknown");
-    interruptSubscriptionUsage(id);
-    expect(getSubscriptionUsageStatus().missingUsage).toBe(true);
-    await expect(startSubscriptionUsage("unknown")).rejects.toThrow(
-      "reconciliation",
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        reports: [{ id: "legacy", status: "ready" }],
+        chargedUsd: 1,
+      }),
     );
+    const abandoned = startSubscriptionUsage("model");
+    vi.resetModules();
+    const restarted = await import("./codex_subscription_usage");
+    await restarted.finishSubscriptionUsage(abandoned, "model", usage);
+    expect(fetch).not.toHaveBeenCalled();
+    await restarted.finishSubscriptionUsage(
+      restarted.startSubscriptionUsage("model"),
+      "model",
+      usage,
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).reports[0].id).toBe(
+      "legacy",
+    );
+    interruptSubscriptionUsage(abandoned, true);
   });
 });

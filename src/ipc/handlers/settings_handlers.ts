@@ -7,27 +7,16 @@ import {
   disconnectCodexSubscription,
   getCodexSubscriptionStatus,
 } from "../services/codex_subscription_auth";
-import {
-  flushSubscriptionUsage,
-  getSubscriptionUsageStatus,
-} from "../services/codex_subscription_usage";
 
 export function registerSettingsHandlers() {
-  createTypedHandler(
-    settingsContracts.getCodexSubscriptionStatus,
-    async () => ({
-      ...getCodexSubscriptionStatus(),
-      ...getSubscriptionUsageStatus(),
-    }),
+  createTypedHandler(settingsContracts.getCodexSubscriptionStatus, async () =>
+    getCodexSubscriptionStatus(),
   );
   createTypedHandler(settingsContracts.connectCodexSubscription, async () =>
     connectCodexSubscription(),
   );
   createTypedHandler(settingsContracts.disconnectCodexSubscription, async () =>
     disconnectCodexSubscription(),
-  );
-  createTypedHandler(settingsContracts.retryCodexSubscriptionUsage, async () =>
-    flushSubscriptionUsage(),
   );
   // Note: Settings handlers intentionally use createTypedHandler without logging
   // to avoid logging sensitive data (API keys, tokens, etc.) from args/return values.

@@ -129,7 +129,7 @@ describe("BYO subscription preflight through the actual provider", () => {
       "sensitive-network-detail",
     );
   });
-  it("bounds the credit check to five seconds and fails open on timeout", async () => {
+  it("bounds the credit check to ten seconds and fails open on timeout", async () => {
     const timeout = vi
       .spyOn(AbortSignal, "timeout")
       .mockReturnValue(
@@ -140,7 +140,7 @@ describe("BYO subscription preflight through the actual provider", () => {
       return accountResponse();
     });
     await run();
-    expect(timeout).toHaveBeenCalledWith(5_000);
+    expect(timeout).toHaveBeenCalledWith(10_000);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("does not interpret malformed API responses as exhausted credits", async () => {

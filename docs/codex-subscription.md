@@ -34,7 +34,7 @@ not the five-minute UI cache or the UI's test-build mock balance.
 - Confirmed exhausted balance (including HTTP 200 with exhausted counts) or HTTP
   402: block before inference and ask the user to add credits.
 - HTTP 401/403: block and ask the user to update the Dyad key.
-- Timeout (five seconds), network failure, rate limiting, service errors, or
+- Timeout (ten seconds), network failure, rate limiting, service errors, or
   invalid response: log a redacted warning and **allow generation**. No retry.
 - User cancellation is not an outage; it stops the request.
 

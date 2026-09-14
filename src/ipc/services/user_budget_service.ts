@@ -21,7 +21,7 @@ export async function fetchUserInfo(
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<UserInfoResponse> {
-  const timeout = AbortSignal.timeout(5_000);
+  const timeout = AbortSignal.timeout(10_000);
   const response = await fetch(
     process.env.DYAD_USER_INFO_URL ?? "https://api.dyad.sh/v1/user/info",
     {

@@ -2023,6 +2023,16 @@ export async function runAppTestsWithIsolation({
   // Whether the run-scoped server tree is confirmed gone. A survivor holds the
   // workspace as its cwd, so disposal has to wait for the startup sweep.
   let serverStopped = true;
+  // Cache even a failed verdict: a later registry sweep may have forgotten an
+  // exited parent without proving that its descendants stopped.
+  let runProcessesSettlement: Promise<boolean> | undefined;
+  const settleRunProcesses = () =>
+    (runProcessesSettlement ??= settleE2eTestProcesses(controller.signal).catch(
+      (error) => {
+        logger.warn(`Failed to settle E2E test processes: ${error}`);
+        return false;
+      },
+    ));
   // The real env is never changed. This only reports a sandbox/provider cleanup
   // failure (for example, a temporary Neon branch left for startup recovery).
   let isolationCleanupFailed = false;
@@ -2342,6 +2352,25 @@ export async function runAppTestsWithIsolation({
       async () => {
         let prepared: PreparedIsolation | undefined;
         let testRuntime: E2eTestRuntime | undefined;
+        let processesStopped: Promise<boolean> | undefined;
+        const stopTestProcesses = () =>
+          (processesStopped ??= (async () => {
+            if (testRuntime) {
+              try {
+                serverStopped = await testRuntime.stop();
+              } catch (error) {
+                serverStopped = false;
+                logger.error(
+                  `Failed to stop isolated test server for app ${appId}: ${error}`,
+                );
+              }
+            }
+            // Stop/timeout can return after sending a kill, while descendants
+            // still use the workspace. Settle under the provider claim, before
+            // retaining artifacts or removing their isolated database/user.
+            const settled = await settleRunProcesses();
+            return serverStopped && settled;
+          })());
         try {
           const app = await getApp(appId);
 
@@ -2585,24 +2614,25 @@ export async function runAppTestsWithIsolation({
             },
           });
 
+          const stopped = await stopTestProcesses();
           // Best-effort by nature: the run has already produced its results, so
-          // a failed copy (a trace file still held by a browser that hasn't
-          // fully exited on Windows, a full disk) must cost at most the
-          // screenshots — never the whole run. Paths are only rewritten when
-          // the artifacts actually made it out of the sandbox; otherwise they
-          // are dropped, since the sandbox they point into is deleted moments
-          // from now.
+          // a failed copy must cost at most the screenshots — never the whole
+          // run. Don't copy files that surviving children may still write.
+          // Paths are only rewritten when the artifacts made it out of the
+          // sandbox; otherwise drop them before eventual sandbox disposal.
           let retained = false;
           try {
-            await retainE2eTestArtifacts(workspace!, {
-              // A targeted run leaves the untargeted files' rows on screen, and
-              // their screenshots live in earlier runs' artifact directories —
-              // so the prune has to keep those rather than treat this run's
-              // output as a complete replacement.
-              replacesEveryResult:
-                !normalizedTestFile && testLine === undefined && !grep,
-            });
-            retained = true;
+            if (stopped) {
+              await retainE2eTestArtifacts(workspace!, {
+                // A targeted run leaves the untargeted files' rows on screen, and
+                // their screenshots live in earlier runs' artifact directories —
+                // so the prune has to keep those rather than treat this run's
+                // output as a complete replacement.
+                replacesEveryResult:
+                  !normalizedTestFile && testLine === undefined && !grep,
+              });
+              retained = true;
+            }
           } catch (error) {
             logger.warn(
               `Failed to retain isolated test artifacts for app ${appId}: ${error}`,
@@ -2615,22 +2645,8 @@ export async function runAppTestsWithIsolation({
           );
           return { ...result, isolation: prepared.isolation };
         } finally {
-          if (testRuntime) {
-            try {
-              // False means a descendant outlived SIGKILL and still holds the
-              // workspace as its cwd. Deleting it then leaves a live server
-              // serving a deleted tree and holding a port a later run may
-              // allocate — and fails outright on Windows. The startup sweep
-              // collects it on the next launch instead, once the survivor is
-              // gone with the process that spawned it.
-              serverStopped = await testRuntime.stop();
-            } catch (error) {
-              serverStopped = false;
-              logger.error(
-                `Failed to stop isolated test server for app ${appId}: ${error}`,
-              );
-            }
-          }
+          // Also covers setup failures, throws, and cancellation before results.
+          await stopTestProcesses();
           // Always clean up provider isolation, even on an infraError, abort, or
           // throw. The sandbox env can be discarded, but remote branches/users
           // still require their guaranteed teardown.
@@ -2645,10 +2661,8 @@ export async function runAppTestsWithIsolation({
                 emitProgress("cleaning-up", prepared.isolation);
               }
               isolationCleanupFailed = true;
-              // NOT `envRestored`: the sandbox path never rewrites the real
-              // `.env.local`, so that flag only reports on a workspace file
-              // that is deleted seconds later. A leaked remote branch is the
-              // thing this warning actually describes.
+              // Disposable env files are never restored, even if a child
+              // survived settlement. Remote cleanup must still be attempted.
               isolationCleanupFailed = !(await prepared.teardown())
                 .remoteCleanupCompleted;
             } catch (error) {
@@ -2701,19 +2715,10 @@ export async function runAppTestsWithIsolation({
     // soon as it sees the run go idle, and a still-standing claim would
     // downgrade that teardown into an invisible view nobody owns.
     releasePreviewReservation();
-    // The server is not the only thing that holds this directory. On a Stop or
-    // a timeout `spawnStreaming` resolves as soon as it has SENT the kill, so
-    // the Playwright runner, its browser, and an install's lifecycle
-    // descendants can all still be reading and writing the workspace. The
-    // registry is self-pruning, so anything still in it has not exited —
-    // settle those trees before the directory goes, per
-    // `rules/app-operation-coordination.md`.
-    const runProcessesSettled = workspace
-      ? await settleE2eTestProcesses(controller.signal).catch((error) => {
-          logger.warn(`Failed to settle E2E test processes: ${error}`);
-          return false;
-        })
-      : true;
+    // Normally settled before artifacts/provider teardown under the claim.
+    // Also cover exits before that callback was admitted, and preserve a failed
+    // settlement verdict so survivors' workspaces are kept for startup cleanup.
+    const runProcessesSettled = workspace ? await settleRunProcesses() : true;
     if (workspace && (!serverStopped || !runProcessesSettled)) {
       // Something still has this directory as its cwd. Deleting it would leave
       // that survivor running against a deleted tree — serving the app under a

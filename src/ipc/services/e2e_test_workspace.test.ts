@@ -358,6 +358,109 @@ describe("E2E test workspace", () => {
     await workspace.dispose();
   });
 
+  it.each([false, true])(
+    "withholds copied dotenv credentials during Neon installs (monorepo: %s)",
+    async (monorepo) => {
+      const root = await tempRoot();
+      const repoRoot = path.join(root, "repo");
+      const appRelativePath = monorepo ? path.join("packages", "app") : "";
+      const appPath = path.join(repoRoot, appRelativePath);
+      const directories = monorepo
+        ? ["", appRelativePath, path.join("packages", "sibling")]
+        : [""];
+      const fileNames = [
+        ".env",
+        ".env.local",
+        ".env.development",
+        ".env.development.local",
+        ".env.test",
+        ".env.test.local",
+        ".env.production",
+        ".env.production.local",
+      ];
+      const liveEnv = "DATABASE_URL=postgres://live/db\nAPI_BASE=keep\n";
+      const isolatedEnv =
+        "DATABASE_URL=postgres://temporary/db\nAPI_BASE=keep\n";
+      vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+      for (const directory of directories) {
+        const packagePath = path.join(repoRoot, directory);
+        await fs.mkdir(packagePath, { recursive: true });
+        await fs.writeFile(
+          path.join(packagePath, "package.json"),
+          JSON.stringify({ private: true, workspaces: ["packages/*"] }),
+        );
+        for (const fileName of fileNames) {
+          await fs.writeFile(path.join(packagePath, fileName), liveEnv);
+        }
+      }
+      await ensureGitRepo(repoRoot);
+      vi.mocked(resolvePackageManager).mockResolvedValueOnce({
+        packageManager: "npm",
+        sourceInstallPath: repoRoot,
+      });
+      const workspace = await createWorkspaceUnderTest({ appId: 7, appPath });
+      try {
+        // Provider isolation rewrites only the target app's .env.local.
+        await fs.writeFile(
+          path.join(workspace.workspacePath, ".env.local"),
+          isolatedEnv,
+        );
+        vi.mocked(runCleanPackageInstall).mockImplementationOnce(
+          async ({ cwd }) => {
+            for (const directory of directories) {
+              for (const fileName of fileNames) {
+                const preserved =
+                  directory === appRelativePath && fileName === ".env.local";
+                expect(
+                  await fs.readFile(
+                    path.join(cwd, directory, fileName),
+                    "utf8",
+                  ),
+                ).toBe(preserved ? isolatedEnv : "API_BASE=keep\n");
+              }
+            }
+            return {
+              code: 0,
+              stdout: "",
+              stderr: "",
+              aborted: false,
+              timedOut: false,
+              hasLockfile: false,
+            };
+          },
+        );
+        await installE2eTestWorkspaceDependencies({
+          workspace,
+          withholdDatabaseEnv: false,
+        });
+        for (const directory of directories) {
+          for (const fileName of fileNames) {
+            const preserved =
+              directory === appRelativePath && fileName === ".env.local";
+            expect(
+              await fs.readFile(
+                path.join(
+                  workspace.dependencyInstallPath!,
+                  directory,
+                  fileName,
+                ),
+                "utf8",
+              ),
+            ).toBe(preserved ? isolatedEnv : liveEnv);
+            expect(
+              await fs.readFile(
+                path.join(repoRoot, directory, fileName),
+                "utf8",
+              ),
+            ).toBe(liveEnv);
+          }
+        }
+      } finally {
+        await workspace.dispose();
+      }
+    },
+  );
+
   it("removes a tracked virtualenv anywhere in the repository", async () => {
     // A monorepo sibling's `.venv` records absolute paths in `pyvenv.cfg` and
     // its shebangs, so a copy activates an interpreter pointing back at the
@@ -643,9 +746,10 @@ describe("E2E test workspace", () => {
 
     expect(installChild).toBeDefined();
     expect(trackedE2eTestProcessCount()).toBe(before + 1);
-    // The registry drops it again on its own exit, so a finished install can't
-    // sit there for the life of the process.
+    // Root exit alone does not settle descendants sharing its stdio.
     installChild!.emit("exit", 0, null);
+    expect(trackedE2eTestProcessCount()).toBe(before + 1);
+    installChild!.emit("close", 0, null);
     expect(trackedE2eTestProcessCount()).toBe(before);
     await workspace.dispose();
   });

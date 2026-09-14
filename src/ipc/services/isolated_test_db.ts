@@ -46,8 +46,9 @@ const SERVER_READY_POLL_MS = 500;
 /**
  * The outcome of preparing isolation. When `infraError` is set, the run must
  * NOT proceed (we never run tests against real data) — the caller dead-ends and
- * shows the message. `teardown` always restores the app to its real database,
- * and is safe to call exactly once whether preparation succeeded or failed.
+ * shows the message. `teardown` restores the real app's database settings but
+ * leaves disposable sandbox env files isolated. It is safe to call exactly
+ * once whether preparation succeeded or failed.
  */
 /**
  * Everything the preview recorder needs to establish an authenticated session
@@ -76,9 +77,10 @@ export interface TeardownOptions {
 
 export interface TeardownResult {
   /**
-   * False when `.env.local` couldn't be put back. The app is still pointed at
-   * the temporary test branch, so anything that would relaunch it has to say so
-   * rather than quietly starting the user's app against isolated data.
+   * False when the real app's `.env.local` couldn't be put back. The app is
+   * still pointed at the temporary test branch, so anything that would
+   * relaunch it has to say so rather than quietly starting it against isolated
+   * data. True for disposable sandboxes, which never modify the real env.
    */
   envRestored: boolean;
   /**
@@ -218,7 +220,9 @@ export async function prepareIsolatedTestDatabase({
     // the env. If setup failed before the env swap (e.g. during branch
     // creation), restoring and restarting would be a pointless, user-visible
     // interruption.
-    if (envModified) {
+    // A sandbox is disposable, and may be kept if a child could not be stopped.
+    // Never put live credentials back where that survivor could read them.
+    if (envModified && !envIsDisposable) {
       try {
         await restoreEnvFile(appPath, envSnapshot);
       } catch (error) {
@@ -226,16 +230,10 @@ export async function prepareIsolatedTestDatabase({
         logger.error(
           `Failed to restore .env.local for app ${app.id}: ${error}`,
         );
-        // Only the recorder's swap can strand the user's real project. Saying
-        // this on the sandbox path would name a file in a directory that is
-        // about to be deleted and tell the user to fix something they never
-        // had a problem with.
-        if (!envIsDisposable) {
-          emit(
-            "Warning: Dyad couldn't restore your real database settings, so the temporary Neon branch was kept tracked for retry. Restore .env.local before running more tests.\n",
-            "setup",
-          );
-        }
+        emit(
+          "Warning: Dyad couldn't restore your real database settings, so the temporary Neon branch was kept tracked for retry. Restore .env.local before running more tests.\n",
+          "setup",
+        );
       }
       if (envRestored && restartApp && !options.skipRestart) {
         try {
@@ -256,9 +254,8 @@ export async function prepareIsolatedTestDatabase({
     // deletion — the one case where that row is about to disappear — handles the
     // branch itself, after the deletion commits.
     //
-    // That reasoning cannot apply when the env file is the sandbox's own copy:
-    // nothing is left pointing at the branch, so gating on the restore there
-    // would only leak a real Neon branch over a file that no longer exists.
+    // Sandboxes keep their isolated env until disposal; remote cleanup still
+    // runs even when a surviving process forces the caller to keep that copy.
     let remoteCleanupCompleted = true;
     if (branchId && (envRestored || envIsDisposable)) {
       // Shared with the recovery path in `neon_test_branch`: the cleanup-only

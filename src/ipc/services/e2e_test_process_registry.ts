@@ -7,7 +7,7 @@ import { forceKillProcessTree } from "@/ipc/utils/process_manager";
 const logger = log.scope("e2e_test_process_registry");
 
 /**
- * Every live run-scoped child, mapped to the run that owns it.
+ * Every unsettled run-scoped process tree, mapped to the run that owns it.
  *
  * The owner is the run's `AbortSignal` — the identity every one of these call
  * sites already carries, so nothing has to invent a parallel run id that could
@@ -21,7 +21,9 @@ const runScopedProcesses = new Map<ChildProcess, AbortSignal | undefined>();
  * Track a run-scoped child (the dependency install, the sandbox dev server, the
  * Playwright runner) so Electron's synchronous quit can terminate it, and so
  * the owning run can wait for it before deleting its workspace. Returns an
- * unregister callback; the child's own exit/error also drops it.
+ * unregister callback for callers that independently confirm settlement.
+ * `close` also unregisters once the root and its shared stdio have closed;
+ * `exit` alone cannot prove descendants sharing those pipes have stopped.
  */
 export function trackE2eTestProcess(
   child: ChildProcess,
@@ -30,9 +32,16 @@ export function trackE2eTestProcess(
   runScopedProcesses.set(child, owner);
   const forget = () => {
     runScopedProcesses.delete(child);
+    child.removeListener("close", forget);
+    child.removeListener("error", onError);
   };
-  child.once("exit", forget);
-  child.once("error", forget);
+  const onError = () => {
+    // A spawn failure has no tree to settle. Errors on an existing process
+    // (for example, a failed kill) do not prove that its tree is gone.
+    if (child.pid === undefined) forget();
+  };
+  child.once("close", forget);
+  child.on("error", onError);
   return forget;
 }
 
@@ -40,13 +49,11 @@ export function trackE2eTestProcess(
  * Force-kill every child still tracked FOR ONE RUN and report whether all of
  * them are CONFIRMED gone.
  *
- * The map is self-pruning — `trackE2eTestProcess` drops a child on its own
- * `exit` — so whatever is still in it has not exited, which is exactly the
- * survivor set. That matters because `spawnStreaming` resolves as soon as it
- * has *sent* a kill on the Stop and timeout paths, without waiting for the
- * tree: the Playwright runner, its browser and an install's lifecycle
- * descendants can all still be reading and writing the workspace when the run
- * believes it is finished.
+ * An exited root stays registered until `close` or an explicit confirmation of
+ * settlement. On Stop and timeout, `spawnStreaming`'s forced-kill timer can
+ * resolve after sending SIGKILL without waiting for the tree. The Playwright
+ * runner, its browser and an install's lifecycle descendants can still be
+ * using the workspace, even when their wrapper has already exited.
  *
  * Scoped to `owner`, never global. The operation coordinator excludes by app,
  * so two apps can be running tests at once — and a global sweep here would let
@@ -70,12 +77,16 @@ export async function settleE2eTestProcesses(
     `Waiting for ${survivors.length} E2E test process tree(s) to settle before cleanup`,
   );
   const settled = await Promise.all(
-    survivors.map((child) =>
-      forceKillProcessTree(child).catch((error) => {
+    survivors.map(async (child) => {
+      const confirmed = await forceKillProcessTree(child).catch((error) => {
         logger.warn(`Failed to settle an E2E test process tree: ${error}`);
         return false;
-      }),
-    ),
+      });
+      // Preserve unconfirmed trees so a later barrier cannot mistake an
+      // earlier failed settlement for an empty, safe-to-delete workspace.
+      if (confirmed) runScopedProcesses.delete(child);
+      return confirmed;
+    }),
   );
   return settled.every(Boolean);
 }

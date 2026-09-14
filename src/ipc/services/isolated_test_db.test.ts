@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
@@ -337,43 +340,43 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     );
   });
 
-  it("still deletes the branch when the sandbox's own env file can't be restored", async () => {
-    // The recorder keeps a branch whose delete would strand the real project
-    // still pointed at it. Nothing points at this one — the env file is inside
-    // the sandbox, which is deleted moments later — so gating the delete on
-    // that restore would leak a real Neon branch over a file nobody has.
+  it("deletes the branch without restoring live credentials into a retained sandbox", async () => {
     mocks.createTempTestBranch.mockResolvedValue({
       branchId: "test-br",
       databaseUrl: "postgres://temp",
     });
-    // A snapshot makes teardown write the file back; the missing directory
-    // makes that write fail the way a real one would.
-    mocks.readEnvFileIfExists.mockResolvedValue("REAL=1\n");
-    mocks.markAndDeleteTempTestBranch.mockResolvedValue(true);
-
-    const prepared = await prepareIsolatedTestDatabase({
-      app: makeApp({ neonProjectId: "proj-1" }),
-      emit,
-      runtimeMode: "host",
-      appPathOverride: "/nonexistent-sandbox-dir/run-1",
-      restartApp: false,
-    });
-
-    emit.mockClear();
-    const result = await prepared.teardown();
-    expect(result.envRestored).toBe(false);
-    expect(result.remoteCleanupCompleted).toBe(true);
-    expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1 }),
-      "test-br",
+    mocks.readEnvFileIfExists.mockResolvedValue(
+      "DATABASE_URL=postgres://live\n",
     );
-    // And it must not tell the user to go fix a `.env.local` they never had a
-    // problem with.
-    expect(
-      emit.mock.calls.some((call) =>
-        /restore your real database settings/i.test(String(call[0])),
-      ),
-    ).toBe(false);
+    mocks.markAndDeleteTempTestBranch.mockResolvedValue(true);
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-isolation-"));
+    const envPath = path.join(sandbox, ".env.local");
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        emit,
+        runtimeMode: "host",
+        appPathOverride: sandbox,
+        restartApp: false,
+      });
+      expect(prepared.infraError).toBeUndefined();
+      // Stand in for the mocked updateNeonEnvVars write. A surviving process
+      // can keep reading this file after teardown when disposal is deferred.
+      fs.writeFileSync(envPath, "DATABASE_URL=postgres://temp\n");
+      const result = await prepared.teardown();
+      expect(result.envRestored).toBe(true);
+      expect(result.remoteCleanupCompleted).toBe(true);
+      expect(fs.readFileSync(envPath, "utf8")).toBe(
+        "DATABASE_URL=postgres://temp\n",
+      );
+      expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1 }),
+        "test-br",
+      );
+      expect(mocks.executeApp).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 
   it("checks the direct dev server instead of the HTML-rewriting proxy", async () => {

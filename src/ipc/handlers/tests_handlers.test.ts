@@ -130,6 +130,7 @@ const installE2eTestWorkspaceDependenciesMock = vi.hoisted(() => vi.fn());
 const retainE2eTestArtifactsMock = vi.hoisted(() => vi.fn());
 const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
 const spawnStreamingMock = vi.hoisted(() => vi.fn());
+const settleE2eTestProcessesMock = vi.hoisted(() => vi.fn());
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
@@ -201,6 +202,12 @@ vi.mock("../utils/telemetry", async (importOriginal) => {
 vi.mock("../utils/spawn_streaming", () => ({
   spawnStreaming: spawnStreamingMock,
 }));
+vi.mock("../services/e2e_test_process_registry", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../services/e2e_test_process_registry")
+  >()),
+  settleE2eTestProcesses: settleE2eTestProcessesMock,
+}));
 vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/ipc/utils/window_broadcast")>();
@@ -259,6 +266,7 @@ describe("tests handlers", () => {
       stop: vi.fn().mockResolvedValue(true),
     });
     spawnStreamingMock.mockReset();
+    settleE2eTestProcessesMock.mockReset().mockResolvedValue(true);
     spawnStreamingMock.mockResolvedValue({
       code: 1,
       stdout: "",
@@ -1313,6 +1321,127 @@ describe("tests handlers", () => {
         expect.objectContaining({ withholdDatabaseEnv: false }),
       );
     });
+
+    it.each(["stop", "timeout", "spawn-error", "install-error"])(
+      "settles children before artifacts and provider teardown after %s",
+      async (outcome) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true, neonProjectId: "neon-proj" })
+          .where(eq(apps.id, appId))
+          .run();
+        const teardown = vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "neon-branch" },
+          teardown,
+        });
+        const externalController = new AbortController();
+        spawnStreamingMock.mockImplementation(async () => {
+          if (outcome === "spawn-error") throw new Error("spawn failed");
+          if (outcome === "stop") externalController.abort();
+          return {
+            code: 1,
+            stdout: "",
+            stderr: "",
+            aborted: outcome === "stop",
+            timedOut: outcome === "timeout",
+          };
+        });
+        if (outcome === "install-error") {
+          installE2eTestWorkspaceDependenciesMock.mockRejectedValue(
+            new Error("install failed"),
+          );
+        }
+        let finishSettlement!: (settled: boolean) => void;
+        settleE2eTestProcessesMock.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            finishSettlement = resolve;
+          }),
+        );
+
+        const run = runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+          externalSignal: externalController.signal,
+        });
+        try {
+          await vi.waitFor(() =>
+            expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce(),
+          );
+          const workspace =
+            await createE2eTestWorkspaceMock.mock.results[0].value;
+          expect(retainE2eTestArtifactsMock).not.toHaveBeenCalled();
+          expect(teardown).not.toHaveBeenCalled();
+          expect(workspace.dispose).not.toHaveBeenCalled();
+          expect(appOperationCoordinator.isBusy(appId, ["provider"])).toBe(
+            true,
+          );
+        } finally {
+          // Release the run even if an ordering assertion regresses, so it
+          // cannot hold the coordinator claim across subsequent tests.
+          finishSettlement(true);
+          await run;
+        }
+        const result = await run;
+        const workspace =
+          await createE2eTestWorkspaceMock.mock.results[0].value;
+        expect(result.infraError).toBeDefined();
+        expect(teardown).toHaveBeenCalledOnce();
+        expect(workspace.dispose).toHaveBeenCalledOnce();
+        expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+        if (outcome !== "install-error") {
+          expect(retainE2eTestArtifactsMock).toHaveBeenCalledOnce();
+          expect(
+            retainE2eTestArtifactsMock.mock.invocationCallOrder[0],
+          ).toBeLessThan(teardown.mock.invocationCallOrder[0]);
+        }
+      },
+    );
+
+    it.each(["survivor", "settlement-error"])(
+      "skips artifacts and workspace deletion but cleans the provider after %s",
+      async (outcome) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true, neonProjectId: "neon-proj" })
+          .where(eq(apps.id, appId))
+          .run();
+        const teardown = vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "neon-branch" },
+          teardown,
+        });
+        if (outcome === "survivor") {
+          settleE2eTestProcessesMock.mockResolvedValue(false);
+        } else {
+          settleE2eTestProcessesMock.mockRejectedValue(
+            new Error("kill failed"),
+          );
+        }
+
+        await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+
+        const workspace =
+          await createE2eTestWorkspaceMock.mock.results[0].value;
+        expect(retainE2eTestArtifactsMock).not.toHaveBeenCalled();
+        expect(workspace.dispose).not.toHaveBeenCalled();
+        expect(teardown).toHaveBeenCalledOnce();
+        expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+      },
+    );
 
     it("keeps the workspace when its server refused to die", async () => {
       // A survivor holds the sandbox as its cwd: deleting it leaves a live

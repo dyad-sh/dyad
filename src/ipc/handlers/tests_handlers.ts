@@ -2451,8 +2451,9 @@ export async function runAppTestsWithIsolation({
           // migration would run against whatever the copied credentials point
           // at, four times over in one agent turn.
           //
-          // The credentials are withheld for the duration of the install
-          // rather than the scripts disabled. `--ignore-scripts` is not
+          // Copied credentials stay stripped for the whole sandbox lifetime.
+          // Restoring after installation would let a server's dotenv loader
+          // read live credentials again. `--ignore-scripts` is not
           // selective: it would also break `prisma generate`, native rebuilds
           // and codegen for every app that merely has a database, turning
           // working runs into a server that cannot start. Taking the database
@@ -2467,19 +2468,13 @@ export async function runAppTestsWithIsolation({
               );
               if (withholdDatabaseEnv) {
                 emit(
-                  "Install scripts run without this app's database credentials, so they can't reach your real data. A script that needs a database will fail here.\n",
+                  "Install scripts and the test server run without this app's database credentials, so they can't reach your real data. Code that needs a database will fail here.\n",
                   "setup",
                 );
               }
             } else if (withholdDatabaseEnv && hasCustomE2eStartCommand(app)) {
-              // A custom app installs through its own command, run verbatim by
-              // the runtime as part of `install && start` — so the withholding
-              // above cannot wrap it without also hiding the credentials from
-              // the server the run is about to start. The preview runs the same
-              // command against the same live project, so this is not new
-              // exposure, but it is the one case the protection cannot reach.
               emit(
-                "Note: your custom install command runs as written, with this app's live database credentials — Dyad can't withhold them from it.\n",
+                "Your custom install command and test server run without this app's database credentials, so they can't reach your real data. Code that needs a database will fail here.\n",
                 "setup",
               );
             }

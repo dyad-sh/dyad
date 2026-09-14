@@ -3,6 +3,7 @@ vi.mock("../shared/language_model_helpers", () => ({
 }));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelSelection, UserSettings } from "@/lib/schemas";
+import { DyadErrorKind } from "@/errors/dyad_error";
 const mocks = vi.hoisted(() => ({
   account: vi.fn(),
   credentials: vi.fn(),
@@ -93,6 +94,52 @@ describe("global subscription turn routing", () => {
     });
     expect(mocks.credentials).not.toHaveBeenCalled();
     expect(mocks.credits).not.toHaveBeenCalled();
+  });
+  it("uses Pro when no subscription was saved", async () => {
+    mocks.account.mockResolvedValue({ connected: false, models: [] });
+    await expect(
+      preflightSubscriptionTurn(model, settings, signal),
+    ).resolves.toMatchObject({ connection: "pro" });
+  });
+  it.each([undefined, "subscription"] as const)(
+    "rejects unreadable credentials instead of changing billing (preference=%s)",
+    async (proModelUsage) => {
+      mocks.account.mockResolvedValue({
+        connected: false,
+        credentialError: true,
+        models: [],
+      });
+      await expect(
+        preflightSubscriptionTurn(
+          model,
+          { ...settings, proModelUsage },
+          signal,
+        ),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.Auth,
+        message: expect.stringContaining(
+          "Reconnect your ChatGPT subscription or select Pro credits",
+        ),
+      });
+      expect(mocks.credentials).not.toHaveBeenCalled();
+      expect(mocks.credits).not.toHaveBeenCalled();
+    },
+  );
+  it("allows explicit Pro selection despite unreadable subscription credentials", async () => {
+    mocks.account.mockResolvedValue({
+      connected: false,
+      credentialError: true,
+      models: [],
+    });
+    await expect(
+      preflightSubscriptionTurn(
+        model,
+        { ...settings, proModelUsage: "pro" },
+        signal,
+      ),
+    ).resolves.toMatchObject({ connection: "pro" });
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credentials).not.toHaveBeenCalled();
   });
   it("ignores subscription errors for a known ineligible model", async () => {
     mocks.account.mockResolvedValue({

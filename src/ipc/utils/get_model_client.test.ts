@@ -3,6 +3,20 @@ vi.mock("../services/codex_subscription_credit_check", () => ({
 }));
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { generateText, streamText } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
+import { getSubscriptionAccount } from "../services/codex_subscription_account";
+import { createCodexSubscriptionModel } from "./codex_subscription_provider";
+import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
+
+vi.mock("../services/codex_subscription_account", () => ({
+  getSubscriptionAccount: vi.fn(async () => ({ connected: false, models: [] })),
+}));
+vi.mock("./codex_subscription_provider", () => ({
+  createCodexSubscriptionModel: vi.fn(
+    async (modelId: string) =>
+      new MockLanguageModelV3({ modelId, provider: "chatgpt-subscription" }),
+  ),
+}));
 
 import type { UserSettings } from "../../lib/schemas";
 import {
@@ -256,7 +270,156 @@ describe("getModelClient", () => {
       "anthropic/claude-sonnet-4-20250514",
     );
   });
+
+  test.each(["local-agent", "build", "ask", "plan"])(
+    "routes resolved Auto GPT through subscription in %s mode",
+    async (selectedChatMode) => {
+      vi.mocked(getSubscriptionAccount).mockResolvedValue({
+        connected: true,
+        models: ["gpt-5.5"],
+      } as any);
+      const settings = {
+        enableDyadPro: true,
+        selectedChatMode,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings;
+      const result = await getModelClient(
+        { provider: "auto", name: "auto" },
+        settings,
+        {
+          provider: "auto",
+          name: "auto",
+          effortLevel: "high",
+          connection: "pro",
+        },
+        { chatId: 42 },
+      );
+      const chain = (result.modelClient.model as any).settings;
+      expect(chain.models.map((model: any) => model.modelId)).toEqual([
+        "gpt-5.5",
+        "anthropic/claude-sonnet-4-20250514",
+        "gemini/gemini-3.5-flash",
+      ]);
+      expect(chain.models[0].provider).toBe("chatgpt-subscription");
+      expect(chain.allowFallback).toEqual([false, true, true]);
+      expect(result.modelClient.getRuntimeModel?.()).toMatchObject({
+        provider: "openai",
+        name: "gpt-5.5",
+        connection: "subscription",
+      });
+      expect(createCodexSubscriptionModel).toHaveBeenCalledWith("gpt-5.5", {
+        chatId: 42,
+      });
+    },
+  );
+
+  test("routes an eligible auxiliary model without inheriting the default model", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-aux"],
+    } as any);
+    const result = await getModelClient(
+      { provider: "openai", name: "gpt-aux" },
+      {
+        selectedModel: { provider: "anthropic", name: "claude" },
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings,
+    );
+    expect((result.modelClient.model as any).provider).toBe(
+      "chatgpt-subscription",
+    );
+    expect(result.runtimeModel).toMatchObject({
+      name: "gpt-aux",
+      connection: "subscription",
+    });
+  });
+
+  test("routes Auto Balanced after resolving its catalog alias", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-balanced"],
+    } as any);
+    vi.mocked(resolveBuiltinModelAlias).mockResolvedValueOnce({
+      providerId: "openai",
+      apiName: "gpt-balanced",
+      apiProtocol: "responses",
+    } as any);
+    const result = await getModelClient(
+      { provider: "auto", name: "balanced" },
+      {
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings,
+    );
+    expect((result.modelClient.model as any).provider).toBe(
+      "chatgpt-subscription",
+    );
+    expect(result.modelClient.getRuntimeModel?.()).toMatchObject({
+      name: "gpt-balanced",
+      connection: "subscription",
+    });
+  });
+
+  test("honors explicit Pro credits even for eligible resolved Auto models", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-5.5"],
+    } as any);
+    const result = await getModelClient({ provider: "auto", name: "auto" }, {
+      enableDyadPro: true,
+      proModelUsage: "pro",
+      selectedChatMode: "local-agent",
+      providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+    } as unknown as UserSettings);
+    expect(
+      (result.modelClient.model as any).settings.models[0].provider,
+    ).toContain("dyad-engine");
+    expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+  });
+  test("does not inherit legacy source fields when resolving an auxiliary model", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-aux"],
+    } as any);
+    const result = await getModelClient(
+      { provider: "openai", name: "gpt-aux", connection: "api-key" },
+      {
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings,
+    );
+    expect((result.modelClient.model as any).provider).toBe(
+      "chatgpt-subscription",
+    );
+  });
+  test("keeps the accepted turn source pinned", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-aux"],
+    } as any);
+    const result = await getModelClient(
+      { provider: "openai", name: "gpt-aux" },
+      {
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings,
+      {
+        provider: "openai",
+        name: "gpt-aux",
+        effortLevel: "high",
+        connection: "pro",
+      },
+    );
+    expect((result.modelClient.model as any).provider).toContain("dyad-engine");
+    expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+  });
   afterEach(() => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: false,
+      models: [],
+    } as any);
+    vi.mocked(createCodexSubscriptionModel).mockClear();
     setModelClientFetchForTesting(undefined);
     vi.mocked(getLanguageModels).mockResolvedValue([]);
   });

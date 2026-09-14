@@ -29,7 +29,14 @@ While Pro is enabled, gateway-supported providers use Pro inference. Custom
 providers retain their own API keys and endpoints, and Ollama/LM Studio remain
 local; their usage is reported to Engine for billing. With Pro off, local and
 custom requests have no Dyad usage reporting. Legacy per-chat API-key choices
-do not override this policy. Auxiliary Pro services keep their existing billing path.
+do not override this policy. Auto, Auto Sidekick and Auto Balanced apply subscription
+routing after resolving each concrete model. Auto keeps its existing candidate
+order across Agent, Build, Ask and Plan. Eligible OpenAI models use the connected
+ChatGPT subscription, including auxiliary and subagent calls through the shared
+model client. Explicit Pro credits still overrides subscription routing.
+Subscription failures never advance to a paid fallback candidate.
+Engine-owned tool services and opaque server-side model selections retain their
+existing routes; the client cannot redirect a model selected inside a remote service.
 
 Browser OAuth success returns a static celebration page with automatic
 `dyad://chatgpt-connected` navigation and a manual Open Dyad button. No credentials
@@ -138,8 +145,8 @@ is best-effort single-attempt reporting, not exactly-once server processing.
 - Public native-client OAuth registration/transport follows the OpenCode pattern;
   that is not proof of authorization for a distributed, surcharged commercial
   integration. Confirm provider authorization before release.
-- Nonstreaming generation through the subscription adapter is intentionally
-  unsupported. Chat uses streaming; auxiliary services keep their existing routes.
+- Nonstreaming auxiliary generation is collected from the same subscription stream,
+  preserving text, reasoning metadata, tool calls and usage reporting.
 - Real subscription inference has **not passed** on the implementation host:
   packaged Electron reports secure storage unavailable before browser sign-in.
   Do not treat mocked parser tests as proof of service compatibility.

@@ -37,6 +37,70 @@ describe("acceptChatTurn", () => {
     db.$client.close();
   });
 
+  it("does not delete redo targets when replaying an accepted turn", () => {
+    const input = {
+      chatId,
+      storedChatMode: null,
+      selectedChatMode: "ask" as const,
+      selectedModel: {
+        provider: "openai",
+        name: "test-model",
+        effortLevel: "medium",
+      },
+      content: "Retry prompt",
+      userInputRequestId: "retry-request",
+    };
+    const accepted = acceptChatTurn(db, input);
+    const before = db.select().from(messages).all();
+
+    const replay = acceptChatTurn(db, {
+      ...input,
+      redoMessageIds: [accepted.userMessageId!],
+    });
+
+    expect(replay.userMessageId).toBeNull();
+    expect(db.select().from(messages).all()).toEqual(before);
+  });
+
+  it("rolls back replacement acceptance if deleting the old exchange fails", () => {
+    const original = db
+      .insert(messages)
+      .values([
+        { chatId, role: "user", content: "Original prompt" },
+        { chatId, role: "assistant", content: "Original reply" },
+      ])
+      .returning()
+      .all();
+    db.$client.exec(`
+      CREATE TRIGGER reject_redo_delete BEFORE DELETE ON messages
+      WHEN OLD.role = 'assistant'
+      BEGIN
+        SELECT RAISE(ABORT, 'simulated delete failure');
+      END;
+    `);
+
+    expect(() =>
+      acceptChatTurn(db, {
+        chatId,
+        storedChatMode: null,
+        selectedChatMode: "ask",
+        selectedModel: {
+          provider: "openai",
+          name: "test-model",
+          effortLevel: "medium",
+        },
+        content: "Replacement prompt",
+        redoMessageIds: original.map((message) => message.id),
+      }),
+    ).toThrow();
+
+    expect(db.select().from(messages).all()).toEqual(original);
+    expect(db.select().from(chats).get()).toMatchObject({
+      chatMode: null,
+      modelSelection: null,
+    });
+  });
+
   it("uses the winning mode when two stale null snapshots are accepted", () => {
     const first = acceptChatTurn(db, {
       chatId,

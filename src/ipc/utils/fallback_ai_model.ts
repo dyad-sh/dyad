@@ -33,6 +33,8 @@ export interface FallbackModelCallOptions {
 
 interface FallbackSettings {
   models: Array<LanguageModel>;
+  /** False keeps a source failure from silently switching billing sources. */
+  allowFallback?: boolean[];
   /**
    * Per-model call-option overrides, parallel to `models`. The caller's
    * options are computed for the PRIMARY selection and encode that model's
@@ -204,6 +206,15 @@ export function getFallbackFailureAction(
   error: unknown,
 ): FallbackFailureAction {
   if (!error) return "fail";
+  if (
+    error instanceof DyadError &&
+    [
+      DyadErrorKind.Auth,
+      DyadErrorKind.RateLimited,
+      DyadErrorKind.Precondition,
+    ].includes(error.kind)
+  )
+    return "fail";
 
   try {
     if (APICallError.isInstance(error)) {
@@ -552,6 +563,8 @@ class FallbackModel implements LanguageModelV3 {
 
     // A permanent model-specific failure, or an exhausted transient retry,
     // should not circle back to the same model during this request.
+    if (this.settings.allowFallback?.[this.currentModelIndex] === false)
+      return null;
     state.attemptsByModel[this.currentModelIndex] = this.maxAttemptsPerModel;
     if (!this.moveToNextAvailableModel(state)) return null;
 

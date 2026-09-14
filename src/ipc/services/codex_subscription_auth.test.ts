@@ -3,13 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-const mocks = vi.hoisted(() => ({ directory: "", url: "", encryption: true }));
+const mocks = vi.hoisted(() => ({
+  directory: "",
+  url: "",
+  encryption: true,
+  decrypt: vi.fn(),
+}));
 vi.mock("electron", () => ({
   app: { getPath: () => mocks.directory },
   safeStorage: {
     isEncryptionAvailable: () => mocks.encryption,
     encryptString: (s: string) => Buffer.from(s),
-    decryptString: (b: Buffer) => b.toString(),
+    decryptString: mocks.decrypt,
     getSelectedStorageBackend: () => "keyring",
   },
   shell: {
@@ -43,6 +48,7 @@ describe("subscription OAuth", () => {
       path.join(os.tmpdir(), "dyad-oauth-test-"),
     );
     mocks.encryption = true;
+    mocks.decrypt.mockReset().mockImplementation((b: Buffer) => b.toString());
   });
   afterEach(() => {
     disconnectCodexSubscription();
@@ -55,16 +61,34 @@ describe("subscription OAuth", () => {
       "Secure credential storage",
     );
   });
-  it("keeps reconnect available when saved credentials cannot be decoded", () => {
-    fs.writeFileSync(
-      path.join(mocks.directory, "codex-subscription.enc"),
-      "broken",
-    );
-    expect(getCodexSubscriptionStatus()).toMatchObject({
-      connected: false,
-      error: expect.stringContaining("reconnect"),
-    });
-  });
+  it.each(["invalid data", "decryption failure", "unavailable keyring"])(
+    "preserves credential errors across status reads: %s",
+    async (failure) => {
+      if (failure === "decryption failure")
+        mocks.decrypt.mockImplementation(() => {
+          throw new Error("keychain failure");
+        });
+      if (failure === "unavailable keyring") mocks.encryption = false;
+      fs.writeFileSync(
+        path.join(mocks.directory, "codex-subscription.enc"),
+        "broken",
+      );
+      for (let attempt = 0; attempt < 2; attempt++) {
+        expect(getCodexSubscriptionStatus()).toMatchObject({
+          connected: false,
+          credentialError: true,
+          error: expect.stringContaining("reconnect"),
+        });
+      }
+      await expect(getCodexSubscriptionCredentials()).rejects.toThrow();
+      disconnectCodexSubscription();
+      expect(getCodexSubscriptionStatus()).toMatchObject({
+        connected: false,
+        error: undefined,
+      });
+      expect(getCodexSubscriptionStatus().credentialError).toBeUndefined();
+    },
+  );
   it("rejects invalid and missing callback state", () => {
     expect(validateOAuthState("expected", null)).toBe(false);
     expect(validateOAuthState("expected", "wrong")).toBe(false);
@@ -98,6 +122,7 @@ describe("successful browser return", () => {
       path.join(os.tmpdir(), "dyad-oauth-success-"),
     );
     mocks.encryption = true;
+    mocks.decrypt.mockImplementation((b: Buffer) => b.toString());
     const nativeFetch = globalThis.fetch;
     const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } })).toString("base64url")}.signature`;
     vi.stubGlobal(
@@ -115,6 +140,11 @@ describe("successful browser return", () => {
       ),
     );
     try {
+      fs.writeFileSync(
+        path.join(mocks.directory, "codex-subscription.enc"),
+        "broken",
+      );
+      expect(getCodexSubscriptionStatus().credentialError).toBe(true);
       await connectCodexSubscription({ port: 0 });
       const login = new URL(mocks.url);
       const callback = new URL(login.searchParams.get("redirect_uri")!);
@@ -133,6 +163,7 @@ describe("successful browser return", () => {
         connected: true,
         celebrationPending: true,
       });
+      expect(getCodexSubscriptionStatus().credentialError).toBeUndefined();
       disconnectCodexSubscription();
       expect(writeSettings).toHaveBeenCalledWith({ proModelUsage: "pro" });
       expect(getCodexSubscriptionStatus()).toMatchObject({

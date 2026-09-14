@@ -1,6 +1,7 @@
 import { markSubscriptionLimited } from "../services/codex_subscription_account";
 import { createOpenAI } from "@ai-sdk/openai";
 import { wrapLanguageModel } from "ai";
+import { collectModelStream } from "./collect_model_stream";
 import type {
   LanguageModelV3,
   LanguageModelV3StreamPart,
@@ -200,7 +201,7 @@ export async function createCodexSubscriptionModel(
       return response;
     },
   });
-  return wrapLanguageModel({
+  const subscriptionModel: LanguageModelV3 = wrapLanguageModel({
     model: provider.responses(modelName),
     middleware: {
       specificationVersion: "v3",
@@ -284,12 +285,11 @@ export async function createCodexSubscriptionModel(
           }),
         };
       },
-      wrapGenerate: async () => {
-        throw new DyadError(
-          "Subscription requests require streaming. Use the chat workflow.",
-          DyadErrorKind.Precondition,
-        );
-      },
+      // Reuse the complete streaming path, including credit checks, recovery,
+      // usage reporting and cancellation, for non-streaming auxiliary callers.
+      wrapGenerate: async ({ params }) =>
+        collectModelStream(await subscriptionModel.doStream(params)),
     },
   });
+  return subscriptionModel;
 }

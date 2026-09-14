@@ -1,8 +1,9 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ connected: true }));
+const mocks = vi.hoisted(() => ({ connected: true, credentialError: false }));
 vi.mock("./codex_subscription_auth", () => ({
   getCodexSubscriptionStatus: () => ({
     connected: mocks.connected,
+    credentialError: mocks.credentialError,
     pending: false,
   }),
   getCodexSubscriptionCredentials: async () => ({
@@ -18,8 +19,21 @@ import {
 beforeEach(() => {
   resetSubscriptionAccount();
   mocks.connected = true;
+  mocks.credentialError = false;
 });
 afterEach(() => vi.unstubAllGlobals());
+it("preserves credential-storage failures without making account requests", async () => {
+  mocks.connected = false;
+  mocks.credentialError = true;
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  expect(await getSubscriptionAccount()).toMatchObject({
+    connected: false,
+    credentialError: true,
+    models: [],
+  });
+  expect(fetcher).not.toHaveBeenCalled();
+});
 it("normalizes actual 5-hour/weekly windows without inventing missing percentages", () => {
   expect(
     parseSubscriptionLimits({

@@ -1,5 +1,5 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 import * as schema from "@/db/schema";
 import { chats, messages } from "@/db/schema";
@@ -70,6 +70,8 @@ export interface AcceptChatTurnInput {
   chatTurnIntentId?: string;
   chatTurnIntent?: SerializableChatTurnIntent;
   usingFreeAgentModeQuota?: boolean;
+  /** Existing exchange to replace atomically, only for a newly accepted turn. */
+  redoMessageIds?: number[];
 }
 
 export interface AcceptedChatTurn {
@@ -195,6 +197,16 @@ export function acceptChatTurn(
         `Chat turn acceptance failed to latch mode and model selection for chat ${input.chatId}`,
         DyadErrorKind.Internal,
       );
+    }
+    if (input.redoMessageIds?.length) {
+      tx.delete(messages)
+        .where(
+          and(
+            eq(messages.chatId, input.chatId),
+            inArray(messages.id, input.redoMessageIds),
+          ),
+        )
+        .run();
     }
     return {
       userMessageId: insertedUserMessage.id,

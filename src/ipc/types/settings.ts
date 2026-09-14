@@ -22,6 +22,7 @@ export const settingsContracts = {
     input: z.void(),
     output: z.object({
       connected: z.boolean(),
+      credentialError: z.boolean().optional(),
       pending: z.boolean(),
       celebrationPending: z.boolean().optional(),
       models: z.array(z.string()),

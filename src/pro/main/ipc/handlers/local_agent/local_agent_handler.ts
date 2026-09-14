@@ -1548,11 +1548,13 @@ export async function handleLocalAgentStream(
               return result;
             },
             onStepFinish: async (step) => {
-              if (selectedModel.connection === "subscription") {
+              const actualModel =
+                modelClient.getRuntimeModel?.() ?? selectedModel;
+              if (actualModel.connection === "subscription") {
                 await db
                   .update(messages)
                   .set({
-                    model: `ChatGPT subscription (${step.response.modelId || selectedModel.name})`,
+                    model: `ChatGPT subscription (${step.response.modelId || actualModel.name})`,
                   })
                   .where(eq(messages.id, placeholderMessageId));
               }

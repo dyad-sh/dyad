@@ -939,3 +939,70 @@ describe("fallback model call options", () => {
     expect(primarySeen.every((o) => o.temperature === 1)).toBe(true);
   });
 });
+
+describe("subscription billing-source boundary", () => {
+  it.each(["throw", "stream-error-event"] as const)(
+    "does not use a paid fallback after a subscription limit (%s)",
+    async (type) => {
+      const calls: string[] = [];
+      const error = new DyadError(
+        "rate_limit: ChatGPT subscription limit reached",
+        DyadErrorKind.RateLimited,
+      );
+      const model = createFallback({
+        models: [
+          sequencedModel({
+            modelId: "subscription",
+            outcomes: [{ type, error }],
+            calls,
+          }),
+          sequencedModel({
+            modelId: "paid",
+            outcomes: [{ type: "succeed" }],
+            calls,
+          }),
+        ],
+        allowFallback: [false, true],
+      }) as LanguageModelV3;
+      try {
+        const result = await model.doStream({ prompt: [] });
+        const reader = result.stream.getReader();
+        const parts = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(value);
+        }
+        expect(parts).toContainEqual({ type: "error", error });
+      } catch (actual) {
+        expect(actual).toBe(error);
+      }
+      expect(calls).toEqual(["subscription"]);
+    },
+  );
+  it("stops at the subscription boundary even for model-unavailable failures", async () => {
+    const calls: string[] = [];
+    const error = apiCallError({
+      message: "model_not_found",
+      statusCode: 404,
+      isRetryable: false,
+    });
+    const model = createFallback({
+      models: [
+        sequencedModel({
+          modelId: "subscription",
+          outcomes: [{ type: "throw", error }],
+          calls,
+        }),
+        sequencedModel({
+          modelId: "paid",
+          outcomes: [{ type: "succeed" }],
+          calls,
+        }),
+      ],
+      allowFallback: [false, true],
+    }) as LanguageModelV3;
+    await expect(model.doStream({ prompt: [] })).rejects.toThrow();
+    expect(calls).toEqual(["subscription"]);
+  });
+});

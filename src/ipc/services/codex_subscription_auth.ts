@@ -29,7 +29,7 @@ const Tokens = z.object({
   expires_in: z.number().positive().optional(),
 });
 let generation = 0;
-let credentialCache: Credentials | null | undefined;
+let credentialCache: Credentials | DyadError | null | undefined;
 let celebrationPending = false;
 export function acknowledgeSubscriptionConnection() {
   celebrationPending = false;
@@ -56,6 +56,7 @@ function requireEncryption() {
   }
 }
 function load(): Credentials | undefined {
+  if (credentialCache instanceof DyadError) throw credentialCache;
   if (credentialCache !== undefined) return credentialCache ?? undefined;
   if (!fs.existsSync(credentialPath())) {
     credentialCache = null;
@@ -68,13 +69,13 @@ function load(): Credentials | undefined {
     );
     return credentialCache;
   } catch {
-    credentialCache = null;
-    lastError =
-      "Reconnect your ChatGPT subscription; its saved credentials could not be opened.";
-    throw new DyadError(
+    // A failed read is not an absent connection. Keep reporting it until
+    // successful reconnection or explicit disconnect replaces the cache.
+    credentialCache = new DyadError(
       "Reconnect your ChatGPT subscription; its saved credentials could not be opened.",
       DyadErrorKind.Auth,
     );
+    throw credentialCache;
   }
 }
 function save(credentials: Credentials) {
@@ -108,6 +109,7 @@ export function getCodexSubscriptionStatus() {
   } catch {
     return {
       connected: false,
+      credentialError: true,
       pending,
       error:
         "Saved ChatGPT credentials could not be opened. Restore your OS keyring or reconnect.",

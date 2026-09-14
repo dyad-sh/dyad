@@ -1179,7 +1179,9 @@ export function registerChatStreamHandlers() {
         freeAgentQuotaReservationId = quotaReservation.reservationId;
       }
 
-      // Handle redo option: remove the most recent messages if needed
+      // Capture redo targets now, but delete them only when the replacement
+      // turn is durably accepted after all rejecting preflight checks.
+      const redoMessageIds: number[] = [];
       if (req.redo) {
         // Get the most recent messages
         const chatMessages = [...chat.messages];
@@ -1194,22 +1196,14 @@ export function registerChatStreamHandlers() {
         }
 
         if (lastUserMessageIndex >= 0) {
-          // Delete the user message
-          await db
-            .delete(messages)
-            .where(eq(messages.id, chatMessages[lastUserMessageIndex].id));
-          mutatedPersistedChat = true;
+          redoMessageIds.push(chatMessages[lastUserMessageIndex].id);
 
           // If there's an assistant message after the user message, delete it too
           if (
             lastUserMessageIndex < chatMessages.length - 1 &&
             chatMessages[lastUserMessageIndex + 1].role === "assistant"
           ) {
-            await db
-              .delete(messages)
-              .where(
-                eq(messages.id, chatMessages[lastUserMessageIndex + 1].id),
-              );
+            redoMessageIds.push(chatMessages[lastUserMessageIndex + 1].id);
           }
         }
       }
@@ -1595,6 +1589,7 @@ ${componentSnippet}
               chatTurnIntentId: req.intentId,
               chatTurnIntent: executionObserver(req)?.intent,
               usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
+              redoMessageIds,
             });
           if (freeAgentQuotaReservationId === null) {
             return persistAcceptedTurn();

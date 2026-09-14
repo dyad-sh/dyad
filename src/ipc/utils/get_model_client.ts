@@ -47,6 +47,7 @@ import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 import { usesOpenAIResponsesApi } from "./openai_responses_utils";
 import { createCodexSubscriptionModel } from "./codex_subscription_provider";
+import { resolveSubscriptionModel } from "../services/resolve_subscription_model";
 
 // The test-only fetch seam lives in ./test_fetch_override (dependency-free,
 // so secondary factories can use it without import cycles). Re-exported here
@@ -76,6 +77,39 @@ export interface ModelClient {
   model: LanguageModel;
   builtinProviderId?: string;
   reasoningEffortProviderId?: string;
+  /** Actual source, including the active candidate of an Auto fallback chain. */
+  getRuntimeModel?: () => ModelSelection;
+}
+
+async function createResolvedAliasClient({
+  provider,
+  resolvedModel,
+  modelId,
+  settings,
+  context,
+}: {
+  provider: DyadEngineProvider;
+  resolvedModel: ResolvedAliasModel;
+  modelId: string;
+  settings: UserSettings;
+  context?: { chatId: number };
+}) {
+  const selection = await resolveSubscriptionModel(
+    await resolveModelSelection({
+      model: {
+        provider: resolvedModel.providerId,
+        name: resolvedModel.apiName,
+      },
+    }),
+    settings,
+  );
+  return {
+    selection,
+    model:
+      selection.connection === "subscription"
+        ? await createCodexSubscriptionModel(selection.name, context)
+        : createDyadEngineAliasModel({ provider, resolvedModel, modelId }),
+  };
 }
 
 export interface ModelClientResult {
@@ -142,7 +176,18 @@ export async function getModelClient(
         settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
     }));
   const model = getAutoSidekickRuntimeModel(selectedModel);
-  const modelSelection = getAutoSidekickRuntimeModel(selectedModelSelection);
+  if (selectedModelSelection.connection === "pro" && !settings.enableDyadPro)
+    throw new DyadError(
+      "Enable Dyad Pro before using Pro credits.",
+      DyadErrorKind.Auth,
+    );
+  // A supplied connection is the source already accepted for this turn.
+  // Auxiliary callers without one resolve their own concrete model here.
+  const modelSelection = getAutoSidekickRuntimeModel(
+    modelSelectionOverride?.connection
+      ? selectedModelSelection
+      : await resolveSubscriptionModel(selectedModelSelection, settings),
+  );
   const connection = modelSelection.connection;
   if (connection === "subscription") {
     if (model.provider !== "openai")
@@ -154,8 +199,9 @@ export async function getModelClient(
       modelClient: {
         model: await createCodexSubscriptionModel(model.name, context),
         builtinProviderId: "openai",
+        getRuntimeModel: () => modelSelection,
       },
-      runtimeModel: model,
+      runtimeModel: modelSelection,
       isEngineEnabled: false,
     };
   }
@@ -274,12 +320,14 @@ export async function getModelClient(
         settings,
         provider,
         modelId: `${providerConfig.gatewayPrefix || ""}${modelName}`,
+        context,
       });
 
       return {
         modelClient: proModelClient,
         runtimeModel: model,
-        isEngineEnabled: true,
+        isEngineEnabled:
+          proModelClient.getRuntimeModel?.().connection !== "subscription",
         isSmartContextEnabled: enableSmartFilesContext,
       };
     } else {
@@ -414,11 +462,13 @@ async function getProModelClient({
   settings,
   provider,
   modelId,
+  context,
 }: {
   model: LargeLanguageModel;
   settings: UserSettings;
   provider: DyadEngineProvider;
   modelId: string;
+  context?: { chatId: number };
 }): Promise<ModelClient> {
   if (isFreeProModel(model)) {
     return {
@@ -458,21 +508,21 @@ async function getProModelClient({
 
     const resolvedModelId = `${resolvedProvider.gatewayPrefix || ""}${resolvedModel.apiName}`;
 
+    const resolved = await createResolvedAliasClient({
+      provider,
+      resolvedModel,
+      modelId: resolvedModelId,
+      settings,
+      context,
+    });
     return {
-      model: createDyadEngineAliasModel({
-        provider,
-        resolvedModel,
-        modelId: resolvedModelId,
-      }),
+      model: resolved.model,
       builtinProviderId: resolvedModel.providerId,
+      getRuntimeModel: () => resolved.selection,
     };
   }
 
-  if (
-    settings.selectedChatMode === "local-agent" &&
-    model.provider === "auto" &&
-    model.name === "auto"
-  ) {
+  if (model.provider === "auto" && model.name === "auto") {
     const providers = await getLanguageModelProviders();
     const fallbackEntries = await Promise.all(
       AUTO_DYAD_PRO_MODEL_ALIASES.map(async (aliasId) => {
@@ -488,10 +538,12 @@ async function getProModelClient({
           resolvedProvider?.gatewayPrefix || ""
         }${resolvedModel.apiName}`;
 
-        const instance = createDyadEngineAliasModel({
+        const resolved = await createResolvedAliasClient({
           provider,
           resolvedModel,
           modelId: resolvedModelId,
+          settings,
+          context,
         });
 
         // The stream's call options are computed for the PRIMARY selection, so
@@ -510,7 +562,8 @@ async function getProModelClient({
           getMaxTokens(chainModelSelection),
         ]);
         return {
-          model: instance,
+          model: resolved.model,
+          selection: resolved.selection,
           callOptions: {
             temperature,
             maxOutputTokens,
@@ -527,14 +580,25 @@ async function getProModelClient({
       );
     }
 
+    const fallback = createFallback({
+      models: validEntries.map((entry) => entry.model),
+      modelCallOptions: validEntries.map((entry) => entry.callOptions),
+      allowFallback: validEntries.map(
+        (entry) => entry.selection.connection !== "subscription",
+      ),
+    });
     return {
       // We need to do the fallback here (and not server-side)
       // because GPT-5* models need to use responses API to get
       // full functionality (e.g. thinking summaries).
-      model: createFallback({
-        models: validEntries.map((entry) => entry.model),
-        modelCallOptions: validEntries.map((entry) => entry.callOptions),
-      }),
+      model: fallback,
+      getRuntimeModel: () =>
+        validEntries.find(
+          (entry) =>
+            typeof entry.model !== "string" &&
+            typeof fallback !== "string" &&
+            entry.model.modelId === fallback.modelId,
+        )!.selection,
       // Using openAI as the default provider.
       // TODO: we should remove this and rely on the provider id passed into the provider().
       builtinProviderId: "openai",

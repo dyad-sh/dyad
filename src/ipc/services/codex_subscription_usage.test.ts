@@ -114,7 +114,7 @@ describe("subscription usage ledger", () => {
         uncachedInputTokens: 80,
         outputTokens: 50,
       });
-      return Response.json({ id, chargedUsd: 0.00000495 });
+      return Response.json({ id, chargedUsd: 0.000003 });
     });
     vi.stubGlobal("fetch", send);
     await flushSubscriptionUsage();

@@ -51,7 +51,7 @@ export function SubscriptionModelMenu({
       <DropdownMenuSubContent className="w-80 max-h-100 overflow-y-auto scrollbar-on-hover">
         <DropdownMenuLabel>ChatGPT subscription</DropdownMenuLabel>
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          Uses your ChatGPT plan. Dyad separately charges $0.033 per million
+          Uses your ChatGPT plan. Dyad separately charges $0.02 per million
           total tokens for model IDs containing -luna, -mini, or -nano; $0.10
           for all other models. Cached input, uncached input, and output count
           equally. A Dyad Pro key is required.

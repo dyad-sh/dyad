@@ -53,7 +53,7 @@ rather than risking a duplicate debit:
 { "id": "f6d2a682-63bd-4e0a-a36a-78be594c3f93", "chargedUsd": 0.000015 }
 ```
 
-Engine charges **$0.033 per million total tokens** for model IDs containing
+Engine charges **$0.02 per million total tokens** for model IDs containing
 `-luna`, `-mini`, or `-nano`; **$0.10 per million total tokens** for all other
 models, including uncatalogued models. Matching uses the resolved model ID, not
 the display name. Dyad does not calculate or submit a price.

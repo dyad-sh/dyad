@@ -109,7 +109,7 @@ describe("connection selection", () => {
     await waitFor(() =>
       expect(mocks.connect).toHaveBeenCalledWith({ acceptCharges: true }),
     );
-    expect(screen.getByText(/\$0.033 per million total/)).toBeTruthy();
+    expect(screen.getByText(/\$0.02 per million total/)).toBeTruthy();
   });
   it("shows pending billing and retries without changing the model", async () => {
     mocks.status.mockResolvedValue({

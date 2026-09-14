@@ -4,6 +4,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
+import { AppAvatar } from "@/components/AppAvatar";
 // @ts-ignore
 import logo from "../../assets/logo.svg";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
@@ -96,6 +97,8 @@ export const TitleBar = () => {
         <div className="flex items-center shrink-0">
           <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
+          <img src={logo} alt="Dyad" className="ml-2 w-5 h-5 shrink-0" />
+
           <Tooltip>
             <TooltipTrigger
               render={
@@ -112,7 +115,7 @@ export const TitleBar = () => {
                   size="sm"
                   disabled={!selectedApp}
                   className={cn(
-                    "no-app-region-drag ml-2 h-7 px-1.5 gap-1.5 flex items-center font-medium text-xs",
+                    "no-app-region-drag ml-1.5 h-7 px-2 flex items-center font-medium text-xs",
                     selectedApp
                       ? "cursor-pointer"
                       : "opacity-70 cursor-default disabled:opacity-70",
@@ -121,9 +124,15 @@ export const TitleBar = () => {
                 />
               }
             >
-              <img src={logo} alt="Dyad" className="w-5 h-5 shrink-0" />
-              <span className="hidden @2xl:inline max-w-40 truncate">
-                Manage app
+              {selectedApp && (
+                <AppAvatar
+                  appId={selectedApp.id}
+                  name={selectedApp.name}
+                  className="h-4 w-4 rounded-sm text-[8px]"
+                />
+              )}
+              <span className="max-w-24 @2xl:max-w-40 truncate">
+                {displayText}
               </span>
             </TooltipTrigger>
             <TooltipContent>{displayText}</TooltipContent>

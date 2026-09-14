@@ -97,7 +97,7 @@ export function SetupBanner({
       <div
         className={cn(
           "w-full rounded-lg bg-background px-5 py-5",
-          variant === "inline" && "mb-6 border border-border shadow-sm",
+          variant === "inline" && "mt-6 mb-6 border border-border shadow-sm",
         )}
       >
         <div className="mx-auto max-w-2xl text-center">

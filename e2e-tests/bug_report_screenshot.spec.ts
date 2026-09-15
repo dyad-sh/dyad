@@ -61,11 +61,14 @@ test("file a bug report with nothing attached", async ({ po }) => {
   await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
   await description.fill("Switching branches blanks the preview.");
 
-  // Nothing leaves the machine on this path.
+  // Nothing leaves the machine on this path. With no chat open there is no
+  // session to offer, so that box is already off and cannot be turned on.
   await po.page
     .getByRole("checkbox", { name: "Basic system information and logs" })
     .uncheck();
-  await po.page.getByRole("checkbox", { name: "Chat session" }).uncheck();
+  const session = po.page.getByRole("checkbox", { name: "Chat session" });
+  await expect(session).not.toBeChecked();
+  await expect(session).toBeDisabled();
 
   await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
 

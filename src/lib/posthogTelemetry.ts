@@ -795,7 +795,8 @@ export function shouldBypassNonProTelemetrySampling(
   // them independently would break the outcome each prompt is paired with.
   // The form events are read as rates against each other -- how often the
   // required-field gate fires per form opened -- which independent sampling
-  // would turn into noise.
+  // would turn into noise. The screenshot events keep their prefix from the
+  // capture prompt they started in, so the funnel reads as one series.
   if (
     eventName?.startsWith("screenshot-prompt:") ||
     eventName?.startsWith("issue-form:")

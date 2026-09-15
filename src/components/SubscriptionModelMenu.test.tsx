@@ -15,15 +15,19 @@ const mocks = vi.hoisted(() => ({
   credentialError: false,
   settingsLoading: false,
   pro: true,
+  fastMode: false,
+  updateSettings: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
+    updateSettings: mocks.updateSettings,
     settings: mocks.settingsLoading
       ? undefined
       : {
           enableDyadPro: mocks.pro,
+          chatgptFastMode: mocks.fastMode,
           providerSettings: mocks.pro
             ? { auto: { apiKey: { value: "test-key" } } }
             : {},
@@ -55,6 +59,8 @@ beforeEach(() => {
   mocks.connected = false;
   mocks.credentialError = false;
   mocks.pro = true;
+  mocks.fastMode = false;
+  mocks.updateSettings.mockResolvedValue(undefined);
 });
 afterEach(() => vi.unstubAllGlobals());
 async function open() {
@@ -81,6 +87,40 @@ async function open() {
   );
   return user;
 }
+it.each([false, true])(
+  "saves Fast mode from %s without closing the submenu",
+  async (enabled) => {
+    mocks.fastMode = enabled;
+    const user = await open();
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: /Fast mode/,
+    });
+    expect(toggle).toHaveAttribute("aria-checked", String(enabled));
+    expect(toggle).toHaveTextContent("Faster responses, 2x ChatGPT usage");
+    await user.click(toggle);
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      chatgptFastMode: !enabled,
+    });
+    expect(toggle).toBeVisible();
+  },
+);
+
+it("shows Fast mode save failures without closing the submenu", async () => {
+  mocks.updateSettings.mockRejectedValueOnce(
+    new Error("Could not save settings"),
+  );
+  const user = await open();
+  await user.click(
+    await screen.findByRole("menuitemcheckbox", { name: /Fast mode/ }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Could not save settings",
+  );
+  expect(
+    screen.getByRole("menuitemcheckbox", { name: /Fast mode/ }),
+  ).toHaveAttribute("aria-checked", "false");
+});
+
 it("opens on hover and keeps connection errors visible in the real Base UI menu", async () => {
   mocks.connect.mockRejectedValueOnce(new Error("Secure storage unavailable"));
   const user = await open();

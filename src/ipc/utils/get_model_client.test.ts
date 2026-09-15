@@ -9,6 +9,7 @@ vi.mock("../services/codex_subscription_credit_check", () => ({
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { generateText, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { getSubscriptionAccount } from "../services/codex_subscription_account";
 import { createCodexSubscriptionModel } from "./codex_subscription_provider";
 import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
@@ -136,6 +137,42 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 }));
 
 describe("getModelClient", () => {
+  test("does not send a priority tier on OpenAI API-key requests with Fast mode enabled", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () =>
+        new Response("data: [DONE]\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
+    setModelClientFetchForTesting(fetch);
+    const { modelClient } = await getModelClient(
+      { provider: "openai", name: "gpt-test" },
+      {
+        enableDyadPro: false,
+        chatgptFastMode: true,
+        providerSettings: { openai: { apiKey: { value: "test-api-key" } } },
+      } as unknown as UserSettings,
+      {
+        provider: "openai",
+        name: "gpt-test",
+        connection: "api-key",
+        effortLevel: "medium",
+      },
+    );
+    const result = await (modelClient.model as LanguageModelV3).doStream({
+      prompt: [],
+    });
+    await result.stream.cancel();
+    expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(String(fetch.mock.calls[0][0])).toBe(
+      "https://api.openai.com/v1/responses",
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).not.toHaveProperty(
+      "service_tier",
+    );
+  });
+
   test.each(["custom", "lmstudio", "ollama"])(
     "reports %s streaming usage only with Pro enabled",
     async (provider) => {
@@ -285,6 +322,7 @@ describe("getModelClient", () => {
       } as any);
       const settings = {
         enableDyadPro: true,
+        chatgptFastMode: true,
         selectedChatMode,
         providerSettings: { auto: { apiKey: { value: "pro-key" } } },
       } as unknown as UserSettings;
@@ -318,6 +356,7 @@ describe("getModelClient", () => {
         {
           chatId: 42,
         },
+        true,
       );
     },
   );
@@ -423,6 +462,7 @@ describe("getModelClient", () => {
     const result = await getModelClient({ provider: "auto", name: "auto" }, {
       enableDyadPro: true,
       proModelUsage: "pro",
+      chatgptFastMode: true,
       selectedChatMode: "local-agent",
       providerSettings: { auto: { apiKey: { value: "pro-key" } } },
     } as unknown as UserSettings);
@@ -454,6 +494,7 @@ describe("getModelClient", () => {
     } as any);
     const result = await getModelClient({ provider: "auto", name: "auto" }, {
       enableDyadPro: false,
+      chatgptFastMode: true,
       providerSettings: {},
       selectedModel: { provider: "auto", name: "auto" },
     } as UserSettings);
@@ -466,6 +507,7 @@ describe("getModelClient", () => {
       "gpt-5.6-luna",
       null,
       undefined,
+      true,
     );
   });
   test("keeps the accepted turn source pinned", async () => {

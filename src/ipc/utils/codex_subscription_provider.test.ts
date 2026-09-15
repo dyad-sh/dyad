@@ -32,6 +32,32 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("Codex subscription Responses adapter", () => {
+  it.each([undefined, false, true])(
+    "sets priority only when Fast mode is enabled (%s)",
+    async (fastMode) => {
+      const fetch = vi.fn(
+        async () =>
+          new Response("data: [DONE]\n\n", {
+            headers: { "content-type": "text/event-stream" },
+          }),
+      );
+      vi.stubGlobal("fetch", fetch);
+      const model = await createCodexSubscriptionModel(
+        "test",
+        null,
+        undefined,
+        fastMode,
+      );
+      const result = await model.doStream({ prompt: [] });
+      await result.stream.cancel();
+      const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
+      expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
+      const body = JSON.parse(String(init?.body));
+      if (fastMode) expect(body.service_tier).toBe("priority");
+      else expect(body).not.toHaveProperty("service_tier");
+    },
+  );
+
   it.each([null, "accepted-key"])(
     "retains the billing source across model requests (%s)",
     async (key) => {

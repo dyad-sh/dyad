@@ -113,6 +113,7 @@ async function createResolvedAliasClient({
             selection.name,
             subscriptionBillingKey(settings),
             context,
+            settings.chatgptFastMode,
           )
         : createDyadEngineAliasModel({ provider, resolvedModel, modelId }),
   };
@@ -207,6 +208,7 @@ export async function getModelClient(
           modelSelection.name,
           subscriptionBillingKey(settings),
           context,
+          settings.chatgptFastMode,
         ),
         builtinProviderId: "openai",
         getRuntimeModel: () => modelSelection,

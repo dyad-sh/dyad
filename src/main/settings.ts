@@ -45,6 +45,7 @@ const logger = log.scope("settings");
 // (Exported for the unit-test harness; production code should go through
 // readSettings instead of using this directly.)
 export const DEFAULT_SETTINGS: UserSettings = {
+  chatgptFastMode: false,
   selectedModel: {
     name: "auto",
     provider: "auto",

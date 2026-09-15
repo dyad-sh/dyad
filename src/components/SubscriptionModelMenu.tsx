@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import {
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -28,7 +29,11 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const status = useSubscriptionAccount(open);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
+  const fastMode = useMutation({
+    mutationFn: (checked: boolean) =>
+      updateSettings({ chatgptFastMode: checked }),
+  });
   const hasPro = settings && isDyadProEnabled(settings);
   const action = useMutation({
     mutationFn: (kind: "connect" | "disconnect") =>
@@ -136,11 +141,13 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
         </p>
       )}
       {(status.error ||
+        fastMode.error ||
         action.error ||
         status.data?.error ||
         status.data?.setupError) && (
         <p role="alert" className="px-2 py-1 text-xs text-destructive">
-          {action.error?.message ??
+          {fastMode.error?.message ??
+            action.error?.message ??
             status.error?.message ??
             status.data?.error ??
             status.data?.setupError}
@@ -170,6 +177,20 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
           Cancel sign-in
         </DropdownMenuItem>
       )}
+      <DropdownMenuSeparator />
+      <DropdownMenuCheckboxItem
+        closeOnClick={false}
+        checked={settings?.chatgptFastMode ?? false}
+        disabled={!settings || fastMode.isPending}
+        onCheckedChange={(checked) => fastMode.mutate(checked)}
+      >
+        <div>
+          <div>Fast mode</div>
+          <p className="text-xs text-muted-foreground">
+            Faster responses, 2x ChatGPT usage
+          </p>
+        </div>
+      </DropdownMenuCheckboxItem>
       {connected && status.data && (
         <>
           <DropdownMenuSeparator />

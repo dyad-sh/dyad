@@ -111,6 +111,7 @@ export async function createCodexSubscriptionModel(
   modelName: string,
   billingKey: string | null,
   context?: { chatId: number; externalModelAdmission?: ExternalModelAdmission },
+  fastMode = false,
 ): Promise<LanguageModelV3> {
   // Fail before any model request; the fetch rechecks expiry for long turns.
   await getCodexSubscriptionCredentials();
@@ -122,6 +123,9 @@ export async function createCodexSubscriptionModel(
     fetch: async (_url, init) => {
       const credentials = await getCodexSubscriptionCredentials();
       const body = shapeSubscriptionRequest(JSON.parse(String(init?.body)));
+      // Set the tier only at the subscription boundary, never on shared OpenAI
+      // provider options used by Pro credits or API-key requests.
+      if (fastMode) body.service_tier = "priority";
       const scope = createHash("sha256")
         .update(
           JSON.stringify([

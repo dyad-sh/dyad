@@ -499,6 +499,8 @@ const BaseUserSettingsFields = {
   hasRunBefore: z.boolean().optional(),
   // Global across chats. Unset prefers a connected subscription.
   proModelUsage: z.enum(["subscription", "pro"]).optional(),
+  // Applies only to requests routed through the ChatGPT subscription adapter.
+  chatgptFastMode: z.boolean().optional(),
   enableDyadPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),

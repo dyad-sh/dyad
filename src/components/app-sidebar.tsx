@@ -234,7 +234,8 @@ export function AppSidebar() {
   return (
     <Sidebar
       collapsible="icon"
-      className="shadow-lg"
+      // Ends above the screenshot bar when one is up, like the main panel.
+      className="shadow-lg h-[calc(100svh-var(--layout-bottom-bar-height))]"
       onMouseEnter={() => {
         isPointerOverSidebar.current = true;
         cancelPendingCollapse();

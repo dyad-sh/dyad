@@ -84,11 +84,16 @@ body[data-scroll-locked] .app-region-drag {
 }
 
 .h-screenish {
-  height: calc(100vh - var(--layout-title-bar-offset));
+  height: calc(
+    100vh - var(--layout-title-bar-offset) - var(--layout-bottom-bar-height)
+  );
 }
 :root {
   /* Matches TitleBar height — keep TitleBar using this var so main panel clears it exactly */
   --layout-title-bar-offset: 2.25rem;
+  /* Set by ScreenshotCaptureBar while it is up, so the sidebar and the main
+     panel both end above it rather than being covered by it. */
+  --layout-bottom-bar-height: 0px;
   --docs-bg: #f5f5f5;
   --default-font-family: "Geist", sans-serif;
   --default-mono-font-family: "Geist Mono", monospace;

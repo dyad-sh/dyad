@@ -803,6 +803,8 @@ describe("shouldBypassNonProTelemetrySampling", () => {
 
   it("always sends the screenshot prompt funnel for non-Pro sampling", () => {
     for (const event of [
+      "screenshot-prompt:bar-opened",
+      "screenshot-prompt:bar-cancelled",
       "screenshot-prompt:capture-attempt",
       "screenshot-prompt:captured",
       "screenshot-prompt:capture-failed",

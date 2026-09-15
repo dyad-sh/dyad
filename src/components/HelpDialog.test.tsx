@@ -253,7 +253,7 @@ beforeEach(() => {
   mocks.chatById = null;
   mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
   mocks.getSessionDebugBundle.mockResolvedValue(bundle);
-  mocks.uploadToSignedUrl.mockResolvedValue(undefined);
+  mocks.uploadToSignedUrl.mockResolvedValue({ uploaded: true });
   mocks.cancelUpload.mockResolvedValue({ cancelled: true });
   mocks.recopyScreenshot.mockResolvedValue({ copied: true });
   mocks.discardScreenshot.mockResolvedValue({ discarded: true });
@@ -595,7 +595,7 @@ describe("HelpDialog disclosures", () => {
     const box = screen.getByRole("checkbox", { name: "Chat session" });
     expect(box.hasAttribute("data-disabled")).toBe(true);
 
-    release(undefined);
+    release({ uploaded: true });
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
   });
 
@@ -620,7 +620,7 @@ describe("HelpDialog disclosures", () => {
     });
 
     await act(async () => {
-      release(undefined);
+      release({ uploaded: true });
     });
 
     // Back cancels: the abandoned report does not open a browser on top of
@@ -738,6 +738,45 @@ describe("HelpDialog disclosures", () => {
     expect(mocks.discardScreenshot).not.toHaveBeenCalled();
   });
 
+  it("does not upload the session again for a draft that survived a dismissal", async () => {
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("a slow one");
+    await addScreenshot();
+    submit();
+    // The session is already on the service by the time the clipboard is
+    // being restored, so a dismissal here has to remember that.
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ copied: true });
+    });
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    await fileIt();
+
+    // A second PUT would leave the reporter's chat and codebase on the service
+    // twice, with the first copy referenced by nothing.
+    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(1);
+    expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
+  });
+
+  it("does not cite a session whose upload was cut short", async () => {
+    mocks.uploadToSignedUrl.mockResolvedValue({ uploaded: false });
+
+    await openForm();
+    await fileIt();
+
+    // The handler resolves for a cancelled PUT rather than throwing, so the
+    // body must not point a maintainer at a session that never fully landed.
+    expect(bodyOfOpenedIssue()).not.toContain("Session ID");
+  });
+
   it("does not open GitHub for a report dismissed mid-filing", async () => {
     let release = (_: unknown) => {};
     mocks.uploadToSignedUrl.mockReturnValue(
@@ -752,7 +791,7 @@ describe("HelpDialog disclosures", () => {
     fireEvent.click(screen.getByText("mock-dialog-dismiss"));
 
     await act(async () => {
-      release(undefined);
+      release({ uploaded: true });
     });
 
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
@@ -897,10 +936,10 @@ describe("HelpDialog disclosures", () => {
       target: { value: "the second problem" },
     });
 
-    // The abandoned upload lands now. An aborted upload resolves rather than
-    // rejects, so its continuation must not hand this report that session.
+    // The abandoned upload lands now, having finished before the cancel
+    // reached it, so its continuation must not hand this report that session.
     await act(async () => {
-      release(undefined);
+      release({ uploaded: true });
     });
     await fileIt();
 
@@ -1357,7 +1396,7 @@ describe("HelpDialog disclosures", () => {
 
     // Let the filing finish inside this test, or it lands in the next one.
     await act(async () => {
-      release(undefined);
+      release({ uploaded: true });
     });
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
   });
@@ -1437,7 +1476,7 @@ describe("HelpDialog disclosures", () => {
     expect(button.disabled).toBe(true);
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
 
-    release(undefined);
+    release({ uploaded: true });
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
   });
 
@@ -1781,7 +1820,7 @@ describe("HelpDialog screenshot", () => {
     await addScreenshot();
 
     await act(async () => {
-      release(undefined);
+      release({ uploaded: true });
     });
 
     // Both are visible outside the dialog and would arrive with nothing on

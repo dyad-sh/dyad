@@ -408,7 +408,9 @@ export const systemContracts = {
       /** Names this upload so it can be cancelled while it is in flight. */
       uploadId: z.string().min(1).optional(),
     }),
-    output: z.void(),
+    // False when the upload was cancelled before it finished. A cancel is not
+    // a failure, but nothing may cite an upload that never completed.
+    output: z.object({ uploaded: z.boolean() }),
   }),
 
   discardScreenshot: defineContract({

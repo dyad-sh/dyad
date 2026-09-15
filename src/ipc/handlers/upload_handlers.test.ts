@@ -79,8 +79,9 @@ describe("upload handlers", () => {
     await cancel(event, { uploadId: id });
 
     // Rethrowing would publish an AbortError to the exception telemetry, so
-    // every reporter who backs out would look like a broken uploader.
-    await expect(running).resolves.toBeUndefined();
+    // every reporter who backs out would look like a broken uploader. It is
+    // still not a finished upload, and the caller has to be able to tell.
+    await expect(running).resolves.toEqual({ uploaded: false });
   });
 
   it("still reports a real upload failure", async () => {
@@ -108,7 +109,7 @@ describe("upload handlers", () => {
     // The abort lost the race, so this upload really did happen and must be
     // reported like any other success rather than swallowed as a cancel.
     finish({ ok: true, status: 200, statusText: "OK" });
-    await expect(running).resolves.toBeUndefined();
+    await expect(running).resolves.toEqual({ uploaded: true });
   });
 
   it("says so when there is nothing left to cancel", async () => {
@@ -120,7 +121,9 @@ describe("upload handlers", () => {
   it("stops tracking an upload once it finishes", async () => {
     const id = freshId();
     fetchMock.mockResolvedValue({ ok: true, status: 200, statusText: "OK" });
-    await upload(event, { ...params, uploadId: id });
+    expect(await upload(event, { ...params, uploadId: id })).toEqual({
+      uploaded: true,
+    });
 
     // A finished upload must not leave an entry behind for the map to grow on.
     expect(await cancel(event, { uploadId: id })).toEqual({

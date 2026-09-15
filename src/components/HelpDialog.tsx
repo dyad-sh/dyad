@@ -508,20 +508,24 @@ export function HelpDialog() {
 
     const uploadId = crypto.randomUUID();
     activeUpload.current = uploadId;
+    let uploaded = false;
     try {
-      await ipc.system.uploadToSignedUrl({
+      ({ uploaded } = await ipc.system.uploadToSignedUrl({
         url: uploadUrl,
         contentType: "application/json",
         data: bundle,
         uploadId,
-      });
+      }));
     } finally {
       if (activeUpload.current === uploadId) activeUpload.current = null;
     }
+    // Backing out aborts the PUT, and the handler says so rather than
+    // resolving like a finished upload. Nothing to reference in that case.
+    if (!uploaded) return null;
     const sessionId = "v2:" + filename.replace(".json", "");
-    // Only the report that made this upload may remember it. An abort
-    // resolves rather than rejects, so without this the continuation of a
-    // cancelled upload would resurrect the cache the cancel just cleared.
+    // Only the report that made this upload may remember it: a PUT can finish
+    // after the reporter has pressed Back, and its continuation must not hand
+    // the next report a session that was never its own.
     if (captureToken.current === token) uploadedSession.current = sessionId;
     return sessionId;
   };
@@ -568,7 +572,7 @@ export function HelpDialog() {
       // discarded. If the restore had already succeeded, main dropped the
       // image at that point -- the next submit asks again, finds nothing, and
       // reports capture-failed rather than promising a paste.
-      cancelReport({ keepCapture: true });
+      cancelReport({ keepDraft: true });
       setIsFiling(false);
     }
     onClose();
@@ -578,14 +582,21 @@ export function HelpDialog() {
    * Ends the current report. Bumping the token orphans everything already in
    * flight; the upload is the one thing that keeps sending regardless, so it
    * is aborted rather than left to finish.
+   *
+   * `keepDraft` is for a dismissal, where the reporter can come back to what
+   * they wrote: the screenshot and a session already uploaded stay with the
+   * draft, so a resubmit does not send the reporter's chat and codebase a
+   * second time.
    */
-  const cancelReport = ({ keepCapture = false } = {}) => {
+  const cancelReport = ({ keepDraft = false } = {}) => {
     captureToken.current++;
     setIsCapturing(false);
     sessionRequest.current = null;
-    uploadedSession.current = null;
     setBundleLoading(false);
-    if (!keepCapture) discardCapture();
+    if (!keepDraft) {
+      uploadedSession.current = null;
+      discardCapture();
+    }
     const uploadId = activeUpload.current;
     if (!uploadId) return;
     activeUpload.current = null;

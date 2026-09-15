@@ -731,7 +731,7 @@ images: ${imagesPart}`;
         // Read .textStream now (not lazily) so the SDK's tee runs
         // synchronously, then cancel the orphaned branch before any
         // chunks are pumped. `await stream.text` would internally
-        // consume `.fullStream` and leave the orphan queueing the
+        // consume `.stream` and leave the orphan queueing the
         // whole response.
         const textStream = stream.textStream;
         cancelOrphanedBaseStream(stream);
@@ -971,7 +971,7 @@ source: Live website (screenshot and content provided)`;
         // Read .textStream now (not lazily) so the SDK's tee runs
         // synchronously, then cancel the orphaned branch before any
         // chunks are pumped. `await stream.text` would internally
-        // consume `.fullStream` and leave the orphan queueing the
+        // consume `.stream` and leave the orphan queueing the
         // whole response.
         const textStream = stream.textStream;
         cancelOrphanedBaseStream(stream);

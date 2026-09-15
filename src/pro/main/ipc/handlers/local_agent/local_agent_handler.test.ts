@@ -149,18 +149,18 @@ function createFakeStream(
   }>,
 ): FakeStreamResult {
   return {
-    fullStream: (async function* () {
+    stream: (async function* () {
       for (const part of parts) {
         yield part;
       }
     })(),
-    response: Promise.resolve({ messages: [] as any[] }),
+    responseMessages: Promise.resolve([] as any[]),
     steps: Promise.resolve([] as any[]),
   };
 }
 
 type FakeStreamResult = {
-  fullStream: AsyncGenerator<
+  stream: AsyncGenerator<
     {
       type: string;
       [key: string]: unknown;
@@ -168,7 +168,7 @@ type FakeStreamResult = {
     void,
     unknown
   >;
-  response: Promise<{ messages: any[] }>;
+  responseMessages: Promise<any[]>;
   steps?: Promise<any[]>;
 };
 
@@ -258,7 +258,7 @@ vi.mock("ai", async () => {
     streamText: vi.fn((options: Record<string, any>) =>
       mockStreamTextImpl ? mockStreamTextImpl(options) : mockStreamResult,
     ),
-    stepCountIs: vi.fn((n: number) => ({ steps: n })),
+    isStepCount: vi.fn((n: number) => ({ steps: n })),
     hasToolCall: vi.fn((toolName: string) => ({ toolName })),
   };
 });
@@ -1167,7 +1167,7 @@ describe("handleLocalAgentStream", () => {
         });
 
         mockStreamTextImpl = (options) => ({
-          fullStream: (async function* () {
+          stream: (async function* () {
             const stepMessages: ModelMessage[] = [
               {
                 role: "assistant",
@@ -1193,16 +1193,18 @@ describe("handleLocalAgentStream", () => {
               },
             ];
             const prepared = await options.prepareStep?.({
+              initialMessages: stepMessages,
+              responseMessages: [],
               messages: stepMessages,
               stepNumber: 1,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
             preparedMessages = prepared?.messages ?? stepMessages;
             yield { type: "text-delta", text: "done" };
           })(),
-          response: Promise.resolve({ messages: [] }),
+          responseMessages: Promise.resolve([]),
           steps: Promise.resolve([]),
         });
 
@@ -1249,7 +1251,7 @@ describe("handleLocalAgentStream", () => {
 
       let returnedOutput = "";
       mockStreamTextImpl = (options) => ({
-        fullStream: (async function* () {
+        stream: (async function* () {
           const mcpTool = options.tools.srv__huge;
           returnedOutput = await mcpTool.execute(
             {},
@@ -1268,7 +1270,7 @@ describe("handleLocalAgentStream", () => {
             output: returnedOutput,
           };
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([{ toolCalls: [{ toolName: "srv__huge" }] }]),
       });
 
@@ -1801,11 +1803,11 @@ describe("handleLocalAgentStream", () => {
       });
 
       mockStreamTextImpl = (options) => ({
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield* [];
           await options.tools.warn_then_fail.execute();
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([]),
       });
 
@@ -2412,7 +2414,7 @@ describe("handleLocalAgentStream", () => {
         passCount += 1;
         if (passCount === 1) {
           return {
-            fullStream: (async function* () {
+            stream: (async function* () {
               await options.tools.update_todos.execute({
                 merge: false,
                 todos: [
@@ -2425,9 +2427,7 @@ describe("handleLocalAgentStream", () => {
               });
               yield { type: "text-delta", text: "I started the work." };
             })(),
-            response: Promise.resolve({
-              messages: splitParallelToolHistory,
-            }),
+            responseMessages: Promise.resolve(splitParallelToolHistory),
             steps: Promise.resolve([
               {
                 toolCalls: [{ toolName: "set_chat_summary" }],
@@ -2438,8 +2438,8 @@ describe("handleLocalAgentStream", () => {
         }
 
         return {
-          fullStream: (async function* () {
-            await options.onStepFinish?.({
+          stream: (async function* () {
+            await options.onStepEnd?.({
               usage: { totalTokens: 200_000 },
               toolCalls: [{}],
             });
@@ -2449,16 +2449,18 @@ describe("handleLocalAgentStream", () => {
               inFlightTool,
             ];
             const prepared = (await options.prepareStep?.({
+              initialMessages: stepMessages,
+              responseMessages: [],
               messages: stepMessages,
               stepNumber: 1,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             })) ?? { messages: stepMessages };
             preparedAfterCompaction = prepared.messages;
             yield { type: "text-delta", text: "Finished the work." };
           })(),
-          response: Promise.resolve({ messages: [] }),
+          responseMessages: Promise.resolve([]),
           steps: Promise.resolve([]),
         };
       };
@@ -2541,18 +2543,20 @@ describe("handleLocalAgentStream", () => {
         ];
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             await options.prepareStep?.({
+              initialMessages: firstStepMessages,
+              responseMessages: [],
               messages: firstStepMessages,
               stepNumber: 0,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
 
             yield { type: "text-delta", text: "before-compaction\n" };
 
-            await options.onStepFinish?.({
+            await options.onStepEnd?.({
               usage: { totalTokens: 200_000 },
               toolCalls: [{}],
             });
@@ -2563,17 +2567,19 @@ describe("handleLocalAgentStream", () => {
               { role: "assistant", content: "tool state result" },
             ];
             const preparedSecondStep = (await options.prepareStep?.({
+              initialMessages: secondStepMessages,
+              responseMessages: [],
               messages: secondStepMessages,
               stepNumber: 1,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             })) ?? { messages: secondStepMessages };
 
             secondStepPreparedMessages = preparedSecondStep.messages;
             yield { type: "text-delta", text: "done" };
           })(),
-          response: Promise.resolve({ messages: [] }),
+          responseMessages: Promise.resolve([]),
           steps: Promise.resolve([]),
         };
       };
@@ -2663,16 +2669,18 @@ describe("handleLocalAgentStream", () => {
         ];
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             await options.prepareStep?.({
+              initialMessages: firstStepMessages,
+              responseMessages: [],
               messages: firstStepMessages,
               stepNumber: 0,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
 
-            await options.onStepFinish?.({
+            await options.onStepEnd?.({
               usage: { totalTokens: 215_000 },
               toolCalls: [{}],
               toolResults: [],
@@ -2688,6 +2696,12 @@ describe("handleLocalAgentStream", () => {
             });
 
             await options.prepareStep?.({
+              initialMessages: [
+                ...firstStepMessages,
+                { role: "assistant", content: "Reading the file" },
+                { role: "tool", content: "x".repeat(40_000) },
+              ],
+              responseMessages: [],
               messages: [
                 ...firstStepMessages,
                 { role: "assistant", content: "Reading the file" },
@@ -2696,12 +2710,12 @@ describe("handleLocalAgentStream", () => {
               stepNumber: 1,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
             preparedNextStep = true;
             yield { type: "text-delta", text: "done" };
           })(),
-          response: Promise.resolve({ messages: [] }),
+          responseMessages: Promise.resolve([]),
           steps: Promise.resolve([]),
         };
       };
@@ -2834,16 +2848,18 @@ describe("handleLocalAgentStream", () => {
         ];
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             await options.prepareStep?.({
+              initialMessages: firstStepMessages,
+              responseMessages: [],
               messages: firstStepMessages,
               stepNumber: 0,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
 
-            await options.onStepFinish?.({
+            await options.onStepEnd?.({
               usage: { totalTokens: 200_000 },
               toolCalls: [{}],
             });
@@ -2853,18 +2869,21 @@ describe("handleLocalAgentStream", () => {
               ...preCompactionGenerated,
             ];
             await options.prepareStep?.({
+              initialMessages: secondStepMessages,
+              responseMessages: [],
               messages: secondStepMessages,
               stepNumber: 1,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
 
             yield { type: "text-delta", text: "done" };
           })(),
-          response: Promise.resolve({
-            messages: [...preCompactionGenerated, ...postCompactionGenerated],
-          }),
+          responseMessages: Promise.resolve([
+            ...preCompactionGenerated,
+            ...postCompactionGenerated,
+          ]),
           steps: Promise.resolve([
             {
               response: {
@@ -3033,27 +3052,25 @@ describe("handleLocalAgentStream", () => {
 
         if (attemptCount === 1) {
           return {
-            fullStream: (async function* () {
+            stream: (async function* () {
               yield { type: "text-delta", text: "Partial response. " };
               throw new TypeError("terminated");
             })(),
-            response: Promise.resolve({ messages: [] }),
+            responseMessages: Promise.resolve([]),
             steps: Promise.resolve([]),
           };
         }
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             yield { type: "text-delta", text: "Recovered output." };
           })(),
-          response: Promise.resolve({
-            messages: [
-              {
-                role: "assistant",
-                content: [{ type: "text", text: "Recovered output." }],
-              },
-            ],
-          }),
+          responseMessages: Promise.resolve([
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Recovered output." }],
+            },
+          ]),
           steps: Promise.resolve([{ toolCalls: [] }]),
         };
       };
@@ -3114,7 +3131,7 @@ describe("handleLocalAgentStream", () => {
 
         if (attemptCount === 1) {
           return {
-            fullStream: (async function* () {
+            stream: (async function* () {
               yield { type: "text-delta", text: "Working with tools. " };
               yield {
                 type: "tool-call",
@@ -3130,23 +3147,21 @@ describe("handleLocalAgentStream", () => {
               };
               throw new TypeError("terminated");
             })(),
-            response: Promise.resolve({ messages: [] }),
+            responseMessages: Promise.resolve([]),
             steps: Promise.resolve([]),
           };
         }
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             yield { type: "text-delta", text: "Resumed after replay." };
           })(),
-          response: Promise.resolve({
-            messages: [
-              {
-                role: "assistant",
-                content: [{ type: "text", text: "Resumed after replay." }],
-              },
-            ],
-          }),
+          responseMessages: Promise.resolve([
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Resumed after replay." }],
+            },
+          ]),
           steps: Promise.resolve([{ toolCalls: [] }]),
         };
       };
@@ -3211,7 +3226,7 @@ describe("handleLocalAgentStream", () => {
 
         if (attemptCount === 1) {
           return {
-            fullStream: (async function* () {
+            stream: (async function* () {
               yield* [];
               throw {
                 type: "error",
@@ -3223,23 +3238,21 @@ describe("handleLocalAgentStream", () => {
                 },
               };
             })(),
-            response: Promise.resolve({ messages: [] }),
+            responseMessages: Promise.resolve([]),
             steps: Promise.resolve([]),
           };
         }
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             yield { type: "text-delta", text: "Recovered after retry." };
           })(),
-          response: Promise.resolve({
-            messages: [
-              {
-                role: "assistant",
-                content: [{ type: "text", text: "Recovered after retry." }],
-              },
-            ],
-          }),
+          responseMessages: Promise.resolve([
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Recovered after retry." }],
+            },
+          ]),
           steps: Promise.resolve([{ toolCalls: [] }]),
         };
       };
@@ -3290,11 +3303,11 @@ describe("handleLocalAgentStream", () => {
       circularStreamError.error = circularStreamError;
 
       mockStreamResult = {
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield* [];
           throw circularStreamError;
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([]),
       };
 
@@ -3411,7 +3424,7 @@ describe("handleLocalAgentStream", () => {
       let completedCardPersistedBeforeValidation: boolean | undefined;
 
       mockStreamTextImpl = () => ({
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield {
             type: "tool-input-start",
             id: "call-write-file",
@@ -3450,7 +3463,7 @@ describe("handleLocalAgentStream", () => {
             dynamic: true,
           };
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([]),
       });
 
@@ -3489,7 +3502,7 @@ describe("handleLocalAgentStream", () => {
       let completedCardPersistedBeforeValidation: boolean | undefined;
 
       mockStreamTextImpl = () => ({
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield {
             type: "tool-input-start",
             id: "call-write-file",
@@ -3513,7 +3526,7 @@ describe("handleLocalAgentStream", () => {
             input: validInput,
           };
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([]),
       });
 
@@ -3557,7 +3570,7 @@ describe("handleLocalAgentStream", () => {
         cause: new Error(validationMessage),
       });
       mockStreamTextImpl = () => ({
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield {
             type: "tool-input-start",
             id: "call-read-chat",
@@ -3594,7 +3607,7 @@ describe("handleLocalAgentStream", () => {
             text: "I could not inspect that citation.",
           };
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([]),
       });
 
@@ -3656,7 +3669,7 @@ describe("handleLocalAgentStream", () => {
       let previewClearedBeforeStreamEnd: boolean | undefined;
 
       mockStreamTextImpl = () => ({
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield {
             type: "tool-input-start",
             id: "call-read-chat",
@@ -3692,7 +3705,7 @@ describe("handleLocalAgentStream", () => {
           );
           yield { type: "text-delta", text: "Continuing." };
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
         steps: Promise.resolve([]),
       });
 
@@ -3747,16 +3760,18 @@ describe("handleLocalAgentStream", () => {
         ];
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             await options.prepareStep?.({
+              initialMessages: firstStepMessages,
+              responseMessages: [],
               messages: firstStepMessages,
               stepNumber: 0,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             });
 
-            await options.onStepFinish?.({
+            await options.onStepEnd?.({
               content: [
                 {
                   type: "tool-error",
@@ -3783,11 +3798,13 @@ describe("handleLocalAgentStream", () => {
               { role: "assistant", content: "retrying questionnaire call" },
             ];
             const preparedSecondStep = (await options.prepareStep?.({
+              initialMessages: secondStepMessages,
+              responseMessages: [],
               messages: secondStepMessages,
               stepNumber: 1,
               steps: [],
               model: {},
-              experimental_context: undefined,
+              context: undefined,
             })) ?? { messages: secondStepMessages };
 
             secondStepPreparedMessages = preparedSecondStep.messages;
@@ -3796,16 +3813,14 @@ describe("handleLocalAgentStream", () => {
               text: "I fixed the questionnaire call.",
             };
           })(),
-          response: Promise.resolve({
-            messages: [
-              {
-                role: "assistant",
-                content: [
-                  { type: "text", text: "I fixed the questionnaire call." },
-                ],
-              },
-            ],
-          }),
+          responseMessages: Promise.resolve([
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "I fixed the questionnaire call." },
+              ],
+            },
+          ]),
           steps: Promise.resolve([{ toolCalls: [{}] }, { toolCalls: [] }]),
         };
       };
@@ -3920,7 +3935,7 @@ describe("handleLocalAgentStream", () => {
 
         if (passCount === 1) {
           return {
-            fullStream: (async function* () {
+            stream: (async function* () {
               yield { type: "text-delta", text: "I started the work." };
               await options.tools.update_todos.execute({
                 merge: false,
@@ -3933,14 +3948,12 @@ describe("handleLocalAgentStream", () => {
                 ],
               });
             })(),
-            response: Promise.resolve({
-              messages: [
-                {
-                  role: "assistant",
-                  content: [{ type: "text", text: "I started the work." }],
-                },
-              ],
-            }),
+            responseMessages: Promise.resolve([
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "I started the work." }],
+              },
+            ]),
             steps: Promise.resolve([
               {
                 toolCalls: [{ toolName: "set_chat_summary" }],
@@ -3958,21 +3971,19 @@ describe("handleLocalAgentStream", () => {
         }
 
         return {
-          fullStream: (async function* () {
+          stream: (async function* () {
             await options.tools.update_todos.execute({
               merge: true,
               todos: [{ id: "todo-1", status: "completed" }],
             });
             yield { type: "text-delta", text: "Finished the work." };
           })(),
-          response: Promise.resolve({
-            messages: [
-              {
-                role: "assistant",
-                content: [{ type: "text", text: "Finished the work." }],
-              },
-            ],
-          }),
+          responseMessages: Promise.resolve([
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Finished the work." }],
+            },
+          ]),
           steps: Promise.resolve([{ toolCalls: [] }]),
         };
       };
@@ -4233,11 +4244,11 @@ describe("handleLocalAgentStream", () => {
         return {};
       });
       mockStreamResult = {
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield { type: "text-delta", text: "Partial response" };
           throw new Error("provider stream failed");
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
       };
 
       await handleLocalAgentStream(
@@ -4268,7 +4279,7 @@ describe("handleLocalAgentStream", () => {
       // Create a stream that will be aborted mid-way
       let yieldCount = 0;
       mockStreamResult = {
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield { type: "text-delta", text: "First " };
           yieldCount++;
           // Abort after first chunk
@@ -4276,7 +4287,7 @@ describe("handleLocalAgentStream", () => {
           yield { type: "text-delta", text: "Second" };
           yieldCount++;
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
       };
 
       // Act
@@ -4314,13 +4325,13 @@ describe("handleLocalAgentStream", () => {
       const abortController = new AbortController();
 
       mockStreamResult = {
-        fullStream: (async function* () {
+        stream: (async function* () {
           yield { type: "text-delta", text: "Partial response" };
           abortController.abort();
           // This will not be processed due to abort
           throw new DyadError("Simulated abort error", DyadErrorKind.Internal);
         })(),
-        response: Promise.resolve({ messages: [] }),
+        responseMessages: Promise.resolve([]),
       };
 
       // Act

@@ -110,16 +110,16 @@ export function registerHelpBotHandlers() {
         },
       });
 
-      // Read .fullStream now (not lazily) so the SDK's `teeStream()`
+      // Read .stream now (not lazily) so the SDK's `teeStream()`
       // runs synchronously, then cancel the orphaned tee branch before
       // any chunks are pumped. See `cancelOrphanedBaseStream` for why
       // this is required.
-      const fullStream = stream.fullStream;
+      const eventStream = stream.stream;
       cancelOrphanedBaseStream(stream);
 
       (async () => {
         try {
-          for await (const part of fullStream) {
+          for await (const part of eventStream) {
             if (abortController.signal.aborted) break;
 
             if (part.type === "text-delta") {

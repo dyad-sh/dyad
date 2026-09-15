@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { stepCountIs, streamText, type ModelMessage, type ToolSet } from "ai";
+import { isStepCount, streamText, type ModelMessage, type ToolSet } from "ai";
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { WebContents } from "electron";
 import log from "electron-log";
@@ -1788,7 +1788,7 @@ async function runModel(
         modelInfo.modelClient.reasoningEffortProviderId,
       modelSelection: settings.selectedModel,
     }),
-    system: resolveSubagentSystemPrompt(
+    instructions: resolveSubagentSystemPrompt(
       params.persona,
       params.systemPromptOverride,
     ),
@@ -1820,7 +1820,7 @@ async function runModel(
     onError: ({ error }) => {
       streamError ??= error;
     },
-    stopWhen: stepCountIs(maxStepsFor(params.persona)),
+    stopWhen: isStepCount(maxStepsFor(params.persona)),
     abortSignal: params.abortSignal,
   });
   // Race aggregation against the abort signal. Actor-scoped cancellation in

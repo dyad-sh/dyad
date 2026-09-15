@@ -1,4 +1,4 @@
-import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
+import { streamText, isStepCount, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
 
 import { readSettings } from "@/main/settings";
@@ -201,7 +201,7 @@ export async function runExploreCodeSubagent({
       maxOutputTokens,
       temperature,
       maxRetries: SUBAGENT_MAX_RETRIES,
-      system: buildExploreCodeSubagentSystemPrompt(),
+      instructions: buildExploreCodeSubagentSystemPrompt(),
       prompt: buildExploreCodeSubagentPrompt(args),
       tools,
       prepareStep: ({ messages }) => {
@@ -214,12 +214,12 @@ export async function runExploreCodeSubagent({
           exploreCodeAvailable: Boolean(tools.explore_code),
         });
       },
-      stopWhen: [stepCountIs(SUBAGENT_MAX_STEPS), () => reportFinalized],
+      stopWhen: [isStepCount(SUBAGENT_MAX_STEPS), () => reportFinalized],
       abortSignal: ctx.abortSignal,
     });
-    const fullStream = streamResult.fullStream;
+    const stream = streamResult.stream;
 
-    for await (const _part of fullStream) {
+    for await (const _part of stream) {
       // Drain the stream so tool calls execute.
     }
 

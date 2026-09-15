@@ -443,7 +443,10 @@ export function registerMcpHandlers() {
       const tools = await Promise.all(
         Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
           name,
-          description: mcpTool.description ?? null,
+          description:
+            typeof mcpTool.description === "string"
+              ? mcpTool.description
+              : null,
           consent: (await getStoredConsent(serverId, name)) as
             | McpConsentValue
             | undefined,

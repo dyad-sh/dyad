@@ -477,7 +477,7 @@ function getRegularModelClient(
       });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider.chat(model.name),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

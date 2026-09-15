@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
 } from "@ai-sdk/provider";
 
 import type { UserSettings } from "../../lib/schemas";
@@ -57,7 +57,7 @@ describe("createDyadEngine", () => {
 
     const model = provider.anthropic("claude-sonnet-4-20250514", {
       providerId: "anthropic",
-    }) as LanguageModelV3;
+    }) as LanguageModelV4;
 
     await model.doGenerate({
       prompt: [
@@ -71,7 +71,7 @@ describe("createDyadEngine", () => {
           dyadFiles: [{ path: "src/App.tsx", content: "export {}" }],
         },
       },
-    } satisfies LanguageModelV3CallOptions);
+    } satisfies LanguageModelV4CallOptions);
 
     expect(requests).toHaveLength(1);
     const request = requests[0];
@@ -143,11 +143,11 @@ describe("createDyadEngine", () => {
 
     const model = provider.anthropic("claude-sonnet-4-20250514", {
       providerId: "anthropic",
-    }) as LanguageModelV3;
+    }) as LanguageModelV4;
 
     await model.doGenerate({
       prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
-    } satisfies LanguageModelV3CallOptions);
+    } satisfies LanguageModelV4CallOptions);
 
     expect(requests).toHaveLength(1);
     const url = new URL(String(requests[0].input));
@@ -200,7 +200,7 @@ describe("createDyadEngine", () => {
 
     const model = provider.freeChatModel("free-pro", {
       providerId: "auto",
-    }) as LanguageModelV3;
+    }) as LanguageModelV4;
 
     await model.doGenerate({
       prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
@@ -209,7 +209,7 @@ describe("createDyadEngine", () => {
           dyadRequestId: "visible-turn-1",
         },
       },
-    } satisfies LanguageModelV3CallOptions);
+    } satisfies LanguageModelV4CallOptions);
 
     expect(requests).toHaveLength(1);
     expect(String(requests[0].input)).toBe(

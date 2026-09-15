@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { streamText } from "ai";
-import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { fastTextOutput } from "./stream_text_utils";
 
 describe("fastTextOutput", () => {
@@ -40,9 +40,9 @@ describe("fastTextOutput", () => {
   // If an SDK change broke that for a number partial, text would batch to the
   // end (or error) instead of flushing per chunk, and this test would fail.
   it("streams text incrementally through streamText with the number partial", async () => {
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV4({
       doStream: async () => ({
-        stream: simulateReadableStream<LanguageModelV3StreamPart>({
+        stream: simulateReadableStream<LanguageModelV4StreamPart>({
           chunks: [
             { type: "stream-start", warnings: [] },
             { type: "text-start", id: "1" },
@@ -75,7 +75,7 @@ describe("fastTextOutput", () => {
     });
 
     const deltas: string[] = [];
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       if (part.type === "text-delta") deltas.push(part.text);
     }
 

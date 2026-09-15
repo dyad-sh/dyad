@@ -277,7 +277,7 @@ export async function performCompaction(
         reasoningEffortProviderId: modelClient.reasoningEffortProviderId,
         modelSelection: compactionModel,
       }),
-      system: COMPACTION_SYSTEM_PROMPT,
+      instructions: COMPACTION_SYSTEM_PROMPT,
       messages: summaryMessages,
       maxRetries: 2,
       abortSignal,

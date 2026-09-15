@@ -80,7 +80,7 @@ describe("estimateToolResultTokens", () => {
         type: "tool-result",
         toolCallId: "call-1",
         toolName: "execute_command",
-        output: { type: "error-text", value: errorMessage },
+        output: { type: "error-text", value: `Error: ${errorMessage}` },
       },
     ]);
 

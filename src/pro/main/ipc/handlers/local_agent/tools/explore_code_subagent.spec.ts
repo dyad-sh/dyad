@@ -119,14 +119,14 @@ describe("runExploreCodeSubagent", () => {
     mocks.getProviderOptions.mockReturnValue({ dyad: "options" });
     mocks.runRawExploreCode.mockResolvedValue(buildRawExploreResult());
     mocks.streamText.mockImplementation(() => ({
-      fullStream: createTextStream([]),
+      stream: createTextStream([]),
       textStream: createTextStream([]),
     }));
   });
 
   it("runs one conversation that forces explore_code first and accepts a candidate-ID report", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         expect(options.prepareStep(createPrepareStepOptions())).toEqual({
           activeTools: ["explore_code"],
           toolChoice: { type: "tool", toolName: "explore_code" },
@@ -220,7 +220,7 @@ describe("runExploreCodeSubagent", () => {
     });
     let streamDrained = false;
     mocks.streamText.mockImplementationOnce(() => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         streamDrained = true;
       }),
       textStream: createTextStream([]),
@@ -265,7 +265,7 @@ describe("runExploreCodeSubagent", () => {
       ctx: createMockContext(),
     });
     const options = vi.mocked(streamText).mock.calls[0][0] as any;
-    const system: string = options.system;
+    const system: string = options.instructions;
     expect(system).toContain("code reconnaissance sub-agent");
     expect(system).toContain("observed candidate IDs");
     expect(system).toContain(
@@ -283,7 +283,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("answers from the report for explain intent with verified flow", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           summary:
@@ -312,7 +312,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("strips OpenAI item references from step messages while preserving forced tool choice", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         const step = options.prepareStep(
           createPrepareStepOptions([
             { role: "user", content: "Find the save flow" },
@@ -356,7 +356,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("downgrades confidence to medium when missing coverage remains", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
@@ -389,7 +389,7 @@ describe("runExploreCodeSubagent", () => {
       `rendering: ${"c".repeat(168)}`,
     ];
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           summary:
@@ -418,7 +418,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("drops unknown candidate IDs and falls back instead of rendering fabricated paths", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         const result = await options.tools.submit_report.execute({
           primaryCandidateIds: ["c999"],
@@ -449,7 +449,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("keeps the last accepted report when the stream fails after submit_report", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: (async function* () {
+      stream: (async function* () {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
@@ -481,7 +481,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("falls back to a deterministic report when the model never calls submit_report", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
       }),
       textStream: createTextStream([]),
@@ -520,7 +520,7 @@ describe("runExploreCodeSubagent", () => {
     }));
     const finalized = vi.fn();
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         const result = await options.tools.explore_code.execute(
           { query: "widget save flow" },
           { toolCallId: "durable-explore-1", messages: [] },
@@ -564,7 +564,7 @@ describe("runExploreCodeSubagent", () => {
       value: "Found 1 relevant file(s):\n - src/widget/saveWidget.ts",
     }));
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         expect(options.prepareStep(createPrepareStepOptions())).toBeUndefined();
         const result = await options.tools.code_search.execute(
           { query: "widget save flow" },
@@ -593,7 +593,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("renders skip_explore_result when the model finds nothing relevant", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: [],
@@ -614,7 +614,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("derives targeted_gap_search and renders executable search targets", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           summary:
@@ -646,7 +646,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("drops non-executable search suggestions", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
@@ -674,7 +674,7 @@ describe("runExploreCodeSubagent", () => {
       buildSupportOnlyRawExploreResult(),
     );
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         const firstSubmit = await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
@@ -715,7 +715,7 @@ describe("runExploreCodeSubagent", () => {
       buildSameFileMultiRangeRawExploreResult(),
     );
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1", "c2"],
@@ -752,7 +752,7 @@ describe("runExploreCodeSubagent", () => {
       buildTwelveFileRawExploreResult(),
     );
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget flow" });
         await options.tools.submit_report.execute({
           summary: "The flow crosses twelve observed implementation stages.",
@@ -799,7 +799,7 @@ describe("runExploreCodeSubagent", () => {
     mocks.runRawExploreCode.mockResolvedValue(buildLargeRawExploreResult());
     let observedResult = "";
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         observedResult = await options.tools.explore_code.execute({
           query: "widget save flow",
         });
@@ -822,7 +822,7 @@ describe("runExploreCodeSubagent", () => {
   it("caps sub-agent read-only tool calls at the tool-call budget (50), independent of the step cap", async () => {
     const results: string[] = [];
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         for (let index = 0; index < 51; index++) {
           results.push(
             await options.tools.explore_code.execute({
@@ -846,7 +846,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("keeps rendered reports within the character budget", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
@@ -872,7 +872,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("forces submit_report on the final allowed step when nothing is accepted", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         for (let index = 0; index < 11; index++) {
           await options.tools.explore_code.execute({
             query: `widget save flow ${index}`,
@@ -894,7 +894,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("omits stale tsconfig paths from nested compiler exploration", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({
           query: "widget save flow",
           tsconfig_path: "webapp/tsconfig.json",
@@ -938,7 +938,7 @@ describe("runExploreCodeSubagent", () => {
 
     try {
       mocks.streamText.mockImplementationOnce((options: any) => ({
-        fullStream: createToolStream(async () => {
+        stream: createToolStream(async () => {
           await options.tools.explore_code.execute({
             query: "widget save flow",
             tsconfig_path: "nested/tsconfig.json",
@@ -980,7 +980,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("widens nested compiler exploration defaults for explain traces", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({ query: "widget save flow" });
         await options.tools.submit_report.execute({
           primaryCandidateIds: ["c1"],
@@ -1013,7 +1013,7 @@ describe("runExploreCodeSubagent", () => {
 
   it("preserves explicit nested compiler exploration limits", async () => {
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.explore_code.execute({
           query: "widget save flow",
           max_files: 2,

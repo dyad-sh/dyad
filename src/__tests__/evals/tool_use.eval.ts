@@ -1,5 +1,5 @@
 import { afterAll, describe, it } from "vitest";
-import { generateText, stepCountIs, type Tool } from "ai";
+import { generateText, isStepCount, type Tool } from "ai";
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { searchReplaceTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_replace";
@@ -822,7 +822,7 @@ async function runCase(
     const result = await generateText({
       model: getEvalModel(provider, modelName),
       temperature,
-      stopWhen: stepCountIs(100),
+      stopWhen: isStepCount(100),
       abortSignal: abortController.signal,
       system: systemPrompt,
       messages: [
@@ -832,7 +832,7 @@ async function runCase(
         },
       ],
       tools: suite.buildTools(state, c, label),
-      onStepFinish: (step) => {
+      onStepEnd: (step) => {
         const now = Date.now();
         requests.push({
           stepIndex: requests.length,
@@ -918,7 +918,7 @@ async function runCase(
     errorMessage = err instanceof Error ? err.message : String(err);
     if (totalDurationMs === 0) totalDurationMs = Date.now() - llmStartMs;
     // generateText throws before we can read result.totalUsage, but any
-    // already-completed steps were captured in `requests` via onStepFinish.
+    // already-completed steps were captured in `requests` via onStepEnd.
     // Sum those so failed runs still report real token consumption instead
     // of zeros — otherwise cost and per-model comparisons get skewed for
     // exactly the failure cases we most care about analyzing.

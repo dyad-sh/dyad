@@ -20,7 +20,7 @@
  */
 import {
   generateText,
-  stepCountIs,
+  isStepCount,
   type LanguageModel,
   type ToolSet,
 } from "ai";
@@ -709,7 +709,7 @@ async function finalTextOrNudge(params: {
     system: params.system,
     prompt: params.question,
     tools: params.tools,
-    stopWhen: stepCountIs(MAX_STEPS),
+    stopWhen: isStepCount(MAX_STEPS),
     maxRetries: 5,
   });
   addUsage(params.usage, result);
@@ -721,7 +721,7 @@ async function finalTextOrNudge(params: {
       system: params.system,
       messages: [
         { role: "user" as const, content: params.question },
-        ...result.response.messages,
+        ...result.responseMessages,
         {
           role: "user" as const,
           content:

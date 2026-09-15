@@ -15,6 +15,16 @@ import {
 } from "@/ipc/utils/ai_messages_utils";
 import { validateImageDimensions } from "./tools/image_utils";
 
+/** Rebuild the v6 step baseline before replaying our positional injection ledger.
+ * v7's `messages` already contains previous prepareStep overrides.
+ */
+export function getStepMessageBaseline(options: {
+  initialMessages: ModelMessage[];
+  responseMessages: ModelMessage[];
+}): ModelMessage[] {
+  return [...options.initialMessages, ...options.responseMessages];
+}
+
 /**
  * Check if a single todo is incomplete (pending or in_progress).
  */

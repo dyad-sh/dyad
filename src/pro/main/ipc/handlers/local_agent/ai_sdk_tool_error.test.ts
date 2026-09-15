@@ -1,14 +1,14 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { InvalidToolInputError, streamText, tool } from "ai";
-import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
+import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { z } from "zod";
 
 describe("AI SDK pre-execution tool errors", () => {
   it("stringifies validation errors in tool-error stream parts", async () => {
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV4({
       doStream: async () => ({
-        stream: simulateReadableStream<LanguageModelV3StreamPart>({
+        stream: simulateReadableStream<LanguageModelV4StreamPart>({
           chunks: [
             { type: "stream-start", warnings: [] },
             {
@@ -48,7 +48,7 @@ describe("AI SDK pre-execution tool errors", () => {
     });
 
     const parts: Array<Record<string, unknown>> = [];
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       parts.push(part as unknown as Record<string, unknown>);
     }
 

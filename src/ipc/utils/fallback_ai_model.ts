@@ -4,9 +4,9 @@ import {
   LoadAPIKeyError,
   NoSuchModelError,
   TypeValidationError,
-  type LanguageModelV3,
-  type LanguageModelV3CallOptions,
-  type LanguageModelV3StreamPart,
+  type LanguageModelV4,
+  type LanguageModelV4CallOptions,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 import log from "electron-log";
@@ -51,7 +51,7 @@ interface RetryState {
 }
 
 interface StreamResult {
-  stream: ReadableStream<LanguageModelV3StreamPart>;
+  stream: ReadableStream<LanguageModelV4StreamPart>;
   request?: { body?: unknown };
   response?: { headers?: Record<string, string> };
 }
@@ -326,7 +326,7 @@ export function defaultShouldRetryThisError(error: unknown): boolean {
   return getFallbackFailureAction(error) === "retry-same";
 }
 
-function getRequestId(options: LanguageModelV3CallOptions): string {
+function getRequestId(options: LanguageModelV4CallOptions): string {
   const headers = options.headers as
     | Record<string, string | undefined>
     | undefined;
@@ -366,7 +366,7 @@ async function waitForRetryDelay(
   });
 }
 
-function isStreamContentPart(part: LanguageModelV3StreamPart): boolean {
+function isStreamContentPart(part: LanguageModelV4StreamPart): boolean {
   return part.type !== "stream-start" && part.type !== "response-metadata";
 }
 
@@ -374,8 +374,8 @@ export function createFallback(settings: FallbackSettings): LanguageModel {
   return new FallbackModel(settings);
 }
 
-class FallbackModel implements LanguageModelV3 {
-  readonly specificationVersion = "v3" as const;
+class FallbackModel implements LanguageModelV4 {
+  readonly specificationVersion = "v4" as const;
   private readonly settings: FallbackSettings;
   private currentModelIndex: number = 0;
   private lastModelReset: number = Date.now();
@@ -413,7 +413,7 @@ class FallbackModel implements LanguageModelV3 {
     return this.getUnderlyingModel().supportedUrls;
   }
 
-  private getModelAtIndex(index: number): LanguageModelV3 {
+  private getModelAtIndex(index: number): LanguageModelV4 {
     const model = this.settings.models[index];
     if (!model) {
       throw new DyadError(
@@ -421,7 +421,7 @@ class FallbackModel implements LanguageModelV3 {
         DyadErrorKind.Internal,
       );
     }
-    // The model is either a string (GatewayModelId) or LanguageModelV2/V3
+    // The model is either a string (GatewayModelId) or LanguageModelV2/V3/V4
     // In this fallback context, we only support actual model instances
     if (typeof model === "string") {
       throw new DyadError(
@@ -429,13 +429,13 @@ class FallbackModel implements LanguageModelV3 {
         DyadErrorKind.External,
       );
     }
-    if (model.specificationVersion !== "v3") {
-      throw new DyadError("Model is not a v3 model", DyadErrorKind.External);
+    if (model.specificationVersion !== "v4") {
+      throw new DyadError("Model is not a v4 model", DyadErrorKind.External);
     }
     return model;
   }
 
-  private getUnderlyingModel(): LanguageModelV3 {
+  private getUnderlyingModel(): LanguageModelV4 {
     return this.getModelAtIndex(this.currentModelIndex);
   }
 
@@ -456,8 +456,8 @@ class FallbackModel implements LanguageModelV3 {
    * first attempts after a previous failover.
    */
   private optionsForCurrentModel(
-    options: LanguageModelV3CallOptions,
-  ): LanguageModelV3CallOptions {
+    options: LanguageModelV4CallOptions,
+  ): LanguageModelV4CallOptions {
     const overrides = this.settings.modelCallOptions?.[this.currentModelIndex];
     if (!overrides) {
       if (
@@ -497,7 +497,7 @@ class FallbackModel implements LanguageModelV3 {
             providerOptions: {
               ...options.providerOptions,
               ...overrides.providerOptions,
-            } as LanguageModelV3CallOptions["providerOptions"],
+            } as LanguageModelV4CallOptions["providerOptions"],
           }
         : {}),
     };
@@ -685,7 +685,7 @@ class FallbackModel implements LanguageModelV3 {
     );
   }
 
-  async doStream(options: LanguageModelV3CallOptions): Promise<StreamResult> {
+  async doStream(options: LanguageModelV4CallOptions): Promise<StreamResult> {
     this.checkAndResetModel();
     const requestId = getRequestId(options);
 
@@ -707,21 +707,21 @@ class FallbackModel implements LanguageModelV3 {
   }
 
   private createWrappedStream(
-    originalStream: ReadableStream<LanguageModelV3StreamPart>,
-    options: LanguageModelV3CallOptions,
+    originalStream: ReadableStream<LanguageModelV4StreamPart>,
+    options: LanguageModelV4CallOptions,
     retryState: RetryState,
-  ): ReadableStream<LanguageModelV3StreamPart> {
+  ): ReadableStream<LanguageModelV4StreamPart> {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const fallbackModel = this;
 
-    return new ReadableStream<LanguageModelV3StreamPart>({
+    return new ReadableStream<LanguageModelV4StreamPart>({
       async start(controller) {
         let hasStreamedContent = false;
-        let reader: ReadableStreamDefaultReader<LanguageModelV3StreamPart> | null =
+        let reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart> | null =
           null;
 
         const processStream = async (
-          stream: ReadableStream<LanguageModelV3StreamPart>,
+          stream: ReadableStream<LanguageModelV4StreamPart>,
         ): Promise<void> => {
           let attemptHasStreamedContent = false;
           reader = stream.getReader();

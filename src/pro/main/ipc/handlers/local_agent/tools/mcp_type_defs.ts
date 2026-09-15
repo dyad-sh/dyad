@@ -118,7 +118,10 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
         serverId: s.id,
         serverName: s.name || "",
         toolName,
-        description: mcpTool.description,
+        description:
+          typeof mcpTool.description === "string"
+            ? mcpTool.description
+            : undefined,
         inputSchema,
       });
     }
@@ -208,6 +211,7 @@ export function buildMcpCapabilityMap(params: {
           return mcpTool.execute(args, {
             toolCallId: `mcp-sandbox-${def.toolKey}`,
             messages: [],
+            context: undefined,
           });
         });
         // The SDK sometimes returns a plain string for text-only MCP

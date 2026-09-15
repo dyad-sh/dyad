@@ -13,7 +13,7 @@ import {
   streamText,
   ToolSet,
   TextStreamPart,
-  stepCountIs,
+  isStepCount,
   hasToolCall,
 } from "ai";
 
@@ -848,14 +848,14 @@ function parseMcpToolKey(toolKey: string): {
 
 // Helper function to process stream chunks
 export async function processStreamChunks({
-  fullStream,
+  stream,
   fullResponse,
   abortController,
   chatId,
   processResponseChunkUpdate,
   includeReasoning = true,
 }: {
-  fullStream: AsyncIterableStream<TextStreamPart<ToolSet>>;
+  stream: AsyncIterableStream<TextStreamPart<ToolSet>>;
   fullResponse: string;
   abortController: AbortController;
   chatId: number;
@@ -873,7 +873,7 @@ export async function processStreamChunks({
   let inThinkingBlock = false;
   let modelRefused = false;
 
-  for await (const part of fullStream) {
+  for await (const part of stream) {
     let chunk = "";
     if (
       inThinkingBlock &&
@@ -2467,17 +2467,17 @@ This conversation includes one or more image attachments. When the user uploads 
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
-            stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
+            stopWhen: [isStepCount(20), hasToolCall("edit-code")],
             // Avoids the SDK's O(n^2) per-chunk JSON.stringify of the full
-            // accumulated text (see fastTextOutput). We read fullStream parts
+            // accumulated text (see fastTextOutput). We read stream parts
             // directly and never consume partialOutput.
             output: fastTextOutput(),
             providerOptions,
-            system: systemPromptOverride,
+            instructions: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
-            onFinish: async (response) => {
-              const totalTokens = response.usage?.totalTokens;
+            onEnd: async (response) => {
+              const totalTokens = response.finalStep.usage?.totalTokens;
 
               if (typeof totalTokens === "number") {
                 // We use the highest total tokens used (we are *not* accumulating)
@@ -2526,11 +2526,11 @@ This conversation includes one or more image attachments. When the user uploads 
             },
             abortSignal: abortController.signal,
           });
-          // Read .fullStream now (not lazily) so the SDK's `teeStream()`
+          // Read .stream now (not lazily) so the SDK's `teeStream()`
           // runs synchronously, then cancel the orphaned tee branch
           // before any chunks are pumped. See `cancelOrphanedBaseStream`
           // for the underlying SDK behavior and why this is required.
-          const fullStream = streamResult.fullStream;
+          const stream = streamResult.stream;
           cancelOrphanedBaseStream(streamResult);
           // Not every caller consumes `usage`; when the user cancels the
           // stream it rejects with AbortError, so mark it handled here to
@@ -2539,7 +2539,7 @@ This conversation includes one or more image attachments. When the user uploads 
           const usage = streamResult.usage;
           Promise.resolve(usage).catch(() => {});
           return {
-            fullStream,
+            stream,
             usage,
           };
         };
@@ -2758,7 +2758,7 @@ This conversation includes one or more image attachments. When the user uploads 
         let modelRefused = false;
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const fullStream = modelRefused
+        const stream = modelRefused
           ? createEmptyTextStream()
           : (
               await simpleStreamText({
@@ -2766,12 +2766,12 @@ This conversation includes one or more image attachments. When the user uploads 
                 modelClient,
                 files: files,
               })
-            ).fullStream;
+            ).stream;
 
         // Process the stream as before
         try {
           const result = await processStreamChunks({
-            fullStream,
+            stream,
             fullResponse,
             abortController,
             chatId: req.chatId,
@@ -2833,8 +2833,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 content: `${fixSearchReplacePrompt}\n\n${formattedSearchReplaceIssues}`,
               } as const;
 
-              const { fullStream: fixSearchReplaceStream } =
-                await simpleStreamText({
+              const { stream: fixSearchReplaceStream } = await simpleStreamText(
+                {
                   // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
                   chatMessages: [
                     ...chatMessages,
@@ -2844,10 +2844,11 @@ This conversation includes one or more image attachments. When the user uploads 
                   ],
                   modelClient,
                   files: files,
-                });
+                },
+              );
               previousAttempts.push(userPrompt);
               const result = await processStreamChunks({
-                fullStream: fixSearchReplaceStream,
+                stream: fixSearchReplaceStream,
                 fullResponse,
                 abortController,
                 chatId: req.chatId,
@@ -2897,7 +2898,7 @@ This conversation includes one or more image attachments. When the user uploads 
               );
               continuationAttempts++;
 
-              const { fullStream: contStream } = await simpleStreamText({
+              const { stream: contStream } = await simpleStreamText({
                 // Build messages: replay history, then ask the model to continue from the partial response.
                 chatMessages: [
                   ...chatMessages,
@@ -2915,7 +2916,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 files: files,
               });
               const result = await processStreamChunks({
-                fullStream: contStream,
+                stream: contStream,
                 fullResponse,
                 abortController,
                 chatId: req.chatId,

@@ -1,8 +1,8 @@
 import {
   APICallError,
-  type LanguageModelV3,
-  type LanguageModelV3CallOptions,
-  type LanguageModelV3StreamPart,
+  type LanguageModelV4,
+  type LanguageModelV4CallOptions,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,7 +40,7 @@ vi.mock("electron-log", () => ({
  * `temperature` and let the provider default apply.
  */
 
-function textStream(): ReadableStream<LanguageModelV3StreamPart> {
+function textStream(): ReadableStream<LanguageModelV4StreamPart> {
   return new ReadableStream({
     start(controller) {
       controller.enqueue({ type: "stream-start", warnings: [] } as any);
@@ -52,7 +52,7 @@ function textStream(): ReadableStream<LanguageModelV3StreamPart> {
 
 function errorStream(
   error: unknown,
-): ReadableStream<LanguageModelV3StreamPart> {
+): ReadableStream<LanguageModelV4StreamPart> {
   return new ReadableStream({
     start(controller) {
       controller.error(error);
@@ -85,10 +85,10 @@ function sequencedModel(params: {
   modelId: string;
   outcomes: ModelOutcome[];
   calls: string[];
-}): LanguageModelV3 {
+}): LanguageModelV4 {
   let callIndex = 0;
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     provider: "fake",
     modelId: params.modelId,
     supportedUrls: {},
@@ -114,7 +114,7 @@ function sequencedModel(params: {
                 controller.enqueue({
                   type: "response-metadata",
                   id: "provider-response-1",
-                } as LanguageModelV3StreamPart);
+                } as LanguageModelV4StreamPart);
               }
             },
           }),
@@ -133,7 +133,7 @@ function sequencedModel(params: {
                   type: "text-delta",
                   id: "1",
                   delta: "partial",
-                } as LanguageModelV3StreamPart);
+                } as LanguageModelV4StreamPart);
               }
             },
           }),
@@ -146,7 +146,7 @@ function sequencedModel(params: {
               controller.enqueue({
                 type: "error",
                 error: outcome.error,
-              } as LanguageModelV3StreamPart);
+              } as LanguageModelV4StreamPart);
               controller.close();
             },
           }),
@@ -154,24 +154,24 @@ function sequencedModel(params: {
       }
       return { stream: textStream() };
     },
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV4;
 }
 
 function fakeModel(params: {
   modelId: string;
   provider?: string;
   behavior: "succeed" | "reject-retryable";
-  seen: LanguageModelV3CallOptions[];
-}): LanguageModelV3 {
+  seen: LanguageModelV4CallOptions[];
+}): LanguageModelV4 {
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     provider: params.provider ?? "fake",
     modelId: params.modelId,
     supportedUrls: {},
     async doGenerate() {
       throw new Error("not used");
     },
-    async doStream(options: LanguageModelV3CallOptions) {
+    async doStream(options: LanguageModelV4CallOptions) {
       params.seen.push(options);
       if (params.behavior === "reject-retryable") {
         // Matches RETRYABLE_ERROR_PATTERNS ("service unavailable").
@@ -179,10 +179,10 @@ function fakeModel(params: {
       }
       return { stream: textStream() };
     },
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV4;
 }
 
-async function drain(stream: ReadableStream<LanguageModelV3StreamPart>) {
+async function drain(stream: ReadableStream<LanguageModelV4StreamPart>) {
   const reader = stream.getReader();
   while (!(await reader.read()).done) {
     // consume
@@ -308,12 +308,12 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const streamPromise = model.doStream({
       prompt: [],
       abortSignal: abortController.signal,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await vi.waitFor(() => expect(calls).toEqual(["gpt-5.6-sol"]));
     abortController.abort();
 
@@ -343,12 +343,12 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       headers: { "x-dyad-internal-request-id": "request-123" },
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(calls).toEqual(["gpt-5.6-sol", "gpt-5.6-sol"]);
@@ -382,11 +382,11 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(calls).toEqual([
@@ -425,11 +425,11 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(calls).toEqual(["gpt-5.6-sol", "anthropic/claude-opus-5"]);
@@ -455,10 +455,10 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     await expect(
-      model.doStream({ prompt: [] } as unknown as LanguageModelV3CallOptions),
+      model.doStream({ prompt: [] } as unknown as LanguageModelV4CallOptions),
     ).rejects.toBe(requestError);
     expect(calls).toEqual(["gpt-5.6-sol"]);
     expect(logMocks.warn).toHaveBeenCalledWith(
@@ -488,12 +488,12 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       headers: { "x-dyad-internal-request-id": "request-stream" },
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(calls).toEqual(["gpt-5.6-sol", "gpt-5.6-sol"]);
@@ -521,12 +521,12 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       abortSignal: abortController.signal,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     const drainPromise = drain(result.stream);
     await vi.waitFor(() =>
       expect(logMocks.warn).toHaveBeenCalledWith(
@@ -556,11 +556,11 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(calls).toEqual(["gpt-5.6-sol", "gpt-5.6-sol"]);
@@ -586,11 +586,11 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(calls).toEqual(["gpt-5.6-sol"]);
@@ -618,11 +618,11 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await expect(drain(result.stream)).rejects.toBe(transientError);
     expect(calls).toEqual(["gpt-5.6-sol"]);
   });
@@ -637,11 +637,11 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     let rejection: unknown = Symbol("not rejected");
     try {
       await drain(result.stream);
@@ -670,10 +670,10 @@ describe("fallback failure policy", () => {
           calls,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     await expect(
-      model.doStream({ prompt: [] } as unknown as LanguageModelV3CallOptions),
+      model.doStream({ prompt: [] } as unknown as LanguageModelV4CallOptions),
     ).rejects.toMatchObject({
       name: "DyadError",
       kind: DyadErrorKind.External,
@@ -698,15 +698,15 @@ describe("fallback failure policy", () => {
 
 describe("fallback model call options", () => {
   it("passes temperature to the primary model untouched", async () => {
-    const seen: LanguageModelV3CallOptions[] = [];
+    const seen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [fakeModel({ modelId: "primary", behavior: "succeed", seen })],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       temperature: 1,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(seen).toHaveLength(1);
@@ -714,8 +714,8 @@ describe("fallback model call options", () => {
   });
 
   it("drops temperature when failing over to a non-primary model", async () => {
-    const primarySeen: LanguageModelV3CallOptions[] = [];
-    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const primarySeen: LanguageModelV4CallOptions[] = [];
+    const fallbackSeen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [
         fakeModel({
@@ -731,12 +731,12 @@ describe("fallback model call options", () => {
           seen: fallbackSeen,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       temperature: 1,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     // Primary was tried with the caller's options...
@@ -750,7 +750,7 @@ describe("fallback model call options", () => {
   });
 
   it("keeps model-derived options on a same-provider fallback without overrides", async () => {
-    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const fallbackSeen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [
         fakeModel({
@@ -766,13 +766,13 @@ describe("fallback model call options", () => {
           seen: fallbackSeen,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       temperature: 0,
       maxOutputTokens: 32_000,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(fallbackSeen[0]).toMatchObject({
@@ -782,7 +782,7 @@ describe("fallback model call options", () => {
   });
 
   it("applies the primary chain entry's own options", async () => {
-    const primarySeen: LanguageModelV3CallOptions[] = [];
+    const primarySeen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [
         fakeModel({
@@ -792,13 +792,13 @@ describe("fallback model call options", () => {
         }),
       ],
       modelCallOptions: [{ temperature: 1, maxOutputTokens: 64_000 }],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       temperature: 0,
       maxOutputTokens: 32_000,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(primarySeen[0]).toMatchObject({
@@ -808,8 +808,8 @@ describe("fallback model call options", () => {
   });
 
   it("applies a fallback model's own call options as if it were primary", async () => {
-    const primarySeen: LanguageModelV3CallOptions[] = [];
-    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const primarySeen: LanguageModelV4CallOptions[] = [];
+    const fallbackSeen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [
         fakeModel({
@@ -833,7 +833,7 @@ describe("fallback model call options", () => {
           },
         },
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
@@ -843,7 +843,7 @@ describe("fallback model call options", () => {
         "dyad-engine": { dyadRequestId: "req-1" },
         openai: { reasoningEffort: "medium" },
       },
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(fallbackSeen).toHaveLength(1);
@@ -862,7 +862,7 @@ describe("fallback model call options", () => {
   });
 
   it("unsets scalar options when the fallback's own options have none", async () => {
-    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const fallbackSeen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [
         fakeModel({
@@ -882,13 +882,13 @@ describe("fallback model call options", () => {
         // "unset", never "inherit the primary's"
         { providerOptions: { anthropic: { thinking: { type: "adaptive" } } } },
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     const result = await model.doStream({
       prompt: [],
       temperature: 0.2,
       maxOutputTokens: 128_000,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(result.stream);
 
     expect(fallbackSeen).toHaveLength(1);
@@ -900,8 +900,8 @@ describe("fallback model call options", () => {
     // After a failover the index stays on the fallback for modelResetInterval;
     // a FRESH request's first call then already targets the fallback while its
     // options were still computed for the primary selection.
-    const primarySeen: LanguageModelV3CallOptions[] = [];
-    const fallbackSeen: LanguageModelV3CallOptions[] = [];
+    const primarySeen: LanguageModelV4CallOptions[] = [];
+    const fallbackSeen: LanguageModelV4CallOptions[] = [];
     const model = createFallback({
       models: [
         fakeModel({
@@ -917,20 +917,20 @@ describe("fallback model call options", () => {
           seen: fallbackSeen,
         }),
       ],
-    }) as unknown as LanguageModelV3;
+    }) as unknown as LanguageModelV4;
 
     // First request fails over primary -> fallback.
     const first = await model.doStream({
       prompt: [],
       temperature: 1,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(first.stream);
 
     // Second request starts on the sticky fallback index.
     const second = await model.doStream({
       prompt: [],
       temperature: 1,
-    } as unknown as LanguageModelV3CallOptions);
+    } as unknown as LanguageModelV4CallOptions);
     await drain(second.stream);
 
     expect(fallbackSeen).toHaveLength(2);

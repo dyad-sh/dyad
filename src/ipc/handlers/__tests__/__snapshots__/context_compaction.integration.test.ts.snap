@@ -11,7 +11,7 @@ message: [{"type":"text","text":"<dyad-compaction title=\\"Conversation compacte
 
 ===
 role: user
-message: [{"type":"tool_result","tool_use_id":"[[TOOL_CALL_0]]","content":"File does not exist: SOMEFILE.md","is_error":true}]
+message: [{"type":"tool_result","tool_use_id":"[[TOOL_CALL_0]]","content":"DyadError: File does not exist: SOMEFILE.md","is_error":true}]
 
 ===
 role: assistant

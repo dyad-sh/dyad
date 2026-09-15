@@ -7,9 +7,9 @@ const logger = log.scope("stream_text_utils");
 
 /**
  * Drop-in replacement for the AI SDK's default `Output.text()` that avoids an
- * O(n^2) cost in `streamText`'s `fullStream`.
+ * O(n^2) cost in `streamText`'s `stream`.
  *
- * `streamText` always pipes `fullStream` through `createOutputTransformStream`.
+ * `streamText` always pipes `stream` through `createOutputTransformStream`.
  * With no `output` configured it defaults to `Output.text()`, whose
  * `parsePartialOutput` returns the whole accumulated text as `partial`. On every
  * text-delta the transform then runs `JSON.stringify(partial)` and diffs it
@@ -18,7 +18,7 @@ const logger = log.scope("stream_text_utils");
  * multi-file generations this saturates the main process's JS thread and
  * freezes the app.
  *
- * We read `fullStream` parts directly and never consume `partialOutput`, so the
+ * We read `stream` parts directly and never consume `partialOutput`, so the
  * work is pure waste. This returns an O(1) value that still changes every chunk
  * (the text length), which keeps text flushing incrementally while making the
  * per-chunk work O(1). (Returning `undefined` would instead make text flush only
@@ -74,9 +74,9 @@ export function computeStreamingPatch(
 
 /**
  * Cancel the orphaned `baseStream` tee branch the AI SDK leaves behind
- * after `.fullStream` is read.
+ * after `.stream` is read.
  *
- * Reading `.fullStream` runs the SDK's `teeStream()` synchronously: it
+ * Reading `.stream` runs the SDK's `teeStream()` synchronously: it
  * splits the SDK's internal `baseStream` into two branches and
  * reassigns the unread branch back onto `streamResult.baseStream`.
  * WhatWG `tee()` enqueues every upstream chunk into both branches'
@@ -86,7 +86,7 @@ export function computeStreamingPatch(
  * partialOutput}` objects parked in a `ReadableStreamDefaultController`
  * queue, rooted via the undici connection pool).
  *
- * Call this immediately after reading `.fullStream` and before the
+ * Call this immediately after reading `.stream` and before the
  * stream begins pumping chunks. The cancel runs before any chunks are
  * pumped, so the orphan controller closes immediately and future
  * enqueues to it are no-ops.

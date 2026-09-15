@@ -361,7 +361,7 @@ describe("processStreamChunks", () => {
 
     const updates: string[] = [];
     const result = await processStreamChunks({
-      fullStream: refusalParts() as unknown as AsyncIterableStream<
+      stream: refusalParts() as unknown as AsyncIterableStream<
         TextStreamPart<ToolSet>
       >,
       fullResponse: "Existing response.\n",
@@ -408,7 +408,7 @@ describe("processStreamChunks", () => {
     }
 
     const result = await processStreamChunks({
-      fullStream: filteredParts() as unknown as AsyncIterableStream<
+      stream: filteredParts() as unknown as AsyncIterableStream<
         TextStreamPart<ToolSet>
       >,
       fullResponse: "Existing response.",

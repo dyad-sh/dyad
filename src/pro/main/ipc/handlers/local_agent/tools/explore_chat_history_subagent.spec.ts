@@ -105,7 +105,7 @@ describe("runExploreChatHistorySubagent", () => {
     mocks.getAiHeaders.mockReturnValue({ "x-test": "header" });
     mocks.getProviderOptions.mockReturnValue({ dyad: "options" });
     mocks.streamText.mockImplementation(() => ({
-      fullStream: createTextStream([]),
+      stream: createTextStream([]),
       textStream: createTextStream([]),
     }));
   });
@@ -205,7 +205,7 @@ describe("runExploreChatHistorySubagent", () => {
     });
     let searchResult = "";
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         searchResult = await options.tools.search_chats.execute({
           query: "zebra",
         });
@@ -240,7 +240,7 @@ describe("runExploreChatHistorySubagent", () => {
     const results: string[] = [];
     let submitResult = "";
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         for (let index = 0; index < 10; index++) {
           results.push(
             await options.tools.search_chats.execute({ query: `q ${index}` }),
@@ -298,7 +298,7 @@ describe("runExploreChatHistorySubagent", () => {
     let bounced = "";
     let accepted = "";
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.search_chats.execute({ query: "pelican auth" });
         bounced = await options.tools.submit_report.execute({
           summary: "FIRST SUMMARY built on fabricated citations.",
@@ -370,7 +370,7 @@ describe("runExploreChatHistorySubagent", () => {
       chatId: currentChat,
     });
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.search_chats.execute({ query: "pelican auth" });
         await options.tools.submit_report.execute({
           summary: "HALLUCINATED SUMMARY built on invented citations.",
@@ -414,7 +414,7 @@ describe("runExploreChatHistorySubagent", () => {
 
     let secondResult = "";
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.search_chats.execute({ query: "pelican auth" });
         for (const attempt of [1, 2]) {
           const result = await options.tools.submit_report.execute({
@@ -470,7 +470,7 @@ describe("runExploreChatHistorySubagent", () => {
 
     let submitResult = "";
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: createToolStream(async () => {
+      stream: createToolStream(async () => {
         await options.tools.search_chats.execute({ query: "pelican auth" });
         submitResult = await options.tools.submit_report.execute({
           summary: "UNVALIDATED NO-MATCH SUMMARY",
@@ -509,7 +509,7 @@ describe("runExploreChatHistorySubagent", () => {
       craftedSearchResultJson(),
     );
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: (async function* () {
+      stream: (async function* () {
         await options.tools.search_chats.execute({ query: "auth" });
         throw new Error("provider exploded");
         yield { type: "text-delta", text: "unreachable" };
@@ -530,7 +530,7 @@ describe("runExploreChatHistorySubagent", () => {
 
   it("rethrows a stream failure when no observations were registered", async () => {
     mocks.streamText.mockImplementationOnce(() => ({
-      fullStream: (async function* () {
+      stream: (async function* () {
         throw new Error("provider exploded");
         yield { type: "text-delta", text: "unreachable" };
       })(),
@@ -555,7 +555,7 @@ describe("runExploreChatHistorySubagent", () => {
       abortSignal: controller.signal,
     });
     mocks.streamText.mockImplementationOnce((options: any) => ({
-      fullStream: (async function* () {
+      stream: (async function* () {
         // Register an observation first: even with evidence available, an
         // aborted run must rethrow instead of returning the fallback.
         await options.tools.search_chats.execute({ query: "auth" });

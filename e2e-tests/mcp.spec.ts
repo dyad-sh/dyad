@@ -45,6 +45,9 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
 
   // Environment variables are edited on the plugin's detail page.
   await po.plugins.openPluginDetail("testing-mcp-server");
+  // Finish initial discovery before Save disposes and reconnects the client.
+  // Otherwise the cancelled initial request can win the tool-list query race.
+  await po.plugins.waitForToolInDetail("calculator_add");
   const detail = po.page.getByTestId("plugin-detail");
   await detail
     .getByRole("button", { name: "Add Environment Variable" })

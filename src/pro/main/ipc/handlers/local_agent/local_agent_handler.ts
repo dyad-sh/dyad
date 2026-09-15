@@ -7,7 +7,7 @@ import { IpcMainInvokeEvent } from "electron";
 import {
   streamText,
   ToolSet,
-  stepCountIs,
+  isStepCount,
   hasToolCall,
   ModelMessage,
   type ToolExecutionOptions,
@@ -111,6 +111,7 @@ import {
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
+  getStepMessageBaseline,
   buildTodoReminderMessage,
   hasIncompleteTodos,
   formatTodoSummary,
@@ -1343,11 +1344,11 @@ export async function handleLocalAgentStream(
             maxOutputTokens,
             temperature,
             maxRetries: 2,
-            system: systemPrompt,
+            instructions: systemPrompt,
             messages: sanitizedAttemptMessages,
             tools: allTools,
             stopWhen: [
-              stepCountIs(maxToolCallSteps),
+              isStepCount(maxToolCallSteps),
               // Stop after the integration tool so the next stream is started
               // with a freshly built system prompt that includes the new
               // Supabase/Neon context. The frontend auto-triggers a hidden
@@ -1369,10 +1370,16 @@ export async function handleLocalAgentStream(
             ],
             abortSignal: abortController.signal,
             // Inject pending user messages (e.g., images from web_crawl) between steps
-            // We must re-inject all accumulated messages each step because the AI SDK
-            // doesn't persist dynamically injected messages in its internal state.
+            // Rebuild the original SDK message baseline and replay our injection ledger
+            // so v7's carried-forward overrides cannot duplicate injected messages.
             // We track the insertion index so messages appear at the same position each step.
             prepareStep: async (options) => {
+              // Preserve v6's per-step overrides: our injection ledger replays
+              // against the original history, not v7's carried-forward overrides.
+              options = {
+                ...options,
+                messages: getStepMessageBaseline(options),
+              };
               let stepOptions = options;
 
               if (
@@ -1472,9 +1479,7 @@ export async function handleLocalAgentStream(
               // injections/cleanups to apply. If we already replaced the base
               // message history (e.g., after mid-turn compaction), we still need
               // to return the updated options.
-              let result =
-                preparedStep ??
-                (stepOptions === options ? undefined : stepOptions);
+              let result = preparedStep ?? stepOptions;
 
               // Defensive: ensure injected user messages and split tool result
               // messages don't break tool_use/tool_result pairing. This also
@@ -1504,7 +1509,7 @@ export async function handleLocalAgentStream(
 
               return result;
             },
-            onStepFinish: async (step) => {
+            onStepEnd: async (step) => {
               if (!hasInjectedPlanningQuestionnaireReflection) {
                 const questionnaireError =
                   getPlanningQuestionnaireErrorFromStep(step);
@@ -1564,10 +1569,12 @@ export async function handleLocalAgentStream(
                 compactBeforeNextStep = true;
               }
             },
-            onFinish: async (response) => {
-              const totalTokens = response.usage?.totalTokens;
-              const inputTokens = response.usage?.inputTokens;
-              const cachedInputTokens = response.usage?.cachedInputTokens;
+            onEnd: async (response) => {
+              // Context pressure is the final request size, not v7's all-step sum.
+              const totalTokens = response.finalStep.usage?.totalTokens;
+              const inputTokens = response.finalStep.usage?.inputTokens;
+              const cachedInputTokens =
+                response.finalStep.usage?.inputTokenDetails.cacheReadTokens;
               logger.log(
                 "Total tokens used:",
                 totalTokens,
@@ -1600,18 +1607,18 @@ export async function handleLocalAgentStream(
             },
           });
 
-          // Read .fullStream now (not lazily) so the SDK's `teeStream()`
+          // Read .stream now (not lazily) so the SDK's `teeStream()`
           // runs synchronously, then cancel the orphaned tee branch
           // before any chunks are pumped. See `cancelOrphanedBaseStream`
           // for the underlying SDK behavior and why this is required.
-          const fullStream = streamResult.fullStream;
+          const stream = streamResult.stream;
           cancelOrphanedBaseStream(streamResult);
 
           let inThinkingBlock = false;
           let streamErrorFromIteration: unknown;
 
           try {
-            for await (const part of fullStream) {
+            for await (const part of stream) {
               if (abortController.signal.aborted) {
                 logger.log(`Stream aborted for chat ${req.chatId}`);
                 // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
@@ -1881,9 +1888,9 @@ export async function handleLocalAgentStream(
           }
 
           try {
-            const response = await streamResult.response;
+            const messagesFromStream = await streamResult.responseMessages;
             steps = (await streamResult.steps) ?? [];
-            responseMessages = response.messages;
+            responseMessages = messagesFromStream;
           } catch (err) {
             if (
               shouldRetryTransientStreamError({
@@ -1956,16 +1963,12 @@ export async function handleLocalAgentStream(
           compactedMidTurn && postMidTurnCompactionStartStep !== null
             ? (() => {
                 // stepNumber is 0-indexed (from AI SDK: stepNumber = steps.length).
-                // We want the step just before compaction to determine how many
-                // response messages to skip (they belong to pre-compaction context).
-                const prevStepMessages =
-                  steps[postMidTurnCompactionStartStep - 1]?.response?.messages;
-                if (!prevStepMessages) {
-                  logger.warn(
-                    `No step data found at index ${postMidTurnCompactionStartStep - 1} for mid-turn compaction slicing; persisting all messages`,
-                  );
-                }
-                return responseMessages.slice(prevStepMessages?.length ?? 0);
+                // v7 step responses are per-step, not cumulative. Count every
+                // pre-compaction step before slicing the accumulated response.
+                const prevStepMessages = steps
+                  .slice(0, postMidTurnCompactionStartStep)
+                  .flatMap((step) => step.response?.messages ?? []);
+                return responseMessages.slice(prevStepMessages.length);
               })()
             : responseMessages;
         accumulatedAiMessages.push(...messagesToAccumulate);
@@ -2758,7 +2761,10 @@ async function getMcpTools(
         mcpToolSet[key] = {
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
-          execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+          execute: async (
+            args: unknown,
+            execCtx: ToolExecutionOptions<unknown>,
+          ) => {
             const { serverName, toolName } = parseMcpToolKey(key);
             const callId = execCtx.toolCallId;
             let callEmitted = false;
@@ -2777,7 +2783,10 @@ async function getMcpTools(
                 chatId: ctx.chatId,
                 serverName: s.name,
                 toolName: name,
-                toolDescription: mcpTool.description,
+                toolDescription:
+                  typeof mcpTool.description === "string"
+                    ? mcpTool.description
+                    : undefined,
                 inputSchema: mcpTool.inputSchema,
                 args,
               });
@@ -2787,7 +2796,10 @@ async function getMcpTools(
                   serverId: s.id,
                   serverName: s.name,
                   toolName: name,
-                  toolDescription: mcpTool.description,
+                  toolDescription:
+                    typeof mcpTool.description === "string"
+                      ? mcpTool.description
+                      : undefined,
                   inputPreview,
                   chatId: ctx.chatId,
                   autoApprove,

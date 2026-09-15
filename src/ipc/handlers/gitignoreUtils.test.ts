@@ -241,6 +241,14 @@ describe("ensureDyadGitignored", () => {
       expect(result).toBe("*.log\n!important.log\n.dyad/\n");
     });
 
+    it("appends when a space-after-bang pseudo-negation is present", async () => {
+      // Git treats "! .dyad/keep" as a negation of " .dyad/keep" (the space
+      // after ! is literal), NOT of ".dyad/keep".  Without a real covering
+      // pattern or real negation, the canonical rule must still be appended.
+      const result = await runTwice("*.log\n! .dyad/global-rules.md\n");
+      expect(result).toBe("*.log\n! .dyad/global-rules.md\n.dyad/\n");
+    });
+
     it("preserves a recursive-prefix negation like !**/.dyad/<file>", async () => {
       // "**/.dyad/global-rules.md" matches at repo root per gitignore rules,
       // so this is a valid selective un-ignore; the canonical .dyad/ must not

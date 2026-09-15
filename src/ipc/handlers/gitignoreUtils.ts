@@ -66,7 +66,12 @@ function hasNegationFor(lines: string[], entryDir: string): boolean {
     if (line !== line.trimStart()) return false;
     const t = line.trim();
     if (!t.startsWith("!")) return false;
-    const base = normalizePattern(t.slice(1));
+    // Git treats "! .dyad/keep" as a negation of " .dyad/keep" (the space is
+    // literal), NOT of ".dyad/keep".  Reject any negation marker followed
+    // immediately by whitespace.
+    const afterBang = t.slice(1);
+    if (afterBang !== afterBang.trimStart()) return false;
+    const base = normalizePattern(afterBang);
     return base === entryDir || base.startsWith(`${entryDir}/`);
   });
 }

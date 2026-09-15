@@ -225,6 +225,87 @@ describe("a password Dyad holds but cannot read", () => {
   });
 });
 
+describe("an API token Dyad holds but cannot read", () => {
+  it("says so rather than showing an instance that never had one", async () => {
+    // The load-bearing case: the password is readable, only the token is
+    // locked. Without this row, the user sees an instance and a working
+    // password, signs out believing they saved everything they were shown —
+    // and discovers the held token was destroyed only when they reconnect.
+    // With the row, they can re-mint at Coolify before signing out.
+    h.revealCredentials.mockResolvedValue({
+      instance: { url: "https://203.0.113.5.sslip.io", apiToken: null },
+      server: {
+        url: "https://203.0.113.5.sslip.io",
+        email: "me@gmail.com",
+        password: "Abc123@xyzAbc123@xyz",
+      },
+    });
+    render(<CoolifyCredentials />);
+
+    await settle();
+    expect(
+      screen.getByTestId("coolify-credentials-locked-api-token").textContent,
+    ).toContain("cannot read it on this machine");
+    expect(screen.queryByTestId("coolify-field-api-token")).toBeNull();
+    // Token-only-locked: the password is readable, so its row stays and its
+    // own locked notice does not render.
+    expect(screen.getByTestId("coolify-field-password")).toBeTruthy();
+    expect(
+      screen.queryByTestId("coolify-credentials-locked-password"),
+    ).toBeNull();
+  });
+
+  it("says it on the instance block of the two-block layout too", async () => {
+    // Two Coolify servers at different addresses: the instance Dyad is
+    // connected to has a locked token, the server Dyad set up has a readable
+    // admin. The locked-token row belongs on the instance block.
+    h.revealCredentials.mockResolvedValue({
+      instance: { url: "https://203.0.113.5.sslip.io", apiToken: null },
+      server: {
+        url: "http://203.0.113.5:8000",
+        email: "me@gmail.com",
+        password: "Abc123@xyzAbc123@xyz",
+      },
+    });
+    render(<CoolifyCredentials />);
+
+    await settle();
+    expect(
+      screen.getByTestId("coolify-credentials-locked-api-token"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("coolify-field-api-token")).toBeNull();
+    // The locked notice sits on the instance block, the server block keeps
+    // its readable password.
+    expect(screen.getByTestId("coolify-field-instance-address")).toBeTruthy();
+    expect(screen.getByTestId("coolify-field-server-password")).toBeTruthy();
+    expect(
+      screen.queryByTestId("coolify-credentials-locked-password"),
+    ).toBeNull();
+  });
+
+  it("stays silent when there is genuinely no instance", async () => {
+    // instance: null means Dyad never held a token — a server it set up but
+    // did not connect to. A locked-token notice there would name a hold that
+    // does not exist.
+    h.revealCredentials.mockResolvedValue({
+      instance: null,
+      server: {
+        url: "http://203.0.113.5:8000",
+        email: "me@gmail.com",
+        password: "Abc123@xyzAbc123@xyz",
+      },
+    });
+    render(<CoolifyCredentials />);
+
+    await settle();
+    expect(
+      screen.queryByTestId("coolify-credentials-locked-api-token"),
+    ).toBeNull();
+    expect(screen.queryByTestId("coolify-field-api-token")).toBeNull();
+    expect(screen.getByTestId("coolify-field-password")).toBeTruthy();
+  });
+});
+
 describe("two servers that are not the same server", () => {
   it("keeps each address with what it opens", async () => {
     // Installed a server whose token could not be minted, then connected to a

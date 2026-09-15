@@ -420,15 +420,18 @@ describe("HelpDialog report flow", () => {
     await screen.findByText(/Dyad Version: 1\.2\.3/);
 
     // The reporter leaves the form up, goes back to the app and makes the bug
-    // happen again. The logs worth having are the ones written since.
+    // happen again. The logs worth having are the ones written since, so the
+    // read has to wait for them to come back rather than run as they leave.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(1);
     mocks.getSystemDebugInfo.mockResolvedValue({
       ...debugInfo,
       dyadVersion: "4.5.6",
     });
-    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
     fireEvent.click(screen.getByText("reopen-help"));
 
     expect(await screen.findByText(/Dyad Version: 4\.5\.6/)).toBeTruthy();
+    expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(2);
     await fileIt();
     expect(bodyOfOpenedIssue()).toContain("4.5.6");
   });

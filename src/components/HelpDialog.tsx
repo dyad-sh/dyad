@@ -306,8 +306,13 @@ export function HelpDialog() {
   // the bug, so its diagnostics are read again on the way in. The old snapshot
   // stays up until the new one lands, so there is never a gap with nothing to
   // show or send.
+  const wasOpen = useRef(isOpen);
   useEffect(() => {
-    if (isOpen || !reportOpen) return;
+    // Only the dialog coming back counts. A draft that starts while the
+    // dialog is already up has just asked for its own read.
+    const reopened = isOpen && !wasOpen.current;
+    wasOpen.current = isOpen;
+    if (!reopened || !reportOpen) return;
     // The dialog hid itself for a screenshot rather than the reporter
     // leaving, so re-reading now would cost three shell commands a retake.
     if (hidingForCapture.current) {

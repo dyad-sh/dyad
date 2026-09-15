@@ -53,7 +53,7 @@ export function ScreenshotCaptureBar({
     <div
       ref={root}
       role="region"
-      aria-label={t("home:report.captureBarLabel")}
+      aria-label={t("report.captureBarLabel")}
       data-testid="screenshot-capture-bar"
       // Only while focus is inside the bar, so it cannot swallow an Escape
       // meant for something else on the page.
@@ -72,10 +72,10 @@ export function ScreenshotCaptureBar({
       </span>
       <p className="min-w-0 flex-1 text-sm">
         <span className="font-medium">
-          {t("home:report.captureBarHeading")}
+          {t("report.captureBarHeading")}
         </span>{" "}
         <span className="text-muted-foreground">
-          {t("home:report.captureBarHint")}
+          {t("report.captureBarHint")}
         </span>
       </p>
       <div className="flex shrink-0 gap-1.5">
@@ -83,11 +83,11 @@ export function ScreenshotCaptureBar({
             bar is last in tab order, so focus starts on the way forward. */}
         <Button variant="default" size="sm" onClick={onCapture} autoFocus>
           <Camera className="mr-1.5 h-3.5 w-3.5" />
-          {t("home:report.captureBarCapture")}
+          {t("report.captureBarCapture")}
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel}>
           <XIcon className="mr-1.5 h-3.5 w-3.5" />
-          {t("home:report.captureBarCancel")}
+          {t("report.captureBarCancel")}
         </Button>
       </div>
     </div>

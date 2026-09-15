@@ -60,24 +60,30 @@ vi.mock("react-i18next", async () => {
   const home = (await import("@/i18n/locales/en/home.json")).default;
   const common = (await import("@/i18n/locales/en/common.json")).default;
   const bundles: Record<string, unknown> = { home, common };
-  const t = (key: string, vars?: Record<string, string>) => {
-    // Matches the app's defaultNS, so an unprefixed key resolves the same
-    // here as it would at runtime.
-    const [ns, path] = key.includes(":") ? key.split(":") : ["common", key];
-    const value = path
-      .split(".")
-      .reduce<unknown>(
-        (node, part) => (node as Record<string, unknown>)?.[part],
-        bundles[ns],
+  // An unprefixed key resolves against the hook's first namespace, or the
+  // app's defaultNS when the hook was given none, as it would at runtime.
+  const translator =
+    (defaultNs: string) => (key: string, vars?: Record<string, string>) => {
+      const [ns, path] = key.includes(":") ? key.split(":") : [defaultNs, key];
+      const value = path
+        .split(".")
+        .reduce<unknown>(
+          (node, part) => (node as Record<string, unknown>)?.[part],
+          bundles[ns],
+        );
+      if (typeof value !== "string")
+        throw new Error(`Missing i18n key: ${key}`);
+      // i18next substitutes {{name}}; without it a placeholder would render
+      // literally here and the test would pass on copy no reporter ever sees.
+      return value.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+        vars && name in vars ? vars[name] : match,
       );
-    if (typeof value !== "string") throw new Error(`Missing i18n key: ${key}`);
-    // i18next substitutes {{name}}; without it a placeholder would render
-    // literally here and the test would pass on copy no reporter ever sees.
-    return value.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-      vars && name in vars ? vars[name] : match,
-    );
+    };
+  return {
+    useTranslation: (ns?: string | string[]) => ({
+      t: translator(Array.isArray(ns) ? ns[0] : (ns ?? "common")),
+    }),
   };
-  return { useTranslation: () => ({ t }) };
 });
 
 vi.mock("@/hooks/useSettings", () => ({

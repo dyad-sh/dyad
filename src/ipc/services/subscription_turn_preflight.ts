@@ -1,7 +1,10 @@
 import type { ModelSelection, UserSettings } from "@/lib/schemas";
 import { resolveSubscriptionModel } from "./resolve_subscription_model";
 import { getCodexSubscriptionCredentials } from "./codex_subscription_auth";
-import { checkSubscriptionCredits } from "./codex_subscription_credit_check";
+import {
+  checkExternalModelAdmission,
+  type ExternalModelAdmission,
+} from "./external_model_admission";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 import {
@@ -17,7 +20,10 @@ export async function preflightSubscriptionTurn(
   settings: UserSettings,
   signal: AbortSignal,
   autoModelCandidates?: AutoModelCandidates,
-): Promise<ModelSelection> {
+): Promise<{
+  model: ModelSelection;
+  externalModelAdmission?: ExternalModelAdmission;
+}> {
   signal.throwIfAborted();
   const resolved = await resolveSubscriptionModel(model, settings);
   const selections = [resolved];
@@ -39,6 +45,7 @@ export async function preflightSubscriptionTurn(
   signal.throwIfAborted();
   if (selections.some((selection) => selection.connection === "subscription"))
     await getCodexSubscriptionCredentials();
+  let externalModelAdmission: ExternalModelAdmission | undefined;
   if (
     selections.some(
       (selection) =>
@@ -52,8 +59,8 @@ export async function preflightSubscriptionTurn(
         "Connect Dyad Pro before using an external model.",
         DyadErrorKind.Auth,
       );
-    await checkSubscriptionCredits(apiKey, signal);
+    externalModelAdmission = await checkExternalModelAdmission(apiKey, signal);
   }
   signal.throwIfAborted();
-  return resolved;
+  return { model: resolved, externalModelAdmission };
 }

@@ -26,7 +26,13 @@ vi.mock("../utils/model_effort", () => ({
   resolveModelSelection: async ({ model }: { model: ModelSelection }) => model,
 }));
 import type { AutoModelCandidates } from "./auto_model_candidates";
-import { preflightSubscriptionTurn } from "./subscription_turn_preflight";
+import { preflightSubscriptionTurn as preflightWithAdmission } from "./subscription_turn_preflight";
+// These tests focus on model routing; admission consumption has its own tests.
+async function preflightSubscriptionTurn(
+  ...args: Parameters<typeof preflightWithAdmission>
+) {
+  return (await preflightWithAdmission(...args)).model;
+}
 const model = {
   provider: "openai",
   name: "eligible-model",

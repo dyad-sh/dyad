@@ -386,7 +386,7 @@ describe("getModelClient", () => {
         } as any);
       }
       const autoModelCandidates: AutoModelCandidates = new Map();
-      const selection = await preflightSubscriptionTurn(
+      const { model: selection } = await preflightSubscriptionTurn(
         auto,
         settings,
         new AbortController().signal,

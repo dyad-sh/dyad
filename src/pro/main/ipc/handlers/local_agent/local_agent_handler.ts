@@ -1,3 +1,4 @@
+import type { ExternalModelAdmission } from "@/ipc/services/external_model_admission";
 import type { AutoModelCandidates } from "@/ipc/services/auto_model_candidates";
 /**
  * Local Agent v2 Handler
@@ -588,6 +589,7 @@ export async function handleLocalAgentStream(
     settingsOverride,
     modelSelectionOverride,
     autoModelCandidates,
+    externalModelAdmission,
     freeModelMode,
     toolProfile = "agent",
     preCommitHookAvailable = false,
@@ -619,6 +621,7 @@ export async function handleLocalAgentStream(
     settingsOverride?: UserSettings;
     modelSelectionOverride?: ModelSelection;
     autoModelCandidates?: AutoModelCandidates;
+    externalModelAdmission?: ExternalModelAdmission;
     freeModelMode?: boolean;
     /** Fail-closed tool and orchestration surface for this mode. */
     toolProfile?: "agent" | "build";
@@ -939,7 +942,7 @@ export async function handleLocalAgentStream(
       settings.selectedModel,
       settings,
       selectedModel,
-      { chatId: req.chatId, autoModelCandidates },
+      { chatId: req.chatId, autoModelCandidates, externalModelAdmission },
     );
     const normalizeToolCallIdsForTarget = <T extends ModelMessage>(
       messages: T[],

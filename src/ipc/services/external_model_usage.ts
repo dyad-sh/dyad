@@ -7,6 +7,10 @@ import { readSettings } from "@/main/settings";
 import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { SubscriptionTokens } from "@/lib/subscriptionUsage";
+import {
+  consumeExternalModelAdmission,
+  type ExternalModelAdmission,
+} from "./external_model_admission";
 
 const logger = log.scope("external_model_usage");
 const Count = z.number().int().nonnegative().max(1_000_000_000_000);
@@ -36,6 +40,7 @@ export async function startExternalModelUsage(
     modelProvider: "openai",
   },
   apiKey?: string,
+  admission?: ExternalModelAdmission,
 ) {
   const key = apiKey ?? readSettings().providerSettings?.auto?.apiKey?.value;
   if (!key)
@@ -43,7 +48,13 @@ export async function startExternalModelUsage(
       "Add your Dyad Pro key before using Pro with an external model.",
       DyadErrorKind.Auth,
     );
-  await checkSubscriptionCredits(key, signal);
+  if (signal?.aborted)
+    throw new DyadError(
+      "External model request cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
+  if (!consumeExternalModelAdmission(admission, key))
+    await checkSubscriptionCredits(key, signal);
   const id = randomUUID();
   active.set(id, {
     key,

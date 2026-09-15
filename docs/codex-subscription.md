@@ -67,11 +67,18 @@ account and connection switches remains necessary.
 ## BYO credit preflight
 
 Before durable turn acceptance, Dyad resolves the global source and validates
-subscription credentials where applicable and credits. Before every billed direct model request
-(including subsequent agent steps), Dyad
-fetches the existing `GET https://api.dyad.sh/v1/user/info` using the same Dyad
-billing key captured for that request. This uses a fresh main-process lookup,
-not the five-minute UI cache or the UI's test-build mock balance.
+subscription credentials where applicable and credits. The credit check issues
+an opaque, main-only admission for the turn, bound to the checked Dyad key. The
+first subscription, local, or custom-provider request consumes it once instead
+of repeating the check after acceptance. A fail-open preflight issues the same
+admission. It is never serialized or persisted, cannot be copied or reused, and
+expires when its turn is cancelled. A mismatched account retires the admission
+and requires a fresh check.
+
+Subsequent agent requests and callers without admission fetch the existing
+`GET https://api.dyad.sh/v1/user/info` using the Dyad billing key for that request.
+These are fresh main-process lookups, not the five-minute UI cache or the UI's
+test-build mock balance. Recreating a model client does not recreate admission.
 
 - Positive `totalCredits - usedCredits`: proceed.
 - Confirmed exhausted balance (including HTTP 200 with exhausted counts) or HTTP

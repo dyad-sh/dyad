@@ -1,3 +1,4 @@
+import type { ExternalModelAdmission } from "../services/external_model_admission";
 import {
   AUTO_DYAD_PRO_MODEL_ALIASES,
   AUTO_BALANCED_ALIAS,
@@ -92,7 +93,7 @@ async function createResolvedAliasClient({
   resolvedModel: ResolvedAliasModel;
   modelId: string;
   selection: ModelSelection;
-  context?: { chatId: number };
+  context?: { chatId: number; externalModelAdmission?: ExternalModelAdmission };
 }) {
   return {
     selection,
@@ -152,7 +153,11 @@ export async function getModelClient(
   selectedModel: LargeLanguageModel,
   settings: UserSettings,
   modelSelectionOverride?: ModelSelection,
-  context?: { chatId: number; autoModelCandidates?: AutoModelCandidates },
+  context?: {
+    chatId: number;
+    autoModelCandidates?: AutoModelCandidates;
+    externalModelAdmission?: ExternalModelAdmission;
+  },
   // files?: File[],
 ): Promise<ModelClientResult> {
   const selectedModelSelection =
@@ -260,6 +265,7 @@ export async function getModelClient(
             modelProvider: model.provider,
           },
           dyadApiKey!,
+          context?.externalModelAdmission,
         ),
       },
       runtimeModel: model,
@@ -457,7 +463,7 @@ async function getProModelClient({
   settings: UserSettings;
   provider: DyadEngineProvider;
   modelId: string;
-  context?: { chatId: number };
+  context?: { chatId: number; externalModelAdmission?: ExternalModelAdmission };
   autoModelCandidates?: AutoModelCandidates;
 }): Promise<ModelClient> {
   if (isFreeProModel(model)) {

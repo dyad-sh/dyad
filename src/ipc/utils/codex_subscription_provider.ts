@@ -1,3 +1,4 @@
+import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { markSubscriptionLimited } from "../services/codex_subscription_account";
 import { createOpenAI } from "@ai-sdk/openai";
 import { wrapLanguageModel } from "ai";
@@ -107,7 +108,7 @@ export function shapeSubscriptionRequest(
 
 export async function createCodexSubscriptionModel(
   modelName: string,
-  context?: { chatId: number },
+  context?: { chatId: number; externalModelAdmission?: ExternalModelAdmission },
 ): Promise<LanguageModelV3> {
   // Fail before any model request; the fetch rechecks expiry for long turns.
   await getCodexSubscriptionCredentials();
@@ -141,7 +142,6 @@ export async function createCodexSubscriptionModel(
             "ChatGPT-Account-Id": credentials.accountId,
             "Content-Type": "application/json",
             Accept: "text/event-stream",
-            originator: "dyad",
             "OpenAI-Beta": "responses=experimental",
           },
           body: JSON.stringify(body),
@@ -217,7 +217,13 @@ export async function createCodexSubscriptionModel(
         },
       }),
       wrapStream: async ({ doStream, params }) => {
-        const id = await startSubscriptionUsage(modelName, params.abortSignal);
+        const id = await startSubscriptionUsage(
+          modelName,
+          params.abortSignal,
+          undefined,
+          undefined,
+          context?.externalModelAdmission,
+        );
         const recovery: { commit?: () => void } = {};
         let result;
         try {

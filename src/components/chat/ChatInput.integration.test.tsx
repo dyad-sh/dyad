@@ -56,7 +56,7 @@ describe("chat input during turn admission", () => {
         if (rejected) {
           throw new DyadError("Out of credits", DyadErrorKind.Precondition);
         }
-        return model;
+        return { model };
       });
       const chatId = await harness.createChat();
       harness.mount({ chatId });

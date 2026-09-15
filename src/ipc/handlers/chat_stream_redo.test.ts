@@ -44,9 +44,9 @@ describe("redo turn admission", () => {
 
   beforeEach(async () => {
     vi.mocked(preflightSubscriptionTurn).mockReset();
-    vi.mocked(preflightSubscriptionTurn).mockImplementation(
-      async (model) => model,
-    );
+    vi.mocked(preflightSubscriptionTurn).mockImplementation(async (model) => ({
+      model,
+    }));
     await harness.db
       .update(chats)
       .set({ modelSelection: null })
@@ -113,7 +113,7 @@ describe("redo turn admission", () => {
           entered();
           await gate;
           if (rejectOld) throw new Error("stale model failed");
-          return model;
+          return { model };
         },
       );
       const stream = harness.streamChat("tc=no-code-response", { redo: true });
@@ -155,7 +155,7 @@ describe("redo turn admission", () => {
         async (model) => {
           entered();
           await gate;
-          return model;
+          return { model };
         },
       );
       const stream = harness.streamChat("tc=no-code-response", { redo: true });
@@ -204,7 +204,7 @@ describe("redo turn admission", () => {
       async (model) => {
         entered();
         await gate;
-        return model;
+        return { model };
       },
     );
     const stream = harness.streamChat("tc=no-code-response", { redo: true });

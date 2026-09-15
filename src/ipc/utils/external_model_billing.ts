@@ -1,5 +1,6 @@
 import { wrapLanguageModel, type LanguageModel } from "ai";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { ExternalModelAdmission } from "../services/external_model_admission";
 import {
   startExternalModelUsage,
   finishExternalModelUsage,
@@ -12,6 +13,7 @@ export function wrapExternalModelBilling(
   model: LanguageModel,
   billing: ExternalModelBilling,
   apiKey: string,
+  admission?: ExternalModelAdmission,
 ): LanguageModel {
   if (typeof model === "string" || model.specificationVersion !== "v3") {
     throw new Error("External model billing requires a v3 model");
@@ -26,6 +28,7 @@ export function wrapExternalModelBilling(
           params.abortSignal,
           billing,
           apiKey,
+          admission,
         );
         try {
           const result = await doGenerate();
@@ -46,6 +49,7 @@ export function wrapExternalModelBilling(
           params.abortSignal,
           billing,
           apiKey,
+          admission,
         );
         try {
           const result = await doStream();

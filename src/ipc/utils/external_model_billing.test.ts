@@ -130,3 +130,40 @@ it("does not charge cancelled streams without final usage", async () => {
   expect(cancel).toHaveBeenCalled();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it.each(["local", "byok"] as const)(
+  "consumes %s admission in generate before a later stream requires fresh credits",
+  async (connection) => {
+    const { checkExternalModelAdmission } =
+      await import("../services/external_model_admission");
+    const admission = await checkExternalModelAdmission(
+      "dyad-key",
+      new AbortController().signal,
+    );
+    mocks.credits.mockRejectedValue(new Error("Fresh check rejected"));
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "accepted" }],
+        finishReason,
+        usage,
+        warnings: [],
+      }),
+    });
+    const wrapped = wrapExternalModelBilling(
+      model,
+      { connection, modelProvider: "custom-provider" },
+      "dyad-key",
+      admission,
+    );
+    if (typeof wrapped === "string" || wrapped.specificationVersion !== "v3")
+      throw new Error("Expected v3 model");
+    expect((await wrapped.doGenerate({ prompt: [] })).content).toEqual([
+      { type: "text", text: "accepted" },
+    ]);
+    expect(mocks.credits).toHaveBeenCalledTimes(1);
+    await expect(wrapped.doStream({ prompt: [] })).rejects.toThrow(
+      "Fresh check rejected",
+    );
+    expect(mocks.credits).toHaveBeenCalledTimes(2);
+  },
+);

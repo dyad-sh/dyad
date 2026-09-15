@@ -1,3 +1,4 @@
+import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { awaitTurnPreflight } from "../services/await_turn_preflight";
 import type { AutoModelCandidates } from "../services/auto_model_candidates";
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
@@ -1507,6 +1508,7 @@ ${componentSnippet}
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
       const autoModelCandidates: AutoModelCandidates = new Map();
+      let externalModelAdmission: ExternalModelAdmission | undefined;
       const readAdmissionChat = () => {
         const latestChat = db
           .select({
@@ -1551,7 +1553,7 @@ ${componentSnippet}
                 ? await normalizeModelSelection(snapshot.modelSelection)
                 : await resolveDefaultModelSelection(attemptSettings);
               return isAcceptedReplay
-                ? model
+                ? { model, externalModelAdmission: undefined }
                 : preflightSubscriptionTurn(
                     model,
                     attemptSettings,
@@ -1559,7 +1561,7 @@ ${componentSnippet}
                     candidates,
                   );
             })().then(
-              (model) => ({ ok: true as const, model }),
+              (result) => ({ ok: true as const, ...result }),
               (error) => ({ ok: false as const, error }),
             ),
             abortController.signal,
@@ -1578,6 +1580,7 @@ ${componentSnippet}
             if (!prepared.ok) throw prepared.error;
             baseSettings = attemptSettings;
             selectedModel = prepared.model;
+            externalModelAdmission = prepared.externalModelAdmission;
             autoModelCandidates.clear();
             for (const [alias, candidate] of candidates)
               autoModelCandidates.set(alias, candidate);
@@ -1855,7 +1858,7 @@ ${componentSnippet}
             settings.selectedModel,
             settings,
             selectedModel,
-            { chatId: req.chatId, autoModelCandidates },
+            { chatId: req.chatId, autoModelCandidates, externalModelAdmission },
           );
 
         const isBuildMode = selectedChatMode === "build";
@@ -2697,6 +2700,7 @@ This conversation includes one or more image attachments. When the user uploads 
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               autoModelCandidates,
+              externalModelAdmission,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
@@ -2746,6 +2750,7 @@ This conversation includes one or more image attachments. When the user uploads 
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               autoModelCandidates,
+              externalModelAdmission,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment: false,
@@ -2776,6 +2781,7 @@ This conversation includes one or more image attachments. When the user uploads 
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               autoModelCandidates,
+              externalModelAdmission,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
@@ -2807,6 +2813,7 @@ This conversation includes one or more image attachments. When the user uploads 
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
               autoModelCandidates,
+              externalModelAdmission,
               freeModelMode,
               preCommitHookAvailable,
               refreshImplementerContext,

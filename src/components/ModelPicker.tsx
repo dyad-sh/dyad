@@ -1,3 +1,4 @@
+import { modelForChatBackend } from "@/shared/execution_backend";
 import {
   executionBackendForModel,
   BACKEND_SWITCH_MESSAGE,
@@ -407,11 +408,7 @@ export function ModelPicker() {
   }, [open, loadOllamaModels, loadLMStudioModels]);
 
   // Get display name for the selected model
-  const selectedModel: LargeLanguageModel = chat?.modelSelection ??
-    settings?.selectedModel ?? {
-      provider: "auto",
-      name: "auto",
-    };
+  const selectedModel: LargeLanguageModel = modelForChatBackend(chat, settings);
 
   const getModelDisplayName = () => {
     if (selectedModel.provider === "claude-code")

@@ -14,6 +14,7 @@ const calls = vi.hoisted(() => ({
   run: vi.fn(),
   beforeDispatch: vi.fn(),
   beforeAdmission: vi.fn(),
+  beforeBridge: vi.fn(),
 }));
 vi.mock("./runtime", async (original) => ({
   ...(await original<typeof import("./runtime")>()),
@@ -50,6 +51,18 @@ vi.mock("../external_model_usage", async (original) => {
     },
   };
 });
+vi.mock("./bridge", async (original) => {
+  const module = await original<typeof import("./bridge")>();
+  return {
+    ...module,
+    createClaudeBridge: async (
+      ...args: Parameters<typeof module.createClaudeBridge>
+    ) => {
+      await calls.beforeBridge();
+      return module.createClaudeBridge(...args);
+    },
+  };
+});
 let harness: HybridChatHarness;
 beforeAll(async () => {
   harness = await setupHybridChatHarness({
@@ -69,6 +82,7 @@ beforeEach(() => {
   calls.run.mockReset();
   calls.beforeDispatch.mockReset();
   calls.beforeAdmission.mockReset();
+  calls.beforeBridge.mockReset();
   calls.run.mockImplementation(async (turn) => {
     await turn.onEvent({
       type: "assistant",
@@ -233,4 +247,20 @@ it("resolves the claimed app path after usage preflight", async () => {
       .set({ path: app!.path })
       .where(eq(apps.id, harness.appId));
   }
+});
+
+it("does not strand a new chat in running state when bridge setup fails", async () => {
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  calls.beforeBridge.mockRejectedValueOnce(
+    new Error("simulated setup failure"),
+  );
+  await harness.streamChat("Read the app.", { chatId });
+  expect(calls.run).not.toHaveBeenCalled();
+  const chat = await harness.db.query.chats.findFirst({
+    where: eq(chats.id, chatId),
+  });
+  expect(chat).toMatchObject({
+    claudeSessionId: null,
+    claudeSessionState: null,
+  });
 });

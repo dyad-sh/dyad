@@ -59,8 +59,9 @@ export async function findClaudeExecutable(): Promise<string> {
       /* try next native binary */
     }
   }
-  throw new Error(
+  throw new DyadError(
     "Install the official Claude Code native CLI, then run claude auth login in your terminal.",
+    DyadErrorKind.Precondition,
   );
 }
 
@@ -104,7 +105,7 @@ export async function claudeStatus() {
       compatible,
       version,
       detail: !compatible
-        ? "This prototype requires Claude Code 2.1.259 or later in the 2.1 series."
+        ? "Unsupported Claude Code version. This prototype supports 2.1.259 or later within 2.1 only. Update Dyad for support for newer CLI series; do not downgrade your CLI automatically."
         : connected
           ? "Signed in through the official Claude Code CLI."
           : "Run claude auth login in your terminal to use your subscription.",

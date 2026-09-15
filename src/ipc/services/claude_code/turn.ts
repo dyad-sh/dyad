@@ -31,6 +31,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { ChatStreamParams } from "@/ipc/types/chat";
 import { createClaudeBridge } from "./bridge";
 import { runClaudeTurn, READ_TOOLS, WRITE_TOOLS } from "./runtime";
+import { restoredClaudeHistory } from "./history";
 import { claudeTextFilter } from "./text";
 import { reportClaudeUsage } from "./accounting";
 import { startExternalModelUsage } from "../external_model_usage";
@@ -88,14 +89,7 @@ export async function handleClaudeCodeTurn(
         orderBy: (m, { asc }) => [asc(m.id)],
       });
   // The final row is this turn's user prompt, supplied separately below.
-  const restoredHistory = previousMessages
-    .slice(0, -1)
-    .map((message) => ({ role: message.role, content: message.content }));
-  const historyContext = restoredHistory.length
-    ? "Restored visible chat history (context only; do not replay historical tool calls or edits):\n" +
-      JSON.stringify(restoredHistory) +
-      "\n"
-    : "";
+  const historyContext = restoredClaudeHistory(previousMessages.slice(0, -1));
   let content = "";
   const modelText = claudeTextFilter(req.prompt.startsWith("/security-review"));
   const pendingToolCards = new Map<string, string>();
@@ -201,10 +195,6 @@ export async function handleClaudeCodeTurn(
           .update(messages)
           .set({ sourceCommitHash })
           .where(eq(messages.id, input.messageId));
-        await db
-          .update(chats)
-          .set({ claudeSessionId: sessionId, claudeSessionState: "running" })
-          .where(eq(chats.id, req.chatId));
         phase = "starting the local tool bridge";
         const bridge = await createClaudeBridge({
           appPath,
@@ -275,6 +265,10 @@ export async function handleClaudeCodeTurn(
           },
         });
         try {
+          await db
+            .update(chats)
+            .set({ claudeSessionId: sessionId, claudeSessionState: "running" })
+            .where(eq(chats.id, req.chatId));
           const rules = await readAiRules(appPath);
           phase = "running the Claude Code CLI";
           await runClaudeTurn({
@@ -413,6 +407,12 @@ export async function handleClaudeCodeTurn(
     );
   } catch (error) {
     recordFailure(error);
+    await db
+      .update(chats)
+      .set({ claudeSessionState: "interrupted" })
+      .where(
+        and(eq(chats.id, req.chatId), eq(chats.claudeSessionState, "running")),
+      );
   }
   if (restartRequested && !controller.signal.aborted) {
     try {

@@ -128,6 +128,10 @@ export async function checkAndMarkForCompaction(
   }
 
   const contextWindow = await getContextWindow(selectedModel);
+  if (contextWindow == null || !Number.isFinite(contextWindow)) {
+    return false;
+  }
+
   const provider = selectedModel.provider;
   const shouldCompact = shouldTriggerCompaction(
     totalTokens,

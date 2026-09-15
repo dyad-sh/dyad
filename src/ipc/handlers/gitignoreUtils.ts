@@ -2,8 +2,94 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
+ * Reduces a gitignore pattern to its base-name form for equality comparison.
+ * Strips an optional leading "**" recursive prefix, a single leading slash
+ * (repo-root anchor), a trailing glob, and a trailing slash (directory
+ * marker). "/.dyad/", ".dyad", ".dyad/*", ".dyad/**", and the recursive form
+ * "**" + "/.dyad/" all normalize to ".dyad".
+ *
+ * Only exact single-character anchors are stripped; repeated slashes are left
+ * un-matched (git does not treat them as valid anchors), falling through to a
+ * non-equal comparison and preserving the safe default of treating the pattern
+ * as absent.
+ *
+ * This is intentionally not a full gitignore parser; it only collapses the
+ * common forms equivalent (for "is this directory already ignored at the
+ * repo root") to the canonical form. Ambiguous patterns are left un-matched
+ * so the entry is treated as missing rather than silently mis-handled.
+ */
+function normalizePattern(pattern: string): string {
+  // Git discards only trailing *spaces* from patterns — not tabs or other
+  // whitespace — so we must not use String.prototype.trim() here.
+  const stripped = pattern
+    .replace(/^[ \t]+/, "") // leading whitespace (already guarded by callers)
+    .replace(/ +$/, "") // trailing spaces only (matches git behaviour)
+    .replace(/^\//, "") // single leading slash (repo-root anchor only)
+    .replace(/^\*\*\//, ""); // optional recursive prefix "**/", single occurrence
+  // Reject patterns that contain a doubled slash before (or instead of) the
+  // expected trailing glob marker.  Git does not treat "//" as a valid
+  // separator, so ".dyad//*" and "/.dyad//**" do not ignore ".dyad/".
+  // Checking after the leading-anchor strips but before the trailing-glob
+  // strips ensures intermediate double-slashes (e.g. ".dyad//") are caught
+  // even when the trailing "/*" or "/" removal would hide them.
+  if (stripped.includes("//")) return "";
+  return stripped
+    .replace(/\/\*{1,2}$/, "") // trailing "/*" or "/**" (exactly one slash)
+    .replace(/\/$/, ""); // trailing slash (directory marker)
+}
+
+/**
+ * Returns true if a single non-negated, non-comment line is a gitignore
+ * pattern that already ignores `<entryDir>` (the directory at the repo
+ * root) or all of its contents.
+ */
+function isCoveringPattern(line: string, entryDir: string): boolean {
+  // Strip only trailing spaces (git discards trailing spaces but treats tabs
+  // literally), then check leading whitespace before normalizing.
+  const t = line.replace(/ +$/, "");
+  if (
+    t === "" ||
+    t.trimStart().startsWith("#") ||
+    t.trimStart().startsWith("!")
+  )
+    return false;
+  // Git treats leading whitespace as literal characters, so a pattern with
+  // leading spaces would not match the same paths as the unindented form.
+  // Only consider a pattern covering if it has no leading whitespace.
+  if (line !== line.trimStart()) return false;
+  return normalizePattern(t) === entryDir;
+}
+
+/**
+ * Returns true if any line is a negation (`!...`) targeting `<entryDir>` or a
+ * path beneath it. Appending `<entryDir>/` excludes the parent directory,
+ * which per git's "last matching pattern wins" semantics would silently
+ * override such a selective un-ignore, so callers must refuse to append when
+ * this returns true.
+ */
+function hasNegationFor(lines: string[], entryDir: string): boolean {
+  return lines.some((line) => {
+    // Git treats leading whitespace as literal characters, so a line such as
+    // "  !.dyad/keep.txt" is NOT a negation from git's point of view.
+    if (line !== line.trimStart()) return false;
+    const t = line.trim();
+    if (!t.startsWith("!")) return false;
+    // Git treats "! .dyad/keep" as a negation of " .dyad/keep" (the space is
+    // literal), NOT of ".dyad/keep".  Reject any negation marker followed
+    // immediately by whitespace.
+    const afterBang = t.slice(1);
+    if (afterBang !== afterBang.trimStart()) return false;
+    const base = normalizePattern(afterBang);
+    return base === entryDir || base.startsWith(`${entryDir}/`);
+  });
+}
+
+/**
  * Ensures the given entries are listed in the project's `.gitignore`.
- * Creates `.gitignore` if it doesn't exist.
+ * Creates `.gitignore` if it doesn't exist. Recognizes git-equivalent covering
+ * patterns (anchored, glob) so redundant lines are not appended, and never
+ * appends an entry when the file already contains a selective un-ignore
+ * (`!...`) negation targeting that directory.
  */
 async function ensureGitignored(
   appPath: string,
@@ -18,14 +104,21 @@ async function ensureGitignored(
     // .gitignore doesn't exist yet — will be created below
   }
 
-  const lines = content.split(/\r?\n/);
-  const missing = entries.filter(
-    (entry) =>
-      !lines.some(
-        (line) =>
-          line.trim() === entry || line.trim() === entry.replace(/\/$/, ""),
-      ),
-  );
+  // Strip a leading UTF-8 BOM if present.  Git ignores the BOM and processes
+  // rules from the first character, so a file that begins "\uFEFF!.dyad/keep"
+  // is a valid selective un-ignore.  JavaScript's trimStart() also removes
+  // U+FEFF, which would cause the leading-whitespace guard in hasNegationFor
+  // to reject the line; strip exactly one BOM here so the guard sees the real
+  // first character.
+  const contentWithoutBom = content.startsWith("\uFEFF")
+    ? content.slice(1)
+    : content;
+  const lines = contentWithoutBom.split(/\r?\n/);
+  const missing = entries.filter((entry) => {
+    const entryDir = normalizePattern(entry);
+    if (lines.some((line) => isCoveringPattern(line, entryDir))) return false;
+    return !hasNegationFor(lines, entryDir);
+  });
   if (missing.length === 0) return;
 
   const suffix = content.length > 0 && !content.endsWith("\n") ? "\n" : "";

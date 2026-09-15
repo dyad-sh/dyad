@@ -211,6 +211,12 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                   richColors
                   expand
                   duration={settings?.isTestMode ? 500 : undefined}
+                  // Sonner's own 24px, plus the screenshot bar when one is up,
+                  // so toasts stack above the bar instead of covering its
+                  // buttons.
+                  offset={{
+                    bottom: "calc(24px + var(--layout-bottom-bar-height))",
+                  }}
                 />
                 {/* Next to the Toaster on purpose: it is what keeps these
                     toasts from being painted underneath the native preview. */}

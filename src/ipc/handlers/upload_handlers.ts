@@ -54,7 +54,7 @@ export function registerUploadHandlers() {
     // stops a large body mid-stream but cannot recall bytes the kernel already
     // sent -- a small body is on its way out before anyone can press anything.
     const controller = new AbortController();
-    if (uploadId) uploads.set(uploadId, controller);
+    uploads.set(uploadId, controller);
     let response;
     try {
       response = await fetch(url, {
@@ -76,7 +76,7 @@ export function registerUploadHandlers() {
       }
       throw error;
     } finally {
-      if (uploadId) uploads.delete(uploadId);
+      uploads.delete(uploadId);
     }
 
     if (!response.ok) {

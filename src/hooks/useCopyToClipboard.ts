@@ -85,7 +85,7 @@ export const useCopyToClipboard = () => {
     let consecutiveBlankLines = 0;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (openingFence === null && /^```/.test(line)) {
+      if (openingFence === null && line.startsWith("```")) {
         // Opening fence — record the bare ``` prefix so we close correctly.
         openingFence = line.match(/^(`+)/)![1];
       } else if (openingFence !== null && line === openingFence) {

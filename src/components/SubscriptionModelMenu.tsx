@@ -36,6 +36,7 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
   });
   const hasPro = settings && isDyadProEnabled(settings);
   const action = useMutation({
+    onMutate: () => fastMode.reset(),
     mutationFn: (kind: "connect" | "disconnect") =>
       kind === "connect"
         ? ipc.settings.connectCodexSubscription({
@@ -141,13 +142,11 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
         </p>
       )}
       {(status.error ||
-        fastMode.error ||
         action.error ||
         status.data?.error ||
         status.data?.setupError) && (
         <p role="alert" className="px-2 py-1 text-xs text-destructive">
-          {fastMode.error?.message ??
-            action.error?.message ??
+          {action.error?.message ??
             status.error?.message ??
             status.data?.error ??
             status.data?.setupError}
@@ -177,22 +176,27 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
           Cancel sign-in
         </DropdownMenuItem>
       )}
-      <DropdownMenuSeparator />
-      <DropdownMenuCheckboxItem
-        closeOnClick={false}
-        checked={settings?.chatgptFastMode ?? false}
-        disabled={!settings || fastMode.isPending}
-        onCheckedChange={(checked) => fastMode.mutate(checked)}
-      >
-        <div>
-          <div>Fast mode</div>
-          <p className="text-xs text-muted-foreground">
-            Faster responses, 2x ChatGPT usage
-          </p>
-        </div>
-      </DropdownMenuCheckboxItem>
       {connected && status.data && (
         <>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem
+            closeOnClick={false}
+            checked={settings?.chatgptFastMode ?? false}
+            disabled={!settings || fastMode.isPending}
+            onCheckedChange={(checked) => fastMode.mutate(checked)}
+          >
+            <div>
+              <div>Fast mode</div>
+              <p className="text-xs text-muted-foreground">
+                Faster responses, 2x ChatGPT usage
+              </p>
+            </div>
+          </DropdownMenuCheckboxItem>
+          {fastMode.error && (
+            <p role="alert" className="px-2 py-1 text-xs text-destructive">
+              {fastMode.error.message}
+            </p>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Usage limits</DropdownMenuLabel>
           {status.data.windows.map((window) => (

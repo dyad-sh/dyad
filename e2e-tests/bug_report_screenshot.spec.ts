@@ -129,6 +129,9 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     const bar = po.page.getByTestId("screenshot-capture-bar");
     await expect(bar).toBeVisible();
     await expect(description).not.toBeVisible();
+    // Only once the dialog is fully gone, so its own focus handling has
+    // already run and cannot take focus back afterwards.
+    await expect(po.page.getByRole("dialog")).toHaveCount(0);
     // Keyboard users land on the way forward, not on the page body.
     await expect(
       bar.getByRole("button", { name: "Capture screenshot" }),

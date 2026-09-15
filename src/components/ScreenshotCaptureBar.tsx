@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useId, useLayoutEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -28,6 +28,7 @@ export function ScreenshotCaptureBar({
 }: ScreenshotCaptureBarProps) {
   const { t } = useTranslation("home");
   const root = useRef<HTMLDivElement>(null);
+  const instructionsId = useId();
 
   // Before paint, so the layout never spends a frame under the bar. Measured
   // rather than fixed: the copy wraps on a narrow window.
@@ -70,18 +71,24 @@ export function ScreenshotCaptureBar({
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
         <Camera className="h-4 w-4" />
       </span>
-      <p className="min-w-0 flex-1 text-sm">
-        <span className="font-medium">
-          {t("report.captureBarHeading")}
-        </span>{" "}
+      <p id={instructionsId} className="min-w-0 flex-1 text-sm">
+        <span className="font-medium">{t("report.captureBarHeading")}</span>{" "}
         <span className="text-muted-foreground">
           {t("report.captureBarHint")}
         </span>
       </p>
       <div className="flex shrink-0 gap-1.5">
         {/* The dialog this bar replaces took keyboard focus with it, and the
-            bar is last in tab order, so focus starts on the way forward. */}
-        <Button variant="default" size="sm" onClick={onCapture} autoFocus>
+            bar is last in tab order, so focus starts on the way forward. The
+            instructions are described to it, so a screen reader hears why
+            the dialog went and what to do next, not just a button name. */}
+        <Button
+          variant="default"
+          size="sm"
+          onClick={onCapture}
+          autoFocus
+          aria-describedby={instructionsId}
+        >
           <Camera className="mr-1.5 h-3.5 w-3.5" />
           {t("report.captureBarCapture")}
         </Button>

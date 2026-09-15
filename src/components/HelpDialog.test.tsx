@@ -2517,6 +2517,20 @@ describe("HelpDialog screenshot bar", () => {
     expect(mocks.takeScreenshot).not.toHaveBeenCalled();
   });
 
+  it("describes the instructions to the focused Capture button", async () => {
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // Focus lands on the button, so that is where a screen reader has to
+    // hear why the dialog went and what to do next.
+    const capture = screen.getByRole("button", { name: /Capture screenshot/ });
+    const described = document.getElementById(
+      capture.getAttribute("aria-describedby") ?? "",
+    );
+    expect(described?.textContent).toContain("Go to where the bug is.");
+    expect(described?.textContent).toContain("Your report is saved");
+  });
+
   it("renders straight under the body", async () => {
     await openForm();
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));

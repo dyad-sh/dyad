@@ -266,7 +266,9 @@ describe("sub-agent review orchestration", () => {
       reviewBarrierRequested: false,
       wasCancelled: true,
     });
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(mocks.dispatchQueueEvent).toHaveBeenCalledTimes(1);
+    });
 
     expect(hasPendingReviewContinuation(7)).toBe(false);
     expect(continuation).not.toHaveBeenCalled();

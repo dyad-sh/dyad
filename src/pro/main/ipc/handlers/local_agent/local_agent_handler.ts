@@ -2125,7 +2125,8 @@ export async function handleLocalAgentStream(
       );
       if (
         unsynthesizedThreadIds.length > 0 &&
-        synthesisLoops < maxSynthesisLoops
+        synthesisLoops < maxSynthesisLoops &&
+        totalStepsExecuted < maxToolCallSteps
       ) {
         synthesisLoops += 1;
         const explorers = await waitForSubagents(

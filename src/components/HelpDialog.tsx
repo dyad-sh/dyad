@@ -818,7 +818,6 @@ export function HelpDialog() {
         screenshot: outgoingScreenshot,
         diagnostics,
         sessionId,
-        redactedUserId: userBudget?.redactedUserId,
       }),
       isDyadProUser,
     });

@@ -36,9 +36,11 @@ export interface ScreenshotOutcome {
  * diagnostic field is capped so that no single one can push the body over,
  * which is what the per-field tests pin. Nine saturating at once would go
  * over, and no machine reports values like that -- in practice only a
- * non-ASCII Windows node path comes close to its cap. `buildIssueUrl` never truncates -- the inputs are capped instead,
- * which is what makes the limit visible to the reporter while they type
- * rather than silently after they submit.
+ * non-ASCII Windows node path comes close to its cap.
+ *
+ * `buildIssueUrl` never truncates -- the inputs are capped instead, which is
+ * what makes the limit visible to the reporter while they type rather than
+ * silently after they submit.
  *
  * The budgets below are counted in ENCODED characters, not in characters
  * typed, because that is the unit the ceiling is measured in and the two are
@@ -411,8 +413,6 @@ export interface IssueBodyParams {
   diagnostics: Diagnostics | "unavailable" | null;
   /** Set when a chat session was uploaded alongside the report. */
   sessionId: string | null;
-  /** Shown so a maintainer knows a Pro reporter filed this. */
-  redactedUserId?: string;
 }
 
 export function buildIssueBody({
@@ -420,7 +420,6 @@ export function buildIssueBody({
   screenshot,
   diagnostics,
   sessionId,
-  redactedUserId,
 }: IssueBodyParams): string {
   const sections = [
     "<!-- Please fill in all fields in English -->",
@@ -435,13 +434,15 @@ export function buildIssueBody({
     formatScreenshotStatusLine(screenshot),
   ];
 
+  // The Pro user ID belongs to the system information, where the reporter
+  // was shown it and agreed to publish it. It is not repeated here, because
+  // this section is written even when they unticked that.
   if (sessionId) {
     sections.push(
       "",
       "## Chat session",
       `Session ID: ${field(sessionId)}`,
       "Session Schema: v2.0",
-      `Pro User ID: ${field(redactedUserId || "n/a")}`,
     );
   }
 

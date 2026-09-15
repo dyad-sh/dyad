@@ -272,11 +272,12 @@ describe("buildIssueBody", () => {
       screenshot: { status: "declined" },
       diagnostics: null,
       sessionId: "v2:abc",
-      redactedUserId: "user-abc",
     });
     expect(withSession).toContain("Session ID: v2:abc");
     expect(withSession).toContain("Session Schema: v2.0");
-    expect(withSession).toContain("Pro User ID: user-abc");
+    // The Pro user ID is disclosed as part of the system information, so a
+    // reporter who unticked that must not publish it through the session.
+    expect(withSession).not.toContain("Pro User ID");
 
     const without = buildIssueBody({
       description: "it crashed",
@@ -452,7 +453,6 @@ describe("diagnostics field caps", () => {
           userBudget,
         },
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-        redactedUserId: "user-abc",
       }),
     });
 
@@ -524,7 +524,6 @@ describe("issue URL budget", () => {
         },
         diagnostics: worstCaseDiagnostics,
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-        redactedUserId: "user-abc",
       }),
     });
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
@@ -580,7 +579,6 @@ describe("issue URL budget", () => {
           debugInfo: { ...worstCaseDebugInfo, ...override },
         },
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-        redactedUserId: "user-abc",
       }),
     });
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
@@ -605,7 +603,6 @@ describe("issue URL budget", () => {
           } as unknown as UserSettings,
         },
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-        redactedUserId: "user-abc",
       }),
     });
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
@@ -628,7 +625,6 @@ describe("issue URL budget", () => {
             } as unknown as ModelSelection,
           },
           sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-          redactedUserId: "user-abc",
         }),
       });
       expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
@@ -647,16 +643,12 @@ describe("issue URL budget", () => {
           userBudget: { redactedUserId: absurd } as UserBudgetInfo,
         },
         sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-        redactedUserId: "user-abc",
       }),
     });
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
   });
 
-  it.each([
-    ["session id", { sessionId: absurd }],
-    ["pro user id", { redactedUserId: absurd }],
-  ])("keeps an oversized %s under the ceiling", (_name, override) => {
+  it("keeps an oversized session id under the ceiling", () => {
     const url = buildIssueUrl({
       title: ISSUE_TITLE,
       labels: ["bug", "pro"],
@@ -664,9 +656,7 @@ describe("issue URL budget", () => {
         description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
         screenshot: { status: "captured" },
         diagnostics: worstCaseDiagnostics,
-        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
-        redactedUserId: "user-abc",
-        ...override,
+        sessionId: absurd,
       }),
     });
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);

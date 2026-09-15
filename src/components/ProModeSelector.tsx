@@ -96,7 +96,20 @@ export function ProModeSelector() {
                 >
                   ChatGPT Subscription
                 </ToggleGroupItem>
-                <ToggleGroupItem value="pro" className="text-xs">
+                <ToggleGroupItem
+                  value="pro"
+                  className="text-xs"
+                  onClick={() => {
+                    // Disconnected accounts display Pro even when the saved
+                    // preference still requires subscription credentials.
+                    // Clicking that selected toggle emits an empty value.
+                    if (
+                      !subscription.data?.connected &&
+                      settings?.proModelUsage !== "pro"
+                    )
+                      void updateSettings({ proModelUsage: "pro" });
+                  }}
+                >
                   Pro credits
                 </ToggleGroupItem>
               </ToggleGroup>

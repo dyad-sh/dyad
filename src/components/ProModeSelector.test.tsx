@@ -52,3 +52,24 @@ it("disables subscription when disconnected", async () => {
     "true",
   );
 });
+
+it.each(["click", "keyboard"])(
+  "persists Pro credits from a disconnected subscription preference via %s",
+  async (method) => {
+    mocks.connected = false;
+    mocks.usage = "subscription";
+    const user = userEvent.setup();
+    render(<ProModeSelector />);
+    await user.click(screen.getByRole("button", { name: "Pro" }));
+    const credits = screen.getByRole("button", { name: "Pro credits" });
+    expect(credits).toHaveAttribute("aria-pressed", "true");
+    if (method === "click") await user.click(credits);
+    else {
+      credits.focus();
+      await user.keyboard("{Enter}");
+    }
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      proModelUsage: "pro",
+    });
+  },
+);

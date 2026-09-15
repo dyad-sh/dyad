@@ -29,6 +29,54 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("Codex subscription Responses adapter", () => {
+  it.each([502, 503])(
+    "retries HTTP %s on the same subscription",
+    async (status) => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response("private upstream context", { status }),
+        )
+        .mockResolvedValueOnce(
+          new Response("data: [DONE]\n\n", {
+            headers: { "content-type": "text/event-stream" },
+          }),
+        );
+      vi.stubGlobal("fetch", fetch);
+      const model = await createCodexSubscriptionModel("test");
+      const result = await model.doStream({ prompt: [] });
+      await result.stream.cancel();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls[1]).toEqual(fetch.mock.calls[0]);
+    },
+  );
+
+  it("bounds server retries and preserves a sanitized final error", async () => {
+    const fetch = vi.fn(async () => new Response("secret", { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    const model = await createCodexSubscriptionModel("test");
+    await expect(model.doStream({ prompt: [] })).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: "ChatGPT subscription request failed (HTTP 503).",
+      cause: undefined,
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("cancels during server retry backoff", async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn(async () => {
+      setTimeout(() => controller.abort(), 10);
+      return new Response("unavailable", { status: 503 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const model = await createCodexSubscriptionModel("test");
+    await expect(
+      model.doStream({ prompt: [], abortSignal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   async function rejectedRequest(body: string, status = 400) {
     vi.stubGlobal("fetch", async () => new Response(body, { status }));
     const model = await createCodexSubscriptionModel("test");

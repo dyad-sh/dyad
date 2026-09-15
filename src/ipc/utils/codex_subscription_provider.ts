@@ -17,6 +17,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { safeGithubOpsErrorMessage } from "../services/github_ops_safe_error";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   excludeSubscriptionReasoning,
   SubscriptionReasoningExclusions,
@@ -131,7 +132,7 @@ export async function createCodexSubscriptionModel(
         )
         .digest("hex");
       body.input = reasoningExclusions.filter(scope, body.input as unknown[]);
-      const send = () => {
+      const sendOnce = () => {
         init?.signal?.throwIfAborted();
         return fetch(ENDPOINT, {
           method: "POST",
@@ -146,6 +147,18 @@ export async function createCodexSubscriptionModel(
           },
           body: JSON.stringify(body),
         });
+      };
+      // Retry rejected HTTP requests on this source only. Keep raw OAuth
+      // responses out of SDK errors, and never replay a successful stream.
+      const send = async () => {
+        for (let attempt = 0; ; attempt++) {
+          const response = await sendOnce();
+          if (response.status < 500 || attempt === 2) return response;
+          await response.body?.cancel().catch(() => {});
+          await delay(1000 * 2 ** attempt, undefined, {
+            signal: init?.signal ?? undefined,
+          });
+        }
       };
       let response = await send();
       let errorDetail:

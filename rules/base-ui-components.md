@@ -2,6 +2,10 @@
 
 ## Always Use Base UI, Never Radix UI
 
+When a ToggleGroup displays a fallback that differs from the saved preference,
+clicking its selected item can emit an empty selection. Handle explicit activation
+so users can persist that fallback, and cover both mouse and keyboard recovery.
+
 This project uses **Base UI** (`@base-ui/react`) for all headless UI primitives. **Do not use Radix UI** (`@radix-ui/*`) for any new components. This ensures:
 
 - Consistent animation/transition behavior across all menus and popups

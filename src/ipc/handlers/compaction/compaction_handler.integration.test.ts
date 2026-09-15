@@ -43,6 +43,19 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
   getModelClient: mockGetModelClient,
 }));
 
+// Keep the pinned model's metadata deterministic without a remote catalog.
+vi.mock("@/ipc/utils/findLanguageModel", () => ({
+  findLanguageModel: async (model: { name: string }) =>
+    model.name === "gpt-5.6-luna"
+      ? {
+          effortSettings: {
+            defaultEffortLevel: "high",
+            possibleEffortLevels: ["medium", "high"],
+          },
+        }
+      : undefined,
+}));
+
 vi.mock("@/ipc/utils/provider_options", () => ({
   DYAD_INTERNAL_REQUEST_ID_HEADER: "x-dyad-request-id",
   getAiHeaders: () => ({}),
@@ -296,6 +309,44 @@ describe("performCompaction", () => {
       },
     );
   });
+
+  it.each(["pro", "subscription"] as const)(
+    "discards a saved %s connection after Pro is disabled",
+    async (connection) => {
+      testDb
+        .update(chats)
+        .set({
+          modelSelection: {
+            provider: "openai",
+            name: "gpt-4o",
+            effortLevel: "medium",
+            connection,
+          },
+        })
+        .where(eq(chats.id, chatId))
+        .run();
+      settingsState.current = {
+        enableDyadPro: false,
+        providerSettings: { openai: { apiKey: { value: "configured-key" } } },
+      };
+      mockStreamText.mockReturnValue({ textStream: textStream(["Summary"]) });
+
+      const result = await performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "request-id",
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockGetModelClient).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "openai", name: "gpt-4o" }),
+        expect.objectContaining({ enableDyadPro: false }),
+        expect.not.objectContaining({ connection: expect.anything() }),
+      );
+      expect((await loadChat())?.modelSelection?.connection).toBe(connection);
+    },
+  );
 
   it("single-flights concurrent compaction attempts for one chat", async () => {
     let releaseSummary!: () => void;

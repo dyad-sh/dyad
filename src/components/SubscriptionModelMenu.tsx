@@ -12,10 +12,12 @@ import {
 import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
 import { useSettings } from "@/hooks/useSettings";
 import { hasDyadProKey } from "@/lib/schemas";
+import { useState } from "react";
 
 export function SubscriptionModelMenu() {
   const client = useQueryClient();
-  const status = useSubscriptionAccount();
+  const [open, setOpen] = useState(false);
+  const status = useSubscriptionAccount(open);
   const { settings } = useSettings();
   const hasPro = settings && hasDyadProKey(settings);
   const action = useMutation({
@@ -29,7 +31,7 @@ export function SubscriptionModelMenu() {
   });
   const connected = status.data?.connected;
   return (
-    <DropdownMenuSub>
+    <DropdownMenuSub open={open} onOpenChange={setOpen}>
       <DropdownMenuSubTrigger
         openOnHover
         delay={100}

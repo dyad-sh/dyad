@@ -195,6 +195,8 @@ export async function performCompaction(
     const selectedModel = chat?.modelSelection
       ? await normalizeModelSelection(chat.modelSelection)
       : await resolveDefaultModelSelection(storedSettings);
+    // Stored connections describe an earlier turn, not this auxiliary request.
+    const { connection: _connection, ...modelIdentity } = selectedModel;
     const compactionModel = isDyadProEnabled(storedSettings)
       ? await resolveModelSelection({
           model: PRO_COMPACTION_MODEL,
@@ -203,7 +205,7 @@ export async function performCompaction(
               getModelPreferenceKey(PRO_COMPACTION_MODEL)
             ],
         })
-      : selectedModel;
+      : modelIdentity;
     const settings = { ...storedSettings, selectedModel: compactionModel };
     logger.info(`Starting compaction for chat ${chatId}`);
 

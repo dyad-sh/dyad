@@ -41,6 +41,8 @@ order across Agent, Build, Ask and Plan. Eligible OpenAI models use the connecte
 ChatGPT subscription, including auxiliary and subagent calls through the shared
 model client. Explicit Pro credits still overrides subscription routing.
 Subscription failures never advance to a paid fallback candidate.
+HTTP 5xx responses retry twice on the same subscription with cancellable backoff
+before surfacing a sanitized error. Successful streams are never replayed.
 Engine-owned tool services and opaque server-side model selections retain their
 existing routes; the client cannot redirect a model selected inside a remote service.
 
@@ -50,6 +52,10 @@ are in that link. The app only shows success for a verified pending local
 connection. Copy discloses **up to 1.5 Pro credits / 1M tokens**; rates below are
 unchanged. Usage limits show an informational banner, never an automatic payment
 source switch.
+Account status polls every thirty minutes when idle, immediately when the usage
+submenu opens, and every thirty seconds while it remains open. Pending browser
+sign-in keeps its short completion-polling interval. Usage endpoint responses
+retain their independent one-minute cache.
 
 Subscription replies are labeled `ChatGPT subscription (resolved model)`.
 Persisted history retains reasoning and provider metadata when using a

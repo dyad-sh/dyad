@@ -188,6 +188,13 @@ describe("ensureDyadGitignored", () => {
       const result = await runTwice("//.dyad/\n");
       expect(result).toBe("//.dyad/\n.dyad/\n");
     });
+
+    it("does not treat a trailing-tab pattern like .dyad/<tab> as covered", async () => {
+      // Git treats the trailing tab literally; the pattern does not ignore
+      // .dyad/ contents, so the canonical rule must still be appended.
+      const result = await runTwice(".dyad/\t\n");
+      expect(result).toBe(".dyad/\t\n.dyad/\n");
+    });
   });
 
   describe("never overrides a selective un-ignore (negation)", () => {
@@ -241,6 +248,22 @@ describe("ensureDyadGitignored", () => {
       const initial = ".dyad/*\n!**/.dyad/global-rules.md\n";
       const result = await runTwice(initial);
       expect(result).toBe(initial);
+    });
+
+    it("preserves a root-anchored recursive-prefix negation like !/**/.dyad/<file>", async () => {
+      // "/**/.dyad/keep" is a valid negation per git's pattern format (/**/
+      // matches zero or more directories including the root); the canonical
+      // .dyad/ must not be appended.
+      const initial = ".dyad/*\n!/**/.dyad/global-rules.md\n";
+      const result = await runTwice(initial);
+      expect(result).toBe(initial);
+    });
+
+    it("treats /**/.dyad/ (root-anchored recursive prefix) as covered", async () => {
+      // "/**/.dyad/" matches the .dyad directory at the repo root via the
+      // /**/ zero-or-more-directories wildcard.
+      const result = await runTwice("/**/.dyad/\n");
+      expect(result).toBe("/**/.dyad/\n");
     });
   });
 

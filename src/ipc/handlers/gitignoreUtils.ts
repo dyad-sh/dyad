@@ -24,8 +24,8 @@ function normalizePattern(pattern: string): string {
   return pattern
     .replace(/^[ \t]+/, "") // leading whitespace (already guarded by callers)
     .replace(/ +$/, "") // trailing spaces only (matches git behaviour)
-    .replace(/^\*\*\//, "") // optional recursive prefix "**/", single occurrence
     .replace(/^\//, "") // single leading slash (repo-root anchor only)
+    .replace(/^\*\*\//, "") // optional recursive prefix "**/", single occurrence
     .replace(/\/\*{1,2}$/, "") // trailing "/*" or "/**" (exactly one slash)
     .replace(/\/$/, ""); // trailing slash (directory marker)
 }
@@ -36,8 +36,15 @@ function normalizePattern(pattern: string): string {
  * root) or all of its contents.
  */
 function isCoveringPattern(line: string, entryDir: string): boolean {
-  const t = line.trim();
-  if (t === "" || t.startsWith("#") || t.startsWith("!")) return false;
+  // Strip only trailing spaces (git discards trailing spaces but treats tabs
+  // literally), then check leading whitespace before normalizing.
+  const t = line.replace(/ +$/, "");
+  if (
+    t === "" ||
+    t.trimStart().startsWith("#") ||
+    t.trimStart().startsWith("!")
+  )
+    return false;
   // Git treats leading whitespace as literal characters, so a pattern with
   // leading spaces would not match the same paths as the unindented form.
   // Only consider a pattern covering if it has no leading whitespace.

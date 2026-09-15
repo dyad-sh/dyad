@@ -273,14 +273,19 @@ export function HelpDialog() {
     hasNavigated.current = true;
   };
 
-  const resetDialogState = () => {
-    setScreen("main");
-    setDirection(0);
+  /**
+   * Everything a report consists of, back to blank. The one place it is
+   * listed: a field left out of any of the paths through here would carry
+   * over from one report to the next.
+   */
+  const clearReport = () => {
+    cancelReport();
     setReportOpen(false);
     setDescription("");
     setAtCap(false);
     setIncludeSystemInfo(true);
     setIncludeSession(true);
+    setSessionChatId(null);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
     setDebugBundle(null);
@@ -290,8 +295,12 @@ export function HelpDialog() {
     showCapture(null);
     setIsCapturing(false);
     setIsFiling(false);
-    setSessionChatId(null);
-    cancelReport();
+  };
+
+  const resetDialogState = () => {
+    clearReport();
+    setScreen("main");
+    setDirection(0);
     hasNavigated.current = false;
     preloadedChatId.current = null;
   };
@@ -388,24 +397,11 @@ export function HelpDialog() {
   const beginReport = (chatId: number | null, source: ReportSource) => {
     reportSource.current = source;
     posthog.capture("issue-form:opened", { source });
-    cancelReport();
+    clearReport();
     blockedReported.current = false;
     setReportOpen(true);
-    setDescription("");
-    setAtCap(false);
-    setIncludeSystemInfo(true);
-    setIncludeSession(true);
     setSessionChatId(chatId);
-    setScreenshot(null);
-    setScreenshotPreview(null);
-    showCapture(null);
-    setIsCapturing(false);
-    setIsFiling(false);
-    setFormDebugInfo(null);
-    setFormDebugInfoFailed(false);
     setDiagnosticsRun((run) => run + 1);
-    setDebugBundle(null);
-    setBundleLoading(false);
   };
 
   const startReport = () => {
@@ -422,14 +418,7 @@ export function HelpDialog() {
   };
 
   const handleBack = () => {
-    cancelReport();
-    setIsFiling(false);
-    setReportOpen(false);
-    setDescription("");
-    setAtCap(false);
-    setScreenshot(null);
-    setScreenshotPreview(null);
-    showCapture(null);
+    clearReport();
     navigateTo("main");
   };
 

@@ -1,3 +1,4 @@
+import { INFERENCE_SOURCES } from "@/shared/inference_source";
 import { sql } from "drizzle-orm";
 import {
   index,
@@ -188,6 +189,7 @@ export const messages = sqliteTable(
     maxTokensUsed: integer("max_tokens_used"),
     // Model name used for this message (only for assistant messages)
     model: text("model"),
+    inferenceSource: text("inference_source", { enum: INFERENCE_SOURCES }),
     // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
     aiMessagesJson: text("ai_messages_json", {
       mode: "json",

@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `inference_source` text;

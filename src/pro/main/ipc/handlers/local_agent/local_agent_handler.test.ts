@@ -545,6 +545,138 @@ describe("Explorer synthesis", () => {
 });
 
 describe("buildChatMessageHistory subscription history", () => {
+  it.each([
+    ["subscription", "pro", "gpt-5", false],
+    ["subscription", "api-key", "gpt-5", false],
+    ["subscription", "local", "gpt-5", false],
+    ["subscription", "subscription", "gpt-5", true],
+    [null, "pro", "ChatGPT subscription (gpt-5)", false],
+    ["pro", "pro", "ChatGPT subscription (gpt-5)", true],
+    [null, "pro", "gpt-5", true],
+  ] as const)(
+    "replays %s → %s (%s), preserving reasoning: %s",
+    (source, target, model, keep) => {
+      const persisted: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "reasoning",
+              text: "reasoning",
+              providerOptions: {
+                openai: {
+                  reasoningEncryptedContent: "secret",
+                  itemId: "stale",
+                },
+              },
+            },
+            { type: "text", text: "answer" },
+            {
+              type: "tool-call",
+              toolName: "read_file",
+              toolCallId: "call-1",
+              input: {},
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolName: "read_file",
+              toolCallId: "call-1",
+              output: { type: "text", value: "file" },
+            },
+          ],
+        },
+      ];
+      const original = structuredClone(persisted);
+      const history = buildChatMessageHistory(
+        [
+          {
+            id: 1,
+            role: "assistant",
+            content: "answer",
+            model,
+            inferenceSource: source,
+            aiMessagesJson: persisted,
+            isCompactionSummary: false,
+            createdAt: new Date(),
+          },
+        ],
+        { inferenceSource: target },
+      );
+      expect(JSON.stringify(history).includes("secret")).toBe(keep);
+      expect(history).toEqual([
+        {
+          ...persisted[0],
+          content: keep
+            ? [
+                {
+                  type: "reasoning",
+                  text: "reasoning",
+                  providerOptions: {
+                    openai: { reasoningEncryptedContent: "secret" },
+                  },
+                },
+                ...(persisted[0].content as any[]).slice(1),
+              ]
+            : (persisted[0].content as any[]).slice(1),
+        },
+        persisted[1],
+      ]);
+      expect(persisted).toEqual(original);
+    },
+  );
+
+  it("sanitizes retained subscription history after compaction and excludes the in-flight placeholder", () => {
+    const row = (id: number, content: string) => ({
+      id,
+      role: "assistant",
+      content,
+      aiMessagesJson: null,
+      isCompactionSummary: false,
+      createdAt: new Date(id * 1000),
+    });
+    const encrypted: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "private",
+            providerOptions: {
+              openai: { reasoningEncryptedContent: "old-chain" },
+            },
+          },
+          { type: "text", text: "retained answer" },
+        ],
+      },
+    ];
+    const history = buildChatMessageHistory(
+      [
+        row(1, "compacted away"),
+        { ...row(2, "summary"), isCompactionSummary: true },
+        {
+          ...row(3, "retained answer"),
+          inferenceSource: "subscription",
+          aiMessagesJson: encrypted,
+        },
+        { ...row(4, "current task"), role: "user" },
+        row(5, "placeholder"),
+      ],
+      { inferenceSource: "pro", excludeMessageIds: new Set([5]) },
+    );
+    const serialized = JSON.stringify(history);
+    expect(serialized).toContain("summary");
+    expect(serialized).toContain("retained answer");
+    expect(serialized).toContain("current task");
+    expect(serialized).not.toContain("old-chain");
+    expect(serialized).not.toContain("compacted away");
+    expect(serialized).not.toContain("placeholder");
+  });
+
   it("preserves persisted reasoning and provider metadata on subscription messages", () => {
     const persisted: ModelMessage[] = [
       {
@@ -1476,6 +1608,74 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Model selection", () => {
+    it.each([
+      ["openai", "subscription", true, "subscription"],
+      ["openai", "pro", true, "pro"],
+      ["ollama", undefined, false, "local"],
+      ["custom", undefined, false, "api-key"],
+    ] as const)(
+      "persists Auto's actual %s/%s source",
+      async (provider, connection, isEngineEnabled, source) => {
+        const { event } = createFakeEvent();
+        mockSettings = buildTestSettings({ enableDyadPro: true });
+        mockChatData = buildTestChat({
+          modelSelection: {
+            provider: "auto",
+            name: "auto",
+            effortLevel: "medium",
+          },
+        });
+        vi.mocked(getModelClient).mockResolvedValueOnce({
+          modelClient: {
+            model: { id: "test-model" } as never,
+            builtinProviderId: "openai",
+            getRuntimeModel: () => ({
+              provider,
+              name: "resolved-model",
+              effortLevel: "medium",
+              connection,
+            }),
+          },
+          runtimeModel: { provider: "auto", name: "auto" },
+          isEngineEnabled,
+        });
+        mockStreamTextImpl = (options) => ({
+          ...createFakeStream([{ type: "text-delta", text: "Done" }]),
+          fullStream: (async function* () {
+            await options.onStepFinish({
+              usage: { totalTokens: 1 },
+              toolCalls: [],
+              response: { modelId: "resolved-model" },
+            });
+            yield { type: "text-delta", text: "Done" };
+          })(),
+        });
+        await handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "test" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        );
+        expect(
+          dbOperations.updates.some(
+            (update) => update.data.inferenceSource === source,
+          ),
+        ).toBe(true);
+        if (source === "subscription") {
+          expect(
+            dbOperations.updates.some(
+              (update) =>
+                update.data.model === "ChatGPT subscription (resolved-model)",
+            ),
+          ).toBe(true);
+        }
+      },
+    );
+
     it("uses an explicit model override ahead of the chat selection", async () => {
       const { event } = createFakeEvent();
       const modelSelectionOverride = {
@@ -2519,6 +2719,7 @@ describe("handleLocalAgentStream", () => {
               role: "assistant",
               content: "old context assistant",
               aiMessagesJson: [oldAssistant],
+              inferenceSource: "subscription",
               createdAt: new Date("2025-01-01T00:01:00Z"),
             },
             {

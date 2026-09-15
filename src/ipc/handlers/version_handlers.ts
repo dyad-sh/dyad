@@ -1649,6 +1649,7 @@ export function registerVersionHandlers() {
             | "requestId"
             | "maxTokensUsed"
             | "model"
+            | "inferenceSource"
             | "aiMessagesJson"
             | "isCompactionSummary"
             | "createdAt";
@@ -1740,6 +1741,7 @@ export function registerVersionHandlers() {
                     requestId: m.requestId,
                     maxTokensUsed: m.maxTokensUsed,
                     model: m.model,
+                    inferenceSource: m.inferenceSource,
                     aiMessagesJson: m.aiMessagesJson,
                     // Don't carry over the free-agent quota flag. The copied
                     // messages represent already-completed turns; preserving the

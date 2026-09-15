@@ -60,6 +60,15 @@ it.each(["ask", "build", "local-agent", "plan"] as const)(
       ),
     ).toBe(true);
     expect(h.credits).toHaveBeenCalledTimes(1);
+    const stored = await harness.db.select().from(messages);
+    expect(
+      stored
+        .filter((message) => message.role === "assistant")
+        .every((message) => message.inferenceSource === "api-key"),
+    ).toBe(true);
+    expect(
+      stored.find((message) => message.role === "user")?.inferenceSource,
+    ).toBeNull();
   },
   30_000,
 );

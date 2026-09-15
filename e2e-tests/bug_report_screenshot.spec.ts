@@ -129,6 +129,10 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     const bar = po.page.getByTestId("screenshot-capture-bar");
     await expect(bar).toBeVisible();
     await expect(description).not.toBeVisible();
+    // Keyboard users land on the way forward, not on the page body.
+    await expect(
+      bar.getByRole("button", { name: "Capture screenshot" }),
+    ).toBeFocused();
 
     // The bar survives the reporter moving around the app.
     await po.navigation.goToSettingsTab();

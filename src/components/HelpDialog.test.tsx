@@ -2487,6 +2487,30 @@ describe("HelpDialog screenshot bar", () => {
     expect(barHeight()).toBe("");
   });
 
+  it("puts keyboard focus on Capture when the bar appears", async () => {
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // The dialog took focus with it, and the bar is last in tab order.
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Capture screenshot/ }),
+    );
+  });
+
+  it("goes back to the report on Escape from the bar", async () => {
+    await openForm("half-written report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    fireEvent.keyDown(
+      screen.getByRole("button", { name: /Capture screenshot/ }),
+      { key: "Escape" },
+    );
+
+    expect(await screen.findByDisplayValue("half-written report")).toBeTruthy();
+    expect(captureBar()).toBeNull();
+    expect(mocks.takeScreenshot).not.toHaveBeenCalled();
+  });
+
   it("renders straight under the body", async () => {
     await openForm();
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));

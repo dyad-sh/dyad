@@ -55,6 +55,13 @@ export function ScreenshotCaptureBar({
       role="region"
       aria-label={t("home:report.captureBarLabel")}
       data-testid="screenshot-capture-bar"
+      // Only while focus is inside the bar, so it cannot swallow an Escape
+      // meant for something else on the page.
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        onCancel();
+      }}
       className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 border-t-2 border-primary/70 bg-(--background-lightest) px-4 py-2 shadow-[0_-2px_8px_rgba(0,0,0,0.08)]"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -69,7 +76,9 @@ export function ScreenshotCaptureBar({
         </span>
       </p>
       <div className="flex shrink-0 gap-1.5">
-        <Button variant="default" size="sm" onClick={onCapture}>
+        {/* The dialog this bar replaces took keyboard focus with it, and the
+            bar is last in tab order, so focus starts on the way forward. */}
+        <Button variant="default" size="sm" onClick={onCapture} autoFocus>
           <Camera className="mr-1.5 h-3.5 w-3.5" />
           {t("home:report.captureBarCapture")}
         </Button>

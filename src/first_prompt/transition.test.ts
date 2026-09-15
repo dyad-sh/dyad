@@ -261,4 +261,32 @@ describe("first-prompt transition", () => {
       commands: [{ type: "ScheduleProviderCheckTimeout" }],
     });
   });
+
+  it.each(["failed", "failedPartial"] as const)(
+    "arms the setup detour from %s, mirroring idle",
+    (type) => {
+      const state: FirstPromptState =
+        type === "failed"
+          ? { type: "failed", payload, message: "boom" }
+          : {
+              type: "failedPartial",
+              payload,
+              appId: 1,
+              appName: "Notes",
+              chatId: 2,
+              message: "boom",
+              step: "theme",
+            };
+
+      expect(transition(state, { type: "ARM_FOR_SETUP", payload })).toEqual({
+        kind: "applied",
+        state: {
+          type: "awaitingProviderSetup",
+          payload,
+          reason: "manual",
+        },
+        commands: [{ type: "ShowSetupDialog" }],
+      });
+    },
+  );
 });

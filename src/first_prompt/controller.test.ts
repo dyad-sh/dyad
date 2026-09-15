@@ -148,6 +148,46 @@ describe("FirstPromptController", () => {
     expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the setup dialog when ARM_FOR_SETUP is sent from failed", async () => {
+    const harness = createHarness();
+    (harness.deps.createApp as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("create failed"),
+    );
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    expect(harness.controller.getSnapshot().type).toBe("failed");
+
+    const accepted = harness.controller.send({
+      type: "ARM_FOR_SETUP",
+      payload,
+    });
+    await flushCommands();
+
+    expect(accepted).toBe(true);
+    expect(harness.controller.getSnapshot().type).toBe("awaitingProviderSetup");
+    expect(harness.deps.showSetupDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the setup dialog when ARM_FOR_SETUP is sent from failedPartial", async () => {
+    const harness = createHarness();
+    harness.setThemeError(new Error("theme failed"));
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    expect(harness.controller.getSnapshot().type).toBe("failedPartial");
+
+    const accepted = harness.controller.send({
+      type: "ARM_FOR_SETUP",
+      payload,
+    });
+    await flushCommands();
+
+    expect(accepted).toBe(true);
+    expect(harness.controller.getSnapshot().type).toBe("awaitingProviderSetup");
+    expect(harness.deps.showSetupDialog).toHaveBeenCalledTimes(1);
+  });
+
   it("opens provider setup when provider detection times out", async () => {
     const harness = createHarness();
     harness.controller.send({ type: "SUBMIT", payload });

@@ -21,11 +21,19 @@ import path from "node:path";
 function normalizePattern(pattern: string): string {
   // Git discards only trailing *spaces* from patterns — not tabs or other
   // whitespace — so we must not use String.prototype.trim() here.
-  return pattern
+  const stripped = pattern
     .replace(/^[ \t]+/, "") // leading whitespace (already guarded by callers)
     .replace(/ +$/, "") // trailing spaces only (matches git behaviour)
     .replace(/^\//, "") // single leading slash (repo-root anchor only)
-    .replace(/^\*\*\//, "") // optional recursive prefix "**/", single occurrence
+    .replace(/^\*\*\//, ""); // optional recursive prefix "**/", single occurrence
+  // Reject patterns that contain a doubled slash before (or instead of) the
+  // expected trailing glob marker.  Git does not treat "//" as a valid
+  // separator, so ".dyad//*" and "/.dyad//**" do not ignore ".dyad/".
+  // Checking after the leading-anchor strips but before the trailing-glob
+  // strips ensures intermediate double-slashes (e.g. ".dyad//") are caught
+  // even when the trailing "/*" or "/" removal would hide them.
+  if (stripped.includes("//")) return "";
+  return stripped
     .replace(/\/\*{1,2}$/, "") // trailing "/*" or "/**" (exactly one slash)
     .replace(/\/$/, ""); // trailing slash (directory marker)
 }
@@ -96,7 +104,16 @@ async function ensureGitignored(
     // .gitignore doesn't exist yet — will be created below
   }
 
-  const lines = content.split(/\r?\n/);
+  // Strip a leading UTF-8 BOM if present.  Git ignores the BOM and processes
+  // rules from the first character, so a file that begins "\uFEFF!.dyad/keep"
+  // is a valid selective un-ignore.  JavaScript's trimStart() also removes
+  // U+FEFF, which would cause the leading-whitespace guard in hasNegationFor
+  // to reject the line; strip exactly one BOM here so the guard sees the real
+  // first character.
+  const contentWithoutBom = content.startsWith("\uFEFF")
+    ? content.slice(1)
+    : content;
+  const lines = contentWithoutBom.split(/\r?\n/);
   const missing = entries.filter((entry) => {
     const entryDir = normalizePattern(entry);
     if (lines.some((line) => isCoveringPattern(line, entryDir))) return false;

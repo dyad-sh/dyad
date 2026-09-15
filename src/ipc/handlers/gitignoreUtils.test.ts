@@ -195,6 +195,20 @@ describe("ensureDyadGitignored", () => {
       const result = await runTwice(".dyad/\t\n");
       expect(result).toBe(".dyad/\t\n.dyad/\n");
     });
+
+    it("does not treat a doubled-separator pattern like .dyad//* as covered", async () => {
+      // Git does not recognise ".dyad//*" as ignoring ".dyad/"; the doubled
+      // slash is not a valid anchor, so the canonical rule must be appended.
+      const result = await runTwice(".dyad//*\n");
+      expect(result).toBe(".dyad//*\n.dyad/\n");
+    });
+
+    it("does not treat a root-anchored doubled-separator pattern like /.dyad//** as covered", async () => {
+      // "/.dyad//**" contains a doubled slash and is not a valid git pattern
+      // for ignoring ".dyad/"; the canonical rule must be appended.
+      const result = await runTwice("/.dyad//**\n");
+      expect(result).toBe("/.dyad//**\n.dyad/\n");
+    });
   });
 
   describe("never overrides a selective un-ignore (negation)", () => {
@@ -272,6 +286,23 @@ describe("ensureDyadGitignored", () => {
       // /**/ zero-or-more-directories wildcard.
       const result = await runTwice("/**/.dyad/\n");
       expect(result).toBe("/**/.dyad/\n");
+    });
+
+    it("does not append when a BOM-prefixed file begins with a negation", async () => {
+      // Git strips the UTF-8 BOM and treats the rest of the first line
+      // normally.  A file beginning with "\uFEFF!.dyad/keep" is therefore a
+      // valid selective un-ignore and the canonical .dyad/ must not be
+      // appended.
+      const appPath = path.join(TEMP_BASE, "app");
+      await fs.promises.mkdir(appPath, { recursive: true });
+      const bomContent = "\uFEFF!.dyad/keep\n";
+      await writeGitignore(appPath, bomContent);
+      await ensureDyadGitignored(appPath);
+      const result = await readGitignore(appPath);
+      expect(result).toBe(bomContent);
+      // Second invocation must also be idempotent.
+      await ensureDyadGitignored(appPath);
+      expect(await readGitignore(appPath)).toBe(bomContent);
     });
   });
 

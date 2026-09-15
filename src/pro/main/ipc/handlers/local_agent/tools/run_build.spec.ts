@@ -464,6 +464,8 @@ describe("run_build", () => {
         await fs.realpath(sourceRoot),
         snapshotRoot,
         sourcePaths,
+        undefined,
+        "",
       );
     } finally {
       lstat.mockRestore();
@@ -697,6 +699,8 @@ describe("run_build", () => {
         await fs.realpath(sourceRoot),
         snapshotRoot,
         [linkPath],
+        undefined,
+        "",
       ),
     ).rejects.toMatchObject({
       kind: "precondition",
@@ -704,7 +708,11 @@ describe("run_build", () => {
     });
   });
 
-  it("removes dangling links from an isolated snapshot", async () => {
+  it("keeps a dangling link that points inside the repository", async () => {
+    // Repositories legitimately contain these — a link to something a build
+    // step produces. Deleting it makes the snapshot differ from the tree it is
+    // supposed to reproduce, and nothing can leak through a link that resolves
+    // to nothing.
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
     temporaryDirectories.push(root);
     const sourceRoot = path.join(root, "app");
@@ -719,9 +727,82 @@ describe("run_build", () => {
 
     await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
 
-    await expect(fs.lstat(danglingLink)).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    expect((await fs.lstat(danglingLink)).isSymbolicLink()).toBe(true);
+  });
+
+  it("drops a dangling link whose target would land outside", async () => {
+    // The target does not exist yet, so containment is judged on the link text:
+    // something creating that path later must not become a way out. Dropped
+    // rather than fatal — a stale link must not make the workspace unusable.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const sourceRoot = path.join(root, "app");
+    const snapshotRoot = path.join(root, "snapshot");
+    await Promise.all([fs.mkdir(sourceRoot), fs.mkdir(snapshotRoot)]);
+    const escape = path.join(snapshotRoot, "escape.txt");
+    await fs.symlink(path.join(root, "outside", "later.txt"), escape, "file");
+
+    await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
+
+    await expect(fs.lstat(escape)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps a relative dangling link under a symlinked workspace root", async () => {
+    // The walk starts at the unresolved root, so resolving the link text
+    // against it and testing against the REAL root would refuse an ordinary
+    // in-workspace link on any path behind a symlink (`/var` on macOS, or a
+    // dev user-data dir).
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const realRoot = path.join(root, "real");
+    const sourceRoot = path.join(realRoot, "app");
+    const snapshotRoot = path.join(realRoot, "snapshot");
+    await fs.mkdir(sourceRoot, { recursive: true });
+    await fs.mkdir(snapshotRoot, { recursive: true });
+    const linkedRoot = path.join(root, "linked");
+    await fs.symlink(realRoot, linkedRoot, "dir");
+    const danglingLink = path.join(linkedRoot, "snapshot", "built.js");
+    await fs.symlink("./generated/built.js", danglingLink, "file");
+
+    await secureSnapshotSymlinks(
+      path.join(linkedRoot, "app"),
+      path.join(linkedRoot, "snapshot"),
+    );
+
+    expect((await fs.lstat(danglingLink)).isSymbolicLink()).toBe(true);
+  });
+
+  it("keeps an absolute dangling link naming the unresolved source root", async () => {
+    // A dangling target exists only as the text written into the link, which
+    // carries whatever spelling of the root the caller used — the UNRESOLVED
+    // one whenever it sits behind a symlink (`/var` on macOS) or under an 8.3
+    // short name (Windows `RUNNER~1`). Judging containment against the resolved
+    // root alone deletes a link the repository legitimately contains. Remapping
+    // it is the point: left alone it would still name the user's checkout, and
+    // whatever later creates that path would read and write straight through.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const realRoot = path.join(root, "real");
+    await fs.mkdir(path.join(realRoot, "app"), { recursive: true });
+    await fs.mkdir(path.join(realRoot, "snapshot"), { recursive: true });
+    const linkedRoot = path.join(root, "linked");
+    await fs.symlink(realRoot, linkedRoot, "dir");
+    const sourceRoot = path.join(linkedRoot, "app");
+    const snapshotRoot = path.join(linkedRoot, "snapshot");
+    const danglingLink = path.join(snapshotRoot, "missing-package");
+    await fs.symlink(
+      path.join(sourceRoot, "missing-package"),
+      danglingLink,
+      "file",
+    );
+
+    await secureSnapshotSymlinks(sourceRoot, snapshotRoot);
+
+    expect((await fs.lstat(danglingLink)).isSymbolicLink()).toBe(true);
+    const realSnapshotRoot = await fs.realpath(snapshotRoot);
+    expect(
+      path.resolve(realSnapshotRoot, await fs.readlink(danglingLink)),
+    ).toBe(path.join(realSnapshotRoot, "missing-package"));
   });
 
   it("cleans only marked Dyad-owned snapshot directories", async () => {

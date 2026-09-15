@@ -214,6 +214,16 @@
     "security": "Security",
     "publish": "Publish",
     "tests": "Tests",
+    "testGate": {
+      "settingsUnavailable": "Dyad couldn't load your settings, so it can't tell how tests would run.",
+      "retry": "Retry",
+      "startApp": "Start the app to run tests.",
+      "start": "Start",
+      "neonRefusalRuntime": "Tests can't run for this app: isolated test servers aren't available in {{runtime}} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run them.",
+      "neonRefusalDisabled": "Tests can't run for this app: isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run them.",
+      "turnOnSandbox": "Turn on",
+      "openSettings": "Open Settings"
+    },
     "plan": "Plan",
     "moreOptions": "More options",
     "rebuild": "Rebuild",

@@ -75,7 +75,6 @@ export const Console = () => {
   const { settings } = useSettings();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const hasScrolledToBottom = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(
@@ -90,9 +89,6 @@ export const Console = () => {
     "all" | "server" | "client" | "edge-function" | "network-requests"
   >("all");
   const [sourceFilter, setSourceFilter] = useState<string>("");
-
-  // Track container height for responsive filter visibility
-  const prevContainerHeight = useRef(0);
 
   // Track if user is near bottom (within 100px) for auto-scroll
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -129,14 +125,7 @@ export const Console = () => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const newHeight = entry.contentRect.height;
-        const wasZero = prevContainerHeight.current === 0;
-        prevContainerHeight.current = newHeight;
         setContainerHeight(newHeight);
-        // Reset scroll flag when container becomes visible (height goes from 0 to > 0)
-        // This handles the case when console panel is opened
-        if (wasZero && newHeight > 0) {
-          hasScrolledToBottom.current = false;
-        }
       }
     });
 
@@ -292,7 +281,6 @@ export const Console = () => {
                 // atBottomThreshold makes this fire when within 100px of bottom
                 setIsNearBottom(atBottom);
                 if (atBottom) {
-                  hasScrolledToBottom.current = true;
                   // Mark initial scroll as done after first time we reach bottom
                   if (!initialScrollDone.current) {
                     initialScrollDone.current = true;

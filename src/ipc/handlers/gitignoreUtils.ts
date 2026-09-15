@@ -3,16 +3,20 @@ import path from "node:path";
 
 /**
  * Reduces a gitignore pattern to its base-name form for equality comparison.
- * Strips a leading slash (repo-root anchor), a trailing slash (directory
- * marker), and a trailing `/*` or `/**` glob that targets all of a
- * directory's contents. `/.dyad/`, `.dyad`, `.dyad/*`, and `/.dyad/**` all
- * normalize to `.dyad`.
+ * Strips an optional leading "**" recursive prefix, a single leading slash
+ * (repo-root anchor), a trailing glob, and a trailing slash (directory
+ * marker). "/.dyad/", ".dyad", ".dyad/*", ".dyad/**", and the recursive form
+ * "**" + "/.dyad/" all normalize to ".dyad".
+ *
+ * Only exact single-character anchors are stripped; repeated slashes are left
+ * un-matched (git does not treat them as valid anchors), falling through to a
+ * non-equal comparison and preserving the safe default of treating the pattern
+ * as absent.
  *
  * This is intentionally not a full gitignore parser; it only collapses the
  * common forms equivalent (for "is this directory already ignored at the
- * repo root") to the canonical `<entry>/` form. Ambiguous patterns are left
- * un-matched so the entry is treated as missing rather than silently
- * mis-handled.
+ * repo root") to the canonical form. Ambiguous patterns are left un-matched
+ * so the entry is treated as missing rather than silently mis-handled.
  */
 function normalizePattern(pattern: string): string {
   // Git discards only trailing *spaces* from patterns — not tabs or other
@@ -20,9 +24,10 @@ function normalizePattern(pattern: string): string {
   return pattern
     .replace(/^[ \t]+/, "") // leading whitespace (already guarded by callers)
     .replace(/ +$/, "") // trailing spaces only (matches git behaviour)
-    .replace(/^\/+/, "")
-    .replace(/\/+\*+$/, "")
-    .replace(/\/+$/, "");
+    .replace(/^\*\*\//, "") // optional recursive prefix "**/", single occurrence
+    .replace(/^\//, "") // single leading slash (repo-root anchor only)
+    .replace(/\/\*{1,2}$/, "") // trailing "/*" or "/**" (exactly one slash)
+    .replace(/\/$/, ""); // trailing slash (directory marker)
 }
 
 /**

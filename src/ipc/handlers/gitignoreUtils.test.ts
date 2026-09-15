@@ -137,6 +137,24 @@ describe("ensureDyadGitignored", () => {
       const result = await runTwice(".dyad/  \n");
       expect(result).toBe(".dyad/  \n");
     });
+
+    it("does not treat a leading-whitespace-indented pattern as covered", async () => {
+      // Git treats leading spaces as literal characters; "  .dyad/" is a
+      // different pattern from ".dyad/" and does not ignore .dyad/ content.
+      // The function must append the canonical rule.
+      const result = await runTwice("  .dyad/  \n");
+      expect(result).toBe("  .dyad/  \n.dyad/\n");
+    });
+
+    it("treats **/.dyad/ (recursive prefix) as covered", async () => {
+      const result = await runTwice("**/.dyad/\n");
+      expect(result).toBe("**/.dyad/\n");
+    });
+
+    it("treats **/.dyad/* as covered", async () => {
+      const result = await runTwice("**/.dyad/*\n");
+      expect(result).toBe("**/.dyad/*\n");
+    });
   });
 
   describe("does not falsely match unrelated patterns", () => {
@@ -163,6 +181,12 @@ describe("ensureDyadGitignored", () => {
     it("does not treat a glob of subdirs like .dyad/*/ as covered", async () => {
       const result = await runTwice(".dyad/*/\n");
       expect(result).toBe(".dyad/*/\n.dyad/\n");
+    });
+
+    it("does not treat a repeated-slash pattern like //.dyad/ as covered", async () => {
+      // Git does not recognize "//.dyad/" as a valid repo-root anchor.
+      const result = await runTwice("//.dyad/\n");
+      expect(result).toBe("//.dyad/\n.dyad/\n");
     });
   });
 
@@ -208,6 +232,15 @@ describe("ensureDyadGitignored", () => {
     it("ignores unrelated negations and still appends", async () => {
       const result = await runTwice("*.log\n!important.log\n");
       expect(result).toBe("*.log\n!important.log\n.dyad/\n");
+    });
+
+    it("preserves a recursive-prefix negation like !**/.dyad/<file>", async () => {
+      // "**/.dyad/global-rules.md" matches at repo root per gitignore rules,
+      // so this is a valid selective un-ignore; the canonical .dyad/ must not
+      // be appended.
+      const initial = ".dyad/*\n!**/.dyad/global-rules.md\n";
+      const result = await runTwice(initial);
+      expect(result).toBe(initial);
     });
   });
 

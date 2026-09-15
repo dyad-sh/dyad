@@ -998,9 +998,8 @@ export function HelpDialog() {
 
   return (
     <>
-      {/* Out of the sidebar this dialog is mounted in: its container carries
-          a transform, which would make the bar's fixed position relative to
-          the sidebar rather than the window. */}
+      {/* Straight under the body, so no ancestor's transform can pin the
+          bar's fixed position to anything but the window. */}
       {captureBar && createPortal(captureBar, document.body)}
       <Dialog open={isOpen} onOpenChange={dismissDialog}>
         <DialogContent

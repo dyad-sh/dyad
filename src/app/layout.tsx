@@ -32,6 +32,7 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
+import { HelpDialog } from "@/components/HelpDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import {
@@ -216,6 +217,10 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                 <PreviewNativeOverlayGuard />
                 <ReleaseNotesDialog />
                 <ForceCloseDialog />
+                {/* Outside the sidebar, whose hover handlers would otherwise
+                    hear the screenshot bar's pointer events through React's
+                    tree and keep the sidebar expanded. */}
+                <HelpDialog />
               </SidebarProvider>
             </DeepLinkProvider>
           </ThemeProvider>

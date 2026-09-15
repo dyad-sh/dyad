@@ -30,7 +30,6 @@ import {
 import { cn } from "@/lib/utils";
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
-import { HelpDialog } from "./HelpDialog";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { SettingsList } from "./SettingsList";
 import { LibraryList } from "./LibraryList";
@@ -323,7 +322,6 @@ export function AppSidebar() {
               isExpanded={state === "expanded"}
               onClick={() => setHelpDialog({ open: true })}
             />
-            <HelpDialog />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

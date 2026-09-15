@@ -2487,12 +2487,12 @@ describe("HelpDialog screenshot bar", () => {
     expect(barHeight()).toBe("");
   });
 
-  it("renders outside the sidebar the dialog is mounted in", async () => {
+  it("renders straight under the body", async () => {
     await openForm();
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
 
-    // The sidebar's container carries a transform, which would make the bar's
-    // fixed position relative to the sidebar instead of the window.
+    // No ancestor's transform can then pin the bar's fixed position to
+    // anything but the window.
     expect(captureBar()?.parentElement).toBe(document.body);
   });
 });

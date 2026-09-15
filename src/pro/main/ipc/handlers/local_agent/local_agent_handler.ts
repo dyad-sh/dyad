@@ -1284,6 +1284,10 @@ export async function handleLocalAgentStream(
     // there are still incomplete todos, we append a reminder and do another pass.
     const maxTodoFollowUpLoops = 1;
     let todoFollowUpLoops = 0;
+    // Bound the number of Explorer synthesis passes per turn to prevent
+    // followup_task re-arming from looping indefinitely.
+    const maxSynthesisLoops = 4;
+    let synthesisLoops = 0;
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     // These messages never enter the DB transcript used by compaction.
@@ -2119,7 +2123,8 @@ export async function handleLocalAgentStream(
           !deliveredExplorerThreadIds.includes(threadId) &&
           !synthesizedExplorerThreadIds.has(threadId),
       );
-      if (unsynthesizedThreadIds.length > 0) {
+      if (unsynthesizedThreadIds.length > 0 && synthesisLoops < maxSynthesisLoops) {
+        synthesisLoops += 1;
         const explorers = await waitForSubagents(
           ctx.chatId,
           unsynthesizedThreadIds,
@@ -2141,7 +2146,7 @@ export async function handleLocalAgentStream(
         turnOnlyBaseMessages.push(synthesisMessage);
         currentMessageHistory = [...currentMessageHistory, synthesisMessage];
         logger.info(
-          `Starting mandatory Explorer synthesis pass for chat ${req.chatId}`,
+          `Starting mandatory Explorer synthesis pass ${synthesisLoops}/${maxSynthesisLoops} for chat ${req.chatId}`,
         );
         continue;
       }

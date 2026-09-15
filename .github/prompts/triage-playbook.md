@@ -118,7 +118,7 @@ after payment, or charged more than expected.
 **Assessment:** `needs_human`
 
 **Tell the reporter:** someone from the Dyad team will check the account. Ask
-for the session id (**Help** > **Upload Chat Session**) and roughly how many
+for the session id (**Help** > **Report a Bug** with **Chat session** on) and roughly how many
 credits were affected. Never promise a refund or credit adjustment.
 
 **Source:** #3394, #3611, #3658, #4140, #4354, #3610.
@@ -248,8 +248,8 @@ happens.
 **Assessment:** `needs_human`
 
 **Tell the reporter:** update to the latest version (stability work landed in
-1.7.0). Then, if it happens again, open **Help** > **Upload Chat Session** and
-paste the session id here. If logs are trimmed, the team may ask for the `main`
+1.7.0). Then, if it happens again, open **Help** > **Report a Bug** with
+**Chat session** on. If logs are trimmed, the team may ask for the `main`
 log file from `%APPDATA%\dyad\logs` on Windows.
 
 **Source:** #3490, #4294, #3863, #3980.

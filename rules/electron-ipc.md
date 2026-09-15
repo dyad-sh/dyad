@@ -394,3 +394,8 @@ When creating hooks/components that call IPC handlers:
 When billing direct OpenAI-compatible model streams, set the provider's
 `includeUsage: true`; otherwise the SDK omits `stream_options.include_usage`
 and providers may return no final token counts. Enable it only on billed routes.
+
+Keep chat-turn network preflight outside `withChatQueueLock`; recheck the model,
+mode and billing settings under the lock before acceptance, including after a
+failed preflight. Cancellation should release a turn's wait without aborting
+shared account/token refreshes needed by other chats.

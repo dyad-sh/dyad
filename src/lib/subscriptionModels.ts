@@ -1,6 +1,6 @@
 import type { LargeLanguageModel, UserSettings } from "./schemas";
 
-/** The account's Codex model catalog is authoritative, not a name-prefix guess. */
+/** Use the effective account catalog shared by picker status and backend routing. */
 export function usesChatGPTSubscription(
   model: Pick<LargeLanguageModel, "provider" | "name">,
   settings: Pick<

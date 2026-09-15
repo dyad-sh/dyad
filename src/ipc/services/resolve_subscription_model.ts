@@ -26,7 +26,7 @@ export async function resolveSubscriptionModel(
   }
   if (settings.proModelUsage === "pro" || model.provider !== "openai")
     return { ...identity, connection: "pro" };
-  const account = await getSubscriptionAccount();
+  const account = await getSubscriptionAccount({ includeUsage: false });
   if (account.credentialError)
     throw new DyadError(
       "Saved ChatGPT credentials could not be opened. Reconnect your ChatGPT subscription or select Pro credits in the Pro menu.",
@@ -35,6 +35,8 @@ export async function resolveSubscriptionModel(
   // An abandoned sign-in can leave a status error without a connection. It
   // belongs in the account UI and must not block ordinary Pro-credit turns.
   if (!account.connected) return { ...identity, connection: "pro" };
+  if (account.error && !account.models.length)
+    throw new DyadError(account.error, DyadErrorKind.Auth);
   // With no catalog, eligibility is unknown. Do not silently change the
   // billing source of a potentially subscription-eligible model on an outage.
   if (account.modelsError && !account.models.length)

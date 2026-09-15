@@ -8,7 +8,12 @@ import {
   it,
   vi,
 } from "vitest";
-import { messages } from "@/db/schema";
+import { chats, messages } from "@/db/schema";
+import { readSettings, writeSettings } from "@/main/settings";
+import { eq } from "drizzle-orm";
+import { withChatQueueLock } from "@/chat_stream/queue_lock";
+import { parkChatQueue } from "@/chat_stream/persistence";
+import { cancelActiveStreamsForChat } from "./chat_stream_handlers";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { preflightSubscriptionTurn } from "@/ipc/services/subscription_turn_preflight";
 import {
@@ -42,6 +47,10 @@ describe("redo turn admission", () => {
     vi.mocked(preflightSubscriptionTurn).mockImplementation(
       async (model) => model,
     );
+    await harness.db
+      .update(chats)
+      .set({ modelSelection: null })
+      .where(eq(chats.id, harness.chatId));
     await harness.db.delete(messages);
     originalMessages = await harness.db
       .insert(messages)
@@ -87,6 +96,129 @@ describe("redo turn admission", () => {
       expect(result.messages).toEqual(originalMessages);
     },
   );
+
+  it.each([false, true])(
+    "rechecks a changed model after pending preflight (stale failure: %s)",
+    async (rejectOld) => {
+      let entered!: () => void;
+      let release!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.mocked(preflightSubscriptionTurn).mockImplementationOnce(
+        async (model) => {
+          entered();
+          await gate;
+          if (rejectOld) throw new Error("stale model failed");
+          return model;
+        },
+      );
+      const stream = harness.streamChat("tc=no-code-response", { redo: true });
+      await started;
+      try {
+        const model = vi.mocked(preflightSubscriptionTurn).mock.calls[0][0];
+        await withChatQueueLock(harness.chatId, () =>
+          harness.db
+            .update(chats)
+            .set({ modelSelection: { ...model, name: "replacement-model" } })
+            .where(eq(chats.id, harness.chatId))
+            .run(),
+        );
+      } finally {
+        release();
+      }
+      await stream;
+      expect(preflightSubscriptionTurn).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(preflightSubscriptionTurn).mock.calls[1][0].name).toBe(
+        "replacement-model",
+      );
+    },
+    30_000,
+  );
+
+  it.each(["mode", "billing"] as const)(
+    "rechecks a changed %s while preflight is pending",
+    async (change) => {
+      let entered!: () => void;
+      let release!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const oldSettings = readSettings();
+      vi.mocked(preflightSubscriptionTurn).mockImplementationOnce(
+        async (model) => {
+          entered();
+          await gate;
+          return model;
+        },
+      );
+      const stream = harness.streamChat("tc=no-code-response", { redo: true });
+      await started;
+      try {
+        if (change === "mode") {
+          await withChatQueueLock(harness.chatId, () =>
+            harness.db
+              .update(chats)
+              .set({ chatMode: "ask" })
+              .where(eq(chats.id, harness.chatId))
+              .run(),
+          );
+        } else {
+          writeSettings({
+            proModelUsage:
+              oldSettings.proModelUsage === "pro" ? "subscription" : "pro",
+          });
+        }
+        release();
+        await stream;
+        expect(preflightSubscriptionTurn).toHaveBeenCalledTimes(2);
+        if (change === "billing")
+          expect(
+            vi.mocked(preflightSubscriptionTurn).mock.calls[1][1].proModelUsage,
+          ).toBe(readSettings().proModelUsage);
+      } finally {
+        release();
+        await stream;
+        writeSettings({ proModelUsage: oldSettings.proModelUsage });
+      }
+    },
+    30_000,
+  );
+
+  it("parks the queue and stops during preflight without replacing the redo exchange", async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(preflightSubscriptionTurn).mockImplementationOnce(
+      async (model) => {
+        entered();
+        await gate;
+        return model;
+      },
+    );
+    const stream = harness.streamChat("tc=no-code-response", { redo: true });
+    await started;
+    try {
+      await parkChatQueue(harness.db, harness.chatId);
+      await cancelActiveStreamsForChat(harness.chatId, undefined);
+      const result = await stream;
+      expect(result.messages).toEqual(originalMessages);
+    } finally {
+      release();
+      await stream;
+    }
+  }, 30_000);
 
   it("replaces only the latest exchange when preflight succeeds", async () => {
     const result = await harness.streamChat("tc=no-code-response", {

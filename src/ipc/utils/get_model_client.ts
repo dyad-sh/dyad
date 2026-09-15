@@ -1,3 +1,10 @@
+import {
+  AUTO_DYAD_PRO_MODEL_ALIASES,
+  AUTO_BALANCED_ALIAS,
+  resolveAutoModelCandidate,
+  type AutoModelCandidates,
+  type ResolvedAliasModel,
+} from "../services/auto_model_candidates";
 import { wrapExternalModelBilling } from "./external_model_billing";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
@@ -58,12 +65,6 @@ function getModelClientFetchOption(): { fetch?: FetchFunction } {
   return getTestFetchOption();
 }
 
-const AUTO_DYAD_PRO_MODEL_ALIASES = [
-  "dyad/auto/openai",
-  "dyad/auto/anthropic",
-  "dyad/auto/google",
-] as const;
-
 const AUTO_MODEL_ALIASES = [
   ...AUTO_DYAD_PRO_MODEL_ALIASES,
   "dyad/auto/openrouter",
@@ -71,7 +72,6 @@ const AUTO_MODEL_ALIASES = [
 
 const OPENROUTER_FREE_MODEL_NAME = "openrouter/free";
 const AUTO_BALANCED_MODEL_NAME = "balanced";
-const AUTO_BALANCED_ALIAS = "dyad/auto/balanced";
 
 export interface ModelClient {
   model: LanguageModel;
@@ -85,24 +85,15 @@ async function createResolvedAliasClient({
   provider,
   resolvedModel,
   modelId,
-  settings,
+  selection,
   context,
 }: {
   provider: DyadEngineProvider;
   resolvedModel: ResolvedAliasModel;
   modelId: string;
-  settings: UserSettings;
+  selection: ModelSelection;
   context?: { chatId: number };
 }) {
-  const selection = await resolveSubscriptionModel(
-    await resolveModelSelection({
-      model: {
-        provider: resolvedModel.providerId,
-        name: resolvedModel.apiName,
-      },
-    }),
-    settings,
-  );
   return {
     selection,
     model:
@@ -118,10 +109,6 @@ export interface ModelClientResult {
   isEngineEnabled?: boolean;
   isSmartContextEnabled?: boolean;
 }
-
-type ResolvedAliasModel = NonNullable<
-  Awaited<ReturnType<typeof resolveBuiltinModelAlias>>
->;
 
 function createDyadEngineAliasModel({
   provider,
@@ -165,7 +152,7 @@ export async function getModelClient(
   selectedModel: LargeLanguageModel,
   settings: UserSettings,
   modelSelectionOverride?: ModelSelection,
-  context?: { chatId: number },
+  context?: { chatId: number; autoModelCandidates?: AutoModelCandidates },
   // files?: File[],
 ): Promise<ModelClientResult> {
   const selectedModelSelection =
@@ -321,6 +308,7 @@ export async function getModelClient(
         provider,
         modelId: `${providerConfig.gatewayPrefix || ""}${modelName}`,
         context,
+        autoModelCandidates: context?.autoModelCandidates,
       });
 
       return {
@@ -458,6 +446,7 @@ function getOpenRouterAutoFallbackModelClient({
 }
 
 async function getProModelClient({
+  autoModelCandidates,
   model,
   settings,
   provider,
@@ -469,6 +458,7 @@ async function getProModelClient({
   provider: DyadEngineProvider;
   modelId: string;
   context?: { chatId: number };
+  autoModelCandidates?: AutoModelCandidates;
 }): Promise<ModelClient> {
   if (isFreeProModel(model)) {
     return {
@@ -480,13 +470,18 @@ async function getProModelClient({
   }
 
   if (model.provider === "auto" && model.name === AUTO_BALANCED_MODEL_NAME) {
-    const resolvedModel = await resolveBuiltinModelAlias(AUTO_BALANCED_ALIAS);
-    if (!resolvedModel) {
+    const candidate = await resolveAutoModelCandidate(
+      AUTO_BALANCED_ALIAS,
+      settings,
+      autoModelCandidates,
+    );
+    if (!candidate) {
       throw new DyadError(
         "Auto (balanced) could not be resolved from the model catalog",
         DyadErrorKind.External,
       );
     }
+    const { resolvedModel, selection } = candidate;
 
     const providers = await getLanguageModelProviders();
     const resolvedProvider = providers.find(
@@ -512,7 +507,7 @@ async function getProModelClient({
       provider,
       resolvedModel,
       modelId: resolvedModelId,
-      settings,
+      selection,
       context,
     });
     return {
@@ -526,10 +521,15 @@ async function getProModelClient({
     const providers = await getLanguageModelProviders();
     const fallbackEntries = await Promise.all(
       AUTO_DYAD_PRO_MODEL_ALIASES.map(async (aliasId) => {
-        const resolvedModel = await resolveBuiltinModelAlias(aliasId);
-        if (!resolvedModel || resolvedModel.apiName.endsWith(":free")) {
+        const candidate = await resolveAutoModelCandidate(
+          aliasId,
+          settings,
+          autoModelCandidates,
+        );
+        if (!candidate) {
           return null;
         }
+        const { resolvedModel, selection } = candidate;
 
         const resolvedProvider = providers.find(
           (providerInfo) => providerInfo.id === resolvedModel.providerId,
@@ -542,7 +542,7 @@ async function getProModelClient({
           provider,
           resolvedModel,
           modelId: resolvedModelId,
-          settings,
+          selection,
           context,
         });
 

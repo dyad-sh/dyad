@@ -1,3 +1,5 @@
+import { awaitTurnPreflight } from "../services/await_turn_preflight";
+import type { AutoModelCandidates } from "../services/auto_model_candidates";
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
 import { v4 as uuidv4 } from "uuid";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
@@ -1137,7 +1139,7 @@ export function registerChatStreamHandlers() {
       // value is cleared on clean exit.
       setSentinelActiveChat(req.chatId);
 
-      const baseSettings = readSettings();
+      let baseSettings = readSettings();
       let selectedModel = chat.modelSelection
         ? await normalizeModelSelection(chat.modelSelection)
         : await resolveDefaultModelSelection(baseSettings);
@@ -1504,108 +1506,161 @@ ${componentSnippet}
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
-      const acceptTurn = () =>
-        withChatQueueLock(req.chatId, async () => {
-          const latestChat = db
-            .select({
-              chatMode: chats.chatMode,
-              modelSelection: chats.modelSelection,
-            })
-            .from(chats)
-            .where(eq(chats.id, req.chatId))
-            .get();
-          if (!latestChat) {
-            throw new DyadError(
-              `Chat not found: ${req.chatId}`,
-              DyadErrorKind.NotFound,
-            );
-          }
-
-          selectedModel = latestChat.modelSelection
-            ? await normalizeModelSelection(latestChat.modelSelection)
-            : selectedModel;
-          if (!isAcceptedReplay) {
-            selectedModel = await preflightSubscriptionTurn(
-              selectedModel,
-              baseSettings,
-              abortController.signal,
-            );
-          }
-          const latestResolution = await resolveChatModeForTurn({
-            storedChatMode: latestChat.chatMode,
-            requestedChatMode:
-              req.requestedChatMode ??
-              normalizeStoredChatMode(latestChat.chatMode),
-            settings: { ...baseSettings, selectedModel },
-          });
-          ({ settings: storedSettings, mode: selectedChatMode } =
-            latestResolution);
-          assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
-          isBasicAgentModeRequest = isBasicAgentMode({
-            ...storedSettings,
-            selectedChatMode,
-          });
-
-          if (
-            isBasicAgentModeRequest &&
-            freeAgentQuotaReservationId === null &&
-            !isAcceptedReplay
-          ) {
-            const quotaReservation = await reserveFreeAgentQuotaSlot();
-            if (quotaReservation.kind === "quota-exceeded") {
-              const { quotaStatus } = quotaReservation;
-              safeSend(event.sender, "chat:response:error", {
-                chatId: req.chatId,
-                invocationRef: req.invocationRef,
-                streamId: req.streamId,
-                error: JSON.stringify({
-                  type: "FREE_AGENT_QUOTA_EXCEEDED",
-                  hoursUntilReset: quotaStatus.hoursUntilReset,
-                  resetTime: quotaStatus.resetTime,
-                }),
-              } satisfies ChatStreamErrorPayload);
-              return null;
-            }
-            freeAgentQuotaReservationId = quotaReservation.reservationId;
-          } else if (
-            !isBasicAgentModeRequest &&
-            freeAgentQuotaReservationId !== null
-          ) {
-            await releaseFreeAgentQuotaSlot(freeAgentQuotaReservationId);
-            freeAgentQuotaReservationId = null;
-          }
-
-          const persistAcceptedTurn = () =>
-            acceptChatTurn(db, {
-              chatId: req.chatId,
-              storedChatMode: latestChat.chatMode,
-              selectedChatMode,
-              selectedModel,
-              content:
-                implementPlanDisplayPrompt ??
-                displayUserPrompt ??
-                defaultAiUserPrompt,
-              userInputRequestId: req.userInputRequestId,
-              chatTurnIntentId: req.intentId,
-              chatTurnIntent: executionObserver(req)?.intent,
-              usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
-              redoMessageIds,
-            });
-          if (freeAgentQuotaReservationId === null) {
-            return persistAcceptedTurn();
-          }
-
-          const reservationId = freeAgentQuotaReservationId;
-          const acceptedTurn = await commitFreeAgentQuotaSlot(
-            reservationId,
-            persistAcceptedTurn,
+      const autoModelCandidates: AutoModelCandidates = new Map();
+      const readAdmissionChat = () => {
+        const latestChat = db
+          .select({
+            chatMode: chats.chatMode,
+            modelSelection: chats.modelSelection,
+          })
+          .from(chats)
+          .where(eq(chats.id, req.chatId))
+          .get();
+        if (!latestChat) {
+          throw new DyadError(
+            `Chat not found: ${req.chatId}`,
+            DyadErrorKind.NotFound,
           );
-          freeAgentQuotaReservationId = null;
-          if (acceptedTurn.userMessageId !== null) {
-            reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
-          }
-          return acceptedTurn;
-        });
+        }
+
+        return latestChat;
+      };
+      const readAdmissionSettings = () => {
+        const current = readSettings();
+        return {
+          enableDyadPro: current.enableDyadPro,
+          proModelUsage: current.proModelUsage,
+          providerSettings: current.providerSettings,
+          selectedModel: current.selectedModel,
+          modelEffortPreferences: current.modelEffortPreferences,
+        };
+      };
+      const retryAdmission = Symbol("retry-admission");
+      const acceptTurn = async () => {
+        // Preflight can wait on remote catalogs, auth and credits. Keep those
+        // waits outside the queue lock so Stop and picker/queue edits can run.
+        while (true) {
+          abortController.signal.throwIfAborted();
+          const snapshot = readAdmissionChat();
+          const sourceSettings = readAdmissionSettings();
+          const attemptSettings = { ...baseSettings, ...sourceSettings };
+          const candidates: AutoModelCandidates = new Map();
+          const prepared = await awaitTurnPreflight(
+            (async () => {
+              const model = snapshot.modelSelection
+                ? await normalizeModelSelection(snapshot.modelSelection)
+                : await resolveDefaultModelSelection(attemptSettings);
+              return isAcceptedReplay
+                ? model
+                : preflightSubscriptionTurn(
+                    model,
+                    attemptSettings,
+                    abortController.signal,
+                    candidates,
+                  );
+            })().then(
+              (model) => ({ ok: true as const, model }),
+              (error) => ({ ok: false as const, error }),
+            ),
+            abortController.signal,
+          );
+          const result = await withChatQueueLock(req.chatId, async () => {
+            abortController.signal.throwIfAborted();
+            const latestChat = readAdmissionChat();
+            // Even a rejection belongs to the checked selection, not a model
+            // the user chose while that check was pending.
+            if (
+              JSON.stringify(latestChat) !== JSON.stringify(snapshot) ||
+              JSON.stringify(readAdmissionSettings()) !==
+                JSON.stringify(sourceSettings)
+            )
+              return retryAdmission;
+            if (!prepared.ok) throw prepared.error;
+            baseSettings = attemptSettings;
+            selectedModel = prepared.model;
+            autoModelCandidates.clear();
+            for (const [alias, candidate] of candidates)
+              autoModelCandidates.set(alias, candidate);
+            const latestResolution = await resolveChatModeForTurn({
+              storedChatMode: latestChat.chatMode,
+              requestedChatMode:
+                req.requestedChatMode ??
+                normalizeStoredChatMode(latestChat.chatMode),
+              settings: { ...baseSettings, selectedModel },
+            });
+            ({ settings: storedSettings, mode: selectedChatMode } =
+              latestResolution);
+            assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+            isBasicAgentModeRequest = isBasicAgentMode({
+              ...storedSettings,
+              selectedChatMode,
+            });
+
+            if (
+              isBasicAgentModeRequest &&
+              freeAgentQuotaReservationId === null &&
+              !isAcceptedReplay
+            ) {
+              const quotaReservation = await reserveFreeAgentQuotaSlot();
+              if (quotaReservation.kind === "quota-exceeded") {
+                const { quotaStatus } = quotaReservation;
+                safeSend(event.sender, "chat:response:error", {
+                  chatId: req.chatId,
+                  invocationRef: req.invocationRef,
+                  streamId: req.streamId,
+                  error: JSON.stringify({
+                    type: "FREE_AGENT_QUOTA_EXCEEDED",
+                    hoursUntilReset: quotaStatus.hoursUntilReset,
+                    resetTime: quotaStatus.resetTime,
+                  }),
+                } satisfies ChatStreamErrorPayload);
+                return null;
+              }
+              freeAgentQuotaReservationId = quotaReservation.reservationId;
+            } else if (
+              !isBasicAgentModeRequest &&
+              freeAgentQuotaReservationId !== null
+            ) {
+              await releaseFreeAgentQuotaSlot(freeAgentQuotaReservationId);
+              freeAgentQuotaReservationId = null;
+            }
+
+            const persistAcceptedTurn = () => {
+              abortController.signal.throwIfAborted();
+              return acceptChatTurn(db, {
+                chatId: req.chatId,
+                storedChatMode: latestChat.chatMode,
+                selectedChatMode,
+                selectedModel,
+                content:
+                  implementPlanDisplayPrompt ??
+                  displayUserPrompt ??
+                  defaultAiUserPrompt,
+                userInputRequestId: req.userInputRequestId,
+                chatTurnIntentId: req.intentId,
+                chatTurnIntent: executionObserver(req)?.intent,
+                usingFreeAgentModeQuota: freeAgentQuotaReservationId !== null,
+                redoMessageIds,
+              });
+            };
+            if (freeAgentQuotaReservationId === null) {
+              return persistAcceptedTurn();
+            }
+
+            const reservationId = freeAgentQuotaReservationId;
+            const acceptedTurn = await commitFreeAgentQuotaSlot(
+              reservationId,
+              persistAcceptedTurn,
+            );
+            freeAgentQuotaReservationId = null;
+            if (acceptedTurn.userMessageId !== null) {
+              reservedFreeAgentQuotaMessageId = acceptedTurn.userMessageId;
+            }
+            return acceptedTurn;
+          });
+          if (result !== retryAdmission) return result;
+        }
+      };
 
       const acceptedTurn = await acceptTurn();
       if (acceptedTurn === null) {
@@ -1800,7 +1855,7 @@ ${componentSnippet}
             settings.selectedModel,
             settings,
             selectedModel,
-            { chatId: req.chatId },
+            { chatId: req.chatId, autoModelCandidates },
           );
 
         const isBuildMode = selectedChatMode === "build";
@@ -2641,6 +2696,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
+              autoModelCandidates,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
@@ -2689,6 +2745,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
+              autoModelCandidates,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment: false,
@@ -2718,6 +2775,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
+              autoModelCandidates,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
@@ -2748,6 +2806,7 @@ This conversation includes one or more image attachments. When the user uploads 
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
               modelSelectionOverride: selectedModel,
+              autoModelCandidates,
               freeModelMode,
               preCommitHookAvailable,
               refreshImplementerContext,

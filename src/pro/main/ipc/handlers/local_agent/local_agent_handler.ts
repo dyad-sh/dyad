@@ -1,3 +1,4 @@
+import type { AutoModelCandidates } from "@/ipc/services/auto_model_candidates";
 /**
  * Local Agent v2 Handler
  * Main orchestrator for tool-based agent mode with parallel execution
@@ -586,6 +587,7 @@ export async function handleLocalAgentStream(
     messageOverride,
     settingsOverride,
     modelSelectionOverride,
+    autoModelCandidates,
     freeModelMode,
     toolProfile = "agent",
     preCommitHookAvailable = false,
@@ -616,6 +618,7 @@ export async function handleLocalAgentStream(
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
     modelSelectionOverride?: ModelSelection;
+    autoModelCandidates?: AutoModelCandidates;
     freeModelMode?: boolean;
     /** Fail-closed tool and orchestration surface for this mode. */
     toolProfile?: "agent" | "build";
@@ -936,7 +939,7 @@ export async function handleLocalAgentStream(
       settings.selectedModel,
       settings,
       selectedModel,
-      { chatId: req.chatId },
+      { chatId: req.chatId, autoModelCandidates },
     );
     const normalizeToolCallIdsForTarget = <T extends ModelMessage>(
       messages: T[],

@@ -980,29 +980,44 @@ describe("subscription billing-source boundary", () => {
       expect(calls).toEqual(["subscription"]);
     },
   );
-  it("stops at the subscription boundary even for model-unavailable failures", async () => {
-    const calls: string[] = [];
-    const error = apiCallError({
-      message: "model_not_found",
-      statusCode: 404,
-      isRetryable: false,
-    });
-    const model = createFallback({
-      models: [
-        sequencedModel({
-          modelId: "subscription",
-          outcomes: [{ type: "throw", error }],
-          calls,
-        }),
-        sequencedModel({
-          modelId: "paid",
-          outcomes: [{ type: "succeed" }],
-          calls,
-        }),
-      ],
-      allowFallback: [false, true],
-    }) as LanguageModelV3;
-    await expect(model.doStream({ prompt: [] })).rejects.toThrow();
-    expect(calls).toEqual(["subscription"]);
-  });
+  it.each(["throw", "stream-error-event"] as const)(
+    "preserves model-unavailable errors at the subscription boundary (%s)",
+    async (type) => {
+      const calls: string[] = [];
+      const error = apiCallError({
+        message: "model_not_found",
+        statusCode: 404,
+        isRetryable: false,
+      });
+      const model = createFallback({
+        models: [
+          sequencedModel({
+            modelId: "subscription",
+            outcomes: [{ type, error }],
+            calls,
+          }),
+          sequencedModel({
+            modelId: "paid",
+            outcomes: [{ type: "succeed" }],
+            calls,
+          }),
+        ],
+        allowFallback: [false, true],
+      }) as LanguageModelV3;
+      await expect(
+        (async () => {
+          const result = await model.doStream({ prompt: [] });
+          const reader = result.stream.getReader();
+          try {
+            while (!(await reader.read()).done) {
+              /* drain */
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        })(),
+      ).rejects.toBe(error);
+      expect(calls).toEqual(["subscription"]);
+    },
+  );
 });

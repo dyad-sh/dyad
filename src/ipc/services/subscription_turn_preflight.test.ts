@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   account: vi.fn(),
   credentials: vi.fn(),
   credits: vi.fn(),
+  alias: vi.fn(),
 }));
 vi.mock("./codex_subscription_account", () => ({
   getSubscriptionAccount: mocks.account,
@@ -18,6 +19,13 @@ vi.mock("./codex_subscription_auth", () => ({
 vi.mock("./codex_subscription_credit_check", () => ({
   checkSubscriptionCredits: mocks.credits,
 }));
+vi.mock("../shared/remote_language_model_catalog", () => ({
+  resolveBuiltinModelAlias: mocks.alias,
+}));
+vi.mock("../utils/model_effort", () => ({
+  resolveModelSelection: async ({ model }: { model: ModelSelection }) => model,
+}));
+import type { AutoModelCandidates } from "./auto_model_candidates";
 import { preflightSubscriptionTurn } from "./subscription_turn_preflight";
 const model = {
   provider: "openai",
@@ -211,5 +219,119 @@ describe("global subscription turn routing", () => {
     expect(
       await preflightSubscriptionTurn(model, settings, signal),
     ).toMatchObject({ connection: "subscription" });
+  });
+});
+
+describe("Auto subscription admission", () => {
+  beforeEach(() => {
+    mocks.alias.mockImplementation(async (alias: string) => ({
+      providerId: alias.endsWith("anthropic") ? "anthropic" : "openai",
+      apiName: "eligible-model",
+      apiProtocol: "responses",
+    }));
+  });
+
+  it.each(["auto", "auto-sidekick", "balanced"])(
+    "preflights %s and retains each candidate's billing source",
+    async (name) => {
+      const candidates: AutoModelCandidates = new Map();
+      const result = await preflightSubscriptionTurn(
+        { provider: "auto", name, effortLevel: "medium" },
+        settings,
+        signal,
+        candidates,
+      );
+      expect(result).toMatchObject({
+        provider: "auto",
+        name,
+        effortLevel: "medium",
+      });
+      expect(mocks.credentials).toHaveBeenCalledOnce();
+      expect(mocks.credits).toHaveBeenCalledExactlyOnceWith("test-key", signal);
+      expect(
+        [...candidates.values()].map(
+          (candidate) => candidate?.selection.connection,
+        ),
+      ).toEqual(
+        name === "balanced"
+          ? ["subscription"]
+          : ["subscription", "pro", "subscription"],
+      );
+    },
+  );
+
+  it.each(["auto", "auto-sidekick", "balanced"])(
+    "rejects %s on credential or credit failure",
+    async (name) => {
+      const auto = { provider: "auto", name, effortLevel: "medium" };
+      mocks.credentials.mockRejectedValueOnce(new Error("Reconnect"));
+      await expect(
+        preflightSubscriptionTurn(auto, settings, signal),
+      ).rejects.toThrow("Reconnect");
+      mocks.credits.mockRejectedValueOnce(new Error("Out of credits"));
+      await expect(
+        preflightSubscriptionTurn(auto, settings, signal),
+      ).rejects.toThrow("Out of credits");
+    },
+  );
+
+  it("allows explicit Pro billing with broken subscription credentials", async () => {
+    mocks.credentials.mockRejectedValue(new Error("Reconnect"));
+    await preflightSubscriptionTurn(
+      { provider: "auto", name: "auto", effortLevel: "medium" },
+      { ...settings, proModelUsage: "pro" },
+      signal,
+    );
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.credits).not.toHaveBeenCalled();
+  });
+
+  it("does not require a subscription for ineligible candidates", async () => {
+    mocks.account.mockResolvedValue({
+      connected: true,
+      models: ["different-model"],
+    });
+    await preflightSubscriptionTurn(
+      { provider: "auto", name: "auto", effortLevel: "medium" },
+      settings,
+      signal,
+    );
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.credits).not.toHaveBeenCalled();
+  });
+
+  it("snapshots unavailable candidates and excludes free aliases", async () => {
+    mocks.alias
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        providerId: "openai",
+        apiName: "eligible-model:free",
+      })
+      .mockResolvedValueOnce(null);
+    const candidates: AutoModelCandidates = new Map();
+    await preflightSubscriptionTurn(
+      { provider: "auto", name: "auto", effortLevel: "medium" },
+      settings,
+      signal,
+      candidates,
+    );
+    expect([...candidates.values()]).toEqual([null, null, null]);
+    expect(mocks.credentials).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelled admission", () => {
+  it("rejects cancellation during account resolution even when the model is ineligible", async () => {
+    const controller = new AbortController();
+    mocks.account.mockImplementation(async () => {
+      controller.abort();
+      return { connected: true, models: [] };
+    });
+    await expect(
+      preflightSubscriptionTurn(model, settings, controller.signal),
+    ).rejects.toThrow();
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.credits).not.toHaveBeenCalled();
   });
 });

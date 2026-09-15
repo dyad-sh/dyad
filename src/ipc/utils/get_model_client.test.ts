@@ -1,3 +1,8 @@
+import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
+import type { AutoModelCandidates } from "../services/auto_model_candidates";
+vi.mock("../services/codex_subscription_auth", () => ({
+  getCodexSubscriptionCredentials: vi.fn(async () => ({})),
+}));
 vi.mock("../services/codex_subscription_credit_check", () => ({
   checkSubscriptionCredits: vi.fn(async () => {}),
 }));
@@ -360,6 +365,51 @@ describe("getModelClient", () => {
       connection: "subscription",
     });
   });
+
+  test.each(["auto", "auto-sidekick", "balanced"])(
+    "reuses preflight candidates for %s without resolving aliases or billing again",
+    async (name) => {
+      const auto = { provider: "auto", name, effortLevel: "medium" };
+      const settings = {
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+      } as unknown as UserSettings;
+      vi.mocked(getSubscriptionAccount).mockResolvedValue({
+        connected: true,
+        models: ["gpt-5.5"],
+      } as any);
+      if (name === "balanced") {
+        vi.mocked(resolveBuiltinModelAlias).mockResolvedValueOnce({
+          providerId: "openai",
+          apiName: "gpt-5.5",
+          apiProtocol: "responses",
+        } as any);
+      }
+      const autoModelCandidates: AutoModelCandidates = new Map();
+      const selection = await preflightSubscriptionTurn(
+        auto,
+        settings,
+        new AbortController().signal,
+        autoModelCandidates,
+      );
+      const aliasCalls = vi.mocked(resolveBuiltinModelAlias).mock.calls.length;
+      const accountCalls = vi.mocked(getSubscriptionAccount).mock.calls.length;
+      vi.mocked(getSubscriptionAccount).mockResolvedValue({
+        connected: false,
+        models: [],
+      } as any);
+      const result = await getModelClient(auto, settings, selection, {
+        chatId: 1,
+        autoModelCandidates,
+      });
+      expect(result.modelClient.getRuntimeModel?.()).toMatchObject({
+        name: "gpt-5.5",
+        connection: "subscription",
+      });
+      expect(resolveBuiltinModelAlias).toHaveBeenCalledTimes(aliasCalls);
+      expect(getSubscriptionAccount).toHaveBeenCalledTimes(accountCalls);
+    },
+  );
 
   test("honors explicit Pro credits even for eligible resolved Auto models", async () => {
     vi.mocked(getSubscriptionAccount).mockResolvedValue({

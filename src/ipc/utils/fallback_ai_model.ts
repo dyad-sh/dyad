@@ -618,7 +618,11 @@ class FallbackModel implements LanguageModelV3 {
     await waitForRetryDelay(delayMs, abortSignal);
   }
 
-  private exhaustedError(operationName: string, error: unknown): DyadError {
+  private exhaustedError(operationName: string, error: unknown): unknown {
+    // A billing-source boundary stopped recovery; other models were not tried.
+    // Preserve the provider's rejection and classification for the caller.
+    if (this.settings.allowFallback?.[this.currentModelIndex] === false)
+      return error;
     const message = error instanceof Error ? error.message : String(error);
     return new DyadError(
       `All ${this.settings.models.length} models failed for ${operationName}. Last error: ${message}`,

@@ -16,11 +16,17 @@ catalog; unavailable models fail without switching to a paid API automatically.
 
 The picker keeps a single model catalog. Its hover-open Subscription submenu
 connects/disconnects ChatGPT and displays account-reported usage windows. Models
-present in the account's Codex catalog show a `ChatGPT plan` chip when subscription
+present in the effective subscription catalog show a `ChatGPT plan` chip when subscription
 usage is selected, with the tooltip `Uses your connected ChatGPT subscription`.
-Unsupported models continue through Pro credits. Cancelled or timed-out sign-in
-attempts leave Pro-credit routing available. A connected account with no loaded
-catalog reports an availability error instead of guessing the billing source.
+Models outside that catalog continue through Pro credits. Cancelled or timed-out
+sign-in attempts leave Pro-credit routing available. The picker and backend share
+one catalog resolution: a nonempty ChatGPT catalog, then the last successful
+ChatGPT catalog for the connection, then the OpenAI models returned by
+`getBuiltinLanguageModelCatalog()` with its existing remote/cache/local behavior.
+Successful ChatGPT catalogs are cached for one hour; empty/failed lookups retry
+after a minute and never overwrite the last success. Authentication errors remain
+errors. ChatGPT can reject a fallback model; that rejection is surfaced without
+switching to Pro credits. Usage windows refresh separately from turn preflight.
 
 The Pro menu's **Model usage** preference is global across chats (`subscription`
 or `pro`). Connecting selects subscription; disconnecting selects Pro credits.

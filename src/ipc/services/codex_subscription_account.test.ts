@@ -1,15 +1,33 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ connected: true, credentialError: false }));
+const mocks = vi.hoisted(() => ({
+  connected: true,
+  credentialError: false,
+  credentials: vi.fn(),
+  catalog: vi.fn(),
+}));
+vi.mock("../shared/remote_language_model_catalog", () => ({
+  getBuiltinLanguageModelCatalog: mocks.catalog,
+}));
+vi.mock("../shared/language_model_helpers", () => ({
+  getLanguageModelProviders: async () => [],
+}));
+import { resolveSubscriptionModel } from "./resolve_subscription_model";
+import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
+import type { UserSettings } from "@/lib/schemas";
+import { DyadErrorKind } from "@/errors/dyad_error";
+const settings = {
+  enableDyadPro: true,
+  proModelUsage: "subscription",
+  providerSettings: { auto: { apiKey: { value: "test-key" } } },
+} as unknown as UserSettings;
+
 vi.mock("./codex_subscription_auth", () => ({
   getCodexSubscriptionStatus: () => ({
     connected: mocks.connected,
     credentialError: mocks.credentialError,
     pending: false,
   }),
-  getCodexSubscriptionCredentials: async () => ({
-    access: "test-access",
-    accountId: "test-account",
-  }),
+  getCodexSubscriptionCredentials: mocks.credentials,
 }));
 import {
   getSubscriptionAccount,
@@ -18,6 +36,12 @@ import {
 } from "./codex_subscription_account";
 beforeEach(() => {
   resetSubscriptionAccount();
+  mocks.catalog
+    .mockReset()
+    .mockResolvedValue({ modelsByProvider: { openai: [] } });
+  mocks.credentials
+    .mockReset()
+    .mockResolvedValue({ access: "test-access", accountId: "test-account" });
   mocks.connected = true;
   mocks.credentialError = false;
 });
@@ -120,4 +144,297 @@ it("discards an account lookup that finishes after disconnect", async () => {
   mocks.connected = false;
   finish();
   expect(await pending).toMatchObject({ connected: false, models: [] });
+});
+
+it("caches the catalog for one hour independently of usage refreshes", async () => {
+  const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+  const fetcher = vi.fn(
+    async (url: string) =>
+      new Response(
+        JSON.stringify(
+          url.includes("/models?")
+            ? { models: [{ slug: "gpt-eligible" }] }
+            : { rate_limit: { allowed: true, limit_reached: false } },
+        ),
+      ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await getSubscriptionAccount({ includeUsage: false });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toContain("/models?");
+    now.mockReturnValue(1_000_000 + 60_000);
+    await getSubscriptionAccount();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1][0]).toContain("/wham/usage");
+    now.mockReturnValue(1_000_000 + 3_599_999);
+    await getSubscriptionAccount({ includeUsage: false });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    now.mockReturnValue(1_000_000 + 3_600_000);
+    await getSubscriptionAccount({ includeUsage: false });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    resetSubscriptionAccount();
+    await getSubscriptionAccount({ includeUsage: false });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  } finally {
+    now.mockRestore();
+  }
+});
+
+it("does not wait for an in-flight usage display refresh", async () => {
+  let finish!: (response: Response) => void;
+  const usage = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.includes("/models?")
+        ? new Response(JSON.stringify({ models: [{ slug: "gpt-eligible" }] }))
+        : usage,
+    ),
+  );
+  const display = getSubscriptionAccount();
+  try {
+    expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject(
+      { models: ["gpt-eligible"] },
+    );
+  } finally {
+    finish(
+      new Response(
+        JSON.stringify({ rate_limit: { allowed: true, limit_reached: false } }),
+      ),
+    );
+    await display;
+  }
+});
+
+it("retries failed catalog lookups after a minute instead of caching failure for an hour", async () => {
+  const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+  const fetcher = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ models: [{ slug: "recovered" }] })),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    expect(
+      await getSubscriptionAccount({ includeUsage: false }),
+    ).toHaveProperty("modelsError");
+    await getSubscriptionAccount({ includeUsage: false });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(1_060_000);
+    expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject(
+      { models: ["recovered"], modelsError: undefined },
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  } finally {
+    now.mockRestore();
+  }
+});
+
+const accountResponse = (models: string[]) =>
+  new Response(JSON.stringify({ models: models.map((slug) => ({ slug })) }));
+
+it.each(["empty", "error", "hidden"])(
+  "uses the built-in OpenAI catalog for a %s ChatGPT catalog in labels and routing",
+  async (failure) => {
+    mocks.catalog.mockResolvedValue({
+      modelsByProvider: {
+        openai: [{ apiName: "gpt-fallback" }, { apiName: "gpt-second" }],
+        anthropic: [{ apiName: "claude-excluded" }],
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (failure === "error") throw new Error("offline");
+        if (failure === "hidden")
+          return new Response(
+            JSON.stringify({
+              models: [{ slug: "hidden", visibility: "hide" }],
+            }),
+          );
+        return accountResponse([]);
+      }),
+    );
+    const account = await getSubscriptionAccount({ includeUsage: false });
+    expect(account.models).toEqual(["gpt-fallback", "gpt-second"]);
+    expect(account.modelsError).toBeUndefined();
+    const model = {
+      provider: "openai",
+      name: "gpt-fallback",
+      effortLevel: "medium",
+    };
+    expect(usesChatGPTSubscription(model, settings, account)).toBe(true);
+    expect(await resolveSubscriptionModel(model, settings)).toMatchObject({
+      connection: "subscription",
+    });
+    expect(mocks.catalog).toHaveBeenCalled();
+  },
+);
+
+it.each(["empty", "error"])(
+  "retains the last successful ChatGPT catalog after a %s refresh",
+  async (failure) => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(accountResponse(["gpt-account"]));
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      expect(
+        (await getSubscriptionAccount({ includeUsage: false })).models,
+      ).toEqual(["gpt-account"]);
+      now.mockReturnValue(4_600_000);
+      if (failure === "error")
+        fetcher.mockRejectedValueOnce(new Error("offline"));
+      else fetcher.mockResolvedValueOnce(accountResponse([]));
+      expect(
+        (await getSubscriptionAccount({ includeUsage: false })).models,
+      ).toEqual(["gpt-account"]);
+      expect(mocks.catalog).not.toHaveBeenCalled();
+      now.mockReturnValue(4_660_000);
+      fetcher.mockResolvedValueOnce(accountResponse(["gpt-new-account"]));
+      expect(
+        (await getSubscriptionAccount({ includeUsage: false })).models,
+      ).toEqual(["gpt-new-account"]);
+    } finally {
+      now.mockRestore();
+    }
+  },
+);
+
+it("reuses the built-in catalog service rather than caching its fallback as a ChatGPT success", async () => {
+  mocks.catalog
+    .mockResolvedValueOnce({
+      modelsByProvider: { openai: [{ apiName: "local-model" }] },
+    })
+    .mockResolvedValueOnce({
+      modelsByProvider: { openai: [{ apiName: "remote-model" }] },
+    });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => accountResponse([])),
+  );
+  expect(
+    (await getSubscriptionAccount({ includeUsage: false })).models,
+  ).toEqual(["local-model"]);
+  expect(
+    (await getSubscriptionAccount({ includeUsage: false })).models,
+  ).toEqual(["remote-model"]);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it.each([401, 403, "credentials"])(
+  "preserves %s authentication errors when a built-in fallback is available",
+  async (failure) => {
+    mocks.catalog.mockResolvedValue({
+      modelsByProvider: { openai: [{ apiName: "gpt-fallback" }] },
+    });
+    if (failure === "credentials")
+      mocks.credentials.mockRejectedValue(new Error("refresh failed"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("denied", {
+            status: typeof failure === "number" ? failure : 500,
+          }),
+      ),
+    );
+    const account = await getSubscriptionAccount({ includeUsage: false });
+    expect(account.error).toContain("Reconnect");
+    await expect(
+      resolveSubscriptionModel(
+        { provider: "openai", name: "gpt-fallback", effortLevel: "medium" },
+        settings,
+      ),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
+  },
+);
+
+it("discards built-in fallback results if the account disconnects during lookup", async () => {
+  let entered!: () => void;
+  let finish!: (catalog: unknown) => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  mocks.catalog.mockImplementation(() => {
+    entered();
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => accountResponse([])),
+  );
+  const pending = getSubscriptionAccount({ includeUsage: false });
+  await started;
+  resetSubscriptionAccount();
+  mocks.connected = false;
+  finish({ modelsByProvider: { openai: [{ apiName: "old-account-model" }] } });
+  expect(await pending).toMatchObject({ connected: false, models: [] });
+});
+
+it("prefers a recovered ChatGPT catalog over a still-pending built-in fallback", async () => {
+  const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+  let entered!: () => void;
+  let finish!: (catalog: unknown) => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  mocks.catalog.mockImplementation(() => {
+    entered();
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(accountResponse([]))
+      .mockResolvedValueOnce(accountResponse(["recovered"])),
+  );
+  const pending = getSubscriptionAccount({ includeUsage: false });
+  try {
+    await started;
+    now.mockReturnValue(1_060_000);
+    expect(
+      (await getSubscriptionAccount({ includeUsage: false })).models,
+    ).toEqual(["recovered"]);
+    finish({ modelsByProvider: { openai: [{ apiName: "builtin-fallback" }] } });
+    expect((await pending).models).toEqual(["recovered"]);
+  } finally {
+    now.mockRestore();
+  }
+});
+
+it("refuses unknown eligibility when both catalogs are empty instead of routing to Pro", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => accountResponse([])),
+  );
+  await expect(
+    resolveSubscriptionModel(
+      { provider: "openai", name: "unknown", effortLevel: "medium" },
+      settings,
+    ),
+  ).rejects.toMatchObject({ kind: DyadErrorKind.External });
+});
+
+it("preserves authentication errors even when the built-in catalog is empty", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("denied", { status: 401 })),
+  );
+  await expect(
+    resolveSubscriptionModel(
+      { provider: "openai", name: "unknown", effortLevel: "medium" },
+      settings,
+    ),
+  ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
 });

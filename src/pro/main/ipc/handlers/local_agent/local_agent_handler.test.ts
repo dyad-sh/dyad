@@ -4912,16 +4912,19 @@ describe("handleLocalAgentStream", () => {
         } as any,
       ]);
       const streamOptions: Array<Record<string, any>> = [];
+      let followupToolFired = false;
       mockStreamTextImpl = (options) => {
         streamOptions.push(options);
         return {
           fullStream: (async function* () {
             // Simulate the model calling followup_task on the same Explorer
-            // during this pass: run the REAL tool, whose fix re-arms
+            // during the FIRST pass only: run the REAL tool, whose fix re-arms
             // end-of-turn synthesis by splicing the id out of the delivered
             // set. Before the fix the id stays delivered and synthesis drops
-            // the follow-up report.
-            if (capturedCtx) {
+            // the follow-up report.  Synthesis passes must not re-fire the
+            // tool or they would re-arm the loop indefinitely.
+            if (capturedCtx && !followupToolFired) {
+              followupToolFired = true;
               await followupTaskTool.execute(
                 {
                   thread_id: "explorer-1",

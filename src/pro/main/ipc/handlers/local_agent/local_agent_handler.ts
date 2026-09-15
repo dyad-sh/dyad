@@ -2123,7 +2123,10 @@ export async function handleLocalAgentStream(
           !deliveredExplorerThreadIds.includes(threadId) &&
           !synthesizedExplorerThreadIds.has(threadId),
       );
-      if (unsynthesizedThreadIds.length > 0 && synthesisLoops < maxSynthesisLoops) {
+      if (
+        unsynthesizedThreadIds.length > 0 &&
+        synthesisLoops < maxSynthesisLoops
+      ) {
         synthesisLoops += 1;
         const explorers = await waitForSubagents(
           ctx.chatId,
@@ -2149,6 +2152,26 @@ export async function handleLocalAgentStream(
           `Starting mandatory Explorer synthesis pass ${synthesisLoops}/${maxSynthesisLoops} for chat ${req.chatId}`,
         );
         continue;
+      }
+      // Synthesis cap reached but threads are still pending: join and append
+      // their reports to the response without starting another model turn so
+      // the results are not silently dropped.
+      if (unsynthesizedThreadIds.length > 0) {
+        logger.info(
+          `Synthesis cap reached for chat ${req.chatId}; surfacing ${unsynthesizedThreadIds.length} remaining Explorer report(s) without an extra model pass`,
+        );
+        const explorers = await waitForSubagents(
+          ctx.chatId,
+          unsynthesizedThreadIds,
+          abortController.signal,
+        );
+        for (const explorer of explorers) {
+          synthesizedExplorerThreadIds.add(explorer.id);
+        }
+        const capMessage = buildExplorerSynthesisMessage(explorers);
+        fullResponse = (fullResponse ?? "") + `\n\n${capMessage}`;
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendChunk(fullResponse);
       }
 
       if (

@@ -1,0 +1,260 @@
+import { launchElectronApp, terminateElectronApp } from "./helpers/fixtures";
+import { PageObject } from "./helpers/page-objects";
+import * as fs from "node:fs/promises";
+import path from "node:path";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/test_helper";
+import { startClaudeBillingFixture } from "../testing/claude-code-billing-fixture";
+
+// Explicit opt-in: consumes the operator's real Claude subscription.
+test.skip(
+  process.env.DYAD_REAL_CLAUDE_SMOKE !== "1",
+  "Real subscription smoke test is opt-in",
+);
+let billing: Awaited<ReturnType<typeof startClaudeBillingFixture>>;
+test.use({
+  electronConfig: {
+    preLaunchHook: async () => {
+      billing = await startClaudeBillingFixture();
+    },
+  },
+});
+test.afterEach(() => {
+  billing?.close();
+});
+
+async function configureBilling(po: PageObject) {
+  await po.electronApp.evaluate((_, url) => {
+    process.env.DYAD_ENGINE_URL = url;
+    process.env.DYAD_USER_INFO_URL = `http://localhost:${process.env.FAKE_LLM_PORT}/api/user/info`;
+  }, billing.url);
+}
+
+async function selectSubscription(po: PageObject) {
+  await po.setUpDyadPro({
+    localAgent: true,
+    localAgentUseAutoModel: true,
+    autoApprove: false,
+  });
+  await po.importApp("minimal");
+  await configureBilling(po);
+  await po.page.getByTestId("model-picker").click();
+  await expect(
+    po.page.getByRole("menuitem", {
+      name: "Claude Code — sonnet",
+      exact: true,
+    }),
+  ).toBeEnabled({ timeout: 20_000 });
+  await po.page
+    .getByRole("menuitem", { name: "Claude Code — sonnet", exact: true })
+    .click();
+  await expect(
+    po.page.getByText(
+      "Switching backends requires a new chat. Your current chat will stay unchanged.",
+    ),
+  ).toBeVisible();
+  await po.page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await po.page.getByTestId("model-picker").click();
+  await po.page
+    .getByRole("menuitem", { name: "Claude Code — sonnet", exact: true })
+    .click();
+  await po.page
+    .getByRole("button", { name: "Start new chat", exact: true })
+    .click();
+  await expect(po.page.getByTestId("model-picker")).toContainText("sonnet");
+  return po.page.evaluate(async () => {
+    const result = await (window as any).electron.ipcRenderer.invoke(
+      "claude-code:status",
+    );
+    return result.value ?? result;
+  });
+}
+
+test("real Claude subscription: picker, approvals, edit, MCP, resume, attribution and backend transition", async ({
+  po,
+}) => {
+  test.setTimeout(480_000);
+  const cliStatus = await selectSubscription(po);
+  await po.sendPrompt(
+    "Remember violet lighthouse. In src/App.tsx replace Minimal imported app with Claude prototype preview using Edit, then call the dyad diagnostics and type_check MCP tools. Do not use shell commands or edit other files.",
+    { skipWaitForCompletion: true },
+  );
+  await po.page
+    .getByRole("button", { name: "Allow once", exact: true })
+    .click({ timeout: 60_000 });
+  await po.page
+    .getByRole("button", { name: "Allow once", exact: true })
+    .click({ timeout: 60_000 });
+  await po.chatActions.waitForChatCompletion({ timeout: 90_000 });
+  await expect(po.page.getByText(/Claude Code \(claude-/).last()).toBeVisible();
+  await po.page.getByTestId("auxiliary-actions-menu").click();
+  await po.page.getByTestId("token-bar-toggle").click();
+  await expect(
+    po.page.getByText(/Usage reporting attempted/).last(),
+  ).toBeVisible();
+  await expect(
+    po.page
+      .frameLocator("iframe")
+      .getByText("Claude prototype preview", { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  expect(billing.events.length).toBeGreaterThan(0);
+  expect(
+    billing.events.every(
+      (event) => event.totalTokens > 0 && event.modelProvider === "anthropic",
+    ),
+  ).toBe(true);
+  const firstCount = billing.events.length;
+  await po.sendPrompt(
+    "What phrase did I ask you to remember? Read src/App.tsx and report its text. Do not edit any files.",
+    { timeout: 90_000 },
+  );
+  expect(billing.events.length).toBeGreaterThan(firstCount);
+  await expect(po.page.locator(".justify-start .prose").last()).toContainText(
+    /violet lighthouse/i,
+  );
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await fs.writeFile(
+    path.join(appPath, ".env.local"),
+    "PROTOTYPE_SECRET=dotenv-read-must-not-leak\n",
+  );
+  await po.chatActions.selectChatMode("ask");
+  await po.sendPrompt(
+    "Use Bash or Write to create forbidden.txt. Also use Read or Grep to show the value in .env.local. Do not substitute tools. If these operations are denied or unavailable, report that.",
+    { timeout: 90_000 },
+  );
+
+  await expect(
+    po.page.locator(".justify-start .prose").last(),
+  ).not.toContainText("dotenv-read-must-not-leak");
+  await expect(
+    fs.access(path.join(appPath, "forbidden.txt")),
+  ).rejects.toThrow();
+  const profile = { userDataDir: po.userDataDir, fakeLlmPort: po.fakeLlmPort };
+  await terminateElectronApp(po.electronApp);
+  const restartedApp = await launchElectronApp({
+    ...profile,
+    parallelIndex: 0,
+  });
+  po = new PageObject(restartedApp, await restartedApp.firstWindow(), profile);
+  try {
+    await configureBilling(po);
+    await expect(po.page.getByTestId("model-picker")).toContainText("sonnet", {
+      timeout: 30_000,
+    });
+    await po.sendPrompt(
+      "Recall the phrase I asked you to remember earlier. No file changes.",
+      { timeout: 90_000 },
+    );
+    expect(new Set(billing.events.map((event) => event.id)).size).toBe(
+      billing.events.length,
+    );
+    await expect(po.page.locator(".justify-start .prose").last()).toContainText(
+      /violet lighthouse/i,
+    );
+    await po.page.screenshot({
+      path: "test-results/claude-code-real-smoke.png",
+      fullPage: true,
+    });
+    await po.page.getByTestId("model-picker").click();
+    await po.page.getByText("Auto", { exact: true }).click();
+    await expect(
+      po.page.getByText(
+        "Switching backends requires a new chat. Your current chat will stay unchanged.",
+      ),
+    ).toBeVisible();
+    await po.page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      po.page.getByText(/Claude Code \(claude-/).last(),
+    ).toBeVisible();
+    await po.page.getByTestId("model-picker").click();
+    await po.page.getByText("Auto", { exact: true }).click();
+    await po.page
+      .getByRole("button", { name: "Start new chat", exact: true })
+      .click();
+    await expect(po.page.getByTestId("model-picker")).not.toContainText(
+      "sonnet",
+    );
+    await fs.writeFile(
+      "test-results/claude-code-usage-evidence.json",
+      JSON.stringify(
+        {
+          cli: cliStatus.version,
+          liveCharging: false,
+          events: billing.events,
+          receipts: [...billing.receipts.values()].map(
+            (entry) => entry.receipt,
+          ),
+        },
+        null,
+        2,
+      ),
+    );
+  } finally {
+    await terminateElectronApp(restartedApp);
+  }
+});
+
+test("real Claude edit: change review and undo refresh the preview", async ({
+  po,
+}) => {
+  test.setTimeout(180_000);
+  await selectSubscription(po);
+  await po.sendPrompt(
+    "In src/App.tsx replace Minimal imported app with Claude undo probe. Use Edit only; do not change other files.",
+    { skipWaitForCompletion: true },
+  );
+  await po.page
+    .getByRole("button", { name: "Allow once", exact: true })
+    .click({ timeout: 60_000 });
+  await po.chatActions.waitForChatCompletion({ timeout: 90_000 });
+  await expect(
+    po.page
+      .frameLocator("iframe")
+      .getByText("Claude undo probe", { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await po.page
+    .getByTestId("modified-files-row")
+    .filter({ hasText: "App.tsx" })
+    .click();
+  await po.page.screenshot({
+    path: "test-results/claude-code-change-review.png",
+    fullPage: true,
+  });
+  await po.previewPanel.selectPreviewMode("preview");
+  await po.page.getByRole("button", { name: "Undo", exact: true }).click();
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await expect
+    .poll(() => fs.readFile(path.join(appPath, "src/App.tsx"), "utf8"))
+    .toContain("Minimal imported app");
+  await expect(
+    po.page
+      .frameLocator("iframe")
+      .getByText("Minimal imported app", { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await po.sendPrompt(
+    "Read src/App.tsx and report its visible label. Do not edit files.",
+    { timeout: 90_000 },
+  );
+  await expect(po.page.getByText(/Claude Code \(claude-/).last()).toBeVisible();
+});
+
+test("real Claude cancellation preserves an interrupted session without replay", async ({
+  po,
+}) => {
+  test.setTimeout(120_000);
+  await selectSubscription(po);
+  await po.sendPrompt(
+    "In src/App.tsx replace Minimal imported app with Cancelled change. Use Edit only; do not change other files.",
+    { skipWaitForCompletion: true },
+  );
+  await expect(
+    po.page.getByRole("button", { name: "Allow once", exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await po.page.getByRole("button", { name: /cancel generation/i }).click();
+  await expect(
+    po.page.getByRole("button", { name: /cancel generation|stopping/i }),
+  ).toHaveCount(0, { timeout: 20_000 });
+  await expect(
+    po.page.getByText(/Claude Code was interrupted or failed/).last(),
+  ).toBeVisible({ timeout: 20_000 });
+});

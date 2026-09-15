@@ -13,14 +13,69 @@ import {
   AlignLeft,
   ExternalLink,
 } from "lucide-react";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
-import { useAtom } from "jotai";
+import { chatInputValueAtom, chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { useAtom, useAtomValue } from "jotai";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { ipc } from "@/ipc/types";
 
 interface TokenBarProps {
   chatId?: number;
 }
 
 export function TokenBar({ chatId }: TokenBarProps) {
+  const { data: chat } = useQuery({
+    queryKey: queryKeys.chats.detail({ chatId: chatId ?? null }),
+    queryFn: () => ipc.chat.getChat(chatId!),
+    enabled: chatId != null,
+  });
+  const messages =
+    useAtomValue(chatMessagesByIdAtom).get(chatId ?? -1) ??
+    chat?.messages ??
+    [];
+  if (chat?.executionBackend === "claude-code") {
+    const latest = messages
+      .filter((message) => message.role === "assistant")
+      .at(-1);
+    return <SubscriptionUsage receipt={latest?.executionUsage} />;
+  }
+  return <DyadTokenBar chatId={chatId} />;
+}
+
+export function SubscriptionUsage({ receipt }: { receipt?: string | null }) {
+  let status: string | undefined;
+  try {
+    status = JSON.parse(receipt ?? "null")?.status;
+  } catch {
+    /* unavailable */
+  }
+  return (
+    <div
+      className="px-4 pb-2 text-xs text-muted-foreground space-y-1"
+      data-testid="subscription-usage"
+    >
+      <div>
+        {status === "unbilled"
+          ? "Pro was off for this turn: no Dyad credits charged."
+          : status === "attempted"
+            ? "Usage reporting attempted. See your billing account for actual spend."
+            : "Usage unavailable. No token count or charge has been inferred."}
+      </div>
+      <div>
+        Claude subscription usage applies. With Pro enabled, Dyad charges $0.02
+        per million total tokens for model IDs containing -luna, -mini or -nano;
+        $0.10 per million otherwise. Cached tokens count once. Reporting is best
+        effort, without retries.
+      </div>
+      <div>
+        CLI context is managed separately; Dyad's context estimate is not a
+        billing measurement.
+      </div>
+    </div>
+  );
+}
+
+function DyadTokenBar({ chatId }: TokenBarProps) {
   const [inputValue] = useAtom(chatInputValueAtom);
   const { result, error } = useCountTokens(chatId ?? null, inputValue);
 

@@ -1,3 +1,9 @@
+import { modelForChatBackend } from "@/shared/execution_backend";
+import {
+  executionBackendForModel,
+  BACKEND_SWITCH_MESSAGE,
+} from "@/shared/execution_backend";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { isDyadProEnabled, type LargeLanguageModel } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +29,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
 import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useTrialModelRestriction } from "@/hooks/useTrialModelRestriction";
 import {
@@ -182,17 +188,57 @@ export function ModelPicker() {
   const posthog = usePostHog();
   const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
   const freeModelQuota = useFreeModelQuota();
+
   const hasEstablishedChat = Boolean(
     chat && (chat.modelSelection || chat.messages.length > 0),
   );
+  const { selectChat } = useSelectChat();
+  const [pendingBackend, setPendingBackend] = useState<
+    (ModelSelectParams & { recentModels: LargeLanguageModel[] }) | null
+  >(null);
+  const [open, setOpen] = useState(false);
+  const claudeStatus = useQuery({
+    enabled:
+      open ||
+      chat?.executionBackend === "claude-code" ||
+      settings?.selectedModel.provider === "claude-code",
+    queryKey: queryKeys.system.claudeCodeStatus,
+    queryFn: () => ipc.chat.claudeCodeStatus(),
+    staleTime: 10_000,
+  });
   const performModelSelect = async ({
     model,
     catalogModel,
     effortLevel,
     rememberEffort = false,
     recentModels,
-  }: ModelSelectParams & { recentModels: LargeLanguageModel[] }) => {
+    confirmed = false,
+  }: ModelSelectParams & {
+    recentModels: LargeLanguageModel[];
+    confirmed?: boolean;
+  }) => {
     if (!settings || (isChatRoute && chatId != null && chatLoading)) return;
+    const backendChange =
+      isChatRoute &&
+      chat &&
+      executionBackendForModel(model) !==
+        (chat.executionBackend ??
+          executionBackendForModel(chat.modelSelection));
+    if (
+      !confirmed &&
+      (backendChange ||
+        (model.provider === "claude-code" && !claudeStatus.data?.disclosed))
+    ) {
+      setPendingBackend({
+        model,
+        catalogModel,
+        effortLevel,
+        rememberEffort,
+        recentModels,
+      });
+      setOpen(false);
+      return;
+    }
     const modelSelection = createModelSelection({
       model,
       catalogModel,
@@ -227,7 +273,20 @@ export function ModelPicker() {
         : {
             recentModels: addRecentModel(recentModels, model),
           };
-    if (hasEstablishedChat && chatId) {
+    if (backendChange && chat) {
+      const newId = await ipc.chat.createChat({
+        appId: chat.appId,
+        initialChatMode: selectedMode,
+        modelSelection,
+      });
+      await updateSettings({
+        selectedModel: model,
+        ...preferenceUpdate,
+        ...recentModelsUpdate,
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+      selectChat({ chatId: newId, appId: chat.appId });
+    } else if (isChatRoute && hasEstablishedChat && chatId) {
       await setChatSelection({
         modelSelection,
         ...(fallbackChatMode ? { chatMode: fallbackChatMode } : {}),
@@ -240,6 +299,7 @@ export function ModelPicker() {
         await updateSettings({
           ...preferenceUpdate,
           ...recentModelsUpdate,
+          ...(model.provider === "claude-code" ? { selectedModel: model } : {}),
         });
       }
     } else {
@@ -259,7 +319,20 @@ export function ModelPicker() {
   };
 
   const subscription = useSubscriptionAccount();
-  const [open, setOpen] = useState(false);
+  const confirmBackend = useMutation({
+    mutationFn: async () => {
+      if (!pendingBackend) return;
+      if (pendingBackend.model.provider === "claude-code") {
+        await ipc.chat.acceptClaudeCodeDisclosure();
+        await claudeStatus.refetch();
+      }
+      await performModelSelect({
+        ...pendingBackend,
+        confirmed: true,
+      });
+      setPendingBackend(null);
+    },
+  });
   const [unlockTarget, setUnlockTarget] = useState<{
     providerId: string;
     model: LanguageModel;
@@ -335,13 +408,11 @@ export function ModelPicker() {
   }, [open, loadOllamaModels, loadLMStudioModels]);
 
   // Get display name for the selected model
-  const selectedModel: LargeLanguageModel = chat?.modelSelection ??
-    settings?.selectedModel ?? {
-      provider: "auto",
-      name: "auto",
-    };
+  const selectedModel: LargeLanguageModel = modelForChatBackend(chat, settings);
 
   const getModelDisplayName = () => {
+    if (selectedModel.provider === "claude-code")
+      return `Claude Code — ${selectedModel.name}`;
     if (isAutoSidekickModel(selectedModel)) {
       return AUTO_SIDEKICK_DISPLAY_NAME;
     }
@@ -1322,6 +1393,69 @@ export function ModelPicker() {
 
   return (
     <>
+      <Dialog
+        open={pendingBackend !== null}
+        onOpenChange={(value) => {
+          if (!value && !confirmBackend.isPending) setPendingBackend(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {chat &&
+              pendingBackend &&
+              executionBackendForModel(pendingBackend.model) !==
+                (chat.executionBackend ?? "dyad")
+                ? "Start a new chat?"
+                : "Use Claude Code subscription?"}
+            </DialogTitle>
+            <DialogDescription>
+              {chat &&
+              pendingBackend &&
+              executionBackendForModel(pendingBackend.model) !==
+                (chat.executionBackend ?? "dyad")
+                ? BACKEND_SWITCH_MESSAGE
+                : "Claude subscription usage applies. With Pro enabled, a separate Dyad charge also applies."}
+            </DialogDescription>
+          </DialogHeader>
+          {pendingBackend?.model.provider === "claude-code" && (
+            <p className="text-sm">
+              With Dyad Pro enabled, Claude subscription usage and a separate
+              Dyad charge apply: $0.02 per million total tokens for model IDs
+              containing -luna, -mini or -nano; $0.10 per million otherwise.
+              Cached tokens count once. With Pro off, no Dyad credits are
+              charged. Usage reporting is best effort; your billing account
+              shows actual spend.
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            Previous conversation context does not transfer automatically.
+            Claude Code runs locally; shell tools are disabled, but approved
+            package, check and preview operations can execute project code.
+          </p>
+          {confirmBackend.error && (
+            <p role="alert">{confirmBackend.error.message}</p>
+          )}
+          <Button
+            variant="outline"
+            disabled={confirmBackend.isPending}
+            onClick={() => setPendingBackend(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={confirmBackend.isPending}
+            onClick={() => confirmBackend.mutate()}
+          >
+            {chat &&
+            pendingBackend &&
+            executionBackendForModel(pendingBackend.model) !==
+              (chat.executionBackend ?? "dyad")
+              ? "Start new chat"
+              : "Accept and select"}
+          </Button>
+        </DialogContent>
+      </Dialog>
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger
           disabled={isChatRoute && chatId != null && chatLoading}
@@ -1341,6 +1475,38 @@ export function ModelPicker() {
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent className={MODEL_MENU_WIDTH_CLASS} align="start">
+          <DropdownMenuLabel>Subscription</DropdownMenuLabel>
+          <div className="px-2 py-1 text-xs text-muted-foreground">
+            {claudeStatus.data?.detail ?? "Checking Claude Code connection…"}
+          </div>
+          {["sonnet", "opus", "haiku"].map((name) => (
+            <DropdownMenuItem
+              key={name}
+              disabled={
+                !claudeStatus.data?.connected || !claudeStatus.data?.compatible
+              }
+              onClick={() => {
+                void onModelSelect({
+                  model: { provider: "claude-code", name },
+                });
+                setOpen(false);
+              }}
+            >
+              Claude Code — {name}
+            </DropdownMenuItem>
+          ))}
+          <div className="px-2 py-1 text-xs text-muted-foreground">
+            Claude subscription usage applies. With Pro enabled, a separate Dyad
+            charge also applies.
+          </div>
+          <DropdownMenuItem
+            onClick={() => {
+              void claudeStatus.refetch();
+            }}
+          >
+            Refresh connection
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <SubscriptionModelMenu>
             <DropdownMenuSeparator />
             {/* Trial user upgrade banner */}

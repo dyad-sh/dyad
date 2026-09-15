@@ -1,3 +1,4 @@
+import { initialChatExecution } from "@/ipc/utils/chat_execution_selection";
 import { app, dialog } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
 import { apps, chats, messages, versions } from "../../db/schema";
@@ -903,6 +904,7 @@ export function registerAppHandlers() {
         .values({
           appId: app.id,
           chatMode: initialChatMode,
+          ...(await initialChatExecution()),
         })
         .returning();
 

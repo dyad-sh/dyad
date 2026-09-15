@@ -140,6 +140,14 @@ export const chats = sqliteTable("chats", {
     .notNull()
     .references(() => apps.id, { onDelete: "cascade" }),
   title: text("title"),
+  executionBackend: text("execution_backend")
+    .$type<"dyad" | "claude-code">()
+    .notNull()
+    .default("dyad"),
+  claudeSessionId: text("claude_session_id"),
+  claudeSessionState: text("claude_session_state").$type<
+    "ready" | "running" | "interrupted"
+  >(),
   initialCommitHash: text("initial_commit_hash"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
@@ -190,6 +198,8 @@ export const messages = sqliteTable(
     // Model name used for this message (only for assistant messages)
     model: text("model"),
     inferenceSource: text("inference_source", { enum: INFERENCE_SOURCES }),
+    executionBackend: text("execution_backend").$type<"dyad" | "claude-code">(),
+    executionUsage: text("execution_usage"),
     // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
     aiMessagesJson: text("ai_messages_json", {
       mode: "json",

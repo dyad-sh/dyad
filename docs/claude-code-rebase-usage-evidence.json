@@ -1,0 +1,88 @@
+{
+  "cli": "2.1.261",
+  "liveCharging": false,
+  "events": [
+    {
+      "version": 1,
+      "id": "77783551-2e33-429a-99e9-a5d38138dc63",
+      "connection": "subscription",
+      "modelProvider": "anthropic",
+      "modelId": "claude-haiku-4-5-20251001",
+      "createdAt": "2026-09-15T16:56:43.312Z",
+      "totalTokens": 1292,
+      "cachedInputTokens": 0,
+      "uncachedInputTokens": 1279,
+      "outputTokens": 13
+    },
+    {
+      "version": 1,
+      "id": "657005ba-7577-40e7-a524-e97099877874",
+      "connection": "subscription",
+      "modelProvider": "anthropic",
+      "modelId": "claude-sonnet-5",
+      "createdAt": "2026-09-15T16:56:43.312Z",
+      "totalTokens": 40686,
+      "cachedInputTokens": 34609,
+      "uncachedInputTokens": 5164,
+      "outputTokens": 913
+    },
+    {
+      "version": 1,
+      "id": "e55493ed-b808-4e45-bf47-5e85174c59ff",
+      "connection": "subscription",
+      "modelProvider": "anthropic",
+      "modelId": "claude-sonnet-5",
+      "createdAt": "2026-09-15T16:56:58.070Z",
+      "totalTokens": 27783,
+      "cachedInputTokens": 25978,
+      "uncachedInputTokens": 1381,
+      "outputTokens": 424
+    },
+    {
+      "version": 1,
+      "id": "47e847e2-ab90-4ba0-918d-c5f2960edafc",
+      "connection": "subscription",
+      "modelProvider": "anthropic",
+      "modelId": "claude-sonnet-5",
+      "createdAt": "2026-09-15T16:57:06.652Z",
+      "totalTokens": 13551,
+      "cachedInputTokens": 0,
+      "uncachedInputTokens": 13195,
+      "outputTokens": 356
+    },
+    {
+      "version": 1,
+      "id": "5caad5ed-3a2a-43e2-96e5-344c7c0ca4eb",
+      "connection": "subscription",
+      "modelProvider": "anthropic",
+      "modelId": "claude-sonnet-5",
+      "createdAt": "2026-09-15T16:57:16.001Z",
+      "totalTokens": 14088,
+      "cachedInputTokens": 13193,
+      "uncachedInputTokens": 870,
+      "outputTokens": 25
+    }
+  ],
+  "receipts": [
+    {
+      "id": "77783551-2e33-429a-99e9-a5d38138dc63",
+      "chargedUsd": 0.00012920000000000002
+    },
+    {
+      "id": "657005ba-7577-40e7-a524-e97099877874",
+      "chargedUsd": 0.0040686
+    },
+    {
+      "id": "e55493ed-b808-4e45-bf47-5e85174c59ff",
+      "chargedUsd": 0.0027783
+    },
+    {
+      "id": "47e847e2-ab90-4ba0-918d-c5f2960edafc",
+      "chargedUsd": 0.0013551000000000001
+    },
+    {
+      "id": "5caad5ed-3a2a-43e2-96e5-344c7c0ca4eb",
+      "chargedUsd": 0.0014088000000000002
+    }
+  ]
+}

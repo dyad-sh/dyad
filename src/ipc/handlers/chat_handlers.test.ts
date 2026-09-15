@@ -287,7 +287,13 @@ describe("registerChatHandlers", () => {
     const chatId = Number(
       harness.db
         .insert(chats)
-        .values({ appId, referencedAppIds: [referencedAppId] })
+        .values({
+          appId,
+          referencedAppIds: [referencedAppId],
+          executionBackend: "claude-code",
+          claudeSessionId: "old-session",
+          claudeSessionState: "ready",
+        })
         .run().lastInsertRowid,
     );
     harness.db
@@ -301,6 +307,11 @@ describe("registerChatHandlers", () => {
     // that still carries referenced ids would keep cross-app reads alive with
     // nothing on screen explaining why.
     expect(readStoredIds(chatId)).toEqual([]);
+    expect(
+      await harness.db.query.chats.findFirst({
+        where: (row, { eq }) => eq(row.id, chatId),
+      }),
+    ).toMatchObject({ claudeSessionId: null, claudeSessionState: null });
     await expect(
       harness.db.query.messages.findMany({
         where: (row, { eq }) => eq(row.chatId, chatId),

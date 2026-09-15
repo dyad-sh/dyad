@@ -19,6 +19,8 @@ export async function resolveSubscriptionModel(
   settings: UserSettings,
 ): Promise<ModelSelection> {
   const { connection: _legacyConnection, ...identity } = model;
+  if (model.provider === "claude-code")
+    return { ...identity, connection: "subscription" };
   const proEnabled = isDyadProEnabled(settings);
   const fallback = proEnabled
     ? { ...identity, connection: "pro" as const }

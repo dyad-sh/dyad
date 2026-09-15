@@ -441,3 +441,22 @@ describe("cancelled admission", () => {
     expect(mocks.credits).not.toHaveBeenCalled();
   });
 });
+
+it.each([true, false])(
+  "keeps Claude on its CLI backend with Pro=%s, without ChatGPT auth",
+  async (pro) => {
+    const result = await preflightWithAdmission(
+      { provider: "claude-code", name: "sonnet", effortLevel: "medium" },
+      { ...settings, enableDyadPro: pro },
+      signal,
+    );
+    expect(result.model).toMatchObject({
+      provider: "claude-code",
+      connection: "subscription",
+    });
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credits).toHaveBeenCalledTimes(pro ? 1 : 0);
+    expect(Boolean(result.externalModelAdmission)).toBe(pro);
+  },
+);

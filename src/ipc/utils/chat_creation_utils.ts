@@ -2,6 +2,8 @@ import { db } from "../../db";
 import { apps, chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
+import { initialChatExecution } from "./chat_execution_selection";
+import type { ModelSelection } from "@/lib/schemas";
 import type { ChatMode } from "../../lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getDyadAppPath } from "../../paths/paths";
@@ -19,10 +21,12 @@ export async function createChatForApp({
   appId,
   title,
   initialChatMode,
+  modelSelection,
 }: {
   appId: number;
   title?: string;
   initialChatMode?: ChatMode;
+  modelSelection?: ModelSelection;
 }): Promise<number> {
   assertAppChatCreationOpen(appId);
   return appOperationCoordinator.run(
@@ -58,9 +62,16 @@ export async function createChatForApp({
       }
 
       const chatMode = await getInitialChatModeForNewChat(initialChatMode);
+      const execution = await initialChatExecution(modelSelection);
       const [chat] = await db
         .insert(chats)
-        .values({ appId, title, initialCommitHash, chatMode })
+        .values({
+          appId,
+          title,
+          initialCommitHash,
+          chatMode,
+          ...execution,
+        })
         .returning();
       logger.info(
         "Created chat:",

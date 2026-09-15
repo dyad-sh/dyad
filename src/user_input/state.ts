@@ -38,6 +38,7 @@ export type UserInputDescriptor =
     })
   | (DescriptorBase & {
       kind: "agent-consent";
+      allowAlways?: boolean;
       toolName: string;
       toolDescription?: string | null;
       inputPreview?: string | null;

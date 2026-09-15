@@ -1,7 +1,19 @@
+import { modelForChatBackend } from "@/shared/execution_backend";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { awaitTurnPreflight } from "../services/await_turn_preflight";
 import type { AutoModelCandidates } from "../services/auto_model_candidates";
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
+import {
+  executionBackendForModel,
+  BACKEND_SWITCH_MESSAGE,
+} from "@/shared/execution_backend";
+import { claudeStatus } from "@/ipc/services/claude_code/runtime";
+import { hasClaudeDisclosure } from "@/ipc/services/claude_code/disclosure";
+import {
+  claudeChatBackend,
+  dyadChatBackend,
+} from "@/ipc/services/chat_execution_backend";
 import { v4 as uuidv4 } from "uuid";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { createTypedHandler } from "./base";
@@ -104,7 +116,6 @@ import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import {
   clearPendingLocalAgentInputsForChat,
-  handleLocalAgentStream,
   hasCompletedAppBlueprintQuestionnaire,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { isPreCommitHookAvailable } from "../services/pre_commit_service";
@@ -1143,7 +1154,10 @@ export function registerChatStreamHandlers() {
       let baseSettings = readSettings();
       let selectedModel = chat.modelSelection
         ? await normalizeModelSelection(chat.modelSelection)
-        : await resolveDefaultModelSelection(baseSettings);
+        : await resolveDefaultModelSelection({
+            ...baseSettings,
+            selectedModel: modelForChatBackend(chat, baseSettings),
+          });
       let { settings: storedSettings, mode: selectedChatMode } =
         await resolveChatModeForTurn({
           storedChatMode: chat.chatMode,
@@ -1151,6 +1165,34 @@ export function registerChatStreamHandlers() {
           settings: { ...baseSettings, selectedModel },
         });
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+      if (
+        executionBackendForModel(selectedModel) !==
+        (chat.executionBackend ?? "dyad")
+      )
+        throw new DyadError(BACKEND_SWITCH_MESSAGE, DyadErrorKind.Precondition);
+      if (chat.executionBackend === "claude-code") {
+        if (req.redo)
+          throw new DyadError(
+            "Claude Code cannot replace an earlier turn without retaining hidden CLI context. Start a new chat to retry; your current chat stays unchanged.",
+            DyadErrorKind.Precondition,
+          );
+        const status = await claudeStatus();
+        if (!status.connected || !status.compatible)
+          throw new DyadError(status.detail, DyadErrorKind.Precondition);
+        if (!(await hasClaudeDisclosure()))
+          throw new DyadError(
+            "Select Subscription in the model picker and accept the pricing disclosure first.",
+            DyadErrorKind.Precondition,
+          );
+        if (
+          chat.claudeSessionState === "running" ||
+          chat.claudeSessionState === "interrupted"
+        )
+          throw new DyadError(
+            "Claude Code was interrupted. Start a new chat; review or undo the existing changes first.",
+            DyadErrorKind.Precondition,
+          );
+      }
 
       // Reserve quota before redo or attachment persistence. The reservation
       // is converted to a durable message mark only after turn acceptance.
@@ -1237,6 +1279,15 @@ export function registerChatStreamHandlers() {
         await ensureDyadGitignored(appPath);
 
         for (const attachment of incomingAttachments) {
+          if (
+            chat.executionBackend === "claude-code" &&
+            isDotenvFilePath(attachment.name)
+          ) {
+            throw new DyadError(
+              "Claude Code cannot read dotenv attachments. Remove the attachment before sending.",
+              DyadErrorKind.Validation,
+            );
+          }
           const inspection = inspectBase64DataUrl(attachment.data);
           if (!inspection.ok) {
             throw new DyadError(
@@ -1551,7 +1602,10 @@ ${componentSnippet}
             (async () => {
               const model = snapshot.modelSelection
                 ? await normalizeModelSelection(snapshot.modelSelection)
-                : await resolveDefaultModelSelection(attemptSettings);
+                : await resolveDefaultModelSelection({
+                    ...attemptSettings,
+                    selectedModel: modelForChatBackend(chat, attemptSettings),
+                  });
               return isAcceptedReplay
                 ? { model, externalModelAdmission: undefined }
                 : preflightSubscriptionTurn(
@@ -1796,9 +1850,12 @@ ${componentSnippet}
           approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
           model:
-            selectedModel.connection === "subscription"
-              ? `ChatGPT subscription (${selectedModel.name})`
-              : selectedModel.name,
+            chat.executionBackend === "claude-code"
+              ? null
+              : selectedModel.connection === "subscription"
+                ? `ChatGPT subscription (${selectedModel.name})`
+                : selectedModel.name,
+          executionBackend: chat.executionBackend,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),
@@ -1833,6 +1890,94 @@ ${componentSnippet}
         streamId: req.streamId,
         messages: updatedChat.messages.map(toRendererMessage),
       } satisfies ChatStreamChunkPayload);
+
+      if (chat.executionBackend === "claude-code") {
+        const securityReview = req.prompt.startsWith("/security-review");
+        const summarize = req.prompt.startsWith("Summarize from chat-id=");
+        let claudePrompt = userPrompt;
+        if (securityReview) {
+          let securityRules = "";
+          try {
+            securityRules = await fs.promises.readFile(
+              path.join(appPath, "SECURITY_RULES.md"),
+              "utf8",
+            );
+          } catch {
+            /* optional */
+          }
+          claudePrompt =
+            SECURITY_REVIEW_SYSTEM_PROMPT +
+            "\nProject security rules:\n" +
+            securityRules +
+            "\n" +
+            userPrompt;
+        }
+        if (summarize) {
+          const previousChat = await db.query.chats.findFirst({
+            where: eq(chats.id, Number(req.prompt.split("=")[1])),
+            with: {
+              messages: {
+                orderBy: (m, { asc }) => [asc(m.createdAt), asc(m.id)],
+              },
+            },
+          });
+          if (!previousChat)
+            throw new DyadError(
+              "Source chat not found",
+              DyadErrorKind.NotFound,
+            );
+          claudePrompt =
+            SUMMARIZE_CHAT_SYSTEM_PROMPT +
+            "\nSummarize the following chat:\n" +
+            formatMessagesForSummary(previousChat.messages);
+        }
+        const references = await resolveStickyReferencedApps({
+          prompt: req.prompt,
+          persistedAppIds: readStoredReferencedAppIds(
+            updatedChat.referencedAppIds,
+          ),
+          excludeCurrentAppId: updatedChat.app.id,
+        });
+        if (references.changed)
+          await persistReferencedAppIds(req.chatId, references.appIds);
+        const attachmentContext = storedAttachments.length
+          ? "\nAttachments available through the Read tool (including images). Read each relevant file; these are actual local paths, not virtual attachment URIs:\n" +
+            storedAttachments
+              .filter(
+                (attachment) => !isDotenvFilePath(attachment.originalName),
+              )
+              .map((attachment) =>
+                JSON.stringify({
+                  name: attachment.originalName,
+                  path: attachment.filePath,
+                  type: attachment.mimeType,
+                  purpose: attachment.attachmentType,
+                }),
+              )
+              .join("\n")
+          : "";
+        finishedNaturally = await claudeChatBackend.runTurn(
+          event,
+          req,
+          abortController,
+          {
+            messageId: placeholderAssistantMessage.id,
+            model: selectedModel.name,
+            prompt: claudePrompt + attachmentContext,
+            references: references.references,
+            readOnly:
+              selectedChatMode === "ask" ||
+              selectedChatMode === "plan" ||
+              securityReview ||
+              summarize,
+            apiKey: isDyadProEnabled(settings)
+              ? settings.providerSettings?.auto?.apiKey?.value
+              : null,
+            admission: externalModelAdmission,
+          },
+        );
+        return;
+      }
 
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
@@ -2681,7 +2826,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Return value indicates success/failure for quota tracking.
           // Ask mode doesn't consume quota, but we still capture it for
           // consistent error handling.
-          const streamSuccess = await handleLocalAgentStream(
+          const streamSuccess = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,
@@ -2737,7 +2882,7 @@ This conversation includes one or more image attachments. When the user uploads 
             planModeSystemPrompt += "\n\n" + NEON_DISCONNECTED_SYSTEM_PROMPT;
           }
 
-          finishedNaturally = await handleLocalAgentStream(
+          finishedNaturally = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,
@@ -2767,7 +2912,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // logs, verification commands, sandbox scripts, or MCP servers.
         if (isBuildMode) {
           const readOnlyBuildTurn = isSecurityReviewIntent || isSummarizeIntent;
-          finishedNaturally = await handleLocalAgentStream(
+          finishedNaturally = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,
@@ -2801,7 +2946,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // injects a `<system-reminder>` into the user's latest message telling
         // the agent which `app_name` values are valid.
         if (isLocalAgentMode) {
-          const streamSuccess = await handleLocalAgentStream(
+          const streamSuccess = await dyadChatBackend.runTurn(
             event,
             req,
             abortController,

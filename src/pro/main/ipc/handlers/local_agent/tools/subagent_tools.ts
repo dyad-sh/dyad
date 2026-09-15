@@ -382,6 +382,17 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
       args.thread_ids,
       ctx.abortSignal,
     );
+    // Mark any Explorer threads whose reports were returned here as delivered
+    // so the end-of-pass filter does not force a redundant synthesis pass for
+    // reports the model already received via this tool call.
+    for (const summary of summaries) {
+      if (summary.persona === "explorer") {
+        ctx.deliveredExplorerThreadIds ??= [];
+        if (!ctx.deliveredExplorerThreadIds.includes(summary.id)) {
+          ctx.deliveredExplorerThreadIds.push(summary.id);
+        }
+      }
+    }
     return JSON.stringify(summaries);
   },
 };

@@ -728,3 +728,52 @@ describe("followup_task execute bookkeeping", () => {
     expect(synthesizedExplorerThreadIds.has("explorer-1")).toBe(true);
   });
 });
+
+describe("wait_agents execute bookkeeping", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("marks Explorer threads returned by wait_agents as delivered", async () => {
+    subagentManagerMocks.waitForSubagents.mockResolvedValueOnce([
+      { id: "explorer-1", persona: "explorer", status: "completed" },
+    ] as any[]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+    } as unknown as AgentContext;
+
+    await waitAgentsTool.execute({ thread_ids: ["explorer-1"] }, ctx);
+
+    expect(ctx.deliveredExplorerThreadIds).toContain("explorer-1");
+  });
+
+  it("does not duplicate an Explorer already in deliveredExplorerThreadIds", async () => {
+    subagentManagerMocks.waitForSubagents.mockResolvedValueOnce([
+      { id: "explorer-1", persona: "explorer", status: "completed" },
+    ] as any[]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+      deliveredExplorerThreadIds: ["explorer-1"],
+    } as unknown as AgentContext;
+
+    await waitAgentsTool.execute({ thread_ids: ["explorer-1"] }, ctx);
+
+    expect(ctx.deliveredExplorerThreadIds).toEqual(["explorer-1"]);
+  });
+
+  it("does not add Implementer threads to deliveredExplorerThreadIds", async () => {
+    subagentManagerMocks.waitForSubagents.mockResolvedValueOnce([
+      { id: "implementer-1", persona: "implementer", status: "completed" },
+    ] as any[]);
+    const ctx = {
+      chatId: 7,
+      abortSignal: new AbortController().signal,
+    } as unknown as AgentContext;
+
+    await waitAgentsTool.execute({ thread_ids: ["implementer-1"] }, ctx);
+
+    expect(ctx.deliveredExplorerThreadIds).toBeUndefined();
+  });
+});

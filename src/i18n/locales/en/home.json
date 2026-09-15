@@ -189,7 +189,7 @@
     "addScreenshot": "Add a screenshot",
     "takingScreenshot": "Taking screenshot...",
     "screenshotHint": "Dyad hides while it captures. You will paste it into GitHub at the end.",
-    "screenshotAlt": "Screenshot copied to your clipboard",
+    "screenshotAlt": "Screenshot of the Dyad window",
     "screenshotPasteHint": "Copied to your clipboard. Press {{shortcut}} in the GitHub issue to attach it.",
     "screenshotFailed": "Could not take a screenshot.",
     "screenshotStillFile": "You can still send the report without one.",

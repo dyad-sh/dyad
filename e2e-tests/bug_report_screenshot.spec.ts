@@ -123,7 +123,7 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     // The dialog hides itself for the capture, then comes back showing it.
     await po.page.getByRole("button", { name: /Add a screenshot/ }).click();
     await expect(
-      po.page.getByAltText("Screenshot copied to your clipboard"),
+      po.page.getByAltText("Screenshot of the Dyad window"),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
     // The image travels on the clipboard, so the reporter has to be told.
     await expect(

@@ -186,7 +186,7 @@
     "addScreenshot": "添加屏幕截图",
     "takingScreenshot": "正在截图...",
     "screenshotHint": "截图时 Dyad 会自动隐藏。最后您需要将其粘贴到 GitHub。",
-    "screenshotAlt": "屏幕截图已复制到剪贴板",
+    "screenshotAlt": "Dyad 窗口的屏幕截图",
     "screenshotPasteHint": "已复制到剪贴板。在 GitHub Issue 中按 {{shortcut}} 即可添加。",
     "screenshotFailed": "无法截取屏幕。",
     "screenshotStillFile": "您仍然可以提交不含截图的报告。",

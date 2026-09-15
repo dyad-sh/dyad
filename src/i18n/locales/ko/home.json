@@ -185,7 +185,7 @@
     "addScreenshot": "스크린샷 추가",
     "takingScreenshot": "스크린샷 촬영 중...",
     "screenshotHint": "촬영하는 동안 Dyad는 숨겨집니다. 마지막에 GitHub에 붙여넣게 됩니다.",
-    "screenshotAlt": "클립보드에 복사된 스크린샷",
+    "screenshotAlt": "Dyad 창의 스크린샷",
     "screenshotPasteHint": "클립보드에 복사되었습니다. GitHub 이슈에서 {{shortcut}}를 눌러 첨부하세요.",
     "screenshotFailed": "스크린샷을 촬영하지 못했습니다.",
     "screenshotStillFile": "스크린샷 없이도 신고서를 보낼 수 있습니다.",

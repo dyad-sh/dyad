@@ -186,7 +186,7 @@
     "addScreenshot": "Adicionar uma captura de tela",
     "takingScreenshot": "Capturando tela...",
     "screenshotHint": "O Dyad se esconde enquanto captura. Você vai colá-la no GitHub no final.",
-    "screenshotAlt": "Captura de tela copiada para a área de transferência",
+    "screenshotAlt": "Captura de tela da janela do Dyad",
     "screenshotPasteHint": "Copiada para a área de transferência. Pressione {{shortcut}} na issue do GitHub para anexá-la.",
     "screenshotFailed": "Não foi possível capturar a tela.",
     "screenshotStillFile": "Você ainda pode enviar o relatório sem ela.",

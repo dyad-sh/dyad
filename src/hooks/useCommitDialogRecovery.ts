@@ -73,10 +73,12 @@ export function useCommitDialogRecovery({
     onDialogEnded?.();
     commit.resetCommitError();
     closeCommitDialog({ source, appId });
+    clearStagedDiff(appId);
     return true;
   }, [
     aiFix,
     appId,
+    clearStagedDiff,
     closeCommitDialog,
     commit,
     commitMessage,

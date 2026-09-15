@@ -2172,6 +2172,13 @@ export async function handleLocalAgentStream(
         fullResponse = (fullResponse ?? "") + `\n\n${capMessage}`;
         await updateResponseInDb(placeholderMessageId, fullResponse);
         sendChunk(fullResponse);
+        // Also persist the cap-message into the structured assistant history so
+        // parseAiMessagesJson can surface it in subsequent agent turns.
+        // (Appending only to fullResponse is invisible to aiMessagesJson readers.)
+        accumulatedAiMessages.push({
+          role: "assistant",
+          content: [{ type: "text", text: capMessage }],
+        });
       }
 
       if (

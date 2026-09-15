@@ -11,7 +11,10 @@ import { getDyadAppPath } from "@/paths/paths";
 import { readAiRules } from "@/prompts/system_prompt";
 import { getLogs } from "@/lib/log_store";
 import { runTypeScriptCheck } from "@/ipc/processors/tsc";
-import { executeAddDependency } from "@/ipc/processors/executeAddDependency";
+import {
+  executeAddDependency,
+  ExecuteAddDependencyError,
+} from "@/ipc/processors/executeAddDependency";
 import {
   getCurrentCommitHash,
   getGitUncommittedFiles,
@@ -239,18 +242,30 @@ export async function handleClaudeCodeTurn(
             });
             if (!message) throw new Error("Message missing");
             // Outer turn owns the repository; the existing processor is unlocked.
-            return executeAddDependency({
-              packages,
-              message: toRendererMessage(message),
-              appPath,
-            });
+            try {
+              return await executeAddDependency({
+                packages,
+                message: toRendererMessage(message),
+                appPath,
+              });
+            } catch (error) {
+              if (error instanceof ExecuteAddDependencyError)
+                throw new DyadError(
+                  `${error.displaySummary}\n${error.displayDetails}`.slice(
+                    0,
+                    8_000,
+                  ),
+                  DyadErrorKind.External,
+                );
+              throw error;
+            }
           },
           restart: async () => {
             restartRequested = true;
             return "Preview restart queued until this turn releases its repository claim.";
           },
           onTool: async (name, complete, error) => {
-            content += `\n\n*Dyad ${name}: ${error ? "failed — " + error : complete ? "completed" : "running"}*\n\n`;
+            content += `\n\n*Dyad ${name}: ${error ? "failed — " + claudeTextFilter()(error, true) : complete ? "completed" : "running"}*\n\n`;
             await publish();
           },
         });
@@ -268,7 +283,10 @@ export async function handleClaudeCodeTurn(
             mcpConfigPath: bridge.configPath,
             async onEvent(value) {
               if (value.session_id && value.session_id !== sessionId)
-                throw new Error("CLI session identity mismatch");
+                throw new DyadError(
+                  "CLI session identity mismatch",
+                  DyadErrorKind.Precondition,
+                );
               if (value.type === "system" && value.subtype === "init") {
                 const allowed = [
                   ...READ_TOOLS,
@@ -299,8 +317,9 @@ export async function handleClaudeCodeTurn(
                       s.name !== "dyad" || s.status !== "connected",
                   )
                 )
-                  throw new Error(
-                    "CLI exposed unexpected tools, plugins or MCP configuration",
+                  throw new DyadError(
+                    "CLI exposed unexpected tools, plugins or MCP configuration. Execution was stopped.",
+                    DyadErrorKind.Precondition,
                   );
               }
               if (
@@ -352,8 +371,9 @@ export async function handleClaudeCodeTurn(
             },
           });
           if (!result || result.is_error)
-            throw new Error(
+            throw new DyadError(
               "Claude Code did not complete successfully. Check CLI authentication and subscription limits.",
+              DyadErrorKind.External,
             );
         } catch (error) {
           recordFailure(error);
@@ -412,7 +432,7 @@ export async function handleClaudeCodeTurn(
       card.replace('state="in-progress"', 'state="aborted"'),
     );
   if (failure && !controller.signal.aborted)
-    content += `\n\n**${failureDetail}**`;
+    content += `\n\n**${claudeTextFilter()(failureDetail, true)}**`;
   if (failure || controller.signal.aborted)
     content +=
       "\n\n**Claude Code was interrupted or failed. Changes may remain; review or undo them. Start a new chat to avoid replaying unfinished edits.**";

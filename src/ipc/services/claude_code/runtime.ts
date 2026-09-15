@@ -7,6 +7,7 @@ import { constants } from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import { z } from "zod";
 import treeKill from "tree-kill";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { killProcessTreeSync } from "@/ipc/utils/kill_process_tree_sync";
 
 const execFileAsync = promisify(execFile);
@@ -230,7 +231,10 @@ export async function runClaudeTurn(turn: BackendTurn): Promise<void> {
       child.stdout.pause();
       buffer += decoder.write(data);
       if (buffer.length > 8 * 1024 * 1024) {
-        failure = new Error("Claude Code stream frame exceeded limit");
+        failure = new DyadError(
+          "Claude Code stream frame exceeded limit",
+          DyadErrorKind.External,
+        );
         abort();
         return;
       }
@@ -259,8 +263,9 @@ export async function runClaudeTurn(turn: BackendTurn): Promise<void> {
           ? reject(failure)
           : code !== 0 && !turn.signal.aborted
             ? reject(
-                new Error(
+                new DyadError(
                   `Claude Code exited (${code ?? "signal"}). Check official CLI authentication or usage limits.`,
+                  DyadErrorKind.External,
                 ),
               )
             : resolve(),

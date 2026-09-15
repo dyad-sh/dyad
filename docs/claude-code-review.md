@@ -21,7 +21,7 @@ Subsequent PR feedback additionally identified raw dotenv access: deny dotenv pa
 
 ## Verification
 
-- Full suite before deep-review fixes: **736 files passed; 8,294 tests passed, 1 skipped**.
+- Full suite after the review fixes: **738 files passed; 8,304 tests passed, 1 skipped**. A final narrow typed-error-detail follow-up was checked separately.
 - First post-fix targeted run: **192 tests passed**.
 - New real handler/DB integration tests: **4 passed**, including summary/security-review/retry/model-race cases.
 - Formatting, lint and main/worker type checks passed for the rebased charging update; final checks and CLI smoke results are recorded in the PR handoff.

@@ -144,18 +144,21 @@ export function useBackgroundAutoReview(): void {
 
     if (event.wasCancelled) {
       const abandonedThreadId = clearPendingReviewContinuation(event.chatId);
-      if (abandonedThreadId) {
-        void ipc.agent
-          .skipReviewAutoFix({
-            chatId: event.chatId,
-            threadId: abandonedThreadId,
-            remediationFailed: true,
-          })
-          .catch(showError);
-      }
-      if (isRemediationTurn || hasPendingContinuation) {
-        void resumeQueue(event.chatId).catch(showError);
-      }
+      const needsQueueResume = isRemediationTurn || hasPendingContinuation;
+      void (async () => {
+        if (abandonedThreadId) {
+          await ipc.agent
+            .skipReviewAutoFix({
+              chatId: event.chatId,
+              threadId: abandonedThreadId,
+              remediationFailed: true,
+            })
+            .catch(showError);
+        }
+        if (needsQueueResume) {
+          await resumeQueue(event.chatId).catch(showError);
+        }
+      })();
       return;
     }
 

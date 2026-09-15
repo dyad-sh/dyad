@@ -1,3 +1,4 @@
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { awaitTurnPreflight } from "../services/await_turn_preflight";
 import type { AutoModelCandidates } from "../services/auto_model_candidates";
@@ -1274,6 +1275,15 @@ export function registerChatStreamHandlers() {
         await ensureDyadGitignored(appPath);
 
         for (const attachment of incomingAttachments) {
+          if (
+            chat.executionBackend === "claude-code" &&
+            isDotenvFilePath(attachment.name)
+          ) {
+            throw new DyadError(
+              "Claude Code cannot read dotenv attachments. Remove the attachment before sending.",
+              DyadErrorKind.Validation,
+            );
+          }
           const inspection = inspectBase64DataUrl(attachment.data);
           if (!inspection.ok) {
             throw new DyadError(
@@ -1926,6 +1936,9 @@ ${componentSnippet}
         const attachmentContext = storedAttachments.length
           ? "\nAttachments available through the Read tool (including images). Read each relevant file; these are actual local paths, not virtual attachment URIs:\n" +
             storedAttachments
+              .filter(
+                (attachment) => !isDotenvFilePath(attachment.originalName),
+              )
               .map((attachment) =>
                 JSON.stringify({
                   name: attachment.originalName,

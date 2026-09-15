@@ -23,6 +23,16 @@ Subsequent PR feedback additionally identified raw dotenv access: deny dotenv pa
 
 - Full suite after the review fixes: **738 files passed; 8,304 tests passed, 1 skipped**. A final narrow typed-error-detail follow-up was checked separately.
 - First post-fix targeted run: **192 tests passed**.
-- New real handler/DB integration tests: **4 passed**, including summary/security-review/retry/model-race cases.
+- New real handler/DB integration tests: **5 passed**, including summary/security-review/retry/model-race/fresh-fork cases.
 - Formatting, lint and main/worker type checks passed for the rebased charging update; final checks and CLI smoke results are recorded in the PR handoff.
 - Production Claude charging and commercial release terms remain unverified. Historical 2026-09-04 evidence does not establish the revised charging path.
+
+## Real CLI accounting evidence — 2026-09-15
+
+The rebuilt macOS arm64 app ran the official subscription-authenticated CLI **2.1.261**. The main Electron scenario passed edit approvals, diagnostics/type-check MCP operations, preview refresh, actual-model attribution, continuation across application restart, read-only/shell/dotenv restrictions, and both backend-switch cancellation and confirmation.
+
+[Captured usage](claude-code-rebase-usage-evidence.json) contains five distinct reports for actual `claude-sonnet-5` and auxiliary `claude-haiku-4-5-20251001` calls: **97,400 total tokens**, including cache reads. Each report's categories sum exactly to its total; applying the shared $0.10/M rate produces **$0.00974** across the fixture receipts. These are local contract-compatible test-engine receipts, **not live debits**.
+
+The real smoke also passed cancellation while an edit awaited consent. It exposed a remaining same-chat Undo recovery issue: files/history were restored but the old CLI session remained interrupted. Undo now clears the reconciled chat's session identity so the next turn starts fresh from retained visible history; other chats remain invalidated. A handler regression verifies that isolation.
+
+The affected real-CLI Undo scenario was rebuilt and rerun successfully, including a new turn after Undo (**1 passed**); the prior run's main scenario and cancellation both passed (**2 passed**). Three additional review findings were fixed afterward: preserve hashed-attachment sensitivity via original manifest names and deny internal writes; resolve the app directory after the coordinated claim rather than before billing preflight; leave sessionless chats usable after restores. Focused tests cover each boundary.

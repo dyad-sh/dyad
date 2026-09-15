@@ -1,16 +1,20 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { writeFile } from "node:fs/promises";
+import { writeFile, rename } from "node:fs/promises";
 import path from "node:path";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
-import { chats, messages } from "@/db/schema";
+import { apps, chats, messages } from "@/db/schema";
 import { writeSettings } from "@/main/settings";
 import { ipc } from "@/ipc/types";
-const calls = vi.hoisted(() => ({ run: vi.fn(), beforeDispatch: vi.fn() }));
+const calls = vi.hoisted(() => ({
+  run: vi.fn(),
+  beforeDispatch: vi.fn(),
+  beforeAdmission: vi.fn(),
+}));
 vi.mock("./runtime", async (original) => ({
   ...(await original<typeof import("./runtime")>()),
   claudeStatus: async () => ({
@@ -34,6 +38,18 @@ vi.mock("@/ipc/utils/mention_apps", async (original) => {
     },
   };
 });
+vi.mock("../external_model_usage", async (original) => {
+  const module = await original<typeof import("../external_model_usage")>();
+  return {
+    ...module,
+    startExternalModelUsage: async (
+      ...args: Parameters<typeof module.startExternalModelUsage>
+    ) => {
+      await calls.beforeAdmission();
+      return module.startExternalModelUsage(...args);
+    },
+  };
+});
 let harness: HybridChatHarness;
 beforeAll(async () => {
   harness = await setupHybridChatHarness({
@@ -52,6 +68,7 @@ afterAll(async () => harness?.dispose());
 beforeEach(() => {
   calls.run.mockReset();
   calls.beforeDispatch.mockReset();
+  calls.beforeAdmission.mockReset();
   calls.run.mockImplementation(async (turn) => {
     await turn.onEvent({
       type: "assistant",
@@ -188,4 +205,32 @@ it("starts a fresh session with copied visible history rather than replaying an 
   expect(turn.resume).toBe(false);
   expect(turn.prompt).toContain("Earlier visible answer");
   expect(turn.prompt).toContain("do not replay historical tool calls or edits");
+});
+
+it("resolves the claimed app path after usage preflight", async () => {
+  const app = await harness.db.query.apps.findFirst({
+    where: eq(apps.id, harness.appId),
+  });
+  const relocated = harness.appDir + "-relocated";
+  let moved = false;
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  calls.beforeAdmission.mockImplementationOnce(async () => {
+    await rename(harness.appDir, relocated);
+    moved = true;
+    await harness.db
+      .update(apps)
+      .set({ path: app!.path + "-relocated" })
+      .where(eq(apps.id, harness.appId));
+  });
+  try {
+    await harness.streamChat("Read the app; do not edit.", { chatId });
+    expect(calls.run).toHaveBeenCalledOnce();
+    expect(calls.run.mock.calls[0][0].cwd).toBe(relocated);
+  } finally {
+    if (moved) await rename(relocated, harness.appDir);
+    await harness.db
+      .update(apps)
+      .set({ path: app!.path })
+      .where(eq(apps.id, harness.appId));
+  }
 });

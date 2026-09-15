@@ -62,9 +62,12 @@ async function selectSubscription(po: PageObject) {
     .getByRole("button", { name: "Start new chat", exact: true })
     .click();
   await expect(po.page.getByTestId("model-picker")).toContainText("sonnet");
-  return po.page.evaluate(() =>
-    (window as any).electron.ipcRenderer.invoke("claude-code:status"),
-  );
+  return po.page.evaluate(async () => {
+    const result = await (window as any).electron.ipcRenderer.invoke(
+      "claude-code:status",
+    );
+    return result.value ?? result;
+  });
 }
 
 test("real Claude subscription: picker, approvals, edit, MCP, resume, attribution and backend transition", async ({
@@ -106,7 +109,9 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
     { timeout: 90_000 },
   );
   expect(billing.events.length).toBeGreaterThan(firstCount);
-  await expect(po.page.getByText(/violet lighthouse/).last()).toBeVisible();
+  await expect(po.page.locator(".justify-start .prose").last()).toContainText(
+    /violet lighthouse/i,
+  );
   const appPath = await po.appManagement.getCurrentAppPath();
   await fs.writeFile(
     path.join(appPath, ".env.local"),
@@ -143,7 +148,9 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
     expect(new Set(billing.events.map((event) => event.id)).size).toBe(
       billing.events.length,
     );
-    await expect(po.page.getByText(/violet lighthouse/).last()).toBeVisible();
+    await expect(po.page.locator(".justify-start .prose").last()).toContainText(
+      /violet lighthouse/i,
+    );
     await po.page.screenshot({
       path: "test-results/claude-code-real-smoke.png",
       fullPage: true,

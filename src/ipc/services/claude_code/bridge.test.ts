@@ -1,6 +1,17 @@
+import {
+  appendAttachmentManifestEntries,
+  getDyadMediaDir,
+} from "@/ipc/utils/media_path_utils";
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { readFile, mkdtemp, mkdir, symlink, rm } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdtemp,
+  mkdir,
+  symlink,
+  rm,
+} from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -52,6 +63,58 @@ it("rejects traversal, out-of-app targets and symlink escapes before approving b
     }
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("denies hash-named dotenv attachments and internal writes while allowing ordinary attachments", async () => {
+  const app = await mkdtemp(path.join(tmpdir(), "claude-attachments-"));
+  try {
+    await mkdir(getDyadMediaDir(app), { recursive: true });
+    for (const [originalName, storedFileName] of [
+      [".env.local", "secret-hash.local"],
+      ["notes.txt", "safe-hash.txt"],
+    ]) {
+      await writeFile(
+        path.join(getDyadMediaDir(app), storedFileName),
+        "test fixture",
+      );
+      await appendAttachmentManifestEntries(app, [
+        {
+          originalName,
+          logicalName: originalName,
+          storedFileName,
+          mimeType: "text/plain",
+          sizeBytes: 12,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
+    expect(
+      await isClaudeFileRequestInApp(app, "Read", {
+        file_path: ".dyad/media/secret-hash.local",
+      }),
+    ).toBe(false);
+    expect(
+      await isClaudeFileRequestInApp(app, "Read", {
+        file_path: ".dyad/media/safe-hash.txt",
+      }),
+    ).toBe(true);
+    expect(
+      await isClaudeFileRequestInApp(app, "Write", {
+        file_path: ".dyad/media/attachments-manifest.json",
+      }),
+    ).toBe(false);
+    if (process.platform !== "win32") {
+      await symlink(
+        path.join(getDyadMediaDir(app), "secret-hash.local"),
+        path.join(app, "alias.txt"),
+      );
+      expect(
+        await isClaudeFileRequestInApp(app, "Read", { file_path: "alias.txt" }),
+      ).toBe(false);
+    }
+  } finally {
+    await rm(app, { recursive: true, force: true });
   }
 });
 

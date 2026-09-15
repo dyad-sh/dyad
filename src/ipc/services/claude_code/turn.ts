@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { IpcMainInvokeEvent } from "electron";
 import { eq, and, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { chats, messages } from "@/db/schema";
+import { apps, chats, messages } from "@/db/schema";
 import { getDyadAppPath } from "@/paths/paths";
 import { readAiRules } from "@/prompts/system_prompt";
 import { getLogs } from "@/lib/log_store";
@@ -77,7 +77,6 @@ export async function handleClaudeCodeTurn(
       DyadErrorKind.Precondition,
     );
   const selectedModel = input.model;
-  const appPath = getDyadAppPath(chat.app.path);
   const sessionId = chat.claudeSessionId ?? randomUUID();
   const previousMessages = chat.claudeSessionId
     ? []
@@ -181,6 +180,12 @@ export async function handleClaudeCodeTurn(
       },
       async () => {
         controller.signal.throwIfAborted();
+        const currentApp = await db.query.apps.findFirst({
+          where: eq(apps.id, chat.appId),
+        });
+        if (!currentApp)
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        const appPath = getDyadAppPath(currentApp.path);
         // Preserve pre-turn dirty state as a separate checkpoint so undo targets
         // only this turn, not edits the user made before it started.
         if (

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { READ_TOOLS, WRITE_TOOLS } from "./runtime";
 import { DyadError } from "@/errors/dyad_error";
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
+import { listStoredAttachments } from "@/ipc/utils/media_path_utils";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
 export interface BridgeOperations {
@@ -82,6 +83,24 @@ export async function isClaudeFileRequestInApp(
   for (;;) {
     try {
       const resolved = await realpath(candidate);
+      if (!inside(resolved)) return false;
+      // Internal files are not general-purpose workspace input. Only read
+      // manifest-known, non-dotenv attachments; hashes erase sensitive names.
+      if (path.relative(root, resolved).split(path.sep).includes(".dyad")) {
+        if (excludeInternal || tool !== "Read") return false;
+        const attachments = await listStoredAttachments(appPath);
+        const matching = [];
+        for (const attachment of attachments) {
+          if ((await realpath(attachment.filePath)) === resolved)
+            matching.push(attachment);
+        }
+        return (
+          matching.length > 0 &&
+          matching.every(
+            (attachment) => !isDotenvFilePath(attachment.originalName),
+          )
+        );
+      }
       return (
         inside(resolved) &&
         !isDotenvFilePath(resolved) &&

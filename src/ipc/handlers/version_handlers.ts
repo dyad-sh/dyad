@@ -6,7 +6,7 @@ import {
   messages,
   versions,
 } from "../../db/schema";
-import { desc, eq, and, gt, gte } from "drizzle-orm";
+import { desc, eq, and, gt, gte, isNotNull } from "drizzle-orm";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -852,7 +852,11 @@ async function revertCodebaseToVersion({
     .update(chats)
     .set({ claudeSessionState: "interrupted" })
     .where(
-      and(eq(chats.appId, appId), eq(chats.executionBackend, "claude-code")),
+      and(
+        eq(chats.appId, appId),
+        eq(chats.executionBackend, "claude-code"),
+        isNotNull(chats.claudeSessionId),
+      ),
     );
   await syncCloudSandboxSnapshotBestEffort(appId);
 
@@ -1201,6 +1205,22 @@ export function registerVersionHandlers() {
                 );
             }
           }
+        }
+
+        // Undo has now reconciled this chat's visible history with the restored
+        // tree. Start its next turn with that history in a fresh CLI session;
+        // other chats remain interrupted because their history was not pruned.
+        if (affectedChatId !== null) {
+          await db
+            .update(chats)
+            .set({ claudeSessionId: null, claudeSessionState: null })
+            .where(
+              and(
+                eq(chats.id, affectedChatId),
+                eq(chats.appId, appId),
+                eq(chats.executionBackend, "claude-code"),
+              ),
+            );
         }
 
         onRestoreProgress?.({

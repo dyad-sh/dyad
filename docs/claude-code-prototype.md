@@ -22,6 +22,10 @@ DYAD_REAL_CLAUDE_SMOKE=1 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- claude_code_s
 
 The opt-in Electron suite uses a real Claude subscription and a local test engine for Dyad accounting. It must not be mistaken for a live credit debit. Existing external Dyad services retain their own availability/billing.
 
+## Current verification (2026-09-15)
+
+See the [review and verification report](claude-code-review.md) and [current flat-rate usage evidence](claude-code-rebase-usage-evidence.json). The rebuilt macOS arm64 app was exercised with official CLI 2.1.261 and a real subscription; the accounting endpoint was a local fixture, not the production engine.
+
 ## Historical evidence (2026-09-04, before this rebase)
 
 The original CLI/Dyad smoke covered editing, approvals, MCP, preview, restart/resumption, cancellation, read-only mode, backend transitions, attribution, review and undo. These artifacts document that revision, **not current billing behavior**:

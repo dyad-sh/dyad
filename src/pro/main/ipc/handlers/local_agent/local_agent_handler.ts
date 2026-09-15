@@ -1424,7 +1424,7 @@ export async function handleLocalAgentStream(
             messages: sanitizedAttemptMessages,
             tools: allTools,
             stopWhen: [
-              stepCountIs(maxToolCallSteps),
+              stepCountIs(Math.max(1, maxToolCallSteps - totalStepsExecuted)),
               // Stop after the integration tool so the next stream is started
               // with a freshly built system prompt that includes the new
               // Supabase/Neon context. The frontend auto-triggers a hidden

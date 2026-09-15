@@ -67,7 +67,7 @@ const INFO_NEEDED_TEXT = {
   screenshot_not_attached:
     "It looks like your screenshot didn't come through. Could you paste it here?",
   session_id:
-    "In Dyad, open **Help** > **Report a Bug** with **Chat session** on, then paste the session id here so we can see the logs.",
+    "In Dyad, open **Help** > **Report a Bug** with **Chat session** on (or **Help** > **Upload Chat Session** on older versions) and paste the session id here so we can see the logs.",
   version:
     "Which version of Dyad are you on, and are you on Windows, Mac, or Linux?",
 };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stylesToTailwind } from "@/utils/style-utils";
+import { stylesToTailwind, extractClassPrefixes } from "@/utils/style-utils";
 
 describe("convertSpacingToTailwind", () => {
   describe("margin conversion", () => {
@@ -114,5 +114,90 @@ describe("convertSpacingToTailwind", () => {
       expect(result).toContain("mb-[15px]");
       expect(result).toHaveLength(3);
     });
+  });
+});
+
+describe("stylesToTailwind - border conversion", () => {
+  it("should emit border-[width] and border-[color] for a full border edit", () => {
+    const result = stylesToTailwind({
+      border: { width: "3px", color: "#ff0000" },
+    });
+    expect(result).toEqual(["border-[3px]", "border-[#ff0000]"]);
+  });
+
+  it("should emit rounded-[radius] separately from border width/color", () => {
+    const result = stylesToTailwind({
+      border: { width: "2px", radius: "8px", color: "#00ff00" },
+    });
+    expect(result).toEqual([
+      "border-[2px]",
+      "rounded-[8px]",
+      "border-[#00ff00]",
+    ]);
+  });
+
+  it("should emit border-[width] alone when only width is set", () => {
+    const result = stylesToTailwind({ border: { width: "1rem" } });
+    expect(result).toEqual(["border-[1rem]"]);
+  });
+
+  it("should emit border-[color] alone when only color is set", () => {
+    const result = stylesToTailwind({ border: { color: "#abc123" } });
+    expect(result).toEqual(["border-[#abc123]"]);
+  });
+});
+
+describe("extractClassPrefixes", () => {
+  it("should distinguish border-width from border-color for arbitrary values", () => {
+    const prefixes = extractClassPrefixes(["border-[3px]", "border-[#ff0000]"]);
+    expect(prefixes).toContain("border-width-");
+    expect(prefixes).toContain("border-color-");
+    expect(prefixes).not.toContain("border-");
+    expect(prefixes).toHaveLength(2);
+  });
+
+  it("should map various length units to border-width-", () => {
+    const prefixes = extractClassPrefixes([
+      "border-[2px]",
+      "border-[0.5rem]",
+      "border-[1.5em]",
+      "border-[50%]",
+      "border-[0]",
+    ]);
+    expect(prefixes).toEqual(["border-width-"]);
+  });
+
+  it("should map color values (#hex, rgb(), named) to border-color-", () => {
+    const prefixes = extractClassPrefixes([
+      "border-[#ff0000]",
+      "border-[#ff000080]",
+      "border-[rgb(255,0,0)]",
+    ]);
+    expect(prefixes).toEqual(["border-color-"]);
+  });
+
+  it("should keep distinct prefixes from a full border edit (real pipeline)", () => {
+    const classes = stylesToTailwind({
+      border: { width: "3px", color: "#ff0000" },
+    });
+    expect(extractClassPrefixes(classes)).toEqual([
+      "border-width-",
+      "border-color-",
+    ]);
+  });
+
+  it("should return rounded- prefix for rounded utility", () => {
+    expect(extractClassPrefixes(["rounded-[8px]"])).toEqual(["rounded-"]);
+  });
+
+  it("contrast: font-weight and font-family get distinct prefixes", () => {
+    const prefixes = extractClassPrefixes(["font-[700]", "font-[Inter]"]);
+    expect(prefixes).toContain("font-weight-");
+    expect(prefixes).toContain("font-family-");
+    expect(prefixes).toHaveLength(2);
+  });
+
+  it("contrast: text-size arbitrary values get text-size- prefix", () => {
+    expect(extractClassPrefixes(["text-[44px]"])).toEqual(["text-size-"]);
   });
 });

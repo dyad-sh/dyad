@@ -57,7 +57,7 @@ confirm a fix shipped before you say so.
 
 Most reporters are not developers. They know Dyad by what they see on screen:
 the **Pro** button, **Manage app**, **Versions**, **Settings**, **Help** >
-**Upload Chat Session**, Build mode, Agent mode. Write in those words. No stack
+**Report a Bug**, Build mode, Agent mode. Write in those words. No stack
 traces, file paths, error codes, or words like "duplicate" or "confidence" in
 anything the reporter reads. Those belong in the notes for the team.
 

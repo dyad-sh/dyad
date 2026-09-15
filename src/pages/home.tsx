@@ -187,7 +187,7 @@ export default function HomePage() {
             <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
               Describe your idea. Dyad will turn it into a working app.
             </p>
-            <div className="mt-4 flex justify-center gap-2">
+            <div className="mt-4 flex justify-center gap-3">
               <ImportAppButton
                 className="px-0 pb-0"
                 variant="outline"
@@ -197,7 +197,9 @@ export default function HomePage() {
                 <Button
                   size="sm"
                   onClick={() =>
-                    ipc.system.openExternalUrl("https://www.dyad.sh/pro#ai")
+                    ipc.system.openExternalUrl(
+                      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=home-upgrade-to-pro",
+                    )
                   }
                 >
                   <Sparkles aria-hidden="true" />

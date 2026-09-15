@@ -123,11 +123,27 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
       po.page.getByRole("checkbox", { name: "Chat session" }),
     ).toBeChecked();
 
-    // The dialog hides itself for the capture, then comes back showing it.
+    // The dialog steps aside and leaves a bar in its place, so the reporter
+    // can go to wherever the bug is before capturing.
     await po.page.getByRole("button", { name: /Add a screenshot/ }).click();
+    const bar = po.page.getByTestId("screenshot-capture-bar");
+    await expect(bar).toBeVisible();
+    await expect(description).not.toBeVisible();
+    // Keyboard users land on the way forward, not on the page body.
+    await expect(
+      bar.getByRole("button", { name: "Capture screenshot" }),
+    ).toBeFocused();
+
+    // The bar survives the reporter moving around the app.
+    await po.navigation.goToSettingsTab();
+    await expect(bar).toBeVisible();
+
+    // Capturing brings the form back with the screenshot on it.
+    await bar.getByRole("button", { name: "Capture screenshot" }).click();
     await expect(
       po.page.getByAltText("Screenshot of the Dyad window"),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(bar).not.toBeVisible();
     // The image travels on the clipboard, so the reporter has to be told.
     await expect(
       po.page.getByText(/in the GitHub issue to attach it/),

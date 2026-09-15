@@ -43,6 +43,13 @@ import { ReportDisclosures } from "./ReportDisclosures";
 
 const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
 
+/**
+ * How long the dialog gets to leave the screen before the capture. Its close
+ * animation runs 200ms, and a capture taken right at the end of it catches
+ * the dialog half-faded over the window.
+ */
+const DIALOG_CLOSE_DELAY_MS = 500;
+
 type DialogScreen = "main" | "form";
 
 /**
@@ -643,7 +650,7 @@ export function HelpDialog() {
           setHelpDialog({ open: true });
         }
       }
-    }, 200); // Small delay for the dialog to close
+    }, DIALOG_CLOSE_DELAY_MS);
   };
 
   const removeScreenshot = () => {

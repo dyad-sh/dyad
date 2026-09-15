@@ -12,6 +12,19 @@ it("rejects traversal, out-of-app targets and symlink escapes before approving b
   const app = path.join(root, "app");
   await mkdir(app);
   try {
+    for (const file of [
+      ".env",
+      ".env.local",
+      ".envrc",
+      "nested/.env.production",
+    ]) {
+      expect(
+        await isClaudeFileRequestInApp(app, "Read", { file_path: file }),
+      ).toBe(false);
+      expect(
+        await isClaudeFileRequestInApp(app, "Edit", { file_path: file }),
+      ).toBe(false);
+    }
     expect(
       await isClaudeFileRequestInApp(app, "Write", { file_path: "src/new.ts" }),
     ).toBe(true);
@@ -145,10 +158,87 @@ it("allows reference reads but never reference writes, even in writable mode", a
         JSON.parse((result.content as { text: string }[])[0].text).behavior,
       ).toBe(expected);
     }
+    const grep = await client.callTool({
+      name: "permission",
+      arguments: {
+        tool_name: "Grep",
+        input: { path: current, glob: ".env*", pattern: ".*" },
+      },
+    });
+    expect(
+      JSON.parse((grep.content as { text: string }[])[0].text).behavior,
+    ).toBe("deny");
     expect(approve).not.toHaveBeenCalled();
   } finally {
     await client.close();
     await bridge.close();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("preserves large permission inputs and drains actual MCP work before closing", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const dependencies = vi.fn(async () => {
+    await blocked;
+    return "installed";
+  });
+  const bridge = await createClaudeBridge({
+    appPath: process.cwd(),
+    readOnly: false,
+    signal: new AbortController().signal,
+    approve: async () => true,
+    diagnostics: async () => ({}),
+    checks: async () => ({}),
+    tests: async () => ({}),
+    dependencies,
+    restart: async () => ({}),
+    onTool: async () => {},
+  });
+  const config = JSON.parse(await readFile(bridge.configPath, "utf8"))
+    .mcpServers.dyad;
+  const client = new Client({ name: "test", version: "1" });
+  try {
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(config.url), {
+        requestInit: { headers: config.headers },
+      }),
+    );
+    const input = {
+      file_path: path.join(process.cwd(), "large-file.txt"),
+      content: "x".repeat(50_000),
+    };
+    const result = await client.callTool({
+      name: "permission",
+      arguments: { tool_name: "Write", input },
+    });
+    expect(JSON.parse((result.content as { text: string }[])[0].text)).toEqual({
+      behavior: "allow",
+      updatedInput: input,
+    });
+    const request = client
+      .callTool({
+        name: "install_dependencies",
+        arguments: { packages: ["react"] },
+      })
+      .catch(() => undefined);
+    await vi.waitFor(() => expect(dependencies).toHaveBeenCalledOnce());
+    let closed = false;
+    const closing = bridge.close().then(() => {
+      closed = true;
+    });
+    // A dispatched HTTP request is already finished, but its operation is not.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(closed).toBe(false);
+    release();
+    await closing;
+    await request;
+    expect(closed).toBe(true);
+  } finally {
+    release();
+    await client.close();
+    await bridge.close();
   }
 });

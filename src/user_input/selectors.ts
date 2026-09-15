@@ -20,6 +20,7 @@ export interface PendingIntegration {
 
 export interface PendingToolConsent {
   kind: "agent" | "mcp";
+  allowAlways?: boolean;
   requestId: string;
   chatId: number;
   toolName: string;
@@ -105,6 +106,7 @@ export function selectPendingToolConsents(
     if (descriptor.kind === "agent-consent") {
       consents.push({
         kind: "agent",
+        allowAlways: descriptor.allowAlways,
         requestId: descriptor.requestId,
         chatId: descriptor.chatId,
         toolName: descriptor.toolName,

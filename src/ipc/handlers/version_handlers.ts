@@ -1714,11 +1714,9 @@ export function registerVersionHandlers() {
                 chatMode: latestChat.chatMode,
                 modelSelection: latestChat.modelSelection,
                 executionBackend: latestChat.executionBackend,
-                // A fork cannot reuse a CLI session whose filesystem history differs.
-                claudeSessionState:
-                  latestChat.executionBackend === "claude-code"
-                    ? "interrupted"
-                    : null,
+                // A fork starts a fresh CLI session with copied visible history,
+                // never resumes the original session against restored files.
+                claudeSessionState: null,
                 initialCommitHash: forkInitialCommitHash,
                 // Carry over the sticky referenced apps. The fork copies the
                 // history containing the `@app:` mentions, so dropping these

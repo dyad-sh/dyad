@@ -6,24 +6,28 @@ import path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
+  type CallToolRequest,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { READ_TOOLS, WRITE_TOOLS } from "./runtime";
+import { DyadError } from "@/errors/dyad_error";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
+import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
 export interface BridgeOperations {
   appPath: string;
   readOnlyPaths?: string[];
   readOnly: boolean;
   signal: AbortSignal;
-  approve(tool: string, input: unknown): Promise<boolean>;
+  approve(tool: string, input: unknown, signal?: AbortSignal): Promise<boolean>;
   diagnostics(): Promise<unknown>;
   checks(): Promise<unknown>;
   tests(): Promise<unknown>;
   dependencies(packages: string[]): Promise<unknown>;
   restart(): Promise<unknown>;
-  onTool(name: string, complete: boolean): Promise<void>;
+  onTool(name: string, complete: boolean, error?: string): Promise<void>;
 }
 const EmptySchema = z.object({}).strict();
 const PackagesSchema = z
@@ -45,12 +49,14 @@ export async function isClaudeFileRequestInApp(
   appPath: string,
   tool: string,
   input: Record<string, unknown>,
+  excludeInternal = false,
 ) {
   const target =
     tool === "Read" || WRITE_TOOLS.includes(tool)
       ? input.file_path
       : (input.path ?? ".");
-  if (typeof target !== "string" || !target) return false;
+  if (typeof target !== "string" || !target || isDotenvFilePath(target))
+    return false;
   if (
     tool === "Glob" &&
     (typeof input.pattern !== "string" ||
@@ -75,7 +81,13 @@ export async function isClaudeFileRequestInApp(
   // symlinks, before approving. This is a path guard, not an OS sandbox.
   for (;;) {
     try {
-      return inside(await realpath(candidate));
+      const resolved = await realpath(candidate);
+      return (
+        inside(resolved) &&
+        !isDotenvFilePath(resolved) &&
+        (!excludeInternal ||
+          !path.relative(root, resolved).split(path.sep).includes(".dyad"))
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
       const parent = path.dirname(candidate);
@@ -90,13 +102,16 @@ export async function isClaudeFileRequestInApp(
 export async function createClaudeBridge(ops: BridgeOperations) {
   const bearer = randomBytes(32).toString("hex");
   const active = new Set<Promise<unknown>>();
+  const operations = new Set<Promise<unknown>>();
+  const closing = new AbortController();
+  const signal = AbortSignal.any([ops.signal, closing.signal]);
   const transports = new Set<StreamableHTTPServerTransport>();
   const http = createServer((req, res) => {
     if (
       req.headers.authorization !== `Bearer ${bearer}` ||
       req.headers.origin ||
       req.url !== "/mcp" ||
-      ops.signal.aborted
+      signal.aborted
     ) {
       res.writeHead(403).end();
       return;
@@ -154,17 +169,17 @@ export async function createClaudeBridge(ops: BridgeOperations) {
           })),
         ],
       }));
-      server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const execute = async (request: CallToolRequest) => {
         const text = (value: unknown) => ({
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(value).slice(0, 30_000),
+              text: sanitizeMcpToolResult(value).serialized,
             },
           ],
         });
         try {
-          ops.signal.throwIfAborted();
+          signal.throwIfAborted();
           const { name, arguments: args } = request.params;
           if (name === "permission") {
             const { tool_name, input } = PermissionSchema.parse(args);
@@ -187,18 +202,42 @@ export async function createClaudeBridge(ops: BridgeOperations) {
                   (
                     await Promise.all(
                       (ops.readOnlyPaths ?? []).map((root) =>
-                        isClaudeFileRequestInApp(root, tool_name, input),
+                        (() => {
+                          const relative = path.relative(
+                            root,
+                            String(input.file_path ?? input.path),
+                          );
+                          if (relative.split(path.sep).includes(".dyad"))
+                            return false;
+                          return isClaudeFileRequestInApp(
+                            root,
+                            tool_name,
+                            input,
+                            true,
+                          );
+                        })(),
                       ),
                     )
                   ).some(Boolean))) &&
               (mcp ||
                 READ_TOOLS.includes(tool_name) ||
-                (await ops.approve(tool_name, input)));
-            return text(
-              allow && !ops.signal.aborted
-                ? { behavior: "allow", updatedInput: input }
-                : { behavior: "deny", message: "Dyad denied this operation." },
-            );
+                (await ops.approve(tool_name, input, signal)));
+            // Protocol data must remain exact: truncating updatedInput corrupts edits.
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    allow && !signal.aborted
+                      ? { behavior: "allow", updatedInput: input }
+                      : {
+                          behavior: "deny",
+                          message: "Dyad denied this operation.",
+                        },
+                  ),
+                },
+              ],
+            };
           }
           if (!names.includes(name))
             throw new Error("Tool unavailable in this mode");
@@ -206,9 +245,12 @@ export async function createClaudeBridge(ops: BridgeOperations) {
             name === "install_dependencies"
               ? PackagesSchema.parse(args)
               : EmptySchema.parse(args ?? {});
-          if (name !== "diagnostics" && !(await ops.approve(name, parsed)))
+          if (
+            name !== "diagnostics" &&
+            !(await ops.approve(name, parsed, signal))
+          )
             throw new Error("Denied");
-          ops.signal.throwIfAborted();
+          signal.throwIfAborted();
           await ops.onTool(name, false);
           const result =
             name === "diagnostics"
@@ -224,17 +266,43 @@ export async function createClaudeBridge(ops: BridgeOperations) {
                     : await ops.restart();
           await ops.onTool(name, true);
           return text(result);
-        } catch {
+        } catch (error) {
+          const reason =
+            error instanceof DyadError
+              ? error.message
+              : error instanceof z.ZodError
+                ? "Invalid tool arguments."
+                : signal.aborted
+                  ? "Operation cancelled."
+                  : error instanceof Error && error.message === "Denied"
+                    ? "Permission denied."
+                    : "Operation failed. Check app diagnostics and configured package scripts.";
+          if (names.includes(request.params.name)) {
+            try {
+              await ops.onTool(request.params.name, true, reason);
+            } catch {
+              /* Chat persistence may also be unavailable. */
+            }
+          }
           return {
             isError: true,
             content: [
               {
                 type: "text",
-                text: "Dyad operation failed or was denied. Inspect the Dyad chat and preview diagnostics.",
+                text: sanitizeMcpToolResult(reason).serialized,
               },
             ],
           };
         }
+      };
+      server.setRequestHandler(CallToolRequestSchema, (request) => {
+        // The SDK dispatches handlers without awaiting them in handleRequest.
+        const operation = execute(request);
+        operations.add(operation);
+        void operation
+          .finally(() => operations.delete(operation))
+          .catch(() => {});
+        return operation;
       });
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
@@ -281,8 +349,10 @@ export async function createClaudeBridge(ops: BridgeOperations) {
   return {
     configPath,
     async close() {
+      closing.abort();
       http.close();
       await Promise.allSettled(active);
+      await Promise.allSettled(operations);
       await Promise.allSettled(
         [...transports].map((transport) => transport.close()),
       );

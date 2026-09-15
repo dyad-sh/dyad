@@ -1,9 +1,10 @@
+import log from "electron-log";
 import { escapeXmlAttr } from "../../../../shared/xmlEscape";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import { appRunActorService } from "@/ipc/services/app_run_actor_service";
 import { randomUUID } from "node:crypto";
 import type { IpcMainInvokeEvent } from "electron";
-import { eq } from "drizzle-orm";
+import { eq, and, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { getDyadAppPath } from "@/paths/paths";
@@ -27,6 +28,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { ChatStreamParams } from "@/ipc/types/chat";
 import { createClaudeBridge } from "./bridge";
 import { runClaudeTurn, READ_TOOLS, WRITE_TOOLS } from "./runtime";
+import { claudeTextFilter } from "./text";
 import { reportClaudeUsage } from "./accounting";
 import { startExternalModelUsage } from "../external_model_usage";
 import type { ExternalModelAdmission } from "../external_model_admission";
@@ -46,6 +48,7 @@ export async function handleClaudeCodeTurn(
   controller: AbortController,
   input: {
     messageId: number;
+    model: string;
     prompt: string;
     readOnly: boolean;
     apiKey?: string | null;
@@ -70,14 +73,46 @@ export async function handleClaudeCodeTurn(
       "This Claude Code session was interrupted. Start a new chat to avoid silently replaying edits; existing changes remain available for review and undo.",
       DyadErrorKind.Precondition,
     );
-  const selectedModel = chat.modelSelection.name;
+  const selectedModel = input.model;
   const appPath = getDyadAppPath(chat.app.path);
   const sessionId = chat.claudeSessionId ?? randomUUID();
+  const previousMessages = chat.claudeSessionId
+    ? []
+    : await db.query.messages.findMany({
+        where: and(
+          eq(messages.chatId, req.chatId),
+          lt(messages.id, input.messageId),
+        ),
+        orderBy: (m, { asc }) => [asc(m.id)],
+      });
+  // The final row is this turn's user prompt, supplied separately below.
+  const restoredHistory = previousMessages
+    .slice(0, -1)
+    .map((message) => ({ role: message.role, content: message.content }));
+  const historyContext = restoredHistory.length
+    ? "Restored visible chat history (context only; do not replay historical tool calls or edits):\n" +
+      JSON.stringify(restoredHistory) +
+      "\n"
+    : "";
   let content = "";
+  const modelText = claudeTextFilter(req.prompt.startsWith("/security-review"));
   const pendingToolCards = new Map<string, string>();
   let actualModel: string | null = null;
   let result: Record<string, any> | undefined;
   let failure: unknown;
+  let phase = "preparing the app";
+  let failureDetail = "";
+  const recordFailure = (error: unknown) => {
+    failure = error;
+    failureDetail =
+      error instanceof DyadError
+        ? error.message
+        : `Failed while ${phase}. Check Claude connection status and app diagnostics.`;
+    log.warn("Claude Code turn failed", {
+      phase,
+      kind: error instanceof DyadError ? error.kind : "external",
+    });
+  };
   let updatedFiles = false;
   let restartRequested = false;
   let lastPublishedAt = 0;
@@ -99,10 +134,16 @@ export async function handleClaudeCodeTurn(
       messages: rows.map(toRendererMessage),
     });
   };
-  const approve = async (tool: string, args: unknown) => {
+  const approve = async (
+    tool: string,
+    args: unknown,
+    operationSignal?: AbortSignal,
+  ) => {
+    const approvalSignal = operationSignal ?? controller.signal;
     if (input.readOnly || controller.signal.aborted) return false;
     const id = userInputRegistry.request({
       kind: "agent-consent",
+      allowAlways: false,
       chatId: req.chatId,
       toolName: `Claude Code: ${tool}`,
       toolDescription:
@@ -110,9 +151,9 @@ export async function handleClaudeCodeTurn(
       inputPreview: JSON.stringify(args).slice(0, 2000),
       classifier: "none",
     });
-    const decision = await userInputRegistry.park(id, controller.signal);
+    const decision = await userInputRegistry.park(id, approvalSignal);
     return (
-      !controller.signal.aborted &&
+      !approvalSignal.aborted &&
       decision?.kind === "agent-consent" &&
       decision.decision !== "decline"
     );
@@ -156,6 +197,7 @@ export async function handleClaudeCodeTurn(
           .update(chats)
           .set({ claudeSessionId: sessionId, claudeSessionState: "running" })
           .where(eq(chats.id, req.chatId));
+        phase = "starting the local tool bridge";
         const bridge = await createClaudeBridge({
           appPath,
           readOnlyPaths: input.references?.map(
@@ -207,16 +249,17 @@ export async function handleClaudeCodeTurn(
             restartRequested = true;
             return "Preview restart queued until this turn releases its repository claim.";
           },
-          onTool: async (name, complete) => {
-            content += `\n\n*Dyad ${name}: ${complete ? "completed" : "running"}*\n\n`;
+          onTool: async (name, complete, error) => {
+            content += `\n\n*Dyad ${name}: ${error ? "failed — " + error : complete ? "completed" : "running"}*\n\n`;
             await publish();
           },
         });
         try {
           const rules = await readAiRules(appPath);
+          phase = "running the Claude Code CLI";
           await runClaudeTurn({
             cwd: appPath,
-            prompt: `${input.readOnly ? "READ ONLY: answer or plan without modifying files." : "Work on this Dyad app. Use file tools for edits and the Dyad MCP tools for controlled operations. Do not start shell commands."}\nReferenced apps (read-only; do not modify):\n${JSON.stringify(input.references ?? [])}\nApp instructions:\n${rules}\nUser request:\n${input.prompt}`,
+            prompt: `${input.readOnly ? "READ ONLY: answer or plan without modifying files." : "Work on this Dyad app. Use file tools for edits and the Dyad MCP tools for controlled operations. Do not start shell commands."}\nUse Glob to find source files and Read to inspect them. Raw Grep and dotenv access are unavailable; do not request secrets.\nReferenced apps (read-only; do not modify):\n${JSON.stringify(input.references ?? [])}\nApp instructions:\n${rules}\n${historyContext}User request:\n${input.prompt}`,
             model: selectedModel,
             sessionId,
             resume: Boolean(chat.claudeSessionId),
@@ -265,10 +308,11 @@ export async function handleClaudeCodeTurn(
                 value.event?.type === "content_block_delta" &&
                 value.event.delta?.type === "text_delta"
               ) {
-                content += value.event.delta.text;
+                content += modelText(value.event.delta.text);
                 await publish();
               }
               if (value.type === "assistant" && !value.parent_tool_use_id) {
+                content += modelText("", true);
                 actualModel =
                   typeof value.message?.model === "string"
                     ? value.message.model
@@ -299,9 +343,10 @@ export async function handleClaudeCodeTurn(
                 await publish();
               }
               if (value.type === "result") {
+                content += modelText("", true);
                 result = value;
                 if (!content && typeof value.result === "string")
-                  content = value.result;
+                  content = modelText(value.result, true);
                 await publish();
               }
             },
@@ -311,8 +356,9 @@ export async function handleClaudeCodeTurn(
               "Claude Code did not complete successfully. Check CLI authentication and subscription limits.",
             );
         } catch (error) {
-          failure = error;
+          recordFailure(error);
         } finally {
+          phase = "finishing tools and checkpointing changes";
           await bridge.close();
           if (!input.readOnly) {
             updatedFiles =
@@ -341,7 +387,7 @@ export async function handleClaudeCodeTurn(
       },
     );
   } catch (error) {
-    failure = error;
+    recordFailure(error);
   }
   if (restartRequested && !controller.signal.aborted) {
     try {
@@ -354,6 +400,7 @@ export async function handleClaudeCodeTurn(
       content += "\n\n**Preview restart failed. Inspect preview diagnostics.**";
     }
   }
+  content += modelText("", true);
   const usage = await reportClaudeUsage(usageId, result);
   await db
     .update(messages)
@@ -364,6 +411,8 @@ export async function handleClaudeCodeTurn(
       card,
       card.replace('state="in-progress"', 'state="aborted"'),
     );
+  if (failure && !controller.signal.aborted)
+    content += `\n\n**${failureDetail}**`;
   if (failure || controller.signal.aborted)
     content +=
       "\n\n**Claude Code was interrupted or failed. Changes may remain; review or undo them. Start a new chat to avoid replaying unfinished edits.**";

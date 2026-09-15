@@ -1166,6 +1166,11 @@ export function registerChatStreamHandlers() {
       )
         throw new DyadError(BACKEND_SWITCH_MESSAGE, DyadErrorKind.Precondition);
       if (chat.executionBackend === "claude-code") {
+        if (req.redo)
+          throw new DyadError(
+            "Claude Code cannot replace an earlier turn without retaining hidden CLI context. Start a new chat to retry; your current chat stays unchanged.",
+            DyadErrorKind.Precondition,
+          );
         const status = await claudeStatus();
         if (!status.connected || !status.compatible)
           throw new DyadError(status.detail, DyadErrorKind.Precondition);
@@ -1870,6 +1875,45 @@ ${componentSnippet}
       } satisfies ChatStreamChunkPayload);
 
       if (chat.executionBackend === "claude-code") {
+        const securityReview = req.prompt.startsWith("/security-review");
+        const summarize = req.prompt.startsWith("Summarize from chat-id=");
+        let claudePrompt = userPrompt;
+        if (securityReview) {
+          let securityRules = "";
+          try {
+            securityRules = await fs.promises.readFile(
+              path.join(appPath, "SECURITY_RULES.md"),
+              "utf8",
+            );
+          } catch {
+            /* optional */
+          }
+          claudePrompt =
+            SECURITY_REVIEW_SYSTEM_PROMPT +
+            "\nProject security rules:\n" +
+            securityRules +
+            "\n" +
+            userPrompt;
+        }
+        if (summarize) {
+          const previousChat = await db.query.chats.findFirst({
+            where: eq(chats.id, Number(req.prompt.split("=")[1])),
+            with: {
+              messages: {
+                orderBy: (m, { asc }) => [asc(m.createdAt), asc(m.id)],
+              },
+            },
+          });
+          if (!previousChat)
+            throw new DyadError(
+              "Source chat not found",
+              DyadErrorKind.NotFound,
+            );
+          claudePrompt =
+            SUMMARIZE_CHAT_SYSTEM_PROMPT +
+            "\nSummarize the following chat:\n" +
+            formatMessagesForSummary(previousChat.messages);
+        }
         const references = await resolveStickyReferencedApps({
           prompt: req.prompt,
           persistedAppIds: readStoredReferencedAppIds(
@@ -1898,9 +1942,14 @@ ${componentSnippet}
           abortController,
           {
             messageId: placeholderAssistantMessage.id,
-            prompt: userPrompt + attachmentContext,
+            model: selectedModel.name,
+            prompt: claudePrompt + attachmentContext,
             references: references.references,
-            readOnly: selectedChatMode === "ask" || selectedChatMode === "plan",
+            readOnly:
+              selectedChatMode === "ask" ||
+              selectedChatMode === "plan" ||
+              securityReview ||
+              summarize,
             apiKey: isDyadProEnabled(settings)
               ? settings.providerSettings?.auto?.apiKey?.value
               : null,

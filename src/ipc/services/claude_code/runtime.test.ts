@@ -18,7 +18,7 @@ describe("Claude Code execution policy", () => {
     });
     expect(args).toContain("--restricted");
     expect(args[args.indexOf("--resume") + 1]).toBe("session");
-    expect(args[args.indexOf("--tools") + 1]).toBe("Read,Glob,Grep");
+    expect(args[args.indexOf("--tools") + 1]).toBe("Read,Glob");
     expect(args).not.toContain("--continue");
     expect(args).not.toContain("--fallback-model");
     expect(args).not.toContain("untrusted prompt");

@@ -16,6 +16,7 @@ interface ModifiedFilesCardProps {
   onUndo: () => void;
   isUndoLoading: boolean;
   onRetry: () => void;
+  retryUnavailableReason?: string;
   isRetryLoading: boolean;
   isAnyVersionMutationPending: boolean;
 }
@@ -43,6 +44,7 @@ export function ModifiedFilesCard({
   onUndo,
   isUndoLoading,
   onRetry,
+  retryUnavailableReason,
   isRetryLoading,
   isAnyVersionMutationPending,
 }: ModifiedFilesCardProps) {
@@ -105,7 +107,8 @@ export function ModifiedFilesCard({
         variant="outline"
         size="sm"
         data-testid="modified-files-retry"
-        disabled={actionsDisabled}
+        title={retryUnavailableReason}
+        disabled={actionsDisabled || !!retryUnavailableReason}
         onClick={onRetry}
         className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
       >

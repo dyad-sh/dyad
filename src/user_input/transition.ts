@@ -77,6 +77,13 @@ function responseMatches(
   descriptor: UserInputDescriptor,
   response: UserInputResponse,
 ): boolean {
+  if (
+    descriptor.kind === "agent-consent" &&
+    descriptor.allowAlways === false &&
+    response.kind === "agent-consent" &&
+    response.decision === "accept-always"
+  )
+    return false;
   return descriptor.kind === response.kind;
 }
 

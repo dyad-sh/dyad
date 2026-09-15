@@ -195,7 +195,12 @@ export function ModelPicker() {
   const [pendingBackend, setPendingBackend] = useState<
     (ModelSelectParams & { recentModels: LargeLanguageModel[] }) | null
   >(null);
+  const [open, setOpen] = useState(false);
   const claudeStatus = useQuery({
+    enabled:
+      open ||
+      chat?.executionBackend === "claude-code" ||
+      settings?.selectedModel.provider === "claude-code",
     queryKey: queryKeys.system.claudeCodeStatus,
     queryFn: () => ipc.chat.claudeCodeStatus(),
     staleTime: 10_000,
@@ -327,7 +332,6 @@ export function ModelPicker() {
       setPendingBackend(null);
     },
   });
-  const [open, setOpen] = useState(false);
   const [unlockTarget, setUnlockTarget] = useState<{
     providerId: string;
     model: LanguageModel;

@@ -397,7 +397,11 @@ export function registerChatHandlers() {
         db.transaction((tx) => {
           tx.delete(messages).where(eq(messages.chatId, chatId)).run();
           tx.update(chats)
-            .set({ referencedAppIds: [] })
+            .set({
+              referencedAppIds: [],
+              claudeSessionId: null,
+              claudeSessionState: null,
+            })
             .where(eq(chats.id, chatId))
             .run();
         });

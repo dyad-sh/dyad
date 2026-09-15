@@ -146,7 +146,14 @@ vi.mock("@/hooks/useSelectChat", () => ({
   useSelectChat: () => ({ selectChat: mocks.selectChat }),
 }));
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: mocks.claudeStatus, refetch: vi.fn() }),
+  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => ({
+    data:
+      queryKey.includes("claudeCodeStatus") ||
+      queryKey.includes("claude-code-status")
+        ? mocks.claudeStatus
+        : undefined,
+    refetch: vi.fn(),
+  }),
   useMutation: ({ mutationFn }: { mutationFn: () => Promise<unknown> }) => ({
     mutate: () => {
       void mutationFn();
@@ -196,7 +203,6 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
     chat: {
       acceptClaudeCodeDisclosure: mocks.acceptDisclosure,
       createChat: mocks.createChat,
-      retryClaudeCodeUsage: vi.fn(),
       updateChat: mocks.updateChat,
     },
     system: {

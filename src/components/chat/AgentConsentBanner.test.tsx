@@ -120,3 +120,21 @@ describe("AgentConsentBanner", () => {
     expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
   });
 });
+
+it("does not offer persistent approval for turn-scoped operations", () => {
+  const { container } = render(
+    <AgentConsentBanner
+      consent={{
+        kind: "agent",
+        requestId: "scoped",
+        chatId: 1,
+        toolName: "Claude Code: Edit",
+        allowAlways: false,
+      }}
+      onDecision={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(container.textContent).not.toContain("Always allow");
+  expect(container.textContent).toContain("Allow once");
+});

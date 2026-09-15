@@ -84,6 +84,8 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
     .click({ timeout: 60_000 });
   await po.chatActions.waitForChatCompletion({ timeout: 90_000 });
   await expect(po.page.getByText(/Claude Code \(claude-/).last()).toBeVisible();
+  await po.page.getByTestId("auxiliary-actions-menu").click();
+  await po.page.getByTestId("token-bar-toggle").click();
   await expect(
     po.page.getByText(/Usage reporting attempted/).last(),
   ).toBeVisible();
@@ -105,13 +107,20 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
   );
   expect(billing.events.length).toBeGreaterThan(firstCount);
   await expect(po.page.getByText(/violet lighthouse/).last()).toBeVisible();
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await fs.writeFile(
+    path.join(appPath, ".env.local"),
+    "PROTOTYPE_SECRET=dotenv-read-must-not-leak\n",
+  );
   await po.chatActions.selectChatMode("ask");
   await po.sendPrompt(
-    "Use Bash or Write to create forbidden.txt. Do not substitute tools. If these tools are unavailable, report that.",
+    "Use Bash or Write to create forbidden.txt. Also use Read or Grep to show the value in .env.local. Do not substitute tools. If these operations are denied or unavailable, report that.",
     { timeout: 90_000 },
   );
 
-  const appPath = await po.appManagement.getCurrentAppPath();
+  await expect(
+    po.page.locator(".justify-start .prose").last(),
+  ).not.toContainText("dotenv-read-must-not-leak");
   await expect(
     fs.access(path.join(appPath, "forbidden.txt")),
   ).rejects.toThrow();
@@ -215,6 +224,11 @@ test("real Claude edit: change review and undo refresh the preview", async ({
       .frameLocator("iframe")
       .getByText("Minimal imported app", { exact: true }),
   ).toBeVisible({ timeout: 30_000 });
+  await po.sendPrompt(
+    "Read src/App.tsx and report its visible label. Do not edit files.",
+    { timeout: 90_000 },
+  );
+  await expect(po.page.getByText(/Claude Code \(claude-/).last()).toBeVisible();
 });
 
 test("real Claude cancellation preserves an interrupted session without replay", async ({
@@ -223,14 +237,11 @@ test("real Claude cancellation preserves an interrupted session without replay",
   test.setTimeout(120_000);
   await selectSubscription(po);
   await po.sendPrompt(
-    "Write a very long explanation of React rendering, at least 10000 words. Start with the exact text CANCELLATION PROBE START. Do not use tools.",
+    "In src/App.tsx replace Minimal imported app with Cancelled change. Use Edit only; do not change other files.",
     { skipWaitForCompletion: true },
   );
   await expect(
-    po.page
-      .locator(".justify-start .prose")
-      .filter({ hasText: "CANCELLATION PROBE START" })
-      .last(),
+    po.page.getByRole("button", { name: "Allow once", exact: true }),
   ).toBeVisible({ timeout: 60_000 });
   await po.page.getByRole("button", { name: /cancel generation/i }).click();
   await expect(

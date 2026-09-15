@@ -7,9 +7,12 @@ import { constants } from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import { z } from "zod";
 import treeKill from "tree-kill";
+import { killProcessTreeSync } from "@/ipc/utils/kill_process_tree_sync";
 
 const execFileAsync = promisify(execFile);
-export const READ_TOOLS = ["Read", "Glob", "Grep"];
+// Raw recursive Grep can expose dotenv values without passing a per-file guard.
+// Search filenames with Glob, then read permitted files individually.
+export const READ_TOOLS = ["Read", "Glob"];
 export const WRITE_TOOLS = ["Edit", "Write"];
 const running = new Set<ChildProcess>();
 
@@ -22,6 +25,8 @@ export function claudeEnvironment(
     [
       "HOME",
       "USERPROFILE",
+      "APPDATA",
+      "LOCALAPPDATA",
       "PATH",
       "SystemRoot",
       "WINDIR",
@@ -59,8 +64,12 @@ export async function findClaudeExecutable(): Promise<string> {
 }
 
 export async function claudeStatus() {
+  let installed = false;
+  let version: string | null = null;
+  let compatible = false;
   try {
     const executable = await findClaudeExecutable();
+    installed = true;
     const options = {
       env: claudeEnvironment(),
       timeout: 10_000,
@@ -72,9 +81,9 @@ export async function claudeStatus() {
       ["--version"],
       options,
     );
-    const version = versionText.match(/\d+\.\d+\.\d+/)?.[0] ?? "unknown";
+    version = versionText.match(/\d+\.\d+\.\d+/)?.[0] ?? "unknown";
     const [major, minor, patch] = version.split(".").map(Number);
-    const compatible = major === 2 && minor === 1 && patch >= 259;
+    compatible = major === 2 && minor === 1 && patch >= 259;
     const { stdout } = await execFileAsync(
       executable,
       ["auth", "status"],
@@ -101,12 +110,13 @@ export async function claudeStatus() {
     };
   } catch {
     return {
-      installed: false,
+      installed,
       connected: false,
-      compatible: false,
-      version: null,
-      detail:
-        "Install Claude Code from code.claude.com, then run claude auth login in your terminal. Dyad never collects subscription credentials.",
+      compatible,
+      version,
+      detail: installed
+        ? "Claude Code is installed, but its status could not be checked. Run claude auth status in your terminal and reconnect with claude auth login if needed."
+        : "Install Claude Code from code.claude.com, then run claude auth login in your terminal. Dyad never collects subscription credentials.",
     };
   }
 }
@@ -146,6 +156,7 @@ export function claudeArguments(
     "--disallowedTools",
     [
       "Bash",
+      "Grep",
       "PowerShell",
       "Agent",
       "Task",
@@ -266,7 +277,7 @@ export function stopClaudeProcesses(): void {
     try {
       if (process.platform !== "win32" && child.pid)
         process.kill(-child.pid, "SIGKILL");
-      else if (child.pid) treeKill(child.pid, "SIGKILL", () => {});
+      else if (child.pid) killProcessTreeSync(child.pid);
     } catch {
       /* already exited */
     }

@@ -2,9 +2,7 @@ import { db } from "../../db";
 import { apps, chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
-import { readSettings } from "@/main/settings";
-import { executionBackendForModel } from "@/shared/execution_backend";
-import { resolveDefaultModelSelection } from "./model_effort";
+import { initialChatExecution } from "./chat_execution_selection";
 import type { ModelSelection } from "@/lib/schemas";
 import type { ChatMode } from "../../lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -64,11 +62,7 @@ export async function createChatForApp({
       }
 
       const chatMode = await getInitialChatModeForNewChat(initialChatMode);
-      const selected =
-        modelSelection ??
-        (readSettings().selectedModel.provider === "claude-code"
-          ? await resolveDefaultModelSelection(readSettings())
-          : undefined);
+      const execution = await initialChatExecution(modelSelection);
       const [chat] = await db
         .insert(chats)
         .values({
@@ -76,8 +70,7 @@ export async function createChatForApp({
           title,
           initialCommitHash,
           chatMode,
-          modelSelection: selected,
-          executionBackend: executionBackendForModel(selected),
+          ...execution,
         })
         .returning();
       logger.info(

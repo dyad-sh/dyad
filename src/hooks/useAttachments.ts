@@ -172,6 +172,22 @@ export function useAttachments() {
     return true;
   };
 
+  const restoreSubmittedAttachments = useCallback(
+    (submitted: readonly FileAttachment[]) => {
+      setAttachments((current) => [
+        ...submitted.filter(
+          (entry) =>
+            !current.some(
+              (candidate) =>
+                candidate.file === entry.file && candidate.type === entry.type,
+            ),
+        ),
+        ...current,
+      ]);
+    },
+    [setAttachments],
+  );
+
   const handlePaste = async (e: React.ClipboardEvent) => {
     if (pendingFiles) return;
 
@@ -226,6 +242,7 @@ export function useAttachments() {
     handleDrop,
     clearAttachments,
     clearSubmittedAttachments,
+    restoreSubmittedAttachments,
     handlePaste,
     addAttachments,
     replaceAttachments,

@@ -56,6 +56,9 @@ import { TokenBar } from "./TokenBar";
 
 import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
+import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
+import { useLoadApps } from "@/hooks/useLoadApps";
+import { buildOptimisticChatDisplay } from "@/lib/optimisticChatDisplay";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
@@ -167,6 +170,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setChatMode,
   } = useChatMode(chatId);
   const appId = useAtomValue(selectedAppIdAtom);
+  const { mediaApps } = useAppMediaFiles();
+  const { apps } = useLoadApps();
   const { refreshVersions } = useVersions(appId);
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
   const {
@@ -279,6 +284,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDrop,
     clearAttachments,
     clearSubmittedAttachments,
+    restoreSubmittedAttachments,
     replaceAttachments,
     handlePaste,
     confirmPendingFiles,
@@ -654,10 +660,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // restore it without discarding anything typed while admission was pending.
     void openPreviewIfSetupRequired(appId);
     setInputValue("");
+    clearSubmittedAttachments(attachments);
+    dismissSubmittedImageJobs();
     let didRestoreSubmittedInput = false;
     const restoreSubmittedInput = () => {
       if (didRestoreSubmittedInput) return;
       didRestoreSubmittedInput = true;
+      restoreSubmittedAttachments(attachments);
+      setDismissedImageJobIds((previous) => {
+        const next = new Set(previous);
+        for (const jobId of submittedImageJobIds) next.delete(jobId);
+        return next;
+      });
       setInputValue((current) =>
         current && submittedInputValue
           ? `${submittedInputValue}\n\n${current}`
@@ -685,8 +699,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           );
         }
       }
-      clearSubmittedAttachments(attachments);
-      dismissSubmittedImageJobs();
     };
     isAwaitingTurnAcceptanceRef.current = true;
     hideSubmittedAnnotations();
@@ -696,6 +708,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
+      showOptimisticMessage: true,
+      optimisticDisplayContent: buildOptimisticChatDisplay(
+        currentInput,
+        apps.find((app) => app.id === appId)?.path,
+        [
+          ...(mediaApps.find((app) => app.appId === appId)?.files ?? []),
+          ...visibleSuccessfulImageJobs.map((job) => ({
+            fileName: job.result!.fileName,
+            mimeType: "image/png",
+          })),
+        ],
+      ),
       selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
       onAccepted: () => {

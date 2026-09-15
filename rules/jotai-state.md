@@ -102,6 +102,9 @@ Components should usually read `currentTestSpecsAtom` rather than repeat
 - Chat admission can await network preflight. Clear composer text optimistically,
   restore rejected drafts once into their original chat without overwriting new
   text, and never clear a newer draft when delayed acceptance arrives.
+  For new composer submissions, keep content visible in a window-local overlay
+  until its intent or accepted message ID appears in history. Test blocked
+  preflight and history-before-acceptance delivery; never deduplicate by text.
 
 ## Cleanup
 

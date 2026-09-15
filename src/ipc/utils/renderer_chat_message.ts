@@ -10,6 +10,7 @@ import type { Message } from "@/ipc/types/chat";
  */
 export const rendererMessageColumns = {
   id: true,
+  chatTurnIntentId: true,
   role: true,
   content: true,
   approvalState: true,
@@ -29,6 +30,7 @@ export type RendererMessageRow = Pick<
 export function toRendererMessage(message: RendererMessageRow): Message {
   return {
     id: message.id,
+    chatTurnIntentId: message.chatTurnIntentId,
     role: message.role,
     content: message.content,
     approvalState: message.approvalState,

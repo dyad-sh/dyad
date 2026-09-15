@@ -8,6 +8,7 @@ import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentCon
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import type { ChatStreamRuntimeDeps } from "./runtime_deps";
 import { ChatStreamPreviewStore } from "./preview_store";
+import { OptimisticChatMessages } from "./optimistic_messages";
 import { CHAT_STREAM_INVOCATION_KIND } from "./invocation";
 import type {
   StreamEvent,
@@ -118,6 +119,8 @@ export type QueueMutationWithoutRevision =
  * optimistic receipts for the window that initiated a submission.
  */
 export class ChatStreamRemoteManager {
+  readonly optimisticMessages = new OptimisticChatMessages();
+  private unsubscribeMessages?: () => void;
   private readonly client: RemoteMachineClient;
   private readonly subscriptions = new Map<number, RetainedSubscription>();
   private readonly streamFinishedListeners = new Set<
@@ -156,9 +159,15 @@ export class ChatStreamRemoteManager {
     if (this.disposed || this.stopConnection) return;
     this.stopConnection = this.connection.start?.() ?? IDLE_UNSUBSCRIBE;
     this.client.start();
+    this.unsubscribeMessages = this.store.sub(chatMessagesByIdAtom, () => {
+      this.optimisticMessages.reconcile(this.store.get(chatMessagesByIdAtom));
+    });
+    this.optimisticMessages.reconcile(this.store.get(chatMessagesByIdAtom));
   }
 
   stop(): void {
+    this.unsubscribeMessages?.();
+    this.unsubscribeMessages = undefined;
     this.client.stop();
     this.stopConnection?.();
     this.stopConnection = undefined;
@@ -321,6 +330,7 @@ export class ChatStreamRemoteManager {
     }
     this.submissionTails.delete(chatId);
     this.previews.disposeKey(chatId);
+    this.optimisticMessages.disposeKey(chatId);
   };
 
   dispose(): void {
@@ -344,6 +354,7 @@ export class ChatStreamRemoteManager {
     this.submissionTails.clear();
     this.streamFinishedListeners.clear();
     this.previews.dispose();
+    this.optimisticMessages.dispose();
     this.client.dispose();
   }
 
@@ -491,6 +502,9 @@ export class ChatStreamRemoteManager {
       releaseSubscription: release,
     };
     this.pendingSubmissions.set(intentId, pending);
+    if (request.showOptimisticMessage && !request.redo && !request.owner) {
+      this.optimisticMessages.add(intentId, request);
+    }
     this.notifySnapshotListeners(request.chatId);
     const previous = this.submissionTails.get(request.chatId);
     const submission = (previous ?? Promise.resolve(false))
@@ -581,6 +595,9 @@ export class ChatStreamRemoteManager {
     const pending = this.pendingSubmissions.get(intentId);
     if (!pending) return undefined;
     this.pendingSubmissions.delete(intentId);
+    if (!pending.acceptanceDelivered) {
+      this.optimisticMessages.remove(pending.request.chatId, intentId);
+    }
     pending.releaseSubscription();
     return pending;
   }
@@ -669,6 +686,18 @@ export class ChatStreamRemoteManager {
           acceptance.acceptance === "message-accepted" ||
           acceptance.acceptance === "replayed"
         ) {
+          if (acceptance.acceptedMessageId !== undefined) {
+            this.optimisticMessages.accept(
+              chatId,
+              acceptance.intentId,
+              acceptance.acceptedMessageId,
+            );
+            this.optimisticMessages.reconcile(
+              this.store.get(chatMessagesByIdAtom),
+            );
+          } else {
+            this.optimisticMessages.remove(chatId, acceptance.intentId);
+          }
           pending.request.onAccepted?.();
           const replayedCompletion = snapshot.lastCompletion;
           if (
@@ -683,9 +712,11 @@ export class ChatStreamRemoteManager {
             this.takePendingSubmission(acceptance.intentId);
           }
         } else if (acceptance.acceptance === "queued") {
+          this.optimisticMessages.remove(chatId, acceptance.intentId);
           pending.request.onSettled?.({ success: false, queued: true });
           this.takePendingSubmission(acceptance.intentId);
         } else {
+          this.optimisticMessages.remove(chatId, acceptance.intentId);
           pending.request.onAcceptanceRejected?.(
             acceptance.error ?? "Chat submission rejected",
           );

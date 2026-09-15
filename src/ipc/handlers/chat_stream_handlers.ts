@@ -120,6 +120,7 @@ import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalid
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
+import { buildDyadAttachmentTag } from "../../../shared/dyadAttachment";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
   isModelRefusal,
@@ -1288,7 +1289,13 @@ export function registerChatStreamHandlers() {
           const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/.dyad/media/${encodeURIComponent(filename)}`;
 
           // Build display tag for inline rendering (escape attribute values)
-          displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;
+          displayAttachmentInfo += buildDyadAttachmentTag({
+            name: attachment.name,
+            type: attachment.type,
+            url: mediaUrl,
+            path: persistentPath,
+            attachmentType: attachment.attachmentType,
+          });
 
           if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the .dyad/media path so the AI can copy it into the codebase
@@ -1391,7 +1398,13 @@ export function registerChatStreamHandlers() {
               createdAt: new Date().toISOString(),
             });
             const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
-            mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
+            mediaDisplayInfo += buildDyadAttachmentTag({
+              name: media.fileName,
+              type: media.mimeType,
+              url: mediaUrl,
+              path: media.filePath,
+              attachmentType: "chat-context",
+            });
           }
           // Strip only resolved @media: tags from the prompt text.
           // This preserves adjacent user text when mentions are directly followed

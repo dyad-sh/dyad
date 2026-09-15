@@ -13,6 +13,7 @@ import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useDisplayedChatMessages } from "@/hooks/useChatStream";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useUserInputRequests } from "@/user_input/hooks";
 import { useAtomValue } from "jotai";
@@ -576,7 +577,10 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
+  function MessagesList(
+    { messages: persistedMessages, messagesEndRef, onAtBottomChange },
+    ref,
+  ) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
     const {
@@ -597,6 +601,10 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
+    const messages = useDisplayedChatMessages(
+      selectedChatId,
+      persistedMessages,
+    );
     const { chat: selectedChat } = useChatMode(selectedChatId);
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
@@ -674,7 +682,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     // Create context object for Footer component with stable references
     const footerContext = useMemo<FooterContext>(
       () => ({
-        messages,
+        messages: persistedMessages,
         messagesEndRef,
         isStreaming,
         isUndoLoading,
@@ -691,7 +699,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         renderSetupBanner,
       }),
       [
-        messages,
+        persistedMessages,
         messagesEndRef,
         isStreaming,
         isUndoLoading,

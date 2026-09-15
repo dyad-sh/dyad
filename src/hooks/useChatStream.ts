@@ -3,7 +3,14 @@ import { useStore } from "jotai";
 import { usePostHog } from "posthog-js/react";
 import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
 import type { ChatStreamRuntimeDeps } from "@/chat_stream/runtime_deps";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
+import type { Message } from "@/ipc/types";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
@@ -12,6 +19,35 @@ import type { ChatStreamRemoteSnapshot } from "@/chat_stream/transport";
 import { useSettings } from "./useSettings";
 
 const IDLE_UNSUBSCRIBE = () => {};
+
+/** Overlay submitted bubbles without inserting temporary rows into chat history. */
+export function useDisplayedChatMessages(
+  chatId: number | null,
+  messages: Message[],
+): Message[] {
+  const { optimisticMessages } = useChatStreamManager();
+  const getSnapshot = useCallback(
+    () => optimisticMessages.getSnapshot(chatId),
+    [chatId, optimisticMessages],
+  );
+  const pending = useSyncExternalStore(
+    optimisticMessages.subscribe,
+    getSnapshot,
+  );
+  return useMemo(() => {
+    const visible = pending.filter(
+      (entry) =>
+        !messages.some(
+          (message) =>
+            message.id === entry.acceptedMessageId ||
+            message.chatTurnIntentId === entry.intentId,
+        ),
+    );
+    return visible.length
+      ? [...messages, ...visible.map((entry) => entry.message)]
+      : messages;
+  }, [messages, pending]);
+}
 
 /**
  * React binding for the per-chat stream machine via `useSyncExternalStore`.

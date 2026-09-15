@@ -1,4 +1,5 @@
 import { createStore } from "jotai";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -82,11 +83,14 @@ describe("ChatStreamRemoteManager", () => {
       request: {
         chatId: 7,
         prompt: "first",
+        showOptimisticMessage: true,
         onAcceptanceError: firstAcceptanceError,
       },
     });
+    expect(manager.optimisticMessages.getSnapshot(7)).toHaveLength(1);
     rejectBootstrap(new Error("temporary bootstrap failure"));
     await vi.waitFor(() => expect(firstAcceptanceError).toHaveBeenCalledOnce());
+    expect(manager.optimisticMessages.getSnapshot(7)).toHaveLength(0);
 
     ref.send({
       type: "submit",
@@ -98,6 +102,86 @@ describe("ChatStreamRemoteManager", () => {
     release();
     manager.dispose();
   });
+
+  it.each(["message-accepted", "queued", "rejected"] as const)(
+    "reconciles the immediate bubble after %s",
+    async (acceptance) => {
+      let deliverSnapshot: (payload: unknown) => void = () => undefined;
+      let submittedIntentId = "";
+      const store = createStore();
+      const dispatch = vi.fn(async (envelope: MachineDispatchEnvelope) => {
+        submittedIntentId = (
+          envelope.encodedEvent as { intent: { intentId: string } }
+        ).intent.intentId;
+        return {
+          kind: "applied" as const,
+          actorInstanceId: "actor",
+          revision: 1,
+          transactionSequence: 1,
+          messageId: envelope.messageId,
+        };
+      });
+      const connection: ChatStreamRemoteConnection = {
+        getStatus: () => "connected",
+        onStatusChange: () => () => undefined,
+        onSnapshot: (listener) => {
+          deliverSnapshot = listener;
+          return () => undefined;
+        },
+        onDisposed: () => () => undefined,
+        subscribe: async (address) => ({
+          ...address,
+          actorInstanceId: "actor",
+          revision: 1,
+          encodedState: unavailableChatStreamSnapshot(7),
+        }),
+        unsubscribe: () => Promise.resolve(),
+        dispatch,
+      };
+      const manager = new ChatStreamRemoteManager(
+        store,
+        createSequentialIdSource(),
+        connection,
+      );
+      manager.ensure(7).send({
+        type: "submit",
+        request: { chatId: 7, prompt: "Hello", showOptimisticMessage: true },
+      });
+      expect(manager.optimisticMessages.getSnapshot(7)[0].message.content).toBe(
+        "Hello",
+      );
+      expect(store.get(chatMessagesByIdAtom).get(7)).toBeUndefined();
+      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+      deliverSnapshot({
+        protocolVersion: 1,
+        machineId: "chat_stream",
+        encodedKey: { chatId: 7 },
+        actorInstanceId: "actor",
+        revision: 2,
+        encodedState: {
+          ...unavailableChatStreamSnapshot(7),
+          revision: 2,
+          lastAcceptance: {
+            intentId: submittedIntentId,
+            acceptance,
+            ...(acceptance === "message-accepted"
+              ? { acceptedMessageId: 42 }
+              : {}),
+          },
+        },
+      });
+      if (acceptance === "message-accepted") {
+        // Acceptance alone must not create another disappearance before history arrives.
+        expect(manager.optimisticMessages.getSnapshot(7)).toHaveLength(1);
+        store.set(
+          chatMessagesByIdAtom,
+          new Map([[7, [{ id: 42, role: "user", content: "Hello" }]]]),
+        );
+      }
+      expect(manager.optimisticMessages.getSnapshot(7)).toHaveLength(0);
+      manager.dispose();
+    },
+  );
 
   it("starts a subscription-only renderer and follows later snapshots", async () => {
     let deliverSnapshot: (payload: unknown) => void = () => undefined;

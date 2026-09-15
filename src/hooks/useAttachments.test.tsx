@@ -160,4 +160,21 @@ describe("useAttachments", () => {
       { file: newerFile, type: "chat-context" },
     ]);
   });
+
+  it("restores rejected attachments once while retaining the new draft", () => {
+    const { store, Wrapper } = makeWrapper();
+    const { result } = renderHook(useAttachments, { wrapper: Wrapper });
+    act(() => result.current.addAttachments([makeFile("submitted.txt")]));
+    const submitted = store.get(attachmentsAtom);
+    act(() => {
+      result.current.clearSubmittedAttachments(submitted);
+      result.current.addAttachments([makeFile("newer.txt")]);
+      result.current.restoreSubmittedAttachments(submitted);
+      result.current.restoreSubmittedAttachments(submitted);
+    });
+    expect(store.get(attachmentsAtom).map(({ file }) => file.name)).toEqual([
+      "submitted.txt",
+      "newer.txt",
+    ]);
+  });
 });

@@ -32,6 +32,7 @@ import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
  */
 export const MessageSchema = z.object({
   id: z.number(),
+  chatTurnIntentId: z.string().nullable().optional(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   approvalState: z.enum(["approved", "rejected"]).nullable().optional(),

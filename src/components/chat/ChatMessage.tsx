@@ -225,6 +225,7 @@ const ChatMessage = ({
   // below rather than the (absent) message box.
   const showRestoreButton =
     message.role === "user" &&
+    message.id > 0 &&
     (hasUserText || attachments.length > 0) &&
     !isCancelled;
 

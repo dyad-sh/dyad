@@ -102,7 +102,13 @@ export function certificateDomainFor(
   // certificate authority both have more to say about IPv6 than is worth
   // guessing at here. A name is used as given.
   if (isIP(bare) === 6) return null;
-  return bare || null;
+  // The apply-time guard refuses any character outside [A-Za-z0-9.-], which a
+  // name the user gave as an SSH host can contain — an underscore is legal as
+  // a DNS label. Checking the same charset here, where the host becomes a
+  // domain, sends a host the guard would reject to the friendly fallback
+  // below rather than minutes into an install, where the guard fires with a
+  // message that blames the user's own SSH host.
+  return bare && isPlausibleInstanceDomain(bare) ? bare : null;
 }
 
 export function httpsUrlFor(domain: string): string {

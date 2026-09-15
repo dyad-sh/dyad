@@ -147,13 +147,19 @@ export function useBackgroundAutoReview(): void {
       const needsQueueResume = isRemediationTurn || hasPendingContinuation;
       void (async () => {
         if (abandonedThreadId) {
-          await ipc.agent
-            .skipReviewAutoFix({
+          try {
+            await ipc.agent.skipReviewAutoFix({
               chatId: event.chatId,
               threadId: abandonedThreadId,
               remediationFailed: true,
-            })
-            .catch(showError);
+            });
+          } catch (error) {
+            // Settlement failed: show the error but keep the queue paused so
+            // subsequent turns do not run while the reviewer is still in
+            // fixing_findings with no retry path.
+            showError(error);
+            return;
+          }
         }
         if (needsQueueResume) {
           await resumeQueue(event.chatId).catch(showError);

@@ -352,7 +352,7 @@ export function ChatList({
   return (
     <>
       <SidebarGroup
-        className="h-[calc(100vh-112px)] overflow-x-hidden overflow-y-auto"
+        className="h-[calc(100vh-112px-var(--layout-bottom-bar-height))] overflow-x-hidden overflow-y-auto"
         data-testid="chat-list-container"
       >
         {showViewAllAppsButton && (

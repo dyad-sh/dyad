@@ -26,7 +26,7 @@ export function ScreenshotCaptureBar({
   onCapture,
   onCancel,
 }: ScreenshotCaptureBarProps) {
-  const { t } = useTranslation(["home", "common"]);
+  const { t } = useTranslation("home");
   const root = useRef<HTMLDivElement>(null);
 
   // Before paint, so the layout never spends a frame under the bar. Measured

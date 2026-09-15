@@ -234,7 +234,7 @@ export function AppSidebar() {
     <Sidebar
       collapsible="icon"
       // Ends above the screenshot bar when one is up, like the main panel.
-      className="shadow-lg h-[calc(100svh-var(--layout-bottom-bar-height))]"
+      className="shadow-lg h-[calc(100vh-var(--layout-bottom-bar-height))]"
       onMouseEnter={() => {
         isPointerOverSidebar.current = true;
         cancelPendingCollapse();
@@ -276,7 +276,7 @@ export function AppSidebar() {
             />
           </div>
           {/* Right Column: Contextual sub-list (only visible when expanded) */}
-          <div className="relative h-[calc(100vh-112px)] w-[224px] overflow-hidden border-l border-sidebar-border">
+          <div className="relative h-[calc(100vh-112px-var(--layout-bottom-bar-height))] w-[224px] overflow-hidden border-l border-sidebar-border">
             <AnimatePresence initial={false}>
               {selectedItem === "Apps" && !showSelectedAppChats && (
                 <motion.div

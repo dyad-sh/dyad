@@ -100,50 +100,66 @@ export async function finishExternalModelUsage(
   model: string,
   usage: LanguageModelV3Usage,
 ) {
+  return finishExternalModelUsageBatch(id, [{ model, usage }]);
+}
+
+/** One admitted turn can report several disjoint model buckets (including auxiliary calls). */
+export async function finishExternalModelUsageBatch(
+  id: string | undefined,
+  models: { model: string; usage: LanguageModelV3Usage }[],
+) {
   if (!id) return;
   const request = active.get(id);
   if (!request) return;
   active.delete(id);
-  try {
-    const tokens = normalizeExternalModelUsage(usage);
-    const response = await fetch(
-      `${getDyadEngineBaseUrl().replace(/\/$/, "")}/track-usage`,
-      {
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(15_000),
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${request.key}`,
-        },
-        body: JSON.stringify({
-          version: 1,
-          id,
-          ...request.billing,
-          modelId: model,
-          createdAt: request.createdAt,
-          totalTokens:
-            tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output,
-          cachedInputTokens: tokens.cacheRead,
-          uncachedInputTokens: tokens.input + tokens.cacheWrite,
-          outputTokens: tokens.output,
-        }),
-      },
-    );
-    if (!response.ok)
-      logger.warn("External model usage report failed; not retrying", {
-        id,
-        status: response.status,
-      });
-    // No local receipts, queue, or reconciliation. The engine owns account spend.
-    await response.body?.cancel();
-  } catch {
-    // Do not log fetch errors or request objects: they may contain credentials.
-    logger.warn(
-      "External model usage unavailable or report failed; not retrying",
-      { id },
-    );
-  }
+  await Promise.all(
+    models.map(async ({ model, usage }, index) => {
+      const reportId = index === 0 ? id : randomUUID();
+      try {
+        const tokens = normalizeExternalModelUsage(usage);
+        const response = await fetch(
+          `${getDyadEngineBaseUrl().replace(/\/$/, "")}/track-usage`,
+          {
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(15_000),
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${request.key}`,
+            },
+            body: JSON.stringify({
+              version: 1,
+              id: reportId,
+              ...request.billing,
+              modelId: model,
+              createdAt: request.createdAt,
+              totalTokens:
+                tokens.input +
+                tokens.cacheRead +
+                tokens.cacheWrite +
+                tokens.output,
+              cachedInputTokens: tokens.cacheRead,
+              uncachedInputTokens: tokens.input + tokens.cacheWrite,
+              outputTokens: tokens.output,
+            }),
+          },
+        );
+        if (!response.ok)
+          logger.warn("External model usage report failed; not retrying", {
+            id,
+            status: response.status,
+          });
+        // No local receipts, queue, or reconciliation. The engine owns account spend.
+        await response.body?.cancel();
+      } catch {
+        // Do not log fetch errors or request objects: they may contain credentials.
+        logger.warn(
+          "External model usage unavailable or report failed; not retrying",
+          { id },
+        );
+      }
+    }),
+  );
 }
 export function interruptExternalModelUsage(
   id: string | undefined,

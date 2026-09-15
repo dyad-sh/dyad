@@ -43,20 +43,11 @@ export function TokenBar({ chatId }: TokenBarProps) {
 }
 
 export function SubscriptionUsage({ receipt }: { receipt?: string | null }) {
-  let cost: string | undefined;
-  let test = false;
+  let status: string | undefined;
   try {
-    const value = JSON.parse(receipt ?? "null");
-    if (
-      (value?.status === "settled" || value?.status === "test-settled") &&
-      typeof value.chargeUsd === "string" &&
-      /^\d+(?:\.\d+)?$/.test(value.chargeUsd)
-    ) {
-      cost = value.chargeUsd;
-      test = value.status === "test-settled";
-    }
+    status = JSON.parse(receipt ?? "null")?.status;
   } catch {
-    /* Missing/corrupt receipts are not zero-cost usage. */
+    /* unavailable */
   }
   return (
     <div
@@ -64,14 +55,17 @@ export function SubscriptionUsage({ receipt }: { receipt?: string | null }) {
       data-testid="subscription-usage"
     >
       <div>
-        {cost
-          ? `${test ? "Test charge (no live debit)" : "Latest Dyad charge"}: $${cost}`
-          : "Final usage cost unavailable or pending reconciliation."}
+        {status === "unbilled"
+          ? "Pro was off for this turn: no Dyad credits charged."
+          : status === "attempted"
+            ? "Usage reporting attempted. See your billing account for actual spend."
+            : "Usage unavailable. No token count or charge has been inferred."}
       </div>
       <div>
-        Claude subscription usage and a separate Dyad charge apply. Known
-        models: 25% of category-specific API list prices. Unknown to both
-        catalogs: $0.10 per million tokens.
+        Claude subscription usage applies. With Pro enabled, Dyad charges $0.02
+        per million total tokens for model IDs containing -luna, -mini or -nano;
+        $0.10 per million otherwise. Cached tokens count once. Reporting is best
+        effort, without retries.
       </div>
       <div>
         CLI context is managed separately; Dyad's context estimate is not a

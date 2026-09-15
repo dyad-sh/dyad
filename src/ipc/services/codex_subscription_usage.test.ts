@@ -225,3 +225,43 @@ describe("single-attempt subscription usage", () => {
     interruptSubscriptionUsage(abandoned, true);
   });
 });
+
+it("reports mixed-model buckets once under the captured account without rechecking credits", async () => {
+  const { startExternalModelUsage, finishExternalModelUsageBatch } =
+    await import("./external_model_usage");
+  const { checkSubscriptionCredits } =
+    await import("./codex_subscription_credit_check");
+  vi.mocked(checkSubscriptionCredits).mockClear();
+  const send = vi.fn(async () => Response.json({}));
+  vi.stubGlobal("fetch", send);
+  try {
+    const id = await startExternalModelUsage(
+      "sonnet",
+      undefined,
+      { connection: "subscription", modelProvider: "anthropic" },
+      "accepted-test-key",
+    );
+    const buckets = [
+      { model: "claude-sonnet", usage },
+      { model: "claude-haiku", usage },
+    ];
+    await finishExternalModelUsageBatch(id, buckets);
+    await finishExternalModelUsageBatch(id, buckets);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(checkSubscriptionCredits).toHaveBeenCalledTimes(1);
+    const requests = send.mock.calls as unknown as [string, RequestInit][];
+    const reports = requests.map(([, init]) => JSON.parse(String(init.body)));
+    expect(new Set(reports.map((report) => report.id)).size).toBe(2);
+    expect(reports.map((report) => report.modelId)).toEqual([
+      "claude-sonnet",
+      "claude-haiku",
+    ]);
+    for (const [, init] of requests)
+      expect(init.headers).toMatchObject({
+        Authorization: "Bearer accepted-test-key",
+      });
+    expect(reports.every((report) => report.totalTokens === 150)).toBe(true);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

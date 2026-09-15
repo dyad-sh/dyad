@@ -16,17 +16,28 @@ test.use({
   electronConfig: {
     preLaunchHook: async () => {
       billing = await startClaudeBillingFixture();
-      process.env.DYAD_CLAUDE_BILLING_URL = billing.url;
     },
   },
 });
 test.afterEach(() => {
   billing?.close();
-  delete process.env.DYAD_CLAUDE_BILLING_URL;
 });
 
+async function configureBilling(po: PageObject) {
+  await po.electronApp.evaluate((_, url) => {
+    process.env.DYAD_ENGINE_URL = url;
+    process.env.DYAD_USER_INFO_URL = `http://localhost:${process.env.FAKE_LLM_PORT}/api/user/info`;
+  }, billing.url);
+}
+
 async function selectSubscription(po: PageObject) {
+  await po.setUpDyadPro({
+    localAgent: true,
+    localAgentUseAutoModel: true,
+    autoApprove: false,
+  });
   await po.importApp("minimal");
+  await configureBilling(po);
   await po.page.getByTestId("model-picker").click();
   await expect(
     po.page.getByRole("menuitem", {
@@ -74,29 +85,32 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
   await po.chatActions.waitForChatCompletion({ timeout: 90_000 });
   await expect(po.page.getByText(/Claude Code \(claude-/).last()).toBeVisible();
   await expect(
-    po.page.getByText(/Test accounting — no live Dyad charge/).last(),
+    po.page.getByText(/Usage reporting attempted/).last(),
   ).toBeVisible();
   await expect(
     po.page
       .frameLocator("iframe")
       .getByText("Claude prototype preview", { exact: true }),
   ).toBeVisible({ timeout: 30_000 });
-  expect(billing.events).toHaveLength(1);
-  expect(billing.events[0].coverage).toBe("complete");
-  expect(billing.events[0].models.length).toBeGreaterThan(0);
+  expect(billing.events.length).toBeGreaterThan(0);
+  expect(
+    billing.events.every(
+      (event) => event.totalTokens > 0 && event.modelProvider === "anthropic",
+    ),
+  ).toBe(true);
+  const firstCount = billing.events.length;
   await po.sendPrompt(
     "What phrase did I ask you to remember? Read src/App.tsx and report its text. Do not edit any files.",
     { timeout: 90_000 },
   );
-  expect(billing.events).toHaveLength(2);
-  expect(billing.events[1].sessionId).toBe(billing.events[0].sessionId);
+  expect(billing.events.length).toBeGreaterThan(firstCount);
   await expect(po.page.getByText(/violet lighthouse/).last()).toBeVisible();
   await po.chatActions.selectChatMode("ask");
   await po.sendPrompt(
     "Use Bash or Write to create forbidden.txt. Do not substitute tools. If these tools are unavailable, report that.",
     { timeout: 90_000 },
   );
-  expect(billing.events).toHaveLength(3);
+
   const appPath = await po.appManagement.getCurrentAppPath();
   await expect(
     fs.access(path.join(appPath, "forbidden.txt")),
@@ -109,6 +123,7 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
   });
   po = new PageObject(restartedApp, await restartedApp.firstWindow(), profile);
   try {
+    await configureBilling(po);
     await expect(po.page.getByTestId("model-picker")).toContainText("sonnet", {
       timeout: 30_000,
     });
@@ -116,8 +131,9 @@ test("real Claude subscription: picker, approvals, edit, MCP, resume, attributio
       "Recall the phrase I asked you to remember earlier. No file changes.",
       { timeout: 90_000 },
     );
-    expect(billing.events).toHaveLength(4);
-    expect(billing.events[3].sessionId).toBe(billing.events[0].sessionId);
+    expect(new Set(billing.events.map((event) => event.id)).size).toBe(
+      billing.events.length,
+    );
     await expect(po.page.getByText(/violet lighthouse/).last()).toBeVisible();
     await po.page.screenshot({
       path: "test-results/claude-code-real-smoke.png",

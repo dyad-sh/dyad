@@ -27,12 +27,18 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { ChatStreamParams } from "@/ipc/types/chat";
 import { createClaudeBridge } from "./bridge";
 import { runClaudeTurn, READ_TOOLS, WRITE_TOOLS } from "./runtime";
-import { normalizeClaudeUsage, type UsageEvent } from "./usage";
+import { reportClaudeUsage } from "./accounting";
+import { startExternalModelUsage } from "../external_model_usage";
+import type { ExternalModelAdmission } from "../external_model_admission";
+import { scheduleChatSearchIndexing } from "@/pro/main/ipc/handlers/local_agent/chat_search_indexer";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { choosePackageManagerForApp } from "@/ipc/utils/package_manager_selection";
 import {
-  beginClaudeUsage,
-  reportClaudeUsage,
-  type authorizeClaudeTurn,
-} from "./accounting";
+  getPackageManagerCommandEnv,
+  getPnpmMinimumReleaseAgeSupport,
+} from "@/ipc/utils/socket_firewall";
+import { claudeEnvironment } from "./runtime";
 
 export async function handleClaudeCodeTurn(
   event: IpcMainInvokeEvent,
@@ -42,7 +48,9 @@ export async function handleClaudeCodeTurn(
     messageId: number;
     prompt: string;
     readOnly: boolean;
-    reservation: Awaited<ReturnType<typeof authorizeClaudeTurn>>;
+    apiKey?: string | null;
+    admission?: ExternalModelAdmission;
+    references?: { appName: string; appPath: string }[];
   },
 ): Promise<boolean> {
   const chat = await db.query.chats.findFirst({
@@ -65,7 +73,6 @@ export async function handleClaudeCodeTurn(
   const selectedModel = chat.modelSelection.name;
   const appPath = getDyadAppPath(chat.app.path);
   const sessionId = chat.claudeSessionId ?? randomUUID();
-  const turnId = input.reservation.turnId;
   let content = "";
   const pendingToolCards = new Map<string, string>();
   let actualModel: string | null = null;
@@ -73,7 +80,10 @@ export async function handleClaudeCodeTurn(
   let failure: unknown;
   let updatedFiles = false;
   let restartRequested = false;
-  const publish = async () => {
+  let lastPublishedAt = 0;
+  const publish = async (force = false) => {
+    if (!force && Date.now() - lastPublishedAt < 100) return;
+    lastPublishedAt = Date.now();
     await db
       .update(messages)
       .set({ content, model: actualModel, executionBackend: "claude-code" })
@@ -107,25 +117,13 @@ export async function handleClaudeCodeTurn(
       decision.decision !== "decline"
     );
   };
-  const usage: UsageEvent = {
-    schemaVersion: 1,
-    eventId: randomUUID(),
-    backend: "claude-code",
-    appId: chat.appId,
-    chatId: req.chatId,
-    turnId,
-    sessionId,
-    reservationId: input.reservation.reservationId,
-    pricingSnapshotId: input.reservation.pricingSnapshotId,
-    outcome: controller.signal.aborted
-      ? "cancelled"
-      : failure
-        ? "failed"
-        : "completed",
-    coverage: "incomplete",
-    models: [],
-  };
-  await beginClaudeUsage(usage);
+  const usageId = await startExternalModelUsage(
+    selectedModel,
+    controller.signal,
+    { connection: "subscription", modelProvider: "anthropic" },
+    input.apiKey,
+    input.admission,
+  );
   try {
     await appOperationCoordinator.run(
       {
@@ -160,17 +158,29 @@ export async function handleClaudeCodeTurn(
           .where(eq(chats.id, req.chatId));
         const bridge = await createClaudeBridge({
           appPath,
+          readOnlyPaths: input.references?.map(
+            (reference) => reference.appPath,
+          ),
           readOnly: input.readOnly,
           signal: controller.signal,
           approve,
           diagnostics: async () => getLogs(chat.appId).slice(-50),
           checks: () => runTypeScriptCheck({ appPath }),
           tests: async () => {
+            const manifest = JSON.parse(
+              await readFile(path.join(appPath, "package.json"), "utf8"),
+            );
+            if (typeof manifest.scripts?.test !== "string")
+              return { error: "This app has no test script configured." };
+            const support = await getPnpmMinimumReleaseAgeSupport();
             const result = await spawnStreaming({
-              command: "npm",
+              command: choosePackageManagerForApp(appPath, support.available),
               args: ["test"],
               cwd: appPath,
-              env: { ...process.env, CI: "true" },
+              env: {
+                ...getPackageManagerCommandEnv(claudeEnvironment()),
+                CI: "true",
+              },
               signal: controller.signal,
               timeoutMs: 120_000,
             });
@@ -206,7 +216,7 @@ export async function handleClaudeCodeTurn(
           const rules = await readAiRules(appPath);
           await runClaudeTurn({
             cwd: appPath,
-            prompt: `${input.readOnly ? "READ ONLY: answer or plan without modifying files." : "Work on this Dyad app. Use file tools for edits and the Dyad MCP tools for controlled operations. Do not start shell commands."}\nApp instructions:\n${rules}\nUser request:\n${input.prompt}`,
+            prompt: `${input.readOnly ? "READ ONLY: answer or plan without modifying files." : "Work on this Dyad app. Use file tools for edits and the Dyad MCP tools for controlled operations. Do not start shell commands."}\nReferenced apps (read-only; do not modify):\n${JSON.stringify(input.references ?? [])}\nApp instructions:\n${rules}\nUser request:\n${input.prompt}`,
             model: selectedModel,
             sessionId,
             resume: Boolean(chat.claudeSessionId),
@@ -265,7 +275,7 @@ export async function handleClaudeCodeTurn(
                     : actualModel;
                 for (const block of value.message?.content ?? [])
                   if (block.type === "tool_use") {
-                    const card = `<dyad-status title="Claude Code: ${escapeXmlAttr(String(block.name))}" state="in-progress"></dyad-status>`;
+                    const card = `<dyad-status tool-use-id="${escapeXmlAttr(String(block.id))}" title="Claude Code: ${escapeXmlAttr(String(block.name))}" state="in-progress"></dyad-status>`;
                     pendingToolCards.set(block.id, card);
                     content += `\n\n${card}\n\n`;
                   }
@@ -344,37 +354,11 @@ export async function handleClaudeCodeTurn(
       content += "\n\n**Preview restart failed. Inspect preview diagnostics.**";
     }
   }
-  usage.outcome = controller.signal.aborted
-    ? "cancelled"
-    : failure
-      ? "failed"
-      : "completed";
-  try {
-    usage.models = normalizeClaudeUsage(result);
-    usage.coverage = "complete";
-  } catch {
-    /* explicitly report missing usage */
-  }
-  try {
-    const receipt = await reportClaudeUsage(usage);
-    await db
-      .update(messages)
-      .set({
-        executionUsage: JSON.stringify({
-          ...receipt,
-          models: usage.models,
-          coverage: usage.coverage,
-        }),
-      })
-      .where(eq(messages.id, input.messageId));
-    content +=
-      receipt.status === "reconciliation"
-        ? "\n\n**Accounting needs reconciliation — final cost unavailable.**"
-        : `\n\n*${receipt.status === "test-settled" ? "Test accounting — no live Dyad charge" : "Dyad charge"}: $${receipt.chargeUsd}*`;
-  } catch {
-    content +=
-      "\n\n**Usage accounting pending. No zero-cost assumption was made. Retry accounting before another subscription turn.**";
-  }
+  const usage = await reportClaudeUsage(usageId, result);
+  await db
+    .update(messages)
+    .set({ executionUsage: JSON.stringify(usage) })
+    .where(eq(messages.id, input.messageId));
   for (const card of pendingToolCards.values())
     content = content.replace(
       card,
@@ -383,12 +367,24 @@ export async function handleClaudeCodeTurn(
   if (failure || controller.signal.aborted)
     content +=
       "\n\n**Claude Code was interrupted or failed. Changes may remain; review or undo them. Start a new chat to avoid replaying unfinished edits.**";
-  await publish();
-  safeSend(event.sender, "chat:response:end", {
-    chatId: req.chatId,
-    invocationRef: req.invocationRef,
-    streamId: req.streamId,
-    updatedFiles,
-  });
+  await publish(true);
+  if (!chat.title) {
+    await db
+      .update(chats)
+      .set({
+        title:
+          req.prompt.trim().replace(/\s+/g, " ").slice(0, 80) ||
+          "Claude Code chat",
+      })
+      .where(eq(chats.id, req.chatId));
+  }
+  scheduleChatSearchIndexing();
+  if (!controller.signal.aborted)
+    safeSend(event.sender, "chat:response:end", {
+      chatId: req.chatId,
+      invocationRef: req.invocationRef,
+      streamId: req.streamId,
+      updatedFiles,
+    });
   return !failure && !controller.signal.aborted;
 }

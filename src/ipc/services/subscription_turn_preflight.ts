@@ -47,7 +47,13 @@ export async function preflightSubscriptionTurn(
     }
   }
   signal.throwIfAborted();
-  if (selections.some((selection) => selection.connection === "subscription"))
+  if (
+    selections.some(
+      (selection) =>
+        selection.connection === "subscription" &&
+        selection.provider !== "claude-code",
+    )
+  )
     await getCodexSubscriptionCredentials();
   let externalModelAdmission: ExternalModelAdmission | undefined;
   if (

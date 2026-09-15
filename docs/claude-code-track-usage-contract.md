@@ -1,160 +1,41 @@
-# Proposed subscription usage contract (v1)
+# Claude Code usage: shared external-model contract
 
-Status: proposed engine contract; client and local test fixture implemented,
-but not implemented or agreed with the production engine. Commercial gate:
-see [validation report](claude-code-validation.md). Live charging is unverified.
+Revised 2026-09-15 to follow [Dyad #4483](https://github.com/dyad-sh/dyad/pull/4483) and the current shared `external_model_usage` service. This replaces the prototype's proposed reservation/outbox/catalog contract. Live Claude charging remains unverified.
 
-## Prototype wire subset
+## Pricing and admission
 
-The implemented client sends the request below without the proposed optional
-audit fields `cliVersion`, `source`, and `sourceEventIds`. Its accounting source
-is one final CLI `modelUsage` snapshot per turn; subagents are disabled. A missing
-final snapshot yields an incomplete event, never inferred partial counts.
+- With Pro enabled: $0.02 per million total tokens when the actual model ID contains `-luna`, `-mini`, or `-nano`; $0.10 per million otherwise. No API list-price multiplier or unknown-model special case. Cached tokens count once at the same rate.
+- With Pro off: no Dyad credit check or report. Claude subscription usage still applies. This is the existing shared subscription policy, not a fallback after an accounting failure.
+- Pro requests capture the accepted Dyad key and consume a main-only, one-use admission. Confirmed insufficient balance or rejected credentials prevents acceptance. Network errors, timeouts, and malformed balance responses allow generation, matching #4483. No reservation or alternate payment source is selected.
 
-`POST /authorize-usage` takes `{backend, chatId, turnId}` and requires
-`{reservationId, pricingSnapshotId, testMode}`. `POST /track-usage` returns
-`{eventId, status, chargeUsd, pricingSnapshotId}`, where status is `settled`,
-`test-settled`, or `reconciliation`, and chargeUsd is a nonnegative decimal
-string. Reconciliation charge values are not shown as final costs.
+## Reporting
 
-The prototype persists an atomic JSON outbox before execution and before
-delivery, retries on startup, next admission and explicit retry, and recovers
-crashed collecting records as incomplete. The full contract below additionally
-requires engine-owned reconciliation, richer receipts, reservation budgets,
-credit-pool policy, audit identities and periodic backoff. Reconciliation
-receipts currently block further subscription admission until resolved outside
-this prototype; the retry button only retries undelivered records.
-
-The fixture uses synthetic rates, in-memory reservations and no real balance.
-It is suitable for wire/idempotency/arithmetic tests, not production charging.
-
-## Admission and credit eligibility
-
-Before starting any Subscription turn, the engine must authorize the user,
-explicit eligible credit pool, backend, pricing policy and catalog version.
-A new admission/reservation operation is required in addition to track-usage:
-a balance read alone races concurrent turns. Return a turn-bound reservation
-ID, immutable pricing snapshot ID, credit-pool ID and execution allowance.
-The engine team must define reservation size, renewal, expiry, maximum debit,
-late usage settlement and treatment of usage beyond the reservation.
-
-Default integration behavior: no admission on insufficient eligible balance,
-missing catalog information or unavailable engine. Do not select a different
-credit pool, API key or backend. No offline free turns. Preserve submitted
-prompt/attachments when admission fails. Existing Pro/API accounting is unchanged.
-
-## POST /track-usage
-
-Use existing engine authentication, not Claude credentials. Proposed request:
+`POST /track-usage`, authenticated with the accepted **Dyad** key (never Claude credentials):
 
 ```json
 {
-  "schemaVersion": 1,
-  "eventId": "persisted-client-generated-uuid",
-  "backend": "claude-code",
-  "appId": 123,
-  "chatId": 456,
-  "turnId": "durable-turn-uuid",
-  "sessionId": "explicit-cli-session-uuid",
-  "reservationId": "engine-reservation-id",
-  "pricingSnapshotId": "engine-issued-immutable-snapshot",
-  "cliVersion": "2.1.260",
-  "outcome": "completed",
-  "coverage": "complete",
-  "source": "reconciled-cli-turn-usage",
-  "sourceEventIds": ["cli-result-uuid"],
-  "models": [
-    {
-      "actualModelId": "observed-raw-model-id",
-      "reportedCanonicalModelId": "observed-canonical-id",
-      "uncachedInputTokens": 2,
-      "cacheReadInputTokens": 2800,
-      "cacheWrite5mInputTokens": 0,
-      "cacheWrite1hInputTokens": 2407,
-      "cacheWriteUnclassifiedInputTokens": 0,
-      "outputTokens": 9
-    }
-  ]
+  "version": 1,
+  "id": "main-generated-uuid",
+  "connection": "subscription",
+  "modelProvider": "anthropic",
+  "modelId": "claude-sonnet-actual-id",
+  "createdAt": "2026-09-15T12:00:00.000Z",
+  "totalTokens": 150,
+  "cachedInputTokens": 20,
+  "uncachedInputTokens": 80,
+  "outputTokens": 50
 }
 ```
 
-Each category is a non-negative safe integer and disjoint. Reject invalid,
-negative, overflowing and unknown-schema requests. Unknown counts are not zero:
-report `coverage: "incomplete"` with missing fields and an accounting error
-instead of fabricating a complete models array. Outcome can also be failed or
-cancelled; reported consumed usage remains billable.
+`totalTokens = cachedInputTokens + uncachedInputTokens + outputTokens`.
+Claude `modelUsage` entries are the sole source, including auxiliary calls. Claude input tokens exclude cache reads/writes; convert to AI-SDK total input by adding both once. Cache writes join uncached input in this engine wire format. Never add top-level aggregate usage to model buckets. TTL allocation has no pricing effect.
 
-Aggregate all actual model calls, including auxiliary calls and subagents,
-exactly once. Main-model top-level totals must not be added to per-model totals.
-Cache TTL breakdown is part of cache-write total, not an additional category.
-Thinking is already included in output. The observed CLI result includes an
-auxiliary model absent from top-level usage; fixtures must preserve that case.
-Never infer mixed-model TTL allocation from a main-model-only breakdown.
+One admitted CLI turn can yield multiple reports with distinct event IDs, one per actual model bucket; all retain the same captured account/time. The engine calculates/debits charges, owns credit eligibility and idempotency, and records the authoritative synthetic pricing policy (`dyad/dyad-synthetic-cost-tracking`). The client does not send a monetary amount or trust CLI dollar estimates. The current shared contract does not carry chat/session correlation or a client catalog version; these are not required for the flat policy and are not fabricated by this adapter.
 
-For partial/cancelled usage, persist immutable disjoint usage segments, each
-with its own eventId and source-call identities. Later recovery must submit
-only new segments; any cumulative-final reconciliation requires a separate
-engine-owned replacement protocol, not another debit of the full total.
-This segmentation/source-identity protocol still requires real-CLI validation.
+## Failures and persistence
 
-## Authoritative pricing
+Consume reporting state before the single attempt. No durable outbox, retry, startup replay, reservations, reconciliation records, or blocked future turns. Report counts from failed/cancelled turns when the CLI emits a final usage snapshot. If counts are missing/invalid, do not invent them; discard reporting state and log metadata only. Delivery failures are logged without keys or upstream bodies; accepted usage may remain uncharged, intentionally matching #4483.
 
-Engine resolves raw model identifiers using a versioned mapping covering the
-approved local and remote catalogs. Client recognition and canonical IDs are
-hints, not authority. Pin model identity, catalog content, currency, rates,
-context/service tier rules and pricing-policy version in the receipt.
+Messages retain informational measured model usage and `attempted`, `unavailable`, or `unbilled` status, **not settlement receipts**. The existing billing account is the source of actual spend. CLI session recovery remains separate from billing: interrupted sessions require a new chat to avoid replaying edits.
 
-- Recognized model with complete rates: `0.25 * sum(categoryTokens * categoryRatePerMillion / 1000000)`.
-- Unknown to both approved catalogs: `sum(disjointTokens) * 0.10 / 1000000`.
-  Do not apply another 25% multiplier.
-- Recognized model with missing applicable rate or unresolved write TTL:
-  `pricing_incomplete`; hold for reconciliation, not unknown-model fallback.
-- Unknown catalog availability is not an unknown model. Catalog outage cannot
-  trigger the fallback rate.
-- Missing usage: `usage_incomplete`; persist and visibly reconcile. No invented
-  counts or zero-cost success receipt.
-
-Use decimal/fixed-point arithmetic and an agreed rounding rule. Round at the
-ledger transaction boundary, not per tiny token category. Do not trust client
-monetary amounts or the CLI's costUSD/total_cost_usd estimates.
-
-## Atomicity and responses
-
-Uniqueness key: authenticated account plus eventId. In one engine transaction,
-validate reservation ownership, validate source overlap, resolve pricing, write
-the event and ledger debit, and save a receipt. Identical retries return that
-receipt without another debit; same ID with different payload returns 409.
-The response must identify whether accepted usage is settled or awaiting
-reconciliation; acceptance alone must not be shown as a successful charge.
-
-Receipt: eventId, ledgerEntryId, status, exact decimal charge/currency,
-per-model category calculations, pricing snapshot/policy, eligible credit-pool
-ID, remaining balance and reservation state. Explicit error codes:
-insufficient_balance, reservation_invalid, pricing_incomplete,
-usage_incomplete, identity_conflict, service_unavailable.
-
-Usage already consumed must be recorded even if final debit exceeds available
-balance. Engine policy must decide settlement/debt; the client must not discard
-usage or silently draw a different payment source. Block later turns until the
-accounting state allows admission.
-
-## Durable client delivery and UI
-
-Write event and pending-outbox row transactionally before sending. Keep the
-same event ID and payload on timeout/crash/retry, including lost responses.
-Retry transient errors with bounded exponential backoff and jitter; permanent
-validation errors enter visible reconciliation. Preserve unresolved accounting
-records independently of chat/app deletion and reconcile at application start.
-Do not tie reporting lifetime to the cancelled generation AbortSignal.
-
-Before first use, disclose both subscription usage and separate Dyad charges,
-formula/fallback, and eligible credits. Show pending, settled, incomplete and
-failed accounting states distinctly. Persist the accepted disclosure version.
-Separate Dyad services such as auxiliary generation must have explicit
-availability and charges; don't silently reuse Pro billing for this backend.
-
-Required contract tests: replay after lost response, conflicting payload ID,
-cross-account reservation misuse, concurrent admission, cache/TTL overlap,
-auxiliary models, cancellation partial recovery, recognized incomplete rates,
-catalog outage vs unknown model, fractional rounding, insufficient settlement
-balance, outbox recovery, and deletion with pending reports.
+The loopback fixture validates shape, disjoint totals, flat rates and duplicate identity. It has no live balance or debit. Production Claude reports and real credit debits still require engine integration verification.

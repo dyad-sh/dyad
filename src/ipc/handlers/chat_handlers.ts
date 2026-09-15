@@ -1,5 +1,4 @@
 import { claudeStatus } from "@/ipc/services/claude_code/runtime";
-import { retryClaudeUsage } from "@/ipc/services/claude_code/accounting";
 import {
   hasClaudeDisclosure,
   acceptClaudeDisclosure,
@@ -108,9 +107,6 @@ export function registerChatHandlers() {
   }));
   createTypedHandler(chatContracts.acceptClaudeCodeDisclosure, async () =>
     acceptClaudeDisclosure(),
-  );
-  createTypedHandler(chatContracts.retryClaudeCodeUsage, async () =>
-    retryClaudeUsage(),
   );
   createTypedHandler(
     chatContracts.observeSubmissionStopPolicy,

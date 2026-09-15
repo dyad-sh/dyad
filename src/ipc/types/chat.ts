@@ -430,11 +430,6 @@ export const chatContracts = {
     input: z.void(),
     output: z.void(),
   }),
-  retryClaudeCodeUsage: defineContract({
-    channel: "claude-code:retry-usage",
-    input: z.void(),
-    output: z.void(),
-  }),
   createChat: defineContract({
     channel: "create-chat",
     input: z.union([

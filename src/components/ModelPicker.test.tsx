@@ -1811,6 +1811,7 @@ describe("Claude Code subscription picker", () => {
     expect(mocks.setChatSelection).not.toHaveBeenCalled();
   });
   it("creates a new chat in the same app with the chosen backend model", async () => {
+    mocks.settings.recentModels = [{ provider: "openai", name: "gpt-5" }];
     render(<ModelPicker />);
     fireEvent.click(screen.getByText("Claude Code — sonnet"));
     fireEvent.click(screen.getByText("Start new chat"));
@@ -1824,6 +1825,14 @@ describe("Claude Code subscription picker", () => {
           }),
         }),
       ),
+    );
+    expect(mocks.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recentModels: expect.arrayContaining([
+          { provider: "openai", name: "gpt-5" },
+          { provider: "claude-code", name: "sonnet" },
+        ]),
+      }),
     );
     expect(mocks.setChatSelection).not.toHaveBeenCalled();
   });

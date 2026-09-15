@@ -188,9 +188,13 @@ export function ModelPicker() {
   const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
   const freeModelQuota = useFreeModelQuota();
 
+  const hasEstablishedChat = Boolean(
+    chat && (chat.modelSelection || chat.messages.length > 0),
+  );
   const { selectChat } = useSelectChat();
-  const [pendingBackend, setPendingBackend] =
-    useState<ModelSelectParams | null>(null);
+  const [pendingBackend, setPendingBackend] = useState<
+    (ModelSelectParams & { recentModels: LargeLanguageModel[] }) | null
+  >(null);
   const claudeStatus = useQuery({
     queryKey: queryKeys.system.claudeCodeStatus,
     queryFn: () => ipc.chat.claudeCodeStatus(),
@@ -219,7 +223,13 @@ export function ModelPicker() {
       (backendChange ||
         (model.provider === "claude-code" && !claudeStatus.data?.disclosed))
     ) {
-      setPendingBackend({ model, catalogModel, effortLevel, rememberEffort });
+      setPendingBackend({
+        model,
+        catalogModel,
+        effortLevel,
+        rememberEffort,
+        recentModels,
+      });
       setOpen(false);
       return;
     }
@@ -250,7 +260,7 @@ export function ModelPicker() {
         }
       : {};
     const recentModelsUpdate =
-      model.provider === "auto" || model.billingSource === "api-key"
+      model.provider === "auto"
         ? settings.recentModels === undefined && recentModels.length > 0
           ? { recentModels }
           : {}
@@ -263,10 +273,14 @@ export function ModelPicker() {
         initialChatMode: selectedMode,
         modelSelection,
       });
-      await updateSettings({ selectedModel: model, ...preferenceUpdate });
+      await updateSettings({
+        selectedModel: model,
+        ...preferenceUpdate,
+        ...recentModelsUpdate,
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       selectChat({ chatId: newId, appId: chat.appId });
-    } else if (isChatRoute && chat && chatId) {
+    } else if (isChatRoute && hasEstablishedChat && chatId) {
       await setChatSelection({
         modelSelection,
         ...(fallbackChatMode ? { chatMode: fallbackChatMode } : {}),
@@ -279,10 +293,7 @@ export function ModelPicker() {
         await updateSettings({
           ...preferenceUpdate,
           ...recentModelsUpdate,
-          ...(model.provider === "claude-code" ||
-          model.billingSource === "api-key"
-            ? { selectedModel: model }
-            : {}),
+          ...(model.provider === "claude-code" ? { selectedModel: model } : {}),
         });
       }
     } else {
@@ -311,14 +322,10 @@ export function ModelPicker() {
       }
       await performModelSelect({
         ...pendingBackend,
-        recentModels: [],
         confirmed: true,
       });
       setPendingBackend(null);
     },
-  });
-  const retryUsage = useMutation({
-    mutationFn: () => ipc.chat.retryClaudeCodeUsage(),
   });
   const [open, setOpen] = useState(false);
   const [unlockTarget, setUnlockTarget] = useState<{
@@ -1407,17 +1414,17 @@ export function ModelPicker() {
               executionBackendForModel(pendingBackend.model) !==
                 (chat.executionBackend ?? "dyad")
                 ? BACKEND_SWITCH_MESSAGE
-                : "Claude subscription usage and a separate Dyad charge both apply."}
+                : "Claude subscription usage applies. With Pro enabled, a separate Dyad charge also applies."}
             </DialogDescription>
           </DialogHeader>
           {pendingBackend?.model.provider === "claude-code" && (
             <p className="text-sm">
-              Dyad charges 25% of API list-price token cost, including cache
-              reads and writes. Models unknown to both catalogs cost $0.10 per
-              million tokens, without the 25% multiplier. This prototype can use
-              test accounting, which is labeled separately and does not debit
-              live credits. Live charging and commercial approval are not
-              verified.
+              With Dyad Pro enabled, Claude subscription usage and a separate
+              Dyad charge apply: $0.02 per million total tokens for model IDs
+              containing -luna, -mini or -nano; $0.10 per million otherwise.
+              Cached tokens count once. With Pro off, no Dyad credits are
+              charged. Usage reporting is best effort; your billing account
+              shows actual spend.
             </p>
           )}
           <p className="text-sm text-muted-foreground">
@@ -1488,7 +1495,8 @@ export function ModelPicker() {
             </DropdownMenuItem>
           ))}
           <div className="px-2 py-1 text-xs text-muted-foreground">
-            Claude subscription usage and a separate Dyad charge both apply.
+            Claude subscription usage applies. With Pro enabled, a separate Dyad
+            charge also applies.
           </div>
           <DropdownMenuItem
             onClick={() => {
@@ -1497,18 +1505,6 @@ export function ModelPicker() {
           >
             Refresh connection
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              retryUsage.mutate();
-            }}
-          >
-            Retry usage accounting
-          </DropdownMenuItem>
-          {retryUsage.error && (
-            <div role="alert" className="px-2 text-xs">
-              {retryUsage.error.message}
-            </div>
-          )}
           <DropdownMenuSeparator />
           <SubscriptionModelMenu>
             <DropdownMenuSeparator />

@@ -1,41 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalizeClaudeUsage,
-  referencePricePicoUsd,
-  type TokenCategories,
-} from "./usage";
+import { normalizeClaudeUsage } from "./usage";
 
-const tokens: TokenCategories = {
-  uncachedInputTokens: 100,
-  cacheReadInputTokens: 20,
-  cacheWrite5mInputTokens: 30,
-  cacheWrite1hInputTokens: 40,
-  cacheWriteUnclassifiedInputTokens: 0,
-  outputTokens: 10,
-};
 describe("subscription accounting", () => {
-  it("prices each known category at 25%, without overlapping cache counts", () => {
-    expect(
-      referencePricePicoUsd(tokens, {
-        uncachedInputTokens: 3_000_000,
-        cacheReadInputTokens: 300_000,
-        cacheWrite5mInputTokens: 3_750_000,
-        cacheWrite1hInputTokens: 6_000_000,
-        outputTokens: 15_000_000,
-      }),
-    ).toBe(202125000n);
-  });
-  it("uses the flat unknown-model rate without another 25% multiplier", () => {
-    expect(referencePricePicoUsd(tokens, "unknown")).toBe(20_000_000n);
-  });
-  it("refuses incomplete known pricing and invalid counts", () => {
-    expect(() => referencePricePicoUsd(tokens, {})).toThrow(
-      "Incomplete pricing",
-    );
-    expect(() =>
-      referencePricePicoUsd({ ...tokens, outputTokens: -1 }, "unknown"),
-    ).toThrow();
-  });
   it("includes auxiliary calls once and maps only a matching TTL breakdown", () => {
     const result = normalizeClaudeUsage({
       modelUsage: {

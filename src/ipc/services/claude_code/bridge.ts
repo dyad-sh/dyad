@@ -14,6 +14,7 @@ import { READ_TOOLS, WRITE_TOOLS } from "./runtime";
 
 export interface BridgeOperations {
   appPath: string;
+  readOnlyPaths?: string[];
   readOnly: boolean;
   signal: AbortSignal;
   approve(tool: string, input: unknown): Promise<boolean>;
@@ -179,7 +180,17 @@ export async function createClaudeBridge(ops: BridgeOperations) {
                   ops.appPath,
                   tool_name,
                   input,
-                ))) &&
+                )) ||
+                (READ_TOOLS.includes(tool_name) &&
+                  typeof (input.file_path ?? input.path) === "string" &&
+                  path.isAbsolute(String(input.file_path ?? input.path)) &&
+                  (
+                    await Promise.all(
+                      (ops.readOnlyPaths ?? []).map((root) =>
+                        isClaudeFileRequestInApp(root, tool_name, input),
+                      ),
+                    )
+                  ).some(Boolean))) &&
               (mcp ||
                 READ_TOOLS.includes(tool_name) ||
                 (await ops.approve(tool_name, input)));

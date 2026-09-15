@@ -1,3 +1,5 @@
+> Historical validation from 2026-09-04. The billing proposal and measurements below predate the 2026-09-15 shared flat-rate update; see the current endpoint contract.
+
 # Claude Code integration validation
 
 Date: 2026-09-04. **Historical, pre-prototype validation report.** The user
@@ -20,8 +22,9 @@ Anthropic; this report does not assert that it is prohibited or approved.
 The [commercial terms](https://www.anthropic.com/legal/commercial-terms) and
 [consumer terms](https://www.anthropic.com/legal/consumer-terms) were inspected.
 No commercial agreement was accepted and no third party was contacted.
-Before commercial release, obtain confirmation covering the exact 25%
-list-price formula and unknown-model token fee. Do not substitute API billing.
+Before commercial release, obtain confirmation covering the separate Dyad fee.
+The original 25% proposal below is historical; current pricing follows #4483
+and is documented in claude-code-track-usage-contract.md. Do not substitute API billing.
 
 ## Real CLI evidence
 

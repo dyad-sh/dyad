@@ -20,21 +20,6 @@ export interface ModelUsage extends TokenCategories {
   actualModelId: string;
   reportedCanonicalModelId?: string;
 }
-export interface UsageEvent {
-  schemaVersion: 1;
-  eventId: string;
-  backend: "claude-code";
-  appId: number;
-  chatId: number;
-  turnId: string;
-  sessionId: string;
-  reservationId: string;
-  pricingSnapshotId: string;
-  outcome: "completed" | "cancelled" | "failed";
-  coverage: "complete" | "incomplete";
-  models: ModelUsage[];
-}
-
 /** Result modelUsage is the accounting source (includes auxiliary calls).
  * Top-level usage is used ONLY for a provably matching cache-TTL breakdown. */
 export function normalizeClaudeUsage(value: unknown): ModelUsage[] {
@@ -90,26 +75,4 @@ export function normalizeClaudeUsage(value: unknown): ModelUsage[] {
       cacheWriteUnclassifiedInputTokens: ttl ? 0 : u.cacheCreationInputTokens,
     };
   });
-}
-
-export type PriceRates = Partial<Record<keyof TokenCategories, number>>;
-/** Reference pricing for contract tests, not a client-authoritative debit.
- * Rates are integer micro-USD per million tokens; result is pico-USD. */
-export function referencePricePicoUsd(
-  usage: TokenCategories,
-  rates: PriceRates | "unknown",
-): bigint {
-  let total = 0n;
-  for (const key of Object.keys(usage) as (keyof TokenCategories)[]) {
-    const tokens = count.parse(usage[key]);
-    if (!tokens) continue;
-    if (rates === "unknown") total += BigInt(tokens) * 100_000n;
-    else {
-      const rate = rates[key];
-      if (rate === undefined || !Number.isSafeInteger(rate) || rate < 0)
-        throw new Error(`Incomplete pricing: ${key}`);
-      total += BigInt(tokens) * BigInt(rate);
-    }
-  }
-  return rates === "unknown" ? total : (total + 2n) / 4n;
 }

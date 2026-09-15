@@ -99,3 +99,56 @@ describe("app-bound MCP bridge", () => {
     }
   });
 });
+
+it("allows reference reads but never reference writes, even in writable mode", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "claude-reference-"));
+  const current = path.join(root, "current");
+  const reference = path.join(root, "reference");
+  await mkdir(current);
+  await mkdir(reference);
+  const approve = vi.fn(async () => true);
+  const bridge = await createClaudeBridge({
+    appPath: current,
+    readOnlyPaths: [reference],
+    readOnly: false,
+    signal: new AbortController().signal,
+    approve,
+    diagnostics: async () => ({}),
+    checks: async () => ({}),
+    tests: async () => ({}),
+    dependencies: async () => ({}),
+    restart: async () => ({}),
+    onTool: async () => {},
+  });
+  const config = JSON.parse(await readFile(bridge.configPath, "utf8"))
+    .mcpServers.dyad;
+  const client = new Client({ name: "test", version: "1" });
+  try {
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(config.url), {
+        requestInit: { headers: config.headers },
+      }),
+    );
+    for (const [tool, expected] of [
+      ["Read", "allow"],
+      ["Write", "deny"],
+      ["Edit", "deny"],
+    ]) {
+      const result = await client.callTool({
+        name: "permission",
+        arguments: {
+          tool_name: tool,
+          input: { file_path: path.join(reference, "file.ts") },
+        },
+      });
+      expect(
+        JSON.parse((result.content as { text: string }[])[0].text).behavior,
+      ).toBe(expected);
+    }
+    expect(approve).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await bridge.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

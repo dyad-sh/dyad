@@ -1,25 +1,22 @@
-import { render, screen } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 vi.mock("@/hooks/useCountTokens", () => ({ useCountTokens: vi.fn() }));
 import { SubscriptionUsage } from "./TokenBar";
-
-it("shows the separate pricing rule and test-only receipt", () => {
+afterEach(cleanup);
+it("shows flat Pro pricing without presenting a reporting attempt as a settled charge", () => {
   render(
-    <SubscriptionUsage
-      receipt={JSON.stringify({ status: "test-settled", chargeUsd: "0.003" })}
-    />,
+    <SubscriptionUsage receipt={JSON.stringify({ status: "attempted" })} />,
   );
-  expect(
-    screen.getByText(/Test charge \(no live debit\): \$0.003/),
-  ).toBeTruthy();
-  expect(screen.getByText(/25%.*\$0.10/)).toBeTruthy();
+  expect(screen.getByText(/Usage reporting attempted/)).toBeTruthy();
+  expect(screen.getByText(/\$0.02.*\$0.10/)).toBeTruthy();
 });
-it("does not present an incomplete receipt as a zero charge", () => {
+it("does not present missing usage as a zero charge", () => {
+  render(<SubscriptionUsage />);
+  expect(screen.getByText(/Usage unavailable/)).toBeTruthy();
+});
+it("identifies turns accepted with Pro off", () => {
   render(
-    <SubscriptionUsage
-      receipt={JSON.stringify({ status: "reconciliation", chargeUsd: "0" })}
-    />,
+    <SubscriptionUsage receipt={JSON.stringify({ status: "unbilled" })} />,
   );
-  expect(screen.getByText(/cost unavailable/)).toBeTruthy();
-  expect(screen.queryByText(/Latest Dyad charge/)).toBeNull();
+  expect(screen.getByText(/no Dyad credits charged/)).toBeTruthy();
 });

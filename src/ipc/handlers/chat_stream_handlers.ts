@@ -8,7 +8,6 @@ import {
 } from "@/shared/execution_backend";
 import { claudeStatus } from "@/ipc/services/claude_code/runtime";
 import { hasClaudeDisclosure } from "@/ipc/services/claude_code/disclosure";
-import { authorizeClaudeTurn } from "@/ipc/services/claude_code/accounting";
 import {
   claudeChatBackend,
   dyadChatBackend,
@@ -1166,9 +1165,6 @@ export function registerChatStreamHandlers() {
         (chat.executionBackend ?? "dyad")
       )
         throw new DyadError(BACKEND_SWITCH_MESSAGE, DyadErrorKind.Precondition);
-      let claudeReservation:
-        | Awaited<ReturnType<typeof authorizeClaudeTurn>>
-        | undefined;
       if (chat.executionBackend === "claude-code") {
         const status = await claudeStatus();
         if (!status.connected || !status.compatible)
@@ -1186,10 +1182,6 @@ export function registerChatStreamHandlers() {
             "Claude Code was interrupted. Start a new chat; review or undo the existing changes first.",
             DyadErrorKind.Precondition,
           );
-        claudeReservation = await authorizeClaudeTurn(
-          req.chatId,
-          req.intentId ?? uuidv4(),
-        );
       }
 
       // Reserve quota before redo or attachment persistence. The reservation
@@ -1835,10 +1827,12 @@ ${componentSnippet}
           // replay tool XML after an error or cancellation.
           approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
-          model: claudeReservation ? null :
-            selectedModel.connection === "subscription"
-              ? `ChatGPT subscription (${selectedModel.name})`
-              : selectedModel.name,
+          model:
+            chat.executionBackend === "claude-code"
+              ? null
+              : selectedModel.connection === "subscription"
+                ? `ChatGPT subscription (${selectedModel.name})`
+                : selectedModel.name,
           executionBackend: chat.executionBackend,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
@@ -1875,16 +1869,42 @@ ${componentSnippet}
         messages: updatedChat.messages.map(toRendererMessage),
       } satisfies ChatStreamChunkPayload);
 
-      if (claudeReservation) {
+      if (chat.executionBackend === "claude-code") {
+        const references = await resolveStickyReferencedApps({
+          prompt: req.prompt,
+          persistedAppIds: readStoredReferencedAppIds(
+            updatedChat.referencedAppIds,
+          ),
+          excludeCurrentAppId: updatedChat.app.id,
+        });
+        if (references.changed)
+          await persistReferencedAppIds(req.chatId, references.appIds);
+        const attachmentContext = storedAttachments.length
+          ? "\nAttachments available through the Read tool (including images). Read each relevant file; these are actual local paths, not virtual attachment URIs:\n" +
+            storedAttachments
+              .map((attachment) =>
+                JSON.stringify({
+                  name: attachment.originalName,
+                  path: attachment.filePath,
+                  type: attachment.mimeType,
+                  purpose: attachment.attachmentType,
+                }),
+              )
+              .join("\n")
+          : "";
         finishedNaturally = await claudeChatBackend.runTurn(
           event,
           req,
           abortController,
           {
             messageId: placeholderAssistantMessage.id,
-            prompt: localAgentAiUserPrompt,
+            prompt: userPrompt + attachmentContext,
+            references: references.references,
             readOnly: selectedChatMode === "ask" || selectedChatMode === "plan",
-            reservation: claudeReservation,
+            apiKey: isDyadProEnabled(settings)
+              ? settings.providerSettings?.auto?.apiKey?.value
+              : null,
+            admission: externalModelAdmission,
           },
         );
         return;

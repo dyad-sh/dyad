@@ -388,7 +388,7 @@
     "failed": "Could not add the plugin.",
     "oauthHint": "Connecting adds the plugin to Dyad and opens your browser to approve access.",
     "declining": "Skipping…",
-    "unreachable": "The plugin was added but its server is not responding."
+    "unreachable": "The plugin was added but its server is not responding. Try again, or manage it on the Plugins page."
   },
   "guide": "Guide",
   "annotations": {

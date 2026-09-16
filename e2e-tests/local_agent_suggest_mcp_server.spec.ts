@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { startFakeHttpMcpServer } from "./helpers/fake_mcp_server";
+import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
 import { Timeout, testWithConfigSkipIfWindows } from "./helpers/test_helper";
 
 /**
@@ -14,9 +15,15 @@ import { Timeout, testWithConfigSkipIfWindows } from "./helpers/test_helper";
  * out of every other local-agent request snapshot; this launch opts in.
  */
 const originalCatalogUrl = process.env.DYAD_MCP_CATALOG_URL;
+// The catalog spec binds the default MCP port, and another worker can be
+// running it at the same time, so this file's server gets its own port
+// per worker and the catalog entry is pointed at it.
+const MCP_PORT_BASE = 3100;
+let mcpPort = MCP_PORT_BASE;
 const testWithFeaturedCatalog = testWithConfigSkipIfWindows({
   preLaunchHook: async ({ fakeLlmPort }) => {
-    process.env.DYAD_MCP_CATALOG_URL = `http://localhost:${fakeLlmPort}/api/mcp-catalog?featured=e2e-open`;
+    mcpPort = MCP_PORT_BASE + (fakeLlmPort - FAKE_LLM_BASE_PORT);
+    process.env.DYAD_MCP_CATALOG_URL = `http://localhost:${fakeLlmPort}/api/mcp-catalog?featured=e2e-open&mcpPort=${mcpPort}`;
   },
   postLaunchHook: async () => {
     if (originalCatalogUrl === undefined)
@@ -30,7 +37,7 @@ testWithFeaturedCatalog(
   async ({ po }) => {
     // The card only reports a plugin as connected once its server answers,
     // so the entry's target has to be up.
-    const stopMcpServer = await startFakeHttpMcpServer();
+    const stopMcpServer = await startFakeHttpMcpServer(mcpPort);
     try {
       await po.setUpDyadPro({ localAgent: true, autoApprove: true });
       await po.importApp("minimal");

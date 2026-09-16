@@ -385,7 +385,7 @@
     "failed": "无法添加插件。",
     "oauthHint": "连接会将该插件添加到 Dyad，并打开浏览器以批准访问。",
     "declining": "正在跳过…",
-    "unreachable": "插件已添加，但其服务器没有响应。"
+    "unreachable": "插件已添加，但其服务器没有响应。请重试，或在插件页面中管理它。"
   },
   "guide": "指南",
   "annotations": {

@@ -190,12 +190,16 @@ export function registerTokenCountHandlers() {
       const isDyadPro = isDyadProEnabled(settings);
       const mcpToolDefs =
         selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
-      // Cached only: an estimate must never wait on the catalog network fetch.
+      // Cached only: an estimate must never wait on the catalog network
+      // fetch, and a failure here must not fail the whole count.
       const suggestableMcpServers =
         selectedChatMode === "local-agent"
           ? await collectSuggestableMcpServers({
               chatId: req.chatId,
               cachedOnly: true,
+            }).catch((error: unknown) => {
+              logger.warn("Failed to read suggestable MCP servers", error);
+              return [];
             })
           : [];
       const toolDefinitionTokens = await estimateAgentToolTokens({

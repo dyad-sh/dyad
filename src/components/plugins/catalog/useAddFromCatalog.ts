@@ -3,8 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import { ipc } from "@/ipc/types";
-import { queryKeys } from "@/lib/queryKeys";
 import { showSuccess } from "@/lib/toast";
+import { invalidateMcpQueries } from "../invalidateMcpQueries";
 import { usePluginConnect } from "../usePluginConnect";
 
 export function useAddFromCatalog() {
@@ -34,15 +34,7 @@ export function useAddFromCatalog() {
       });
       return { entry, created };
     },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.mcp.catalog }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.mcp.toolsByServer.all,
-        }),
-      ]);
-    },
+    onSuccess: () => invalidateMcpQueries(queryClient),
     meta: { showErrorToast: true },
   });
 

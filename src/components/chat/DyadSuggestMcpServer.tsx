@@ -10,9 +10,9 @@ import {
   useUserInputReadModel,
 } from "@/user_input/hooks";
 import type { PendingMcpSuggestion } from "@/user_input/selectors";
+import { invalidateMcpQueries } from "@/components/plugins/invalidateMcpQueries";
 import { usePluginConnect } from "@/components/plugins/usePluginConnect";
 import { ipc } from "@/ipc/types";
-import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { useDyadMessageId } from "./messageContext";
@@ -47,12 +47,14 @@ export const DyadSuggestMcpServer: React.FC<DyadSuggestMcpServerProps> = ({
 
   const pendingForChat =
     chatId != null ? pendingSuggestions.get(chatId) : undefined;
-  // Only the card raised from the live request's own message is live. A
-  // card rendered outside a persisted message has no id to compare, so it
-  // falls back to matching the plugin.
+  // Only the card raised by the live request is live: same plugin, same
+  // reason, and the same message. Matching the reason separates parallel
+  // calls for one plugin within a message. A card rendered outside a
+  // persisted message has no id to compare, so it skips that check.
   const pending =
     pendingForChat &&
     pendingForChat.slug === slug &&
+    pendingForChat.reason === reason &&
     (messageId === undefined || pendingForChat.messageId === messageId)
       ? pendingForChat
       : undefined;
@@ -102,12 +104,10 @@ export const DyadSuggestMcpServer: React.FC<DyadSuggestMcpServerProps> = ({
 
   // Once the durable pending card settles, its appended terminal card owns
   // the historical presentation. Dismissed requests have no terminal UI.
-  if (!pending) return null;
+  if (outcome === "dismissed" || !pending) return null;
 
   return (
-    <PendingSuggestionCard pending={pending} reason={reason}>
-      {children}
-    </PendingSuggestionCard>
+    <PendingSuggestionCard pending={pending}>{children}</PendingSuggestionCard>
   );
 };
 
@@ -116,11 +116,9 @@ type ConnectPhase = "idle" | "adding" | "authorizing" | "declining";
 // The live card owns the connect hooks so historical cards stay cheap.
 function PendingSuggestionCard({
   pending,
-  reason,
   children,
 }: {
   pending: PendingMcpSuggestion;
-  reason: string;
   children?: React.ReactNode;
 }) {
   const { t } = useTranslation("chat");
@@ -134,16 +132,6 @@ function PendingSuggestionCard({
   const isBusy =
     pending.isResponding || phase !== "idle" || connectingServerId !== null;
 
-  const invalidatePluginQueries = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcp.catalog }),
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcp.toolsByServer.all,
-      }),
-    ]);
-  };
-
   const handleConnect = async () => {
     if (isBusy) return;
     setPhase("adding");
@@ -151,21 +139,21 @@ function PendingSuggestionCard({
       // Only one-click entries are suggestable (http, no inputs), so the
       // row is created enabled and needs at most an OAuth step.
       const created = await ipc.mcp.addFromCatalog({ slug: pending.slug });
-      await invalidatePluginQueries();
+      await invalidateMcpQueries(queryClient);
       if (pending.oauthRequired) {
         setPhase("authorizing");
         // The shared flow toasts its own failure message.
         const connected = await connectNewServer(created);
-        await invalidatePluginQueries();
+        await invalidateMcpQueries(queryClient);
         if (!connected) return;
-      } else {
-        // Added is not the same as reachable; the agent should only be
-        // told the plugin is ready when its server answers.
-        const probe = await ipc.mcp.probeConnection(created.id);
-        if (probe.status !== "ok") {
-          showError(probe.error ?? t("suggestMcpServer.unreachable"));
-          return;
-        }
+      }
+      // Added and authorized are not the same as reachable; the agent
+      // should only be told the plugin is ready when its server answers.
+      const probe = await ipc.mcp.probeConnection(created.id);
+      if (probe.status !== "ok") {
+        const headline = t("suggestMcpServer.unreachable");
+        showError(probe.error ? `${headline}\n${probe.error}` : headline);
+        return;
       }
       await readModel.respond(pending.requestId, {
         kind: "mcp-suggestion",
@@ -227,7 +215,7 @@ function PendingSuggestionCard({
           <p className="text-[11px] font-medium uppercase tracking-wide text-violet-700 dark:text-violet-300">
             {t("suggestMcpServer.reasonLabel")}
           </p>
-          <p className="mt-0.5 text-sm text-foreground">{reason}</p>
+          <p className="mt-0.5 text-sm text-foreground">{pending.reason}</p>
         </div>
         {pending.serverDescription && (
           <p className="text-xs text-muted-foreground leading-snug">

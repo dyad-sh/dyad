@@ -310,10 +310,22 @@ export function createFakeLlmApp(getPort: () => number) {
         .map((slug) => slug.trim())
         .filter((slug) => slug.length > 0),
     );
-    const withFeatured = <T extends { slug?: string }>(server: T): T =>
-      server.slug && featured.has(server.slug)
-        ? { ...server, featured: true }
-        : server;
+    // `?mcpPort=N` moves the http entries off their default port so a
+    // spec can run its own fake MCP server without contending with
+    // mcp_catalog.spec.ts in another worker.
+    const mcpPort = parseInt(String(req.query.mcpPort ?? ""), 10);
+    const withFeatured = <T extends { slug?: string; url?: string }>(
+      server: T,
+    ): T => {
+      let next = server;
+      if (server.slug && featured.has(server.slug)) {
+        next = { ...next, featured: true };
+      }
+      if (Number.isInteger(mcpPort) && server.url?.includes(":3002/")) {
+        next = { ...next, url: server.url.replace(":3002/", `:${mcpPort}/`) };
+      }
+      return next;
+    };
     // The URLs below hardcode the ports that mcp_catalog.spec.ts spawns
     // its fake MCP servers on (4010 for OAuth, 3002 for http). Keep them
     // in sync with that spec.

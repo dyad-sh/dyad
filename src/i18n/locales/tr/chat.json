@@ -385,9 +385,9 @@
     "declinedDescription": "Dyad onsuz devam edecek.",
     "oauthFailed": "Yetkilendirme başarısız oldu.",
     "failed": "Eklenti eklenemedi.",
-    "oauthHint": "Bağlamak eklentiyi Dyad'a ekler ve erişimi onaylamak için tarayıcınızı açar.",
+    "oauthHint": "Bağlandığınızda eklenti Dyad'a eklenir ve erişimi onaylamanız için tarayıcınız açılır.",
     "declining": "Atlanıyor…",
-    "unreachable": "Eklenti eklendi ancak sunucusu yanıt vermiyor."
+    "unreachable": "Eklenti eklendi ancak sunucusu yanıt vermiyor. Tekrar deneyin veya Eklentiler sayfasından yönetin."
   },
   "guide": "Rehber",
   "annotations": {

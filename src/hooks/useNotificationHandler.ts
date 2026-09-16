@@ -67,7 +67,13 @@ export function useNotificationHandler() {
       string,
       Extract<
         UserInputDescriptorPayload,
-        { kind: "agent-consent" | "mcp-consent" | "questionnaire" }
+        {
+          kind:
+            | "agent-consent"
+            | "mcp-consent"
+            | "questionnaire"
+            | "mcp-suggestion";
+        }
       >
     >(),
   );
@@ -164,6 +170,8 @@ export function useNotificationHandler() {
       requestId?: string;
       sourceLabel?: string;
       tagPrefix: string;
+      /** Notification text; defaults to the tool-approval wording. */
+      body?: string;
     }) => {
       // Skip if notifications are disabled
       if (!notificationsEnabledRef.current) return;
@@ -237,7 +245,9 @@ export function useNotificationHandler() {
       showNativeNotification({
         chatId: id,
         title,
-        body: `"${params.toolName}" wants to run. Click to review and approve.`,
+        body:
+          params.body ??
+          `"${params.toolName}" wants to run. Click to review and approve.`,
         // Correlate one native notification to one main-process waiter.
         tag: params.requestId
           ? `${params.tagPrefix}-${params.requestId}`
@@ -255,6 +265,7 @@ export function useNotificationHandler() {
       requestId: string;
       sourceLabel?: string;
       tagPrefix: string;
+      body?: string;
     }) => {
       activeConsentNotificationRequestsRef.current.add(params.requestId);
       handleConsentRequest(params)
@@ -289,8 +300,7 @@ export function useNotificationHandler() {
       const descriptor = request.descriptor;
       if (
         descriptor.kind === "integration" ||
-        descriptor.kind === "test-assertions" ||
-        descriptor.kind === "mcp-suggestion"
+        descriptor.kind === "test-assertions"
       ) {
         continue;
       }
@@ -410,13 +420,11 @@ export function useNotificationHandler() {
   // Actionable user-input notifications arrive through the generic protocol.
   useEffect(() => {
     const unsubscribe = ipc.events.userInput.onRequested((descriptor) => {
-      // None of these is a consent prompt: an integration is finished in its
-      // own panel, and an assertion plan or a plugin suggestion is reviewed
-      // in the chat card itself.
+      // Neither is a consent prompt: an integration is finished in its own
+      // panel, and an assertion plan is reviewed in the chat card itself.
       if (
         descriptor.kind === "integration" ||
-        descriptor.kind === "test-assertions" ||
-        descriptor.kind === "mcp-suggestion"
+        descriptor.kind === "test-assertions"
       ) {
         return;
       }
@@ -438,6 +446,17 @@ export function useNotificationHandler() {
           requestId: descriptor.requestId,
           sourceLabel: `${descriptor.questions.length} questions`,
           tagPrefix: "dyad-plan-questionnaire",
+        });
+      } else if (descriptor.kind === "mcp-suggestion") {
+        // Agent-initiated and turn-blocking, like a consent request, so a
+        // user who switched away learns the agent is waiting on them.
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: `Connect ${descriptor.serverName}`,
+          requestId: descriptor.requestId,
+          sourceLabel: "a plugin suggestion",
+          tagPrefix: "dyad-mcp-suggestion",
+          body: `Dyad wants to connect the ${descriptor.serverName} plugin. Click to review.`,
         });
       } else if (descriptor.classifier !== "racing") {
         startConsentNotification({
@@ -484,7 +503,9 @@ export function useNotificationHandler() {
           ? "dyad-agent-consent"
           : descriptor.kind === "mcp-consent"
             ? "dyad-mcp-consent"
-            : "dyad-plan-questionnaire",
+            : descriptor.kind === "mcp-suggestion"
+              ? "dyad-mcp-suggestion"
+              : "dyad-plan-questionnaire",
         requestId,
       );
     });
@@ -510,6 +531,7 @@ export function useNotificationHandler() {
         else if (
           (tag.startsWith("dyad-agent-consent-") ||
             tag.startsWith("dyad-mcp-consent-") ||
+            tag.startsWith("dyad-mcp-suggestion-") ||
             tag.startsWith("dyad-plan-questionnaire-")) &&
           currentChatId
         ) {

@@ -158,8 +158,11 @@ describe("DyadSuggestMcpServer", () => {
 
     fireEvent.click(connectButton());
 
+    // Localized headline first, raw transport text as detail.
     await waitFor(() =>
-      expect(mocks.showError).toHaveBeenCalledWith("connect ECONNREFUSED"),
+      expect(mocks.showError).toHaveBeenCalledWith(
+        "suggestMcpServer.unreachable\nconnect ECONNREFUSED",
+      ),
     );
     expect(mocks.respond).not.toHaveBeenCalled();
     expect(connectButton().disabled).toBe(false);
@@ -190,6 +193,8 @@ describe("DyadSuggestMcpServer", () => {
         outcome: "connected",
       }),
     );
+    // An authorized plugin is probed too before the agent resumes.
+    expect(mocks.probeConnection).toHaveBeenCalledWith(42);
   });
 
   it("keeps the card interactive when OAuth fails", async () => {
@@ -260,6 +265,16 @@ describe("DyadSuggestMcpServer", () => {
 
   it("treats a same-plugin card from an earlier message as historical", () => {
     const { container } = renderCard({}, MESSAGE_ID - 1);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("treats a same-plugin card with a different reason as historical", () => {
+    const { container } = renderCard({ reason: "Check the domain." });
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("renders nothing for a dismissed card even while a request is live", () => {
+    const { container } = renderCard({ outcome: "dismissed" });
     expect(container.innerHTML).toBe("");
   });
 

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
         chatSummary?: string;
       }) => void)
     | undefined,
+  requestedListener: undefined as ((descriptor: unknown) => void) | undefined,
   resolveAppNameForAppId: vi.fn(),
   resolveChatSummary: vi.fn(),
 }));
@@ -48,7 +49,10 @@ vi.mock("../ipc/types", () => ({
   ipc: {
     events: {
       userInput: {
-        onRequested: () => vi.fn(),
+        onRequested: (listener: (descriptor: unknown) => void) => {
+          mocks.requestedListener = listener;
+          return vi.fn();
+        },
         onClassified: () => vi.fn(),
         onSettled: () => vi.fn(),
       },
@@ -94,6 +98,7 @@ class FakeNotification {
 describe("useNotificationHandler", () => {
   beforeEach(() => {
     mocks.completionListener = undefined;
+    mocks.requestedListener = undefined;
     mocks.resolveChatSummary.mockReset();
     mocks.resolveAppNameForAppId.mockReset();
     mocks.resolveChatSummary.mockResolvedValue({
@@ -132,6 +137,38 @@ describe("useNotificationHandler", () => {
       options: {
         body: "Built a notes app",
         tag: "dyad-chat-complete-42",
+      },
+    });
+
+    unmount();
+  });
+
+  it("notifies when the agent parks on a plugin suggestion", async () => {
+    const { unmount } = renderHook(() => useNotificationHandler());
+    expect(mocks.requestedListener).toBeDefined();
+
+    act(() => {
+      mocks.requestedListener?.({
+        kind: "mcp-suggestion",
+        requestId: "mcp-suggestion:1",
+        chatId: 42,
+        messageId: 9,
+        deadlineAt: 0,
+        slug: "vercel",
+        serverName: "Vercel",
+        oauthRequired: true,
+        reason: "Read the build logs.",
+        classifier: "none",
+        followUpPrompt: "Continue.",
+      });
+    });
+
+    await waitFor(() => expect(FakeNotification.instances).toHaveLength(1));
+    expect(FakeNotification.instances[0]).toMatchObject({
+      title: "Notes",
+      options: {
+        body: "Dyad wants to connect the Vercel plugin. Click to review.",
+        tag: "dyad-mcp-suggestion-mcp-suggestion:1",
       },
     });
 

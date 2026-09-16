@@ -7,7 +7,10 @@ import {
   getRemoteMcpCatalog,
   peekRemoteMcpCatalog,
 } from "@/ipc/shared/remote_mcp_catalog";
-import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
+import type {
+  HttpCatalogEntry,
+  McpCatalogEntry,
+} from "@/ipc/types/mcp_catalog";
 import { userInputRegistry } from "@/user_input/main";
 import {
   ToolDefinition,
@@ -91,7 +94,7 @@ export async function collectSuggestableMcpServers({
   const declined = declinedSlugsByChat.get(chatId);
   return entries
     .filter(
-      (entry) =>
+      (entry): entry is HttpCatalogEntry =>
         entry.featured === true &&
         entry.transport === "http" &&
         (entry.inputs?.length ?? 0) === 0 &&
@@ -102,7 +105,7 @@ export async function collectSuggestableMcpServers({
       slug: entry.slug,
       name: entry.name,
       description: entry.description,
-      oauthRequired: entry.transport === "http" && !!entry.oauth?.required,
+      oauthRequired: !!entry.oauth?.required,
     }));
 }
 

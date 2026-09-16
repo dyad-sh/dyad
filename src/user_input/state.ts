@@ -69,9 +69,11 @@ export type UserInputDescriptor =
     })
   | (DescriptorBase & {
       kind: "mcp-suggestion";
+      messageId: number;
       slug: string;
       serverName: string;
       serverDescription?: string | null;
+      oauthRequired: boolean;
       reason: string;
       classifier: "none";
       followUpPrompt: string;

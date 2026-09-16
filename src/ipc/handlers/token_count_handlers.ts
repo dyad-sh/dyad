@@ -46,6 +46,7 @@ import {
   hasCompletedAppBlueprintQuestionnaire,
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { getCachedMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
+import { collectSuggestableMcpServers } from "@/pro/main/ipc/handlers/local_agent/tools/suggest_mcp_server";
 import { resolveRootDatabasePromptState } from "@/shared/database_provider";
 import { getAppBlueprintForChat } from "./app_blueprint_handlers";
 
@@ -189,6 +190,14 @@ export function registerTokenCountHandlers() {
       const isDyadPro = isDyadProEnabled(settings);
       const mcpToolDefs =
         selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
+      // Cached only: an estimate must never wait on the catalog network fetch.
+      const suggestableMcpServers =
+        selectedChatMode === "local-agent"
+          ? await collectSuggestableMcpServers({
+              chatId: req.chatId,
+              cachedOnly: true,
+            })
+          : [];
       const toolDefinitionTokens = await estimateAgentToolTokens({
         toolProfile: selectedChatMode === "build" ? "build" : "agent",
         readOnly: selectedChatMode === "ask",
@@ -213,6 +222,7 @@ export function registerTokenCountHandlers() {
           isDyadPro &&
           isImplementerSubagentEnabled(settings),
         mcpToolDefs,
+        suggestableMcpServers,
         canUseAdvancedSubagentTools:
           selectedChatMode === "local-agent" &&
           isDyadPro &&

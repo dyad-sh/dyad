@@ -289,7 +289,8 @@ export function useNotificationHandler() {
       const descriptor = request.descriptor;
       if (
         descriptor.kind === "integration" ||
-        descriptor.kind === "test-assertions"
+        descriptor.kind === "test-assertions" ||
+        descriptor.kind === "mcp-suggestion"
       ) {
         continue;
       }
@@ -409,11 +410,13 @@ export function useNotificationHandler() {
   // Actionable user-input notifications arrive through the generic protocol.
   useEffect(() => {
     const unsubscribe = ipc.events.userInput.onRequested((descriptor) => {
-      // Neither is a consent prompt: an integration is finished in its own
-      // panel, and an assertion plan is reviewed in the chat card itself.
+      // None of these is a consent prompt: an integration is finished in its
+      // own panel, and an assertion plan or a plugin suggestion is reviewed
+      // in the chat card itself.
       if (
         descriptor.kind === "integration" ||
-        descriptor.kind === "test-assertions"
+        descriptor.kind === "test-assertions" ||
+        descriptor.kind === "mcp-suggestion"
       ) {
         return;
       }

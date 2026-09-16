@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { startFakeHttpMcpServer } from "./helpers/fake_mcp_server";
 import { Timeout, testWithConfigSkipIfWindows } from "./helpers/test_helper";
 
 /**
@@ -27,53 +28,64 @@ const testWithFeaturedCatalog = testWithConfigSkipIfWindows({
 testWithFeaturedCatalog(
   "local-agent - connecting a suggested plugin resumes the chat",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true, autoApprove: true });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
-    await po.chatActions.clickNewChat();
-    await po.chatActions.selectLocalAgentMode();
+    // The card only reports a plugin as connected once its server answers,
+    // so the entry's target has to be up.
+    const stopMcpServer = await startFakeHttpMcpServer();
+    try {
+      await po.setUpDyadPro({ localAgent: true, autoApprove: true });
+      await po.importApp("minimal");
+      await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+      await po.chatActions.clickNewChat();
+      await po.chatActions.selectLocalAgentMode();
 
-    // The tool parks the turn on a user-input request rather than finishing the
-    // conversation, so wait for the card it renders instead of chat completion.
-    await po.sendPrompt("tc=local-agent/suggest-mcp-server", {
-      skipWaitForCompletion: true,
-    });
+      // The tool parks the turn on a user-input request rather than finishing
+      // the conversation, so wait for the card it renders instead of chat
+      // completion.
+      await po.sendPrompt("tc=local-agent/suggest-mcp-server", {
+        skipWaitForCompletion: true,
+      });
 
-    const messages = po.page.getByTestId("messages-list");
-    const card = messages.getByTestId("mcp-suggestion-card");
-    await expect(card).toBeVisible({ timeout: Timeout.LONG });
-    await expect(card.getByText("Connect E2E Open Server?")).toBeVisible();
-    await expect(
-      card.getByText("Run the calculator tool to verify the totals."),
-    ).toBeVisible();
+      const messages = po.page.getByTestId("messages-list");
+      const card = messages.getByTestId("mcp-suggestion-card");
+      await expect(card).toBeVisible({ timeout: Timeout.LONG });
+      await expect(card.getByText("Connect E2E Open Server?")).toBeVisible();
+      await expect(
+        card.getByText("Run the calculator tool to verify the totals."),
+      ).toBeVisible();
 
-    // One click adds the plugin (no OAuth for this entry) and answers the
-    // request; the armed follow-up is dispatched as a real turn.
-    await card.getByTestId("mcp-suggestion-connect-button").click();
-    await expect(messages.getByTestId("mcp-suggestion-connected")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    await expect(
-      messages.getByText(
-        "Continue. I have connected the E2E Open Server plugin. Resume what you needed it for: Run the calculator tool to verify the totals.",
-      ),
-    ).toBeVisible({ timeout: Timeout.LONG });
-    await expect(
-      messages.getByText("Continuing with the plugin connected.").last(),
-    ).toBeVisible({ timeout: Timeout.LONG });
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+      // One click adds the plugin (no OAuth for this entry) and answers the
+      // request; the armed follow-up is dispatched as a real turn.
+      await card.getByTestId("mcp-suggestion-connect-button").click();
+      await expect(
+        messages.getByTestId("mcp-suggestion-connected"),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+      await expect(
+        messages.getByText(
+          "Continue. I have connected the E2E Open Server plugin. Resume what you needed it for: Run the calculator tool to verify the totals.",
+        ),
+      ).toBeVisible({ timeout: Timeout.LONG });
+      await expect(
+        messages.getByText("Carrying on from here.").last(),
+      ).toBeVisible({ timeout: Timeout.LONG });
+      await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
 
-    // The plugin now exists as an added catalog entry. A featured entry is
-    // listed in both the Featured section and its category, so scope the
-    // check to one of them.
-    await po.navigation.goToPluginsTab();
-    await expect(
-      po.page
-        .getByTestId("catalog-featured")
-        .getByTestId("catalog-card")
-        .filter({ has: po.page.getByText("E2E Open Server", { exact: true }) })
-        .getByText("Added"),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+      // The plugin now exists as an added, discovered catalog entry. A
+      // featured entry is listed in both the Featured section and its
+      // category, so scope the check to one of them.
+      await po.navigation.goToPluginsTab();
+      await expect(
+        po.page
+          .getByTestId("catalog-featured")
+          .getByTestId("catalog-card")
+          .filter({
+            has: po.page.getByText("E2E Open Server", { exact: true }),
+          })
+          .getByText("Added"),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+      await po.plugins.waitForTool("E2E Open Server", "calculator_add");
+    } finally {
+      await stopMcpServer();
+    }
   },
 );
 
@@ -101,9 +113,7 @@ testWithFeaturedCatalog(
     // Declining settles in place: the same turn carries on, with no
     // follow-up user message.
     await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
-    await expect(
-      messages.getByText("Continuing with the plugin connected."),
-    ).toBeVisible();
+    await expect(messages.getByText("Carrying on from here.")).toBeVisible();
     await expect(
       messages.getByText(/^Continue\. I have connected/),
     ).toHaveCount(0);

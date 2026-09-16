@@ -15,8 +15,10 @@ export const fixture: LocalAgentFixture = {
         },
       ],
     },
+    // Served after the tool result and again on a follow-up turn, so it
+    // must read correctly whether the user connected or declined.
     {
-      text: "Continuing with the plugin connected.",
+      text: "Carrying on from here.",
     },
   ],
 };

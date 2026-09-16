@@ -188,6 +188,24 @@ describe("useCopyToClipboard", () => {
     });
   });
 
+  describe("dyad-suggest-mcp-server", () => {
+    it("copies the plugin slug and reason from a pending card", async () => {
+      const out = await copy(
+        '<dyad-suggest-mcp-server slug="vercel" reason="Read the build logs." outcome="pending"></dyad-suggest-mcp-server>',
+      );
+      expect(out).toContain("### Suggested plugin: vercel");
+      expect(out).toContain("Read the build logs.");
+    });
+
+    it("prefers the plugin name on a settled card", async () => {
+      const out = await copy(
+        '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="connected"></dyad-suggest-mcp-server>',
+      );
+      expect(out).toContain("### Suggested plugin: Vercel");
+      expect(out).not.toContain("Suggested plugin: vercel");
+    });
+  });
+
   describe("prose normalization — runs of newlines outside ``` still collapse", () => {
     it("collapses 3+ consecutive newlines in plain markdown prose", async () => {
       const out = await copy("Para 1\n\n\n\n\nPara 2");

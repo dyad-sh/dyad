@@ -245,9 +245,11 @@ describe("user-input transition", () => {
       kind: "mcp-suggestion",
       requestId: "mcp-suggestion:1",
       chatId: 12,
+      messageId: 40,
       deadlineAt: 1_800_000,
       slug: "vercel",
       serverName: "Vercel",
+      oauthRequired: true,
       reason: "Read the build logs.",
       classifier: "none",
       followUpPrompt: "Continue. I have connected the Vercel plugin.",
@@ -272,6 +274,12 @@ describe("user-input transition", () => {
       type: "broadcast-armed",
       descriptor: suggestion,
       followUpPrompt: suggestion.followUpPrompt,
+    });
+    // Arming must also release the parked tool, or the agent stays blocked.
+    expect(connected.commands).toContainEqual({
+      type: "resolve-park",
+      requestId: suggestion.requestId,
+      value: { kind: "mcp-suggestion", outcome: "connected" },
     });
     const due = transition(connected.state, {
       type: "stream-finished",

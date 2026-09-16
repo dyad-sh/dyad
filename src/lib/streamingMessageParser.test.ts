@@ -65,6 +65,33 @@ describe("streamingMessageParser", () => {
     ]);
   });
 
+  it("parses a plugin suggestion card, including one still streaming", () => {
+    const content =
+      '<dyad-suggest-mcp-server slug="vercel" reason="Read the build logs." outcome="pending"></dyad-suggest-mcp-server>';
+    const { blocks } = parseFullMessage(content);
+    expect(blocksToShape(blocks)).toEqual([
+      {
+        kind: "custom-tag",
+        tag: "dyad-suggest-mcp-server",
+        attributes: {
+          slug: "vercel",
+          reason: "Read the build logs.",
+          outcome: "pending",
+        },
+        content: "",
+        complete: true,
+        inProgress: false,
+      },
+    ]);
+
+    // A partial tag streams as an open custom-tag block, not as markdown.
+    const partial = feedAll(content, [20, 60]);
+    const open = getParserBlocks(partial).find(
+      (b) => b.kind === "custom-tag" && b.tag === "dyad-suggest-mcp-server",
+    );
+    expect(open).toBeDefined();
+  });
+
   it("parses an inline sub-agent mount point", () => {
     const content =
       '<dyad-subagent chat-id="7" thread-id="explorer-1" persona="explorer" task-name="Trace auth"></dyad-subagent>';

@@ -376,13 +376,16 @@
     "adding": "Adicionando plugin…",
     "authorizing": "Aguardando autorização…",
     "notNow": "Agora não",
-    "hint": "Conectar adiciona o plugin ao Dyad. Alguns plugins abrem o navegador para aprovar o acesso.",
+    "hint": "Conectar adiciona o plugin ao Dyad.",
     "connectedTitle": "{{name}} conectado",
     "connectedDescription": "O Dyad retomará a tarefa em instantes.",
     "declinedTitle": "{{name}} ignorado",
     "declinedDescription": "O Dyad continuará sem ele.",
     "oauthFailed": "A autorização falhou.",
-    "failed": "Não foi possível adicionar o plugin."
+    "failed": "Não foi possível adicionar o plugin.",
+    "oauthHint": "Conectar adiciona o plugin ao Dyad e abre o navegador para aprovar o acesso.",
+    "declining": "Ignorando…",
+    "unreachable": "O plugin foi adicionado, mas o servidor não está respondendo."
   },
   "guide": "Guia",
   "annotations": {

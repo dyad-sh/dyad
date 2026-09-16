@@ -307,6 +307,7 @@ export function createFakeLlmApp(getPort: () => number) {
     const featured = new Set(
       String(req.query.featured ?? "")
         .split(",")
+        .map((slug) => slug.trim())
         .filter((slug) => slug.length > 0),
     );
     const withFeatured = <T extends { slug?: string }>(server: T): T =>

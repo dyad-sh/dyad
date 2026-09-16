@@ -6,12 +6,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { DyadSuggestMcpServer } from "./DyadSuggestMcpServer";
+import { DyadMessageIdContext } from "./messageContext";
 
 const mocks = vi.hoisted(() => ({
   pending: new Map<number, unknown>(),
   respond: vi.fn(async () => true),
   addFromCatalog: vi.fn(),
-  startOAuth: vi.fn(),
+  probeConnection: vi.fn(),
+  connectNewServer: vi.fn(),
+  connectingServerId: null as number | null,
   showError: vi.fn(),
 }));
 
@@ -43,15 +46,18 @@ vi.mock("@/user_input/hooks", () => ({
   useUserInputReadModel: () => ({ respond: mocks.respond }),
 }));
 
-vi.mock("@/components/plugins/AddPluginDialog", () => ({
-  useOauthCallbackPort: () => 51234,
+vi.mock("@/components/plugins/usePluginConnect", () => ({
+  usePluginConnect: () => ({
+    connectNewServer: mocks.connectNewServer,
+    connectingServerId: mocks.connectingServerId,
+  }),
 }));
 
 vi.mock("@/ipc/types", () => ({
   ipc: {
     mcp: {
       addFromCatalog: mocks.addFromCatalog,
-      startOAuth: mocks.startOAuth,
+      probeConnection: mocks.probeConnection,
     },
   },
 }));
@@ -60,25 +66,34 @@ vi.mock("@/lib/toast", () => ({
   showError: mocks.showError,
 }));
 
+const MESSAGE_ID = 5;
 const PENDING = {
   chatId: 7,
   requestId: "mcp-suggestion:1",
+  messageId: MESSAGE_ID,
   slug: "vercel",
   serverName: "Vercel",
   serverDescription: "Deployments and logs.",
+  oauthRequired: false,
   reason: "Read the build logs for the failed deploy.",
   isResponding: false,
 };
+const CREATED = { id: 42, oauthEnabled: false, oauthCallbackPort: null };
 
 function renderCard(
   props: Partial<Parameters<typeof DyadSuggestMcpServer>[0]> = {},
+  messageId: number | undefined = MESSAGE_ID,
 ) {
   const store = createStore();
   store.set(selectedChatIdAtom, 7);
   const queryClient = new QueryClient();
   const Wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>
-      <Provider store={store}>{children}</Provider>
+      <Provider store={store}>
+        <DyadMessageIdContext.Provider value={messageId}>
+          {children}
+        </DyadMessageIdContext.Provider>
+      </Provider>
     </QueryClientProvider>
   );
   return render(
@@ -92,16 +107,17 @@ function renderCard(
   );
 }
 
+const connectButton = () =>
+  screen.getByRole<HTMLButtonElement>("button", { name: "Connect Vercel" });
+
 describe("DyadSuggestMcpServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.pending = new Map([[7, PENDING]]);
-    mocks.addFromCatalog.mockResolvedValue({
-      id: 42,
-      oauthEnabled: false,
-      oauthCallbackPort: null,
-    });
-    mocks.startOAuth.mockResolvedValue({ success: true, error: null });
+    mocks.connectingServerId = null;
+    mocks.addFromCatalog.mockResolvedValue(CREATED);
+    mocks.probeConnection.mockResolvedValue({ status: "ok", error: null });
+    mocks.connectNewServer.mockResolvedValue(true);
   });
 
   it("shows the agent's reason with one-click connect and decline", () => {
@@ -110,20 +126,17 @@ describe("DyadSuggestMcpServer", () => {
     expect(screen.getByText("Connect Vercel?")).toBeTruthy();
     expect(screen.getByText(PENDING.reason)).toBeTruthy();
     expect(screen.getByText("Deployments and logs.")).toBeTruthy();
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Connect Vercel" })
-        .disabled,
-    ).toBe(false);
+    expect(connectButton().disabled).toBe(false);
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name: "Not now" })
         .disabled,
     ).toBe(false);
   });
 
-  it("adds the plugin and reports the connection without OAuth", async () => {
+  it("adds the plugin, probes it, and reports the connection without OAuth", async () => {
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect Vercel" }));
+    fireEvent.click(connectButton());
 
     await waitFor(() =>
       expect(mocks.respond).toHaveBeenCalledWith("mcp-suggestion:1", {
@@ -132,42 +145,74 @@ describe("DyadSuggestMcpServer", () => {
       }),
     );
     expect(mocks.addFromCatalog).toHaveBeenCalledWith({ slug: "vercel" });
-    expect(mocks.startOAuth).not.toHaveBeenCalled();
+    expect(mocks.probeConnection).toHaveBeenCalledWith(42);
+    expect(mocks.connectNewServer).not.toHaveBeenCalled();
   });
 
-  it("runs the OAuth flow for OAuth-enabled plugins before responding", async () => {
-    mocks.addFromCatalog.mockResolvedValue({
-      id: 42,
-      oauthEnabled: true,
-      oauthCallbackPort: null,
+  it("does not report a plugin whose server is unreachable", async () => {
+    mocks.probeConnection.mockResolvedValue({
+      status: "error",
+      error: "connect ECONNREFUSED",
     });
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect Vercel" }));
+    fireEvent.click(connectButton());
 
-    await waitFor(() => expect(mocks.respond).toHaveBeenCalled());
-    expect(mocks.startOAuth).toHaveBeenCalledWith(
-      expect.objectContaining({ serverId: 42, callbackPort: 51234 }),
+    await waitFor(() =>
+      expect(mocks.showError).toHaveBeenCalledWith("connect ECONNREFUSED"),
+    );
+    expect(mocks.respond).not.toHaveBeenCalled();
+    expect(connectButton().disabled).toBe(false);
+  });
+
+  it("runs the shared OAuth flow to completion before responding", async () => {
+    mocks.pending = new Map([[7, { ...PENDING, oauthRequired: true }]]);
+    let finishOAuth!: (connected: boolean) => void;
+    mocks.connectNewServer.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        finishOAuth = resolve;
+      }),
+    );
+    renderCard();
+
+    fireEvent.click(connectButton());
+
+    await waitFor(() =>
+      expect(mocks.connectNewServer).toHaveBeenCalledWith(CREATED),
+    );
+    expect(mocks.respond).not.toHaveBeenCalled();
+    expect(mocks.probeConnection).not.toHaveBeenCalled();
+
+    finishOAuth(true);
+    await waitFor(() =>
+      expect(mocks.respond).toHaveBeenCalledWith("mcp-suggestion:1", {
+        kind: "mcp-suggestion",
+        outcome: "connected",
+      }),
     );
   });
 
   it("keeps the card interactive when OAuth fails", async () => {
-    mocks.addFromCatalog.mockResolvedValue({
-      id: 42,
-      oauthEnabled: true,
-      oauthCallbackPort: null,
-    });
-    mocks.startOAuth.mockResolvedValue({ success: false, error: "Denied" });
+    mocks.pending = new Map([[7, { ...PENDING, oauthRequired: true }]]);
+    mocks.connectNewServer.mockResolvedValue(false);
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect Vercel" }));
+    fireEvent.click(connectButton());
 
-    await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith("Denied"));
+    await waitFor(() => expect(mocks.connectNewServer).toHaveBeenCalled());
+    await waitFor(() => expect(connectButton().disabled).toBe(false));
     expect(mocks.respond).not.toHaveBeenCalled();
+  });
+
+  it("disables both buttons while another connect flow holds the slot", () => {
+    mocks.connectingServerId = 3;
+    renderCard();
+
+    expect(connectButton().disabled).toBe(true);
     expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Connect Vercel" })
+      screen.getByRole<HTMLButtonElement>("button", { name: "Not now" })
         .disabled,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("declines without adding anything", async () => {
@@ -184,15 +229,17 @@ describe("DyadSuggestMcpServer", () => {
     expect(mocks.addFromCatalog).not.toHaveBeenCalled();
   });
 
-  it("renders terminal outcomes from the persisted card alone", () => {
+  it("renders terminal outcomes with the reason from the persisted card", () => {
     mocks.pending = new Map();
 
     const { unmount } = renderCard({ name: "Vercel", outcome: "connected" });
     expect(screen.getByText("Vercel connected")).toBeTruthy();
+    expect(screen.getByText(PENDING.reason)).toBeTruthy();
     unmount();
 
     renderCard({ name: "Vercel", outcome: "declined" });
     expect(screen.getByText("Skipped Vercel")).toBeTruthy();
+    expect(screen.getByText(PENDING.reason)).toBeTruthy();
   });
 
   it("hides a pending card whose request is no longer live", () => {
@@ -209,5 +256,15 @@ describe("DyadSuggestMcpServer", () => {
 
     const { container } = renderCard();
     expect(container.innerHTML).toBe("");
+  });
+
+  it("treats a same-plugin card from an earlier message as historical", () => {
+    const { container } = renderCard({}, MESSAGE_ID - 1);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("falls back to matching the plugin when rendered outside a message", () => {
+    renderCard({}, undefined);
+    expect(screen.getByText("Connect Vercel?")).toBeTruthy();
   });
 });

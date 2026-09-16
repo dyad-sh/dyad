@@ -83,9 +83,12 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   // plugin is connected, since a turn only collects MCP tools at its start.
   DescriptorBaseSchema.extend({
     kind: z.literal("mcp-suggestion"),
+    // The assistant message holding the card, so only that card goes live.
+    messageId: z.number(),
     slug: z.string(),
     serverName: z.string(),
     serverDescription: z.string().nullable().optional(),
+    oauthRequired: z.boolean(),
     reason: z.string(),
     classifier: z.literal("none"),
     followUpPrompt: z.string(),

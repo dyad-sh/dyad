@@ -122,6 +122,18 @@ export async function getRemoteMcpCatalog(): Promise<McpCatalogEntry[]> {
   return catalogFetchPromise;
 }
 
+/**
+ * The cached catalog when it is still fresh, otherwise null. Never fetches,
+ * so callers on hot paths (token estimates, per-keystroke work) can read
+ * whatever the last fetch produced without waiting on the network.
+ */
+export function peekRemoteMcpCatalog(): McpCatalogEntry[] | null {
+  if (catalogCache && catalogCache.expiresAt > Date.now()) {
+    return catalogCache.entries;
+  }
+  return null;
+}
+
 export function clearMcpCatalogCacheForTests() {
   catalogCache = null;
   catalogFetchPromise = null;

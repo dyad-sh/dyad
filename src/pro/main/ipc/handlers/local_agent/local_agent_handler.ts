@@ -69,6 +69,7 @@ import {
 import {
   AgentToolName,
   buildAgentToolSet,
+  getAgentToolConsent,
   shouldIncludeTool,
   requireAgentToolConsent,
 } from "./tool_definitions";
@@ -1169,11 +1170,18 @@ export async function handleLocalAgentStream(
     ctx.enableAppBlueprint = buildOptions.enableAppBlueprint;
     // suggest_mcp_server.isEnabled and its description read this during the
     // build. Only writable root turns can offer plugins: Ask and Plan filter
-    // the tool out anyway, and Build mode has no MCP tools to gain. The
-    // catalog client caches, so this is a network fetch at most once an hour.
-    if (!buildMode && !readOnly && !planModeOnly) {
+    // the tool out anyway, and Build mode has no MCP tools to gain. A user
+    // who turned the tool off skips the catalog read entirely.
+    if (
+      !buildMode &&
+      !readOnly &&
+      !planModeOnly &&
+      getAgentToolConsent("suggest_mcp_server") !== "never"
+    ) {
       try {
-        ctx.suggestableMcpServers = await collectSuggestableMcpServers();
+        ctx.suggestableMcpServers = await collectSuggestableMcpServers({
+          chatId: chat.id,
+        });
       } catch (e) {
         logger.warn("Failed to collect suggestable MCP servers", e);
       }

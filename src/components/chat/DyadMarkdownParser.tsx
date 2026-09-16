@@ -16,6 +16,7 @@ import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadExploreChatHistory } from "./DyadExploreChatHistory";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadSuggestMcpServer } from "./DyadSuggestMcpServer";
+import { DyadMessageIdContext } from "./messageContext";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -216,7 +217,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
     errorCount > 1 && !isStreaming && chatId !== null && chatId !== undefined;
 
   return (
-    <>
+    <DyadMessageIdContext.Provider value={messageId}>
       <MemoClosedBlocks
         blocks={closedBlocks}
         lastErrorIndex={lastErrorIndex}
@@ -231,7 +232,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
       {showStreamingPreview && chatId !== null && chatId !== undefined && (
         <StreamingPreviewBlocks chatId={chatId} isStreaming={isStreaming} />
       )}
-    </>
+    </DyadMessageIdContext.Provider>
   );
 };
 

@@ -374,17 +374,20 @@
     "badge": "Eklenti önerisi",
     "title": "{{name}} bağlansın mı?",
     "reasonLabel": "Sonraki adım için gerekli",
-    "connect": "{{name}} bağla",
+    "connect": "Bağlan: {{name}}",
     "adding": "Eklenti ekleniyor…",
     "authorizing": "Yetkilendirme bekleniyor…",
     "notNow": "Şimdi değil",
-    "hint": "Bağlamak eklentiyi Dyad'a ekler. Bazı eklentiler erişimi onaylamak için tarayıcınızı açar.",
+    "hint": "Bağlamak eklentiyi Dyad'a ekler.",
     "connectedTitle": "{{name}} bağlandı",
     "connectedDescription": "Dyad göreve birazdan devam edecek.",
     "declinedTitle": "{{name}} atlandı",
     "declinedDescription": "Dyad onsuz devam edecek.",
     "oauthFailed": "Yetkilendirme başarısız oldu.",
-    "failed": "Eklenti eklenemedi."
+    "failed": "Eklenti eklenemedi.",
+    "oauthHint": "Bağlamak eklentiyi Dyad'a ekler ve erişimi onaylamak için tarayıcınızı açar.",
+    "declining": "Atlanıyor…",
+    "unreachable": "Eklenti eklendi ancak sunucusu yanıt vermiyor."
   },
   "guide": "Rehber",
   "annotations": {

@@ -30,6 +30,7 @@ import { useCoolifySetupSnapshot } from "@/hooks/useCoolifySetupSnapshot";
 import { CoolifyCredentials } from "@/components/CoolifyCredentials";
 import { CoolifySignOutDialog } from "@/components/CoolifySignOutDialog";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { describeLinkedRemote } from "@/shared/linked_remote";
 import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 import { isHostMove } from "@/coolify_deploy/connection";
@@ -326,7 +327,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   if (!status) return null;
 
   const can = selectCoolifyDeployCapabilities(snapshot);
-  const hasGithubRepo = Boolean(app?.githubOrg && app?.githubRepo);
+  const linkedRemote = describeLinkedRemote(app);
+  const hasRepo = linkedRemote !== null;
+  const repoProviderLabel =
+    linkedRemote?.provider === "gitlab" ? "GitLab" : "GitHub";
   // The server the app deploys to. Read from the form value rather than the
   // saved connection so that picking a different server in the edit form
   // answers for the one being chosen, not the one being replaced.
@@ -1111,9 +1115,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                   </p>
                   <p>
                     If you have deployed this app, Dyad's deploy key stays in
-                    the GitHub repository, so your server keeps read access to
-                    your code. You can remove the key by going to your
-                    repository's Deploy Key settings on GitHub.
+                    the {repoProviderLabel} repository, so your server keeps
+                    read access to your code. You can remove the key by going to
+                    your repository's Deploy Key settings on {repoProviderLabel}
+                    .
                   </p>
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -1144,16 +1149,16 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
       {insecureWarningBlock}
 
-      {!hasGithubRepo && (
+      {!hasRepo && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          Coolify deploys from a git repository. Connect this app to GitHub
-          first.
+          Coolify deploys from a git repository. Connect this app to GitHub or
+          GitLab first.
         </div>
       )}
 
       <Button
         size="sm"
-        disabled={!can.canDeploy || !hasGithubRepo || belongsElsewhere}
+        disabled={!can.canDeploy || !hasRepo || belongsElsewhere}
         data-testid="coolify-deploy"
         onClick={async () => {
           try {

@@ -6,6 +6,7 @@ import {
 } from "@/shared/gitlab_instance_url";
 import type { GitRemoteAuth } from "../git_types";
 import { getGitHubGitBase, GITHUB_SSH_HOST } from "./github_endpoints";
+import { GitLabClient } from "./gitlab_client";
 
 /**
  * The one place that answers "which git hosting provider is this app linked
@@ -204,27 +205,43 @@ export function getAppGitRemoteAuth(remote: AppGitRemote): GitRemoteAuth {
       }
       return auth;
     }
-    case "gitlab": {
-      const gitlab = readSettings().gitlab;
-      const token = gitlab?.accessToken?.value;
-      if (!token || !gitlab?.instanceUrl) {
-        throw new DyadError(
-          "Not authenticated with GitLab.",
-          DyadErrorKind.Auth,
-        );
-      }
-      const connectedHost = normalizeGitLabInstanceUrl(gitlab.instanceUrl);
-      if (connectedHost !== remote.host) {
-        throw new DyadError(
-          `This app is linked to ${remote.displayPath} on ${gitLabInstanceLabel(remote.host)}, ` +
-            `but Dyad is connected to ${gitLabInstanceLabel(connectedHost)}. ` +
-            `Connect to ${gitLabInstanceLabel(remote.host)} to sync this app.`,
-          DyadErrorKind.Precondition,
-        );
-      }
-      return gitlabRemoteAuth(remote.host, token);
-    }
+    case "gitlab":
+      return gitlabRemoteAuth(remote.host, requireGitLabToken(remote));
   }
+}
+
+/**
+ * The stored GitLab token, provided the connection points at the instance
+ * the app was linked on.
+ */
+function requireGitLabToken(remote: GitLabRemote): string {
+  const gitlab = readSettings().gitlab;
+  const token = gitlab?.accessToken?.value;
+  if (!token || !gitlab?.instanceUrl) {
+    throw new DyadError("Not authenticated with GitLab.", DyadErrorKind.Auth);
+  }
+  const connectedHost = normalizeGitLabInstanceUrl(gitlab.instanceUrl);
+  if (connectedHost !== remote.host) {
+    throw new DyadError(
+      `This app is linked to ${remote.displayPath} on ${gitLabInstanceLabel(remote.host)}, ` +
+        `but Dyad is connected to ${gitLabInstanceLabel(connectedHost)}. ` +
+        `Connect to ${gitLabInstanceLabel(remote.host)} to sync this app.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  return token;
+}
+
+/** An API client for the instance a GitLab-linked app lives on. */
+export function getGitLabClientForRemote(
+  remote: GitLabRemote,
+  signal?: AbortSignal,
+): GitLabClient {
+  return new GitLabClient({
+    instanceUrl: remote.host,
+    token: requireGitLabToken(remote),
+    signal,
+  });
 }
 
 /** GitHub credentials in the shape git needs, or null when not connected. */

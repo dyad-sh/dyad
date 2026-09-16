@@ -4,14 +4,20 @@ import { eq } from "drizzle-orm";
 // The pipeline reads settings through this module directly, so the harness's
 // in-memory settings would not reach it. writeSettings and DEFAULT_SETTINGS are
 // here because the handler harness and its context module import them too.
-vi.mock("@/main/settings", () => ({
-  readSettings: () => ({
+const settingsState = vi.hoisted(() => ({
+  current: {} as Record<string, unknown>,
+}));
+function defaultSettings(): Record<string, unknown> {
+  return {
     coolify: {
       instanceUrl: "https://coolify.test",
       accessToken: { value: "token" },
     },
     githubAccessToken: { value: "gh-token" },
-  }),
+  };
+}
+vi.mock("@/main/settings", () => ({
+  readSettings: () => settingsState.current,
   writeSettings: vi.fn(),
   DEFAULT_SETTINGS: {},
 }));
@@ -293,6 +299,7 @@ function happyPathRoutes(uuid = APP_UUID) {
 
 beforeEach(() => {
   calls = [];
+  settingsState.current = defaultSettings();
   routes = new Map();
   sideEffects = new Map();
   framework.type = "vite";
@@ -918,7 +925,7 @@ describe("preconditions", () => {
         report: recorder(),
         clock,
       }),
-    ).rejects.toThrow(/Connect this app to GitHub first/);
+    ).rejects.toThrow(/Connect this app to GitHub or GitLab first/);
   });
 
   it("refuses an app with no Coolify server", async () => {
@@ -2016,5 +2023,159 @@ describe("replacing an application", () => {
     const row = await readApp(app.id);
     expect(row?.applicationUuid).toBe(APP_UUID);
     expect(row?.appUrl).toBeNull();
+  });
+});
+
+describe("deploying from GitLab", () => {
+  const gitlabApp = {
+    githubOrg: null,
+    githubRepo: null,
+    githubBranch: null,
+    gitlabHost: "https://gitlab.example.com",
+    gitlabProjectId: 9,
+    gitlabProjectPath: "team/demo",
+    gitlabBranch: "main",
+  };
+  const PROJECT = {
+    id: 9,
+    name: "demo",
+    path: "demo",
+    path_with_namespace: "team/demo",
+    // A non-standard SSH port, which only the API knows about.
+    ssh_url_to_repo: "ssh://git@gitlab.example.com:2222/team/demo.git",
+    http_url_to_repo: "https://gitlab.example.com/team/demo.git",
+    web_url: "https://gitlab.example.com/team/demo",
+  };
+
+  function gitlabConnected(instanceUrl = "https://gitlab.example.com") {
+    settingsState.current = {
+      ...defaultSettings(),
+      gitlab: { instanceUrl, accessToken: { value: "glpat-secret" } },
+    };
+  }
+
+  function gitlabRoutes() {
+    happyPathRoutes();
+    // The key Coolify already holds is named after the GitLab project.
+    route("GET /security/keys", [
+      { uuid: "key-1", name: "dyad_gitlab.example.com_team/demo", id: 7 },
+    ]);
+    route(
+      "POST /api/v4/projects/9/deploy_keys",
+      { id: 5, title: "Dyad", key: "ssh-ed25519 AAAAPUBLIC", can_push: false },
+      201,
+    );
+    route("GET /api/v4/projects/9", PROJECT);
+  }
+
+  function run(appId: number, report: DeployReporter = recorder()) {
+    const clock = createFakeClock();
+    return drive(
+      clock,
+      runDeployPipeline({
+        appId,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+  }
+
+  it("registers a read-only key with GitLab and clones from the URL GitLab reports", async () => {
+    gitlabConnected();
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+
+    await run(app.id);
+
+    const keyCall = calls.find(
+      (c) => keyFor(c.method, c.url) === "POST /api/v4/projects/9/deploy_keys",
+    );
+    expect(keyCall?.url).toBe(
+      "https://gitlab.example.com/api/v4/projects/9/deploy_keys",
+    );
+    expect(keyCall?.body).toEqual({
+      title: "Dyad deploy key (Coolify)",
+      key: "ssh-ed25519 AAAAPUBLIC comment",
+      can_push: false,
+    });
+    expect(bodyOf("POST /applications/private-deploy-key")).toMatchObject({
+      git_repository: "ssh://git@gitlab.example.com:2222/team/demo.git",
+      git_branch: "main",
+    });
+    expect(calls.some((c) => c.url.includes("github.test"))).toBe(false);
+  });
+
+  it("accepts a key GitLab already has on the project", async () => {
+    gitlabConnected();
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+    route(
+      "POST /api/v4/projects/9/deploy_keys",
+      { message: { fingerprint: ["has already been taken"] } },
+      400,
+    );
+    route("GET /api/v4/projects/9/deploy_keys", [
+      { id: 1, title: "Dyad", key: "ssh-ed25519 AAAAPUBLIC", can_push: false },
+    ]);
+
+    await run(app.id);
+
+    expect(bodyOf("POST /applications/private-deploy-key")).toMatchObject({
+      git_repository: "ssh://git@gitlab.example.com:2222/team/demo.git",
+    });
+  });
+
+  it("refuses a key that GitLab has registered somewhere else", async () => {
+    gitlabConnected();
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+    route(
+      "POST /api/v4/projects/9/deploy_keys",
+      { message: { fingerprint: ["has already been taken"] } },
+      400,
+    );
+    route("GET /api/v4/projects/9/deploy_keys", [
+      { id: 1, title: "Other", key: "ssh-ed25519 AAAAOTHER", can_push: false },
+    ]);
+
+    const error = await run(app.id).catch((e) => e);
+    expect(isDyadError(error)).toBe(true);
+    expect(error.kind).toBe(DyadErrorKind.Validation);
+    expect(error.message).toMatch(/would not add the deploy key to team\/demo/);
+    expect(bodyOf("POST /applications/private-deploy-key")).toBeUndefined();
+  });
+
+  it("refuses to deploy through a connection to a different instance", async () => {
+    gitlabConnected("https://gitlab.com");
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+
+    const error = await run(app.id).catch((e) => e);
+    expect(isDyadError(error)).toBe(true);
+    expect(error.kind).toBe(DyadErrorKind.Precondition);
+    expect(error.message).toMatch(/connected to gitlab\.com/);
+    expect(calls.some((c) => c.url.includes("gitlab.example.com"))).toBe(false);
+  });
+
+  it("fails as Auth when GitLab is not connected at all", async () => {
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+
+    const error = await run(app.id).catch((e) => e);
+    expect(isDyadError(error)).toBe(true);
+    expect(error.kind).toBe(DyadErrorKind.Auth);
+  });
+
+  it("names GitLab when warning about unpushed commits", async () => {
+    gitlabConnected();
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+    git.hashes = { HEAD: "abc", remote: "def" };
+    const report = loggingRecorder();
+
+    await run(app.id, report);
+
+    expect(report.text()).toContain("Coolify builds from GitLab");
   });
 });

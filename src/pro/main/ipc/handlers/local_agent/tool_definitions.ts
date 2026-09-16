@@ -3,7 +3,7 @@
  * Each tool includes a zod schema, description, and execute function
  */
 
-import { IpcMainInvokeEvent } from "electron";
+import type { PresentationContext } from "@/ipc/utils/safe_sender";
 import log from "electron-log";
 import { readSettings, writeSettings } from "@/main/settings";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
@@ -280,7 +280,7 @@ export function getAllAgentToolConsents(): Record<
 }
 
 export async function requireAgentToolConsent(
-  event: IpcMainInvokeEvent,
+  event: PresentationContext,
   params: {
     chatId: number;
     toolName: AgentToolName;

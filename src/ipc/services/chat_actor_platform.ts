@@ -1,4 +1,3 @@
-import type { WebContents } from "electron";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import {
   windowRegistry,
@@ -8,8 +7,7 @@ import type { WindowSessionId } from "@/window_infrastructure/types";
 
 const nullEndpoint: WindowEndpoint = {
   // Synthetic endpoints must never look like registrable Electron webContents.
-  // The execution proxy still observes terminal sends, but high-volume
-  // presentation routing takes the non-producer path for this non-integer id.
+  // High-volume presentation routing takes the non-producer path for this id.
   id: Number.NaN,
   isDestroyed: () => true,
   send: () => undefined,
@@ -19,7 +17,7 @@ const nullEndpoint: WindowEndpoint = {
 export function chatExecutionEndpoint(
   chatId: number,
   preferredWindowSessionId?: string,
-): WebContents {
+): WindowEndpoint {
   const preferred = preferredWindowSessionId
     ? windowRegistry.endpointForSession(
         preferredWindowSessionId as WindowSessionId,
@@ -35,10 +33,9 @@ export function chatExecutionEndpoint(
   const routed = routedSession
     ? windowRegistry.endpointForSession(routedSession)
     : undefined;
-  return (preferred ??
-    routed ??
-    windowRegistry.liveEndpoints()[0] ??
-    nullEndpoint) as WebContents;
+  return (
+    preferred ?? routed ?? windowRegistry.liveEndpoints()[0] ?? nullEndpoint
+  );
 }
 
 export function publishChatInvalidations(

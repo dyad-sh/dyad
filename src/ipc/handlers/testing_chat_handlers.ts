@@ -1,4 +1,4 @@
-import { safeSend } from "../utils/safe_sender";
+import type { ChatExecutionContext } from "../services/chat_execution_types";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { computeStreamingPatch } from "../utils/stream_text_utils";
 import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
@@ -204,7 +204,7 @@ const CHUNK_SIZE = 500;
  * — and pre-cleaning avoids an O(N²) regex sweep over the accumulator.
  */
 export async function streamTestResponse(
-  event: Electron.IpcMainInvokeEvent,
+  onProgress: ChatExecutionContext["onProgress"],
   chatId: number,
   invocationRef: ChatStreamInvocationRef | undefined,
   streamId: number | undefined,
@@ -238,13 +238,16 @@ export async function streamTestResponse(
       if (inFlight <= MAX_IN_FLIGHT) {
         const patch = computeStreamingPatch(fullResponse, lastSentContent);
         if (patch) {
-          safeSend(event.sender, "chat:response:chunk", {
-            chatId,
-            invocationRef,
-            streamId,
-            streamingMessageId: placeholderAssistantMessageId,
-            streamingPatch: patch,
-            chunkSeq: currentSeq,
+          onProgress({
+            type: "chunk",
+            payload: {
+              chatId,
+              invocationRef,
+              streamId,
+              streamingMessageId: placeholderAssistantMessageId,
+              streamingPatch: patch,
+              chunkSeq: currentSeq,
+            },
           });
           lastSentContent = fullResponse;
           lastSentSeq = currentSeq;
@@ -259,13 +262,16 @@ export async function streamTestResponse(
     if (!abortController.signal.aborted && lastSentSeq < currentSeq) {
       const patch = computeStreamingPatch(fullResponse, lastSentContent);
       if (patch) {
-        safeSend(event.sender, "chat:response:chunk", {
-          chatId,
-          invocationRef,
-          streamId,
-          streamingMessageId: placeholderAssistantMessageId,
-          streamingPatch: patch,
-          chunkSeq: currentSeq,
+        onProgress({
+          type: "chunk",
+          payload: {
+            chatId,
+            invocationRef,
+            streamId,
+            streamingMessageId: placeholderAssistantMessageId,
+            streamingPatch: patch,
+            chunkSeq: currentSeq,
+          },
         });
       }
     }

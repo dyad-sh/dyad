@@ -1,18 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { IpcMainInvokeEvent, WebContents } from "electron";
+import type { ChatExecutionProgress } from "../services/chat_execution_types";
 
 import { streamTestResponse } from "./testing_chat_handlers";
 
 describe("streamTestResponse", () => {
   it("echoes the full invocation ref on normal and final-flush chunks", async () => {
-    const sent: Array<{ channel: string; payload: unknown }> = [];
-    const sender = {
-      isDestroyed: () => false,
-      isCrashed: () => false,
-      send: (channel: string, payload: unknown) => {
-        sent.push({ channel, payload });
-      },
-    } as unknown as WebContents;
+    const progress: ChatExecutionProgress[] = [];
     const invocationRef = {
       kind: "chat-stream",
       entityKey: 7,
@@ -20,7 +13,7 @@ describe("streamTestResponse", () => {
     } as const;
 
     await streamTestResponse(
-      { sender } as IpcMainInvokeEvent,
+      (event) => progress.push(event),
       7,
       invocationRef,
       undefined,
@@ -29,9 +22,7 @@ describe("streamTestResponse", () => {
       42,
     );
 
-    const chunks = sent.filter(
-      (message) => message.channel === "chat:response:chunk",
-    );
+    const chunks = progress.filter((event) => event.type === "chunk");
     expect(chunks).toHaveLength(3);
     expect(
       chunks.every(

@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import { glob } from "glob";
 import log from "electron-log";
 import { BrowserWindow } from "electron";
-import type { IpcMainInvokeEvent } from "electron";
+import type { WebContents } from "electron";
+import type { PresentationContext } from "../utils/safe_sender";
 import { PreviewCdpBroker } from "@/main/preview_cdp_broker";
 import {
   beginPreviewAutomation,
@@ -217,7 +218,7 @@ export function getRunningTestBaseUrl(appId: number): string | null {
 }
 
 function emitOutput(
-  event: IpcMainInvokeEvent,
+  event: PresentationContext,
   appId: number,
   runId: number,
   chunk: string,
@@ -232,7 +233,7 @@ function emitOutput(
 }
 
 function emitRunState(
-  event: IpcMainInvokeEvent,
+  event: PresentationContext,
   payload: TestsRunStatePayload,
 ): void {
   // Stamped on any payload about a preview run, whatever its source: the
@@ -1028,11 +1029,11 @@ export async function runAppTestsCore({
 
 export interface RunTestsWithIsolationOptions {
   /**
-   * The invoking IPC event. Its `sender` is where `tests:output` and
+   * The presentation context. Its `sender` is where `tests:output` and
    * `tests:run-state` stream to, and `prepareIsolatedTestDatabase` uses it for
    * its own provider status messages. For the agent tool, pass `ctx.event`.
    */
-  event: IpcMainInvokeEvent;
+  event: PresentationContext;
   appId: number;
   testFile?: string;
   testLine?: number;
@@ -1117,7 +1118,8 @@ export async function runAppTestsWithIsolation({
   // stream exists; reported through `emit` as soon as it does.
   let previewFellBackToBrowser: string | undefined;
   if (preview) {
-    previewWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    previewWindow =
+      BrowserWindow.fromWebContents(event.sender as WebContents) ?? undefined;
     if (!previewWindow) {
       return {
         appId,

@@ -3,6 +3,10 @@ import { ignore, type TransitionResult } from "@/state_machines/types";
 import type { ChatStreamHostCommand, ChatStreamHostState } from "./host_state";
 import type { ChatStreamWireEvent } from "./transport";
 
+// STREAM_ENDED / STREAM_ERRORED are main-owned execution outcomes, delivered
+// after persistence and cleanup. Early renderer cancellation receipts and
+// presentation delivery failures never advance this lifecycle.
+
 export type ChatStreamHostIgnoreReason =
   | "stale-invocation"
   | "queue-revision-conflict"

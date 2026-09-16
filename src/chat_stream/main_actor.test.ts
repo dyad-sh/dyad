@@ -19,6 +19,7 @@ import {
   assertChatActorAdmissionOpen,
 } from "@/ipc/services/chat_actor_deletion_fence";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
+import type { ChatExecutionOutcome } from "@/ipc/services/chat_execution_types";
 import { chatStreamDefinition } from "./definition";
 import { initialChatStreamHostState } from "./host_transition";
 import { markIntentTerminal } from "./persistence";
@@ -116,17 +117,37 @@ vi.mock("@/ipc/handlers/chat_stream_handlers", () => ({
         invocationRef?: { operationId: string };
       },
       observer: ChatStreamExecutionObserver,
-    ) => {
+    ): Promise<ChatExecutionOutcome> => {
       if (
         request.invocationRef &&
         execution.pendingCancellations.delete(request.invocationRef.operationId)
       ) {
-        return request.chatId;
+        observer.onEnd?.({
+          chatId: request.chatId,
+          updatedFiles: false,
+          wasCancelled: true,
+        });
+        return { kind: "cancelled" };
       }
       const intentId = observer.intent.intentId;
-      execution.observers.set(intentId, observer);
-      observer.onAccepted?.(11);
-      return 7;
+      return new Promise((resolve) => {
+        execution.observers.set(intentId, {
+          ...observer,
+          onEnd: (response) => {
+            observer.onEnd?.(response);
+            resolve(
+              response.wasCancelled
+                ? { kind: "cancelled" }
+                : { kind: "completed", response },
+            );
+          },
+          onError: (error) => {
+            observer.onError?.(error);
+            resolve({ kind: "failed", error });
+          },
+        });
+        observer.onAccepted?.(11);
+      });
     },
   ),
 }));

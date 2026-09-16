@@ -16,6 +16,20 @@ import { truncateGithubOpsErrorMessage } from "./error_message";
 
 const PUSH_NORMAL: GithubOperation = { type: "push", mode: "normal" };
 
+/**
+ * The normal push that follows `op`, naming GitLab when `op` did so the
+ * success banner says GitLab for a GitLab app. Identity with PUSH_NORMAL for
+ * everything else keeps every GitHub operation byte-for-byte what it was.
+ */
+function pushAfter(
+  op: GithubOperation | { type: "reconcile" },
+): GithubOperation {
+  const provider = "provider" in op ? op.provider : undefined;
+  return provider === "gitlab"
+    ? { type: "push", mode: "normal", provider }
+    : PUSH_NORMAL;
+}
+
 export function transition(
   state: GithubOpsState,
   event: GithubOpsEvent,
@@ -84,7 +98,9 @@ function requestOperation(
           ? beginOperation(
               state,
               op,
-              continuation.type === "rebase-continue" ? PUSH_NORMAL : undefined,
+              continuation.type === "rebase-continue"
+                ? pushAfter(state.origin)
+                : undefined,
             )
           : ignore(state, "blocked-by-conflicts");
       }
@@ -403,7 +419,7 @@ function gitStateReceived(
           : { type: "rebase" }
         : state.resolution !== undefined &&
             isResumableRebaseOrigin(state.origin)
-          ? PUSH_NORMAL
+          ? pushAfter(state.origin)
           : state.resolution === undefined &&
               isRebaseConflictOrigin(state.origin)
             ? { type: "reconcile" }
@@ -812,11 +828,13 @@ function getBlockedSwitchResume(
 function compositeNext(op: GithubOperation): GithubOperation | undefined {
   switch (op.type) {
     case "rebase":
-      return PUSH_NORMAL;
+      return pushAfter(op);
     case "create-branch":
       return op.thenSwitch ? { type: "switch", branch: op.name } : undefined;
     case "connect-repo":
-      return op.thenAutoPush ? PUSH_NORMAL : undefined;
+      // The push that follows a link names the provider it links to, so its
+      // success banner does too.
+      return op.thenAutoPush ? pushAfter(op) : undefined;
     case "push":
     case "pull":
     case "fetch":
@@ -867,7 +885,7 @@ function successBannerContent(op: GithubOperation): GithubOpsBanner | null {
     case "push":
       return {
         kind: "success",
-        message: "Successfully pushed to GitHub!",
+        message: `Successfully pushed to ${op.provider === "gitlab" ? "GitLab" : "GitHub"}!`,
       };
     case "pull":
       return { kind: "success", message: "Pulled latest changes from remote" };

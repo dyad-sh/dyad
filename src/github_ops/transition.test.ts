@@ -975,3 +975,85 @@ describe("github_ops transition", () => {
     ]);
   });
 });
+
+describe("github_ops transition with a GitLab provider", () => {
+  it("names GitLab in the push that follows linking a GitLab project", () => {
+    const connect: GithubOperation = {
+      type: "connect-repo",
+      provider: "gitlab",
+      mode: "create",
+      namespaceId: 20,
+      repo: "demo",
+      thenAutoPush: true,
+    };
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: connect,
+    }).state;
+    const pushing = transition(running, {
+      type: "OP_SUCCEEDED",
+      op: connect,
+    }).state;
+
+    expect(pushing).toMatchObject({
+      type: "running",
+      op: { type: "push", mode: "normal", provider: "gitlab" },
+    });
+
+    const pushed = transition(pushing, {
+      type: "OP_SUCCEEDED",
+      op: { type: "push", mode: "normal", provider: "gitlab" },
+    }).state;
+    expect(pushed.banner).toMatchObject({
+      kind: "success",
+      message: "Successfully pushed to GitLab!",
+    });
+  });
+
+  it("keeps GitHub pushes exactly as they were", () => {
+    const connect: GithubOperation = {
+      type: "connect-repo",
+      provider: "github",
+      mode: "create",
+      org: "",
+      repo: "demo",
+      thenAutoPush: true,
+    };
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: connect,
+    }).state;
+    const pushing = transition(running, {
+      type: "OP_SUCCEEDED",
+      op: connect,
+    }).state;
+    expect(pushing).toMatchObject({
+      type: "running",
+      op: { type: "push", mode: "normal" },
+    });
+    expect((pushing as { op: GithubOperation }).op).not.toHaveProperty(
+      "provider",
+    );
+
+    const pushed = transition(pushing, {
+      type: "OP_SUCCEEDED",
+      op: { type: "push", mode: "normal" },
+    }).state;
+    expect(pushed.banner?.message).toBe("Successfully pushed to GitHub!");
+  });
+
+  it("carries GitLab through a rebase into the push that follows it", () => {
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: { type: "rebase", provider: "gitlab" },
+    }).state;
+    const pushing = transition(running, {
+      type: "OP_SUCCEEDED",
+      op: { type: "rebase", provider: "gitlab" },
+    }).state;
+    expect(pushing).toMatchObject({
+      type: "running",
+      op: { type: "push", mode: "normal", provider: "gitlab" },
+    });
+  });
+});

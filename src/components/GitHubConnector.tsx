@@ -161,6 +161,10 @@ export function ConnectedGitHubConnector({
   const providerLabel = linked?.providerLabel ?? "GitHub";
   const providerShortLabel =
     linked?.provider === "gitlab" ? "GitLab" : "GitHub";
+  // Only GitLab is named on the wire; GitHub operations stay byte-for-byte
+  // what they were, so every existing comparison and test holds.
+  const opProvider =
+    linked?.provider === "gitlab" ? ("gitlab" as const) : undefined;
   const {
     projection,
     connection,
@@ -279,7 +283,11 @@ export function ConnectedGitHubConnector({
           onClick={() =>
             send({
               type: "OP_REQUESTED",
-              op: { type: "push", mode: "normal" },
+              op: {
+                type: "push",
+                mode: "normal",
+                ...(opProvider ? { provider: opProvider } : {}),
+              },
             })
           }
           disabled={!canSync}
@@ -373,7 +381,11 @@ export function ConnectedGitHubConnector({
                   onClick={() =>
                     send({
                       type: "OP_REQUESTED",
-                      op: { type: "push", mode: "lease" },
+                      op: {
+                        type: "push",
+                        mode: "lease",
+                        ...(opProvider ? { provider: opProvider } : {}),
+                      },
                     })
                   }
                   variant="outline"
@@ -404,7 +416,13 @@ export function ConnectedGitHubConnector({
           {showRebaseAndSync && (
             <Button
               onClick={() =>
-                send({ type: "OP_REQUESTED", op: { type: "rebase" } })
+                send({
+                  type: "OP_REQUESTED",
+                  op: {
+                    type: "rebase",
+                    ...(opProvider ? { provider: opProvider } : {}),
+                  },
+                })
               }
               variant="outline"
               size="sm"
@@ -673,7 +691,11 @@ export function ConnectedGitHubConnector({
                 setShowForceDialog(false);
                 send({
                   type: "OP_REQUESTED",
-                  op: { type: "push", mode: "force" },
+                  op: {
+                    type: "push",
+                    mode: "force",
+                    ...(opProvider ? { provider: opProvider } : {}),
+                  },
                 });
               }}
               disabled={!canForcePush || isOperationInFlight}

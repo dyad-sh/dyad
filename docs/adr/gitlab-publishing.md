@@ -83,15 +83,20 @@ rejected are noted where they shaped the design.
    rejected as too large and risky for an upstream PR; a pure parallel stack
    was rejected because it spreads `if github else gitlab` through every
    consumer.
-10. **The `github_ops` state machine is reused unchanged.** Push, pull,
-    rebase, conflict handling and connect are git operations, not GitHub
-    operations. The handler functions behind the machine resolve the provider
-    per app. Renaming the machine and its channels to `git_ops` is a
-    follow-up, not part of this change.
+10. **The `github_ops` state machine is reused.** Push, pull, rebase,
+    conflict handling and connect are git operations, not GitHub operations.
+    The handler functions behind the machine resolve the provider per app.
+    The only change to the machine is that link, push and rebase operations
+    may name the provider, so the success banner the machine composes says
+    GitLab for a GitLab app; a GitHub operation stays byte-for-byte what it
+    was. Renaming the machine and its channels to `git_ops` is a follow-up,
+    not part of this change.
 11. **Token injection is per host.** The git credential header
     (`http.<host>/.extraheader`) is built for the app's host with user
     `oauth2` and the PAT. The startup remote scrub removes embedded
-    credentials for any host rather than only github.com.
+    credentials for github.com and for the GitLab host an app is linked to,
+    and for those only: a remote the user configured by hand on some other
+    host is theirs, credentials and all.
 12. **One provider per app.** An app is linked to GitHub or GitLab, never
     both. The Publish panel shows a single Repository card: unlinked, it
     offers the provider choice; linked, it shows that provider's sync UI.

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
-import { isGitLabInstanceUrl } from "@/shared/gitlab_instance_url";
+// Relative on purpose: this module is reachable from the preload bundle,
+// whose Vite target does not resolve the "@/" alias.
+import { isGitLabInstanceUrl } from "../../shared/gitlab_instance_url";
 
 // =============================================================================
 // GitLab Schemas

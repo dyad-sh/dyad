@@ -12,6 +12,9 @@
 
 export type PushMode = "normal" | "force" | "lease";
 
+/** Which hosting provider an operation talks to; absent means GitHub. */
+export type GitRemoteProviderName = "github" | "gitlab";
+
 /** Linking an app to a repository on one of the supported providers. */
 export type ConnectRepositoryOperation =
   | {
@@ -52,10 +55,12 @@ export type ConnectRepositoryOperation =
     };
 
 export type GithubOperation =
-  | { type: "push"; mode: PushMode }
+  // `provider` on push and rebase only names the provider for the banner the
+  // machine composes; the operation itself is plain git either way.
+  | { type: "push"; mode: PushMode; provider?: GitRemoteProviderName }
   | { type: "pull" }
   | { type: "fetch" }
-  | { type: "rebase" }
+  | { type: "rebase"; provider?: GitRemoteProviderName }
   | { type: "rebase-continue" }
   | { type: "rebase-abort" }
   | { type: "merge-abort" }

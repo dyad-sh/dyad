@@ -63,6 +63,7 @@ const pushOperationSchema = z
   .object({
     type: z.literal("push"),
     mode: z.enum(["normal", "force", "lease"]),
+    provider: z.enum(["github", "gitlab"]).optional(),
   })
   .strict();
 // Nested: the outer machine schema discriminates on `type`, this one on
@@ -122,7 +123,12 @@ export const GithubOperationSchema: z.ZodType<GithubOperation> =
     pushOperationSchema,
     z.object({ type: z.literal("pull") }).strict(),
     z.object({ type: z.literal("fetch") }).strict(),
-    z.object({ type: z.literal("rebase") }).strict(),
+    z
+      .object({
+        type: z.literal("rebase"),
+        provider: z.enum(["github", "gitlab"]).optional(),
+      })
+      .strict(),
     z.object({ type: z.literal("rebase-continue") }).strict(),
     z.object({ type: z.literal("rebase-abort") }).strict(),
     z.object({ type: z.literal("merge-abort") }).strict(),

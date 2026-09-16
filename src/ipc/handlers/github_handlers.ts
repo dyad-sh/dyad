@@ -44,6 +44,7 @@ import {
   githubRemoteAuth,
   requireAppGitRemote,
 } from "../utils/app_git_remote";
+import { withPushHint } from "../utils/git_push_hints";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
@@ -866,13 +867,18 @@ export async function handlePushToGithub(
   }
 
   // Push to the linked remote
-  await gitPush({
-    path: appPath,
-    branch,
-    auth,
-    force,
-    forceWithLease,
-  });
+  try {
+    await gitPush({
+      path: appPath,
+      branch,
+      auth,
+      force,
+      forceWithLease,
+    });
+  } catch (error) {
+    // A GitLab protected-branch refusal gets told where to change that.
+    throw withPushHint(error, remote);
+  }
 }
 
 export async function handleAbortRebase(

@@ -63,11 +63,11 @@ export function getGithubRecordingRefusal(
     case "disconnect":
       return undefined;
     case "push":
-      return "push to GitHub";
+      return op.provider === "gitlab" ? "push to GitLab" : "push to GitHub";
     case "pull":
-      return "pull from GitHub";
+      return "pull from the repository";
     case "fetch":
-      return "fetch from GitHub";
+      return "fetch from the repository";
     case "rebase":
       return "rebase";
     case "rebase-continue":

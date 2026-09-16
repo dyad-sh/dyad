@@ -20,6 +20,7 @@ import { appContracts } from "../types/app";
 import { chatContracts, chatStreamContract } from "../types/chat";
 import { agentContracts, agentEvents } from "../types/agent";
 import { githubContracts, gitContracts, gitEvents } from "../types/github";
+import { gitlabContracts } from "../types/gitlab";
 import {
   connectionFlowContracts,
   connectionFlowEvents,
@@ -116,6 +117,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(connectionFlowContracts),
   ...getInvokeChannels(githubContracts),
   ...getInvokeChannels(gitContracts),
+  ...getInvokeChannels(gitlabContracts),
   ...getInvokeChannels(mcpContracts),
   ...getInvokeChannels(vercelContracts),
   ...getInvokeChannels(coolifyContracts),

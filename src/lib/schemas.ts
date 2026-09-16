@@ -203,6 +203,50 @@ export const GithubUserSchema = z.object({
 });
 export type GithubUser = z.infer<typeof GithubUserSchema>;
 
+export const GitLabUserSchema = z.object({
+  username: z.string(),
+  name: z.string().optional(),
+  email: z.string().nullable().optional(),
+});
+export type GitLabUser = z.infer<typeof GitLabUserSchema>;
+
+/**
+ * The GitLab instance Dyad publishes to, and the token it uses there.
+ *
+ * One object, like Coolify: the address and the token only mean anything
+ * together, and gitlab.com is just the address this defaults to. Which
+ * project an app is linked to lives on the app row, keyed by this host, so
+ * a connection pointed at a different instance later can be told apart from
+ * the one the app was linked on.
+ */
+export const GitLabSchema = z.object({
+  instanceUrl: z.string().optional(),
+  accessToken: SecretSchema.optional(),
+  user: GitLabUserSchema.optional(),
+  /**
+   * ISO date the personal access token stops working, or null when the
+   * instance did not say. Shown so the user is not surprised by a 401 later.
+   */
+  tokenExpiresAt: z.string().nullable().optional(),
+});
+export type GitLab = z.infer<typeof GitLabSchema>;
+
+/**
+ * Every field of a GitLab connection, named and empty. Same reason as
+ * forgottenCoolify below: writeSettings treats an absent key as "could not
+ * decrypt, keep the ciphertext", so only a present-and-undefined key clears.
+ */
+export function forgottenGitLab(): {
+  [K in keyof Required<GitLab>]: undefined;
+} {
+  return {
+    instanceUrl: undefined,
+    accessToken: undefined,
+    user: undefined,
+    tokenExpiresAt: undefined,
+  };
+}
+
 /**
  * Supabase organization credentials.
  * Each organization has its own OAuth tokens.
@@ -489,6 +533,7 @@ const BaseUserSettingsFields = {
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
+  gitlab: GitLabSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
   coolify: CoolifySchema.optional(),
   supabase: SupabaseSchema.optional(),
@@ -555,6 +600,10 @@ const BaseUserSettingsFields = {
   // still changing, and with it off the Publish panel keeps the Vercel card
   // it has always had.
   enableOwnServerDeployment: z.boolean().optional(),
+  // Publishing to GitLab (gitlab.com or a self-hosted instance). Off unless
+  // explicitly turned on; it gates new GitLab connections only, so an app
+  // already linked to GitLab keeps its GitLab card when this is off again.
+  enableGitlabPublishing: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,

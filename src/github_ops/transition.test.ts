@@ -40,6 +40,7 @@ const REPRESENTATIVE_OPS: readonly GithubOperation[] = [
   { type: "disconnect" },
   {
     type: "connect-repo",
+    provider: "github",
     mode: "existing",
     owner: "dyad",
     repo: "app",
@@ -844,6 +845,7 @@ describe("github_ops transition", () => {
   it("preserves connect success context when the automatic push fails", () => {
     const connect: GithubOperation = {
       type: "connect-repo",
+      provider: "github",
       mode: "create",
       org: "",
       repo: "demo",

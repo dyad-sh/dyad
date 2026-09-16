@@ -1139,6 +1139,43 @@ describe("preserving undecryptable secrets", () => {
     expect(read.coolify?.instanceUrl).toBe("http://203.0.113.5:8000");
   });
 
+  it("puts the GitLab token through encryption and reads it back", () => {
+    writeSettings({
+      gitlab: {
+        instanceUrl: "https://gitlab.example.com",
+        accessToken: { value: "glpat-secret" },
+        user: { username: "rene" },
+        tokenExpiresAt: null,
+      },
+    });
+
+    expect(readStoredFile().gitlab.accessToken).toEqual({
+      value: "glpat-secret",
+      encryptionType: "plaintext",
+    });
+    expect(readSettings().gitlab).toEqual({
+      instanceUrl: "https://gitlab.example.com",
+      accessToken: { value: "glpat-secret", encryptionType: "plaintext" },
+      user: { username: "rene" },
+      tokenExpiresAt: null,
+    });
+  });
+
+  it("hides a GitLab token that will not decrypt but keeps the address", () => {
+    store[mockSettingsPath] = JSON.stringify({
+      gitlab: {
+        instanceUrl: "https://gitlab.example.com",
+        accessToken: lockedSecret("gitlab"),
+        user: { username: "rene" },
+      },
+    });
+
+    const read = readSettings();
+    expect(read.gitlab?.accessToken).toBeUndefined();
+    expect(read.gitlab?.instanceUrl).toBe("https://gitlab.example.com");
+    expect(read.gitlab?.user?.username).toBe("rene");
+  });
+
   it("puts the Coolify admin password through encryption", () => {
     // Dyad made this one up and is the only thing holding it, which is a
     // reason to keep it readable and not a reason to keep it in the clear.

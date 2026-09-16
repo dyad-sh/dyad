@@ -437,6 +437,18 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GitLab
+  // ─────────────────────────────────────────────────────────────────────────────
+  gitlab: {
+    all: ["gitlab"] as const,
+    status: ["gitlab", "status"] as const,
+    namespaces: ["gitlab", "namespaces"] as const,
+    projects: ["gitlab", "projects"] as const,
+    branches: ({ projectId }: { projectId: number }) =>
+      ["gitlab", "branches", projectId] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Migration
   // ─────────────────────────────────────────────────────────────────────────────
   migration: {

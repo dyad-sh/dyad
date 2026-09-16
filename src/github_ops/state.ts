@@ -12,9 +12,11 @@
 
 export type PushMode = "normal" | "force" | "lease";
 
+/** Linking an app to a repository on one of the supported providers. */
 export type ConnectRepositoryOperation =
   | {
       type: "connect-repo";
+      provider: "github";
       mode: "create";
       org: string;
       repo: string;
@@ -23,9 +25,28 @@ export type ConnectRepositoryOperation =
     }
   | {
       type: "connect-repo";
+      provider: "github";
       mode: "existing";
       owner: string;
       repo: string;
+      branch: string;
+      thenAutoPush: boolean;
+    }
+  | {
+      type: "connect-repo";
+      provider: "gitlab";
+      mode: "create";
+      /** Where the project is created: a group or the user's own namespace. */
+      namespaceId: number;
+      repo: string;
+      branch?: string;
+      thenAutoPush: boolean;
+    }
+  | {
+      type: "connect-repo";
+      provider: "gitlab";
+      mode: "existing";
+      projectId: number;
       branch: string;
       thenAutoPush: boolean;
     };

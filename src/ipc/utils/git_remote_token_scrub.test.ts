@@ -127,3 +127,55 @@ describe("scrubGithubTokenFromRemotes", () => {
     await expect(scrubGithubTokenFromRemotes()).resolves.toBeUndefined();
   });
 });
+
+describe("scrubbing the app's own GitLab host", () => {
+  it("strips credentials for the instance the app is linked to, and only that one", async () => {
+    const original = [
+      '[remote "origin"]',
+      "\turl = https://oauth2:glpat-secret@gitlab.example.com/group/app.git",
+      '[remote "mirror"]',
+      "\turl = https://user:pass@git.other.example/group/app.git",
+      "",
+    ].join("\n");
+    const configPath = await createAppWithGitConfig("gitlab-linked", original);
+    appRows = [
+      {
+        path: "gitlab-linked",
+        gitlabHost: "https://gitlab.example.com",
+      } as { path: string },
+    ];
+
+    await scrubGithubTokenFromRemotes();
+
+    expect(await fs.readFile(configPath, "utf8")).toBe(
+      [
+        '[remote "origin"]',
+        "\turl = https://gitlab.example.com/group/app.git",
+        '[remote "mirror"]',
+        "\turl = https://user:pass@git.other.example/group/app.git",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("escapes a host with a port so the pattern stays exact", async () => {
+    const original = [
+      '[remote "origin"]',
+      "\turl = https://oauth2:tok@gitlab.example.com:8443/g/a.git",
+      "",
+    ].join("\n");
+    const configPath = await createAppWithGitConfig("gitlab-port", original);
+    appRows = [
+      {
+        path: "gitlab-port",
+        gitlabHost: "https://gitlab.example.com:8443",
+      } as { path: string },
+    ];
+
+    await scrubGithubTokenFromRemotes();
+
+    expect(await fs.readFile(configPath, "utf8")).toContain(
+      "url = https://gitlab.example.com:8443/g/a.git",
+    );
+  });
+});

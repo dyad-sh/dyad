@@ -70,6 +70,15 @@ export const apps = sqliteTable("apps", {
   githubOrg: text("github_org"),
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
+  // The GitLab project an app is linked to. An app links to GitHub or GitLab,
+  // never both; src/ipc/utils/app_git_remote.ts is the one reader of either
+  // set. The host is recorded because Dyad holds one GitLab connection at a
+  // time and it can later point at a different instance than this project is
+  // on — pushing there would silently go to the wrong GitLab.
+  gitlabHost: text("gitlab_host"),
+  gitlabProjectId: integer("gitlab_project_id"),
+  gitlabProjectPath: text("gitlab_project_path"),
+  gitlabBranch: text("gitlab_branch"),
   supabaseProjectId: text("supabase_project_id"),
   // If supabaseProjectId is a branch, then the parent project id set.
   // This is because there's no way to retrieve ALL the branches for ALL projects

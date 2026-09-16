@@ -726,6 +726,7 @@ describe("main-hosted github_ops actor", () => {
         operationId: "sentinel-operation",
         op: {
           type: "connect-repo",
+          provider: "github",
           mode: "create",
           org: "acme",
           repo: "orphan",

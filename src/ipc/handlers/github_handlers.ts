@@ -143,11 +143,14 @@ export async function prepareLocalBranch({
   branch,
   remoteUrl,
   auth,
+  providerLabel = "GitHub",
 }: {
   appId: number;
   branch?: string;
   remoteUrl?: string;
   auth?: GitRemoteAuth;
+  /** Named in the auto-commit message, so the history says where the app went. */
+  providerLabel?: string;
 }) {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) {
@@ -203,8 +206,7 @@ export async function prepareLocalBranch({
       try {
         const commitHash = await gitService.stageAllAndCommit({
           path: appPath,
-          message:
-            "chore: auto-commit local changes before connecting to GitHub",
+          message: `chore: auto-commit local changes before connecting to ${providerLabel}`,
         });
         logger.info(
           `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,
@@ -1158,13 +1160,19 @@ export async function handleDisconnectGithubRepo(
     throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
 
-  // Update app in database to remove GitHub repo, org, and branch
+  // Clears whichever provider the app is linked to. An app links to one at a
+  // time, so nulling both sets is the same as nulling the linked one, and it
+  // leaves nothing stale behind if that invariant ever slipped.
   await db
     .update(apps)
     .set({
       githubRepo: null,
       githubOrg: null,
       githubBranch: null,
+      gitlabHost: null,
+      gitlabProjectId: null,
+      gitlabProjectPath: null,
+      gitlabBranch: null,
     })
     .where(eq(apps.id, appId));
 }

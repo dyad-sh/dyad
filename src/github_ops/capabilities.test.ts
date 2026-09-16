@@ -206,6 +206,7 @@ describe("github_ops capabilities", () => {
               valid: [
                 request({
                   type: "connect-repo",
+                  provider: "github",
                   mode: "existing",
                   owner: "dyad",
                   repo: "app",
@@ -214,6 +215,7 @@ describe("github_ops capabilities", () => {
                 }),
                 request({
                   type: "connect-repo",
+                  provider: "github",
                   mode: "create",
                   org: "dyad",
                   repo: "app",

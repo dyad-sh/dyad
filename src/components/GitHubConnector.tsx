@@ -879,6 +879,7 @@ export function UnconnectedGitHubConnector({
         type: "OP_REQUESTED",
         op: {
           type: "connect-repo",
+          provider: "github",
           mode: "create",
           org: githubOrg,
           repo: repoName,
@@ -894,6 +895,7 @@ export function UnconnectedGitHubConnector({
         type: "OP_REQUESTED",
         op: {
           type: "connect-repo",
+          provider: "github",
           mode: "existing",
           owner,
           repo,

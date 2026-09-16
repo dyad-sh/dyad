@@ -23,6 +23,10 @@ import {
   handleSwitchBranch,
 } from "../handlers/git_branch_handlers";
 import {
+  handleConnectToExistingGitLabProject,
+  handleCreateGitLabProject,
+} from "../handlers/gitlab_handlers";
+import {
   appOperationCoordinator,
   readAppResource,
 } from "./app_operation_coordinator";
@@ -83,7 +87,9 @@ export function getGithubRecordingRefusal(
     case "rename-branch":
       return "rename a branch";
     case "connect-repo":
-      return "connect a GitHub repository";
+      return op.provider === "gitlab"
+        ? "connect a GitLab project"
+        : "connect a GitHub repository";
   }
 }
 
@@ -200,6 +206,20 @@ export class GithubOpsService {
       case "disconnect":
         return handleDisconnectGithubRepo(MAIN_SERVICE_EVENT, { appId });
       case "connect-repo":
+        if (op.provider === "gitlab") {
+          return op.mode === "create"
+            ? handleCreateGitLabProject({
+                appId,
+                namespaceId: op.namespaceId,
+                repo: op.repo,
+                branch: op.branch,
+              })
+            : handleConnectToExistingGitLabProject({
+                appId,
+                projectId: op.projectId,
+                branch: op.branch,
+              });
+        }
         return op.mode === "create"
           ? handleCreateRepo(MAIN_SERVICE_EVENT, {
               appId,

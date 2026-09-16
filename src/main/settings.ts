@@ -415,6 +415,12 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         accessToken: encrypt(newSettings.coolify.accessToken.value),
       };
     }
+    if (newSettings.gitlab?.accessToken) {
+      newSettings.gitlab = {
+        ...newSettings.gitlab,
+        accessToken: encrypt(newSettings.gitlab.accessToken.value),
+      };
+    }
     // Guarded on the password rather than the account, because the two do not
     // arrive together: the preservation pass above strips a password it means
     // to write back verbatim, leaving the account here with none.
@@ -698,6 +704,25 @@ function readExistingSettingsFile(
       // decrypt, so the user is not asked to retype what Dyad still knows.
       const { accessToken: _dropped, ...rest } = combinedSettings.coolify;
       combinedSettings.coolify = rest;
+    }
+  }
+  if (combinedSettings.gitlab?.accessToken) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.gitlab.accessToken,
+      "GitLab access token",
+      ["gitlab", "accessToken"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.gitlab = {
+        ...combinedSettings.gitlab,
+        accessToken: resolved,
+      };
+    } else {
+      // As with Coolify: the address and user are not secrets and survive a
+      // token that will not decrypt.
+      const { accessToken: _dropped, ...rest } = combinedSettings.gitlab;
+      combinedSettings.gitlab = rest;
     }
   }
   const admin = combinedSettings.coolify?.admin;

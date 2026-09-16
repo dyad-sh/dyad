@@ -8,6 +8,7 @@ import { registerCustomAppsFolderHandlers } from "./handlers/custom_apps_folder_
 import { registerConnectionFlowHandlers } from "./handlers/connection_flow_handlers";
 import { registerGithubHandlers } from "./handlers/github_handlers";
 import { registerGithubBranchHandlers } from "./handlers/git_branch_handlers";
+import { registerGitLabHandlers } from "./handlers/gitlab_handlers";
 import { registerVercelHandlers } from "./handlers/vercel_handlers";
 import { registerNodeHandlers } from "./handlers/node_handlers";
 import { registerProposalHandlers } from "./handlers/proposal_handlers";
@@ -73,6 +74,7 @@ export function registerIpcHandlers() {
   registerConnectionFlowHandlers();
   registerGithubHandlers();
   registerGithubBranchHandlers();
+  registerGitLabHandlers();
   registerVercelHandlers();
   registerNodeHandlers();
   registerProblemsHandlers();

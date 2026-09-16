@@ -682,6 +682,12 @@ export async function runDeployPipeline({
       DyadErrorKind.Validation,
     );
   }
+  if (remote.provider !== "github") {
+    throw new DyadError(
+      `Coolify can only deploy from GitHub today; this app is linked to ${remote.providerLabel}.`,
+      DyadErrorKind.Validation,
+    );
+  }
 
   await warnIfBranchNotPushed({
     appPath: getDyadAppPath(app.path),

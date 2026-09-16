@@ -48,6 +48,7 @@ describe("GithubOpsService lifecycle", () => {
     expect(
       getGithubOperationResources({
         type: "connect-repo",
+        provider: "github",
         mode: "create",
         org: "dyad",
         repo: "app",

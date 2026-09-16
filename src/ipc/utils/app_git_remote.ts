@@ -1,5 +1,9 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
+import {
+  gitLabInstanceLabel,
+  normalizeGitLabInstanceUrl,
+} from "@/shared/gitlab_instance_url";
 import type { GitRemoteAuth } from "../git_types";
 import { getGitHubGitBase, GITHUB_SSH_HOST } from "./github_endpoints";
 
@@ -13,7 +17,7 @@ import { getGitHubGitBase, GITHUB_SSH_HOST } from "./github_endpoints";
  * branch in this module rather than a new `if` in every consumer.
  */
 
-export type GitRemoteProvider = "github";
+export type GitRemoteProvider = "github" | "gitlab";
 
 export interface GitHubRemote {
   provider: "github";
@@ -30,13 +34,37 @@ export interface GitHubRemote {
   sshUrl: string;
 }
 
-export type AppGitRemote = GitHubRemote;
+export interface GitLabRemote {
+  provider: "gitlab";
+  /** Name to use in messages: "GitLab", or the instance for self-hosted. */
+  providerLabel: string;
+  /** Normalized instance URL the project lives on, e.g. `https://gitlab.com`. */
+  host: string;
+  projectId: number;
+  /** `namespace/path`, what a user recognises the project by. */
+  projectPath: string;
+  branch: string;
+  displayPath: string;
+  /** Credential-free HTTPS URL for clone, fetch and push. */
+  httpsUrl: string;
+  /**
+   * No SSH URL here: self-hosted instances often serve SSH on another port,
+   * and only the project's API record knows it. Coolify asks GitLab at deploy
+   * time instead of guessing.
+   */
+}
+
+export type AppGitRemote = GitHubRemote | GitLabRemote;
 
 /** The app columns the resolver reads. A subset so callers can pass a row or a DTO. */
 export interface AppGitRemoteColumns {
   githubOrg?: string | null;
   githubRepo?: string | null;
   githubBranch?: string | null;
+  gitlabHost?: string | null;
+  gitlabProjectId?: number | null;
+  gitlabProjectPath?: string | null;
+  gitlabBranch?: string | null;
 }
 
 export function githubRemote({
@@ -60,6 +88,36 @@ export function githubRemote({
   };
 }
 
+export function gitlabRemote({
+  host,
+  projectId,
+  projectPath,
+  branch,
+}: {
+  host: string;
+  projectId: number;
+  projectPath: string;
+  branch?: string | null;
+}): GitLabRemote {
+  const normalizedHost = normalizeGitLabInstanceUrl(host);
+  return {
+    provider: "gitlab",
+    providerLabel: gitLabProviderLabel(normalizedHost),
+    host: normalizedHost,
+    projectId,
+    projectPath,
+    branch: branch || "main",
+    displayPath: projectPath,
+    httpsUrl: `${normalizedHost}/${projectPath}.git`,
+  };
+}
+
+/** "GitLab" for gitlab.com, the instance's host for anything self-hosted. */
+export function gitLabProviderLabel(host: string): string {
+  const label = gitLabInstanceLabel(host);
+  return label === "gitlab.com" ? "GitLab" : `GitLab (${label})`;
+}
+
 /** The remote an app is linked to, or null when it is not linked to any. */
 export function resolveAppGitRemote(
   app: AppGitRemoteColumns,
@@ -71,6 +129,19 @@ export function resolveAppGitRemote(
       branch: app.githubBranch,
     });
   }
+  if (
+    app.gitlabHost &&
+    app.gitlabProjectId !== null &&
+    app.gitlabProjectId !== undefined &&
+    app.gitlabProjectPath
+  ) {
+    return gitlabRemote({
+      host: app.gitlabHost,
+      projectId: app.gitlabProjectId,
+      projectPath: app.gitlabProjectPath,
+      branch: app.gitlabBranch,
+    });
+  }
   return null;
 }
 
@@ -79,9 +150,9 @@ export function hasAppGitRemote(app: AppGitRemoteColumns): boolean {
 }
 
 /**
- * The remote an app is linked to, or a Precondition error naming the provider
- * the caller expected. The message matches what the GitHub handlers have
- * always thrown, so nothing downstream that matches on it changes.
+ * The remote an app is linked to, or a Precondition error. The message is
+ * the one the GitHub handlers have always thrown for an unlinked app, so
+ * nothing downstream that matches on it changes.
  */
 export function requireAppGitRemote(app: AppGitRemoteColumns): AppGitRemote {
   const remote = resolveAppGitRemote(app);
@@ -95,10 +166,31 @@ export function requireAppGitRemote(app: AppGitRemoteColumns): AppGitRemote {
 }
 
 /**
+ * An app links to one provider at a time. Refuses to link `provider` while
+ * another one is linked, so the UI's exclusivity is not the only guard.
+ */
+export function assertCanLinkProvider(
+  app: AppGitRemoteColumns,
+  provider: GitRemoteProvider,
+): void {
+  const current = resolveAppGitRemote(app);
+  if (current && current.provider !== provider) {
+    const target = provider === "github" ? "GitHub" : "GitLab";
+    throw new DyadError(
+      `This app is already linked to ${current.providerLabel} (${current.displayPath}). ` +
+        `Disconnect it before linking a ${target} repository.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
+/**
  * Credentials for git network operations against the remote's host.
  *
- * Throws an Auth error when the provider is not connected; the message is
- * the one the handlers have always shown for a missing token.
+ * Throws an Auth error when the provider is not connected, and a
+ * Precondition error when the GitLab connection points at a different
+ * instance than the app was linked on — pushing there would go to the wrong
+ * GitLab, silently.
  */
 export function getAppGitRemoteAuth(remote: AppGitRemote): GitRemoteAuth {
   switch (remote.provider) {
@@ -111,6 +203,26 @@ export function getAppGitRemoteAuth(remote: AppGitRemote): GitRemoteAuth {
         );
       }
       return auth;
+    }
+    case "gitlab": {
+      const gitlab = readSettings().gitlab;
+      const token = gitlab?.accessToken?.value;
+      if (!token || !gitlab?.instanceUrl) {
+        throw new DyadError(
+          "Not authenticated with GitLab.",
+          DyadErrorKind.Auth,
+        );
+      }
+      const connectedHost = normalizeGitLabInstanceUrl(gitlab.instanceUrl);
+      if (connectedHost !== remote.host) {
+        throw new DyadError(
+          `This app is linked to ${remote.displayPath} on ${gitLabInstanceLabel(remote.host)}, ` +
+            `but Dyad is connected to ${gitLabInstanceLabel(connectedHost)}. ` +
+            `Connect to ${gitLabInstanceLabel(remote.host)} to sync this app.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      return gitlabRemoteAuth(remote.host, token);
     }
   }
 }
@@ -128,5 +240,17 @@ export function githubRemoteAuth(accessToken: string): GitRemoteAuth {
     hostUrl: getGitHubGitBase(),
     username: accessToken,
     password: "x-oauth-basic",
+  };
+}
+
+export function gitlabRemoteAuth(
+  host: string,
+  accessToken: string,
+): GitRemoteAuth {
+  // GitLab takes a personal access token as the password of a fixed user.
+  return {
+    hostUrl: normalizeGitLabInstanceUrl(host),
+    username: "oauth2",
+    password: accessToken,
   };
 }

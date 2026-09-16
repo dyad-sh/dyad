@@ -48,6 +48,7 @@ import {
   useConnectionFlow,
   useUnsolicitedConnectionReturn,
 } from "@/hooks/useConnectionFlow";
+import { describeLinkedRemote } from "@/shared/linked_remote";
 
 interface GitHubConnectorProps {
   appId: number | null;
@@ -90,13 +91,21 @@ function GitHubTroubleshootingLink({ className = "" }: { className?: string }) {
   );
 }
 
-function GitHubOperationError({ message }: { message: string }) {
+export function GitHubOperationError({
+  message,
+  providerLabel = "GitHub",
+}: {
+  message: string;
+  /** Names the provider in the heading; the troubleshooting guide is GitHub's. */
+  providerLabel?: string;
+}) {
   const showDetails = isDetailedGithubOpsErrorMessage(message);
+  const showGuide = providerLabel === "GitHub";
 
   if (!showDetails) {
     return (
       <p className="text-red-600">
-        {message} <GitHubTroubleshootingLink />
+        {message} {showGuide && <GitHubTroubleshootingLink />}
       </p>
     );
   }
@@ -105,19 +114,21 @@ function GitHubOperationError({ message }: { message: string }) {
     <div className="rounded-md border border-red-200 bg-red-50/70 p-3 dark:border-red-900 dark:bg-red-950/40">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-sm font-medium text-red-800 dark:text-red-200">
-          GitHub operation failed
+          {providerLabel} operation failed
         </p>
         <CopyErrorMessage errorMessage={message} />
       </div>
       <div
         role="region"
-        aria-label="GitHub error details"
+        aria-label={`${providerLabel} error details`}
         tabIndex={0}
         className="scrollbar-on-hover max-h-[min(50vh,20rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded border border-red-200/70 bg-white/60 p-2 font-mono text-xs whitespace-pre-wrap text-red-900 [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none dark:border-red-900 dark:bg-black/20 dark:text-red-100"
       >
         {message}
       </div>
-      <GitHubTroubleshootingLink className="mt-2 inline-block text-sm" />
+      {showGuide && (
+        <GitHubTroubleshootingLink className="mt-2 inline-block text-sm" />
+      )}
     </div>
   );
 }
@@ -136,11 +147,20 @@ export interface UnconnectedGitHubConnectorProps {
   linkedRepo?: LinkedGitHubRepo;
 }
 
-function ConnectedGitHubConnector({
+/**
+ * The sync controls for an app linked to a repository. The operations
+ * behind them are plain git, so the same view serves GitHub and GitLab; only
+ * the provider's name and the repository link differ.
+ */
+export function ConnectedGitHubConnector({
   appId,
   app,
 }: ConnectedGitHubConnectorProps) {
   const [showForceDialog, setShowForceDialog] = useState(false);
+  const linked = describeLinkedRemote(app);
+  const providerLabel = linked?.providerLabel ?? "GitHub";
+  const providerShortLabel =
+    linked?.provider === "gitlab" ? "GitLab" : "GitHub";
   const {
     projection,
     connection,
@@ -240,21 +260,20 @@ function ConnectedGitHubConnector({
             : "Repository controls are temporarily unavailable."}
         </p>
       )}
-      <p>Connected to GitHub Repo:</p>
+      <p>Connected to {providerShortLabel} Repo:</p>
       <a
         onClick={(e) => {
           e.preventDefault();
-          ipc.system.openExternalUrl(
-            `https://github.com/${app.githubOrg}/${app.githubRepo}`,
-          );
+          if (linked) ipc.system.openExternalUrl(linked.webUrl);
         }}
         className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"
         target="_blank"
         rel="noopener noreferrer"
+        data-testid="repository-link"
       >
-        {app.githubOrg}/{app.githubRepo}
+        {linked?.displayPath}
       </a>
-      {app.githubBranch && <GithubBranchManager appId={appId} />}
+      {linked?.branch && <GithubBranchManager appId={appId} />}
       <div className="mt-2 flex gap-2">
         <Button
           onClick={() =>
@@ -291,7 +310,7 @@ function ConnectedGitHubConnector({
               Syncing...
             </>
           ) : (
-            "Sync to GitHub"
+            `Sync to ${providerShortLabel}`
           )}
         </Button>
         <Button
@@ -307,10 +326,13 @@ function ConnectedGitHubConnector({
       {showErrorBanner && (
         <div className="mt-2 space-y-2">
           <p role="status" aria-live="polite" className="sr-only">
-            GitHub operation failed:{" "}
+            {providerLabel} operation failed:{" "}
             {banner.message.split("\n", 1)[0].slice(0, 240)}
           </p>
-          <GitHubOperationError message={banner.message} />
+          <GitHubOperationError
+            message={banner.message}
+            providerLabel={providerLabel}
+          />
           {showRebaseRecoveryOptions && (
             <div className="space-y-2 rounded-md border border-orange-200 p-3 dark:border-orange-800 dark:bg-orange-900/20">
               <p className="text-sm text-orange-800 dark:text-orange-100">
@@ -445,7 +467,7 @@ function ConnectedGitHubConnector({
                       : conflictRecoveryStage === "verification-failed"
                         ? "Your resolved changes are still safe."
                         : conflictRecoveryStage === "ready-to-sync"
-                          ? "Your changes are ready to sync to GitHub."
+                          ? `Your changes are ready to sync to ${providerShortLabel}.`
                           : `Resolve ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} to ${isSyncConflict ? "continue syncing" : "finish merging"}.`}
                 </p>
                 {conflictRecoveryStage === "verification-failed" && (
@@ -467,6 +489,7 @@ function ConnectedGitHubConnector({
                       conflictVerificationError ??
                       "Dyad couldn't check the repository."
                     }
+                    providerLabel={providerLabel}
                   />
                 </div>
               )}
@@ -617,8 +640,8 @@ function ConnectedGitHubConnector({
             <DialogDescription>
               <div className="space-y-3">
                 <p>
-                  You are about to perform a <strong>force push</strong> to your
-                  GitHub repository.
+                  You are about to perform a <strong>force push</strong> to your{" "}
+                  {providerShortLabel} repository.
                 </p>
                 <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-md border border-orange-200 dark:border-orange-800">
                   <p className="text-sm text-orange-800 dark:text-orange-200">

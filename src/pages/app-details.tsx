@@ -42,7 +42,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { GitHubConnector } from "@/components/GitHubConnector";
+import { RepositoryConnector } from "@/components/RepositoryConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
 import { NeonConnector } from "@/components/NeonConnector";
 import { showError, showSuccess } from "@/lib/toast";
@@ -619,7 +619,7 @@ export default function AppDetailsPage() {
             <MessageCircle className="h-4 w-4" />
           </Button>
           <div className="border border-gray-200 rounded-md p-4">
-            <GitHubConnector appId={appId} folderName={selectedApp.path} />
+            <RepositoryConnector appId={appId} folderName={selectedApp.path} />
             {selectedApp.githubOrg && selectedApp.githubRepo && appId && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                 <GithubCollaboratorManager appId={appId} />

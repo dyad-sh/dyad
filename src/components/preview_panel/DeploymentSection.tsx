@@ -5,6 +5,7 @@ import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
+import { describeLinkedRemote } from "@/shared/linked_remote";
 
 /**
  * Where an app is published: Vercel, or a server the user runs themselves.
@@ -21,6 +22,9 @@ interface AppSummary {
   name: string;
   githubOrg: string | null;
   githubRepo: string | null;
+  gitlabHost?: string | null;
+  gitlabProjectId?: number | null;
+  gitlabProjectPath?: string | null;
 }
 
 function VercelDashboardLink() {
@@ -40,13 +44,27 @@ function VercelDashboardLink() {
 }
 
 function VercelDeployment({ appId, app }: { appId: number; app: AppSummary }) {
+  const linked = describeLinkedRemote(app);
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600 dark:text-gray-400">
         Publish your app by deploying it to Vercel.
       </p>
 
-      {!app.githubOrg || !app.githubRepo ? (
+      {linked && linked.provider !== "github" ? (
+        <div
+          className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4"
+          data-testid="vercel-requires-github"
+        >
+          <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            GitHub Required for Vercel Deployment
+          </h3>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+            This app is linked to {linked.providerLabel}. Vercel deploys from
+            GitHub only; deploy it to your own server instead.
+          </p>
+        </div>
+      ) : !app.githubOrg || !app.githubRepo ? (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <svg

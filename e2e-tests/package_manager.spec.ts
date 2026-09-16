@@ -257,9 +257,12 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
 });
 
 const blockedFirewallTestSkipIfWindows = testWithConfigSkipIfWindows({
+  testTimeout: SOCKET_FIREWALL_TEST_TIMEOUT,
   preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
-    await configurePackageManagerCache(userDataDir);
+    await configurePackageManagerCache(userDataDir, { isolateNpmCache: false });
     await createSupportedPnpmShim(userDataDir);
+    // Warm the real fallback before the shim can short-circuit sfw --help.
+    warmSocketFirewallCache(path.join(userDataDir, "sfw-github-authenticated"));
     await createBlockedFirewallShim(userDataDir);
     process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
     process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;

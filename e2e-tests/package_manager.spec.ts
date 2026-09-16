@@ -102,12 +102,45 @@ async function createSupportedPnpmShim(userDataDir: string) {
   }).trim();
 
   await fs.mkdir(fakeBinDir, { recursive: true });
+  // reload-env-path accepts customNodePath only when it contains usable Node.
+  await fs.symlink(process.execPath, path.join(fakeBinDir, "node"));
   await fs.writeFile(
     pnpmPath,
     ["#!/bin/sh", `exec "${systemPnpmPath}" "$@"`, ""].join("\n"),
   );
   await fs.chmod(pnpmPath, 0o755);
   process.env.PATH = `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+async function createBlockedFirewallShim(userDataDir: string) {
+  const systemNpxPath = execFileSync("which", ["npx"], {
+    encoding: "utf8",
+  }).trim();
+  const shimPath = path.join(userDataDir, "supported-pnpm-bin", "npx");
+  const markerPath = path.join(userDataDir, "blocked-firewall-invocation.json");
+  // Live verdicts change: axois@0.0.1-security is now allowed by sfw. Exercise
+  // Dyad's blocked-command handling without depending on that external policy.
+  await fs.writeFile(
+    shimPath,
+    [
+      `#!${process.execPath}`,
+      'const { spawnSync } = require("node:child_process");',
+      'const fs = require("node:fs");',
+      "const args = process.argv.slice(2);",
+      'if (args.includes("sfw@2.0.4")) {',
+      '  if (args.includes("--help")) process.exit(0);',
+      '  if (args.includes("pnpm") && args.includes("add") && args.includes("axois")) {',
+      `    fs.writeFileSync(${JSON.stringify(markerPath)}, JSON.stringify(args));`,
+      '    console.error(" - blocked npm package: name: axois; version: 0.0.1-security; reason: malware (critical)");',
+      "    process.exit(1);",
+      "  }",
+      "}",
+      `const result = spawnSync(${JSON.stringify(systemNpxPath)}, args, { stdio: "inherit" });`,
+      "process.exit(result.status ?? 1);",
+      "",
+    ].join("\n"),
+  );
+  await fs.chmod(shimPath, 0o755);
 }
 
 function warmSocketFirewallCache(authMarkerPath: string) {
@@ -219,6 +252,17 @@ const testSkipIfWindows = testWithConfigSkipIfWindows({
     process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
     process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
     warmSocketFirewallCache(path.join(userDataDir, "sfw-github-authenticated"));
+  },
+  postLaunchHook: restorePackageManagerCache,
+});
+
+const blockedFirewallTestSkipIfWindows = testWithConfigSkipIfWindows({
+  preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
+    await configurePackageManagerCache(userDataDir);
+    await createSupportedPnpmShim(userDataDir);
+    await createBlockedFirewallShim(userDataDir);
+    process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
+    process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
   },
   postLaunchHook: restorePackageManagerCache,
 });
@@ -391,8 +435,8 @@ testSkipIfWindows(
   },
 );
 
-testSkipIfWindows(
-  "build mode - blocked unsafe npm package shows the real socket verdict and preserves app files",
+blockedFirewallTestSkipIfWindows(
+  "build mode - blocked unsafe npm package shows the socket verdict and preserves app files",
   async ({ po }) => {
     const { packageJsonPath, pnpmLockPath } = await openMinimalBuildChat(po);
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
@@ -419,6 +463,16 @@ testSkipIfWindows(
     await expect(errorCard).toContainText(/malware/i, {
       timeout: Timeout.MEDIUM,
     });
+
+    const invocation = JSON.parse(
+      await fs.readFile(
+        path.join(po.userDataDir, "blocked-firewall-invocation.json"),
+        "utf8",
+      ),
+    );
+    expect(invocation).toEqual(
+      expect.arrayContaining(["sfw@2.0.4", "pnpm", "add", "axois"]),
+    );
 
     expect(await fs.readFile(packageJsonPath, "utf8")).toBe(initialPackageJson);
     expect(await fs.readFile(pnpmLockPath, "utf8")).toBe(initialPnpmLock);

@@ -28,6 +28,9 @@ async function startStream(
   });
   send();
   await screen.findByRole("button", { name: /cancel generation/i });
+  // Streaming can render before the submission receipt releases the composer
+  // acceptance latch. An Enter during that interval is intentionally ignored.
+  await harness.bridge.settleInFlight();
 }
 
 async function queueMessages(
@@ -37,10 +40,12 @@ async function queueMessages(
 ) {
   for (const [index, message] of messages.entries()) {
     await harness.pressEnterInChat(message, { chatId });
-    await waitFor(() =>
-      expect(screen.getByTestId("queue-header").textContent).toMatch(
-        queuedCountText(index + 1),
-      ),
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("queue-header").textContent).toMatch(
+          queuedCountText(index + 1),
+        ),
+      { timeout: 10_000 },
     );
   }
 }

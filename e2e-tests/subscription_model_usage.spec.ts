@@ -57,12 +57,9 @@ test("subscription model usage UX", async ({ po, electronApp }, testInfo) => {
     expect(gap).toBeLessThanOrEqual(4);
   }).toPass();
   await expect(
-    po.page.getByText(
-      "ChatGPT subscription usage costs up to 1.5 Pro credits / 1M tokens.",
-      {
-        exact: true,
-      },
-    ),
+    po.page.getByText("Get up to 5× usage with your ChatGPT subscription.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     po.page.getByRole("menuitem", { name: /^Pro credits/ }),

@@ -116,13 +116,22 @@ describe("chat image generation (integration)", () => {
       { timeout: 20_000 },
     );
 
-    const [userMessage] = await harness.db
-      .select()
-      .from(messages)
-      .where(eq(messages.chatId, chatId))
-      .orderBy(messages.id);
-    expect(userMessage.role).toBe("user");
-    expect(userMessage.content).toContain(fileName);
-    expect(userMessage.content).toContain("<dyad-attachment");
+    // The message renders optimistically before the main actor persists it.
+    await waitFor(
+      async () => {
+        const [userMessage] = await harness.db
+          .select()
+          .from(messages)
+          .where(eq(messages.chatId, chatId))
+          .orderBy(messages.id);
+        expect(userMessage).toBeDefined();
+        expect(userMessage.role).toBe("user");
+        expect(userMessage.content).toContain(fileName);
+        expect(userMessage.content).toContain("<dyad-attachment");
+      },
+      { timeout: 20_000 },
+    );
+    await harness.waitForStreamEnd(chatId);
+    await harness.bridge.settleInFlight();
   }, 60_000);
 });

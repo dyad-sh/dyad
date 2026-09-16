@@ -189,6 +189,10 @@ before ending the test. Otherwise provider teardown can dispose the owning state
 machine while its command is still settling and produce misleading disposal
 errors after an otherwise successful assertion.
 
+Chat messages can render optimistically before SQLite persistence. Poll the
+database assertion with `waitFor`, then await stream completion before cleanup;
+finding the rendered attachment does not prove the user-message row exists.
+
 Mock main-process utility modules that the runtime service pulls in
 transitively — such as `../utils/cloud_sandbox_provider` — with `importOriginal`
 and spread the actual exports, overriding only what the test needs. A factory

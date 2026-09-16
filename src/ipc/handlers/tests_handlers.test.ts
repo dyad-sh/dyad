@@ -223,8 +223,22 @@ const { registerTestsHandlers, runAppTestsWithIsolation } =
 
 describe("tests handlers", () => {
   let harness: HandlerTestHarness;
+  let releaseOperationBlocks: (() => void)[];
+  let restoreBlockSpy: () => void;
 
   beforeEach(() => {
+    releaseOperationBlocks = [];
+    const block = appOperationCoordinator.blockConflictingOperations.bind(
+      appOperationCoordinator,
+    );
+    const blockSpy = vi
+      .spyOn(appOperationCoordinator, "blockConflictingOperations")
+      .mockImplementation((...args) => {
+        const release = block(...args);
+        releaseOperationBlocks.push(release);
+        return release;
+      });
+    restoreBlockSpy = () => blockSpy.mockRestore();
     activeRecordings.clear();
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
@@ -295,6 +309,9 @@ describe("tests handlers", () => {
   });
 
   afterEach(() => {
+    // These tests simulate survivors; no real process remains after the case.
+    for (const release of releaseOperationBlocks) release();
+    restoreBlockSpy();
     harness.dispose();
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
   });
@@ -677,7 +694,7 @@ describe("tests handlers", () => {
         return {
           baseUrl: "http://127.0.0.1:49999/path",
           process: null,
-          stop: vi.fn(),
+          stop: vi.fn().mockResolvedValue(true),
         };
       });
       spawnStreamingMock.mockImplementation(async () => {
@@ -1405,7 +1422,7 @@ describe("tests handlers", () => {
     );
 
     it.each(["survivor", "settlement-error"])(
-      "skips artifacts and workspace deletion but cleans the provider after %s",
+      "defers all cleanup and fences the provider after %s",
       async (outcome) => {
         const appId = seedApp("app");
         harness.db
@@ -1429,7 +1446,7 @@ describe("tests handlers", () => {
           );
         }
 
-        await runAppTestsWithIsolation({
+        const result = await runAppTestsWithIsolation({
           event: { sender: {} } as any,
           appId,
           source: "panel",
@@ -1439,8 +1456,21 @@ describe("tests handlers", () => {
           await createE2eTestWorkspaceMock.mock.results[0].value;
         expect(retainE2eTestArtifactsMock).not.toHaveBeenCalled();
         expect(workspace.dispose).not.toHaveBeenCalled();
-        expect(teardown).toHaveBeenCalledOnce();
+        expect(teardown).not.toHaveBeenCalled();
         expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+        expect(result.infraError?.message).toMatch(
+          /couldn't confirm.*test processes stopped/i,
+        );
+        await expect(
+          appOperationCoordinator.run(
+            {
+              appId,
+              operation: "disconnect-provider",
+              resources: ["provider"],
+            },
+            async () => undefined,
+          ),
+        ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
       },
     );
 
@@ -1472,13 +1502,20 @@ describe("tests handlers", () => {
         stop: vi.fn().mockResolvedValue(false),
       });
 
-      await runAppTestsWithIsolation({
+      const result = await runAppTestsWithIsolation({
         event: { sender: {} } as any,
         appId,
         source: "panel",
       });
 
       expect(dispose).not.toHaveBeenCalled();
+      expect(result.infraError?.message).toMatch(
+        /couldn't confirm.*test processes stopped/i,
+      );
+      const prepared =
+        await prepareIsolatedTestDatabaseMock.mock.results[0].value;
+      expect(prepared.teardown).not.toHaveBeenCalled();
+      expect(appOperationCoordinator.isBusy(appId, ["provider"])).toBe(true);
     });
 
     it("refuses a sandbox with no Playwright instead of failing in the CLI", async () => {
@@ -1835,6 +1872,148 @@ describe("tests handlers", () => {
             "test-files",
           ]),
         ).toBe(false);
+      },
+    );
+
+    it.each(
+      ["disabled", "docker", "cloud"].flatMap((route) =>
+        ["survivor", "settlement-error"].map((outcome) => ({ route, outcome })),
+      ),
+    )(
+      "blocks operations and preserves the Supabase user after unconfirmed shutdown ($route, $outcome)",
+      async ({ route, outcome }) => {
+        const appId = seedApp("app");
+        const testUserId = "00000000-0000-4000-8000-000000000001";
+        harness.db
+          .update(apps)
+          .set({
+            testingEnabled: true,
+            supabaseProjectId: "sb-proj",
+            supabaseTestUserId: testUserId,
+          })
+          .where(eq(apps.id, appId))
+          .run();
+        readSettingsMock.mockImplementation(() => ({
+          ...structuredClone(DEFAULT_SETTINGS),
+          disableSandboxedE2eTests: route === "disabled",
+          runtimeMode2: route === "disabled" ? "host" : route,
+        }));
+        runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+        const teardown = vi.fn(async () => {
+          harness.db
+            .update(apps)
+            .set({ supabaseTestUserId: null })
+            .where(eq(apps.id, appId))
+            .run();
+          return { envRestored: true, remoteCleanupCompleted: true };
+        });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "supabase-test-user" },
+          cleanupProvider: "supabase-test-user",
+          teardown,
+        });
+        const externalController = new AbortController();
+        spawnStreamingMock.mockImplementation(async () => {
+          externalController.abort();
+          return {
+            code: 1,
+            stdout: "",
+            stderr: "",
+            aborted: true,
+            timedOut: false,
+          };
+        });
+        let finishSettlement!: () => void;
+        settleE2eTestProcessesMock.mockReturnValueOnce(
+          new Promise<boolean>((resolve, reject) => {
+            finishSettlement = () =>
+              outcome === "survivor"
+                ? resolve(false)
+                : reject(new Error("kill failed"));
+          }),
+        );
+
+        const run = runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "agent",
+          externalSignal: externalController.signal,
+        });
+        try {
+          await vi.waitFor(() =>
+            expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce(),
+          );
+          const queuedCallback = vi.fn();
+          const queued = appOperationCoordinator.run(
+            {
+              appId,
+              operation: "disconnect-provider",
+              resources: ["provider"],
+            },
+            queuedCallback,
+          );
+          const rejected = expect(queued).rejects.toMatchObject({
+            kind: DyadErrorKind.Precondition,
+          });
+          finishSettlement();
+          const [result] = await Promise.all([run, rejected]);
+
+          expect(result.infraError?.message).toMatch(/test run stopped/i);
+          expect(result.infraError?.message).toMatch(
+            /couldn't confirm.*test processes stopped/i,
+          );
+          expect(result.infraError?.message).toMatch(/restart Dyad/i);
+          expect(teardown).not.toHaveBeenCalled();
+          expect(queuedCallback).not.toHaveBeenCalled();
+          expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+          expect(
+            harness.db.select().from(apps).where(eq(apps.id, appId)).get()
+              ?.supabaseTestUserId,
+          ).toBe(testUserId);
+
+          for (const resource of [
+            "provider",
+            "runtime",
+            "runtime-config",
+            "repository-worktree",
+            "test-files",
+            "app-path",
+          ] as const) {
+            const callback = vi.fn();
+            await expect(
+              appOperationCoordinator.run(
+                { appId, operation: "later-operation", resources: [resource] },
+                callback,
+              ),
+            ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+            expect(callback).not.toHaveBeenCalled();
+          }
+          expect(() => appOperationCoordinator.beginAppDeletion(appId)).toThrow(
+            /test processes stopped/i,
+          );
+          // A later empty registry verdict must not erase this run's failure.
+          await expect(
+            runAppTestsWithIsolation({
+              event: { sender: {} } as any,
+              appId,
+              source: "panel",
+            }),
+          ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+          expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
+          expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+          expect(
+            broadcastToRegisteredWindowsMock.mock.calls.some(
+              ([, channel, payload]) =>
+                channel === "tests:run-state" &&
+                payload.state === "finished" &&
+                /couldn't confirm/.test(payload.infraError?.message ?? ""),
+            ),
+          ).toBe(true);
+        } finally {
+          finishSettlement?.();
+          await run;
+          runningApps.clear();
+        }
       },
     );
 

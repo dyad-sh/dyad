@@ -46,6 +46,7 @@ import { runningApps } from "../utils/process_manager";
 import {
   appOperationCoordinator,
   readAppResource,
+  type AppOperationRequest,
 } from "../services/app_operation_coordinator";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
@@ -1470,6 +1471,7 @@ async function runTestsAgainstNormalPreview({
   emit,
   emitProgress,
   settleRunProcesses,
+  onProcessSettlementFailed,
   onIsolationCleanupFailed,
   testFile,
   testLine,
@@ -1498,6 +1500,10 @@ async function runTestsAgainstNormalPreview({
     isolation?: TestIsolation,
   ) => void;
   settleRunProcesses: () => Promise<boolean>;
+  onProcessSettlementFailed: (
+    resources: AppOperationRequest["resources"],
+    isolation?: TestIsolation,
+  ) => void;
   onIsolationCleanupFailed: (
     failed: boolean,
     provider?: IsolationCleanupProvider,
@@ -1519,6 +1525,15 @@ async function runTestsAgainstNormalPreview({
   releasePreviewReservation: () => void;
   emitPreviewFallback: () => void;
 }): Promise<RunAppTestsResult> {
+  const testRunResources = [
+    readAppResource("app-path"),
+    readAppResource("repository-ref"),
+    "repository-worktree",
+    "provider",
+    "runtime",
+    "runtime-config",
+    "test-files",
+  ] as const;
   return appOperationCoordinator.run(
     {
       appId,
@@ -1526,15 +1541,7 @@ async function runTestsAgainstNormalPreview({
       // This path runs Playwright against the user's real working tree and the
       // normal preview, so it claims both — unlike the sandboxed path, which
       // releases the tree after snapshotting and never touches the preview.
-      resources: [
-        readAppResource("app-path"),
-        readAppResource("repository-ref"),
-        "repository-worktree",
-        "provider",
-        "runtime",
-        "runtime-config",
-        "test-files",
-      ],
+      resources: testRunResources,
       allowCompatibleQueueBypass: true,
       refuseWhenRecording: "run tests",
     },
@@ -1623,10 +1630,12 @@ async function runTestsAgainstNormalPreview({
         return { ...result, isolation };
       } finally {
         // Stop/timeout may resolve the runner before its browser descendants
-        // close. Keep the provider/runtime claims until settlement finishes,
-        // before deleting the test user even when there is no workspace.
-        await settleRunProcesses();
-        if (prepared) {
+        // close. An unconfirmed shutdown must keep conflicting operations
+        // fenced and the test user tracked for recovery, even without a workspace.
+        const settled = await settleRunProcesses();
+        if (!settled) {
+          onProcessSettlementFailed(testRunResources, prepared?.isolation);
+        } else if (prepared) {
           try {
             if (prepared.isolation.mode !== "none") {
               emitProgress("cleaning-up", prepared.isolation);
@@ -1707,6 +1716,9 @@ async function sandboxEnvMatchesCapture(
 /** Shared by both drift checks, so the user reads one explanation. */
 const CONFIGURATION_CHANGED_MESSAGE =
   "This app's database or run configuration changed while Dyad was preparing the test sandbox, so the run was stopped before it could use stale settings. Run the tests again.";
+
+const PROCESS_SETTLEMENT_FAILED_MESSAGE =
+  "Dyad couldn't confirm that all test processes stopped. Cleanup was deferred, and conflicting operations for this app are blocked. Stop any remaining test processes, then restart Dyad to retry cleanup.";
 
 /**
  * The app configuration the snapshot was taken under.
@@ -2039,6 +2051,22 @@ export async function runAppTestsWithIsolation({
         return false;
       },
     ));
+  let processSettlementFailed = false;
+  const onProcessSettlementFailed = (
+    resources: AppOperationRequest["resources"],
+    isolation?: TestIsolation,
+  ) => {
+    if (processSettlementFailed) return;
+    processSettlementFailed = true;
+    lastIsolation ??= isolation;
+    // Install the fence before the current coordinator callback releases its
+    // claims. Throwing or merely skipping teardown would still admit queued
+    // work while a browser could be using its already-issued Supabase session.
+    appOperationCoordinator.blockConflictingOperations(
+      { appId, operation: "unsettled-app-tests", resources },
+      PROCESS_SETTLEMENT_FAILED_MESSAGE,
+    );
+  };
   // The real env is never changed. This only reports a sandbox/provider cleanup
   // failure (for example, a temporary Neon branch left for startup recovery).
   let isolationCleanupFailed = false;
@@ -2048,12 +2076,23 @@ export async function runAppTestsWithIsolation({
   // stranded Supabase user "the isolated test database".
   let isolationCleanupProvider: IsolationCleanupProvider | undefined;
   /**
-   * Fold failed provider cleanup into a result. Applied on both exits so an
-   * unexpected rejection cannot hide a temporary branch left for recovery.
+   * Fold failed process/provider cleanup into a result. Applied on both exits
+   * so cancellation cannot hide the recovery requirement.
    */
   const withIsolationCleanupWarning = (
     result: RunAppTestsResult,
   ): RunAppTestsResult => {
+    if (processSettlementFailed) {
+      return {
+        ...result,
+        isolation: result.isolation ?? lastIsolation,
+        infraError: {
+          message: result.infraError
+            ? `${result.infraError.message}\n\n${PROCESS_SETTLEMENT_FAILED_MESSAGE}`
+            : PROCESS_SETTLEMENT_FAILED_MESSAGE,
+        },
+      };
+    }
     if (!isolationCleanupFailed) return result;
     // Names what was actually left behind. The Neon path leaks a temporary
     // branch, the Supabase path a temporary auth user in the user's real
@@ -2140,6 +2179,7 @@ export async function runAppTestsWithIsolation({
           emit,
           emitProgress,
           settleRunProcesses,
+          onProcessSettlementFailed,
           onIsolationCleanupFailed: (failed, provider) => {
             isolationCleanupFailed = failed;
             isolationCleanupProvider = provider;
@@ -2656,11 +2696,12 @@ export async function runAppTestsWithIsolation({
           return { ...result, isolation: prepared.isolation };
         } finally {
           // Also covers setup failures, throws, and cancellation before results.
-          await stopTestProcesses();
-          // Always clean up provider isolation, even on an infraError, abort, or
-          // throw. The sandbox env can be discarded, but remote branches/users
-          // still require their guaranteed teardown.
-          if (prepared) {
+          const stopped = await stopTestProcesses();
+          // A survivor may still use the provider. Preserve its recovery marker
+          // and fence conflicting operations before releasing this callback.
+          if (!stopped) {
+            onProcessSettlementFailed(testRunResources, prepared?.isolation);
+          } else if (prepared) {
             try {
               // Announce the teardown before it starts. It removes the
               // temporary branch/user, takes no AbortSignal, and may outlast
@@ -2671,8 +2712,6 @@ export async function runAppTestsWithIsolation({
                 emitProgress("cleaning-up", prepared.isolation);
               }
               isolationCleanupFailed = true;
-              // Disposable env files are never restored, even if a child
-              // survived settlement. Remote cleanup must still be attempted.
               isolationCleanupFailed = !(await prepared.teardown())
                 .remoteCleanupCompleted;
             } catch (error) {

@@ -1,7 +1,7 @@
 import { db } from "../../db";
 import { mcpToolConsents } from "../../db/schema";
 import { and, eq } from "drizzle-orm";
-import { IpcMainInvokeEvent } from "electron";
+import type { PresentationContext } from "@/ipc/utils/safe_sender";
 import {
   rememberUserInputSubscriber,
   userInputRegistry,
@@ -70,7 +70,7 @@ export interface McpConsentResult {
 }
 
 export async function requireMcpToolConsent(
-  event: IpcMainInvokeEvent,
+  event: PresentationContext,
   params: {
     serverId: number;
     serverName: string;

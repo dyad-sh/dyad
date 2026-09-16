@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod";
-import { IpcMainInvokeEvent } from "electron";
+import type { PresentationContext } from "@/ipc/utils/safe_sender";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent, type UserSettings } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
@@ -71,7 +71,7 @@ export interface AgentContext {
   inferenceSettings?: UserSettings;
   /** Owner-scoped identity used to join only this root turn's mutations. */
   mutationActivityOwner?: MutationActivityOwner;
-  event: IpcMainInvokeEvent;
+  event: PresentationContext;
   appId: number;
   appPath: string;
   /**

@@ -1,5 +1,6 @@
 /** Main-process composition root for the user-input registry. */
-import { BrowserWindow, type WebContents } from "electron";
+import { BrowserWindow } from "electron";
+import type { PresentationEndpoint } from "../ipc/utils/safe_sender";
 import { and, eq } from "drizzle-orm";
 import log from "electron-log";
 import { db } from "../db";
@@ -11,17 +12,19 @@ import { createUserInputRegistry } from "./registry";
 import type { UserInputCommand } from "./commands";
 import { dispatchDueFollowUp } from "./follow_up_dispatch";
 
-const subscribers = new Set<WebContents>();
+const subscribers = new Set<PresentationEndpoint>();
 const logger = log.scope("user_input");
 
-export function rememberUserInputSubscriber(sender: WebContents): void {
+export function rememberUserInputSubscriber(
+  sender: PresentationEndpoint,
+): void {
   if (subscribers.has(sender)) return;
   subscribers.add(sender);
   sender.once?.("destroyed", () => subscribers.delete(sender));
 }
 
 function broadcast(channel: string, payload: unknown): void {
-  const targets = new Set<WebContents>(subscribers);
+  const targets = new Set<PresentationEndpoint>(subscribers);
   const windows = BrowserWindow?.getAllWindows?.() ?? [];
   for (const window of windows) {
     if (!window.isDestroyed()) targets.add(window.webContents);

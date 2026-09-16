@@ -1,4 +1,4 @@
-import type { WebContents } from "electron";
+import type { PresentationEndpoint } from "@/ipc/utils/safe_sender";
 import {
   windowRegistry,
   type WindowEndpoint,
@@ -29,7 +29,7 @@ export function broadcastToAllWindows(channel: string, payload: unknown): void {
 }
 
 export function broadcastToRegisteredWindows(
-  origin: WebContents | null | undefined,
+  origin: PresentationEndpoint | null | undefined,
   channel: string,
   payload: unknown,
 ): void {
@@ -44,11 +44,11 @@ export function broadcastToRegisteredWindows(
 /**
  * The one place the fan-out is written: both exports above differ only in how
  * they decide to broadcast, not in how they do it. Keeping the destroyed/crashed
- * guard (`safeSend`) and the endpoint cast in a single place means a change to
+ * guard (`safeSend`) in a single place means a change to
  * the send semantics can't reach one caller and miss the other.
  */
 function sendToLiveEndpoints(channel: string, payload: unknown): void {
   for (const endpoint of windowRegistry.liveEndpoints()) {
-    safeSend(endpoint as WebContents, channel, payload);
+    safeSend(endpoint, channel, payload);
   }
 }

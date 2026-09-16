@@ -108,39 +108,32 @@ function assertSoleCancelledSender(source: string): void {
   }
 }
 
-function callSendsTransportEnd(call: ts.CallExpression): boolean {
-  return (
-    call.arguments[1] !== undefined &&
-    ts.isStringLiteralLike(call.arguments[1]) &&
-    call.arguments[1].text === "chat:stream:end"
-  );
-}
-
-function assertGuardedFinalTransportEnd(source: string): void {
+function assertExecutionDoesNotSendTerminals(source: string): void {
   const file = parse(source);
-  const tryStatement = descendants(file).find(
-    (node): node is ts.TryStatement =>
-      ts.isTryStatement(node) &&
-      node.finallyBlock !== undefined &&
-      descendants(node.finallyBlock).some(
-        (child) => ts.isCallExpression(child) && callSendsTransportEnd(child),
+  const execution = descendants(file).find(
+    (node): node is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === "executeAdmittedChatTurn",
+  );
+  if (!execution)
+    throw new Error(`Execution boundary moved. ${UPDATE_MESSAGE}`);
+  const terminalSend = descendants(execution).some(
+    (node) =>
+      ts.isCallExpression(node) &&
+      node.arguments.some(
+        (argument) =>
+          ts.isStringLiteralLike(argument) &&
+          [
+            "chat:response:end",
+            "chat:response:error",
+            "chat:stream:end",
+          ].includes(argument.text),
       ),
   );
-  const finallyBlock = tryStatement?.finallyBlock;
-  const guard = finallyBlock?.statements.find(
-    (statement): statement is ts.IfStatement =>
-      ts.isIfStatement(statement) &&
-      statement.expression.getText(file).replaceAll(" ", "") ===
-        "!abortController.signal.aborted" &&
-      descendants(statement).some(
-        (child) => ts.isCallExpression(child) && callSendsTransportEnd(child),
-      ),
-  );
-  if (!guard) {
+  if (terminalSend)
     throw new Error(
-      `The finally-block chat:stream:end emission is no longer guarded by !abortController.signal.aborted. ${UPDATE_MESSAGE}`,
+      `Execution must return typed outcomes, not renderer terminals. ${UPDATE_MESSAGE}`,
     );
-  }
 }
 
 function replaceLast(
@@ -172,8 +165,8 @@ describe("chat stream protocol drift tripwire", () => {
     expect(() => assertAtomicAdmission(HANDLER_SOURCE)).not.toThrow();
     const mutant = replaceOnce(
       HANDLER_SOURCE,
-      "        admissionPendingStreams.delete(abortController);",
-      "        await Promise.resolve();\n        admissionPendingStreams.delete(abortController);",
+      "admissionPendingStreams.delete(abortController);",
+      "await Promise.resolve();\n      admissionPendingStreams.delete(abortController);",
     );
     expect(() => assertAtomicAdmission(mutant)).toThrow(
       /host_transition\.ts.*main_actor\.test\.ts/,
@@ -192,14 +185,16 @@ describe("chat stream protocol drift tripwire", () => {
     );
   });
 
-  it("pins the aborted-finalizer guard and proves its mutant trips", () => {
-    expect(() => assertGuardedFinalTransportEnd(HANDLER_SOURCE)).not.toThrow();
-    const mutant = replaceLast(
+  it("keeps renderer terminals outside execution and proves its mutant trips", () => {
+    expect(() =>
+      assertExecutionDoesNotSendTerminals(HANDLER_SOURCE),
+    ).not.toThrow();
+    const mutant = replaceOnce(
       HANDLER_SOURCE,
-      "if (!abortController.signal.aborted) {",
-      "if (true) {",
+      "resolveCompletion();",
+      'safeSend(presentation.sender, "chat:stream:end", { chatId: req.chatId }); resolveCompletion();',
     );
-    expect(() => assertGuardedFinalTransportEnd(mutant)).toThrow(
+    expect(() => assertExecutionDoesNotSendTerminals(mutant)).toThrow(
       /host_transition\.ts.*main_actor\.test\.ts/,
     );
   });

@@ -6,6 +6,16 @@ export interface SafeSender {
   send(channel: string, ...args: unknown[]): void;
 }
 
+/** Presentation-only capability used by main-owned work, not an IPC request. */
+export interface PresentationEndpoint extends SafeSender {
+  readonly id: number;
+  once?(event: "destroyed", listener: () => void): this | void;
+}
+
+export interface PresentationContext {
+  sender: PresentationEndpoint;
+}
+
 /**
  * Sends an IPC message to the renderer only if the provided `WebContents` is
  * still alive. This prevents `Object has been destroyed` errors that can occur

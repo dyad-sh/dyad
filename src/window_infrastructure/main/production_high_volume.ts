@@ -1,4 +1,4 @@
-import type { WebContents } from "electron";
+import type { PresentationEndpoint } from "@/ipc/utils/safe_sender";
 import type { ChatResponseChunk } from "@/ipc/types/chat";
 import type { AppOutput } from "@/ipc/types/misc";
 import { safeSend } from "@/ipc/utils/safe_sender";
@@ -20,7 +20,7 @@ export const chatChunkInterests =
   );
 
 export function ensureProducerInterest(
-  sender: WebContents,
+  sender: PresentationEndpoint,
   interest:
     | { kind: "app-output"; appId: number }
     | { kind: "chat-chunk"; chatId: number },
@@ -34,7 +34,7 @@ export function ensureProducerInterest(
 }
 
 export function sendChatChunk(
-  sender: WebContents,
+  sender: PresentationEndpoint,
   payload: ChatResponseChunk,
 ): void {
   if (!Number.isInteger(sender.id) || sender.isDestroyed()) {
@@ -50,7 +50,7 @@ export function sendChatChunk(
 }
 
 export function releaseChatProducerInterest(
-  sender: WebContents,
+  sender: PresentationEndpoint,
   chatId: number,
 ): void {
   if (!Number.isInteger(sender.id)) return;

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { IpcMainInvokeEvent, WebContents } from "electron";
+import type { WebContents } from "electron";
+import {
+  createChatExecutionContext,
+  presentChatExecutionOutcome,
+} from "@/ipc/services/chat_execution_presentation";
 import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
 import type { AgentContext } from "./tools/types";
 
@@ -28,12 +32,12 @@ function createFakeWebContents() {
 }
 
 /**
- * Creates a fake IPC event with a recordable sender
+ * Creates typed execution ports with a recordable presentation sender
  */
 function createFakeEvent() {
   const webContents = createFakeWebContents();
   return {
-    event: { sender: webContents.sender } as IpcMainInvokeEvent,
+    event: createChatExecutionContext(webContents.sender),
     ...webContents,
   };
 }
@@ -488,7 +492,7 @@ describe("hasCompletedAppBlueprintQuestionnaire", () => {
   });
 });
 type LocalAgentStreamOptions = LocalAgentStreamParameters[3];
-const handleLocalAgentStream = (
+const handleLocalAgentStream = async (
   event: LocalAgentStreamParameters[0],
   request: LocalAgentStreamParameters[1],
   abortController: LocalAgentStreamParameters[2],
@@ -502,12 +506,20 @@ const handleLocalAgentStream = (
         "supabaseProviderToolsAvailable" | "neonProviderToolsAvailable"
       >
     >,
-) =>
-  handleLocalAgentStreamImpl(event, request, abortController, {
-    supabaseProviderToolsAvailable: true,
-    neonProviderToolsAvailable: true,
-    ...options,
-  });
+) => {
+  const outcome = await handleLocalAgentStreamImpl(
+    event,
+    request,
+    abortController,
+    {
+      supabaseProviderToolsAvailable: true,
+      neonProviderToolsAvailable: true,
+      ...options,
+    },
+  );
+  presentChatExecutionOutcome(event.presentation.sender, outcome);
+  return outcome;
+};
 
 // ============================================================================
 // Tests
@@ -1274,7 +1286,7 @@ describe("handleLocalAgentStream", () => {
       },
     );
 
-    expect(succeeded).toBe(true);
+    expect(succeeded).toMatchObject({ kind: "completed" });
     expect(buildAgentToolSet).toHaveBeenCalledOnce();
     expect((await seenContextFactory?.())?.systemPrompt).toBe(
       "Implementer rules",
@@ -2520,7 +2532,7 @@ describe("handleLocalAgentStream", () => {
             dyadRequestId,
           },
         ),
-      ).resolves.toBe(false);
+      ).resolves.toEqual({ kind: "cancelled" });
 
       expect(getModelClient).not.toHaveBeenCalled();
       expect(streamText).not.toHaveBeenCalled();
@@ -2650,7 +2662,8 @@ describe("handleLocalAgentStream", () => {
             dyadRequestId,
           },
         );
-        if (ending === "stream error") await expect(run).resolves.toBe(false);
+        if (ending === "stream error")
+          await expect(run).resolves.toMatchObject({ kind: "failed" });
         else await run;
         expect(attempts).toBe(2);
         expect(preparedSteps).toHaveLength(2);
@@ -4950,7 +4963,7 @@ describe("handleLocalAgentStream", () => {
         },
       );
 
-      expect(succeeded).toBe(false);
+      expect(succeeded).toMatchObject({ kind: "failed" });
       const error = getMessagesByChannel("chat:response:error")[0].args[0] as {
         error: string;
       };

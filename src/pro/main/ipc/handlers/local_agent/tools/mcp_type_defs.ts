@@ -1,4 +1,4 @@
-import type { IpcMainInvokeEvent } from "electron";
+import type { PresentationContext } from "@/ipc/utils/safe_sender";
 import { randomUUID } from "node:crypto";
 import { asSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
@@ -133,7 +133,7 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
  * the UI, mirroring the behavior of individually-registered MCP tools.
  */
 export function buildMcpCapabilityMap(params: {
-  event: IpcMainInvokeEvent;
+  event: PresentationContext;
   ctx: AgentContext;
   defs: McpToolDef[];
 }): Record<string, (...args: unknown[]) => unknown> {

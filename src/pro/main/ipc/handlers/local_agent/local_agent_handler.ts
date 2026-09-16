@@ -9,7 +9,11 @@ import type { AutoModelCandidates } from "@/ipc/services/auto_model_candidates";
  * Main orchestrator for tool-based agent mode with parallel execution
  */
 
-import { IpcMainInvokeEvent } from "electron";
+import type { PresentationContext } from "@/ipc/utils/safe_sender";
+import type {
+  ChatExecutionContext,
+  ChatExecutionOutcome,
+} from "@/ipc/services/chat_execution_types";
 import {
   streamText,
   ToolSet,
@@ -47,8 +51,6 @@ import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
-import { safeSend } from "@/ipc/utils/safe_sender";
-import { sendChatChunk } from "@/ipc/utils/high_volume_delivery";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { publishQueryInvalidations } from "@/ipc/utils/query_invalidation_delivery";
 import {
@@ -604,7 +606,7 @@ export function buildImplementerOutcomeNotices(
 }
 
 export async function handleLocalAgentStream(
-  event: IpcMainInvokeEvent,
+  context: ChatExecutionContext,
   req: ChatStreamParams,
   abortController: AbortController,
   {
@@ -673,7 +675,8 @@ export async function handleLocalAgentStream(
     /** Whether the root and read-only children can authenticate Neon reads. */
     neonProviderToolsAvailable: boolean;
   },
-): Promise<boolean> {
+): Promise<ChatExecutionOutcome> {
+  const event = context.presentation;
   const storedSettings = settingsOverride ?? readSettings();
   const buildMode = toolProfile === "build";
   let settings: UserSettings = storedSettings;
@@ -725,7 +728,7 @@ export async function handleLocalAgentStream(
     { fullMessages = false }: { fullMessages?: boolean } = {},
   ) =>
     sendResponseChunk(
-      event,
+      context,
       req.chatId,
       req.invocationRef,
       req.streamId,
@@ -740,11 +743,14 @@ export async function handleLocalAgentStream(
   // overlays this string after the message's parsed blocks and clears the
   // overlay when content is empty. Used for tool-input XML preview.
   const sendPreview = (content: string) => {
-    sendChatChunk(event.sender, {
-      chatId: req.chatId,
-      invocationRef: req.invocationRef,
-      streamId: req.streamId,
-      streamingPreview: { content },
+    context.onProgress({
+      type: "chunk",
+      payload: {
+        chatId: req.chatId,
+        invocationRef: req.invocationRef,
+        streamId: req.streamId,
+        streamingPreview: { content },
+      },
     });
   };
   const commitToolXml = (finalXml: string, toolCallId?: string) => {
@@ -796,13 +802,15 @@ export async function handleLocalAgentStream(
       referencedApps.length > 0
         ? "Referencing other apps (@app:Name) in local-agent mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro."
         : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
-    safeSend(event.sender, "chat:response:error", {
-      chatId: req.chatId,
-      invocationRef: req.invocationRef,
-      streamId: req.streamId,
-      error: errorMessage,
-    });
-    return false;
+    return {
+      kind: "failed",
+      error: {
+        chatId: req.chatId,
+        invocationRef: req.invocationRef,
+        streamId: req.streamId,
+        error: errorMessage,
+      },
+    };
   }
 
   const loadChat = async () =>
@@ -944,7 +952,7 @@ export async function handleLocalAgentStream(
         content: appendCancelledResponseNotice(fullResponse ?? ""),
       })
       .where(eq(messages.id, placeholderMessageId));
-    return false;
+    return { kind: "cancelled" };
   }
 
   // Send initial message update. Routed through sendChunk so lastSentRef
@@ -2224,7 +2232,7 @@ export async function handleLocalAgentStream(
         })
         .where(eq(messages.id, placeholderMessageId));
       await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
-      return false; // Cancelled - don't consume quota
+      return { kind: "cancelled" };
     }
 
     if (modelRefused) {
@@ -2399,20 +2407,23 @@ export async function handleLocalAgentStream(
       [{ family: "chats" }, { family: "chat", chatId: req.chatId }],
       event.sender,
     );
-    safeSend(event.sender, "chat:response:end", {
-      chatId: req.chatId,
-      invocationRef: req.invocationRef,
-      streamId: req.streamId,
-      updatedFiles,
-      chatSummary: ctx.chatSummary,
-      warningMessages:
-        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
-      pausePromptQueue: hitStepLimit || reviewBarrierRequested || undefined,
-      reviewBarrierRequested: reviewBarrierRequested || undefined,
-      suppressAutoReview: buildMode || undefined,
-    } satisfies ChatResponseEnd);
-
-    return true; // Success
+    return {
+      kind: "completed",
+      response: {
+        chatId: req.chatId,
+        invocationRef: req.invocationRef,
+        streamId: req.streamId,
+        updatedFiles,
+        chatSummary: ctx.chatSummary,
+        warningMessages:
+          warningMessages.length > 0
+            ? [...new Set(warningMessages)]
+            : undefined,
+        pausePromptQueue: hitStepLimit || reviewBarrierRequested || undefined,
+        reviewBarrierRequested: reviewBarrierRequested || undefined,
+        suppressAutoReview: buildMode || undefined,
+      } satisfies ChatResponseEnd,
+    };
   } catch (error) {
     if (rootMutationOwner) closeMutationActor(rootMutationOwner.actorRunId);
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
@@ -2443,19 +2454,23 @@ export async function handleLocalAgentStream(
         })
         .where(eq(messages.id, placeholderMessageId));
       await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
-      return false; // Cancelled - don't consume quota
+      return { kind: "cancelled" };
     }
 
     logger.error("Local agent error:", error);
-    safeSend(event.sender, "chat:response:error", {
-      chatId: req.chatId,
-      invocationRef: req.invocationRef,
-      streamId: req.streamId,
-      error: `Error: ${getErrorMessageWithDetails(error)}`,
-      warningMessages:
-        warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
-    });
-    return false; // Error - don't consume quota
+    return {
+      kind: "failed",
+      error: {
+        chatId: req.chatId,
+        invocationRef: req.invocationRef,
+        streamId: req.streamId,
+        error: `Error: ${getErrorMessageWithDetails(error)}`,
+        warningMessages:
+          warningMessages.length > 0
+            ? [...new Set(warningMessages)]
+            : undefined,
+      },
+    };
   } finally {
     await persistCompactionFallback();
     endTurnFinalization(mutationTurnId);
@@ -2484,7 +2499,7 @@ export async function handleLocalAgentStream(
  * restored list so its UI matches disk.
  */
 async function clearTodosOnCancel(
-  event: IpcMainInvokeEvent,
+  event: PresentationContext,
   appPath: string,
   chatId: number,
   priorTodos: Todo[],
@@ -2662,7 +2677,7 @@ async function updateResponseInDb(messageId: number, content: string) {
 }
 
 function sendResponseChunk(
-  event: IpcMainInvokeEvent,
+  context: ChatExecutionContext,
   chatId: number,
   invocationRef: ChatStreamParams["invocationRef"],
   streamId: number | undefined,
@@ -2685,11 +2700,14 @@ function sendResponseChunk(
     if (placeholderMsg) {
       placeholderMsg.content = fullResponse;
     }
-    sendChatChunk(event.sender, {
-      chatId,
-      invocationRef,
-      streamId,
-      messages: currentMessages,
+    context.onProgress({
+      type: "chunk",
+      payload: {
+        chatId,
+        invocationRef,
+        streamId,
+        messages: currentMessages,
+      },
     });
     // Renderer's placeholder content now matches fullResponse — keep the
     // tail-diff baseline in sync so the next streaming patch is correct.
@@ -2708,7 +2726,7 @@ function sendResponseChunk(
     // authoritatively replaces content.
     if (patch.offset < oldLen) {
       sendResponseChunk(
-        event,
+        context,
         chatId,
         invocationRef,
         streamId,
@@ -2722,12 +2740,15 @@ function sendResponseChunk(
       return;
     }
     lastSentRef.value = fullResponse;
-    sendChatChunk(event.sender, {
-      chatId,
-      invocationRef,
-      streamId,
-      streamingMessageId: placeholderMessageId,
-      streamingPatch: patch,
+    context.onProgress({
+      type: "chunk",
+      payload: {
+        chatId,
+        invocationRef,
+        streamId,
+        streamingMessageId: placeholderMessageId,
+        streamingPatch: patch,
+      },
     });
   }
 }
@@ -2848,7 +2869,7 @@ function shouldRunTodoFollowUpPass(params: {
  * and surfaces tool errors as `<dyad-output type="error">`.
  */
 async function getMcpTools(
-  event: IpcMainInvokeEvent,
+  event: PresentationContext,
   ctx: AgentContext,
 ): Promise<ToolSet> {
   const mcpToolSet: ToolSet = {};

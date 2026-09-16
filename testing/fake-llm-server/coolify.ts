@@ -24,6 +24,9 @@ interface FakeApplication {
   build_pack: string;
   ports_exposes: string;
   start_command?: string;
+  /** Where the app is cloned from, as the deploy said; what a test checks. */
+  git_repository?: string;
+  git_branch?: string;
   private_key_id: number | null;
   envs: Record<string, string>;
 }
@@ -163,6 +166,12 @@ export function registerFakeCoolify(app: Express): void {
       build_pack: String(req.body?.build_pack ?? ""),
       ports_exposes: String(req.body?.ports_exposes ?? ""),
       start_command: req.body?.start_command,
+      git_repository: req.body?.git_repository
+        ? String(req.body.git_repository)
+        : undefined,
+      git_branch: req.body?.git_branch
+        ? String(req.body.git_branch)
+        : undefined,
       private_key_id: keyId,
       envs: {},
     });

@@ -161,7 +161,6 @@ describe("useNotificationHandler", () => {
         kind: "mcp-suggestion",
         requestId: "mcp-suggestion:1",
         chatId: 42,
-        messageId: 9,
         deadlineAt: 0,
         slug: "vercel",
         serverName: "Vercel",

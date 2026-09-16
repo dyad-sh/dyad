@@ -189,25 +189,27 @@ describe("useCopyToClipboard", () => {
   });
 
   describe("dyad-suggest-mcp-server", () => {
-    it("copies the plugin slug and reason from a pending card", async () => {
+    // A settled message holds the pending card followed by its terminal
+    // card, so the pair must copy as one entry.
+    it("copies a settled suggestion once, with its name and reason", async () => {
       const out = await copy(
-        '<dyad-suggest-mcp-server slug="vercel" reason="Read the build logs." outcome="pending"></dyad-suggest-mcp-server>',
+        '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." request-id="r1" outcome="pending"></dyad-suggest-mcp-server>\n<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="connected"></dyad-suggest-mcp-server>',
       );
-      expect(out).toContain("### Suggested plugin: vercel");
+      expect(out.match(/Suggested plugin/g)).toHaveLength(1);
+      expect(out).toContain("### Suggested plugin: Vercel");
       expect(out).toContain("Read the build logs.");
     });
 
-    it("prefers the plugin name on a settled card", async () => {
+    it("copies a declined suggestion", async () => {
       const out = await copy(
-        '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="connected"></dyad-suggest-mcp-server>',
+        '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="declined"></dyad-suggest-mcp-server>',
       );
       expect(out).toContain("### Suggested plugin: Vercel");
-      expect(out).not.toContain("Suggested plugin: vercel");
     });
 
-    it("omits a dismissed suggestion, which was never shown", async () => {
+    it("omits a dismissed suggestion and its pending card, which were never shown", async () => {
       const out = await copy(
-        'Before\n<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="dismissed"></dyad-suggest-mcp-server>\nAfter',
+        'Before\n<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." request-id="r1" outcome="pending"></dyad-suggest-mcp-server>\n<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="dismissed"></dyad-suggest-mcp-server>\nAfter',
       );
       expect(out).not.toContain("Suggested plugin");
       expect(out).toContain("Before");

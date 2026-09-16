@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { DyadSuggestMcpServer } from "./DyadSuggestMcpServer";
-import { DyadMessageIdContext } from "./messageContext";
 
 const mocks = vi.hoisted(() => ({
   pending: new Map<number, unknown>(),
@@ -66,11 +65,9 @@ vi.mock("@/lib/toast", () => ({
   showError: mocks.showError,
 }));
 
-const MESSAGE_ID = 5;
 const PENDING = {
   chatId: 7,
   requestId: "mcp-suggestion:1",
-  messageId: MESSAGE_ID,
   slug: "vercel",
   serverName: "Vercel",
   serverDescription: "Deployments and logs.",
@@ -82,24 +79,21 @@ const CREATED = { id: 42, oauthEnabled: false, oauthCallbackPort: null };
 
 function renderCard(
   props: Partial<Parameters<typeof DyadSuggestMcpServer>[0]> = {},
-  messageId: number | undefined = MESSAGE_ID,
 ) {
   const store = createStore();
   store.set(selectedChatIdAtom, 7);
   const queryClient = new QueryClient();
   const Wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>
-      <Provider store={store}>
-        <DyadMessageIdContext.Provider value={messageId}>
-          {children}
-        </DyadMessageIdContext.Provider>
-      </Provider>
+      <Provider store={store}>{children}</Provider>
     </QueryClientProvider>
   );
   return render(
     <DyadSuggestMcpServer
       slug="vercel"
+      name="Vercel"
       reason={PENDING.reason}
+      requestId={PENDING.requestId}
       outcome="pending"
       {...props}
     />,
@@ -271,32 +265,22 @@ describe("DyadSuggestMcpServer", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("treats a pending request for another plugin as historical", () => {
+  it("treats a card for another request as historical, even for the same plugin", () => {
     mocks.pending = new Map([
-      [7, { ...PENDING, slug: "stripe", serverName: "Stripe" }],
+      [7, { ...PENDING, requestId: "mcp-suggestion:2" }],
     ]);
 
     const { container } = renderCard();
     expect(container.innerHTML).toBe("");
   });
 
-  it("treats a same-plugin card from an earlier message as historical", () => {
-    const { container } = renderCard({}, MESSAGE_ID - 1);
-    expect(container.innerHTML).toBe("");
-  });
-
-  it("treats a same-plugin card with a different reason as historical", () => {
-    const { container } = renderCard({ reason: "Check the domain." });
+  it("never activates a card without a request id, such as the streaming preview", () => {
+    const { container } = renderCard({ requestId: undefined });
     expect(container.innerHTML).toBe("");
   });
 
   it("renders nothing for a dismissed card even while a request is live", () => {
     const { container } = renderCard({ outcome: "dismissed" });
     expect(container.innerHTML).toBe("");
-  });
-
-  it("falls back to matching the plugin when rendered outside a message", () => {
-    renderCard({}, undefined);
-    expect(screen.getByText("Connect Vercel?")).toBeTruthy();
   });
 });

@@ -245,7 +245,6 @@ describe("user-input transition", () => {
       kind: "mcp-suggestion",
       requestId: "mcp-suggestion:1",
       chatId: 12,
-      messageId: 40,
       deadlineAt: 1_800_000,
       slug: "vercel",
       serverName: "Vercel",

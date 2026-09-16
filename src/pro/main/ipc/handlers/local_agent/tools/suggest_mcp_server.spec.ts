@@ -246,19 +246,81 @@ describe("suggestMcpServerTool", () => {
     ).not.toContain("Plugins available");
   });
 
-  it("persists the pending card before execute parks", () => {
+  it("streams a preview while arguments arrive but persists nothing itself", () => {
     expect(suggestMcpServerTool.buildXml?.({ slug: "vercel" }, false)).toBe(
       '<dyad-suggest-mcp-server slug="vercel" outcome="pending"></dyad-suggest-mcp-server>',
     );
     expect(
       suggestMcpServerTool.buildXml?.(
         { slug: "vercel", reason: 'Read the "failed" build logs' },
-        true,
+        false,
       ),
     ).toBe(
       '<dyad-suggest-mcp-server slug="vercel" reason="Read the &quot;failed&quot; build logs" outcome="pending"></dyad-suggest-mcp-server>',
     );
     expect(suggestMcpServerTool.buildXml?.({}, false)).toBeUndefined();
+    // The durable card is written by execute() with the request id.
+    expect(
+      suggestMcpServerTool.buildXml?.(
+        { slug: "vercel", reason: "Read the build logs." },
+        true,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("persists the pending card with its request id before parking", async () => {
+    let parked = false;
+    const writtenBeforePark: boolean[] = [];
+    mocks.park.mockImplementation(async () => {
+      parked = true;
+      return { kind: "mcp-suggestion", outcome: "connected" };
+    });
+    onXmlComplete.mockImplementation(() => {
+      writtenBeforePark.push(!parked);
+    });
+
+    await suggestMcpServerTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context(),
+    );
+
+    expect(writtenBeforePark).toEqual([true, false]);
+    expect(onXmlComplete).toHaveBeenNthCalledWith(
+      1,
+      '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." request-id="request-id" outcome="pending"></dyad-suggest-mcp-server>',
+    );
+    expect(onXmlComplete).toHaveBeenNthCalledWith(
+      2,
+      '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="connected"></dyad-suggest-mcp-server>',
+    );
+  });
+
+  it("does not park the same plugin twice in one turn after a dismissal", async () => {
+    mocks.park.mockResolvedValue(null);
+    await suggestMcpServerTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context(),
+    );
+    mocks.request.mockClear();
+
+    const sameTurn = await suggestMcpServerTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context(),
+    );
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(sameTurn).toContain("already suggested");
+
+    // A later turn (a new assistant message) may offer it again.
+    mocks.park.mockResolvedValue({
+      kind: "mcp-suggestion",
+      outcome: "connected",
+    });
+    await expect(
+      suggestMcpServerTool.execute(
+        { slug: "vercel", reason: "Read the build logs." },
+        context({ messageId: 100 }),
+      ),
+    ).resolves.toContain("queued a follow-up turn");
   });
 
   it("requests a follow-up-capable suggestion and reports a connection", async () => {
@@ -275,7 +337,6 @@ describe("suggestMcpServerTool", () => {
     expect(mocks.request).toHaveBeenCalledWith({
       kind: "mcp-suggestion",
       chatId: 7,
-      messageId: 99,
       slug: "vercel",
       serverName: "Vercel",
       serverDescription: VERCEL.description,
@@ -369,7 +430,9 @@ describe("suggestMcpServerTool", () => {
     );
     expect(mocks.request).not.toHaveBeenCalled();
     expect(result).toContain("already added");
-    expect(result).toContain("next turn");
+    // No follow-up is armed on this path, so the model must not stop.
+    expect(result).toContain("next time the user sends a message");
+    expect(result).not.toContain("end your response");
   });
 
   it("refuses a second suggestion while one is parked in the same chat", async () => {
@@ -395,7 +458,7 @@ describe("suggestMcpServerTool", () => {
     settleFirst({ kind: "mcp-suggestion", outcome: "connected" });
     await expect(first).resolves.toContain("queued a follow-up turn");
 
-    // Another chat is unaffected, and the slot frees once the first settles.
+    // The slot frees once the first settles; a later turn can suggest again.
     mocks.park.mockResolvedValue({
       kind: "mcp-suggestion",
       outcome: "connected",
@@ -403,7 +466,7 @@ describe("suggestMcpServerTool", () => {
     await expect(
       suggestMcpServerTool.execute(
         { slug: "vercel", reason: "Read the build logs." },
-        context(),
+        context({ messageId: 100 }),
       ),
     ).resolves.toContain("queued a follow-up turn");
   });

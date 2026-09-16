@@ -173,9 +173,15 @@ export const useCopyToClipboard = () => {
       }
 
       case "dyad-suggest-mcp-server": {
-        // A dismissed suggestion never rendered, so it has no place in a
-        // copied transcript either.
-        if (attributes.outcome === "dismissed") return "";
+        // Only settled outcomes appear in a transcript: a pending card is
+        // superseded by its terminal card, and a dismissed one never
+        // rendered.
+        if (
+          attributes.outcome !== "connected" &&
+          attributes.outcome !== "declined"
+        ) {
+          return "";
+        }
         const pluginName = attributes.name || attributes.slug || "";
         const reason = attributes.reason || "";
         return `### Suggested plugin: ${pluginName}\n\n${reason ? `${reason}\n\n` : ""}`;

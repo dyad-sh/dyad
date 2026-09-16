@@ -45,10 +45,28 @@ const declinedSlugsByChat = new Map<number, Set<string>>();
 // Chats with a suggestion currently parked. The agent can issue parallel
 // tool calls, and the chat card can show only one live suggestion.
 const chatsWithLiveSuggestion = new Set<number>();
+// Slugs already offered in a turn, keyed by chat and assistant message, so
+// a suggestion that timed out or was dismissed is not parked a second time
+// in the same turn.
+const attemptedSlugsByTurn = new Map<string, Set<string>>();
 
 export function resetSuggestMcpServerStateForTests() {
   declinedSlugsByChat.clear();
   chatsWithLiveSuggestion.clear();
+  attemptedSlugsByTurn.clear();
+}
+
+function addTo(
+  map: Map<number | string, Set<string>>,
+  key: number | string,
+  slug: string,
+) {
+  let set = map.get(key);
+  if (!set) {
+    set = new Set();
+    map.set(key, set);
+  }
+  set.add(slug);
 }
 
 async function isCatalogSlugAdded(slug: string): Promise<boolean> {
@@ -151,10 +169,18 @@ function formatAvailablePlugins(servers: SuggestableMcpServer[]): string {
   return `Plugins available to suggest (slug: name — what it does):\n${lines.join("\n")}`;
 }
 
-function pendingXml(args: Partial<SuggestMcpServerArgs>): string | undefined {
+function previewXml(args: Partial<SuggestMcpServerArgs>): string | undefined {
   if (!args.slug) return undefined;
   const reason = args.reason ? ` reason="${escapeXmlAttr(args.reason)}"` : "";
   return `<dyad-suggest-mcp-server slug="${escapeXmlAttr(args.slug)}"${reason} outcome="pending"></dyad-suggest-mcp-server>`;
+}
+
+function pendingXml(
+  server: { slug: string; name: string },
+  reason: string,
+  requestId: string,
+): string {
+  return `<dyad-suggest-mcp-server slug="${escapeXmlAttr(server.slug)}" name="${escapeXmlAttr(server.name)}" reason="${escapeXmlAttr(reason)}" request-id="${escapeXmlAttr(requestId)}" outcome="pending"></dyad-suggest-mcp-server>`;
 }
 
 function terminalXml(
@@ -185,17 +211,16 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
 
   getConsentPreview: (args) => `Suggest connecting the ${args.slug} plugin`,
 
-  // Persist the interactive card before execute() parks so reloads and
-  // cross-window tab transfers can reconstruct the pending request. A
-  // terminal outcome is appended after settlement; the renderer hides this
-  // pending card once its request is no longer live.
-  buildXml: (args, _isComplete) => pendingXml(args),
+  // Only a streaming preview while the arguments arrive. The durable
+  // pending card is written by execute() once the request id exists, so
+  // the card can be matched to exactly one request.
+  buildXml: (args, isComplete) => (isComplete ? undefined : previewXml(args)),
 
   execute: async (args, ctx: AgentContext) => {
     const servers = ctx.suggestableMcpServers ?? [];
     const server = servers.find((candidate) => candidate.slug === args.slug);
-    // Nothing is requested on these paths, so the persisted pending card
-    // would never settle; close it out explicitly.
+    // Nothing is requested on these paths, so a dismissed card records the
+    // attempt in the transcript without rendering anything.
     if (!server) {
       ctx.onXmlComplete(
         terminalXml(
@@ -218,22 +243,26 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
     chatsWithLiveSuggestion.add(ctx.chatId);
     try {
       // The turn's suggestable set is fixed at turn start, so re-check what
-      // has settled since: a decline in this chat, or a row that now exists
-      // because the user connected it.
+      // has settled since: a decline in this chat, an earlier attempt this
+      // turn, or a row that now exists.
       if (declinedSlugsByChat.get(ctx.chatId)?.has(server.slug)) {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
         return `The user already declined the ${server.name} plugin in this conversation. Continue without it and do not suggest it again.`;
       }
+      const turnKey = `${ctx.chatId}:${ctx.messageId}`;
+      if (attemptedSlugsByTurn.get(turnKey)?.has(server.slug)) {
+        ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
+        return `You already suggested the ${server.name} plugin in this turn and the user did not connect it. Continue without it.`;
+      }
       if (await isCatalogSlugAdded(server.slug)) {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
-        return `The ${server.name} plugin is already added. Its tools become available on the next turn; end your response now with one short line saying you will continue once it is ready.`;
+        return `The ${server.name} plugin is already added, though it may still need to be connected on the Plugins page. Its tools become available the next time the user sends a message, not in this turn. Tell the user that and continue with whatever you can do without it.`;
       }
 
       const followUpPrompt = `Continue. I have connected the ${server.name} plugin. Resume what you needed it for: ${args.reason}`;
       const requestId = userInputRegistry.request({
         kind: "mcp-suggestion",
         chatId: ctx.chatId,
-        messageId: ctx.messageId,
         slug: server.slug,
         serverName: server.name,
         serverDescription: server.description ?? null,
@@ -242,6 +271,11 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
         classifier: "none",
         followUpPrompt,
       });
+      addTo(attemptedSlugsByTurn, turnKey, server.slug);
+      // Persist the interactive card, carrying the request id, before the
+      // park: reloads and cross-window tab transfers rebuild it from the
+      // message, and the id is what makes only this card live.
+      ctx.onXmlComplete(pendingXml(server, args.reason, requestId));
       logger.log(
         `Presenting plugin suggestion (slug: ${server.slug}), requestId: ${requestId}`,
       );
@@ -253,12 +287,7 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
         return `The user did not respond to the ${server.name} plugin suggestion. Continue without it, and ask them how they'd like to proceed if the step cannot be completed another way.`;
       }
       if (result.outcome === "declined") {
-        let declined = declinedSlugsByChat.get(ctx.chatId);
-        if (!declined) {
-          declined = new Set();
-          declinedSlugsByChat.set(ctx.chatId, declined);
-        }
-        declined.add(server.slug);
+        addTo(declinedSlugsByChat, ctx.chatId, server.slug);
         ctx.onXmlComplete(terminalXml(server, args.reason, "declined"));
         return `The user declined to connect the ${server.name} plugin. Continue the task without it and do not suggest it again in this conversation.`;
       }

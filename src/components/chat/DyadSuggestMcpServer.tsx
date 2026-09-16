@@ -15,14 +15,15 @@ import { usePluginConnect } from "@/components/plugins/usePluginConnect";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
-import { useDyadMessageId } from "./messageContext";
 
 interface DyadSuggestMcpServerProps {
   children?: React.ReactNode;
   slug: string;
-  /** Present on terminal cards; the live card reads it from the request. */
+  /** Absent only on the streaming preview, which is never interactive. */
   name?: string;
   reason: string;
+  /** The parked request this card belongs to; only pending cards carry it. */
+  requestId?: string;
   outcome?: "pending" | "connected" | "declined" | "dismissed";
 }
 
@@ -38,24 +39,18 @@ export const DyadSuggestMcpServer: React.FC<DyadSuggestMcpServerProps> = ({
   slug,
   name,
   reason,
+  requestId,
   outcome,
 }) => {
   const { t } = useTranslation("chat");
   const chatId = useAtomValue(selectedChatIdAtom);
-  const messageId = useDyadMessageId();
   const pendingSuggestions = usePendingMcpSuggestions();
 
   const pendingForChat =
     chatId != null ? pendingSuggestions.get(chatId) : undefined;
-  // Only the card raised by the live request is live: same plugin, same
-  // reason, and the same message. Matching the reason separates parallel
-  // calls for one plugin within a message. A card rendered outside a
-  // persisted message has no id to compare, so it skips that check.
+  // A card is live only for the request it was written for.
   const pending =
-    pendingForChat &&
-    pendingForChat.slug === slug &&
-    pendingForChat.reason === reason &&
-    (messageId === undefined || pendingForChat.messageId === messageId)
+    pendingForChat && requestId && pendingForChat.requestId === requestId
       ? pendingForChat
       : undefined;
   const displayName = pending?.serverName ?? name ?? slug;

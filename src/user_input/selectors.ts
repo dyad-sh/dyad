@@ -21,7 +21,6 @@ export interface PendingIntegration {
 export interface PendingMcpSuggestion {
   chatId: number;
   requestId: string;
-  messageId: number;
   slug: string;
   serverName: string;
   serverDescription?: string | null;
@@ -107,7 +106,6 @@ export function selectPendingMcpSuggestions({
     pending.set(descriptor.chatId, {
       chatId: descriptor.chatId,
       requestId: descriptor.requestId,
-      messageId: descriptor.messageId,
       slug: descriptor.slug,
       serverName: descriptor.serverName,
       serverDescription: descriptor.serverDescription,

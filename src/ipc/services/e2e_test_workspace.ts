@@ -14,6 +14,7 @@ import {
   removeGitOverlayWorkspace,
 } from "@/ipc/services/git_overlay_workspace";
 import {
+  findPackageManagerRoot,
   findWorkspacePackageDirectories,
   resolvePackageManager,
   runCleanPackageInstall,
@@ -85,6 +86,8 @@ export interface E2eTestWorkspace {
   workspacePath: string;
   artifactPath: string;
   packageManager?: IsolatedPackageManager;
+  /** Copied package root to sanitize, including when custom commands install. */
+  packageRootPath?: string;
   dependencyInstallPath?: string;
   usesWorkspaceInstallRoot?: boolean;
   dispose(): Promise<void>;
@@ -191,22 +194,29 @@ export async function createE2eTestWorkspace({
   try {
     if (signal?.aborted)
       throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
-    let packageManager: IsolatedPackageManager | undefined;
-    let dependencyInstallPath: string | undefined;
-    let usesWorkspaceInstallRoot = false;
-    if (!hasCustomCommands) {
-      const resolution = await resolvePackageManager(
-        snapshot.sourceTargetPath,
-        snapshot.sourceRepoPath,
-      );
-      packageManager = resolution.packageManager;
-      usesWorkspaceInstallRoot =
-        resolution.sourceInstallPath !== snapshot.sourceTargetPath;
-      dependencyInstallPath = path.join(
-        snapshot.worktreePath,
-        path.relative(snapshot.sourceRepoPath, resolution.sourceInstallPath),
-      );
-    }
+    // Custom installs can reach ancestor workspace packages too. Discover the
+    // root without selecting a Node package manager for non-Node custom apps.
+    const { packageManager, sourceInstallPath } = hasCustomCommands
+      ? {
+          packageManager: undefined,
+          sourceInstallPath: await findPackageManagerRoot(
+            snapshot.sourceTargetPath,
+            snapshot.sourceRepoPath,
+          ),
+        }
+      : await resolvePackageManager(
+          snapshot.sourceTargetPath,
+          snapshot.sourceRepoPath,
+        );
+    const packageRootPath = path.join(
+      snapshot.worktreePath,
+      path.relative(snapshot.sourceRepoPath, sourceInstallPath),
+    );
+    const dependencyInstallPath = hasCustomCommands
+      ? undefined
+      : packageRootPath;
+    const usesWorkspaceInstallRoot =
+      !hasCustomCommands && sourceInstallPath !== snapshot.sourceTargetPath;
     sendTelemetryEvent("e2e_test_workspace_created", {
       duration_ms: Date.now() - startedAt,
       snapshot_ms: snapshot.setupMs,
@@ -218,6 +228,7 @@ export async function createE2eTestWorkspace({
       workspacePath,
       artifactPath,
       packageManager,
+      packageRootPath,
       dependencyInstallPath,
       usesWorkspaceInstallRoot,
       dispose,
@@ -376,6 +387,7 @@ export async function installE2eTestWorkspaceDependencies({
   isolationMode?: TestIsolation["mode"];
 }): Promise<void> {
   const { dependencyInstallPath, packageManager } = workspace;
+  const packageRootPath = workspace.packageRootPath ?? dependencyInstallPath;
   if (signal?.aborted)
     throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
 
@@ -383,10 +395,10 @@ export async function installE2eTestWorkspaceDependencies({
   // Every package this one install touches. The manager installs all workspace
   // members from the root and runs each one's lifecycle scripts, so a sibling's
   // dotenv files are as reachable from this install as the app's own.
-  const installedPackagePaths = dependencyInstallPath
+  const installedPackagePaths = packageRootPath
     ? [
-        dependencyInstallPath,
-        ...(await findWorkspacePackageDirectories(dependencyInstallPath)),
+        packageRootPath,
+        ...(await findWorkspacePackageDirectories(packageRootPath)),
       ]
     : [];
   await stripWorkspaceDatabaseEnv({

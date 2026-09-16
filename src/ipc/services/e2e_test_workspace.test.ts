@@ -365,13 +365,25 @@ describe("E2E test workspace", () => {
   );
 
   it.each([
-    { monorepo: false, linkedRoot: false },
-    { monorepo: true, linkedRoot: false },
-    { monorepo: false, linkedRoot: true },
-    { monorepo: true, linkedRoot: true },
+    ...[
+      { monorepo: false, linkedRoot: false },
+      { monorepo: true, linkedRoot: false },
+      { monorepo: false, linkedRoot: true },
+      { monorepo: true, linkedRoot: true },
+    ].map((fixture) => ({
+      ...fixture,
+      hasCustomCommands: false,
+      workspaceManager: "npm",
+    })),
+    ...["npm", "pnpm"].map((workspaceManager) => ({
+      monorepo: true,
+      linkedRoot: true,
+      hasCustomCommands: true,
+      workspaceManager,
+    })),
   ])(
-    "keeps copied dotenv credentials stripped for the Neon server (monorepo: $monorepo, linked root: $linkedRoot)",
-    async ({ monorepo, linkedRoot }) => {
+    "keeps copied dotenv credentials stripped for the Neon server (monorepo: $monorepo, linked root: $linkedRoot, custom commands: $hasCustomCommands, manager: $workspaceManager)",
+    async ({ monorepo, linkedRoot, hasCustomCommands, workspaceManager }) => {
       const temp = await tempRoot();
       const root = linkedRoot ? path.join(temp, "linked-root") : temp;
       if (linkedRoot) {
@@ -410,20 +422,42 @@ describe("E2E test workspace", () => {
         await fs.mkdir(packagePath, { recursive: true });
         await fs.writeFile(
           path.join(packagePath, "package.json"),
-          JSON.stringify({ private: true, workspaces: ["packages/*"] }),
+          JSON.stringify({
+            private: true,
+            ...(directory === "" && workspaceManager === "npm"
+              ? { workspaces: ["packages/*"] }
+              : {}),
+          }),
         );
         for (const fileName of fileNames) {
           await fs.writeFile(path.join(packagePath, fileName), liveEnv);
         }
       }
+      if (workspaceManager === "pnpm") {
+        await fs.writeFile(
+          path.join(repoRoot, "pnpm-workspace.yaml"),
+          "packages:\n  - 'packages/*'\n",
+        );
+      }
       await ensureGitRepo(repoRoot);
-      vi.mocked(resolvePackageManager).mockResolvedValueOnce({
-        packageManager: "npm",
-        // The resolver receives canonical paths from the Git snapshot. Match
-        // that contract even when the temp directory has a symlink or 8.3 alias.
-        sourceInstallPath: await fs.realpath(repoRoot),
+      vi.mocked(resolvePackageManager).mockClear();
+      vi.mocked(runCleanPackageInstall).mockClear();
+      if (!hasCustomCommands) {
+        vi.mocked(resolvePackageManager).mockResolvedValueOnce({
+          packageManager: "npm",
+          // The resolver receives canonical paths from the Git snapshot. Match
+          // that contract even when the temp directory has a symlink or 8.3 alias.
+          sourceInstallPath: await fs.realpath(repoRoot),
+        });
+      }
+      const workspace = await createWorkspaceUnderTest({
+        appId: 7,
+        appPath,
+        hasCustomCommands,
       });
-      const workspace = await createWorkspaceUnderTest({ appId: 7, appPath });
+      const copiedRepoRoot = monorepo
+        ? path.resolve(workspace.workspacePath, "..", "..")
+        : workspace.workspacePath;
       try {
         // Provider isolation rewrites only specific keys in .env.local. Other
         // production connections in that same file must still be removed.
@@ -442,7 +476,7 @@ describe("E2E test workspace", () => {
               "",
             ].join("\n"),
         );
-        vi.mocked(runCleanPackageInstall).mockImplementationOnce(
+        vi.mocked(runCleanPackageInstall).mockImplementation(
           async ({ cwd }) => {
             for (const directory of directories) {
               for (const fileName of fileNames) {
@@ -470,17 +504,21 @@ describe("E2E test workspace", () => {
           workspace,
           isolationMode: "neon-branch",
         });
+        expect(runCleanPackageInstall).toHaveBeenCalledTimes(
+          hasCustomCommands ? 0 : 1,
+        );
+        if (hasCustomCommands) {
+          expect(resolvePackageManager).not.toHaveBeenCalled();
+          expect(workspace.dependencyInstallPath).toBeUndefined();
+          expect(workspace.packageManager).toBeUndefined();
+        }
         for (const directory of directories) {
           for (const fileName of fileNames) {
             const preserved =
               directory === appRelativePath && fileName === ".env.local";
             expect(
               await fs.readFile(
-                path.join(
-                  workspace.dependencyInstallPath!,
-                  directory,
-                  fileName,
-                ),
+                path.join(copiedRepoRoot, directory, fileName),
                 "utf8",
               ),
             ).toBe(preserved ? isolatedEnv : "API_BASE=keep\n");
@@ -488,11 +526,7 @@ describe("E2E test workspace", () => {
             // an empty process environment just like the sanitized child.
             const serverEnv = {};
             loadDotenv({
-              path: path.join(
-                workspace.dependencyInstallPath!,
-                directory,
-                fileName,
-              ),
+              path: path.join(copiedRepoRoot, directory, fileName),
               processEnv: serverEnv,
             });
             expect(serverEnv).toEqual(
@@ -701,9 +735,12 @@ describe("E2E test workspace", () => {
     vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
     await fs.mkdir(appPath, { recursive: true });
     await fs.writeFile(path.join(appPath, "main.py"), "print('hi')\n");
+    await ensureGitRepo(appPath);
+    await fs.rm(path.join(appPath, "package.json"));
 
+    vi.mocked(resolvePackageManager).mockClear();
     vi.mocked(runCleanPackageInstall).mockClear();
-    const workspace = await createE2eTestWorkspace({
+    const workspace = await createWorkspaceUnderTest({
       appId: 7,
       appPath,
       hasCustomCommands: true,
@@ -713,6 +750,7 @@ describe("E2E test workspace", () => {
     ).toBe("print('hi')\n");
     expect(runCleanPackageInstall).not.toHaveBeenCalled();
     await installE2eTestWorkspaceDependencies({ workspace });
+    expect(resolvePackageManager).not.toHaveBeenCalled();
     expect(runCleanPackageInstall).not.toHaveBeenCalled();
     await workspace.dispose();
   });

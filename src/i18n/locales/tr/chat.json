@@ -383,11 +383,11 @@
     "connectedDescription": "Dyad göreve birazdan devam edecek.",
     "declinedTitle": "{{name}} atlandı",
     "declinedDescription": "Dyad onsuz devam edecek.",
-    "oauthFailed": "Yetkilendirme başarısız oldu.",
     "failed": "Eklenti eklenemedi.",
     "oauthHint": "Bağlandığınızda eklenti Dyad'a eklenir ve erişimi onaylamanız için tarayıcınız açılır.",
     "declining": "Atlanıyor…",
-    "unreachable": "Eklenti eklendi ancak sunucusu yanıt vermiyor. Tekrar deneyin veya Eklentiler sayfasından yönetin."
+    "unreachable": "Eklenti eklendi ancak sunucusu yanıt vermiyor. Tekrar deneyin veya Eklentiler sayfasından yönetin.",
+    "authRequired": "Eklenti eklendi ancak yetkilendirme gerekiyor. Eklentiler sayfasından bağlayın."
   },
   "guide": "Rehber",
   "annotations": {

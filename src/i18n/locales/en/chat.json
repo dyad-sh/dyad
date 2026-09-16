@@ -384,11 +384,11 @@
     "connectedDescription": "Dyad will pick the task back up in a moment.",
     "declinedTitle": "Skipped {{name}}",
     "declinedDescription": "Dyad will continue without it.",
-    "oauthFailed": "Authorization failed.",
     "failed": "Could not add the plugin.",
     "oauthHint": "Connecting adds the plugin to Dyad and opens your browser to approve access.",
     "declining": "Skipping…",
-    "unreachable": "The plugin was added but its server is not responding. Try again, or manage it on the Plugins page."
+    "unreachable": "The plugin was added but its server is not responding. Try again, or manage it on the Plugins page.",
+    "authRequired": "The plugin was added but needs authorization. Connect it from the Plugins page."
   },
   "guide": "Guide",
   "annotations": {

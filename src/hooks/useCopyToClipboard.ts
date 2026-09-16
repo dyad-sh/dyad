@@ -173,6 +173,9 @@ export const useCopyToClipboard = () => {
       }
 
       case "dyad-suggest-mcp-server": {
+        // A dismissed suggestion never rendered, so it has no place in a
+        // copied transcript either.
+        if (attributes.outcome === "dismissed") return "";
         const pluginName = attributes.name || attributes.slug || "";
         const reason = attributes.reason || "";
         return `### Suggested plugin: ${pluginName}\n\n${reason ? `${reason}\n\n` : ""}`;

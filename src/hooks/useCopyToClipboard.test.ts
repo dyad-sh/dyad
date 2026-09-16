@@ -204,6 +204,15 @@ describe("useCopyToClipboard", () => {
       expect(out).toContain("### Suggested plugin: Vercel");
       expect(out).not.toContain("Suggested plugin: vercel");
     });
+
+    it("omits a dismissed suggestion, which was never shown", async () => {
+      const out = await copy(
+        'Before\n<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs." outcome="dismissed"></dyad-suggest-mcp-server>\nAfter',
+      );
+      expect(out).not.toContain("Suggested plugin");
+      expect(out).toContain("Before");
+      expect(out).toContain("After");
+    });
   });
 
   describe("prose normalization — runs of newlines outside ``` still collapse", () => {

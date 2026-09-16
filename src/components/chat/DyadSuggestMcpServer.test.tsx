@@ -168,6 +168,23 @@ describe("DyadSuggestMcpServer", () => {
     expect(connectButton().disabled).toBe(false);
   });
 
+  it("tells the user to authorize when the probe is rejected with 401", async () => {
+    mocks.probeConnection.mockResolvedValue({
+      status: "unauthorized",
+      error: "HTTP 401",
+    });
+    renderCard();
+
+    fireEvent.click(connectButton());
+
+    await waitFor(() =>
+      expect(mocks.showError).toHaveBeenCalledWith(
+        "suggestMcpServer.authRequired\nHTTP 401",
+      ),
+    );
+    expect(mocks.respond).not.toHaveBeenCalled();
+  });
+
   it("runs the shared OAuth flow to completion before responding", async () => {
     mocks.pending = new Map([[7, { ...PENDING, oauthRequired: true }]]);
     let finishOAuth!: (connected: boolean) => void;

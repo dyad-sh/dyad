@@ -21,23 +21,31 @@ vi.mock("@/ipc/shared/remote_mcp_catalog", () => ({
   peekRemoteMcpCatalog: mocks.peekCatalog,
 }));
 
+// Two queries run against the servers table: every added slug, and
+// whether one slug is added. `eq` carries the slug so `where` can tell them
+// apart.
 vi.mock("@/db", () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: async () =>
-          mocks.addedSlugs.map((catalogSlug) => ({ catalogSlug })),
+        where: async (condition?: { slug?: string }) =>
+          condition?.slug !== undefined
+            ? mocks.addedSlugs.includes(condition.slug)
+              ? [{ id: 1 }]
+              : []
+            : mocks.addedSlugs.map((catalogSlug) => ({ catalogSlug })),
       }),
     }),
   },
 }));
 
 vi.mock("@/db/schema", () => ({
-  mcpServers: { catalogSlug: "catalog_slug" },
+  mcpServers: { id: "id", catalogSlug: "catalog_slug" },
 }));
 
 vi.mock("drizzle-orm", () => ({
   isNotNull: vi.fn(),
+  eq: (_column: unknown, slug: string) => ({ slug }),
 }));
 
 vi.mock("electron-log", () => ({
@@ -215,6 +223,7 @@ describe("suggestMcpServerTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetSuggestMcpServerStateForTests();
+    mocks.addedSlugs = [];
     onXmlComplete = vi.fn();
   });
 
@@ -326,6 +335,41 @@ describe("suggestMcpServerTool", () => {
     expect(onXmlComplete).toHaveBeenCalledWith(
       '<dyad-suggest-mcp-server slug="github" name="github" reason="Open a pull request." outcome="dismissed"></dyad-suggest-mcp-server>',
     );
+  });
+
+  it("refuses a plugin the user already declined this chat, even within the turn", async () => {
+    mocks.park.mockResolvedValue({
+      kind: "mcp-suggestion",
+      outcome: "declined",
+    });
+    await suggestMcpServerTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context(),
+    );
+    mocks.request.mockClear();
+
+    // The turn's suggestable set still lists vercel.
+    const result = await suggestMcpServerTool.execute(
+      { slug: "vercel", reason: "Read the build logs again." },
+      context(),
+    );
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(result).toContain("already declined");
+    expect(onXmlComplete).toHaveBeenLastCalledWith(
+      '<dyad-suggest-mcp-server slug="vercel" name="Vercel" reason="Read the build logs again." outcome="dismissed"></dyad-suggest-mcp-server>',
+    );
+  });
+
+  it("refuses a plugin that was added since the turn started", async () => {
+    mocks.addedSlugs = ["vercel"];
+
+    const result = await suggestMcpServerTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context(),
+    );
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(result).toContain("already added");
+    expect(result).toContain("next turn");
   });
 
   it("refuses a second suggestion while one is parked in the same chat", async () => {

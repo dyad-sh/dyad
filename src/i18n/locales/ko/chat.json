@@ -384,11 +384,11 @@
     "connectedDescription": "Dyad가 잠시 후 작업을 이어갑니다.",
     "declinedTitle": "{{name}} 건너뜀",
     "declinedDescription": "Dyad가 플러그인 없이 계속합니다.",
-    "oauthFailed": "승인에 실패했습니다.",
     "failed": "플러그인을 추가할 수 없습니다.",
     "oauthHint": "연결하면 플러그인이 Dyad에 추가되고 접근 승인을 위해 브라우저가 열립니다.",
     "declining": "건너뛰는 중…",
-    "unreachable": "플러그인은 추가되었지만 서버가 응답하지 않습니다. 다시 시도하거나 플러그인 페이지에서 관리하세요."
+    "unreachable": "플러그인은 추가되었지만 서버가 응답하지 않습니다. 다시 시도하거나 플러그인 페이지에서 관리하세요.",
+    "authRequired": "플러그인은 추가되었지만 승인이 필요합니다. 플러그인 페이지에서 연결하세요."
   },
   "guide": "가이드",
   "annotations": {

@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
       }) => void)
     | undefined,
   requestedListener: undefined as ((descriptor: unknown) => void) | undefined,
+  settledListener: undefined as
+    | ((event: { requestId: string; outcome: string }) => void)
+    | undefined,
   resolveAppNameForAppId: vi.fn(),
   resolveChatSummary: vi.fn(),
 }));
@@ -54,7 +57,12 @@ vi.mock("../ipc/types", () => ({
           return vi.fn();
         },
         onClassified: () => vi.fn(),
-        onSettled: () => vi.fn(),
+        onSettled: (
+          listener: (event: { requestId: string; outcome: string }) => void,
+        ) => {
+          mocks.settledListener = listener;
+          return vi.fn();
+        },
       },
     },
     windowInfrastructure: {
@@ -99,6 +107,7 @@ describe("useNotificationHandler", () => {
   beforeEach(() => {
     mocks.completionListener = undefined;
     mocks.requestedListener = undefined;
+    mocks.settledListener = undefined;
     mocks.resolveChatSummary.mockReset();
     mocks.resolveAppNameForAppId.mockReset();
     mocks.resolveChatSummary.mockResolvedValue({
@@ -164,13 +173,25 @@ describe("useNotificationHandler", () => {
     });
 
     await waitFor(() => expect(FakeNotification.instances).toHaveLength(1));
-    expect(FakeNotification.instances[0]).toMatchObject({
+    const notification = FakeNotification.instances[0];
+    expect(notification).toMatchObject({
       title: "Notes",
       options: {
         body: "Dyad wants to connect the Vercel plugin. Click to review.",
         tag: "dyad-mcp-suggestion-mcp-suggestion:1",
+        // Blocks the turn until answered, so it must not auto-dismiss.
+        requireInteraction: true,
       },
     });
+
+    // Answering the card in the app closes the OS notification.
+    act(() => {
+      mocks.settledListener?.({
+        requestId: "mcp-suggestion:1",
+        outcome: "human",
+      });
+    });
+    expect(notification.close).toHaveBeenCalled();
 
     unmount();
   });

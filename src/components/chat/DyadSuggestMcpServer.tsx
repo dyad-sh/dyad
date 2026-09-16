@@ -151,7 +151,12 @@ function PendingSuggestionCard({
       // should only be told the plugin is ready when its server answers.
       const probe = await ipc.mcp.probeConnection(created.id);
       if (probe.status !== "ok") {
-        const headline = t("suggestMcpServer.unreachable");
+        // A 401 means the server answered and wants authorization, which
+        // calls for a different next step than a server that is down.
+        const headline =
+          probe.status === "unauthorized"
+            ? t("suggestMcpServer.authRequired")
+            : t("suggestMcpServer.unreachable");
         showError(probe.error ? `${headline}\n${probe.error}` : headline);
         return;
       }

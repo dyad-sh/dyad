@@ -1,6 +1,6 @@
 import { z } from "zod";
 import log from "electron-log";
-import { isNotNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { mcpServers } from "@/db/schema";
 import {
@@ -49,6 +49,14 @@ const chatsWithLiveSuggestion = new Set<number>();
 export function resetSuggestMcpServerStateForTests() {
   declinedSlugsByChat.clear();
   chatsWithLiveSuggestion.clear();
+}
+
+async function isCatalogSlugAdded(slug: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: mcpServers.id })
+    .from(mcpServers)
+    .where(eq(mcpServers.catalogSlug, slug));
+  return rows.length > 0;
 }
 
 async function readCatalog(cachedOnly: boolean): Promise<McpCatalogEntry[]> {
@@ -205,10 +213,23 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
       ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
       return `Another plugin suggestion is already waiting for the user in this chat. Wait for its result before suggesting ${server.name}.`;
     }
-
-    const followUpPrompt = `Continue. I have connected the ${server.name} plugin. Resume what you needed it for: ${args.reason}`;
+    // Claim the chat before any await so a parallel call cannot slip past
+    // the check above.
     chatsWithLiveSuggestion.add(ctx.chatId);
     try {
+      // The turn's suggestable set is fixed at turn start, so re-check what
+      // has settled since: a decline in this chat, or a row that now exists
+      // because the user connected it.
+      if (declinedSlugsByChat.get(ctx.chatId)?.has(server.slug)) {
+        ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
+        return `The user already declined the ${server.name} plugin in this conversation. Continue without it and do not suggest it again.`;
+      }
+      if (await isCatalogSlugAdded(server.slug)) {
+        ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
+        return `The ${server.name} plugin is already added. Its tools become available on the next turn; end your response now with one short line saying you will continue once it is ready.`;
+      }
+
+      const followUpPrompt = `Continue. I have connected the ${server.name} plugin. Resume what you needed it for: ${args.reason}`;
       const requestId = userInputRegistry.request({
         kind: "mcp-suggestion",
         chatId: ctx.chatId,

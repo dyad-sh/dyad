@@ -517,7 +517,11 @@ describe("handleFetchFromGithub", () => {
     expect(gitFetch).toHaveBeenCalledWith({
       path: "/mock/apps/test-app",
       remote: "origin",
-      accessToken: "token",
+      auth: {
+        hostUrl: "https://github.com",
+        username: "token",
+        password: "x-oauth-basic",
+      },
       prune: true,
     });
   });

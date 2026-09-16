@@ -17,7 +17,12 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { gitFetch, gitListFilesNative, gitLog } from "@/ipc/utils/git_utils";
+import {
+  gitAuthHeaderConfig,
+  gitFetch,
+  gitListFilesNative,
+  gitLog,
+} from "@/ipc/utils/git_utils";
 import {
   classifyGitOperationError,
   ensureGitLineEndingPolicy,
@@ -1133,4 +1138,29 @@ describe("gitFetch", () => {
     expect(remaining).not.toContain("origin/feature/gone");
     expect(remaining).toContain("origin/main");
   }, 30_000);
+});
+
+describe("gitAuthHeaderConfig", () => {
+  it("scopes the header to the host and encodes the pair as basic auth", () => {
+    const [key, value] = gitAuthHeaderConfig({
+      hostUrl: "https://gitlab.example.com",
+      username: "oauth2",
+      password: "glpat-secret",
+    });
+
+    expect(key).toBe("http.https://gitlab.example.com/.extraheader");
+    expect(value).toBe(
+      `Authorization: Basic ${Buffer.from("oauth2:glpat-secret").toString("base64")}`,
+    );
+  });
+
+  it("does not double the trailing slash on a host that already has one", () => {
+    const [key] = gitAuthHeaderConfig({
+      hostUrl: "http://localhost:3500/github/git/",
+      username: "token",
+      password: "x-oauth-basic",
+    });
+
+    expect(key).toBe("http.http://localhost:3500/github/git/.extraheader");
+  });
 });

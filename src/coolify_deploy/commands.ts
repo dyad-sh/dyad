@@ -28,7 +28,8 @@ import {
   deployKeyFilePath,
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
-import { getGitHubApiBase } from "@/ipc/handlers/github_handlers";
+import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
+import { resolveAppGitRemote } from "@/ipc/utils/app_git_remote";
 import {
   getCurrentCommitHash,
   getGitUncommittedFiles,
@@ -674,7 +675,8 @@ export async function runDeployPipeline({
       DyadErrorKind.Validation,
     );
   }
-  if (!app.githubOrg || !app.githubRepo) {
+  const remote = resolveAppGitRemote(app);
+  if (!remote) {
     throw new DyadError(
       "Coolify deploys from a git repository. Connect this app to GitHub first.",
       DyadErrorKind.Validation,
@@ -683,7 +685,7 @@ export async function runDeployPipeline({
 
   await warnIfBranchNotPushed({
     appPath: getDyadAppPath(app.path),
-    branch: app.githubBranch ?? "main",
+    branch: remote.branch,
     report,
   });
 
@@ -696,8 +698,8 @@ export async function runDeployPipeline({
   report.log(`Building as ${build.buildPack} on port ${build.portsExposes}.\n`);
 
   const { keyName, publicKey } = await ensureGithubDeployKey({
-    owner: app.githubOrg,
-    repo: app.githubRepo,
+    owner: remote.owner,
+    repo: remote.repo,
     report,
     signal,
   });
@@ -714,8 +716,8 @@ export async function runDeployPipeline({
   });
   throwIfAborted(signal);
 
-  const gitRepository = `git@github.com:${app.githubOrg}/${app.githubRepo}.git`;
-  const gitBranch = app.githubBranch ?? "main";
+  const gitRepository = remote.sshUrl;
+  const gitBranch = remote.branch;
   const serverUuid = connection.serverUuid;
 
   report.stage("configuring");

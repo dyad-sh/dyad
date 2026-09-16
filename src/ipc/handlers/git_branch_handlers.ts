@@ -1,6 +1,5 @@
 import { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { readSettings } from "../../main/settings";
 import {
   gitMergeAbort,
   gitFetch,
@@ -35,6 +34,10 @@ import {
   readAppResource,
 } from "../services/app_operation_coordinator";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import {
+  getAppGitRemoteAuth,
+  requireAppGitRemote,
+} from "../utils/app_git_remote";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts, gitEvents } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
@@ -78,24 +81,20 @@ export async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app || !app.githubOrg || !app.githubRepo) {
+  if (!app) {
     throw new DyadError(
       "App is not linked to a GitHub repo.",
       DyadErrorKind.Precondition,
     );
   }
+  const auth = getAppGitRemoteAuth(requireAppGitRemote(app));
   const appPath = getDyadAppPath(app.path);
 
   await gitFetch({
     path: appPath,
     remote: "origin",
-    accessToken,
+    auth,
     prune: true,
   });
 }
@@ -551,18 +550,14 @@ export async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app || !app.githubOrg || !app.githubRepo) {
+  if (!app) {
     throw new DyadError(
       "App is not linked to a GitHub repo.",
       DyadErrorKind.Precondition,
     );
   }
+  const auth = getAppGitRemoteAuth(requireAppGitRemote(app));
   const appPath = getDyadAppPath(app.path);
   const currentBranch = await gitCurrentBranch({ path: appPath });
 
@@ -571,7 +566,7 @@ export async function handlePullFromGithub(
       path: appPath,
       remote: "origin",
       branch: currentBranch || "main",
-      accessToken,
+      auth,
     });
   } catch (pullError: any) {
     // Check if it's a missing remote branch error

@@ -485,6 +485,7 @@ import type {
   GitChangedFile,
   GitChangedFileType,
   GitListChangedFilesParams,
+  GitRemoteAuth,
 } from "../git_types";
 
 /**
@@ -497,20 +498,14 @@ import type {
  * cleared and terminal prompting is disabled so git fails fast instead of
  * invoking system helpers or waiting for input that can never arrive.
  */
-function getGitNetworkEnv(accessToken?: string): Record<string, string> {
+function getGitNetworkEnv(auth?: GitRemoteAuth): Record<string, string> {
   const configs: [key: string, value: string][] = [
     // An empty credential.helper entry resets the helper list, so helpers
     // from system/global config (osxkeychain, manager, etc.) never run.
     ["credential.helper", ""],
   ];
-  if (accessToken) {
-    const basicAuth = Buffer.from(`${accessToken}:x-oauth-basic`).toString(
-      "base64",
-    );
-    configs.push([
-      "http.https://github.com/.extraheader",
-      `Authorization: Basic ${basicAuth}`,
-    ]);
+  if (auth) {
+    configs.push(gitAuthHeaderConfig(auth));
   }
   const env: Record<string, string> = {
     GIT_TERMINAL_PROMPT: "0",
@@ -521,6 +516,23 @@ function getGitNetworkEnv(accessToken?: string): Record<string, string> {
     env[`GIT_CONFIG_VALUE_${index}`] = value;
   });
   return env;
+}
+
+/**
+ * The `http.<url>.extraheader` config entry that authenticates one host.
+ *
+ * Git applies the header to every URL that starts with `<url>`, so the key
+ * ends in a slash: `https://github.com/` covers github.com repositories and
+ * nothing at a host that merely starts with those characters.
+ */
+export function gitAuthHeaderConfig(
+  auth: GitRemoteAuth,
+): [key: string, value: string] {
+  const basicAuth = Buffer.from(`${auth.username}:${auth.password}`).toString(
+    "base64",
+  );
+  const hostUrl = auth.hostUrl.replace(/\/+$/, "");
+  return [`http.${hostUrl}/.extraheader`, `Authorization: Basic ${basicAuth}`];
 }
 
 /**
@@ -1783,7 +1795,7 @@ export async function gitRenameBranch({
 export async function gitClone({
   path,
   url,
-  accessToken,
+  auth,
   singleBranch = true,
   depth,
 }: GitCloneParams): Promise<void> {
@@ -1800,7 +1812,7 @@ export async function gitClone({
   }
   args.push("--", cleanUrl, path);
   const result = await execGit(args, ".", {
-    env: getGitNetworkEnv(accessToken),
+    env: getGitNetworkEnv(auth),
   });
 
   if (result.exitCode !== 0) {
@@ -1852,7 +1864,7 @@ export async function gitSetRemoteUrl({
 export async function gitPush({
   path,
   branch,
-  accessToken,
+  auth,
   force,
   forceWithLease,
 }: GitPushParams): Promise<void> {
@@ -1866,7 +1878,7 @@ export async function gitPush({
       args.push("--force");
     }
     const result = await execGit(args, path, {
-      env: getGitNetworkEnv(accessToken),
+      env: getGitNetworkEnv(auth),
     });
     if (result.exitCode !== 0) {
       const errorMsg = result.stderr.toString() || result.stdout.toString();
@@ -2882,7 +2894,7 @@ export async function restoreAgentGitFile({
 export async function gitFetch({
   path,
   remote = "origin",
-  accessToken,
+  auth,
   prune,
 }: GitFetchParams): Promise<void> {
   await execOrThrow(
@@ -2890,7 +2902,7 @@ export async function gitFetch({
     path,
     "Failed to fetch from remote",
     undefined,
-    { env: getGitNetworkEnv(accessToken) },
+    { env: getGitNetworkEnv(auth) },
   );
 }
 
@@ -3026,7 +3038,7 @@ export async function gitPull({
   path,
   remote = "origin",
   branch = "main",
-  accessToken,
+  auth,
 }: GitPullParams): Promise<void> {
   // Use withGitAuthor since pull may need to create merge commits
   // and requires user.name and user.email
@@ -3038,7 +3050,7 @@ export async function gitPull({
   ]);
   try {
     await execOrThrow(pullArgs, path, "Failed to pull from remote", undefined, {
-      env: getGitNetworkEnv(accessToken),
+      env: getGitNetworkEnv(auth),
     });
   } catch (error: any) {
     // Check git state files to detect conflicts instead of parsing error messages

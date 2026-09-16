@@ -16,7 +16,8 @@ vi.mock("@/main/settings", () => ({
   DEFAULT_SETTINGS: {},
 }));
 
-vi.mock("@/ipc/handlers/github_handlers", () => ({
+vi.mock("@/ipc/utils/github_endpoints", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/github_endpoints")>()),
   getGitHubApiBase: () => "https://github.test/api",
 }));
 

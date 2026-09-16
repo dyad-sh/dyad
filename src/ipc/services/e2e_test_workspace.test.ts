@@ -396,8 +396,14 @@ describe("E2E test workspace", () => {
         ".env.production.local",
       ];
       const liveEnv = "DATABASE_URL=postgres://live/db\nAPI_BASE=keep\n";
-      const isolatedEnv =
-        "DATABASE_URL=postgres://temporary/db\nAPI_BASE=keep\n";
+      const isolatedEnv = [
+        "DATABASE_URL=postgres://temporary/db",
+        "POSTGRES_URL=postgres://temporary/db",
+        "NEON_AUTH_BASE_URL=https://temporary.neonauth.test",
+        "NEON_AUTH_COOKIE_SECRET=branch-cookie-secret",
+        "API_BASE=keep",
+        "",
+      ].join("\n");
       vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
       for (const directory of directories) {
         const packagePath = path.join(repoRoot, directory);
@@ -419,10 +425,22 @@ describe("E2E test workspace", () => {
       });
       const workspace = await createWorkspaceUnderTest({ appId: 7, appPath });
       try {
-        // Provider isolation rewrites only the target app's .env.local.
+        // Provider isolation rewrites only specific keys in .env.local. Other
+        // production connections in that same file must still be removed.
         await fs.writeFile(
           path.join(workspace.workspacePath, ".env.local"),
-          isolatedEnv,
+          isolatedEnv +
+            [
+              "DIRECT_URL=postgres://live/migrations",
+              "export DATABASE_URL=postgres://live/exported",
+              "export NEON_AUTH_BASE_URL=https://live.neonauth.test",
+              "POSTGRES_URL_NON_POOLING=postgres://live/direct",
+              "export PGPASSWORD=live-password",
+              "PGSERVICEFILE=/live/pg_service.conf",
+              "NEON_API_KEY=live-management-key",
+              "SUPABASE_SERVICE_ROLE_KEY=live-service-role",
+              "",
+            ].join("\n"),
         );
         vi.mocked(runCleanPackageInstall).mockImplementationOnce(
           async ({ cwd }) => {
@@ -450,7 +468,7 @@ describe("E2E test workspace", () => {
         );
         await installE2eTestWorkspaceDependencies({
           workspace,
-          withholdDatabaseEnv: false,
+          isolationMode: "neon-branch",
         });
         for (const directory of directories) {
           for (const fileName of fileNames) {
@@ -479,7 +497,13 @@ describe("E2E test workspace", () => {
             });
             expect(serverEnv).toEqual(
               preserved
-                ? { DATABASE_URL: "postgres://temporary/db", API_BASE: "keep" }
+                ? {
+                    DATABASE_URL: "postgres://temporary/db",
+                    POSTGRES_URL: "postgres://temporary/db",
+                    NEON_AUTH_BASE_URL: "https://temporary.neonauth.test",
+                    NEON_AUTH_COOKIE_SECRET: "branch-cookie-secret",
+                    API_BASE: "keep",
+                  }
                 : { API_BASE: "keep" },
             );
             expect(
@@ -489,6 +513,94 @@ describe("E2E test workspace", () => {
               ),
             ).toBe(liveEnv);
           }
+        }
+      } finally {
+        await workspace.dispose();
+      }
+    },
+  );
+
+  it.each([
+    { hasCustomCommands: false, newline: "\n" },
+    { hasCustomCommands: true, newline: "\r\n" },
+  ])(
+    "preserves only public Supabase configuration through server startup (custom commands: $hasCustomCommands)",
+    async ({ hasCustomCommands, newline }) => {
+      const root = await tempRoot();
+      const appPath = path.join(root, "app");
+      vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+      await fs.mkdir(appPath, { recursive: true });
+      const publicEnv: Record<string, string> = { API_BASE: "keep" };
+      const secretEnv: Record<string, string> = {
+        DATABASE_URL: "postgres://live/db",
+        DIRECT_URL: "postgres://live/migrations",
+        SUPABASE_DB_PASSWORD: "live-password",
+        SUPABASE_ACCESS_TOKEN: "live-management-token",
+        SUPABASE_SECRET_KEY: "live-secret-key",
+      };
+      for (const prefix of [
+        "",
+        "VITE_",
+        "NEXT_PUBLIC_",
+        "PUBLIC_",
+        "REACT_APP_",
+        "EXPO_PUBLIC_",
+        "NUXT_PUBLIC_",
+      ]) {
+        publicEnv[`${prefix}SUPABASE_URL`] = "https://project.supabase.test";
+        publicEnv[`${prefix}SUPABASE_ANON_KEY`] = "public-anon-key";
+        publicEnv[`${prefix}SUPABASE_PUBLISHABLE_KEY`] = "sb_publishable_test";
+        secretEnv[`${prefix}SUPABASE_SERVICE_ROLE_KEY`] = "live-service-role";
+        secretEnv[`${prefix}SUPABASE_DATABASE_URL`] = "postgres://live/db";
+      }
+      const env =
+        Object.entries({ ...publicEnv, ...secretEnv })
+          .map(([key, value]) => `export ${key}=${value}`)
+          .join(newline) + newline;
+      const fileNames = [".env", ".env.local", ".env.development.local"];
+      for (const fileName of fileNames) {
+        await fs.writeFile(path.join(appPath, fileName), env);
+      }
+      const workspace = await createE2eTestWorkspace({
+        appId: 7,
+        appPath,
+        hasCustomCommands,
+      });
+      const expectPublicConfig = () => {
+        for (const fileName of fileNames) {
+          const serverEnv = {};
+          loadDotenv({
+            path: path.join(workspace.workspacePath, fileName),
+            processEnv: serverEnv,
+          });
+          expect(serverEnv).toEqual(publicEnv);
+        }
+      };
+      const install = vi.mocked(runCleanPackageInstall);
+      install.mockClear();
+      install.mockImplementation(async () => {
+        expectPublicConfig();
+        return {
+          code: 0,
+          stdout: "",
+          stderr: "",
+          aborted: false,
+          timedOut: false,
+          hasLockfile: false,
+        };
+      });
+      try {
+        await installE2eTestWorkspaceDependencies({
+          workspace,
+          isolationMode: "supabase-test-user",
+        });
+        expect(install).toHaveBeenCalledTimes(hasCustomCommands ? 0 : 1);
+        // Framework dotenv loaders still see the public settings after install.
+        expectPublicConfig();
+        for (const fileName of fileNames) {
+          expect(await fs.readFile(path.join(appPath, fileName), "utf8")).toBe(
+            env,
+          );
         }
       } finally {
         await workspace.dispose();
@@ -837,7 +949,7 @@ describe("E2E test workspace", () => {
     await expect(
       installE2eTestWorkspaceDependencies({
         workspace,
-        withholdDatabaseEnv: true,
+        isolationMode: "none",
       }),
     ).rejects.toThrow("Test run stopped.");
 

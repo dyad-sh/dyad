@@ -4,6 +4,7 @@ import path from "node:path";
 import log from "electron-log";
 
 import { getUserDataPath } from "@/paths/paths";
+import type { TestIsolation } from "@/ipc/types/tests";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -274,10 +275,28 @@ const DOTENV_FILE_NAMES: readonly string[] = [
   ".env.production.local",
 ];
 
+// Only these keys are rewritten by updateNeonEnvVars during branch isolation.
+// Auth provisioning fails closed if an app uses Neon Auth but the temporary
+// branch cannot provide it. Keep exact spellings: an `export DATABASE_URL`
+// entry is not rewritten by that updater and must still be removed.
+const ISOLATED_NEON_ENV_KEYS = new Set([
+  "DATABASE_URL",
+  "POSTGRES_URL",
+  "NEON_AUTH_BASE_URL",
+  "NEON_AUTH_COOKIE_SECRET",
+]);
+
+// Public client configuration still targets the real Supabase project; access
+// is restricted by RLS and the temporary test user. Do not allow arbitrary
+// public-prefixed keys: even VITE_SUPABASE_SERVICE_ROLE_KEY is privileged.
+const PUBLIC_SUPABASE_ENV_KEY =
+  /^(?:VITE_|NEXT_PUBLIC_|PUBLIC_|REACT_APP_|EXPO_PUBLIC_|NUXT_PUBLIC_)?SUPABASE_(?:URL|ANON_KEY|PUBLISHABLE_KEY)$/;
+
 /** Remove database credentials from one disposable dotenv file. */
 async function stripDatabaseEnvFile(
   directory: string,
   fileName: string,
+  preserveKey: (key: string) => boolean,
 ): Promise<void> {
   const envPath = path.join(directory, fileName);
   let original: string;
@@ -291,9 +310,14 @@ async function stripDatabaseEnvFile(
     .split("\n")
     .filter((line) => {
       const key = line.split("=", 1)[0]?.trim();
-      // Comments and blanks have no key and stay; anything naming a database
-      // goes for the lifetime of the disposable workspace.
-      return !key || key.startsWith("#") || !isDatabaseEnvKey(key);
+      // Preserve comments, blanks, non-database settings and only the specific
+      // provider keys approved for this file.
+      return (
+        !key ||
+        key.startsWith("#") ||
+        !isDatabaseEnvKey(key.replace(/^export\s+/, "")) ||
+        preserveKey(key)
+      );
     })
     .join("\n");
   if (kept === original) return;
@@ -303,8 +327,9 @@ async function stripDatabaseEnvFile(
 /**
  * Strip copied credentials permanently: a server calling `dotenv.config()`
  * after installation must not regain access to the live database. Only the
- * target app's provider-rewritten env file may be preserved. The source app's
- * files are untouched, and the sandbox files are discarded during disposal.
+ * target app's provider-rewritten keys and public Supabase client settings may
+ * be preserved. The source app's files are untouched, and the sandbox files
+ * are discarded during disposal.
  *
  * The app directory alone is not the reachable set. A monorepo's root
  * `postinstall` reads the ROOT dotenv files, which no provider isolation
@@ -314,16 +339,21 @@ async function stripDatabaseEnvFile(
  */
 async function stripWorkspaceDatabaseEnv({
   directories,
-  preservedEnvPath,
+  isolatedNeonEnvPath,
+  isolationMode,
 }: {
   directories: readonly string[];
-  preservedEnvPath?: string;
+  isolatedNeonEnvPath?: string;
+  isolationMode: TestIsolation["mode"];
 }): Promise<void> {
   for (const directory of new Set(directories)) {
     for (const fileName of DOTENV_FILE_NAMES) {
       const envPath = path.join(directory, fileName);
-      if (envPath === preservedEnvPath) continue;
-      await stripDatabaseEnvFile(directory, fileName);
+      await stripDatabaseEnvFile(directory, fileName, (key) =>
+        isolationMode === "supabase-test-user"
+          ? PUBLIC_SUPABASE_ENV_KEY.test(key.replace(/^export\s+/, ""))
+          : envPath === isolatedNeonEnvPath && ISOLATED_NEON_ENV_KEYS.has(key),
+      );
     }
   }
 }
@@ -332,18 +362,18 @@ export async function installE2eTestWorkspaceDependencies({
   workspace,
   signal,
   onOutput,
-  withholdDatabaseEnv = true,
+  isolationMode = "none",
 }: {
   workspace: E2eTestWorkspace;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
   /**
-   * Remove the workspace's database credentials for its entire lifetime,
-   * so install scripts and the server cannot reach the user's real data.
-   * When false, preserve only the target app's provider-rewritten .env.local;
-   * database credentials in all other dotenv files are always withheld.
+   * Remove live privileged credentials for the workspace's entire lifetime.
+   * Neon retains only its isolated keys in the target app's .env.local.
+   * Supabase retains public client configuration for RLS-scoped test users.
+   * All other database credentials are withheld in every dotenv file.
    */
-  withholdDatabaseEnv?: boolean;
+  isolationMode?: TestIsolation["mode"];
 }): Promise<void> {
   const { dependencyInstallPath, packageManager } = workspace;
   if (signal?.aborted)
@@ -361,9 +391,11 @@ export async function installE2eTestWorkspaceDependencies({
     : [];
   await stripWorkspaceDatabaseEnv({
     directories: [workspace.workspacePath, ...installedPackagePaths],
-    preservedEnvPath: withholdDatabaseEnv
-      ? undefined
-      : path.join(workspace.workspacePath, ENV_FILE_NAME),
+    isolationMode,
+    isolatedNeonEnvPath:
+      isolationMode === "neon-branch"
+        ? path.join(workspace.workspacePath, ENV_FILE_NAME)
+        : undefined,
   });
   // Custom commands install as part of runtime startup, but their copied env
   // files need the same protection even without a managed package install.

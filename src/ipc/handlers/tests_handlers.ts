@@ -1469,6 +1469,7 @@ async function runTestsAgainstNormalPreview({
   signal,
   emit,
   emitProgress,
+  settleRunProcesses,
   onIsolationCleanupFailed,
   testFile,
   testLine,
@@ -1496,6 +1497,7 @@ async function runTestsAgainstNormalPreview({
     state: "stopping" | "cleaning-up",
     isolation?: TestIsolation,
   ) => void;
+  settleRunProcesses: () => Promise<boolean>;
   onIsolationCleanupFailed: (
     failed: boolean,
     provider?: IsolationCleanupProvider,
@@ -1620,6 +1622,10 @@ async function runTestsAgainstNormalPreview({
         });
         return { ...result, isolation };
       } finally {
+        // Stop/timeout may resolve the runner before its browser descendants
+        // close. Keep the provider/runtime claims until settlement finishes,
+        // before deleting the test user even when there is no workspace.
+        await settleRunProcesses();
         if (prepared) {
           try {
             if (prepared.isolation.mode !== "none") {
@@ -2133,6 +2139,7 @@ export async function runAppTestsWithIsolation({
           signal: controller.signal,
           emit,
           emitProgress,
+          settleRunProcesses,
           onIsolationCleanupFailed: (failed, provider) => {
             isolationCleanupFailed = failed;
             isolationCleanupProvider = provider;
@@ -2457,9 +2464,11 @@ export async function runAppTestsWithIsolation({
           // selective: it would also break `prisma generate`, native rebuilds
           // and codegen for every app that merely has a database, turning
           // working runs into a server that cannot start. Taking the database
-          // out of the environment leaves the scripts running and denies them
-          // only the thing they must not reach.
-          const withholdDatabaseEnv = prepared.isolation.mode !== "neon-branch";
+          // credentials out of the environment leaves the scripts running.
+          // Supabase keeps only public client settings so the server can use
+          // the temporary test user's RLS-scoped session.
+          const isolationMode = prepared.isolation.mode;
+          const withholdDatabaseEnv = isolationMode === "none";
           try {
             if (workspace!.dependencyInstallPath) {
               emit(
@@ -2478,11 +2487,17 @@ export async function runAppTestsWithIsolation({
                 "setup",
               );
             }
+            if (isolationMode === "supabase-test-user") {
+              emit(
+                "The test workspace keeps public Supabase client settings for the test user. Service-role and direct database credentials are removed.\n",
+                "setup",
+              );
+            }
             await installE2eTestWorkspaceDependencies({
               workspace: workspace!,
               signal: controller.signal,
               onOutput: (chunk) => emit(chunk, "setup"),
-              withholdDatabaseEnv,
+              isolationMode,
             });
           } catch (error) {
             if (controller.signal.aborted) throw error;

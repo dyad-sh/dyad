@@ -1235,12 +1235,13 @@ describe("tests handlers", () => {
       expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
     });
 
-    it("withholds the database from install scripts when the env stays live", async () => {
+    it("preserves Supabase client configuration while withholding privileged credentials", async () => {
       // Supabase isolation is a throwaway RLS-scoped user in the REAL project
       // and never rewrites the copied env, so a `postinstall` migration would
       // run DDL against the user's live database. The scripts still run —
       // `--ignore-scripts` would break codegen and native rebuilds — they just
-      // cannot see a database.
+      // cannot see privileged credentials. Public client settings remain for
+      // the server to initialize Supabase and authenticate the test user.
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -1262,7 +1263,7 @@ describe("tests handlers", () => {
       });
 
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
-        expect.objectContaining({ withholdDatabaseEnv: true }),
+        expect.objectContaining({ isolationMode: "supabase-test-user" }),
       );
     });
 
@@ -1290,7 +1291,7 @@ describe("tests handlers", () => {
       });
 
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
-        expect.objectContaining({ withholdDatabaseEnv: true }),
+        expect.objectContaining({ isolationMode: "none" }),
       );
     });
 
@@ -1318,7 +1319,7 @@ describe("tests handlers", () => {
       });
 
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
-        expect.objectContaining({ withholdDatabaseEnv: false }),
+        expect.objectContaining({ isolationMode: "neon-branch" }),
       );
     });
 
@@ -1738,6 +1739,104 @@ describe("tests handlers", () => {
       expect(spawnStreamingMock).toHaveBeenCalled();
       expect(result.isolation?.reason).toMatch(/turned off in Settings/i);
     });
+
+    it.each(
+      ["disabled", "docker"].flatMap((route) =>
+        ["stop", "timeout", "spawn-error"].map((outcome) => ({
+          route,
+          outcome,
+        })),
+      ),
+    )(
+      "settles normal-preview children before provider teardown and claim release ($route, $outcome)",
+      async ({ route, outcome }) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true, supabaseProjectId: "sb-proj" })
+          .where(eq(apps.id, appId))
+          .run();
+        readSettingsMock.mockImplementation(() => ({
+          ...structuredClone(DEFAULT_SETTINGS),
+          disableSandboxedE2eTests: route === "disabled",
+          runtimeMode2: route === "docker" ? "docker" : "host",
+        }));
+        runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+        const teardown = vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "supabase-test-user" },
+          teardown,
+        });
+        const externalController = new AbortController();
+        spawnStreamingMock.mockImplementation(async () => {
+          if (outcome === "spawn-error") throw new Error("spawn failed");
+          if (outcome === "stop") externalController.abort();
+          return {
+            code: 1,
+            stdout: "",
+            stderr: "",
+            aborted: outcome === "stop",
+            timedOut: outcome === "timeout",
+          };
+        });
+        let finishSettlement!: (settled: boolean) => void;
+        settleE2eTestProcessesMock.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            finishSettlement = resolve;
+          }),
+        );
+
+        const run = runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "agent",
+          externalSignal: externalController.signal,
+        });
+        try {
+          await vi.waitFor(() =>
+            expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce(),
+          );
+          expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+          expect(teardown).not.toHaveBeenCalled();
+          for (const resource of [
+            "provider",
+            "runtime",
+            "test-files",
+          ] as const) {
+            expect(appOperationCoordinator.isBusy(appId, [resource])).toBe(
+              true,
+            );
+          }
+          expect(
+            broadcastToRegisteredWindowsMock.mock.calls.some(
+              ([, channel, payload]) =>
+                channel === "tests:run-state" && payload.state === "finished",
+            ),
+          ).toBe(false);
+          expect(settleE2eTestProcessesMock).toHaveBeenCalledWith(
+            spawnStreamingMock.mock.calls[0][0].signal,
+          );
+        } finally {
+          finishSettlement(true);
+          await run;
+          runningApps.clear();
+        }
+        const result = await run;
+        expect(result.infraError).toBeDefined();
+        expect(teardown).toHaveBeenCalledOnce();
+        expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+        expect(
+          appOperationCoordinator.isBusy(appId, [
+            "provider",
+            "runtime",
+            "test-files",
+          ]),
+        ).toBe(false);
+      },
+    );
 
     it("honors testing being disabled while an unsandboxed run waits for its claim", async () => {
       const appId = seedApp("app");

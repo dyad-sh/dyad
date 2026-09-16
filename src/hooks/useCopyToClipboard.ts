@@ -9,6 +9,7 @@ const CUSTOM_TAG_NAMES = [
   "dyad-add-dependency",
   "dyad-execute-sql",
   "dyad-add-integration",
+  "dyad-suggest-mcp-server",
   "dyad-output",
   "dyad-problem-report",
   "dyad-chat-summary",
@@ -169,6 +170,12 @@ export const useCopyToClipboard = () => {
 
       case "dyad-add-integration": {
         return `### Add Database Integration\n\n`;
+      }
+
+      case "dyad-suggest-mcp-server": {
+        const pluginName = attributes.name || attributes.slug || "";
+        const reason = attributes.reason || "";
+        return `### Suggested plugin: ${pluginName}\n\n${reason ? `${reason}\n\n` : ""}`;
       }
 
       case "dyad-codebase-context": {

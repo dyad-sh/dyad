@@ -371,6 +371,22 @@
     "requestsConsent": "requests your consent.",
     "inputRequired": "Input Required"
   },
+  "suggestMcpServer": {
+    "badge": "Plugin suggestion",
+    "title": "Connect {{name}}?",
+    "reasonLabel": "Needed for the next step",
+    "connect": "Connect {{name}}",
+    "adding": "Adding plugin…",
+    "authorizing": "Waiting for authorization…",
+    "notNow": "Not now",
+    "hint": "Connecting adds the plugin to Dyad. Some plugins open your browser to approve access.",
+    "connectedTitle": "{{name}} connected",
+    "connectedDescription": "Dyad will pick the task back up in a moment.",
+    "declinedTitle": "Skipped {{name}}",
+    "declinedDescription": "Dyad will continue without it.",
+    "oauthFailed": "Authorization failed.",
+    "failed": "Could not add the plugin."
+  },
   "guide": "Guide",
   "annotations": {
     "commentOnSelection": "Comment on selected text",

@@ -300,6 +300,19 @@ export function createFakeLlmApp(getPort: () => number) {
   });
 
   app.get("/api/mcp-catalog", (req, res) => {
+    // `?featured=slug,slug` marks entries featured for the one test that
+    // needs a suggestable plugin (local_agent_suggest_mcp_server.spec.ts).
+    // Default responses stay unfeatured so suggest_mcp_server is absent from
+    // every other local-agent request snapshot.
+    const featured = new Set(
+      String(req.query.featured ?? "")
+        .split(",")
+        .filter((slug) => slug.length > 0),
+    );
+    const withFeatured = <T extends { slug?: string }>(server: T): T =>
+      server.slug && featured.has(server.slug)
+        ? { ...server, featured: true }
+        : server;
     // The URLs below hardcode the ports that mcp_catalog.spec.ts spawns
     // its fake MCP servers on (4010 for OAuth, 3002 for http). Keep them
     // in sync with that spec.
@@ -355,7 +368,7 @@ export function createFakeLlmApp(getPort: () => number) {
           args: ["server.mjs"],
         },
         { slug: "e2e-broken" },
-      ],
+      ].map(withFeatured),
     });
   });
 

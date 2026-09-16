@@ -368,6 +368,22 @@
     "requestsConsent": "请求您的同意。",
     "inputRequired": "需要输入"
   },
+  "suggestMcpServer": {
+    "badge": "插件建议",
+    "title": "连接 {{name}}？",
+    "reasonLabel": "下一步需要",
+    "connect": "连接 {{name}}",
+    "adding": "正在添加插件…",
+    "authorizing": "等待授权…",
+    "notNow": "暂不",
+    "hint": "连接会将该插件添加到 Dyad。部分插件会打开浏览器以批准访问。",
+    "connectedTitle": "{{name}} 已连接",
+    "connectedDescription": "Dyad 稍后会继续该任务。",
+    "declinedTitle": "已跳过 {{name}}",
+    "declinedDescription": "Dyad 将在没有它的情况下继续。",
+    "oauthFailed": "授权失败。",
+    "failed": "无法添加插件。"
+  },
   "guide": "指南",
   "annotations": {
     "commentOnSelection": "评论所选文本",

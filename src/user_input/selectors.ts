@@ -18,6 +18,16 @@ export interface PendingIntegration {
   provider?: "supabase" | "neon";
 }
 
+export interface PendingMcpSuggestion {
+  chatId: number;
+  requestId: string;
+  slug: string;
+  serverName: string;
+  serverDescription?: string | null;
+  reason: string;
+  isResponding: boolean;
+}
+
 export interface PendingToolConsent {
   kind: "agent" | "mcp";
   requestId: string;
@@ -75,6 +85,31 @@ export function selectPendingIntegrations(
       requestId: descriptor.requestId,
       provider:
         selectedProviders.get(descriptor.requestId) ?? descriptor.provider,
+    });
+  }
+  return pending;
+}
+
+// One live suggestion per chat: the tool parks the turn, so a chat cannot
+// have two awaiting at once. Armed/due requests are excluded because the
+// card has already settled its interactive state by then.
+export function selectPendingMcpSuggestions({
+  requests,
+  respondingRequestIds,
+}: UserInputReadModelSnapshot): Map<number, PendingMcpSuggestion> {
+  const pending = new Map<number, PendingMcpSuggestion>();
+  for (const request of requests.values()) {
+    if (request.status !== "awaiting") continue;
+    const descriptor = request.descriptor;
+    if (descriptor.kind !== "mcp-suggestion") continue;
+    pending.set(descriptor.chatId, {
+      chatId: descriptor.chatId,
+      requestId: descriptor.requestId,
+      slug: descriptor.slug,
+      serverName: descriptor.serverName,
+      serverDescription: descriptor.serverDescription,
+      reason: descriptor.reason,
+      isResponding: respondingRequestIds.has(descriptor.requestId),
     });
   }
   return pending;

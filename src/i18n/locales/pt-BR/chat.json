@@ -368,6 +368,22 @@
     "requestsConsent": "solicita seu consentimento.",
     "inputRequired": "Entrada Necessária"
   },
+  "suggestMcpServer": {
+    "badge": "Sugestão de plugin",
+    "title": "Conectar {{name}}?",
+    "reasonLabel": "Necessário para a próxima etapa",
+    "connect": "Conectar {{name}}",
+    "adding": "Adicionando plugin…",
+    "authorizing": "Aguardando autorização…",
+    "notNow": "Agora não",
+    "hint": "Conectar adiciona o plugin ao Dyad. Alguns plugins abrem o navegador para aprovar o acesso.",
+    "connectedTitle": "{{name}} conectado",
+    "connectedDescription": "O Dyad retomará a tarefa em instantes.",
+    "declinedTitle": "{{name}} ignorado",
+    "declinedDescription": "O Dyad continuará sem ele.",
+    "oauthFailed": "A autorização falhou.",
+    "failed": "Não foi possível adicionar o plugin."
+  },
   "guide": "Guia",
   "annotations": {
     "commentOnSelection": "Comentar o texto selecionado",

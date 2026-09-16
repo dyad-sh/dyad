@@ -9,6 +9,7 @@ import {
 } from "./read_model";
 import {
   selectPendingIntegrations,
+  selectPendingMcpSuggestions,
   selectPendingQuestionnaires,
   selectPendingToolConsents,
 } from "./selectors";
@@ -60,6 +61,16 @@ export function usePendingIntegrations() {
   return useMemo(
     () => selectPendingIntegrations(requests, selectedProviders),
     [requests, selectedProviders],
+  );
+}
+
+export function usePendingMcpSuggestions() {
+  const readModel = useUserInputReadModel();
+  return useSyncExternalStoreWithSelector(
+    readModel.subscribe,
+    readModel.getSnapshot,
+    undefined,
+    selectPendingMcpSuggestions,
   );
 }
 

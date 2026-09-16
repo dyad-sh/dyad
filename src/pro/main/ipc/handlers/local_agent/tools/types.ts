@@ -12,6 +12,7 @@ import type { AppFrameworkType } from "@/lib/framework_constants";
 import { resolveLinkedDatabaseProvider } from "@/shared/database_provider";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { McpToolDef } from "./mcp_type_defs";
+import type { SuggestableMcpServer } from "./suggest_mcp_server";
 import type { MutationActivityOwner } from "../subagents/mutation_activity_tracker";
 
 // ============================================================================
@@ -110,6 +111,11 @@ export interface AgentContext {
   workspaceMutated?: boolean;
   /** True after any directly registered or sandbox-hosted MCP tool succeeds. */
   mcpToolRan?: boolean;
+  /**
+   * Featured catalog plugins the user has not added, resolved once per turn.
+   * Drives `suggest_mcp_server`'s availability and description.
+   */
+  suggestableMcpServers?: SuggestableMcpServer[];
   /** Lazily refreshes provider context and prompt for writable Implementers. */
   refreshImplementerContext?: () => Promise<{
     systemPrompt: string;
@@ -480,7 +486,7 @@ export type ToolResult = string;
 
 export type ToolDescriptionContext = Pick<
   AgentContext,
-  "runTypeScriptForWholeProject"
+  "runTypeScriptForWholeProject" | "suggestableMcpServers"
 >;
 
 export interface ToolDefinition<T = any> {

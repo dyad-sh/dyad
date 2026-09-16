@@ -87,6 +87,7 @@ const HARNESS_ENV_KEYS = [
   "FAKE_LLM_FIXTURES_DIR",
   "FAKE_LLM_QUIET",
   "DYAD_LANGUAGE_MODEL_CATALOG_URL",
+  "DYAD_MCP_CATALOG_URL",
   "DYAD_ENGINE_URL",
   "DYAD_GATEWAY_URL",
   "DYAD_USER_INFO_URL",
@@ -295,6 +296,9 @@ export async function setupChatFlowHarness(
 
     if (options.useFakeCatalog !== false) {
       process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
+      // Local-agent turns read the MCP catalog to decide whether
+      // suggest_mcp_server is available; keep that off the real network.
+      process.env.DYAD_MCP_CATALOG_URL = `${fakeLlmUrl}/api/mcp-catalog`;
     }
     // Always fake the Dyad Pro user-info endpoint: any test that configures an
     // auto API key would otherwise send get-user-budget requests to the real

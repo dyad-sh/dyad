@@ -371,6 +371,22 @@
     "requestsConsent": "동의를 요청합니다.",
     "inputRequired": "입력 필요"
   },
+  "suggestMcpServer": {
+    "badge": "플러그인 제안",
+    "title": "{{name}}을(를) 연결할까요?",
+    "reasonLabel": "다음 단계에 필요함",
+    "connect": "{{name}} 연결",
+    "adding": "플러그인 추가 중…",
+    "authorizing": "승인 대기 중…",
+    "notNow": "나중에",
+    "hint": "연결하면 플러그인이 Dyad에 추가됩니다. 일부 플러그인은 접근 승인을 위해 브라우저를 엽니다.",
+    "connectedTitle": "{{name}} 연결됨",
+    "connectedDescription": "Dyad가 잠시 후 작업을 이어갑니다.",
+    "declinedTitle": "{{name}} 건너뜀",
+    "declinedDescription": "Dyad가 플러그인 없이 계속합니다.",
+    "oauthFailed": "승인에 실패했습니다.",
+    "failed": "플러그인을 추가할 수 없습니다."
+  },
   "guide": "가이드",
   "annotations": {
     "commentOnSelection": "선택한 텍스트에 댓글 달기",

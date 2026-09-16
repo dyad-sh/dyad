@@ -66,6 +66,15 @@ export type UserInputDescriptor =
       proposalId: string;
       testTitle: string;
       classifier: "none";
+    })
+  | (DescriptorBase & {
+      kind: "mcp-suggestion";
+      slug: string;
+      serverName: string;
+      serverDescription?: string | null;
+      reason: string;
+      classifier: "none";
+      followUpPrompt: string;
     });
 
 export type NewUserInputDescriptor = UserInputDescriptor extends infer D
@@ -91,7 +100,10 @@ export type UserInputResponse =
       kind: "test-assertions";
       specPath: string | null;
       appliedCount: number;
-    };
+    }
+  // `connected` arms the descriptor's follow-up so the agent resumes on a
+  // turn that can see the new plugin's tools; `declined` settles in place.
+  | { kind: "mcp-suggestion"; outcome: "connected" | "declined" };
 
 export type UserInputParkValue =
   | UserInputResponse

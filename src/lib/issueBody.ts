@@ -264,6 +264,10 @@ export const ISSUE_TITLE = "[bug] <WRITE TITLE HERE>";
 /** Stable prefix so published issues can be counted with a GitHub search. */
 const SCREENSHOT_STATUS_PREFIX = "Screenshot status:";
 
+/** Shown to the reporter in GitHub's editor, where the paste belongs. */
+export const SCREENSHOT_PASTE_REMINDER =
+  "**Paste your screenshot here with Cmd/Ctrl + V, replacing this line.**";
+
 export function formatScreenshotStatusLine(outcome: ScreenshotOutcome): string {
   switch (outcome.status) {
     case "captured":
@@ -433,6 +437,13 @@ export function buildIssueBody({
     "## Screenshot",
     formatScreenshotStatusLine(screenshot),
   ];
+
+  // The image is on the reporter's clipboard, not in this body, and this is
+  // the one place they are looking when the paste has to happen. Left behind,
+  // the line also tells a maintainer why there is no image.
+  if (screenshot.status === "captured") {
+    sections.push("", SCREENSHOT_PASTE_REMINDER);
+  }
 
   // The Pro user ID belongs to the system information, where the reporter
   // was shown it and agreed to publish it. It is not repeated here, because

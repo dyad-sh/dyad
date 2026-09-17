@@ -160,6 +160,14 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     expect(params.get("labels")).toContain("bug");
     const body = params.get("body") ?? "";
     expect(body).toContain("Screenshot status: captured");
+    // The reporter is reminded to paste in both places they might look: in
+    // the issue itself, and back in Dyad once the browser has opened.
+    expect(body).toContain("Paste your screenshot here");
+    await expect(
+      po.page.getByText("One more step: paste your screenshot"),
+    ).toBeVisible();
+    await po.page.getByRole("button", { name: "Done" }).click();
+    await expect(po.page.getByRole("dialog")).toHaveCount(0);
     expect(body).toContain("The generated page is blank.");
     // The session the reporter uploaded is the one the issue points at.
     expect(body).toContain("v2:e2e-session");

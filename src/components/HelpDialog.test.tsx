@@ -11,7 +11,7 @@ import { useEffect } from "react";
 import { HelpDialog } from "./HelpDialog";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { PROSE_BUDGET } from "@/lib/issueBody";
+import { PROSE_BUDGET, SCREENSHOT_PASTE_REMINDER } from "@/lib/issueBody";
 
 const mocks = vi.hoisted(() => ({
   getSystemDebugInfo: vi.fn(),
@@ -2538,5 +2538,88 @@ describe("HelpDialog screenshot bar", () => {
     // No ancestor's transform can then pin the bar's fixed position to
     // anything but the window.
     expect(captureBar()?.parentElement).toBe(document.body);
+  });
+});
+
+describe("HelpDialog closing step", () => {
+  it("stays up after filing to say the screenshot still has to be pasted", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // The image is only on the clipboard, so the report is not finished yet.
+    expect(
+      await screen.findByText("One more step: paste your screenshot"),
+    ).toBeTruthy();
+    expect(screen.getByText(/Press Cmd\/Ctrl \+ V in the issue/)).toBeTruthy();
+    // What is on the clipboard, so the reporter knows what they are pasting.
+    expect(screen.getByAltText("Screenshot of the Dyad window")).toBeTruthy();
+    expect(screen.queryByLabelText(/What happened/)).toBeNull();
+  });
+
+  it("puts the same reminder where the paste happens, in the issue", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    expect(bodyOfOpenedIssue()).toContain(SCREENSHOT_PASTE_REMINDER);
+  });
+
+  it("closes on Done and starts the next visit from the top", async () => {
+    await openForm("the preview goes blank");
+    await addScreenshot();
+    await fileIt();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+    expect(
+      screen.queryByText("One more step: paste your screenshot"),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    expect(await screen.findByText("Need help with Dyad?")).toBeTruthy();
+    expect(screen.queryByDisplayValue("the preview goes blank")).toBeNull();
+  });
+
+  it("has nothing to say when the report had no screenshot", async () => {
+    await openForm();
+    await fileIt();
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/What happened/)).toBeNull(),
+    );
+    expect(
+      screen.queryByText("One more step: paste your screenshot"),
+    ).toBeNull();
+    expect(bodyOfOpenedIssue()).not.toContain(SCREENSHOT_PASTE_REMINDER);
+  });
+
+  it("skips it when the screenshot could not be put back on the clipboard", async () => {
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Nothing is on the clipboard to paste, so asking for it would mislead.
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/What happened/)).toBeNull(),
+    );
+    expect(
+      screen.queryByText("One more step: paste your screenshot"),
+    ).toBeNull();
+  });
+
+  it("lets a crash report take over from the closing step", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+    await screen.findByText("One more step: paste your screenshot");
+
+    fireEvent.click(screen.getByText("force-close-report"));
+
+    const field = (await screen.findByLabelText(
+      /What happened/,
+    )) as HTMLTextAreaElement;
+    expect(field.value).toBe("");
+    expect(screen.queryByAltText("Screenshot of the Dyad window")).toBeNull();
   });
 });

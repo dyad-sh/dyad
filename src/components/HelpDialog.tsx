@@ -53,7 +53,7 @@ const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
  */
 const CAPTURE_DELAY_MS = 500;
 
-type DialogScreen = "main" | "form";
+type DialogScreen = "main" | "form" | "filed";
 
 /**
  * Why a captured screenshot is no longer available. Shown to the reporter and
@@ -92,7 +92,7 @@ function classifyCaptureFailure(reason: string): string {
   return "other";
 }
 
-const SCREEN_ORDER: DialogScreen[] = ["main", "form"];
+const SCREEN_ORDER: DialogScreen[] = ["main", "form", "filed"];
 
 const screenVariants = {
   enter: (direction: number) => ({
@@ -847,6 +847,12 @@ export function HelpDialog() {
     captureToken.current++;
     setIsFiling(false);
     setReportOpen(false);
+    if (outgoingScreenshot.status === "captured") {
+      // The image is only on the clipboard, so the report is not finished
+      // until it is pasted. Stays up for when the reporter looks back here.
+      navigateTo("filed");
+      return;
+    }
     onClose();
   };
 
@@ -982,6 +988,27 @@ export function HelpDialog() {
     </AnimatedScreen>
   );
 
+  const renderFiledScreen = () => (
+    <AnimatedScreen screenKey="filed" direction={direction}>
+      <DialogHeader>
+        <DialogTitle>{t("home:report.filedHeading")}</DialogTitle>
+      </DialogHeader>
+      <DialogDescription>
+        {t("home:report.filedPasteBody", { shortcut: "Cmd/Ctrl + V" })}
+      </DialogDescription>
+      {screenshotPreview && (
+        <img
+          src={screenshotPreview}
+          alt={t("home:report.screenshotAlt")}
+          className="mt-4 w-full max-h-48 object-contain rounded-md border bg-(--background-lightest)"
+        />
+      )}
+      <Button onClick={onClose} className="mt-4 w-full">
+        {t("home:report.filedDone")}
+      </Button>
+    </AnimatedScreen>
+  );
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -1012,6 +1039,7 @@ export function HelpDialog() {
           <AnimatePresence mode="wait" custom={direction}>
             {screen === "main" && renderMainScreen()}
             {screen === "form" && renderFormScreen()}
+            {screen === "filed" && renderFiledScreen()}
           </AnimatePresence>
         </DialogContent>
       </Dialog>

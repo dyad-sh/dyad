@@ -1,0 +1,435 @@
+{
+  "version": "2026-09-04T23:41:40.709Z",
+  "expiresAt": "2026-09-05T00:41:40.709Z",
+  "providers": [
+    {
+      "id": "openai",
+      "displayName": "OpenAI",
+      "type": "cloud",
+      "websiteUrl": "https://platform.openai.com/api-keys",
+      "supportsThinking": true
+    },
+    {
+      "id": "anthropic",
+      "displayName": "Anthropic",
+      "type": "cloud",
+      "websiteUrl": "https://platform.claude.com/settings/keys",
+      "supportsThinking": true,
+      "gatewayPrefix": "anthropic/"
+    },
+    {
+      "id": "google",
+      "displayName": "Google",
+      "type": "cloud",
+      "hasFreeTier": true,
+      "websiteUrl": "https://aistudio.google.com/api-keys",
+      "supportsThinking": true,
+      "gatewayPrefix": "gemini/"
+    },
+    {
+      "id": "vertex",
+      "displayName": "Google Vertex AI",
+      "type": "cloud",
+      "websiteUrl": "https://console.cloud.google.com/vertex-ai",
+      "secondary": true,
+      "supportsThinking": true,
+      "gatewayPrefix": "gemini/"
+    },
+    {
+      "id": "openrouter",
+      "displayName": "OpenRouter",
+      "type": "cloud",
+      "hasFreeTier": true,
+      "websiteUrl": "https://openrouter.ai/workspaces/default/keys"
+    },
+    {
+      "id": "xai",
+      "displayName": "xAI",
+      "type": "cloud",
+      "websiteUrl": "https://console.x.ai",
+      "secondary": true
+    }
+  ],
+  "modelsByProvider": {
+    "openai": [
+      {
+        "apiName": "gpt-6-astra",
+        "displayName": "GPT 6 Astra",
+        "description": "OpenAI's most capable model for complex end-to-end work",
+        "dollarSigns": 6,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "effortSettings": {
+          "defaultEffortLevel": "low",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        },
+        "lifecycle": { "stage": "preview" }
+      },
+      {
+        "apiName": "gpt-5.6-sol",
+        "displayName": "GPT 5.6 Sol",
+        "description": "OpenAI's frontier model for complex professional work",
+        "dollarSigns": 5,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        },
+        "lifecycle": { "stage": "preview" }
+      },
+      {
+        "apiName": "gpt-5.6-terra",
+        "displayName": "GPT 5.6 Terra",
+        "description": "Balances intelligence and cost for everyday work",
+        "dollarSigns": 3,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        },
+        "lifecycle": { "stage": "preview" }
+      },
+      {
+        "apiName": "gpt-5.6-luna",
+        "displayName": "GPT 5.6 Luna",
+        "description": "Fast and affordable, optimized for cost-sensitive workloads",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "effortSettings": {
+          "defaultEffortLevel": "high",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        },
+        "lifecycle": { "stage": "preview" }
+      }
+    ],
+    "anthropic": [
+      {
+        "apiName": "claude-fable-5-1",
+        "displayName": "Claude Fable 5.1",
+        "description": "Anthropic's frontier model for demanding reasoning and long-horizon agentic work",
+        "dollarSigns": 6,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1000000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        }
+      },
+      {
+        "apiName": "claude-opus-5",
+        "displayName": "Claude Opus 5",
+        "description": "Anthropic's most advanced Opus model for agentic coding",
+        "dollarSigns": 6,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1000000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        }
+      },
+      {
+        "apiName": "claude-fable-5",
+        "displayName": "Claude Fable 5",
+        "description": "Anthropic's frontier model (extremely expensive)",
+        "dollarSigns": 10,
+        "temperature": 1,
+        "maxOutputTokens": 64000,
+        "contextWindow": 1000000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        }
+      },
+      {
+        "apiName": "claude-sonnet-5",
+        "displayName": "Claude Sonnet 5",
+        "description": "Anthropic's best balance of speed and intelligence",
+        "dollarSigns": 5,
+        "temperature": 1,
+        "maxOutputTokens": 64000,
+        "contextWindow": 1000000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "xhigh", "max"]
+        }
+      }
+    ],
+    "google": [
+      {
+        "apiName": "gemini-3.8-flash",
+        "displayName": "Gemini 3.8 Flash",
+        "description": "Google's most intelligent Flash model for complex agentic workflows",
+        "dollarSigns": 3,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high"]
+        }
+      },
+      {
+        "apiName": "gemini-3.7-flash",
+        "displayName": "Gemini 3.7 Flash",
+        "description": "Google's most capable Flash model for agentic workflows",
+        "dollarSigns": 3,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["minimal", "low", "medium", "high"]
+        }
+      }
+    ],
+    "vertex": [
+      {
+        "apiName": "gemini-3.7-flash",
+        "displayName": "Gemini 3.7 Flash",
+        "description": "Vertex Gemini 3.7 Flash model",
+        "dollarSigns": 3,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["minimal", "low", "medium", "high"]
+        }
+      }
+    ],
+    "openrouter": [
+      {
+        "apiName": "openrouter/free",
+        "displayName": "Free (OpenRouter)",
+        "description": "A rotating free-tier OpenRouter model",
+        "dollarSigns": 0,
+        "temperature": 0,
+        "maxOutputTokens": 32000,
+        "contextWindow": 200000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high"]
+        }
+      },
+      {
+        "apiName": "nvidia/nemotron-3-super-120b-a12b:free",
+        "displayName": "Nemotron 3 Super (Free)",
+        "description": "NVIDIA's open 120B MoE model with a 1M context window",
+        "dollarSigns": 0,
+        "temperature": 0,
+        "maxOutputTokens": 32000,
+        "contextWindow": 1000000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium"]
+        }
+      },
+      {
+        "apiName": "moonshotai/kimi-k3",
+        "displayName": "Kimi K3",
+        "description": "Moonshot AI's frontier model for long-horizon coding and reasoning",
+        "dollarSigns": 5,
+        "temperature": 1,
+        "contextWindow": 1040000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "max"]
+        }
+      },
+      {
+        "apiName": "qwen/qwen3.8-max",
+        "displayName": "Qwen3.8 Max",
+        "description": "Alibaba's flagship model for advanced reasoning and agentic work",
+        "dollarSigns": 3,
+        "temperature": 1,
+        "maxOutputTokens": 131072,
+        "contextWindow": 1000000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["minimal", "low", "medium", "high", "xhigh"]
+        }
+      },
+      {
+        "apiName": "meta/muse-spark-1.3",
+        "displayName": "Muse Spark 1.3",
+        "description": "Meta's multimodal reasoning model for long-running coding and agentic workflows",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 943718,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["minimal", "low", "medium", "high", "xhigh"]
+        },
+        "lifecycle": { "stage": "preview" }
+      },
+      {
+        "apiName": "z-ai/glm-5.3",
+        "displayName": "GLM 5.3",
+        "description": "Z-AI's flagship model for complex software engineering and long-horizon agents",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 131072,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "max",
+          "possibleEffortLevels": ["low", "high", "max"]
+        }
+      },
+      {
+        "apiName": "z-ai/glm-5.3-flash",
+        "displayName": "GLM 5.3 Flash",
+        "description": "Z-AI's efficient multimodal model for coding and agentic work",
+        "dollarSigns": 1,
+        "temperature": 1,
+        "maxOutputTokens": 131072,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "max",
+          "possibleEffortLevels": ["low", "high", "max"]
+        }
+      },
+      {
+        "apiName": "minimax/minimax-m3",
+        "displayName": "MiniMax M3",
+        "description": "MiniMax's multimodal model for long-horizon agentic work and coding",
+        "dollarSigns": 1,
+        "temperature": 0,
+        "contextWindow": 524288,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high"]
+        }
+      },
+      {
+        "apiName": "deepseek/deepseek-v4-flash-0731",
+        "displayName": "DeepSeek V4 Flash",
+        "description": "DeepSeek's 0731 release for fast reasoning, coding, and agent workflows",
+        "dollarSigns": 1,
+        "temperature": 1,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high", "max"]
+        }
+      },
+      {
+        "apiName": "x-ai/grok-4.6",
+        "displayName": "Grok 4.6",
+        "description": "xAI's frontier model for coding, knowledge work, and STEM",
+        "dollarSigns": 3,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 200000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high"]
+        },
+        "lifecycle": { "stage": "preview" }
+      }
+    ],
+    "xai": [
+      {
+        "apiName": "grok-4",
+        "displayName": "Grok 4",
+        "description": "xAI flagship model",
+        "dollarSigns": 3,
+        "temperature": 0,
+        "contextWindow": 256000,
+        "effortSettings": {
+          "defaultEffortLevel": "medium",
+          "possibleEffortLevels": ["low", "medium", "high"]
+        }
+      }
+    ]
+  },
+  "aliases": [
+    {
+      "id": "dyad/theme-generator/google",
+      "resolvedModel": {
+        "providerId": "google",
+        "apiName": "gemini-3.8-flash"
+      },
+      "displayName": "Google",
+      "purpose": "theme-generation"
+    },
+    {
+      "id": "dyad/theme-generator/anthropic",
+      "resolvedModel": {
+        "providerId": "anthropic",
+        "apiName": "claude-opus-5"
+      },
+      "displayName": "Anthropic",
+      "purpose": "theme-generation"
+    },
+    {
+      "id": "dyad/theme-generator/openai",
+      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5.6-sol" },
+      "displayName": "OpenAI",
+      "purpose": "theme-generation"
+    },
+    {
+      "id": "dyad/auto/openai",
+      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5.6-sol" },
+      "displayName": "Auto OpenAI",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/anthropic",
+      "resolvedModel": {
+        "providerId": "anthropic",
+        "apiName": "claude-opus-5"
+      },
+      "displayName": "Auto Anthropic",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/google",
+      "resolvedModel": {
+        "providerId": "google",
+        "apiName": "gemini-3.8-flash"
+      },
+      "displayName": "Auto Google",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/openrouter",
+      "resolvedModel": {
+        "providerId": "openrouter",
+        "apiName": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      "displayName": "Auto OpenRouter",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/balanced",
+      "resolvedModel": {
+        "providerId": "openrouter",
+        "apiName": "x-ai/grok-4.6"
+      },
+      "displayName": "Auto (balanced)",
+      "purpose": "auto-mode",
+      "apiProtocol": "responses"
+    },
+    {
+      "id": "dyad/help-bot/default",
+      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5-nano" },
+      "displayName": "Help Bot",
+      "purpose": "help-bot"
+    }
+  ],
+  "curatedSelections": {
+    "themeGenerationOptions": [
+      { "id": "dyad/theme-generator/google", "label": "Google" },
+      { "id": "dyad/theme-generator/anthropic", "label": "Anthropic" },
+      { "id": "dyad/theme-generator/openai", "label": "OpenAI" }
+    ]
+  }
+}

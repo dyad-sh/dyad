@@ -240,3 +240,38 @@ fake response drain the queue on a loaded runner before cancellation occurs.
 When a hybrid suite shares its harness app between tests, keep any test that
 deletes that app last. Creating a later chat against the deleted app fails the
 database foreign-key constraint before the behavior under test can run.
+
+## Headless real-engine runs (benchmarks, evals through the chat-flow harness)
+
+- Any code path through `runPtyCommand` (e.g. `add_dependency` → npm) fails under
+  plain node/vitest with `posix_spawnp failed` — node-pty is built for Electron's
+  ABI. Set `DYAD_DISABLE_PTY=1` to use the child_process fallback.
+- Local-agent consent-gated tools default to "ask"; headless there is no UI, so
+  each prompt hangs to the 300s consent deadline and then throws
+  `User denied permission for <tool>`. Pre-seed `settings.agentToolConsents`
+  using EXACT tool names (`restart_app`, `rebuild_app`, `execute_sql`,
+  `add_dependency`, `web_search`, `web_crawl`) — not file names like
+  `app_lifecycle`.
+- `getElectron()` (src/paths/paths.ts) gates on `process.versions.electron`, so
+  `vi.mock("electron")` never reaches it — helpers that dereference
+  `electron.app` need explicit non-Electron fallbacks. Symptom:
+  `Cannot read properties of undefined (reading 'app')`.
+- The Dyad engine does not cancel server-side work when a client disconnects.
+  Killing a mid-stream run leaves zombies that degrade the engine until even
+  tiny requests time out (undici's 300s headersTimeout + silent AI-SDK retries
+  look like exactly-300s stall loops). Probe with a small request before starting
+  a new run; never kill-and-relaunch without letting the engine drain.
+- Long-lived benchmark servers: a bash trap that kills a `( cd … && node … )`
+  subshell does NOT kill the node child — orphaned listeners then squat on the
+  port and health checks silently pass against STALE code. Kill by port
+  (`lsof -ti :PORT | xargs kill`) before binding, and treat any in-memory
+  registry as lost on restart (rebuild from durable state, e.g. Postgres).
+- When two different models/agents fail the SAME single test, suspect the test
+  or the environment before the models — in this benchmark that signature was,
+  in successive rounds: a missing browser build, an over-strict assertion, and
+  a stale server. All three masqueraded as "consistent model failure".
+- Score aggregators must gate on status before counting failures: a checkpoint
+  whose suite never ran reports an EMPTY failures list, which naive aggregation
+  reads as a perfect pass. Zero-credit anything whose buildStatus isn't "ok",
+  and exclude partially-scored cells from composites instead of counting their
+  unscored parts as zeros.

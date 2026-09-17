@@ -1,0 +1,29 @@
+# Run artifacts (regenerated per run)
+results/
+proxy/logs/
+neon-sim/server*.log
+neon-sim/ledger/
+eval-results/
+
+# Local installs
+node_modules/
+spikes/*/node_modules/
+spikes/s-auth/.next/
+spikes/s-auth/next-dev.log
+spikes/s-auth/server/*.log
+cuj-tests/results/
+
+# Generated TLS material (private keys — regenerate via neon-sim/README)
+neon-sim/certs/
+spikes/s-sql/certs/
+
+*.log
+
+# Oracle reference/broken-twin app trees. Each is its own git repo whose
+# checkpoint-m1/2/3 TAGS are load-bearing (run-suite.sh checks them out to score
+# a checkpoint), so they cannot be flattened into this repo without losing the
+# thing that makes them work. They ship as benchmark artifacts alongside the
+# generated apps; oracle/*.sh and each tree's ORACLE.md are the reproduction
+# recipe. Regenerate or fetch per oracle/README.md.
+oracle/*/reference/
+oracle/*/broken/

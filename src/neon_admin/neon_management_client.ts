@@ -387,12 +387,20 @@ export async function getNeonClient(): Promise<Api<unknown>> {
 
     return createApiClient({
       apiKey: newAccessToken,
+      baseURL: getNeonApiBaseUrl(),
     });
   }
 
   return createApiClient({
     apiKey: neonAccessToken,
+    baseURL: getNeonApiBaseUrl(),
   });
+}
+
+// Overridable so benchmarks/tests can point the management client at a local
+// Neon API stand-in; undefined preserves the SDK default (console.neon.tech).
+function getNeonApiBaseUrl(): string | undefined {
+  return process.env.DYAD_NEON_API_BASE_URL || undefined;
 }
 
 /**

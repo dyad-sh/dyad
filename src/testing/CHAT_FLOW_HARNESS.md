@@ -123,8 +123,49 @@ harness.getAppFiles()               // [{ relativePath, content }] sorted
 harness.readAppFile(rel)            // string, throws if missing
 harness.appFileExists(rel)          // boolean
 harness.gitLog()                    // ["<sha> <subject>", ...] newest first
+
+harness.startDevServer(opts?)       // opt-in: run the app's REAL dev server
+harness.ensureDevServer(opts?)      // restart it only if it isn't live
+harness.devServerUrl()              // preview proxy URL, or undefined
+harness.warmDevServerRoutes(routes) // request routes so next dev compiles+logs
+
 harness.dispose()                   // close server + db, rm temp dir
 ```
+
+### Running the app's dev server (opt-in)
+
+Without this, Local Agent's `restart_app` / `rebuild_app` fail with
+`Machine app_run is not registered` and `read_logs` always returns
+`No logs found matching the specified filters.` — the agent is blind to
+runtime behaviour.
+
+`startDevServer()` drives the production app-run path (register
+`appRunDefinition` → `appRunActorService.dispatchStart` →
+`appRuntimeService.start` → `<pnpm|npm> install && … run dev --port <p>`), and
+`listenToProcess` feeds stdout/stderr into the same `log_store` `read_logs`
+reads. It never throws and never blocks past its ready timeout; a failure is
+returned in the result _and_ appended to the app's logs.
+
+Two requirements:
+
+```ts
+// 1. point the preview proxy at the real worker (production resolves it
+//    relative to the packaged bundle → nonexistent under vitest → every
+//    readiness wait stalls to its 120s/600s timeout)
+vi.mock("@/ipc/utils/start_proxy_server", async () => {
+  const { createHeadlessProxyModule } =
+    await import("@/testing/headless_proxy_server");
+  return createHeadlessProxyModule();
+});
+
+// 2. keep ports off other services (see shared/ports.ts)
+process.env.DYAD_E2E_PORT_BLOCK_INDEX = "4"; // app 40300+, proxy 41300+
+```
+
+Call it _after_ installing dependencies and writing any env files. Nothing is
+started implicitly, and suites that never call it don't even import the
+app-runtime module graph. `type:"client"` / `"network-requests"` logs stay
+empty headless — their only writers are renderer-side.
 
 ### `streamChat(prompt, opts?) => StreamChatResult`
 

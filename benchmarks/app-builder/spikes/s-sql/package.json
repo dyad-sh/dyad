@@ -1,0 +1,21 @@
+{
+  "name": "s-sql",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "pg": "^8.22.0",
+    "ts-pg-schema-diff": "file:../../../../packages/ts-pg-schema-diff"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
+}

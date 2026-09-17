@@ -102,7 +102,12 @@ export function isAppLocationAccessible(resolvedPath: string): boolean {
 
 export function getTypeScriptCachePath(): string {
   const electron = getElectron();
-  return path.join(electron!.app.getPath("sessionData"), "typescript-cache");
+  if (electron) {
+    return path.join(electron.app.getPath("sessionData"), "typescript-cache");
+  }
+  // Non-Electron runtimes (vitest harnesses, benchmarks): keep the cache under
+  // the resolved user-data dir instead of dereferencing a missing electron.
+  return path.join(getUserDataPath(), "typescript-cache");
 }
 
 /**

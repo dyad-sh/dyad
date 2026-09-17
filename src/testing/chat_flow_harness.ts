@@ -43,6 +43,10 @@ import {
   settleChatActorsForDeletion,
 } from "@/ipc/services/chat_actor_service";
 import type { ChatStreamParams } from "@/ipc/types";
+// Type-only: the implementation is imported lazily inside startDevServer so
+// that suites which never run a dev server don't pull in the app-runtime
+// module graph (which calls fixPath() at import time).
+import type { HeadlessAppPreview } from "./headless_app_preview";
 import {
   runningApps,
   stopAppByInfo,
@@ -139,6 +143,13 @@ export interface ChatFlowHarnessOptions {
   electronMock: ElectronMockShared;
   /** Import-app fixture to check out. Default "minimal". */
   fixtureApp?: string;
+  /**
+   * Absolute path to a directory to check out as the app instead of a named
+   * `e2e-tests/fixtures/import-app` fixture. Takes precedence over
+   * `fixtureApp`. Used by benchmarks that start from an arbitrary template
+   * snapshot.
+   */
+  fixtureAppPath?: string;
   /** Provider row + model row overrides (defaults mirror the e2e test provider). */
   provider?: { id?: string; name?: string; apiBaseUrl?: string };
   model?: {
@@ -172,6 +183,13 @@ export interface ChatFlowHarnessOptions {
    * same channel.
    */
   registerChatStreamHandlers?: boolean;
+  /**
+   * Defaults for `harness.startDevServer()`. Purely defaults — the dev server
+   * is NEVER started implicitly, because callers must be able to install
+   * dependencies and write `.env.local` first, and because this harness is
+   * shared by every integration suite and must stay inert.
+   */
+  devServer?: { readyTimeoutMs?: number };
 }
 
 export interface StreamChatResult {
@@ -221,6 +239,28 @@ export interface ChatFlowHarness {
   /** One-line git log of the app repo, newest first. */
   gitLog: () => string[];
 
+  /**
+   * Starts the app's REAL dev server through the production app-run path, so
+   * `restart_app` / `rebuild_app` work and `read_logs` returns actual server
+   * output. Opt-in: never started implicitly.
+   */
+  startDevServer: (options?: {
+    readyTimeoutMs?: number;
+  }) => Promise<HeadlessAppPreview>;
+  /** Restarts the dev server only if it is not currently live. */
+  ensureDevServer: (options?: {
+    readyTimeoutMs?: number;
+  }) => Promise<HeadlessAppPreview>;
+  /** Preview URL of the running dev server, or undefined. */
+  devServerUrl: () => string | undefined;
+  /**
+   * Requests routes against the running preview so `next dev`'s lazy
+   * compilation actually surfaces render/prerender faults into `read_logs`.
+   */
+  warmDevServerRoutes: (
+    routes?: string[],
+  ) => Promise<Array<{ route: string; status?: number; error?: string }>>;
+
   dispose: () => Promise<void>;
 }
 
@@ -263,8 +303,11 @@ export async function setupChatFlowHarness(
       packagedRendererUrl: "file:///app/renderer/main_window/index.html",
     });
 
-    const fixtureApp = options.fixtureApp ?? "minimal";
-    const fixtureAppDir = path.join(IMPORT_APP_FIXTURES, fixtureApp);
+    const fixtureApp = options.fixtureAppPath
+      ? path.basename(options.fixtureAppPath)
+      : (options.fixtureApp ?? "minimal");
+    const fixtureAppDir =
+      options.fixtureAppPath ?? path.join(IMPORT_APP_FIXTURES, fixtureApp);
     if (!fs.existsSync(fixtureAppDir)) {
       throw new Error(`Unknown fixture app: ${fixtureApp} (${fixtureAppDir})`);
     }
@@ -455,7 +498,40 @@ export async function setupChatFlowHarness(
     const gitLog = (): string[] =>
       git(appDir, "log", "--oneline").trim().split("\n").filter(Boolean);
 
+    let devServerUsed = false;
+    const devServerDefaults = options.devServer ?? {};
+
+    const startDevServer = async (
+      startOptions?: { readyTimeoutMs?: number },
+      mode: "start" | "ensure" = "start",
+    ): Promise<HeadlessAppPreview> => {
+      const preview = await import("./headless_app_preview");
+      devServerUsed = true;
+      const args = {
+        appId,
+        readyTimeoutMs:
+          startOptions?.readyTimeoutMs ?? devServerDefaults.readyTimeoutMs,
+      };
+      return mode === "ensure"
+        ? preview.ensureHeadlessAppPreview(args)
+        : preview.startHeadlessAppPreview(args);
+    };
+
+    const devServerUrl = (): string | undefined =>
+      runningApps.get(appId)?.proxyUrl;
+
+    const warmDevServerRoutes = async (routes?: string[]) => {
+      const preview = await import("./headless_app_preview");
+      return preview.warmHeadlessAppPreviewRoutes({ appId, routes });
+    };
+
     const disposeOnce = async (): Promise<void> => {
+      // Stop the app's dev server before the rest of teardown: it holds a
+      // child process and a proxy worker that outlive the harness otherwise.
+      if (devServerUsed) {
+        const preview = await import("./headless_app_preview");
+        await preview.stopHeadlessAppPreview(appId).catch(() => {});
+      }
       // Renderer dispatch receipts acknowledge actor admission, not completion
       // of the main-owned command. Fence new stream work and drain both actor
       // and legacy handler lifetimes before closing resources they still use.
@@ -529,6 +605,10 @@ export async function setupChatFlowHarness(
     };
 
     return {
+      startDevServer: (startOptions) => startDevServer(startOptions, "start"),
+      ensureDevServer: (startOptions) => startDevServer(startOptions, "ensure"),
+      devServerUrl,
+      warmDevServerRoutes,
       db,
       appDir,
       appId,

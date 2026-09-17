@@ -1,0 +1,110 @@
+{
+  "pinnedAt": "2026-07-28",
+  "note": "Per-1M-token public list prices. claude-sonnet-5 is intro pricing through 2026-08-31 (standard $3/$15 after). grok-4.5 tiers: prompt >= 200000 tokens re-prices the whole request. Sources: developers.openai.com/api/docs/pricing, Anthropic claude-api pricing (cross-validated benchlm.ai), docs.x.ai/docs/models. deepseek-v4-flash (0731 snapshot) priced from DeepSeek's own list, matching the convention used for grok-4.5 (priced from xAI's list, not the OpenRouter reseller rate); cross-validated across deepseek.ai/pricing, benchlm.ai and aipricing.guru on 2026-08-07. TWO CAVEATS: DeepSeek announced a significant unspecified API price increase on 2026-08-06, and a peak-hour surcharge doubling rates during UTC 01:00-04:00 and 06:00-10:00 (announced 2026-06-30, not active as of 2026-08-02). Either could make this pin stale; re-verify before quoting deepseek cost. grok-4.6 (released 2026-08-12) shares 4.5 input/output rates but its CACHED input is $0.50 vs 4.5's $0.30 (long-context $1.00 vs $0.60) \u2014 4.5 cut its cache rate after launch and 4.6 shipped at the older figure. Cross-validated eesel.ai + aipricing.guru 2026-08-13; both also confirm the existing 4.5 pin. Long-context re-prices the WHOLE request once the prompt reaches 200k. gpt-5.6-luna repriced 2026-08-14 to 20% of the 2026-07-28 pin ($1/$0.10/$6 -> $0.20/$0.02/$1.20) on the user's report; provenance is user-stated, not re-verified against a public source. glm-5.3 ($1.20/$0.24/$4.00) and glm-5.3-flash ($0.075/$0.015/$0.25) pinned 2026-08-26 from openrouter.ai model pages (LIST rate; several providers run a 50%-off promo through 2026-09-09 which is deliberately NOT used, per the list-price convention). claude-fable-5-1 pinned 2026-08-29 from the claude-api reference: $10/$50 in/out like fable-5, but cache READS at $0.25/MTok (new lower rate shipped with 5.1; fable-5 remains $1.00), cache write 1.25x input. gemini-3.8-flash pinned 2026-09-02 at Google's INTRO list rate ($0.75/$0.075 cached/$3.75; standard $1.50/$7.50 applies from 2027-01-01) per ai.google.dev pricing, cross-checked openrouter.ai and artificialanalysis.ai; Gemini implicit cache writes are not billed as a separate token class, so no cacheWrite key. meta/muse-spark-1.3 pinned 2026-09-02 at Meta's list rate ($1.25/$0.15 cached/$4.25) from developer.meta.com, identical on openrouter.ai; the discounted '-contributor' variant (data used for training) is deliberately NOT used. gpt-6-astra pinned 2026-09-04 from developers.openai.com/api/docs/models/gpt-6-astra (cross-checked aipricing.guru, artificialanalysis.ai): $10/$1 cached/$12.50 cache-write/$50 standard; prompts above 272k tokens re-price the WHOLE request at $20/$2/$25/$75 (same tier convention as grok-4.5). Batch/Flex/Fast rates not used.",
+  "models": {
+    "gpt-5.6-sol": {
+      "input": 5,
+      "cachedInput": 0.5,
+      "output": 30
+    },
+    "gpt-5.6-terra": {
+      "input": 2.5,
+      "cachedInput": 0.25,
+      "output": 15
+    },
+    "gpt-5.6-luna": {
+      "input": 0.2,
+      "cachedInput": 0.02,
+      "output": 1.2
+    },
+    "claude-opus-5": {
+      "input": 5,
+      "cachedInput": 0.5,
+      "cacheWrite": 6.25,
+      "output": 25
+    },
+    "claude-fable-5": {
+      "input": 10,
+      "cachedInput": 1,
+      "cacheWrite": 12.5,
+      "output": 50
+    },
+    "claude-sonnet-5": {
+      "input": 2,
+      "cachedInput": 0.2,
+      "cacheWrite": 2.5,
+      "output": 10
+    },
+    "grok-4.5": {
+      "input": 2,
+      "cachedInput": 0.3,
+      "output": 6,
+      "tiers": {
+        "threshold": 200000,
+        "input": 4,
+        "cachedInput": 0.6,
+        "output": 12
+      }
+    },
+    "gemini-3.6-flash": {
+      "input": 0.3,
+      "cachedInput": 0.075,
+      "output": 1.2
+    },
+    "gemini-3.8-flash": {
+      "input": 0.75,
+      "cachedInput": 0.075,
+      "output": 3.75
+    },
+    "gpt-6-astra": {
+      "input": 10,
+      "cachedInput": 1,
+      "cacheWrite": 12.5,
+      "output": 50,
+      "tiers": {
+        "threshold": 272000,
+        "input": 20,
+        "cachedInput": 2,
+        "cacheWrite": 25,
+        "output": 75
+      }
+    },
+    "meta/muse-spark-1.3": {
+      "input": 1.25,
+      "cachedInput": 0.15,
+      "output": 4.25
+    },
+    "deepseek-v4-flash": {
+      "input": 0.14,
+      "cachedInput": 0.0028,
+      "output": 0.28
+    },
+    "grok-4.6": {
+      "input": 2,
+      "cachedInput": 0.5,
+      "output": 6,
+      "tiers": {
+        "threshold": 200000,
+        "input": 4,
+        "cachedInput": 1,
+        "output": 12
+      }
+    },
+    "z-ai/glm-5.3": {
+      "input": 1.2,
+      "cachedInput": 0.24,
+      "output": 4.0
+    },
+    "z-ai/glm-5.3-flash": {
+      "input": 0.075,
+      "cachedInput": 0.015,
+      "output": 0.25
+    },
+    "claude-fable-5-1": {
+      "input": 10,
+      "cachedInput": 0.25,
+      "cacheWrite": 12.5,
+      "output": 50
+    }
+  }
+}

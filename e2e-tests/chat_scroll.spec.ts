@@ -122,6 +122,29 @@ test("virtualized chat preserves keyboard scroll-away through completion", async
   const finished = await metrics(scroller);
   expect(finished.height).toBeGreaterThan(reading.height + 1000);
   expect(Math.abs(finished.top - reading.top)).toBeLessThan(5);
+
+  const chatId = new URL(po.page.url()).searchParams.get("id");
+  await po.chatActions.clickNewChat();
+  await po.chatActions.selectChatMode("ask");
+  await po.sendPrompt("[increment]");
+  await po.page.getByTestId(`chat-tab-${chatId}`).click();
+  await expect
+    .poll(async () => Math.abs((await metrics(scroller)).top - reading.top))
+    .toBeLessThan(5);
+  await expect(
+    po.page.getByRole("button", { name: "Scroll to bottom", exact: true }),
+  ).toBeVisible();
+  const viewport = await po.page.evaluate(() => ({
+    width: innerWidth,
+    height: innerHeight,
+  }));
+  await po.page.setViewportSize({
+    width: viewport.width,
+    height: viewport.height - 80,
+  });
+  await expect
+    .poll(async () => Math.abs((await metrics(scroller)).top - reading.top))
+    .toBeLessThan(5);
   await po.page
     .getByRole("button", { name: "Scroll to bottom", exact: true })
     .click();

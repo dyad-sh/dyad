@@ -798,7 +798,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           totalListHeightChanged={onContentHeightChange}
           data={messages}
           increaseViewportBy={{ top: 1000, bottom: 500 }}
-          initialTopMostItemIndex={messages.length - 1}
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}

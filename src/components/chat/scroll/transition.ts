@@ -1,22 +1,19 @@
 import type { ChatScrollEvent, ChatScrollState } from "./state";
-
-function ignore(state: ChatScrollState, _reason: string): ChatScrollState {
-  return state;
-}
+import { change, ignore, type TransitionResult } from "@/state_machines/types";
 
 export function transition(
   state: ChatScrollState,
   event: ChatScrollEvent,
-): ChatScrollState {
+): TransitionResult<ChatScrollState, never> {
   switch (event.type) {
     case "follow":
       return state.type === "following"
         ? ignore(state, "already following")
-        : { type: "following" };
+        : change({ type: "following" });
     case "user-away":
       return state.type === "reading"
         ? ignore(state, "already reading")
-        : { type: "reading", hasLeftBottom: false };
+        : change({ type: "reading", hasLeftBottom: false });
     case "position":
       if (state.type === "following")
         return ignore(state, "growth is not user intent");
@@ -24,12 +21,12 @@ export function transition(
         // A queued scroll event from our last write can arrive BEFORE the
         // browser applies the wheel gesture. Do not immediately undo the pause.
         return state.hasLeftBottom
-          ? { type: "following" }
+          ? change({ type: "following" })
           : ignore(state, "awaiting user movement");
       }
       return state.hasLeftBottom
         ? ignore(state, "still reading")
-        : { type: "reading", hasLeftBottom: true };
+        : change({ type: "reading", hasLeftBottom: true });
     default: {
       const exhaustive: never = event;
       return exhaustive;

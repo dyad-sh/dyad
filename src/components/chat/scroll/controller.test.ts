@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatScrollController } from "./controller";
 import { transition } from "./transition";
 import type { ChatScrollEvent, ChatScrollState } from "./state";
+import { restoreChatScrollPosition } from "./restore";
 
 const disposals: (() => void)[] = [];
 afterEach(() => {
@@ -111,6 +112,81 @@ describe("chat follow controller", () => {
     expect(h.scroller.scrollTop).toBe(2800);
   });
 
+  it("honors PageUp on a focused message button but ignores Space activation", () => {
+    const h = setup();
+    const button = document.createElement("button");
+    h.scroller.append(button);
+    button.dispatchEvent(
+      new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+    );
+    h.grow(3000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(2800);
+    button.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }),
+    );
+    h.position(2400);
+    h.grow(4000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(2400);
+  });
+
+  it("preserves an explicitly restored tab position across queued frames and later growth", () => {
+    const h = setup();
+    restoreChatScrollPosition(h.scroller, 300);
+    h.flush();
+    h.grow(4000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(300);
+    expect(h.onFollowing).toHaveBeenLastCalledWith(false);
+    restoreChatScrollPosition(h.scroller, 3800);
+    h.grow(5000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(4800);
+    h.controller.dispose();
+    restoreChatScrollPosition(h.scroller, 400);
+    expect(h.scroller.scrollTop).toBe(400);
+  });
+
+  it("keeps following when a tool card consumes the wheel, but pauses at its chaining boundary", () => {
+    const h = setup();
+    const inner = document.createElement("div");
+    inner.style.overflowY = "auto";
+    Object.defineProperties(inner, {
+      scrollHeight: { value: 600 },
+      clientHeight: { value: 150 },
+    });
+    h.scroller.append(inner);
+    inner.scrollTop = 300;
+    inner.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, bubbles: true }),
+    );
+    h.grow(3000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(2800);
+    expect(h.onFollowing.mock.calls).toEqual([[true]]);
+
+    inner.scrollTop = 0;
+    inner.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, bubbles: true }),
+    );
+    // A passive listener may see the inner card AFTER it has reached zero,
+    // even though the gesture was entirely consumed inside it.
+    h.grow(4000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(3800);
+    expect(h.onFollowing.mock.calls).toEqual([[true]]);
+
+    inner.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, bubbles: true }),
+    );
+    h.position(3700); // The next gesture actually chains to the chat.
+    h.grow(5000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(3700);
+    expect(h.onFollowing.mock.calls).toEqual([[true], [false]]);
+  });
+
   it("cancels frames and rejects late callbacks after chat teardown", () => {
     const h = setup();
     const lateCallback = [...h.callbacks.values()][0];
@@ -144,8 +220,12 @@ it("covers the complete follow-intent transition matrix, preserving no-op identi
   states.forEach((state, i) =>
     events.forEach((event, j) => {
       const result = transition(state, event);
-      expect(result).toEqual(states[expected[i][j]]);
-      if (expected[i][j] === i) expect(result).toBe(state);
+      expect(result.state).toEqual(states[expected[i][j]]);
+      if (expected[i][j] === i) {
+        expect(result.state).toBe(state);
+        expect(result.kind).toBe("ignored");
+        if (result.kind === "ignored") expect(result.reason).not.toBe("");
+      }
     }),
   );
 });

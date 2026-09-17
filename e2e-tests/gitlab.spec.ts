@@ -113,6 +113,29 @@ test("publishes to GitLab: connect, create a project, sync, link an existing one
     `${po.gitlabConnector.instanceUrl()}/dyad-team/${projectName}.git`,
   );
 
+  // Switching branches has to move the branch the next sync pushes. It used
+  // to move only github_branch, which a GitLab app never reads, so the sync
+  // after a switch pushed the branch the app was linked on and said it had
+  // succeeded.
+  await po.page.getByTestId("branch-actions-menu-trigger").click();
+  await po.page.getByTestId("create-branch-trigger").click();
+  await po.page.getByTestId("new-branch-name-input").fill("feature-gitlab");
+  await po.page.getByTestId("create-branch-submit-button").click();
+  await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
+    "feature-gitlab",
+    { timeout: Timeout.MEDIUM },
+  );
+
+  fs.writeFileSync(path.join(appPath, "on-feature.txt"), "from the branch");
+  git(appPath, "add", "on-feature.txt");
+  git(appPath, "commit", "-m", "Add commit on the switched branch");
+  await po.gitlabConnector.sync();
+  await po.gitlabConnector.expectPushEvent({
+    path: `dyad-team/${projectName}`,
+    branch: "feature-gitlab",
+    operation: "create",
+  });
+
   // Link an existing project instead.
   await po.gitlabConnector.disconnectRepo();
   await po.gitlabConnector.connectExistingProject(

@@ -47,6 +47,11 @@ vi.mock("@/paths/paths", () => ({
   getDyadAppPath: vi.fn((p: string) => `/mock/apps/${p}`),
 }));
 
+/** What reached `db.update(...).set(...)`, so a test can read the columns written. */
+const dbWrites = vi.hoisted(() => ({
+  updates: [] as Record<string, unknown>[],
+}));
+
 vi.mock("@/db", () => ({
   db: {
     query: {
@@ -54,6 +59,13 @@ vi.mock("@/db", () => ({
         findFirst: vi.fn(),
       },
     },
+    update: vi.fn(() => ({
+      set: vi.fn((values: Record<string, unknown>) => ({
+        where: vi.fn(async () => {
+          dbWrites.updates.push(values);
+        }),
+      })),
+    })),
   },
 }));
 
@@ -119,13 +131,17 @@ vi.mock("@/main/settings", () => ({
 import {
   handleDeleteBranch,
   handleFetchFromGithub,
+  handleRenameBranch,
+  handleSwitchBranch,
   registerGithubBranchHandlers,
 } from "@/ipc/handlers/git_branch_handlers";
+import { resolveAppGitRemote } from "@/ipc/utils/app_git_remote";
 import {
   gitFetch,
   gitListBranches,
   gitListRemoteBranches,
   gitDeleteBranch,
+  gitCurrentBranch,
 } from "@/ipc/utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { db } from "@/db";
@@ -524,5 +540,123 @@ describe("handleFetchFromGithub", () => {
       },
       prune: true,
     });
+  });
+});
+
+/**
+ * Switching and renaming record the branch the app is now on. Which column
+ * that lands in decides which branch the next push uses, because
+ * handlePushToGithub picks its refspec from resolveAppGitRemote — so these
+ * assert the round trip, not just the column name.
+ */
+describe("recording the branch an app moved to", () => {
+  const gitlabApp = {
+    id: 7,
+    path: "gitlab-app",
+    githubOrg: null,
+    githubRepo: null,
+    githubBranch: null,
+    gitlabHost: "https://gitlab.example.com",
+    gitlabProjectId: 9,
+    gitlabProjectPath: "team/demo",
+    gitlabBranch: "main",
+  };
+
+  const githubApp = {
+    id: 8,
+    path: "github-app",
+    githubOrg: "acme",
+    githubRepo: "demo",
+    githubBranch: "main",
+    gitlabHost: null,
+    gitlabProjectId: null,
+    gitlabProjectPath: null,
+    gitlabBranch: null,
+  };
+
+  /** The row as it stands after the writes this test recorded. */
+  function rowAfterWrites<T extends object>(app: T): T {
+    return Object.assign({}, app, ...dbWrites.updates);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbWrites.updates.length = 0;
+  });
+
+  it("switching a GitLab app moves the branch the push will use", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(gitlabApp as any);
+
+    await handleSwitchBranch(mockEvent, { appId: 7, branch: "feature-x" });
+
+    expect(dbWrites.updates).toEqual([{ gitlabBranch: "feature-x" }]);
+    // The regression: github_branch used to move while gitlab_branch stayed,
+    // so the next sync pushed main:main from a checkout sitting on feature-x
+    // and still reported success.
+    expect(resolveAppGitRemote(rowAfterWrites(gitlabApp))).toMatchObject({
+      provider: "gitlab",
+      branch: "feature-x",
+    });
+  });
+
+  it("renaming the current branch of a GitLab app moves it too", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(gitlabApp as any);
+    vi.mocked(gitCurrentBranch).mockResolvedValue("main");
+
+    await handleRenameBranch(mockEvent, {
+      appId: 7,
+      oldBranch: "main",
+      newBranch: "release",
+    });
+
+    expect(dbWrites.updates).toEqual([{ gitlabBranch: "release" }]);
+    expect(resolveAppGitRemote(rowAfterWrites(gitlabApp))?.branch).toBe(
+      "release",
+    );
+  });
+
+  it("leaves the branch alone when renaming one the app is not on", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(gitlabApp as any);
+    vi.mocked(gitCurrentBranch).mockResolvedValue("main");
+
+    await handleRenameBranch(mockEvent, {
+      appId: 7,
+      oldBranch: "other",
+      newBranch: "renamed",
+    });
+
+    expect(dbWrites.updates).toEqual([]);
+  });
+
+  it("switching a GitHub app still writes the GitHub column", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(githubApp as any);
+
+    await handleSwitchBranch(mockEvent, { appId: 8, branch: "feature-y" });
+
+    expect(dbWrites.updates).toEqual([{ githubBranch: "feature-y" }]);
+    expect(resolveAppGitRemote(rowAfterWrites(githubApp))).toMatchObject({
+      provider: "github",
+      branch: "feature-y",
+    });
+  });
+
+  it("no longer writes an empty repo name over a row it is not linking", async () => {
+    // The old call passed `repo: app.githubRepo || ""`, which put an empty
+    // string into github_repo for every app that was not linked to GitHub.
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(gitlabApp as any);
+
+    await handleSwitchBranch(mockEvent, { appId: 7, branch: "feature-x" });
+
+    expect(dbWrites.updates[0]).not.toHaveProperty("githubRepo");
+    expect(dbWrites.updates[0]).not.toHaveProperty("githubOrg");
+  });
+
+  it("records the branch of an unlinked app the way it always did", async () => {
+    const unlinked = { id: 9, path: "unlinked" };
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(unlinked as any);
+
+    await handleSwitchBranch(mockEvent, { appId: 9, branch: "scratch" });
+
+    expect(dbWrites.updates).toEqual([{ githubBranch: "scratch" }]);
   });
 });

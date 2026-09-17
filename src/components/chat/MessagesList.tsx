@@ -35,7 +35,6 @@ import { getExtraRevertedCommits } from "./revertImpact";
 interface MessagesListProps {
   chatId: number | null;
   messages: Message[];
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   contentRef?: React.RefCallback<HTMLDivElement>;
   onContentHeightChange?: () => void;
 }
@@ -46,7 +45,6 @@ const MemoizedChatMessage = React.memo(ChatMessage);
 // Context type for Virtuoso
 interface FooterContext {
   messages: Message[];
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   isStreaming: boolean;
   isUndoLoading: boolean;
   isRetryLoading: boolean;
@@ -124,7 +122,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
   const {
     messages,
-    messagesEndRef,
     isStreaming,
     isUndoLoading,
     isRetryLoading,
@@ -571,7 +568,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           </div>
         </div>
       )}
-      <div ref={messagesEndRef} />
       {renderSetupBanner()}
     </>
   );
@@ -582,7 +578,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     {
       chatId: selectedChatId,
       messages: persistedMessages,
-      messagesEndRef,
       contentRef,
       onContentHeightChange,
     },
@@ -697,7 +692,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const footerContext = useMemo<FooterContext>(
       () => ({
         messages: persistedMessages,
-        messagesEndRef,
         isStreaming,
         isUndoLoading,
         isRetryLoading,
@@ -714,7 +708,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       }),
       [
         persistedMessages,
-        messagesEndRef,
         isStreaming,
         isUndoLoading,
         isRetryLoading,
@@ -762,7 +755,10 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
     // In test mode, render all messages without virtualization
     // so E2E tests can query all messages in the DOM
-    if (isTestMode) {
+    if (
+      isTestMode &&
+      sessionStorage.getItem("dyad:e2e:virtualized-chat") !== "true"
+    ) {
       return (
         <div
           className="absolute inset-0 p-4 pb-0 pr-0 overflow-y-auto"
@@ -794,6 +790,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         data-testid="messages-list"
       >
         <Virtuoso
+          initialTopMostItemIndex={{ index: "LAST", align: "end" }}
           scrollerRef={setScrollerRef}
           totalListHeightChanged={onContentHeightChange}
           data={messages}

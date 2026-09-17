@@ -21,10 +21,8 @@ async function startVirtualizedStream(
   await po.chatActions.selectChatMode("ask");
   // A renderer reload retains the isolated test profile but exercises the real
   // production Virtuoso branch, not MessagesList's test-mode plain list.
-  await po.page.evaluate(async () => {
-    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-      isTestMode: false,
-    });
+  await po.page.evaluate(() => {
+    sessionStorage.setItem("dyad:e2e:virtualized-chat", "true");
   });
   const appPath = await electronApp.evaluate(({ app }) => app.getAppPath());
   await electronApp.evaluate(
@@ -150,4 +148,21 @@ test("virtualized chat preserves keyboard scroll-away through completion", async
   await scroller.hover();
   await po.page.mouse.wheel(0, (await metrics(scroller)).gap - 60);
   await expect.poll(async () => (await metrics(scroller)).gap).toBeLessThan(5);
+
+  // Enlarging the viewport can reach the bottom without another user gesture.
+  await po.page.mouse.wheel(0, -120);
+  await expect
+    .poll(async () => (await metrics(scroller)).gap)
+    .toBeGreaterThan(80);
+  await expect(
+    po.page.getByRole("button", { name: "Scroll to bottom", exact: true }),
+  ).toBeVisible();
+  await po.page.setViewportSize({
+    width: viewport.width,
+    height: viewport.height + 100,
+  });
+  await expect.poll(async () => (await metrics(scroller)).gap).toBeLessThan(5);
+  await expect(
+    po.page.getByRole("button", { name: "Scroll to bottom", exact: true }),
+  ).toBeHidden();
 });

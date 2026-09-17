@@ -107,7 +107,6 @@ export function ChatPanel({
     selectedMode === "local-agent" &&
     isQuotaExceeded;
 
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const {
     scrollerRef,
     contentRef,
@@ -281,7 +280,6 @@ export function ChatPanel({
                     <MessagesList
                       chatId={chatId ?? null}
                       messages={messages}
-                      messagesEndRef={messagesEndRef}
                       key={chatId}
                       ref={scrollerRef}
                       contentRef={contentRef}

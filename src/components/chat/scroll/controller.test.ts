@@ -14,16 +14,21 @@ function setup() {
   const scroller = document.createElement("div");
   document.body.append(scroller);
   let height = 1000;
+  let viewport = 200;
   Object.defineProperties(scroller, {
     scrollHeight: { get: () => height },
-    clientHeight: { value: 200 },
+    clientHeight: { get: () => viewport },
+    clientWidth: { value: 100 },
   });
   const callbacks = new Map<number, () => void>();
   let nextId = 0;
   const onFollowing = vi.fn();
   scroller.scrollTop = 800;
   scroller.scrollTo = vi.fn((options: ScrollToOptions) => {
-    scroller.scrollTop = Math.min(height - 200, options.top ?? 0);
+    scroller.scrollTop = Math.max(
+      0,
+      Math.min(height - viewport, options.top ?? 0),
+    );
   }) as typeof scroller.scrollTo;
   const controller = createChatScrollController(scroller, onFollowing, {
     request(callback) {
@@ -51,6 +56,10 @@ function setup() {
     onFollowing,
     flush,
     position,
+    resize: (value: number) => {
+      viewport = value;
+      controller.reconcile();
+    },
     grow: (value: number) => {
       height = value;
       controller.reconcile();
@@ -114,7 +123,9 @@ describe("chat follow controller", () => {
   it("recognizes unenumerated upward scrolling but not layout clamping", () => {
     const h = setup();
     h.flush();
-    h.position(700); // Selection autoscroll has no preceding wheel/key event.
+    h.scroller.dispatchEvent(new MouseEvent("pointerdown", { clientX: 50 }));
+    h.position(700); // Selection autoscroll has a held pointer, not wheel/key.
+    document.dispatchEvent(new Event("pointerup"));
     h.grow(2000);
     h.flush();
     expect(h.scroller.scrollTop).toBe(700);
@@ -131,6 +142,7 @@ describe("chat follow controller", () => {
   it("resumes within 80px on downward movement without undoing a small upward gesture", () => {
     const h = setup();
     h.flush();
+    h.scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
     h.position(780);
     expect(h.onFollowing).toHaveBeenLastCalledWith(false);
     h.position(600);
@@ -138,6 +150,29 @@ describe("chat follow controller", () => {
     h.flush();
     expect(h.scroller.scrollTop).toBe(800);
     expect(h.onFollowing).toHaveBeenLastCalledWith(true);
+  });
+
+  it("reattaches on viewport resize without a scroll event", () => {
+    const h = setup();
+    h.flush();
+    h.scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -200 }));
+    h.position(600);
+    h.resize(400); // Same scrollTop is now bottom-aligned.
+    h.flush();
+    expect(h.onFollowing).toHaveBeenLastCalledWith(true);
+    h.grow(2000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(1600);
+  });
+
+  it("ignores virtualizer upward corrections while total content grows", () => {
+    const h = setup();
+    h.flush();
+    h.grow(1200);
+    h.position(760); // A measured item above shrinks while the last item grows.
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(1000);
+    expect(h.onFollowing.mock.calls).toEqual([[true]]);
   });
 
   it("does not treat editing a message input as scroll intent", () => {

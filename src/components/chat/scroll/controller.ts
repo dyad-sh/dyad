@@ -25,6 +25,11 @@ export function createChatScrollController(
   let disposed = false;
   let touchY: number | undefined;
   let draggingScrollbar = false;
+  let pointerActive = false;
+  let inputUntil = 0;
+  const markInput = () => {
+    inputUntil = performance.now() + 200;
+  };
   const position = () => ({
     top: scroller.scrollTop,
     height: scroller.scrollHeight,
@@ -47,10 +52,12 @@ export function createChatScrollController(
     const current = position();
     // Passive input can arrive after compositor scrolling, and a touch gesture
     // stays latched to an inner card even after that card reaches its boundary.
-    // Also cover selection/middle-button autoscroll and platform-specific keys:
-    // actual upward movement, not a growing bottom gap, signals reading intent.
+    // Require input provenance: Virtuoso also corrects scrollTop when measured
+    // items shrink, even if simultaneous streaming makes total height grow.
+    // A held pointer covers selection autoscroll without repeated input events.
     // Exclude clamping caused by shrinking content/expanding viewport.
     if (
+      (pointerActive || performance.now() < inputUntil) &&
       current.top < lastPosition.top - 1 &&
       current.height >= lastPosition.height &&
       current.viewport <= lastPosition.viewport
@@ -61,7 +68,16 @@ export function createChatScrollController(
     return delta;
   };
   const reconcile = () => {
-    if (disposed || state.type !== "following" || frame !== undefined) return;
+    if (disposed) return;
+    // A resize can reach the bottom without changing scrollTop (and therefore
+    // without a scroll event). Preserve the upward-input race guard in transition.
+    if (
+      state.type === "reading" &&
+      !draggingScrollbar &&
+      scroller.clientHeight > 0
+    )
+      send({ type: "position", atBottom: atBottom() });
+    if (state.type !== "following" || frame !== undefined) return;
     frame = frames.request(() => {
       frame = undefined;
       if (!disposed) observeUserMovement();
@@ -143,6 +159,7 @@ export function createChatScrollController(
   };
   const onWheel = (event: WheelEvent) => {
     if (event.ctrlKey || event.defaultPrevented) return;
+    markInput();
     if (hasNestedScroller(event.target)) {
       observeUserMovement();
       return;
@@ -151,9 +168,11 @@ export function createChatScrollController(
     else if (event.deltaY > 0 && atBottom(80)) follow();
   };
   const onTouchStart = (event: TouchEvent) => {
+    markInput();
     touchY = event.touches.length === 1 ? event.touches[0]?.clientY : undefined;
   };
   const onTouchMove = (event: TouchEvent) => {
+    if (!event.defaultPrevented) markInput();
     const y =
       event.touches.length === 1 ? event.touches[0]?.clientY : undefined;
     if (
@@ -189,6 +208,7 @@ export function createChatScrollController(
       event.target.closest("button")
     )
       return;
+    markInput();
     if (
       nestedScrollerConsumes(
         event.target,
@@ -211,6 +231,8 @@ export function createChatScrollController(
       follow();
   };
   const onPointerDown = (event: PointerEvent) => {
+    pointerActive = true;
+    markInput();
     // Only the scrollbar gutter; selecting/clicking message content must not
     // silently disable follow mode. Both left and right scrollbars are supported.
     const rect = scroller.getBoundingClientRect();
@@ -224,6 +246,7 @@ export function createChatScrollController(
     }
   };
   const onPointerUp = () => {
+    pointerActive = false;
     if (!draggingScrollbar) return;
     draggingScrollbar = false;
     if (atBottom()) follow();

@@ -96,6 +96,20 @@ describe("certificateDomainFor", () => {
   it("declines an IPv6 address rather than guessing at a spelling", () => {
     expect(certificateDomainFor("2606:4700::1")).toBeNull();
   });
+
+  it("declines a host the apply-time charset would reject, instead of passing it through", () => {
+    // An underscore is legal in a DNS label (RFC 2181 §11) and reaches the
+    // install through the SSH host field, which is validated only as a
+    // non-empty string. The apply-time guard refuses anything outside
+    // [A-Za-z0-9.-]; a host the guard would reject has to short-circuit
+    // here, where the host becomes a domain, or it throws minutes in with a
+    // message that blames the user's own SSH host.
+    expect(certificateDomainFor("my_server.example.com")).toBeNull();
+    // The same applies to an international name the charset cannot spell.
+    expect(certificateDomainFor("café.example.com")).toBeNull();
+    // A name the charset accepts still goes through.
+    expect(certificateDomainFor("box.example.com")).toBe("box.example.com");
+  });
 });
 
 describe("plainUrlFor", () => {
@@ -310,6 +324,28 @@ describe("domainPointsAtServer", () => {
 
 describe("tryEnableHttps", () => {
   const FAST = { timeoutMs: 40, intervalMs: 5 };
+
+  it("gives an underscore SSH host the friendly fallback, not a late throw", async () => {
+    // The SSH host field validates only as a non-empty string, and an
+    // underscore is legal in a DNS label. Before the fix, a host like this
+    // went into the HTTPS flow and only failed at apply time with a message
+    // that blamed the user's own SSH host as an "unsafe instance domain".
+    // It should now reach the same friendly plain-HTTP fallback loopback,
+    // .local, and IPv6 hosts already got — never entering the install.
+    const { session, commands } = fakeSession();
+    const result = await tryEnableHttps(session, "my_server.example.com", {
+      ...FAST,
+      resolve: async () => ({ addresses: ["203.0.113.5"], failed: false }),
+      check: async () => true,
+    });
+
+    expect(result.secure).toBe(false);
+    expect(result.instanceUrl).toBe("http://my_server.example.com:8000");
+    expect(result.reason).toBe("This address cannot be given a certificate.");
+    // The apply-time script — which runs as root on the user's server — was
+    // never reached, so no command was sent.
+    expect(commands).toHaveLength(0);
+  });
 
   it("asks DNS about the server once, not once per check", async () => {
     // The gate below and the domain comparison want the same answer, and a

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
     oauthState: string | null;
   }[],
   neverSlugs: undefined as string[] | undefined,
-  writeSettings: vi.fn(),
+  tryWriteSettings: vi.fn(() => true),
 }));
 
 vi.mock("@/user_input/main", () => ({
@@ -41,7 +41,7 @@ vi.mock("@/ipc/utils/mcp_oauth_provider", () => ({
 
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({ neverSuggestPluginSlugs: mocks.neverSlugs }),
-  writeSettings: mocks.writeSettings,
+  tryWriteSettings: mocks.tryWriteSettings,
 }));
 
 // Two queries run against the servers table: every catalog row, and the
@@ -401,7 +401,7 @@ describe("suggestPluginTool", () => {
 
     expect(result).toContain("declined to connect the Vercel plugin");
     expect(result).toContain("do not suggest it again");
-    expect(mocks.writeSettings).not.toHaveBeenCalled();
+    expect(mocks.tryWriteSettings).not.toHaveBeenCalled();
     expect(onXmlComplete).toHaveBeenLastCalledWith(
       '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="declined"></dyad-suggest-plugin>',
     );
@@ -419,9 +419,28 @@ describe("suggestPluginTool", () => {
       context(),
     );
 
-    expect(mocks.writeSettings).toHaveBeenCalledWith({
-      neverSuggestPluginSlugs: ["stripe", "vercel"],
+    expect(mocks.tryWriteSettings).toHaveBeenCalledWith(
+      { neverSuggestPluginSlugs: ["stripe", "vercel"] },
+      expect.any(String),
+    );
+    expect(result).toContain("never suggest it again");
+    expect(onXmlComplete).toHaveBeenLastCalledWith(
+      '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="never"></dyad-suggest-plugin>',
+    );
+  });
+
+  it("still settles the card when the never-suggest choice cannot be stored", async () => {
+    mocks.tryWriteSettings.mockReturnValueOnce(false);
+    mocks.park.mockResolvedValue({
+      kind: "plugin-suggestion",
+      outcome: "never",
     });
+
+    const result = await suggestPluginTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context(),
+    );
+
     expect(result).toContain("never suggest it again");
     expect(onXmlComplete).toHaveBeenLastCalledWith(
       '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="never"></dyad-suggest-plugin>',

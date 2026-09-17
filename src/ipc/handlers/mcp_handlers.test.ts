@@ -167,7 +167,7 @@ let neverSuggestSlugs: string[] | undefined;
 const writeSettingsMock = vi.fn();
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({ neverSuggestPluginSlugs: neverSuggestSlugs }),
-  writeSettings: (settings: unknown) => writeSettingsMock(settings),
+  tryWriteSettings: (settings: unknown) => writeSettingsMock(settings),
 }));
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({

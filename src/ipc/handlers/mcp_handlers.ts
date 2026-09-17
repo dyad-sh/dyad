@@ -27,7 +27,7 @@ import {
   type McpConsentValue,
 } from "../types/mcp";
 import { findAvailablePort } from "../utils/port_utils";
-import { readSettings, writeSettings } from "../../main/settings";
+import { readSettings, tryWriteSettings } from "../../main/settings";
 import net from "node:net";
 import { safeStorage } from "electron";
 import {
@@ -40,12 +40,23 @@ const logger = log.scope("mcp_handlers");
 // Adding a plugin by hand is a clear signal the user wants it, so a stored
 // "don't suggest again" for it no longer applies. The chat card never
 // reaches this for such a plugin, because opted-out plugins are not offered.
+// Best-effort: the add has already succeeded by the time this runs, so a
+// settings problem here must not turn it into a failure.
 function clearNeverSuggestPlugin(slug: string) {
-  const slugs = readSettings().neverSuggestPluginSlugs;
-  if (!slugs?.includes(slug)) return;
-  writeSettings({
-    neverSuggestPluginSlugs: slugs.filter((candidate) => candidate !== slug),
-  });
+  try {
+    const slugs = readSettings().neverSuggestPluginSlugs;
+    if (!slugs?.includes(slug)) return;
+    tryWriteSettings(
+      {
+        neverSuggestPluginSlugs: slugs.filter(
+          (candidate) => candidate !== slug,
+        ),
+      },
+      "clearing a plugin's never-suggest choice",
+    );
+  } catch (error) {
+    logger.warn("Failed to clear a plugin's never-suggest choice", error);
+  }
 }
 
 // EADDRINUSE on either stack disqualifies the port; a stack that's

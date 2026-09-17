@@ -146,12 +146,15 @@ function PendingSuggestionCard({
       if (!created.enabled) {
         await ipc.mcp.updateServer({ id: created.id, enabled: true });
       }
-      await invalidateMcpQueries(queryClient);
+      // Not awaited: the refetch runs tool discovery on every plugin, and
+      // the one just added can sit in that until its timeout when it is
+      // not authorized yet. Connecting must not wait on it.
+      void invalidateMcpQueries(queryClient);
       // The row may have been authorized elsewhere since the card appeared.
       if (pending.needsOAuth && !created.oauthConnected) {
         setPhase("authorizing");
         const connected = await connectNewServer(created);
-        await invalidateMcpQueries(queryClient);
+        void invalidateMcpQueries(queryClient);
         if (!connected) {
           // The shared flow already toasted the specific reason, which may
           // be unrelated to authorization, so the card stays general.

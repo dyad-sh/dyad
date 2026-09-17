@@ -12,7 +12,7 @@ import type {
   McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
 import { oauthStateHasTokens } from "@/ipc/utils/mcp_oauth_provider";
-import { readSettings, writeSettings } from "@/main/settings";
+import { readSettings, tryWriteSettings } from "@/main/settings";
 import { userInputRegistry } from "@/user_input/main";
 import {
   ToolDefinition,
@@ -328,11 +328,15 @@ export const suggestPluginTool: ToolDefinition<SuggestPluginArgs> = {
       }
       if (result.outcome === "never") {
         // Persisted per plugin, so it holds across chats and restarts.
+        // Best-effort: the user has answered, so a settings problem must
+        // not abort the tool before the card and the model hear about it.
+        // The per-chat decline below still covers this conversation.
         const existing = readSettings().neverSuggestPluginSlugs ?? [];
         if (!existing.includes(server.slug)) {
-          writeSettings({
-            neverSuggestPluginSlugs: [...existing, server.slug],
-          });
+          tryWriteSettings(
+            { neverSuggestPluginSlugs: [...existing, server.slug] },
+            "storing a plugin's never-suggest choice",
+          );
         }
         addTo(declinedSlugsByChat, ctx.chatId, server.slug);
         ctx.onXmlComplete(terminalXml(server, args.reason, "never"));

@@ -68,6 +68,14 @@ export function CoolifySignOutDialog({
     credentials?.server !== null &&
     credentials?.server !== undefined &&
     credentials.server.password === null;
+  // Held but unreadable, the same as the password above. The panel below names
+  // it; this adds only what signing out does to it. Without it, a user ticked
+  // "I have saved anything I need" rightly believing they were shown all that
+  // was held — never told a token was among it.
+  const tokenIsLocked =
+    credentials?.instance !== null &&
+    credentials?.instance !== undefined &&
+    credentials.instance.apiToken === null;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -89,6 +97,15 @@ export function CoolifySignOutDialog({
           <div
             className="text-destructive text-sm"
             data-testid="coolify-sign-out-locked-password"
+          >
+            It goes when you sign out, unread.
+          </div>
+        )}
+
+        {tokenIsLocked && (
+          <div
+            className="text-destructive text-sm"
+            data-testid="coolify-sign-out-locked-api-token"
           >
             It goes when you sign out, unread.
           </div>

@@ -195,6 +195,41 @@ describe("nothing to look at yet", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
+
+  it("says when it holds a token it cannot read", async () => {
+    // The panel names the held token; this adds what signing out does to it,
+    // so the user is not invited to confirm they have saved anything they
+    // need without knowing a held token is among what sign-out discards.
+    h.revealCredentials.mockResolvedValue({
+      ...FULL,
+      instance: { ...FULL.instance, apiToken: null },
+    });
+    open();
+
+    const addendum = await waitFor(() =>
+      screen.getByTestId("coolify-sign-out-locked-api-token"),
+    );
+    // Said once. The panel below states what Dyad is holding; this only adds
+    // what signing out does to it, so both saying it reads as a stutter.
+    expect(screen.queryAllByText(/holding an API token/i)).toHaveLength(1);
+    // And said after it, for the same reason the read failure is.
+    const cause = screen.getByTestId("coolify-credentials-locked-api-token");
+    expect(
+      cause.compareDocumentPosition(addendum) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("does not say so when the token is readable", async () => {
+    // No held-but-unreadable token in the FULL fixture, so signing out
+    // discards nothing the user could not already copy. A notice there would
+    // name a hold that does not exist.
+    await openAndSettle();
+
+    expect(
+      screen.queryByTestId("coolify-sign-out-locked-api-token"),
+    ).toBeNull();
+  });
 });
 
 describe("the last look", () => {

@@ -113,6 +113,27 @@ function LockedPassword() {
   );
 }
 
+/**
+ * Said rather than left blank, the same reason the password above is.
+ *
+ * readSettings drops a token it cannot decrypt and keeps the address, so the
+ * absence is Dyad holding one it cannot open — not an instance that never
+ * had one. Left to the row simply not appearing, the two look identical, and
+ * a user signs out believing the empty row means there is nothing to save —
+ * when there is a token, being destroyed, they could have re-minted first.
+ */
+function LockedApiToken() {
+  return (
+    <p
+      className="text-destructive text-sm"
+      data-testid="coolify-credentials-locked-api-token"
+    >
+      Dyad is holding an API token for this server but cannot read it on this
+      machine.
+    </p>
+  );
+}
+
 export function CoolifyCredentials({
   showTitle,
 }: { showTitle?: boolean } = {}) {
@@ -197,8 +218,10 @@ export function CoolifyCredentials({
           ) : (
             <LockedPassword />
           )}
-          {instance.apiToken && (
+          {instance.apiToken ? (
             <Field label="API token" value={instance.apiToken} secret />
+          ) : (
+            <LockedApiToken />
           )}
         </>
       ) : (
@@ -247,13 +270,15 @@ export function CoolifyCredentials({
                 value={instance.url}
                 idPrefix={showsBoth ? "instance" : undefined}
               />
-              {instance.apiToken && (
+              {instance.apiToken ? (
                 <Field
                   label="API token"
                   value={instance.apiToken}
                   secret
                   idPrefix={showsBoth ? "instance" : undefined}
                 />
+              ) : (
+                <LockedApiToken />
               )}
             </div>
           )}

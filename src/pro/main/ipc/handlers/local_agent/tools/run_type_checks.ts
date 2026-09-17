@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import {
   ToolDefinition,
@@ -21,7 +22,7 @@ const runTypeChecksSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
+      "Optional. An array of paths to files or directories to read type errors for, relative to the app root (e.g. 'src/App.tsx' or 'src/lib'). Absolute paths and '.' are resolved against the app root. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
     ),
 });
 
@@ -49,24 +50,76 @@ const projectWideDescription = `Run TypeScript type checks on the whole current 
  * Check if a problem file matches any of the specified paths.
  * Matches if the problem file equals the path (file match) or
  * starts with the path followed by a separator (directory match).
+ *
+ * `problem.file` is always workspace-relative for in-app files (see tsc.ts,
+ * which computes it via `path.relative(appPath, …)`), so agent-supplied paths
+ * must be expressed in that same workspace-relative form before comparing.
+ * Agents occasionally pass an absolute path (e.g. copied from build output)
+ * or `.` (a whole-project alias); without resolving those against `appPath`
+ * a raw string compare silently misses them and reports the requested file
+ * as clean while hiding its real error in the location-less "outside this
+ * scope" disclosure. We resolve each target against `appPath` first so all
+ * path styles (relative, absolute POSIX/Windows, and `.`) map to the same
+ * workspace-relative form as `problem.file` before the equality/prefix check.
  */
-function matchesPaths(problemFile: string, paths: string[]): boolean {
-  // Normalize the problem file path (convert backslashes and remove leading ./)
+function matchesPaths(
+  problemFile: string,
+  paths: string[],
+  appPath: string,
+): boolean {
   const normalizedProblemFile = normalizePath(problemFile).replace(/^\.\//, "");
 
-  for (const targetPath of paths) {
-    // Normalize target path (convert backslashes, remove leading ./ and trailing /)
-    const normalizedTarget = normalizePath(targetPath)
-      .replace(/^\.\//, "")
-      .replace(/\/$/, "");
+  // Pick the same path semantics tsc.ts uses for this app so resolution and
+  // the existing workspace-relative `problem.file` stay consistent.
+  const looksLikeWin32Path = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(appPath);
+  const pathImpl = looksLikeWin32Path ? path.win32 : path.posix;
+  const resolvedAppPath = pathImpl.resolve(appPath);
 
-    // Exact file match
-    if (normalizedProblemFile === normalizedTarget) {
+  for (const targetPath of paths) {
+    // Normalize backslashes to forward slashes, then resolve the target
+    // against the app root. `path.resolve` treats absolute targets as
+    // anchored at the filesystem root and relative targets as app-relative,
+    // so both produce an absolute path we can express relative to the app.
+    const resolvedTarget = pathImpl.resolve(
+      resolvedAppPath,
+      normalizePath(targetPath),
+    );
+    const relative = pathImpl.relative(resolvedAppPath, resolvedTarget);
+
+    // "." or the app root itself selects every problem file.
+    if (relative === "" || relative === ".") {
       return true;
     }
 
-    // Directory prefix match (problem file is inside the target directory)
-    if (normalizedProblemFile.startsWith(normalizedTarget + "/")) {
+    // Targets resolving outside the app root cannot match in-app files.
+    // A different Windows drive makes `relative` an absolute path.
+    if (
+      relative === ".." ||
+      relative.startsWith(`..${pathImpl.sep}`) ||
+      pathImpl.isAbsolute(relative)
+    ) {
+      continue;
+    }
+
+    const normalizedRelative = normalizePath(relative).replace(/\/$/, "");
+
+    // On Windows, path segments may differ only in casing; compare
+    // case-insensitively so that e.g. SRC/foo.ts matches src/foo.ts.
+    const cmp = looksLikeWin32Path
+      ? (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+      : (a: string, b: string) => a === b;
+
+    if (cmp(normalizedProblemFile, normalizedRelative)) {
+      return true;
+    }
+
+    if (
+      looksLikeWin32Path
+        ? normalizedProblemFile
+            .toLowerCase()
+            .startsWith(normalizedRelative.toLowerCase() + "/")
+        : normalizedProblemFile.startsWith(normalizedRelative + "/")
+    ) {
       return true;
     }
   }
@@ -104,7 +157,10 @@ function formatProblems({
     return `Found ${pluralizeErrors(allProblems.length)}:\n\n${formatProblemLines(allProblems)}`;
   }
 
-  const scope = paths.length === 1 ? `\`${paths[0]}\`` : "the requested paths";
+  const scope =
+    paths.length === 1
+      ? `\`${normalizePath(paths[0])}\``
+      : "the requested paths";
   const outsideCount = allProblems.length - matchingProblems.length;
 
   if (matchingProblems.length === 0) {
@@ -235,7 +291,9 @@ export const runTypeChecksTool: ToolDefinition<
 
     // Filter by paths if specified
     if (paths && paths.length > 0) {
-      matchingProblems = allProblems.filter((p) => matchesPaths(p.file, paths));
+      matchingProblems = allProblems.filter((p) =>
+        matchesPaths(p.file, paths, ctx.appPath),
+      );
     }
 
     const result =

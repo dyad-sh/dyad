@@ -17,7 +17,6 @@ import { showError } from "@/lib/toast";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 
 interface DyadSuggestPluginProps {
-  children?: React.ReactNode;
   slug: string;
   name?: string;
   reason: string;
@@ -34,7 +33,6 @@ interface DyadSuggestPluginProps {
  * the agent a new capability rather than approving a single call.
  */
 export const DyadSuggestPlugin: React.FC<DyadSuggestPluginProps> = ({
-  children,
   slug,
   name,
   reason,
@@ -111,9 +109,7 @@ export const DyadSuggestPlugin: React.FC<DyadSuggestPluginProps> = ({
   // the historical presentation. Dismissed requests have no terminal UI.
   if (outcome === "dismissed" || !pending) return null;
 
-  return (
-    <PendingSuggestionCard pending={pending}>{children}</PendingSuggestionCard>
-  );
+  return <PendingSuggestionCard pending={pending} />;
 };
 
 type ConnectPhase = "idle" | "adding" | "authorizing" | "declining";
@@ -121,10 +117,8 @@ type ConnectPhase = "idle" | "adding" | "authorizing" | "declining";
 // The live card owns the connect hooks so historical cards stay cheap.
 function PendingSuggestionCard({
   pending,
-  children,
 }: {
   pending: PendingPluginSuggestion;
-  children?: React.ReactNode;
 }) {
   const { t } = useTranslation("chat");
   const readModel = useUserInputReadModel();
@@ -156,11 +150,12 @@ function PendingSuggestionCard({
       // The row may have been authorized elsewhere since the card appeared.
       if (pending.needsOAuth && !created.oauthConnected) {
         setPhase("authorizing");
-        // The shared flow toasts its own failure message.
         const connected = await connectNewServer(created);
         await invalidateMcpQueries(queryClient);
         if (!connected) {
-          setConnectError(t("suggestPlugin.authRequired"));
+          // The shared flow already toasted the specific reason, which may
+          // be unrelated to authorization, so the card stays general.
+          setConnectError(t("suggestPlugin.connectFailed"));
           setPhase("idle");
           return;
         }
@@ -200,6 +195,7 @@ function PendingSuggestionCard({
   const handleDecline = async (outcome: "declined" | "never") => {
     if (isBusy) return;
     setPhase("declining");
+    setConnectError(null);
     let responded = false;
     try {
       responded = await readModel.respond(pending.requestId, {
@@ -238,9 +234,6 @@ function PendingSuggestionCard({
         </span>
       </DyadCardHeader>
       <div className="px-3 pb-3 flex flex-col gap-3">
-        {children && (
-          <div className="text-xs text-muted-foreground">{children}</div>
-        )}
         <div className="rounded-md border border-violet-200/80 bg-violet-50/60 px-3 py-2 dark:border-violet-900/60 dark:bg-violet-950/40">
           <p className="text-[11px] font-medium uppercase tracking-wide text-violet-700 dark:text-violet-300">
             {t("suggestPlugin.reasonLabel")}

@@ -261,7 +261,15 @@ describe("DyadSuggestPlugin", () => {
     await waitFor(() => expect(mocks.connectNewServer).toHaveBeenCalled());
     await waitFor(() => expect(connectButton().disabled).toBe(false));
     expect(mocks.respond).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toBeTruthy();
+    // The toast carries the specific reason; the card does not guess one.
+    expect(screen.getByRole("alert").textContent).toBe(
+      "suggestPlugin.connectFailed",
+    );
+
+    // Declining afterwards clears the stale failure.
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("disables both buttons while another connect flow holds the slot", () => {

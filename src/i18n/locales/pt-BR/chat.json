@@ -388,7 +388,8 @@
     "authRequired": "O plugin foi adicionado, mas precisa de autorização. Conecte-o na página de Plugins.",
     "never": "Não sugerir novamente",
     "neverTitle": "{{name}} não será sugerido novamente",
-    "neverDescription": "O Dyad continuará sem ele. Você ainda pode adicioná-lo na página de Plugins."
+    "neverDescription": "O Dyad continuará sem ele. Você ainda pode adicioná-lo na página de Plugins.",
+    "connectFailed": "Não foi possível conectar o plugin. Tente novamente ou gerencie-o na página de Plugins."
   },
   "guide": "Guia",
   "annotations": {

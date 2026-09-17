@@ -898,9 +898,7 @@ function renderCustomTag(
               ? attributes.outcome
               : undefined
           }
-        >
-          {content}
-        </DyadSuggestPlugin>
+        />
       );
 
     case "dyad-enable-nitro":

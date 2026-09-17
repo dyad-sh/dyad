@@ -390,7 +390,8 @@
     "authRequired": "Eklenti eklendi ancak yetkilendirme gerekiyor. Eklentiler sayfasından bağlayın.",
     "never": "Bir daha önerme",
     "neverTitle": "{{name}} bir daha önerilmeyecek",
-    "neverDescription": "Dyad onsuz devam edecek. Eklentiler sayfasından yine de ekleyebilirsiniz."
+    "neverDescription": "Dyad onsuz devam edecek. Eklentiler sayfasından yine de ekleyebilirsiniz.",
+    "connectFailed": "Eklenti bağlanamadı. Tekrar deneyin veya Eklentiler sayfasından yönetin."
   },
   "guide": "Rehber",
   "annotations": {

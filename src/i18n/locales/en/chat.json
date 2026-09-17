@@ -391,7 +391,8 @@
     "authRequired": "The plugin was added but needs authorization. Connect it from the Plugins page.",
     "never": "Don't suggest again",
     "neverTitle": "Won't suggest {{name}} again",
-    "neverDescription": "Dyad will continue without it. You can still add it from the Plugins page."
+    "neverDescription": "Dyad will continue without it. You can still add it from the Plugins page.",
+    "connectFailed": "Could not connect the plugin. Try again, or manage it on the Plugins page."
   },
   "guide": "Guide",
   "annotations": {

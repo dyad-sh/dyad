@@ -388,7 +388,8 @@
     "authRequired": "插件已添加，但需要授权。请在插件页面中连接它。",
     "never": "不再建议",
     "neverTitle": "不会再建议 {{name}}",
-    "neverDescription": "Dyad 将在没有它的情况下继续。你仍可以在插件页面中添加它。"
+    "neverDescription": "Dyad 将在没有它的情况下继续。你仍可以在插件页面中添加它。",
+    "connectFailed": "无法连接该插件。请重试，或在插件页面中管理它。"
   },
   "guide": "指南",
   "annotations": {

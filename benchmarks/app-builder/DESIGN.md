@@ -99,6 +99,12 @@ Rerun the same 9 checkpoints per model through **Claude Code CLI** (sonnet-5 / o
 
 ## 10. Spike findings (2026-07-28/29, all five spikes)
 
+The spike code itself (`spikes/s-auth`, `spikes/s-sql`: the browser check
+script and the ~200-line prototype proxy) is not part of this tree — it was
+throwaway by design and nothing runs it. It survives on the pre-squash branch
+`update-agent-docs-20260728232717` (commit 53e8eab29, "validated spike
+infrastructure"); the verdicts below are the record.
+
 Verdicts: **S-AUTH confirmed 9/9** (self-hosted better-auth 1.4.18 works at a non-Neon
 base URL; `__Secure-` cookies survive http://localhost; SDK pins better-auth 1.4.18;
 cookie prefix `neon-auth` required; auth errors THROW). **S-SQL confirmed 14/14**

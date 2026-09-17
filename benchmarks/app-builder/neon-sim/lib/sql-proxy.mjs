@@ -1,6 +1,6 @@
 // SQL proxy speaking the @neondatabase/serverless fetch protocol (POST /sql)
 // against local Postgres. Ported verbatim from the validated S-SQL spike
-// (spikes/s-sql/proxy.mjs — see its header for the protocol notes), with two
+// (the S-SQL spike's proxy.mjs; protocol notes summarised in DESIGN.md §10), with two
 // changes: (1) pools connect as the user in the Neon-Connection-String rather
 // than a fixed user, (2) an onStatement callback feeds the diagnostic ledger.
 import http from "node:http";

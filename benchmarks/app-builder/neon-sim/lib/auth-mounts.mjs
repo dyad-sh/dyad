@@ -1,5 +1,5 @@
 // Per-(project, branch) better-auth instances standing in for Managed Neon Auth.
-// Config requirements validated by the S-AUTH spike (spikes/s-auth/README.md):
+// Config requirements validated by the S-AUTH spike (verdicts in DESIGN.md §10):
 // better-auth 1.4.18 (the version @neondatabase/auth pins), cookiePrefix
 // "neon-auth" + useSecureCookies so upstream cookies are named
 // __Secure-neon-auth.*, email verification off. Tables live in the neon_auth

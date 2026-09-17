@@ -1,6 +1,6 @@
 // Exercises the local-agent run_tests tool end-to-end over the HYBRID harness
-// (real <ChatPanel> over the real IPC stack). The fixture writes a spec, then
-// calls run_tests. No dev server is running in the harness, so the real tool
+// (real <ChatPanel> over the real IPC stack). The fixture writes two specs,
+// then calls run_tests with both paths. No dev server is running, so the real tool
 // short-circuits on its dev-server pre-check and returns the actionable "app
 // isn't running" warning (uncounted) — a deterministic path that avoids running
 // Playwright-inside-Playwright. Asserts the tool XML + narration land in the
@@ -81,6 +81,7 @@ describe("local-agent run_tests (integration)", () => {
 
     // The spec was written to disk.
     expect(content).toContain("e2e-tests/home.spec.ts");
+    expect(content).toContain("e2e-tests/navigation.spec.ts");
 
     // Every channel the UI invoked had a real handler.
     expect([...harness.bridge.missingChannels]).toEqual([]);

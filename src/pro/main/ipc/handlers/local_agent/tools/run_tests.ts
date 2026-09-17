@@ -14,6 +14,7 @@ import {
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
+import { reconcileResultFile } from "@/lib/testResultUtils";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
@@ -35,57 +36,79 @@ import {
   truncateError,
 } from "./run_tests_utils";
 
-const runTestsSchema = z.object({
-  testFile: z
-    .string()
-    .min(1)
-    .describe(
-      "Relative path of the single spec to run, e.g. 'e2e-tests/checkout.spec.ts'. Required — always target the one spec you're working on (usually the one you just wrote or edited). Use the exact path of a spec that exists under e2e-tests/; if it doesn't match, the tool lists the real specs so you can retry.",
-    ),
-  grep: z
-    .string()
-    .min(1)
-    .optional()
-    .describe(
-      "Regex passed to Playwright's --grep to run just a subset, e.g. 'check out' or 'user can (sign up|log in)'. Playwright matches against the full hierarchical title (describe blocks plus test title). Omit by default to run the whole file; only pass it to iterate on one slow/failing test or a few related ones.",
-    ),
-  flakeCheck: z
-    .boolean()
-    .optional()
-    .describe(
-      "Set true to rerun WITHOUT having changed any files, to confirm a suspected flaky failure. Allowed once per spec and does not count against the fix-attempt limit.",
-    ),
-});
+const runTestsSchema = z
+  .object({
+    testFiles: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe(
+        "Exact relative spec paths under e2e-tests/, e.g. ['e2e-tests/signup.spec.ts', 'e2e-tests/checkout.spec.ts']. Omit to run all specs. An empty list is invalid. Paths are normalized and deduplicated; if any spec is missing, nothing runs.",
+      ),
+    grep: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Regex passed to Playwright's --grep to run just a subset, e.g. 'check out' or 'user can (sign up|log in)'. Playwright matches against the full hierarchical title (describe blocks plus test title). Applies across the selected files, or the whole suite if testFiles is omitted. Omit by default to run whole files; only pass it to iterate on one slow/failing test or a few related ones.",
+      ),
+    flakeCheck: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to rerun WITHOUT having changed any files, to confirm a suspected flaky failure. Allowed once per spec and does not count against the fix-attempt limit.",
+      ),
+  })
+  .strict();
 
 type RunTestsArgs = z.infer<typeof runTestsSchema>;
 
-/**
- * Match the requested path against the specs on disk before any expensive
- * work. No exact match → warn with the real spec list; never run a spec the
- * agent didn't name.
- */
-async function resolveSpecPath(
+/** Resolve the entire selection before isolation or attempt accounting. */
+async function resolveSpecPaths(
   ctx: AgentContext,
-  requested: string,
-): Promise<{ testFile: string } | { error: string }> {
+  requested?: string[],
+): Promise<{ testFiles: string[]; specs: string[] } | { error: string }> {
   const specs = await listSpecFiles(ctx.appPath);
-  const normalized = normalizeRunTestFile(requested) ?? requested;
-  if (specs.includes(normalized)) {
-    return { testFile: normalized };
+  const existing = new Set(specs);
+  const files = new Set<string>();
+  const missing: string[] = [];
+  for (const file of requested ?? specs) {
+    const normalized = normalizeRunTestFile(file);
+    if (normalized === null || !existing.has(normalized)) missing.push(file);
+    else files.add(normalized);
+  }
+  if (missing.length === 0 && files.size > 0) {
+    return { testFiles: [...files], specs };
   }
 
-  const base = normalized.split("/").pop();
-  const byBase = base ? specs.filter((s) => s.split("/").pop() === base) : [];
   const specList =
     specs.length > 0
-      ? `Specs that exist under e2e-tests/:\n${specs.map((s) => `- ${s}`).join("\n")}`
-      : "There are no spec files under e2e-tests/ yet — write one first, then run it.";
-  const didYouMean =
-    byBase.length > 0
-      ? `\n\nClosest match by filename: ${byBase.map((s) => `\`${s}\``).join(", ")} — if that's what you meant, call run_tests again with that exact path.`
-      : "";
-  const body = `No spec matches \`${requested}\`, so I did NOT start a run — no test environment was set up and this did NOT count as a fix attempt. This is NOT an infrastructure failure; the path just doesn't point at a spec.\n\n${specList}${didYouMean}\n\nCall run_tests again with an exact path from the list above. If the spec you meant isn't listed, it hasn't been written under e2e-tests/ yet.`;
-  completeWarning(ctx, `No test file matches "${requested}"`, body);
+      ? `Specs that exist under e2e-tests/:\n${specs.map((file) => `- ${file}`).join("\n")}`
+      : "There are no spec files under e2e-tests/ yet — write one first, then run them.";
+  const suggestions = missing.flatMap((file) => {
+    const base = file.replace(/\\/g, "/").split("/").pop();
+    return specs.filter((spec) => spec.split("/").pop() === base);
+  });
+  const body = [
+    missing.length > 0
+      ? `No spec matches: ${missing.join(", ")}.`
+      : "There are no specs to run.",
+    "I did NOT start a run — no test environment was set up and this did NOT count as a fix attempt. No part of the batch ran.",
+    specList,
+    suggestions.length > 0
+      ? `Closest match by filename: ${[...new Set(suggestions)].join(", ")}`
+      : "",
+    "Call run_tests again with exact paths from the list above.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  completeWarning(
+    ctx,
+    missing.length === 1
+      ? `No test file matches "${missing[0]}"`
+      : "No test files matched",
+    body,
+  );
   return { error: body };
 }
 
@@ -163,20 +186,18 @@ async function validateGrep(
 
 /** Refuse without running once the per-spec fix-attempt cap is hit. */
 function guardAttemptLimit(
-  ctx: AgentContext,
   key: string,
   state: TestRunAttemptState,
 ): string | null {
   if (state.attempts < MAX_ATTEMPTS) return null;
   const body = `Attempt limit reached: you have already made ${MAX_ATTEMPTS} fix attempts for ${key} this turn. Do NOT run tests again or keep editing this spec. Stop now and summarize for the user: what the test covers, what still fails, what you tried, and what you recommend they do next.`;
-  completeWarning(ctx, "Test attempt limit reached", body);
   return body;
 }
 
-/** Refuse before starting more actual Playwright runs than one turn should own. */
+/** Refuse before starting more batches than one turn should own. */
 function guardTurnRunLimit(ctx: AgentContext): string | null {
   if ((ctx.testRunCount ?? 0) < MAX_RUNS_PER_TURN) return null;
-  const body = `Turn-level test run limit reached: you have already started ${MAX_RUNS_PER_TURN} Playwright runs this turn. Stop now and summarize what passed, what still fails, and what you recommend next.`;
+  const body = `Turn-level test run limit reached: you have already started ${MAX_RUNS_PER_TURN} test batches this turn. Stop now and summarize what passed, what still fails, and what you recommend next.`;
   completeWarning(ctx, "Test run limit reached", body);
   return body;
 }
@@ -203,7 +224,6 @@ const WHOLE_FILE = "";
  * to).
  */
 function guardAlreadyPassed(
-  ctx: AgentContext,
   args: RunTestsArgs,
   state: TestRunAttemptState,
   currentEditCount: number,
@@ -227,7 +247,6 @@ function guardAlreadyPassed(
     ? "You have already used this spec's one flakeCheck rerun."
     : "(If you suspect the pass is flaky, you may rerun once with flakeCheck: true.)";
   const body = `${what} with the current code — you haven't made any changes (file edits, dependencies, SQL, …) since, so rerunning would produce the same result. Do NOT run it again. Stop and summarize the outcome for the user. ${flakeNote} This did NOT count as a fix attempt.`;
-  completeWarning(ctx, "Tests already passed — no rerun needed", body);
   return body;
 }
 
@@ -239,7 +258,6 @@ function guardAlreadyPassed(
  * a different result without an edit.
  */
 function guardChangedSinceLastRun(
-  ctx: AgentContext,
   args: RunTestsArgs,
   state: TestRunAttemptState,
   currentEditCount: number,
@@ -258,7 +276,6 @@ function guardChangedSinceLastRun(
     ? "You have already used this spec's one flakeCheck rerun."
     : "Or, if you suspect the failure is flaky, pass flakeCheck: true (allowed once).";
   const body = `You haven't made any changes (file edits, dependencies, SQL, …) since the last run of this spec, so rerunning would produce the same result. Make a fix first. ${flakeHint} This did NOT count as a fix attempt.`;
-  completeWarning(ctx, "No changes since last run", body);
   return body;
 }
 
@@ -272,12 +289,13 @@ function consumeFreeFlakeCheck(
   return true;
 }
 
-async function runSpec(
+async function runSpecs(
   ctx: AgentContext,
-  testFile: string,
+  testFiles: string[],
   grep?: string,
 ): Promise<RunAppTestsResult> {
-  const label = grep ? `${testFile} › /${grep}/` : testFile;
+  const filesLabel = testFiles.join(", ");
+  const label = grep ? `${filesLabel} › /${grep}/` : filesLabel;
   ctx.onXmlStream(
     `<dyad-status title="${escapeXmlAttr(`Running ${label}`)}"></dyad-status>`,
   );
@@ -293,7 +311,7 @@ async function runSpec(
   return runAppTestsWithIsolation({
     event: ctx.event,
     appId: ctx.appId,
-    testFile,
+    testFiles,
     grep,
     source: "agent",
     headed: settings.testHeaded ?? false,
@@ -314,18 +332,12 @@ async function runSpec(
 }
 
 /** Spec exists but nothing executed — empty file or every test() skipped. */
-function reportNoRunnableTests(
-  ctx: AgentContext,
-  testFile: string,
-  grep?: string,
-): string {
+function reportNoRunnableTests(testFile: string, grep?: string): string {
   if (grep) {
-    const body = `The tests matching \`${grep}\` in \`${testFile}\` executed nothing — they're skipped (\`test.skip\`/\`test.fixme\`), or the pattern only matched a \`describe\` block with no runnable test. This did NOT count as a fix attempt and is NOT an infrastructure failure. Un-skip the test (or widen the pattern), then run again.`;
-    completeWarning(ctx, `/${grep}/ didn't run`, body);
+    const body = `The tests matching \`${grep}\` in \`${testFile}\` executed nothing — the pattern matched nothing, or the matches are skipped (\`test.skip\`/\`test.fixme\`), or the pattern only matched a \`describe\` block with no runnable test. This did NOT count as a fix attempt and is NOT an infrastructure failure. Un-skip the test (or widen the pattern), then run again.`;
     return body;
   }
   const body = `\`${testFile}\` ran but nothing executed — the file is empty or every \`test()\` is skipped (\`test.skip\`/\`test.fixme\`). This did NOT count as a fix attempt and is NOT an infrastructure failure. Un-skip it (or add a real \`test()\`), then run again.`;
-  completeWarning(ctx, `${testFile} has no runnable test`, body);
   return body;
 }
 
@@ -340,7 +352,6 @@ function reportInfraFailure(
 }
 
 function reportPassed(params: {
-  ctx: AgentContext;
   testFile: string;
   state: TestRunAttemptState;
   outcome: Classification;
@@ -350,7 +361,6 @@ function reportPassed(params: {
   grep?: string;
 }): string {
   const {
-    ctx,
     testFile,
     state,
     outcome,
@@ -390,12 +400,7 @@ function reportPassed(params: {
   const summary = grep
     ? `The tests matching /${grep}/ passed (${outcome.passed} passed${skippedNote}) — do NOT run them again unless you change files. Only that subset ran (not the rest of ${testFile}).`
     : `All runnable tests passed (${outcome.passed} passed${skippedNote}). This spec is verified — do NOT run it again unless you change files.`;
-  const body = `${summary} ${isolationLine(res)}`;
-  const title = grep
-    ? `Tests passed: ${testFile} › /${grep}/`
-    : `Tests passed: ${testFile}`;
-  completeStatus(ctx, title, body);
-  return body;
+  return summary;
 }
 
 /**
@@ -451,8 +456,7 @@ async function reportFailure(params: {
   currentEditCount: number;
   runTargetKey: string;
 }): Promise<string> {
-  const { ctx, key, testFile, grep, state, res, outcome, isFreeFlakeRun } =
-    params;
+  const { ctx, key, state, res, outcome, isFreeFlakeRun } = params;
 
   const signature = normalizeFailureSignature(res.results);
   const unchanged =
@@ -493,34 +497,29 @@ async function reportFailure(params: {
       ? `\nError (truncated to last ${MAX_ERROR_CHARS} chars):\n\`\`\`\n${truncateError(firstError)}\n\`\`\``
       : "",
     artifactLines,
-    `\n${isolationLine(res)}`,
     `\n${nextStep}`,
   ]
     .filter(Boolean)
     .join("\n");
 
-  completeStatus(
-    ctx,
-    `Tests failed: ${grep ? `${testFile} › /${grep}/` : testFile}`,
-    body,
-  );
   return body;
 }
 
 export const runTestsTool: ToolDefinition<RunTestsArgs> = {
   name: "run_tests",
-  description: `Run the app's Playwright end-to-end tests and get the results back, so you can verify a test you just wrote or edited and iterate until it passes.
+  description: `Run the app's Playwright end-to-end tests in one batch and get per-file results back, so you can verify affected specs and iterate on failures.
 
-- Pass \`testFile\` (e.g. "e2e-tests/checkout.spec.ts") to run one spec — it's required, so always target the single spec you're working on. Use the exact path of a spec that exists under e2e-tests/ (the one you just wrote/edited) — don't guess. If the path doesn't match a real spec, the tool won't run anything and will reply with the list of specs that DO exist, so you can retry with a correct path.
-- Unless you just wrote or edited the spec this turn, READ it with read_file before running it — you need its current content to know the test() titles (for grep) and to interpret failures against what the test actually does.
-- By default the whole file runs, so a pass means every test in the spec passes.
-- Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next, even when targeting different spec files. Overlapping calls for the same app cancel earlier runs; they do not run in parallel.
-- Run the whole file by default. Only add \`grep\` (a regex passed to Playwright's --grep, matched against full hierarchical test titles) when you have a specific reason to narrow the run — e.g. one test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no runnable test, the tool reports that nothing executed.
+- Pass \`testFiles\` (e.g. ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"]) to select exact existing specs. Omit it deliberately to run all specs under e2e-tests/. An empty list or the old testFile argument is invalid. Duplicate paths run once; if any path is missing, the entire batch is refused and the real specs are listed.
+- Unless you just wrote or edited a selected spec this turn, READ it with read_file before running it. Prefer batching affected specs over running the whole suite.
+- By default each whole file runs. The batch shares one database isolation environment with no reset between files. It follows the Tests panel's headed, parallel, and slow-motion preferences; preview runs remain sequential.
+- Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next. Overlapping calls cancel earlier runs; they do not run in parallel.
+- Only add \`grep\` when you have a specific reason to narrow the run. One regex applies to Playwright's full hierarchical test titles across all selected files. Filtered runs stay sequential. A filtered pass verifies only matched tests; a file with no runnable matches is not verified.
 - Requires the app's dev server to be running (the user starts it with the Run button in the preview panel).
-- On failure you get the error text plus the paths of Playwright's artifacts (error-context.md page snapshot, screenshot) — read error-context.md with read_file to see the page state, then fix and rerun.
-- You get ${MAX_ATTEMPTS} fix attempts per spec per turn. When the limit is reached, stop and summarize the situation for the user.
-- If you suspect a failure is flaky, rerun once with \`flakeCheck: true\` (does not count against the limit).
-- Never rerun something that already passed: once a target (or the whole file) is green and you haven't changed any files, the tool refuses the run — move on instead.`,
+- Results name each file and its pass/fail/no-tests outcome. Failures include error text and current artifact paths; read error-context.md with read_file, make a targeted fix, then rerun the relevant files.
+- You get ${MAX_ATTEMPTS} failure attempts per spec per turn. A whole-file pass resets only that file's budget; a filtered pass does not. Infrastructure failures and incomplete runs do not consume failure attempts or grant verification.
+- If you suspect a failure is flaky, rerun with \`flakeCheck: true\`: once per file, without consuming a failure attempt.
+- Never rerun a target that already passed without an app change. If any selected file is blocked by a retry guard, the entire batch is refused with the blocked paths; select eligible files explicitly instead.
+- At most ${MAX_RUNS_PER_TURN} batches may start per turn, including infrastructure failures. Each batch has one 10-minute execution deadline, or 20 minutes with slow motion. Refused requests do not consume a run.`,
   inputSchema: runTestsSchema,
   defaultConsent: "always",
   // Isolation swaps the app's env file and restarts the dev server, so this
@@ -528,106 +527,170 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
   modifiesState: true,
   isEnabled: (ctx) => ctx.testingEnabled,
 
-  getConsentPreview: (args) =>
-    args.grep
-      ? `Run test: ${args.testFile} › /${args.grep}/`
-      : `Run test: ${args.testFile}`,
+  getConsentPreview: (args) => {
+    const selection = args.testFiles?.join(", ") ?? "all specs";
+    return args.grep
+      ? `Run tests: ${selection} › /${args.grep}/`
+      : `Run tests: ${selection}`;
+  },
 
   execute: async (args, ctx: AgentContext) => {
-    const resolved = await resolveSpecPath(ctx, args.testFile);
-    if ("error" in resolved) return resolved.error;
-    const { testFile } = resolved;
-
-    const key = specKey(testFile);
-    const state: TestRunAttemptState = ctx.testRunAttempts.get(key) ?? {
-      attempts: 0,
-    };
-    ctx.testRunAttempts.set(key, state);
-
-    // Mutation count, not just file edits: a fix made via delete_file,
-    // add_dependency, execute_sql, etc. must also unblock the guards below.
-    const currentEditCount = ctx.mutationCount ?? 0;
-    let runTargetKey = WHOLE_FILE;
-    if (args.grep) {
-      const validated = await validateGrep(ctx, testFile, args.grep);
-      if ("error" in validated) return validated.error;
-      runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
+    // Also fail closed for direct callers: a legacy testFile must never be
+    // stripped into an empty object and accidentally select the whole suite.
+    const parsed = runTestsSchema.safeParse(args);
+    if (!parsed.success) {
+      const body = `Invalid run_tests arguments: ${parsed.error.message}. Use testFiles with a nonempty list, or omit it to run all specs. Nothing ran.`;
+      completeWarning(ctx, "Invalid test selection", body);
+      return body;
     }
-    const blocked =
-      guardAttemptLimit(ctx, key, state) ??
-      guardTurnRunLimit(ctx) ??
-      guardDevServerRunning(ctx) ??
-      guardAlreadyPassed(ctx, args, state, currentEditCount, runTargetKey) ??
-      guardChangedSinceLastRun(
-        ctx,
-        args,
-        state,
-        currentEditCount,
-        runTargetKey,
-      );
-    if (blocked) return blocked;
+    const resolved = await resolveSpecPaths(ctx, args.testFiles);
+    if ("error" in resolved) return resolved.error;
+    const { testFiles, specs } = resolved;
+    const selections = [];
+    for (const testFile of testFiles) {
+      const key = specKey(testFile);
+      let runTargetKey = WHOLE_FILE;
+      if (args.grep) {
+        const validated = await validateGrep(ctx, testFile, args.grep);
+        if ("error" in validated) return validated.error;
+        runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
+      }
+      selections.push({ testFile, key, runTargetKey });
+    }
+    // Read the shared counters after all asynchronous preflight work. Nothing
+    // can interleave admission checks and reservation of this batch's slot.
+    const runBlocked = guardTurnRunLimit(ctx) ?? guardDevServerRunning(ctx);
+    if (runBlocked) return runBlocked;
+    const targets = selections.map((selection) => {
+      const state: TestRunAttemptState = ctx.testRunAttempts.get(
+        selection.key,
+      ) ?? { attempts: 0 };
+      return { ...selection, state };
+    });
+    const currentEditCount = ctx.mutationCount ?? 0;
+    const refusals = targets.flatMap(
+      ({ testFile, key, state, runTargetKey }) => {
+        const blocked =
+          guardAttemptLimit(key, state) ??
+          guardAlreadyPassed(args, state, currentEditCount, runTargetKey) ??
+          guardChangedSinceLastRun(args, state, currentEditCount, runTargetKey);
+        return blocked ? [`${testFile}: ${blocked}`] : [];
+      },
+    );
+    if (refusals.length > 0) {
+      const body = `Batch not started; no files ran. Blocked files:\n\n${refusals.join("\n\n")}\n\nSelect only eligible files for the next call.`;
+      completeWarning(ctx, "Test batch blocked", body);
+      return body;
+    }
+    if (ctx.abortSignal?.aborted) {
+      return reportInfraFailure(ctx, {
+        kind: "infra",
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        allInconclusive: false,
+        message: "Test run stopped.",
+      });
+    }
 
-    const isFreeFlakeRun = consumeFreeFlakeCheck(args, state);
+    const runs = targets.map((target) => {
+      ctx.testRunAttempts.set(target.key, target.state);
+      return {
+        ...target,
+        isFreeFlakeRun: consumeFreeFlakeCheck(args, target.state),
+      };
+    });
+    const refundFlakeChecks = () => {
+      for (const run of runs) {
+        if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
+      }
+    };
 
     let res: RunAppTestsResult;
     try {
       ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
-      res = await runSpec(ctx, testFile, args.grep);
+      res = await runSpecs(ctx, testFiles, args.grep);
     } catch (error) {
-      // An unexpected throw (isolation setup, database access, teardown) must
-      // not crash the whole agent turn or leave the loop state inconsistent:
-      // give back the free flake rerun if this run consumed it, and surface
-      // the same uncounted infrastructure outcome as a structured infra error.
-      if (isFreeFlakeRun) {
-        state.flakeCheckUsed = false;
-      }
+      refundFlakeChecks();
       const message = error instanceof Error ? error.message : String(error);
       const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
       completeWarning(ctx, "Test run couldn't complete", body);
       return body;
     }
-    const outcome = classify(res);
-    // A structured non-run (infra failure, nothing executed) is not a real
-    // flake rerun either — hand the free rerun back, matching the thrown-error
-    // path above. The infra reply promises "call run_tests again", and without
-    // the refund that retry would be refused by the guards (flake rerun spent,
-    // no files changed), dead-ending the agent.
-    if (
-      isFreeFlakeRun &&
-      (outcome.kind === "infra" || outcome.kind === "no-tests")
-    ) {
-      state.flakeCheckUsed = false;
+    // Never grant verification or charge a file for an incomplete batch,
+    // including a preview run that returned partial results before cancellation.
+    const batchOutcome = classify(res);
+    if (batchOutcome.kind === "infra" || ctx.abortSignal?.aborted) {
+      refundFlakeChecks();
+      return reportInfraFailure(
+        ctx,
+        ctx.abortSignal?.aborted
+          ? { ...batchOutcome, kind: "infra", message: "Test run stopped." }
+          : batchOutcome,
+      );
     }
 
-    switch (outcome.kind) {
-      case "no-tests":
-        return reportNoRunnableTests(ctx, testFile, args.grep);
-      case "infra":
-        return reportInfraFailure(ctx, outcome);
-      case "passed":
-        return reportPassed({
-          ctx,
-          testFile,
-          state,
-          outcome,
-          res,
-          currentEditCount,
-          runTargetKey,
-          grep: args.grep,
-        });
-      case "failed":
-        return reportFailure({
-          ctx,
-          key,
-          testFile,
-          grep: args.grep,
-          state,
-          res,
-          outcome,
-          isFreeFlakeRun,
-          currentEditCount,
-          runTargetKey,
-        });
+    const resultsByFile = new Map<string, TestResult[]>();
+    for (const result of res.results) {
+      const file = reconcileResultFile(result.file, specs);
+      const results = resultsByFile.get(file) ?? [];
+      results.push({ ...result, file });
+      resultsByFile.set(file, results);
     }
+    const sections: string[] = [];
+    const summary: string[] = [];
+    let failedFiles = 0;
+    let unverifiedFiles = 0;
+    for (const run of runs) {
+      const fileResult = {
+        ...res,
+        results: resultsByFile.get(run.testFile) ?? [],
+      };
+      const outcome = classify(fileResult);
+      const scope = args.grep ? ` (matching /${args.grep}/ only)` : "";
+      if (outcome.kind === "no-tests") {
+        if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
+        unverifiedFiles += 1;
+        summary.push(`${run.testFile}: no runnable tests — not verified`);
+        sections.push(reportNoRunnableTests(run.testFile, args.grep));
+      } else if (outcome.kind === "passed") {
+        summary.push(
+          `${run.testFile}: passed — ${outcome.passed} passed, ${outcome.skipped} skipped${scope}`,
+        );
+        sections.push(
+          `${run.testFile}: ${reportPassed({ ...run, outcome, res: fileResult, currentEditCount, grep: args.grep })}`,
+        );
+      } else {
+        failedFiles += 1;
+        summary.push(
+          `${run.testFile}: failed — ${outcome.passed} passed, ${outcome.failed} failed, ${outcome.skipped} skipped${scope}`,
+        );
+        sections.push(
+          await reportFailure({
+            ...run,
+            ctx,
+            outcome,
+            res: fileResult,
+            currentEditCount,
+            grep: args.grep,
+          }),
+        );
+      }
+    }
+    const body = [summary.join("\n"), isolationLine(res), ...sections].join(
+      "\n\n",
+    );
+    const title =
+      failedFiles > 0
+        ? `Tests failed in ${failedFiles} file(s)`
+        : unverifiedFiles > 0
+          ? "Test batch finished — some files not verified"
+          : args.grep
+            ? "Matching tests passed"
+            : "Tests passed";
+    if (unverifiedFiles > 0 && failedFiles === 0)
+      completeWarning(ctx, title, body);
+    else completeStatus(ctx, title, body);
+    return body;
   },
 };

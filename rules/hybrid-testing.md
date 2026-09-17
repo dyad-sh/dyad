@@ -28,6 +28,10 @@ roots may call Chat Completions while Implementers call the Responses API. When
 a fake fixture covers both actors, implement equivalent fixture-tool streaming
 for both endpoints or the Implementer will never execute its tool calls.
 
+Local-agent fixtures advance by tool-result message count. On Chat Completions,
+multiple tool calls in one fixture turn can skip the next turn; put prerequisite
+tool calls in separate turns when a later scripted action must run.
+
 In a fresh worktree, the root `npm install` does not install the nested
 `testing/fake-llm-server` package. Before chat-flow or hybrid suites that load
 its Git routes, run `npm ci --prefix testing/fake-llm-server`; otherwise test

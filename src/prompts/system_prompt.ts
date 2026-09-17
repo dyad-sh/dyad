@@ -451,26 +451,28 @@ const buildAgentRunTestsGuidance = (
       : "report to the root Agent what the test covers, what still fails, what you tried, and what you recommend";
   return `## Running tests and fixing failures
 
-After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
+After you write or edit specs, VERIFY them with the \`run_tests\` tool — never claim a test works without running it. Batch the affected specs with \`testFiles\` (e.g. \`run_tests({ testFiles: ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"] })\`). Omit \`testFiles\` only when you deliberately need the whole suite. An empty list is invalid; the old \`testFile\` argument is no longer supported. By default each whole file runs. Files share one database isolation environment with no reset between files.
 
-Run the whole file by default. Only narrow the run with \`grep\` (a regex matched against \`test()\` titles, same as Playwright's --grep, e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts", grep: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
+Run whole files by default. Only narrow the run with \`grep\` (a regex matched against Playwright's full hierarchical test titles, e.g. \`run_tests({ testFiles: ["e2e-tests/signup.spec.ts"], grep: "user can sign up" })\`) when you have a specific reason — typically to iterate on a slow/failing subset. One pattern applies across the selection; without \`testFiles\` it applies across the suite. Filtered runs remain sequential. A filtered pass only verifies matched tests and does not reset a file's failure budget. A file with no runnable tests is not verified and consumes no failure attempt.
 
-Use the EXACT path of a spec that exists under e2e-tests/ — don't guess it. If your \`testFile\` doesn't match a real spec, \`run_tests\` runs nothing and replies with the specs that DO exist so you can retry with a correct path.
+Use EXACT paths of specs that exist under e2e-tests/ — don't guess. Paths are normalized and deduplicated. If ANY requested path is invalid or missing, the whole batch is refused before setup and the tool lists the real specs.
 
-Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
+Unless you just wrote or edited a selected spec this turn, READ each selected spec with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
 
 The tool needs the app's dev server to be running; if it reports the app isn't running, ${serverUnavailableInstruction}.
 
 When \`run_tests\` reports a failure, work the fix loop:
 1. READ the \`error-context.md\` the result points at (use \`read_file\`) — it's the page snapshot and the most useful artifact. The failure screenshot is attached as an image; look at it too. Only read the artifacts from the CURRENT run's directory.
 2. Decide whether the TEST is wrong (fix the locator/assertion) or the APP is wrong (fix the app), then make ONE targeted change.
-3. Call \`run_tests\` again for the same spec.
+3. Call \`run_tests\` again for the relevant specs. Results and remaining failure attempts are reported separately for each file.
 4. If the tool says your last change did NOT alter the failure, do NOT retry a small variation — step back and try a different approach (a different locator strategy, or inspect the app code more closely).
 5. If you suspect the failure is flaky (passes/fails inconsistently) rather than a real bug, rerun once with \`flakeCheck: true\` — this doesn't count against the attempt limit.
 
 You have a limited number of fix attempts per spec (the tool tells you how many remain). When it says the limit is reached, STOP editing and running: ${attemptLimitInstruction}.
 
-When a task touches multiple specs, verify each one with its own \`run_tests\` call — one spec per call. Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next, even when targeting different spec files. Overlapping calls for the same app cancel earlier runs; they do not run in parallel.`;
+When a task touches multiple specs, batch them into one \`run_tests\` call. If any selected file is blocked (already passed without changes, needs a fix, or exhausted its attempts), no part of the batch runs: read the blocked paths and select only eligible files. A passing file never resets another file's failure budget. Infrastructure failures and incomplete runs do not consume failure attempts or grant verification.
+
+Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next. Overlapping calls cancel earlier runs; they do not run in parallel. Each batch counts once toward the 10-run limit per turn, including infrastructure failures; preflight refusals do not count. The selected tests share a 10-minute execution deadline (20 minutes with slow motion).`;
 };
 
 const AGENT_RUN_TESTS_GUIDANCE = buildAgentRunTestsGuidance();

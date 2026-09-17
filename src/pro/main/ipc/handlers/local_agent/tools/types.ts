@@ -326,8 +326,8 @@ export interface AgentContext {
    */
   testRunAttempts: Map<string, TestRunAttemptState>;
   /**
-   * Actual Playwright runs started by `run_tests` during this turn, across all
-   * specs. Preflight/dev-server refusals do not increment this.
+   * Batches started by `run_tests` during this turn, across all specs. Includes
+   * infrastructure failures; preflight/dev-server refusals do not increment it.
    */
   testRunCount?: number;
   /** Whether reinstall_and_restart_app is registered in this turn's effective tool set. */

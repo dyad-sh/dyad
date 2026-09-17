@@ -61,7 +61,10 @@ export function SegmentedChoice<T extends string>({
               index === options.length - 1 && "rounded-r-md",
               index > 0 && "border-l border-gray-200 dark:border-gray-700",
               selected
-                ? "bg-primary text-primary-foreground"
+                ? // The outline is what carries the selection in forced-colors
+                  // mode, where the background and text colours are replaced by
+                  // the user's own palette and stop distinguishing the two.
+                  "bg-primary text-primary-foreground forced-colors:outline forced-colors:outline-2 forced-colors:-outline-offset-2"
                 : "hover:bg-gray-50 dark:hover:bg-gray-800",
             )}
           >

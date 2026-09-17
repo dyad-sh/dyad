@@ -40,10 +40,12 @@ import {
 } from "../utils/github_endpoints";
 import {
   assertCanLinkProvider,
+  assertRemoteProvider,
   getAppGitRemoteAuth,
   githubRemote,
   githubRemoteAuth,
   requireAppGitRemote,
+  type GitRemoteProvider,
 } from "../utils/app_git_remote";
 import { findAppOrThrow } from "../utils/find_app";
 import { withPushHint } from "../utils/git_push_hints";
@@ -813,14 +815,18 @@ export async function handlePushToGithub(
     appId,
     force,
     forceWithLease,
+    provider,
   }: {
     appId: number;
     force?: boolean;
     forceWithLease?: boolean;
+    /** What the caller believes this app is linked to; refused if it is not. */
+    provider?: GitRemoteProvider;
   },
 ): Promise<void> {
   const app = await findAppOrThrow(appId);
   const remote = requireAppGitRemote(app);
+  assertRemoteProvider(remote, provider);
   const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
   const branch = remote.branch;
@@ -868,8 +874,11 @@ export async function handlePushToGithub(
       forceWithLease,
     });
   } catch (error) {
-    // A GitLab protected-branch refusal gets told where to change that.
-    throw withPushHint(error, remote);
+    // A GitLab protected-branch refusal gets told where to change that. The
+    // remedy depends on whether this push was forced, so pass that along.
+    throw withPushHint(error, remote, {
+      forced: Boolean(force || forceWithLease),
+    });
   }
 }
 
@@ -897,10 +906,11 @@ export async function handleContinueRebase(
 // --- GitHub Rebase Handler ---
 export async function handleRebaseFromGithub(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
+  { appId, provider }: { appId: number; provider?: GitRemoteProvider },
 ): Promise<void> {
   const app = await findAppOrThrow(appId);
   const remote = requireAppGitRemote(app);
+  assertRemoteProvider(remote, provider);
   const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
   const branch = remote.branch;

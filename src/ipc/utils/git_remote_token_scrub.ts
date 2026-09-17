@@ -12,10 +12,15 @@ const logger = log.scope("git_remote_token_scrub");
  * https://<token>:x-oauth-basic@github.com/owner/repo.git
  * The lookahead ensures the host is exactly the one given, not a prefixed
  * host like github.company.com.
+ *
+ * `:` is deliberately not a terminator. The port is already part of `host`
+ * when the managed instance has one, so allowing `:` to end the match would
+ * make a portless `gitlab.example.com` also match `gitlab.example.com:8443` —
+ * a different instance, whose credentials the user configured by hand.
  */
 function embeddedCredentialsRegex(host: string): RegExp {
   const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(https?:\\/\\/)[^@/\\s]+@${escaped}(?=[/:\\s]|$)`, "g");
+  return new RegExp(`(https?:\\/\\/)[^@/\\s]+@${escaped}(?=[/\\s]|$)`, "g");
 }
 
 /**
@@ -43,7 +48,7 @@ export function managedRemoteHosts(app: {
  * variables, so a URL-embedded token is both unnecessary and a plaintext
  * credential sitting on disk. Run on app startup.
  */
-export async function scrubGithubTokenFromRemotes(): Promise<void> {
+export async function scrubTokensFromRemotes(): Promise<void> {
   try {
     const allApps = await db
       .select({ path: apps.path, gitlabHost: apps.gitlabHost })
@@ -92,10 +97,10 @@ export async function scrubGithubTokenFromRemotes(): Promise<void> {
     const totalScrubbed = counts.reduce<number>((sum, n) => sum + n, 0);
     if (totalScrubbed > 0) {
       logger.log(
-        `Scrubbed embedded GitHub credentials from ${totalScrubbed} app git config(s)`,
+        `Scrubbed embedded credentials from ${totalScrubbed} app git config(s)`,
       );
     }
   } catch (err) {
-    logger.warn("Failed to scrub GitHub tokens from git remotes:", err);
+    logger.warn("Failed to scrub embedded credentials from git remotes:", err);
   }
 }

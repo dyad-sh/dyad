@@ -62,8 +62,8 @@ export type GithubOperation =
   // resumed rebase on a GitLab app announced a push to GitHub. Required, the
   // compiler finds the next such gap instead of a user finding it.
   | { type: "push"; mode: PushMode; provider: GitRemoteProviderName }
-  | { type: "pull" }
-  | { type: "fetch" }
+  | { type: "pull"; provider: GitRemoteProviderName }
+  | { type: "fetch"; provider: GitRemoteProviderName }
   | { type: "rebase"; provider: GitRemoteProviderName }
   | { type: "rebase-continue"; provider: GitRemoteProviderName }
   | { type: "rebase-abort" }

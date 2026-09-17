@@ -363,6 +363,7 @@
       "repository": "저장소",
       "repositoryDescription": "GitHub 또는 GitLab에 코드를 동기화합니다.",
       "chooseProvider": "이 앱의 코드를 어디에 둘까요?",
+      "loadingProviders": "사용 가능한 공급자를 확인하는 중…",
       "vercel": "Vercel",
       "vercelDescription": "Vercel에 배포하여 앱을 게시하세요.",
       "githubRequiredForVercel": "Vercel 배포에는 GitHub 연결이 필요합니다",

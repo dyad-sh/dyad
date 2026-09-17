@@ -338,6 +338,7 @@
       "repository": "Depo",
       "repositoryDescription": "Kodunuzu GitHub veya GitLab ile eşitleyin.",
       "chooseProvider": "Bu uygulamanın kodu nerede tutulsun?",
+      "loadingProviders": "Hangi sağlayıcıların kullanılabilir olduğu kontrol ediliyor…",
       "vercel": "Vercel",
       "vercelDescription": "Uygulamanızı Vercel'e dağıtarak yayımlayın.",
       "githubRequiredForVercel": "Vercel Dağıtımı için GitHub Gerekli",
@@ -501,7 +502,7 @@
       "connect": "GitLab'a bağlan",
       "connecting": "Bağlanıyor...",
       "experimentLabel": "GitLab'a yayımlamaya izin ver",
-      "experimentDescription": "GitHub'ın yanına depo sağlayıcısı olarak GitLab'ı (gitlab.com veya kendi barındırdığınız) ekler. Erken aşamadadır ve değişebilir."
+      "experimentDescription": "GitHub’ın yanına depo sağlayıcısı olarak GitLab’ı (gitlab.com veya kendi barındırdığınız GitLab örneği) ekler. Erken aşamadadır ve değişebilir."
     },
     "githubBranch": {
       "selectBranch": "Dal seç",

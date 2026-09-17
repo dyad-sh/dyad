@@ -21,7 +21,7 @@ import { GitLabCredentialsForm } from "@/components/GitLabCredentialsForm";
 export function GitLabIntegration() {
   const { t } = useTranslation(["home", "common"]);
   const { settings } = useSettings();
-  const { status } = useGitLabStatus();
+  const { status, isLoading: statusLoading } = useGitLabStatus();
   const queryClient = useQueryClient();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -49,6 +49,23 @@ export function GitLabIntegration() {
       setIsDisconnecting(false);
     }
   };
+
+  // Until the status answers, `connected` reads false and the branch below
+  // would offer the credentials form. Saving from it replaces whatever
+  // connection is already stored, so a user could overwrite a connection the
+  // page had not got around to telling them about.
+  if (statusLoading) {
+    return (
+      <div className="space-y-3" data-testid="gitlab-integration">
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {t("integrations.gitlab.title")}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {t("common:loading")}
+        </p>
+      </div>
+    );
+  }
 
   if (!connected || !status) {
     return (

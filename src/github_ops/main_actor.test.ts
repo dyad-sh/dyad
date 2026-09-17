@@ -170,13 +170,13 @@ describe("main-hosted github_ops actor", () => {
 
     const receipt = await actorA.dispatch({
       type: "OP_REQUESTED",
-      op: { type: "pull" },
+      op: { type: "pull", provider: "github" },
       operationId: "pull-a",
     });
     expect(receipt.kind).toBe("applied");
     expect(actorB.getSnapshot().state).toMatchObject({
       type: "running",
-      op: { type: "pull" },
+      op: { type: "pull", provider: "github" },
     });
     expect(service.run).toHaveBeenCalledOnce();
 

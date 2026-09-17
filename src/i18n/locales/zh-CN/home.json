@@ -362,6 +362,7 @@
       "repository": "代码仓库",
       "repositoryDescription": "将代码同步到 GitHub 或 GitLab。",
       "chooseProvider": "这个应用的代码放在哪里？",
+      "loadingProviders": "正在检查可用的提供商…",
       "vercel": "Vercel",
       "vercelDescription": "通过部署到 Vercel 发布您的应用。",
       "githubRequiredForVercel": "部署到 Vercel 需要先连接 GitHub",

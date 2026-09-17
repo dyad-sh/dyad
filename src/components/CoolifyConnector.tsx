@@ -30,6 +30,7 @@ import { useCoolifySetupSnapshot } from "@/hooks/useCoolifySetupSnapshot";
 import { CoolifyCredentials } from "@/components/CoolifyCredentials";
 import { CoolifySignOutDialog } from "@/components/CoolifySignOutDialog";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSettings } from "@/hooks/useSettings";
 import { describeLinkedRemote } from "@/shared/linked_remote";
 import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
@@ -80,6 +81,7 @@ const STAGE_LABELS: Record<CoolifyDeployStage, string> = {
  */
 export function CoolifyConnector({ appId }: { appId: number | null }) {
   const { app } = useLoadApp(appId);
+  const { settings } = useSettings();
   const {
     status,
     isStatusLoading,
@@ -329,8 +331,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   const can = selectCoolifyDeployCapabilities(snapshot);
   const linkedRemote = describeLinkedRemote(app);
   const hasRepo = linkedRemote !== null;
-  const repoProviderLabel =
-    linkedRemote?.provider === "gitlab" ? "GitLab" : "GitHub";
+  // Names the instance for a self-hosted GitLab: the deploy key the user is
+  // being sent to remove lives on one particular server, and "GitLab" alone
+  // does not say which.
+  const repoProviderLabel = linkedRemote?.providerLabel ?? "GitHub";
   // The server the app deploys to. Read from the form value rather than the
   // saved connection so that picking a different server in the edit form
   // answers for the one being chosen, not the one being replaced.
@@ -1151,8 +1155,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
       {!hasRepo && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          Coolify deploys from a git repository. Connect this app to GitHub or
-          GitLab first.
+          {/* GitLab is only offerable while its experiment is on; naming it
+              otherwise points at a provider the Publish panel will not show. */}
+          {settings?.enableGitlabPublishing
+            ? "Coolify deploys from a git repository. Connect this app to GitHub or GitLab first."
+            : "Coolify deploys from a git repository. Connect this app to GitHub first."}
         </div>
       )}
 

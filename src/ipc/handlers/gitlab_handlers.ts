@@ -286,6 +286,17 @@ export function registerGitLabHandlers() {
             },
           ]
         : await client.findUserNamespace(user.username);
+    if (personal.length === 0 && groups.length === 0) {
+      // Both lookups came back empty, so the picker would offer nothing at
+      // all and the create form would look broken rather than restricted.
+      // Say which lookup failed instead of presenting an empty list.
+      throw new DyadError(
+        `GitLab did not report a personal namespace for ${user.username}, and the ` +
+          "token can create projects in no group. Check that the token has the " +
+          `${GITLAB_REQUIRED_SCOPE} scope, or link an existing project instead.`,
+        DyadErrorKind.Validation,
+      );
+    }
     return [...personal, ...groups];
   });
 

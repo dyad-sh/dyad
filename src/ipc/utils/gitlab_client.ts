@@ -101,6 +101,22 @@ export function isGitLabStatus(error: unknown, status: number): boolean {
 export const GITLAB_REQUIRED_SCOPE = "api";
 
 /**
+ * How much of an instance's answer is carried into a message or the log.
+ *
+ * The body is untrusted text from a server the user runs, and a misrouted
+ * address can answer with an entire HTML page. Bounding it here keeps that
+ * out of both the error a user reads and the log file.
+ */
+const MAX_ERROR_DETAIL_LENGTH = 500;
+
+function boundErrorDetail(detail: string): string {
+  const trimmed = detail.trim();
+  return trimmed.length > MAX_ERROR_DETAIL_LENGTH
+    ? `${trimmed.slice(0, MAX_ERROR_DETAIL_LENGTH)}…`
+    : trimmed;
+}
+
+/**
  * GitLab reports validation failures as `{ message: { field: ["reason"] } }`
  * and everything else as `{ message: "..." }` or `{ error: "..." }`. Flatten
  * whichever arrived into one line a user can read.
@@ -110,12 +126,14 @@ export function describeGitLabError(text: string, status: number): string {
   try {
     parsed = JSON.parse(text);
   } catch {
-    return text.trim() || `HTTP ${status}`;
+    return boundErrorDetail(text) || `HTTP ${status}`;
   }
   if (!parsed || typeof parsed !== "object") return `HTTP ${status}`;
   const body = parsed as { message?: unknown; error?: unknown };
   const message = body.message ?? body.error;
-  if (typeof message === "string") return message;
+  if (typeof message === "string") {
+    return boundErrorDetail(message) || `HTTP ${status}`;
+  }
   if (message && typeof message === "object") {
     const parts = Object.entries(message as Record<string, unknown>).map(
       ([field, reasons]) => {
@@ -123,7 +141,7 @@ export function describeGitLabError(text: string, status: number): string {
         return `${field} ${String(list)}`;
       },
     );
-    if (parts.length > 0) return parts.join("; ");
+    if (parts.length > 0) return boundErrorDetail(parts.join("; "));
   }
   return `HTTP ${status}`;
 }
@@ -256,6 +274,16 @@ export class GitLabClient {
       const result: { data: T[]; nextPage: string | null } = await this.request<
         T[]
       >("GET", `${path}${separator}per_page=100&page=${page}`);
+      // An empty body, or a proxy or sign-in page answering 200 with an
+      // object, would otherwise spread into a raw TypeError with no hint of
+      // where it came from.
+      if (!Array.isArray(result.data)) {
+        throw new DyadError(
+          `GitLab answered GET ${path} with ${result.data === undefined ? "an empty body" : "something that is not a list"}. ` +
+            "Check that the address points at a GitLab instance and not a proxy or sign-in page.",
+          DyadErrorKind.External,
+        );
+      }
       items.push(...result.data);
       page = result.nextPage;
     }

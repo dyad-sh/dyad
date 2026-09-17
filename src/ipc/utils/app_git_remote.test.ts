@@ -10,6 +10,7 @@ vi.mock("@/main/settings", () => ({
 
 import {
   assertCanLinkProvider,
+  assertRemoteProvider,
   getAppGitRemoteAuth,
   getGitHubRemoteAuth,
   githubRemote,
@@ -117,6 +118,24 @@ describe("assertCanLinkProvider", () => {
     expect(() =>
       assertCanLinkProvider({ githubOrg: "o", githubRepo: "r" }, "gitlab"),
     ).toThrow(/already linked to GitHub \(o\/r\)/);
+  });
+});
+
+describe("assertRemoteProvider", () => {
+  it("accepts a matching provider and an unstated one", () => {
+    const remote = resolveAppGitRemote(gitlabApp)!;
+    expect(() => assertRemoteProvider(remote, "gitlab")).not.toThrow();
+    expect(() => assertRemoteProvider(remote, undefined)).not.toThrow();
+  });
+
+  it("refuses a provider the app is not linked to", () => {
+    // A window holding a stale app row would otherwise be told its push
+    // succeeded to a provider the push never touched.
+    expect(() =>
+      assertRemoteProvider(resolveAppGitRemote(gitlabApp)!, "github"),
+    ).toThrow(
+      /linked to GitLab \(gitlab\.example\.com\), but the request named GitHub/,
+    );
   });
 });
 

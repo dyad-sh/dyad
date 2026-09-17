@@ -14,8 +14,16 @@ export function GitLabPublishingExperimentSwitch() {
           id="enable-gitlab-publishing"
           aria-label={t("integrations.gitlab.experimentLabel")}
           checked={!!settings?.enableGitlabPublishing}
+          // Until settings load the switch reads `false` whatever the stored
+          // value is, so a click here would send the *opposite* of what the
+          // user sees the moment the query resolves.
+          disabled={!settings}
           onCheckedChange={(checked) => {
-            updateSettings({ enableGitlabPublishing: checked });
+            // The mutation surfaces its own error toast; swallowing the
+            // rejection here keeps it from becoming an unhandled rejection.
+            void updateSettings({ enableGitlabPublishing: checked }).catch(
+              () => {},
+            );
           }}
         />
         <Label htmlFor="enable-gitlab-publishing">

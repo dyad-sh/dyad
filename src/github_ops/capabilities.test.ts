@@ -172,7 +172,7 @@ describe("github_ops capabilities", () => {
           canMutateBranches: {
             representativeEvents: () => ({
               valid: [
-                request({ type: "pull" }),
+                request({ type: "pull", provider: "github" }),
                 request({
                   type: "create-branch",
                   name: "feature",

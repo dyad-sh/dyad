@@ -154,6 +154,28 @@ export function requireAppGitRemote(app: AppGitRemoteColumns): AppGitRemote {
 }
 
 /**
+ * Refuses an operation whose provider disagrees with the app's linked remote.
+ *
+ * The provider travels from the renderer, which reads it off the app row —
+ * but a window holding a stale row can name one that no longer matches, and
+ * the machine composes its banners and follow-up operations from what it was
+ * given. The operation itself always uses the remote resolved here, so the
+ * disagreement would show up as a success banner naming a provider the push
+ * never touched.
+ */
+export function assertRemoteProvider(
+  remote: AppGitRemote,
+  provider: GitRemoteProvider | undefined,
+): void {
+  if (!provider || remote.provider === provider) return;
+  throw new DyadError(
+    `This app is linked to ${remote.providerLabel}, but the request named ` +
+      `${provider === "gitlab" ? "GitLab" : "GitHub"}. Reopen the app and try again.`,
+    DyadErrorKind.Precondition,
+  );
+}
+
+/**
  * An app links to one provider at a time. Refuses to link `provider` while
  * another one is linked, so the UI's exclusivity is not the only guard.
  */

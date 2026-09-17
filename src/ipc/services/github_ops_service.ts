@@ -159,17 +159,24 @@ export class GithubOpsService {
   private runUnlocked(appId: number, op: GithubOperation): Promise<void> {
     switch (op.type) {
       case "push":
+        // The provider travels with the operation so the handler can refuse
+        // one that no longer matches the app row — a window holding a stale
+        // row would otherwise get a banner naming the wrong provider.
         return handlePushToGithub(MAIN_SERVICE_EVENT, {
           appId,
           force: op.mode === "force",
           forceWithLease: op.mode === "lease",
+          provider: op.provider,
         });
       case "pull":
         return handlePullFromGithub(MAIN_SERVICE_EVENT, { appId });
       case "fetch":
         return handleFetchFromGithub(MAIN_SERVICE_EVENT, { appId });
       case "rebase":
-        return handleRebaseFromGithub(MAIN_SERVICE_EVENT, { appId });
+        return handleRebaseFromGithub(MAIN_SERVICE_EVENT, {
+          appId,
+          provider: op.provider,
+        });
       case "rebase-continue":
         return handleContinueRebase(MAIN_SERVICE_EVENT, { appId });
       case "rebase-abort":

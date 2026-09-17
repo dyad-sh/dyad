@@ -383,6 +383,7 @@
       "repository": "Repository",
       "repositoryDescription": "Sync your code to GitHub or GitLab.",
       "chooseProvider": "Where should this app's code live?",
+      "loadingProviders": "Checking which providers are available…",
       "vercel": "Vercel",
       "vercelDescription": "Publish your app by deploying it to Vercel.",
       "githubRequiredForVercel": "GitHub Required for Vercel Deployment",

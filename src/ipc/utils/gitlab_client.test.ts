@@ -32,13 +32,15 @@ let routes: Record<string, Route | Route[]> = {};
 function respond(url: string, init: RequestInit): Response {
   calls.push({ url, init });
   const key = `${init.method ?? "GET"} ${url}`;
+  // A prefix match on the whole "METHOD URL", so only the query string may
+  // differ. `includes` let `POST /projects/wrong` match the create-project
+  // route, and an unmatched request used to become the same 404 one test
+  // asserts on — between them a wrong URL could pass the suite.
   const match = Object.entries(routes).find(([pattern]) =>
-    key.includes(pattern),
+    key.startsWith(pattern),
   );
   if (!match) {
-    return new Response(JSON.stringify({ message: "404 Not Found" }), {
-      status: 404,
-    });
+    throw new Error(`No route registered for ${key}`);
   }
   const value = match[1];
   const route = Array.isArray(value) ? (value.shift() ?? value[0]) : value;

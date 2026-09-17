@@ -45,10 +45,12 @@ function VercelDashboardLink() {
 
 function VercelDeployment({ appId, app }: { appId: number; app: AppSummary }) {
   const linked = describeLinkedRemote(app);
-  const { settings } = useSettings();
+  const { settings, loading: settingsLoading } = useSettings();
   // Own-server deployment is itself behind an experiment that is off by
   // default, so pointing a GitLab user at it without saying where it lives
-  // named a control that is nowhere on their screen.
+  // named a control that is nowhere on their screen. Until settings arrive
+  // the flag reads false, so neither branch of that advice is known to be
+  // true yet — say nothing rather than the wrong thing.
   const ownServerAvailable = Boolean(settings?.enableOwnServerDeployment);
   return (
     <div className="space-y-4">
@@ -66,10 +68,12 @@ function VercelDeployment({ appId, app }: { appId: number; app: AppSummary }) {
           </h3>
           <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
             This app is linked to {linked.providerLabel}. Vercel deploys from
-            GitHub only;{" "}
-            {ownServerAvailable
-              ? "deploy it to your own server instead."
-              : "turn on “Deploy to your own server” in Settings → Experiments to deploy it."}
+            GitHub only
+            {settingsLoading
+              ? "."
+              : ownServerAvailable
+                ? "; deploy it to your own server instead."
+                : "; turn on “Deploy to your own server” in Settings → Experiments to deploy it."}
           </p>
         </div>
       ) : !app.githubOrg || !app.githubRepo ? (

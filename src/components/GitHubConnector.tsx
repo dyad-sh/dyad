@@ -51,6 +51,7 @@ import {
   useUnsolicitedConnectionReturn,
 } from "@/hooks/useConnectionFlow";
 import { describeLinkedRemote } from "@/shared/linked_remote";
+import { showError } from "@/lib/toast";
 
 interface GitHubConnectorProps {
   appId: number | null;
@@ -268,9 +269,22 @@ export function ConnectedGitHubConnector({
       )}
       <p>Connected to {providerShortLabel} Repo:</p>
       <a
+        // The href is what makes this focusable and activatable by keyboard;
+        // the handler keeps the click in the user's browser rather than the
+        // Electron window.
+        href={linked?.webUrl}
         onClick={(e) => {
           e.preventDefault();
-          if (linked) ipc.system.openExternalUrl(linked.webUrl);
+          if (!linked) return;
+          void ipc.system
+            .openExternalUrl(linked.webUrl)
+            .catch((err: unknown) =>
+              showError(
+                err instanceof Error
+                  ? err.message
+                  : "Could not open the repository.",
+              ),
+            );
         }}
         className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"
         target="_blank"
@@ -279,7 +293,9 @@ export function ConnectedGitHubConnector({
       >
         {linked?.displayPath}
       </a>
-      {linked?.branch && <GithubBranchManager appId={appId} />}
+      {linked?.branch && (
+        <GithubBranchManager appId={appId} provider={opProvider} />
+      )}
       <div className="mt-2 flex gap-2">
         <Button
           onClick={() =>

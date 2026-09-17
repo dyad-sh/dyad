@@ -158,7 +158,18 @@ export function GitLabCredentialsForm({
               href={tokenPageUrl}
               onClick={(event) => {
                 event.preventDefault();
-                ipc.system.openExternalUrl(tokenPageUrl);
+                // Surfaced through the form's own error line: a rejected IPC
+                // call here would otherwise be an unhandled rejection and
+                // leave the user staring at a link that did nothing.
+                void ipc.system
+                  .openExternalUrl(tokenPageUrl)
+                  .catch((err: unknown) =>
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : t("integrations.gitlab.connectFailed"),
+                    ),
+                  );
               }}
               className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"
               target="_blank"

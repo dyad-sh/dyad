@@ -123,6 +123,7 @@ export { appClient } from "./app";
 export { chatClient, chatStreamClient } from "./chat";
 export { agentClient, agentEventClient } from "./agent";
 export { githubClient, gitClient, gitEventClient } from "./github";
+export { gitlabClient } from "./gitlab";
 export {
   connectionFlowClient,
   connectionFlowEventClient,

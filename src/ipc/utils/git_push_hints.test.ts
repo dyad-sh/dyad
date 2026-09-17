@@ -23,7 +23,9 @@ describe("withPushHint", () => {
       { code: "NON_FAST_FORWARD" },
     );
 
-    const hinted = withPushHint(original, gitlab) as DyadError & {
+    const hinted = withPushHint(original, gitlab, {
+      forced: true,
+    }) as DyadError & {
       code?: string;
     };
 
@@ -31,8 +33,36 @@ describe("withPushHint", () => {
     expect(hinted.message).toContain("not allowed to force push");
     expect(hinted.message).toContain('protects the "main" branch');
     expect(hinted.message).toContain("Protected branches");
+    expect(hinted.message).toContain('allow force push for "main"');
     expect(hinted.kind).toBe(DyadErrorKind.Conflict);
     expect(hinted.code).toBe("NON_FAST_FORWARD");
+  });
+
+  it("asks for push permission, not force push, when nothing was forced", () => {
+    // Allowing force push does not grant permission to push at all, so the
+    // remedy has to follow the operation that was actually rejected.
+    const original = new DyadError(
+      "GitLab: You are not allowed to push code to protected branches on this project.",
+      DyadErrorKind.Conflict,
+    );
+
+    const hinted = withPushHint(original, gitlab) as DyadError;
+
+    expect(hinted.message).toContain('allow your role to push to "main"');
+    expect(hinted.message).not.toContain("allow force push");
+  });
+
+  it("leaves a push rule that is not branch protection alone", () => {
+    // GitLab raises the same pre-receive suffix for commit-message formats,
+    // file-size limits and committer-email rules. Pointing those at Protected
+    // branches names a setting that has nothing to do with the rejection.
+    const error = new DyadError(
+      "! [remote rejected] main -> main (pre-receive hook declined)\n" +
+        "remote: GitLab: Commit message does not follow the pattern",
+      DyadErrorKind.Conflict,
+    );
+
+    expect(withPushHint(error, gitlab)).toBe(error);
   });
 
   it("leaves other GitLab errors alone", () => {
@@ -57,9 +87,15 @@ describe("isProtectedBranchRejection", () => {
     ).toBe(true);
     expect(
       isProtectedBranchRejection(
-        "! [remote rejected] main -> main (pre-receive hook declined)",
+        "GitLab: You are not allowed to force push code to a protected branch on this project.",
       ),
     ).toBe(true);
     expect(isProtectedBranchRejection("Authentication failed")).toBe(false);
+    // A bare pre-receive rejection says nothing about branch protection.
+    expect(
+      isProtectedBranchRejection(
+        "! [remote rejected] main -> main (pre-receive hook declined)",
+      ),
+    ).toBe(false);
   });
 });

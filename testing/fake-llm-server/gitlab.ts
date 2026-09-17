@@ -152,7 +152,30 @@ function keyMaterial(key: string): string {
   return key.trim().split(/\s+/).slice(0, 2).join(" ");
 }
 
-function recordPushEvents(pathWithNamespace: string, body: string) {
+/**
+ * The credential git sends: `Basic base64("oauth2:<token>")`, which is what
+ * Dyad injects per invocation as `http.<host>/.extraheader`.
+ */
+function hasGitBasicAuth(header: string | undefined): boolean {
+  if (!header?.startsWith("Basic ")) return false;
+  try {
+    const [user, ...rest] = Buffer.from(header.slice(6), "base64")
+      .toString("utf8")
+      .split(":");
+    return user === "oauth2" && rest.join(":") === FAKE_GITLAB_TOKEN;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What a push is asking for, read from the ref-update lines.
+ *
+ * Parsing and recording are separate so the events are only published after
+ * git-receive-pack accepts them — otherwise a rejected push would still show
+ * up in `/test/push-events` and a test could assert a push that never landed.
+ */
+function parsePushEvents(pathWithNamespace: string, body: string) {
   const events: PushEvent[] = [];
   for (const line of body.split("\n")) {
     const match = line.match(
@@ -167,23 +190,49 @@ function recordPushEvents(pathWithNamespace: string, body: string) {
         : oldSha === "0".repeat(40)
           ? "create"
           : "push";
-    const event: PushEvent = {
+    events.push({
       timestamp: new Date(),
       path: pathWithNamespace,
       branch,
       operation,
       commitSha: operation === "delete" ? oldSha : newSha,
-    };
-    events.push(event);
-    state.pushEvents.push(event);
-    fakeLlmLog(`* [gitlab] ${operation} ${pathWithNamespace}/${branch}`);
+    });
   }
   return events;
+}
+
+function recordPushEvents(events: PushEvent[]) {
+  for (const event of events) {
+    state.pushEvents.push(event);
+    fakeLlmLog(`* [gitlab] ${event.operation} ${event.path}/${event.branch}`);
+  }
 }
 
 function pointHeadAtCreatedBranch(repoPath: string, events: PushEvent[]) {
   const created = events.find((e) => e.operation === "create")?.branch;
   if (!created) return;
+  // Only when HEAD dangles. A bare repo starts on refs/heads/main, and
+  // retargeting it at whatever branch was pushed first would make a clone
+  // check out that branch instead of the default the API reports.
+  try {
+    const head = execFileSync(
+      "git",
+      ["--git-dir", repoPath, "symbolic-ref", "--quiet", "HEAD"],
+      { stdio: "pipe" },
+    )
+      .toString()
+      .trim();
+    const exists = execFileSync(
+      "git",
+      ["--git-dir", repoPath, "for-each-ref", "--format=%(refname)", head],
+      { stdio: "pipe" },
+    )
+      .toString()
+      .trim();
+    if (exists) return;
+  } catch {
+    // No resolvable HEAD at all: fall through and point it somewhere real.
+  }
   try {
     execFileSync(
       "git",
@@ -379,6 +428,15 @@ export function registerFakeGitLab(app: Express) {
     if (!project) {
       return res.status(404).json({ message: "404 Project Not Found" });
     }
+    // Every project the fake serves is private, so git traffic has to carry
+    // the same credential a real instance would demand. Without this the
+    // E2E passes whether or not the host-bound auth header is built
+    // correctly — which is the property these specs exist to prove.
+    if (!hasGitBasicAuth(req.headers.authorization)) {
+      res.setHeader("WWW-Authenticate", 'Basic realm="GitLab"');
+      return res.status(401).json({ message: "401 Unauthorized" });
+    }
+
     const repoPath = ensureBareRepo(pathWithNamespace);
     const flatName = path.basename(repoPath);
 
@@ -389,7 +447,7 @@ export function registerFakeGitLab(app: Express) {
       req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       req.on("end", () => {
         const rawBody = Buffer.concat(chunks);
-        const events = recordPushEvents(
+        const events = parsePushEvents(
           pathWithNamespace,
           rawBody.toString("latin1"),
         );
@@ -415,7 +473,11 @@ export function registerFakeGitLab(app: Express) {
         ps.stdin.end();
         ps.stdout.pipe(res);
         ps.on("close", (code) => {
-          if (code === 0) pointHeadAtCreatedBranch(repoPath, events);
+          // Only a push git actually accepted becomes an event, so a test
+          // cannot assert a push that was rejected.
+          if (code !== 0) return;
+          recordPushEvents(events);
+          pointHeadAtCreatedBranch(repoPath, events);
         });
       });
       return;

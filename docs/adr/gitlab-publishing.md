@@ -80,8 +80,11 @@ rejected are noted where they shaped the design.
    `gitlab_branch`). The existing GitHub columns are not migrated. Consumers
    that today read `githubOrg`/`githubRepo` directly (Publish panel, Coolify
    deploy, remote scrub, push handlers) go through one small module that
-   answers, per app: which provider, which token, which HTTPS and SSH clone
-   URL, how to register a deploy key. A full generic provider abstraction was
+   answers, per app: which provider, which token, and which HTTPS and SSH
+   clone URL. Deploy-key registration stays provider-specific in the Coolify
+   commands, where the two APIs differ too much to share: GitHub takes one
+   key per repository, GitLab lets one key serve several projects and reports
+   whether it may push. A full generic provider abstraction was
    rejected as too large and risky for an upstream PR; a pure parallel stack
    was rejected because it spreads `if github else gitlab` through every
    consumer.
@@ -144,8 +147,11 @@ rejected are noted where they shaped the design.
 
 19. **Two end-to-end specs against a fake GitLab server** mounted under
     `/gitlab` in the existing fake server: one covers connect, create a
-    project in a group and push; the other covers connecting an existing
-    project and deploying to Coolify with deploy-key verification. Because the
+    project in a group, push, switch branches, link an existing project and
+    disconnect; the other creates a project and deploys it to Coolify,
+    verifying the read-only deploy key and the SSH clone URL with its
+    non-standard port. Deploying an app linked to a pre-existing project is
+    not covered by either and is left as a follow-up. Because the
     instance URL is user-supplied, the tests point Dyad at the fake server
     directly; no test-build switch is needed. Unit tests cover the handlers,
     the remote scrub and deploy-key registration.

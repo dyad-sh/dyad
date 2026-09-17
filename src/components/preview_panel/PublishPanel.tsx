@@ -28,9 +28,12 @@ export const PublishPanel = () => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app, loading } = useLoadApp(selectedAppId);
-  const { settings } = useSettings();
+  // The card title is chosen from `enableGitlabPublishing`, which reads false
+  // until settings arrive — so waiting for them here keeps the card from
+  // naming GitHub for a moment on an app whose provider is still unknown.
+  const { settings, loading: settingsLoading } = useSettings();
 
-  if (loading) {
+  if (loading || settingsLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center">
         <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">

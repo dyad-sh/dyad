@@ -366,6 +366,7 @@
       "repository": "Repositorio",
       "repositoryDescription": "Sincroniza tu código con GitHub o GitLab.",
       "chooseProvider": "¿Dónde debería vivir el código de esta app?",
+      "loadingProviders": "Comprobando qué proveedores están disponibles…",
       "vercel": "Vercel",
       "vercelDescription": "Publica tu aplicación implementándola en Vercel.",
       "githubRequiredForVercel": "GitHub Requerido para Implementación en Vercel",

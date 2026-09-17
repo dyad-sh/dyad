@@ -359,7 +359,20 @@ async function ensureGitLabDeployKey({
     // GitLab returns the key without its trailing comment.
     const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
     const keys = await client.listDeployKeys(remote.projectId);
-    if (keys.some((k) => k.key.startsWith(ours))) {
+    const existing = keys.find((k) => k.key.startsWith(ours));
+    if (existing?.canPush) {
+      // Dyad registers this key read-only, but an earlier registration — by
+      // hand, or by another tool — can have granted write. Accepting it would
+      // hand Coolify push access to the repository it only needs to read.
+      throw new DyadError(
+        `Dyad's deploy key is already registered on ${label} with write access, ` +
+          `but Coolify only needs to read the repository. Give the key read-only ` +
+          `access in the project's Deploy keys settings, or remove it there and ` +
+          `deploy again so Dyad can register it read-only.`,
+        DyadErrorKind.Validation,
+      );
+    }
+    if (existing) {
       report.log(`Deploy key already present on ${label}.\n`);
     } else {
       throw new DyadError(

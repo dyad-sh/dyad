@@ -121,8 +121,18 @@ const connectRepositoryOperationSchema = z.discriminatedUnion("provider", [
 export const GithubOperationSchema: z.ZodType<GithubOperation> =
   z.discriminatedUnion("type", [
     pushOperationSchema,
-    z.object({ type: z.literal("pull") }).strict(),
-    z.object({ type: z.literal("fetch") }).strict(),
+    z
+      .object({
+        type: z.literal("pull"),
+        provider: z.enum(["github", "gitlab"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("fetch"),
+        provider: z.enum(["github", "gitlab"]),
+      })
+      .strict(),
     z
       .object({
         type: z.literal("rebase"),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,11 @@ export function GitLabConnector({
   }
 
   return (
+    // Keyed on the app: the link form seeds its project name from the folder
+    // and this subtree is not remounted when the selected app changes, so
+    // without a key the next app would be offered the previous app's name.
     <UnconnectedGitLabConnector
+      key={appId ?? "no-app"}
       appId={appId}
       folderName={folderName}
       status={status}
@@ -164,8 +168,16 @@ export function UnconnectedGitLabConnector({
   const [isCheckingProject, setIsCheckingProject] = useState(false);
   const [newBranch, setNewBranch] = useState("main");
 
+  // Every check gets a sequence number and only the newest may write. A
+  // lookup against a slow self-hosted instance can outlive the name it was
+  // started for, and an older answer landing last would report availability
+  // for a name the user has already changed.
+  const latestCheckRef = useRef(0);
+
   const checkAvailability = useCallback(
     async (name: string, namespaceFullPath: string | null) => {
+      const checkId = ++latestCheckRef.current;
+      const isCurrent = () => latestCheckRef.current === checkId;
       setProjectCheckError(null);
       setProjectAvailable(null);
       if (!name || !namespaceFullPath) return;
@@ -175,6 +187,7 @@ export function UnconnectedGitLabConnector({
           namespaceFullPath,
           path: name,
         });
+        if (!isCurrent()) return;
         setProjectAvailable(result.available);
         if (!result.available) {
           setProjectCheckError(
@@ -182,11 +195,12 @@ export function UnconnectedGitLabConnector({
           );
         }
       } catch (err: any) {
+        if (!isCurrent()) return;
         setProjectCheckError(
           err?.message || "Failed to check project availability.",
         );
       } finally {
-        setIsCheckingProject(false);
+        if (isCurrent()) setIsCheckingProject(false);
       }
     },
     [],

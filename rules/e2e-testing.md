@@ -98,7 +98,9 @@ await page.getByRole("radio", { name: "Vue" }).click();
 await page.getByLabel("Vue").click();
 ```
 
-Changing an element's ARIA **role** is a breaking change for tests, even when the visible UI is identical. Page objects and Vitest integration tests look controls up by role — `getByRole("button", { name: "Connect to existing repo" })` appears in both `e2e-tests/helpers/page-objects/components/` and `src/ipc/handlers/__tests__/`. When consolidating duplicated controls into a shared component, grep for the labels first; prefer `aria-pressed` on buttons inside a labelled `role="group"` over converting a segmented toggle to `role="radio"`, which conveys the same state without invalidating existing selectors.
+Changing an element's ARIA **role** is a breaking change for tests, even when the visible UI is identical. Page objects and Vitest integration tests look controls up by role — `getByRole("button", { name: "Connect to existing repo" })` appears in both `e2e-tests/helpers/page-objects/components/` and `src/ipc/handlers/__tests__/`. When consolidating duplicated controls into a shared component, grep for the labels first and budget for updating the selectors.
+
+Let the semantics decide the role, not the selectors. A group of mutually exclusive options is a `radiogroup` of `radio`s; `aria-pressed` on buttons is for independent toggles, and is only a defensible shortcut for a segmented control when the churn is not worth it — say so in the code when you take it.
 
 ## Lexical editor in Playwright E2E tests
 

@@ -10,6 +10,7 @@ import {
   Timeout,
   type ElectronConfig,
 } from "./helpers/test_helper";
+import { FAKE_GITLAB_TOKEN } from "./helpers/page-objects/components/GitLabConnector";
 
 /**
  * Publishing to GitLab, against a fake instance.
@@ -107,11 +108,21 @@ test("publishes to GitLab: connect, create a project, sync, link an existing one
     operation: "push",
   });
 
-  // The credentials never reach .git/config.
+  // The credentials never reach .git/config. Asserting the remote URL alone
+  // would pass while a token sat in an extraheader or a credential helper
+  // entry, so read the whole config as well.
   const remoteUrl = git(appPath, "remote", "get-url", "origin");
   expect(remoteUrl).toBe(
     `${po.gitlabConnector.instanceUrl()}/dyad-team/${projectName}.git`,
   );
+  const gitConfig = fs.readFileSync(
+    path.join(appPath, ".git", "config"),
+    "utf8",
+  );
+  expect(gitConfig).not.toContain(FAKE_GITLAB_TOKEN);
+  expect(gitConfig).not.toContain("extraheader");
+  expect(gitConfig).not.toContain("Authorization");
+  expect(gitConfig).not.toMatch(/credential/i);
 
   // Switching branches has to move the branch the next sync pushes. It used
   // to move only github_branch, which a GitLab app never reads, so the sync

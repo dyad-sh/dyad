@@ -21,8 +21,8 @@ import { GithubOpsRemoteSnapshotSchema } from "./transport";
 const REPRESENTATIVE_OPS: readonly GithubOperation[] = [
   { type: "push", mode: "normal", provider: "github" },
   { type: "push", mode: "lease", provider: "github" },
-  { type: "pull" },
-  { type: "fetch" },
+  { type: "pull", provider: "github" },
+  { type: "fetch", provider: "github" },
   { type: "rebase", provider: "github" },
   { type: "rebase-continue", provider: "github" },
   { type: "rebase-abort" },
@@ -226,7 +226,7 @@ describe("github_ops transition", () => {
     }).state;
     const result = transition(running, {
       type: "OP_REQUESTED",
-      op: { type: "pull" },
+      op: { type: "pull", provider: "github" },
     });
 
     expect(result.state).toBe(running);
@@ -919,7 +919,7 @@ describe("github_ops transition", () => {
   });
 
   it("renders operation success through the banner without a duplicate toast", () => {
-    const pull = { type: "pull" } as const;
+    const pull = { type: "pull", provider: "github" } as const;
     const running = transition(INITIAL_GITHUB_OPS_STATE, {
       type: "OP_REQUESTED",
       op: pull,

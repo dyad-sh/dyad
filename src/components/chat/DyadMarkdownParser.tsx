@@ -15,7 +15,7 @@ import { DyadReadChat } from "./DyadReadChat";
 import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadExploreChatHistory } from "./DyadExploreChatHistory";
 import { DyadAddIntegration } from "./DyadAddIntegration";
-import { DyadSuggestMcpServer } from "./DyadSuggestMcpServer";
+import { DyadSuggestPlugin } from "./DyadSuggestPlugin";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -882,9 +882,9 @@ function renderCustomTag(
         </DyadAddIntegration>
       );
 
-    case "dyad-suggest-mcp-server":
+    case "dyad-suggest-plugin":
       return (
-        <DyadSuggestMcpServer
+        <DyadSuggestPlugin
           slug={attributes.slug || ""}
           name={attributes.name}
           reason={attributes.reason || ""}
@@ -893,13 +893,14 @@ function renderCustomTag(
             attributes.outcome === "pending" ||
             attributes.outcome === "connected" ||
             attributes.outcome === "declined" ||
+            attributes.outcome === "never" ||
             attributes.outcome === "dismissed"
               ? attributes.outcome
               : undefined
           }
         >
           {content}
-        </DyadSuggestMcpServer>
+        </DyadSuggestPlugin>
       );
 
     case "dyad-enable-nitro":

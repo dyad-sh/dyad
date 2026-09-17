@@ -371,7 +371,7 @@
     "requestsConsent": "동의를 요청합니다.",
     "inputRequired": "입력 필요"
   },
-  "suggestMcpServer": {
+  "suggestPlugin": {
     "badge": "플러그인 제안",
     "title": "{{name}}을(를) 연결할까요?",
     "reasonLabel": "다음 단계에 필요함",
@@ -388,7 +388,10 @@
     "oauthHint": "연결하면 플러그인이 Dyad에 추가되고 접근 승인을 위해 브라우저가 열립니다.",
     "declining": "건너뛰는 중…",
     "unreachable": "플러그인은 추가되었지만 서버가 응답하지 않습니다. 다시 시도하거나 플러그인 페이지에서 관리하세요.",
-    "authRequired": "플러그인은 추가되었지만 승인이 필요합니다. 플러그인 페이지에서 연결하세요."
+    "authRequired": "플러그인은 추가되었지만 승인이 필요합니다. 플러그인 페이지에서 연결하세요.",
+    "never": "다시 제안하지 않기",
+    "neverTitle": "{{name}}을(를) 다시 제안하지 않습니다",
+    "neverDescription": "Dyad가 플러그인 없이 계속합니다. 플러그인 페이지에서 언제든지 추가할 수 있습니다."
   },
   "guide": "가이드",
   "annotations": {

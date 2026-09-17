@@ -11,6 +11,7 @@ import type {
   HttpCatalogEntry,
   McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
+import { readSettings, writeSettings } from "@/main/settings";
 import { userInputRegistry } from "@/user_input/main";
 import {
   ToolDefinition,
@@ -19,15 +20,17 @@ import {
   escapeXmlAttr,
 } from "./types";
 
-const logger = log.scope("suggest_mcp_server");
+const logger = log.scope("suggest_plugin");
 
 /** A catalog plugin the agent may offer to the user mid-task. */
-export interface SuggestableMcpServer {
+export interface SuggestablePlugin {
   slug: string;
   name: string;
   description?: string;
   /** Whether the plugin only works after the user authorizes it. */
   oauthRequired: boolean;
+  /** Whether connecting it still has to run that authorization. */
+  needsOAuth: boolean;
 }
 
 /**
@@ -50,7 +53,7 @@ const chatsWithLiveSuggestion = new Set<number>();
 // in the same turn.
 const attemptedSlugsByTurn = new Map<string, Set<string>>();
 
-export function resetSuggestMcpServerStateForTests() {
+export function resetSuggestPluginStateForTests() {
   declinedSlugsByChat.clear();
   chatsWithLiveSuggestion.clear();
   attemptedSlugsByTurn.clear();
@@ -69,12 +72,35 @@ function addTo(
   set.add(slug);
 }
 
-async function isCatalogSlugAdded(slug: string): Promise<boolean> {
+interface PluginRow {
+  catalogSlug: string | null;
+  enabled: boolean;
+  oauthState: string | null;
+}
+
+const PLUGIN_ROW_COLUMNS = {
+  catalogSlug: mcpServers.catalogSlug,
+  enabled: mcpServers.enabled,
+  oauthState: mcpServers.oauthState,
+};
+
+// A plugin can serve tools once it is added, enabled, and authorized when
+// its catalog entry requires that. Anything short of this is worth
+// suggesting: the card can enable or authorize an existing row.
+function isUsable(row: PluginRow | undefined, oauthRequired: boolean) {
+  if (!row || !row.enabled) return false;
+  return !oauthRequired || row.oauthState != null;
+}
+
+async function isPluginUsable(
+  slug: string,
+  oauthRequired: boolean,
+): Promise<boolean> {
   const rows = await db
-    .select({ id: mcpServers.id })
+    .select(PLUGIN_ROW_COLUMNS)
     .from(mcpServers)
     .where(eq(mcpServers.catalogSlug, slug));
-  return rows.length > 0;
+  return isUsable(rows[0], oauthRequired);
 }
 
 async function readCatalog(cachedOnly: boolean): Promise<McpCatalogEntry[]> {
@@ -93,49 +119,58 @@ async function readCatalog(cachedOnly: boolean): Promise<McpCatalogEntry[]> {
 }
 
 /**
- * Featured catalog plugins the user has not added or declined in this
- * chat. Only one-click entries qualify: http transport with nothing to
- * configure, so the chat card can add and connect them without a detour
- * through the setup page. stdio entries need the run-locally consent
- * dialog and entries with `inputs` need the setup page; both stay in the
- * Plugins catalog for now.
+ * Featured catalog plugins that cannot serve tools yet (never added,
+ * disabled, or not authorized), minus the ones the user declined in this
+ * chat or asked never to be offered again. Only one-click entries qualify:
+ * http transport with nothing to configure, so the chat card can add and
+ * connect them without a detour through the setup page. stdio entries need
+ * the run-locally consent dialog and entries with `inputs` need the setup
+ * page; both stay in the Plugins catalog for now.
  *
  * With `cachedOnly`, an unfetched catalog yields an empty list instead of
  * waiting on the network.
  */
-export async function collectSuggestableMcpServers({
+export async function collectSuggestablePlugins({
   chatId,
   cachedOnly = false,
 }: {
   chatId: number;
   cachedOnly?: boolean;
-}): Promise<SuggestableMcpServer[]> {
+}): Promise<SuggestablePlugin[]> {
   const entries = await readCatalog(cachedOnly);
   if (entries.length === 0) return [];
-  const rows = await db
-    .select({ catalogSlug: mcpServers.catalogSlug })
+  const rows: PluginRow[] = await db
+    .select(PLUGIN_ROW_COLUMNS)
     .from(mcpServers)
     .where(isNotNull(mcpServers.catalogSlug));
-  const added = new Set(rows.map((row) => row.catalogSlug));
+  const rowBySlug = new Map(rows.map((row) => [row.catalogSlug, row]));
   const declined = declinedSlugsByChat.get(chatId);
+  const neverSuggest = new Set(readSettings().neverSuggestPluginSlugs ?? []);
   return entries
     .filter(
       (entry): entry is HttpCatalogEntry =>
         entry.featured === true &&
         entry.transport === "http" &&
         (entry.inputs?.length ?? 0) === 0 &&
-        !added.has(entry.slug) &&
-        !declined?.has(entry.slug),
+        !declined?.has(entry.slug) &&
+        !neverSuggest.has(entry.slug),
     )
-    .map((entry) => ({
+    .map((entry) => {
+      const oauthRequired = !!entry.oauth?.required;
+      const row = rowBySlug.get(entry.slug);
+      return { entry, oauthRequired, row };
+    })
+    .filter(({ row, oauthRequired }) => !isUsable(row, oauthRequired))
+    .map(({ entry, oauthRequired, row }) => ({
       slug: entry.slug,
       name: entry.name,
       description: entry.description,
-      oauthRequired: !!entry.oauth?.required,
+      oauthRequired,
+      needsOAuth: oauthRequired && row?.oauthState == null,
     }));
 }
 
-const suggestMcpServerSchema = z.object({
+const suggestPluginSchema = z.object({
   slug: z
     .string()
     .min(1)
@@ -151,7 +186,7 @@ const suggestMcpServerSchema = z.object({
     ),
 });
 
-type SuggestMcpServerArgs = z.infer<typeof suggestMcpServerSchema>;
+type SuggestPluginArgs = z.infer<typeof suggestPluginSchema>;
 
 const BASE_DESCRIPTION = `Ask the user to connect a Dyad plugin (an MCP server from the curated catalog) so you can use its tools.
 
@@ -159,7 +194,7 @@ Call this only at the moment your next step needs a capability that one of the p
 
 The tool blocks until the user connects the plugin or declines. When the user connects it, the plugin's tools are NOT available in this turn: Dyad queues a follow-up turn where they will be. In that case end your response with one short line saying you will continue once the plugin is ready, and do not attempt the step another way. If the user declines, continue without the plugin.`;
 
-function formatAvailablePlugins(servers: SuggestableMcpServer[]): string {
+function formatAvailablePlugins(servers: SuggestablePlugin[]): string {
   const lines = servers.map((server) => {
     const description = server.description?.trim();
     return description
@@ -169,10 +204,10 @@ function formatAvailablePlugins(servers: SuggestableMcpServer[]): string {
   return `Plugins available to suggest (slug: name — what it does):\n${lines.join("\n")}`;
 }
 
-function previewXml(args: Partial<SuggestMcpServerArgs>): string | undefined {
+function previewXml(args: Partial<SuggestPluginArgs>): string | undefined {
   if (!args.slug) return undefined;
   const reason = args.reason ? ` reason="${escapeXmlAttr(args.reason)}"` : "";
-  return `<dyad-suggest-mcp-server slug="${escapeXmlAttr(args.slug)}"${reason} outcome="pending"></dyad-suggest-mcp-server>`;
+  return `<dyad-suggest-plugin slug="${escapeXmlAttr(args.slug)}"${reason} outcome="pending"></dyad-suggest-plugin>`;
 }
 
 function pendingXml(
@@ -180,26 +215,26 @@ function pendingXml(
   reason: string,
   requestId: string,
 ): string {
-  return `<dyad-suggest-mcp-server slug="${escapeXmlAttr(server.slug)}" name="${escapeXmlAttr(server.name)}" reason="${escapeXmlAttr(reason)}" request-id="${escapeXmlAttr(requestId)}" outcome="pending"></dyad-suggest-mcp-server>`;
+  return `<dyad-suggest-plugin slug="${escapeXmlAttr(server.slug)}" name="${escapeXmlAttr(server.name)}" reason="${escapeXmlAttr(reason)}" request-id="${escapeXmlAttr(requestId)}" outcome="pending"></dyad-suggest-plugin>`;
 }
 
 function terminalXml(
   server: { slug: string; name: string },
   reason: string,
-  outcome: "connected" | "declined" | "dismissed",
+  outcome: "connected" | "declined" | "never" | "dismissed",
 ): string {
-  return `<dyad-suggest-mcp-server slug="${escapeXmlAttr(server.slug)}" name="${escapeXmlAttr(server.name)}" reason="${escapeXmlAttr(reason)}" outcome="${outcome}"></dyad-suggest-mcp-server>`;
+  return `<dyad-suggest-plugin slug="${escapeXmlAttr(server.slug)}" name="${escapeXmlAttr(server.name)}" reason="${escapeXmlAttr(reason)}" outcome="${outcome}"></dyad-suggest-plugin>`;
 }
 
-export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
-  name: "suggest_mcp_server",
+export const suggestPluginTool: ToolDefinition<SuggestPluginArgs> = {
+  name: "suggest_plugin",
   description: BASE_DESCRIPTION,
   getDescription: (ctx: ToolDescriptionContext) => {
-    const servers = ctx.suggestableMcpServers ?? [];
+    const servers = ctx.suggestablePlugins ?? [];
     if (servers.length === 0) return BASE_DESCRIPTION;
     return `${BASE_DESCRIPTION}\n\n${formatAvailablePlugins(servers)}`;
   },
-  inputSchema: suggestMcpServerSchema,
+  inputSchema: suggestPluginSchema,
   defaultConsent: "always",
   // Adding a plugin changes main-process state, so the tool stays out of
   // Ask and Plan; it never touches the workspace, so finalization has
@@ -207,7 +242,7 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
   modifiesState: true,
   mutationTracking: "none",
   requiresBlueprintApproval: false,
-  isEnabled: (ctx) => (ctx.suggestableMcpServers?.length ?? 0) > 0,
+  isEnabled: (ctx) => (ctx.suggestablePlugins?.length ?? 0) > 0,
 
   getConsentPreview: (args) => `Suggest connecting the ${args.slug} plugin`,
 
@@ -217,7 +252,7 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
   buildXml: (args, isComplete) => (isComplete ? undefined : previewXml(args)),
 
   execute: async (args, ctx: AgentContext) => {
-    const servers = ctx.suggestableMcpServers ?? [];
+    const servers = ctx.suggestablePlugins ?? [];
     const server = servers.find((candidate) => candidate.slug === args.slug);
     // Nothing is requested on these paths, so a dismissed card records the
     // attempt in the transcript without rendering anything.
@@ -244,7 +279,7 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
     try {
       // The turn's suggestable set is fixed at turn start, so re-check what
       // has settled since: a decline in this chat, an earlier attempt this
-      // turn, or a row that now exists.
+      // turn, or a plugin that became usable.
       if (declinedSlugsByChat.get(ctx.chatId)?.has(server.slug)) {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
         return `The user already declined the ${server.name} plugin in this conversation. Continue without it and do not suggest it again.`;
@@ -254,19 +289,19 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
         return `You already suggested the ${server.name} plugin in this turn and the user did not connect it. Continue without it.`;
       }
-      if (await isCatalogSlugAdded(server.slug)) {
+      if (await isPluginUsable(server.slug, server.oauthRequired)) {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
-        return `The ${server.name} plugin is already added, though it may still need to be connected on the Plugins page. Its tools become available the next time the user sends a message, not in this turn. Tell the user that and continue with whatever you can do without it.`;
+        return `The ${server.name} plugin is already connected. Its tools become available the next time the user sends a message, not in this turn. Tell the user that and continue with whatever you can do without it.`;
       }
 
       const followUpPrompt = `Continue. I have connected the ${server.name} plugin. Resume what you needed it for: ${args.reason}`;
       const requestId = userInputRegistry.request({
-        kind: "mcp-suggestion",
+        kind: "plugin-suggestion",
         chatId: ctx.chatId,
         slug: server.slug,
         serverName: server.name,
         serverDescription: server.description ?? null,
-        oauthRequired: server.oauthRequired,
+        needsOAuth: server.needsOAuth,
         reason: args.reason,
         classifier: "none",
         followUpPrompt,
@@ -282,7 +317,7 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
 
       const result = await userInputRegistry.park(requestId, ctx.abortSignal);
 
-      if (result?.kind !== "mcp-suggestion") {
+      if (result?.kind !== "plugin-suggestion") {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
         return `The user did not respond to the ${server.name} plugin suggestion. Continue without it, and ask them how they'd like to proceed if the step cannot be completed another way.`;
       }
@@ -290,6 +325,18 @@ export const suggestMcpServerTool: ToolDefinition<SuggestMcpServerArgs> = {
         addTo(declinedSlugsByChat, ctx.chatId, server.slug);
         ctx.onXmlComplete(terminalXml(server, args.reason, "declined"));
         return `The user declined to connect the ${server.name} plugin. Continue the task without it and do not suggest it again in this conversation.`;
+      }
+      if (result.outcome === "never") {
+        // Persisted per plugin, so it holds across chats and restarts.
+        const existing = readSettings().neverSuggestPluginSlugs ?? [];
+        if (!existing.includes(server.slug)) {
+          writeSettings({
+            neverSuggestPluginSlugs: [...existing, server.slug],
+          });
+        }
+        addTo(declinedSlugsByChat, ctx.chatId, server.slug);
+        ctx.onXmlComplete(terminalXml(server, args.reason, "never"));
+        return `The user asked never to be offered the ${server.name} plugin again. Continue the task without it and never suggest it again.`;
       }
       ctx.onXmlComplete(terminalXml(server, args.reason, "connected"));
       return `The user connected the ${server.name} plugin. Its tools are not available in this turn; Dyad has queued a follow-up turn where they will be. End your response now with one short line saying you will continue once the plugin is ready, and do not attempt the step another way.`;

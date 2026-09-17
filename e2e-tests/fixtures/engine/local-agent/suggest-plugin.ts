@@ -7,7 +7,7 @@ export const fixture: LocalAgentFixture = {
       text: "I need the E2E Open Server plugin for the next step.",
       toolCalls: [
         {
-          name: "suggest_mcp_server",
+          name: "suggest_plugin",
           args: {
             slug: "e2e-open",
             reason: "Run the calculator tool to verify the totals.",

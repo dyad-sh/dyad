@@ -147,7 +147,7 @@ import {
   type McpToolDef,
 } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
-import { collectSuggestableMcpServers } from "./tools/suggest_mcp_server";
+import { collectSuggestablePlugins } from "./tools/suggest_plugin";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
@@ -1168,7 +1168,7 @@ export async function handleLocalAgentStream(
       buildOptions,
     );
     ctx.enableAppBlueprint = buildOptions.enableAppBlueprint;
-    // suggest_mcp_server.isEnabled and its description read this during the
+    // suggest_plugin.isEnabled and its description read this during the
     // build. Only writable root turns can offer plugins: Ask and Plan filter
     // the tool out anyway, and Build mode has no MCP tools to gain. A user
     // who turned the tool off skips the catalog read entirely.
@@ -1176,10 +1176,10 @@ export async function handleLocalAgentStream(
       !buildMode &&
       !readOnly &&
       !planModeOnly &&
-      getAgentToolConsent("suggest_mcp_server") !== "never"
+      getAgentToolConsent("suggest_plugin") !== "never"
     ) {
       try {
-        ctx.suggestableMcpServers = await collectSuggestableMcpServers({
+        ctx.suggestablePlugins = await collectSuggestablePlugins({
           chatId: chat.id,
         });
       } catch (e) {

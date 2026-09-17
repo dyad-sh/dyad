@@ -6,17 +6,17 @@ import { CheckCircle2, Loader2, Plug, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import {
-  usePendingMcpSuggestions,
+  usePendingPluginSuggestions,
   useUserInputReadModel,
 } from "@/user_input/hooks";
-import type { PendingMcpSuggestion } from "@/user_input/selectors";
+import type { PendingPluginSuggestion } from "@/user_input/selectors";
 import { invalidateMcpQueries } from "@/components/plugins/invalidateMcpQueries";
 import { usePluginConnect } from "@/components/plugins/usePluginConnect";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 
-interface DyadSuggestMcpServerProps {
+interface DyadSuggestPluginProps {
   children?: React.ReactNode;
   slug: string;
   /** Absent only on the streaming preview, which is never interactive. */
@@ -24,7 +24,7 @@ interface DyadSuggestMcpServerProps {
   reason: string;
   /** The parked request this card belongs to; only pending cards carry it. */
   requestId?: string;
-  outcome?: "pending" | "connected" | "declined" | "dismissed";
+  outcome?: "pending" | "connected" | "declined" | "never" | "dismissed";
 }
 
 /**
@@ -34,7 +34,7 @@ interface DyadSuggestMcpServerProps {
  * tools. Styled apart from consent prompts because adding a plugin grants
  * the agent a new capability rather than approving a single call.
  */
-export const DyadSuggestMcpServer: React.FC<DyadSuggestMcpServerProps> = ({
+export const DyadSuggestPlugin: React.FC<DyadSuggestPluginProps> = ({
   children,
   slug,
   name,
@@ -44,7 +44,7 @@ export const DyadSuggestMcpServer: React.FC<DyadSuggestMcpServerProps> = ({
 }) => {
   const { t } = useTranslation("chat");
   const chatId = useAtomValue(selectedChatIdAtom);
-  const pendingSuggestions = usePendingMcpSuggestions();
+  const pendingSuggestions = usePendingPluginSuggestions();
 
   const pendingForChat =
     chatId != null ? pendingSuggestions.get(chatId) : undefined;
@@ -60,37 +60,48 @@ export const DyadSuggestMcpServer: React.FC<DyadSuggestMcpServerProps> = ({
       <DyadCard
         accentColor="green"
         state="finished"
-        data-testid="mcp-suggestion-connected"
+        data-testid="plugin-suggestion-connected"
       >
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
-          <DyadBadge color="green">{t("suggestMcpServer.badge")}</DyadBadge>
+          <DyadBadge color="green">{t("suggestPlugin.badge")}</DyadBadge>
           <span className="text-sm font-medium text-foreground">
-            {t("suggestMcpServer.connectedTitle", { name: displayName })}
+            {t("suggestPlugin.connectedTitle", { name: displayName })}
           </span>
         </DyadCardHeader>
         <div className="px-3 pb-3 flex flex-col gap-1">
           {reason && <p className="text-xs text-foreground/80">{reason}</p>}
           <p className="text-xs text-muted-foreground">
-            {t("suggestMcpServer.connectedDescription")}
+            {t("suggestPlugin.connectedDescription")}
           </p>
         </div>
       </DyadCard>
     );
   }
 
-  if (outcome === "declined") {
+  if (outcome === "declined" || outcome === "never") {
+    const isNever = outcome === "never";
     return (
-      <DyadCard accentColor="slate" state="finished">
+      <DyadCard
+        accentColor="slate"
+        state="finished"
+        data-testid={
+          isNever ? "plugin-suggestion-never" : "plugin-suggestion-declined"
+        }
+      >
         <DyadCardHeader icon={<Plug size={15} />} accentColor="slate">
-          <DyadBadge color="slate">{t("suggestMcpServer.badge")}</DyadBadge>
+          <DyadBadge color="slate">{t("suggestPlugin.badge")}</DyadBadge>
           <span className="text-sm font-medium text-foreground">
-            {t("suggestMcpServer.declinedTitle", { name: displayName })}
+            {isNever
+              ? t("suggestPlugin.neverTitle", { name: displayName })
+              : t("suggestPlugin.declinedTitle", { name: displayName })}
           </span>
         </DyadCardHeader>
         <div className="px-3 pb-3 flex flex-col gap-1">
           {reason && <p className="text-xs text-foreground/80">{reason}</p>}
           <p className="text-xs text-muted-foreground">
-            {t("suggestMcpServer.declinedDescription")}
+            {isNever
+              ? t("suggestPlugin.neverDescription")
+              : t("suggestPlugin.declinedDescription")}
           </p>
         </div>
       </DyadCard>
@@ -113,7 +124,7 @@ function PendingSuggestionCard({
   pending,
   children,
 }: {
-  pending: PendingMcpSuggestion;
+  pending: PendingPluginSuggestion;
   children?: React.ReactNode;
 }) {
   const { t } = useTranslation("chat");
@@ -131,11 +142,15 @@ function PendingSuggestionCard({
     if (isBusy) return;
     setPhase("adding");
     try {
-      // Only one-click entries are suggestable (http, no inputs), so the
-      // row is created enabled and needs at most an OAuth step.
+      // Only one-click entries are suggestable (http, no inputs). Adding is
+      // idempotent, so a plugin that already exists comes back as its row,
+      // which may be disabled and may still hold its authorization.
       const created = await ipc.mcp.addFromCatalog({ slug: pending.slug });
+      if (!created.enabled) {
+        await ipc.mcp.updateServer({ id: created.id, enabled: true });
+      }
       await invalidateMcpQueries(queryClient);
-      if (pending.oauthRequired) {
+      if (pending.needsOAuth) {
         setPhase("authorizing");
         // The shared flow toasts its own failure message.
         const connected = await connectNewServer(created);
@@ -150,31 +165,32 @@ function PendingSuggestionCard({
         // calls for a different next step than a server that is down.
         const headline =
           probe.status === "unauthorized"
-            ? t("suggestMcpServer.authRequired")
-            : t("suggestMcpServer.unreachable");
+            ? t("suggestPlugin.authRequired")
+            : t("suggestPlugin.unreachable");
         showError(probe.error ? `${headline}\n${probe.error}` : headline);
         return;
       }
       await readModel.respond(pending.requestId, {
-        kind: "mcp-suggestion",
+        kind: "plugin-suggestion",
         outcome: "connected",
       });
     } catch (error) {
       showError(
-        error instanceof Error ? error.message : t("suggestMcpServer.failed"),
+        error instanceof Error ? error.message : t("suggestPlugin.failed"),
       );
     } finally {
       setPhase("idle");
     }
   };
 
-  const handleDecline = async () => {
+  // "Not now" holds for this conversation; "never" is stored per plugin.
+  const handleDecline = async (outcome: "declined" | "never") => {
     if (isBusy) return;
     setPhase("declining");
     try {
       await readModel.respond(pending.requestId, {
-        kind: "mcp-suggestion",
-        outcome: "declined",
+        kind: "plugin-suggestion",
+        outcome,
       });
     } finally {
       setPhase("idle");
@@ -183,28 +199,28 @@ function PendingSuggestionCard({
 
   const statusText =
     phase === "adding"
-      ? t("suggestMcpServer.adding")
+      ? t("suggestPlugin.adding")
       : phase === "authorizing"
-        ? t("suggestMcpServer.authorizing")
+        ? t("suggestPlugin.authorizing")
         : phase === "declining"
-          ? t("suggestMcpServer.declining")
+          ? t("suggestPlugin.declining")
           : "";
   const connectLabel =
     phase === "adding" || phase === "authorizing"
       ? statusText
-      : t("suggestMcpServer.connect", { name: displayName });
+      : t("suggestPlugin.connect", { name: displayName });
 
   return (
     <DyadCard
       accentColor="violet"
       showAccent
       className="bg-gradient-to-br from-violet-50/70 to-transparent dark:from-violet-950/30"
-      data-testid="mcp-suggestion-card"
+      data-testid="plugin-suggestion-card"
     >
       <DyadCardHeader icon={<Sparkles size={15} />} accentColor="violet">
-        <DyadBadge color="violet">{t("suggestMcpServer.badge")}</DyadBadge>
+        <DyadBadge color="violet">{t("suggestPlugin.badge")}</DyadBadge>
         <span className="text-sm font-semibold text-foreground">
-          {t("suggestMcpServer.title", { name: displayName })}
+          {t("suggestPlugin.title", { name: displayName })}
         </span>
       </DyadCardHeader>
       <div className="px-3 pb-3 flex flex-col gap-3">
@@ -213,7 +229,7 @@ function PendingSuggestionCard({
         )}
         <div className="rounded-md border border-violet-200/80 bg-violet-50/60 px-3 py-2 dark:border-violet-900/60 dark:bg-violet-950/40">
           <p className="text-[11px] font-medium uppercase tracking-wide text-violet-700 dark:text-violet-300">
-            {t("suggestMcpServer.reasonLabel")}
+            {t("suggestPlugin.reasonLabel")}
           </p>
           <p className="mt-0.5 text-sm text-foreground">{pending.reason}</p>
         </div>
@@ -224,24 +240,24 @@ function PendingSuggestionCard({
         )}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Button
-            onClick={() => void handleDecline()}
+            onClick={() => void handleDecline("declined")}
             disabled={isBusy}
             variant="ghost"
             size="sm"
             className="sm:-ml-3"
-            data-testid="mcp-suggestion-decline-button"
+            data-testid="plugin-suggestion-decline-button"
           >
             {phase === "declining" && (
               <Loader2 size={14} className="animate-spin" />
             )}
-            {phase === "declining" ? statusText : t("suggestMcpServer.notNow")}
+            {phase === "declining" ? statusText : t("suggestPlugin.notNow")}
           </Button>
           <Button
             onClick={() => void handleConnect()}
             disabled={isBusy}
             size="sm"
             className="w-full sm:w-auto bg-violet-600 text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400"
-            data-testid="mcp-suggestion-connect-button"
+            data-testid="plugin-suggestion-connect-button"
           >
             {phase === "adding" || phase === "authorizing" ? (
               <Loader2 size={14} className="animate-spin" />
@@ -255,11 +271,22 @@ function PendingSuggestionCard({
         <p role="status" aria-live="polite" className="sr-only">
           {statusText}
         </p>
-        <p className="text-[11px] text-muted-foreground">
-          {pending.oauthRequired
-            ? t("suggestMcpServer.oauthHint")
-            : t("suggestMcpServer.hint")}
-        </p>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] text-muted-foreground">
+            {pending.needsOAuth
+              ? t("suggestPlugin.oauthHint")
+              : t("suggestPlugin.hint")}
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleDecline("never")}
+            disabled={isBusy}
+            className="shrink-0 self-start text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50 sm:self-auto"
+            data-testid="plugin-suggestion-never-button"
+          >
+            {t("suggestPlugin.never")}
+          </button>
+        </div>
       </div>
     </DyadCard>
   );

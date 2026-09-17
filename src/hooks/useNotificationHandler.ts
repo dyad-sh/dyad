@@ -72,7 +72,7 @@ export function useNotificationHandler() {
             | "agent-consent"
             | "mcp-consent"
             | "questionnaire"
-            | "mcp-suggestion";
+            | "plugin-suggestion";
         }
       >
     >(),
@@ -447,7 +447,7 @@ export function useNotificationHandler() {
           sourceLabel: `${descriptor.questions.length} questions`,
           tagPrefix: "dyad-plan-questionnaire",
         });
-      } else if (descriptor.kind === "mcp-suggestion") {
+      } else if (descriptor.kind === "plugin-suggestion") {
         // Agent-initiated and turn-blocking, like a consent request, so a
         // user who switched away learns the agent is waiting on them.
         startConsentNotification({
@@ -455,7 +455,7 @@ export function useNotificationHandler() {
           toolName: `Connect ${descriptor.serverName}`,
           requestId: descriptor.requestId,
           sourceLabel: "a plugin suggestion",
-          tagPrefix: "dyad-mcp-suggestion",
+          tagPrefix: "dyad-plugin-suggestion",
           body: `Dyad wants to connect the ${descriptor.serverName} plugin. Click to review.`,
         });
       } else if (descriptor.classifier !== "racing") {
@@ -503,8 +503,8 @@ export function useNotificationHandler() {
           ? "dyad-agent-consent"
           : descriptor.kind === "mcp-consent"
             ? "dyad-mcp-consent"
-            : descriptor.kind === "mcp-suggestion"
-              ? "dyad-mcp-suggestion"
+            : descriptor.kind === "plugin-suggestion"
+              ? "dyad-plugin-suggestion"
               : "dyad-plan-questionnaire",
         requestId,
       );
@@ -531,7 +531,7 @@ export function useNotificationHandler() {
         else if (
           (tag.startsWith("dyad-agent-consent-") ||
             tag.startsWith("dyad-mcp-consent-") ||
-            tag.startsWith("dyad-mcp-suggestion-") ||
+            tag.startsWith("dyad-plugin-suggestion-") ||
             tag.startsWith("dyad-plan-questionnaire-")) &&
           currentChatId
         ) {

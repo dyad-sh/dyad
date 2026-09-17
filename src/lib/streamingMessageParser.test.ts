@@ -67,12 +67,12 @@ describe("streamingMessageParser", () => {
 
   it("parses a plugin suggestion card, including one still streaming", () => {
     const content =
-      '<dyad-suggest-mcp-server slug="vercel" reason="Read the build logs." outcome="pending"></dyad-suggest-mcp-server>';
+      '<dyad-suggest-plugin slug="vercel" reason="Read the build logs." outcome="pending"></dyad-suggest-plugin>';
     const { blocks } = parseFullMessage(content);
     expect(blocksToShape(blocks)).toEqual([
       {
         kind: "custom-tag",
-        tag: "dyad-suggest-mcp-server",
+        tag: "dyad-suggest-plugin",
         attributes: {
           slug: "vercel",
           reason: "Read the build logs.",
@@ -87,7 +87,7 @@ describe("streamingMessageParser", () => {
     // A partial tag streams as an open custom-tag block, not as markdown.
     const partial = feedAll(content, [20, 60]);
     const open = getParserBlocks(partial).find(
-      (b) => b.kind === "custom-tag" && b.tag === "dyad-suggest-mcp-server",
+      (b) => b.kind === "custom-tag" && b.tag === "dyad-suggest-plugin",
     );
     expect(open).toBeDefined();
   });

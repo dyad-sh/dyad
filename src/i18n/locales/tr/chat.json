@@ -370,7 +370,7 @@
     "requestsConsent": "onayınızı istiyor.",
     "inputRequired": "Girdi Gerekli"
   },
-  "suggestMcpServer": {
+  "suggestPlugin": {
     "badge": "Eklenti önerisi",
     "title": "{{name}} bağlansın mı?",
     "reasonLabel": "Sonraki adım için gerekli",
@@ -387,7 +387,10 @@
     "oauthHint": "Bağlandığınızda eklenti Dyad'a eklenir ve erişimi onaylamanız için tarayıcınız açılır.",
     "declining": "Atlanıyor…",
     "unreachable": "Eklenti eklendi ancak sunucusu yanıt vermiyor. Tekrar deneyin veya Eklentiler sayfasından yönetin.",
-    "authRequired": "Eklenti eklendi ancak yetkilendirme gerekiyor. Eklentiler sayfasından bağlayın."
+    "authRequired": "Eklenti eklendi ancak yetkilendirme gerekiyor. Eklentiler sayfasından bağlayın.",
+    "never": "Bir daha önerme",
+    "neverTitle": "{{name}} bir daha önerilmeyecek",
+    "neverDescription": "Dyad onsuz devam edecek. Eklentiler sayfasından yine de ekleyebilirsiniz."
   },
   "guide": "Rehber",
   "annotations": {

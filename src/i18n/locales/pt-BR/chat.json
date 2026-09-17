@@ -368,7 +368,7 @@
     "requestsConsent": "solicita seu consentimento.",
     "inputRequired": "Entrada Necessária"
   },
-  "suggestMcpServer": {
+  "suggestPlugin": {
     "badge": "Sugestão de plugin",
     "title": "Conectar {{name}}?",
     "reasonLabel": "Necessário para a próxima etapa",
@@ -385,7 +385,10 @@
     "oauthHint": "Conectar adiciona o plugin ao Dyad e abre o navegador para aprovar o acesso.",
     "declining": "Ignorando…",
     "unreachable": "O plugin foi adicionado, mas o servidor não está respondendo. Tente novamente ou gerencie-o na página de Plugins.",
-    "authRequired": "O plugin foi adicionado, mas precisa de autorização. Conecte-o na página de Plugins."
+    "authRequired": "O plugin foi adicionado, mas precisa de autorização. Conecte-o na página de Plugins.",
+    "never": "Não sugerir novamente",
+    "neverTitle": "{{name}} não será sugerido novamente",
+    "neverDescription": "O Dyad continuará sem ele. Você ainda pode adicioná-lo na página de Plugins."
   },
   "guide": "Guia",
   "annotations": {

@@ -371,7 +371,7 @@
     "requestsConsent": "requests your consent.",
     "inputRequired": "Input Required"
   },
-  "suggestMcpServer": {
+  "suggestPlugin": {
     "badge": "Plugin suggestion",
     "title": "Connect {{name}}?",
     "reasonLabel": "Needed for the next step",
@@ -388,7 +388,10 @@
     "oauthHint": "Connecting adds the plugin to Dyad and opens your browser to approve access.",
     "declining": "Skipping…",
     "unreachable": "The plugin was added but its server is not responding. Try again, or manage it on the Plugins page.",
-    "authRequired": "The plugin was added but needs authorization. Connect it from the Plugins page."
+    "authRequired": "The plugin was added but needs authorization. Connect it from the Plugins page.",
+    "never": "Don't suggest again",
+    "neverTitle": "Won't suggest {{name}} again",
+    "neverDescription": "Dyad will continue without it. You can still add it from the Plugins page."
   },
   "guide": "Guide",
   "annotations": {

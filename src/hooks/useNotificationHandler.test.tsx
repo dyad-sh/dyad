@@ -158,13 +158,13 @@ describe("useNotificationHandler", () => {
 
     act(() => {
       mocks.requestedListener?.({
-        kind: "mcp-suggestion",
-        requestId: "mcp-suggestion:1",
+        kind: "plugin-suggestion",
+        requestId: "plugin-suggestion:1",
         chatId: 42,
         deadlineAt: 0,
         slug: "vercel",
         serverName: "Vercel",
-        oauthRequired: true,
+        needsOAuth: true,
         reason: "Read the build logs.",
         classifier: "none",
         followUpPrompt: "Continue.",
@@ -177,7 +177,7 @@ describe("useNotificationHandler", () => {
       title: "Notes",
       options: {
         body: "Dyad wants to connect the Vercel plugin. Click to review.",
-        tag: "dyad-mcp-suggestion-mcp-suggestion:1",
+        tag: "dyad-plugin-suggestion-plugin-suggestion:1",
         // Blocks the turn until answered, so it must not auto-dismiss.
         requireInteraction: true,
       },
@@ -186,7 +186,7 @@ describe("useNotificationHandler", () => {
     // Answering the card in the app closes the OS notification.
     act(() => {
       mocks.settledListener?.({
-        requestId: "mcp-suggestion:1",
+        requestId: "plugin-suggestion:1",
         outcome: "human",
       });
     });

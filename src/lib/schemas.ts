@@ -551,6 +551,8 @@ const BaseUserSettingsFields = {
   hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpToolSearch: z.boolean().optional(),
+  // Catalog slugs the user asked the agent never to suggest again.
+  neverSuggestPluginSlugs: z.array(z.string()).optional(),
   enableCodeExplorer: z.boolean().optional(),
   runTypeScriptForWholeProject: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),

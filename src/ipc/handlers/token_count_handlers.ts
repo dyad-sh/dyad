@@ -46,7 +46,7 @@ import {
   hasCompletedAppBlueprintQuestionnaire,
 } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { getCachedMcpToolDefs } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
-import { collectSuggestableMcpServers } from "@/pro/main/ipc/handlers/local_agent/tools/suggest_mcp_server";
+import { collectSuggestablePlugins } from "@/pro/main/ipc/handlers/local_agent/tools/suggest_plugin";
 import { resolveRootDatabasePromptState } from "@/shared/database_provider";
 import { getAppBlueprintForChat } from "./app_blueprint_handlers";
 
@@ -192,9 +192,9 @@ export function registerTokenCountHandlers() {
         selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
       // Cached only: an estimate must never wait on the catalog network
       // fetch, and a failure here must not fail the whole count.
-      const suggestableMcpServers =
+      const suggestablePlugins =
         selectedChatMode === "local-agent"
-          ? await collectSuggestableMcpServers({
+          ? await collectSuggestablePlugins({
               chatId: req.chatId,
               cachedOnly: true,
             }).catch((error: unknown) => {
@@ -226,7 +226,7 @@ export function registerTokenCountHandlers() {
           isDyadPro &&
           isImplementerSubagentEnabled(settings),
         mcpToolDefs,
-        suggestableMcpServers,
+        suggestablePlugins,
         canUseAdvancedSubagentTools:
           selectedChatMode === "local-agent" &&
           isDyadPro &&

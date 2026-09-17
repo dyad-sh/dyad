@@ -4,7 +4,7 @@ import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
 import { Timeout, testWithConfigSkipIfWindows } from "./helpers/test_helper";
 
 /**
- * End-to-end guard for the `suggest_mcp_server` round trip.
+ * End-to-end guard for the `suggest_plugin` round trip.
  *
  * The local-agent tool parks the turn on a user-input request and renders a
  * suggestion card. One click adds the catalog plugin; the response arms a
@@ -48,12 +48,12 @@ testWithFeaturedCatalog(
       // The tool parks the turn on a user-input request rather than finishing
       // the conversation, so wait for the card it renders instead of chat
       // completion.
-      await po.sendPrompt("tc=local-agent/suggest-mcp-server", {
+      await po.sendPrompt("tc=local-agent/suggest-plugin", {
         skipWaitForCompletion: true,
       });
 
       const messages = po.page.getByTestId("messages-list");
-      const card = messages.getByTestId("mcp-suggestion-card");
+      const card = messages.getByTestId("plugin-suggestion-card");
       await expect(card).toBeVisible({ timeout: Timeout.LONG });
       await expect(card.getByText("Connect E2E Open Server?")).toBeVisible();
       await expect(
@@ -62,9 +62,9 @@ testWithFeaturedCatalog(
 
       // One click adds the plugin (no OAuth for this entry) and answers the
       // request; the armed follow-up is dispatched as a real turn.
-      await card.getByTestId("mcp-suggestion-connect-button").click();
+      await card.getByTestId("plugin-suggestion-connect-button").click();
       await expect(
-        messages.getByTestId("mcp-suggestion-connected"),
+        messages.getByTestId("plugin-suggestion-connected"),
       ).toBeVisible({ timeout: Timeout.MEDIUM });
       await expect(
         messages.getByText(
@@ -105,20 +105,50 @@ testWithFeaturedCatalog(
     await po.chatActions.clickNewChat();
     await po.chatActions.selectLocalAgentMode();
 
-    await po.sendPrompt("tc=local-agent/suggest-mcp-server", {
+    await po.sendPrompt("tc=local-agent/suggest-plugin", {
       skipWaitForCompletion: true,
     });
 
     const messages = po.page.getByTestId("messages-list");
-    const card = messages.getByTestId("mcp-suggestion-card");
+    const card = messages.getByTestId("plugin-suggestion-card");
     await expect(card).toBeVisible({ timeout: Timeout.LONG });
 
-    await card.getByTestId("mcp-suggestion-decline-button").click();
+    await card.getByTestId("plugin-suggestion-decline-button").click();
     await expect(messages.getByText("Skipped E2E Open Server")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
     // Declining settles in place: the same turn carries on, with no
     // follow-up user message.
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await expect(messages.getByText("Carrying on from here.")).toBeVisible();
+    await expect(
+      messages.getByText(/^Continue\. I have connected/),
+    ).toHaveCount(0);
+  },
+);
+
+testWithFeaturedCatalog(
+  "local-agent - opting out of a suggested plugin continues without it",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true, autoApprove: true });
+    await po.importApp("minimal");
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await po.chatActions.clickNewChat();
+    await po.chatActions.selectLocalAgentMode();
+
+    await po.sendPrompt("tc=local-agent/suggest-plugin", {
+      skipWaitForCompletion: true,
+    });
+
+    const messages = po.page.getByTestId("messages-list");
+    const card = messages.getByTestId("plugin-suggestion-card");
+    await expect(card).toBeVisible({ timeout: Timeout.LONG });
+
+    await card.getByTestId("plugin-suggestion-never-button").click();
+    await expect(messages.getByTestId("plugin-suggestion-never")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    // Opting out settles in place like a decline: the same turn carries on.
     await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
     await expect(messages.getByText("Carrying on from here.")).toBeVisible();
     await expect(

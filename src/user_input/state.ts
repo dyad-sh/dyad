@@ -68,11 +68,11 @@ export type UserInputDescriptor =
       classifier: "none";
     })
   | (DescriptorBase & {
-      kind: "mcp-suggestion";
+      kind: "plugin-suggestion";
       slug: string;
       serverName: string;
       serverDescription?: string | null;
-      oauthRequired: boolean;
+      needsOAuth: boolean;
       reason: string;
       classifier: "none";
       followUpPrompt: string;
@@ -103,8 +103,12 @@ export type UserInputResponse =
       appliedCount: number;
     }
   // `connected` arms the descriptor's follow-up so the agent resumes on a
-  // turn that can see the new plugin's tools; `declined` settles in place.
-  | { kind: "mcp-suggestion"; outcome: "connected" | "declined" };
+  // turn that can see the new plugin's tools; `declined` and `never` settle
+  // in place, and `never` also persists the opt-out for that plugin.
+  | {
+      kind: "plugin-suggestion";
+      outcome: "connected" | "declined" | "never";
+    };
 
 export type UserInputParkValue =
   | UserInputResponse

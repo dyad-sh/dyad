@@ -67,9 +67,9 @@ import {
 import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { getMcpToolSchemaTool } from "./tools/get_mcp_tool_schema";
 import {
-  suggestMcpServerTool,
-  type SuggestableMcpServer,
-} from "./tools/suggest_mcp_server";
+  suggestPluginTool,
+  type SuggestablePlugin,
+} from "./tools/suggest_plugin";
 import {
   estimateMcpInlineTokens,
   getMcpInlineTokenThreshold,
@@ -192,7 +192,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   executeSandboxScriptTool,
   searchMcpToolsTool,
   getMcpToolSchemaTool,
-  suggestMcpServerTool,
+  suggestPluginTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,
@@ -503,7 +503,7 @@ export async function estimateAgentToolTokens({
   preCommitHookAvailable = false,
   reinstallAndRestartAppToolAvailable = true,
   mcpToolDefs = [],
-  suggestableMcpServers = [],
+  suggestablePlugins = [],
 }: {
   toolProfile?: "agent" | "build";
   readOnly?: boolean;
@@ -526,7 +526,7 @@ export async function estimateAgentToolTokens({
   preCommitHookAvailable?: boolean;
   reinstallAndRestartAppToolAvailable?: boolean;
   mcpToolDefs?: McpToolDef[];
-  suggestableMcpServers?: SuggestableMcpServer[];
+  suggestablePlugins?: SuggestablePlugin[];
 }): Promise<number> {
   const estimateContext = {
     isDyadPro,
@@ -544,7 +544,7 @@ export async function estimateAgentToolTokens({
     runTypeScriptForWholeProject,
     preCommitHookAvailable,
     reinstallAndRestartAppToolAvailable,
-    suggestableMcpServers,
+    suggestablePlugins,
     sandboxWriteFileHostEnabled: !readOnly && !planModeOnly,
   } as AgentContext;
   const options: BuildAgentToolSetOptions = {

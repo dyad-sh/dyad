@@ -9,7 +9,7 @@ import {
 } from "./read_model";
 import {
   selectPendingIntegrations,
-  selectPendingMcpSuggestions,
+  selectPendingPluginSuggestions,
   selectPendingQuestionnaires,
   selectPendingToolConsents,
 } from "./selectors";
@@ -64,13 +64,13 @@ export function usePendingIntegrations() {
   );
 }
 
-export function usePendingMcpSuggestions() {
+export function usePendingPluginSuggestions() {
   const readModel = useUserInputReadModel();
   return useSyncExternalStoreWithSelector(
     readModel.subscribe,
     readModel.getSnapshot,
     undefined,
-    selectPendingMcpSuggestions,
+    selectPendingPluginSuggestions,
   );
 }
 

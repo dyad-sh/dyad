@@ -301,8 +301,8 @@ export function createFakeLlmApp(getPort: () => number) {
 
   app.get("/api/mcp-catalog", (req, res) => {
     // `?featured=slug,slug` marks entries featured for the one test that
-    // needs a suggestable plugin (local_agent_suggest_mcp_server.spec.ts).
-    // Default responses stay unfeatured so suggest_mcp_server is absent from
+    // needs a suggestable plugin (local_agent_suggest_plugin.spec.ts).
+    // Default responses stay unfeatured so suggest_plugin is absent from
     // every other local-agent request snapshot.
     const featured = new Set(
       String(req.query.featured ?? "")

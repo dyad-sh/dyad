@@ -112,7 +112,7 @@ export function createUserInputRegistry(deps: {
   function deadlineMs(kind: UserInputDescriptor["kind"]): number {
     if (kind === "integration") return INTEGRATION_DEADLINE_MS;
     // Connecting a plugin can include a browser OAuth step.
-    if (kind === "mcp-suggestion") return INTEGRATION_DEADLINE_MS;
+    if (kind === "plugin-suggestion") return INTEGRATION_DEADLINE_MS;
     if (kind === "test-assertions") return REVIEW_DEADLINE_MS;
     return CONSENT_DEADLINE_MS;
   }

@@ -298,7 +298,7 @@ export async function setupChatFlowHarness(
     if (options.useFakeCatalog !== false) {
       process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
       // Local-agent turns read the MCP catalog to decide whether
-      // suggest_mcp_server is available; keep that off the real network
+      // suggest_plugin is available; keep that off the real network
       // unless the test serves its own catalog, and drop anything a
       // previous harness in this process cached.
       process.env.DYAD_MCP_CATALOG_URL ??= `${fakeLlmUrl}/api/mcp-catalog`;

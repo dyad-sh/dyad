@@ -18,13 +18,13 @@ export interface PendingIntegration {
   provider?: "supabase" | "neon";
 }
 
-export interface PendingMcpSuggestion {
+export interface PendingPluginSuggestion {
   chatId: number;
   requestId: string;
   slug: string;
   serverName: string;
   serverDescription?: string | null;
-  oauthRequired: boolean;
+  needsOAuth: boolean;
   reason: string;
   isResponding: boolean;
 }
@@ -94,22 +94,22 @@ export function selectPendingIntegrations(
 // One live suggestion per chat: the tool parks the turn, so a chat cannot
 // have two awaiting at once. Armed/due requests are excluded because the
 // card has already settled its interactive state by then.
-export function selectPendingMcpSuggestions({
+export function selectPendingPluginSuggestions({
   requests,
   respondingRequestIds,
-}: UserInputReadModelSnapshot): Map<number, PendingMcpSuggestion> {
-  const pending = new Map<number, PendingMcpSuggestion>();
+}: UserInputReadModelSnapshot): Map<number, PendingPluginSuggestion> {
+  const pending = new Map<number, PendingPluginSuggestion>();
   for (const request of requests.values()) {
     if (request.status !== "awaiting") continue;
     const descriptor = request.descriptor;
-    if (descriptor.kind !== "mcp-suggestion") continue;
+    if (descriptor.kind !== "plugin-suggestion") continue;
     pending.set(descriptor.chatId, {
       chatId: descriptor.chatId,
       requestId: descriptor.requestId,
       slug: descriptor.slug,
       serverName: descriptor.serverName,
       serverDescription: descriptor.serverDescription,
-      oauthRequired: descriptor.oauthRequired,
+      needsOAuth: descriptor.needsOAuth,
       reason: descriptor.reason,
       isResponding: respondingRequestIds.has(descriptor.requestId),
     });

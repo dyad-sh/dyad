@@ -5,13 +5,14 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { DyadSuggestMcpServer } from "./DyadSuggestMcpServer";
+import { DyadSuggestPlugin } from "./DyadSuggestPlugin";
 
 const mocks = vi.hoisted(() => ({
   pending: new Map<number, unknown>(),
   respond: vi.fn(async () => true),
   addFromCatalog: vi.fn(),
   probeConnection: vi.fn(),
+  updateServer: vi.fn(),
   connectNewServer: vi.fn(),
   connectingServerId: null as number | null,
   showError: vi.fn(),
@@ -21,18 +22,22 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, values?: { name?: string }) => {
       switch (key) {
-        case "suggestMcpServer.badge":
+        case "suggestPlugin.badge":
           return "Plugin suggestion";
-        case "suggestMcpServer.title":
+        case "suggestPlugin.title":
           return `Connect ${values?.name}?`;
-        case "suggestMcpServer.connect":
+        case "suggestPlugin.connect":
           return `Connect ${values?.name}`;
-        case "suggestMcpServer.notNow":
+        case "suggestPlugin.notNow":
           return "Not now";
-        case "suggestMcpServer.connectedTitle":
+        case "suggestPlugin.connectedTitle":
           return `${values?.name} connected`;
-        case "suggestMcpServer.declinedTitle":
+        case "suggestPlugin.declinedTitle":
           return `Skipped ${values?.name}`;
+        case "suggestPlugin.never":
+          return "Don't suggest again";
+        case "suggestPlugin.neverTitle":
+          return `Won't suggest ${values?.name} again`;
         default:
           return key;
       }
@@ -41,7 +46,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/user_input/hooks", () => ({
-  usePendingMcpSuggestions: () => mocks.pending,
+  usePendingPluginSuggestions: () => mocks.pending,
   useUserInputReadModel: () => ({ respond: mocks.respond }),
 }));
 
@@ -57,6 +62,7 @@ vi.mock("@/ipc/types", () => ({
     mcp: {
       addFromCatalog: mocks.addFromCatalog,
       probeConnection: mocks.probeConnection,
+      updateServer: mocks.updateServer,
     },
   },
 }));
@@ -67,18 +73,23 @@ vi.mock("@/lib/toast", () => ({
 
 const PENDING = {
   chatId: 7,
-  requestId: "mcp-suggestion:1",
+  requestId: "plugin-suggestion:1",
   slug: "vercel",
   serverName: "Vercel",
   serverDescription: "Deployments and logs.",
-  oauthRequired: false,
+  needsOAuth: false,
   reason: "Read the build logs for the failed deploy.",
   isResponding: false,
 };
-const CREATED = { id: 42, oauthEnabled: false, oauthCallbackPort: null };
+const CREATED = {
+  id: 42,
+  enabled: true,
+  oauthEnabled: false,
+  oauthCallbackPort: null,
+};
 
 function renderCard(
-  props: Partial<Parameters<typeof DyadSuggestMcpServer>[0]> = {},
+  props: Partial<Parameters<typeof DyadSuggestPlugin>[0]> = {},
 ) {
   const store = createStore();
   store.set(selectedChatIdAtom, 7);
@@ -89,7 +100,7 @@ function renderCard(
     </QueryClientProvider>
   );
   return render(
-    <DyadSuggestMcpServer
+    <DyadSuggestPlugin
       slug="vercel"
       name="Vercel"
       reason={PENDING.reason}
@@ -104,7 +115,7 @@ function renderCard(
 const connectButton = () =>
   screen.getByRole<HTMLButtonElement>("button", { name: "Connect Vercel" });
 
-describe("DyadSuggestMcpServer", () => {
+describe("DyadSuggestPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.pending = new Map([[7, PENDING]]);
@@ -133,8 +144,8 @@ describe("DyadSuggestMcpServer", () => {
     fireEvent.click(connectButton());
 
     await waitFor(() =>
-      expect(mocks.respond).toHaveBeenCalledWith("mcp-suggestion:1", {
-        kind: "mcp-suggestion",
+      expect(mocks.respond).toHaveBeenCalledWith("plugin-suggestion:1", {
+        kind: "plugin-suggestion",
         outcome: "connected",
       }),
     );
@@ -155,7 +166,7 @@ describe("DyadSuggestMcpServer", () => {
     // Localized headline first, raw transport text as detail.
     await waitFor(() =>
       expect(mocks.showError).toHaveBeenCalledWith(
-        "suggestMcpServer.unreachable\nconnect ECONNREFUSED",
+        "suggestPlugin.unreachable\nconnect ECONNREFUSED",
       ),
     );
     expect(mocks.respond).not.toHaveBeenCalled();
@@ -173,14 +184,14 @@ describe("DyadSuggestMcpServer", () => {
 
     await waitFor(() =>
       expect(mocks.showError).toHaveBeenCalledWith(
-        "suggestMcpServer.authRequired\nHTTP 401",
+        "suggestPlugin.authRequired\nHTTP 401",
       ),
     );
     expect(mocks.respond).not.toHaveBeenCalled();
   });
 
   it("runs the shared OAuth flow to completion before responding", async () => {
-    mocks.pending = new Map([[7, { ...PENDING, oauthRequired: true }]]);
+    mocks.pending = new Map([[7, { ...PENDING, needsOAuth: true }]]);
     let finishOAuth!: (connected: boolean) => void;
     mocks.connectNewServer.mockReturnValue(
       new Promise<boolean>((resolve) => {
@@ -199,8 +210,8 @@ describe("DyadSuggestMcpServer", () => {
 
     finishOAuth(true);
     await waitFor(() =>
-      expect(mocks.respond).toHaveBeenCalledWith("mcp-suggestion:1", {
-        kind: "mcp-suggestion",
+      expect(mocks.respond).toHaveBeenCalledWith("plugin-suggestion:1", {
+        kind: "plugin-suggestion",
         outcome: "connected",
       }),
     );
@@ -209,7 +220,7 @@ describe("DyadSuggestMcpServer", () => {
   });
 
   it("keeps the card interactive when OAuth fails", async () => {
-    mocks.pending = new Map([[7, { ...PENDING, oauthRequired: true }]]);
+    mocks.pending = new Map([[7, { ...PENDING, needsOAuth: true }]]);
     mocks.connectNewServer.mockResolvedValue(false);
     renderCard();
 
@@ -231,14 +242,50 @@ describe("DyadSuggestMcpServer", () => {
     ).toBe(true);
   });
 
+  it("enables an existing disabled plugin instead of adding a second one", async () => {
+    mocks.addFromCatalog.mockResolvedValue({ ...CREATED, enabled: false });
+    renderCard();
+
+    fireEvent.click(connectButton());
+
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalled());
+    expect(mocks.updateServer).toHaveBeenCalledWith({ id: 42, enabled: true });
+    expect(mocks.connectNewServer).not.toHaveBeenCalled();
+  });
+
+  it("leaves an enabled plugin's row alone", async () => {
+    renderCard();
+
+    fireEvent.click(connectButton());
+
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalled());
+    expect(mocks.updateServer).not.toHaveBeenCalled();
+  });
+
+  it("answers never when the user opts out of the plugin for good", async () => {
+    renderCard();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Don't suggest again" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.respond).toHaveBeenCalledWith("plugin-suggestion:1", {
+        kind: "plugin-suggestion",
+        outcome: "never",
+      }),
+    );
+    expect(mocks.addFromCatalog).not.toHaveBeenCalled();
+  });
+
   it("declines without adding anything", async () => {
     renderCard();
 
     fireEvent.click(screen.getByRole("button", { name: "Not now" }));
 
     await waitFor(() =>
-      expect(mocks.respond).toHaveBeenCalledWith("mcp-suggestion:1", {
-        kind: "mcp-suggestion",
+      expect(mocks.respond).toHaveBeenCalledWith("plugin-suggestion:1", {
+        kind: "plugin-suggestion",
         outcome: "declined",
       }),
     );
@@ -253,9 +300,13 @@ describe("DyadSuggestMcpServer", () => {
     expect(screen.getByText(PENDING.reason)).toBeTruthy();
     unmount();
 
-    renderCard({ name: "Vercel", outcome: "declined" });
+    const declined = renderCard({ name: "Vercel", outcome: "declined" });
     expect(screen.getByText("Skipped Vercel")).toBeTruthy();
     expect(screen.getByText(PENDING.reason)).toBeTruthy();
+    declined.unmount();
+
+    renderCard({ name: "Vercel", outcome: "never" });
+    expect(screen.getByText("Won't suggest Vercel again")).toBeTruthy();
   });
 
   it("hides a pending card whose request is no longer live", () => {
@@ -267,7 +318,7 @@ describe("DyadSuggestMcpServer", () => {
 
   it("treats a card for another request as historical, even for the same plugin", () => {
     mocks.pending = new Map([
-      [7, { ...PENDING, requestId: "mcp-suggestion:2" }],
+      [7, { ...PENDING, requestId: "plugin-suggestion:2" }],
     ]);
 
     const { container } = renderCard();

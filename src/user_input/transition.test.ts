@@ -242,13 +242,13 @@ describe("user-input transition", () => {
 
   it("arms a plugin suggestion's own follow-up on connect and settles on decline", () => {
     const suggestion: UserInputDescriptor = {
-      kind: "mcp-suggestion",
-      requestId: "mcp-suggestion:1",
+      kind: "plugin-suggestion",
+      requestId: "plugin-suggestion:1",
       chatId: 12,
       deadlineAt: 1_800_000,
       slug: "vercel",
       serverName: "Vercel",
-      oauthRequired: true,
+      needsOAuth: true,
       reason: "Read the build logs.",
       classifier: "none",
       followUpPrompt: "Continue. I have connected the Vercel plugin.",
@@ -261,7 +261,7 @@ describe("user-input transition", () => {
     const connected = transition(awaiting, {
       type: "human-decided",
       requestId: suggestion.requestId,
-      response: { kind: "mcp-suggestion", outcome: "connected" },
+      response: { kind: "plugin-suggestion", outcome: "connected" },
     });
     expect(connected.kind).toBe("applied");
     if (connected.kind !== "applied") throw new Error("Expected arm");
@@ -278,7 +278,7 @@ describe("user-input transition", () => {
     expect(connected.commands).toContainEqual({
       type: "resolve-park",
       requestId: suggestion.requestId,
-      value: { kind: "mcp-suggestion", outcome: "connected" },
+      value: { kind: "plugin-suggestion", outcome: "connected" },
     });
     const due = transition(connected.state, {
       type: "stream-finished",
@@ -296,7 +296,7 @@ describe("user-input transition", () => {
     const declined = transition(awaiting, {
       type: "human-decided",
       requestId: suggestion.requestId,
-      response: { kind: "mcp-suggestion", outcome: "declined" },
+      response: { kind: "plugin-suggestion", outcome: "declined" },
     });
     expect(declined.kind).toBe("applied");
     if (declined.kind !== "applied") throw new Error("Expected settle");
@@ -307,7 +307,15 @@ describe("user-input transition", () => {
     expect(declined.commands).toContainEqual({
       type: "resolve-park",
       requestId: suggestion.requestId,
-      value: { kind: "mcp-suggestion", outcome: "declined" },
+      value: { kind: "plugin-suggestion", outcome: "declined" },
     });
+
+    // Opting out for good also settles in place; main persists the choice.
+    const never = transition(awaiting, {
+      type: "human-decided",
+      requestId: suggestion.requestId,
+      response: { kind: "plugin-suggestion", outcome: "never" },
+    });
+    expect(never.state).toMatchObject({ status: "settled", outcome: "human" });
   });
 });

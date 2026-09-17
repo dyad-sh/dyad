@@ -102,8 +102,8 @@ function followUpPromptFor(
     return null;
   }
   if (
-    descriptor.kind === "mcp-suggestion" &&
-    response.kind === "mcp-suggestion" &&
+    descriptor.kind === "plugin-suggestion" &&
+    response.kind === "plugin-suggestion" &&
     response.outcome === "connected"
   ) {
     return descriptor.followUpPrompt;

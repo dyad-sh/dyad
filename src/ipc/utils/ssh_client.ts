@@ -169,6 +169,17 @@ export interface SshResult {
   code: number | null;
   stdout: string;
   stderr: string;
+  /**
+   * The signal sshd said killed the command, when it reported an exit-signal
+   * rather than an exit status.
+   *
+   * Carried rather than left in `code`, which is `null` for a signal death:
+   * `null` alone says only "no number", and a caller rendering `exit null`
+   * has no way to tell "the shell was killed" from "the link died under it".
+   * ssh2 hands back the signal name already `SIG`-prefixed (e.g. `SIGKILL`),
+   * so this is exactly what to show.
+   */
+  signal: string | null;
 }
 
 export interface SshSession {
@@ -410,23 +421,34 @@ export async function connectSsh(
               stderr += text;
               onOutput?.(text);
             });
-            stream.on("close", (code: number | null) => {
-              stopListening();
-              // Only when the command never said how it ended. A channel
-              // closed without an exit status is the connection dying under
-              // it, and reporting that as an exit code blames the installer
-              // for a lost link — but a command that did report its own
-              // result gets to keep it, even if the link died straight after.
-              //
-              // Loose equality on purpose: ssh2 initialises the exit code to
-              // undefined and only assigns it when an exit-status arrives, so
-              // "never said" is undefined here rather than null.
-              if (connectionError && code == null) {
-                reject(connectionError);
-                return;
-              }
-              resolve({ code: code ?? null, stdout, stderr });
-            });
+            stream.on(
+              "close",
+              (code: number | null | undefined, signal?: string) => {
+                stopListening();
+                // ssh2's close arrives in one of three shapes, and only the last
+                // is "the command never said how it ended":
+                //   exit status N → close(<number>)
+                //   signal death  → close(null, signalName, coreDumped, desc)
+                //   nothing sent  → close(undefined)   — the link died under it
+                // Strict equality: `null` (a signal kill DID report) and
+                // `undefined` (nothing was reported) must not collapse, or a
+                // command killed by a signal resolves as { code: null } and is
+                // blamed on a connection that may have died at the same time.
+                // The signal name is the second argument; the core-dump flag and
+                // sshd's death description also travel on close, but the name is
+                // what distinguishes a kill and is the only thing surfaced here.
+                if (connectionError && code === undefined) {
+                  reject(connectionError);
+                  return;
+                }
+                resolve({
+                  code: code ?? null,
+                  stdout,
+                  stderr,
+                  signal: signal ?? null,
+                });
+              },
+            );
 
             // Every command gets EOF on stdin, so one that reads it sees the
             // end rather than a pipe that stays open for the life of the

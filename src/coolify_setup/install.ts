@@ -255,8 +255,15 @@ export async function installCoolify(
       .filter(Boolean)
       .slice(-3)
       .join(" ");
+    // A signal kill reports no exit code — sshd sends the signal name
+    // instead. Rendering "exit null" there says nothing, and the only thing
+    // that separates "the shell was killed" from "the link died under it"
+    // (both surface as `code: null`) is that signal name.
+    const reason = result.signal
+      ? `killed by ${result.signal}`
+      : `exit ${result.code}`;
     throw new DyadError(
-      `Installing Coolify failed (exit ${result.code}).` +
+      `Installing Coolify failed (${reason}).` +
         (tail ? ` The server said: ${tail}` : ""),
       DyadErrorKind.External,
     );

@@ -470,7 +470,7 @@ When \`run_tests\` reports a failure, work the fix loop:
 
 You have a limited number of fix attempts per spec (the tool tells you how many remain). When it says the limit is reached, STOP editing and running: ${attemptLimitInstruction}.
 
-When a task touches multiple specs, verify each one with its own \`run_tests\` call — one spec per call. Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next, even when targeting different spec files. Overlapping calls for the same app cancel earlier runs; they do not run in parallel.`;
+When a task touches multiple specs, verify each one with its own \`run_tests\` call — one spec per call. Calls to \`run_tests\` for the same app are queued in arrival order. Each call waits for earlier runs and their cleanup, then returns its own results. Calls for different apps can run concurrently.`;
 };
 
 const AGENT_RUN_TESTS_GUIDANCE = buildAgentRunTestsGuidance();

@@ -12,6 +12,7 @@ import {
   MAX_PLAN_ITEMS,
 } from "../../lib/test_recorder/assertion_proposal";
 import { WindowSessionIdSchema } from "../../window_infrastructure/types";
+import type { TestRunQueueState } from "../../test_run_queue/state";
 
 /** A UUID today; sized so a different id scheme doesn't have to revisit this. */
 const MAX_PROPOSAL_ID_LENGTH = 128;
@@ -356,7 +357,31 @@ export type ApplyTestAssertionsResult = z.infer<
 // Tests Contracts
 // =============================================================================
 
+const QueuedTestRunSchema = z.object({
+  runId: z.number().int().positive(),
+  source: z.enum(["panel", "agent"]),
+  testFile: z.string().optional(),
+  testLine: z.number().optional(),
+  grep: z.string().optional(),
+});
+export const TestRunQueueSchema = z.object({
+  activeRun: QueuedTestRunSchema.extend({ stopping: z.boolean() }).nullable(),
+  queuedRuns: z.array(QueuedTestRunSchema).readonly(),
+});
+// Keep the pure machine read model and its wire codec mutually assignable.
+type AssertQueueShape<T extends TestRunQueueState> = T;
+type AssertQueueWire<T extends z.infer<typeof TestRunQueueSchema>> = T;
+export type TestRunQueueSnapshot = AssertQueueShape<
+  z.infer<typeof TestRunQueueSchema>
+>;
+export type TestRunQueueWireState = AssertQueueWire<TestRunQueueState>;
+
 export const testsContracts = {
+  getRunQueue: defineContract({
+    channel: "tests:get-run-queue",
+    input: z.object({ appId: z.number() }),
+    output: TestRunQueueSchema,
+  }),
   applyTestAssertions: defineContract({
     channel: "tests:apply-assertions",
     input: ApplyTestAssertionsParamsSchema,
@@ -430,14 +455,13 @@ export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
 /**
  * Lifecycle of a test run, so every renderer can reflect runs it didn't start
  * itself (e.g. the agent's run_tests tool or a panel run in another window).
- * The initiating panel also writes optimistic state before the IPC round trip.
+ * Requests still waiting in the queue do not emit these active-run events.
  */
 export const TestsRunStatePayloadSchema = z.object({
   appId: z.number(),
   /**
-   * Main-owned per-app generation. A new run registers before it waits for a
-   * prior teardown, so appId + phase alone cannot reject stale lifecycle
-   * events from overlapping runs.
+   * Main-owned per-app generation. Only active runs emit lifecycle events;
+   * queued requests are projected separately through tests:queue-state.
    */
   runId: z.number().int().positive(),
   source: z.enum(["panel", "agent"]),
@@ -446,8 +470,7 @@ export const TestsRunStatePayloadSchema = z.object({
    * waits between a Stop and the terminal `finished`: the kill of the
    * Playwright process tree, then the isolation teardown (env restore,
    * dev-server restart, temporary branch/user delete) that no caller can
-   * abort. Unlike `finished`, both are consumed for BOTH sources — the panel
-   * writes its own start/finish state directly but cannot observe these two.
+   * abort. Both panel and agent runs publish their full lifecycle here.
    *
    * "preview-fallback" is emitted mid-run when a run that asked for the native
    * preview turned out to need an ordinary browser instead. It is not a
@@ -484,6 +507,10 @@ export const TestsRunStatePayloadSchema = z.object({
 export type TestsRunStatePayload = z.infer<typeof TestsRunStatePayloadSchema>;
 
 export const testsEvents = {
+  queueState: defineEvent({
+    channel: "tests:queue-state",
+    payload: TestRunQueueSchema.extend({ appId: z.number() }),
+  }),
   output: defineEvent({
     channel: "tests:output",
     payload: TestOutputPayloadSchema,

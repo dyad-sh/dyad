@@ -320,6 +320,7 @@ describe("tests handlers", () => {
       runId: number;
       state: string;
       wasStopped?: boolean;
+      testFile?: string;
     }> {
       return broadcastToRegisteredWindowsMock.mock.calls
         .filter(([, channel]) => channel === "tests:run-state")
@@ -379,7 +380,7 @@ describe("tests handlers", () => {
       expect(runStates()).not.toContain("cleaning-up");
     });
 
-    it("reports the kill for a run stopped from the chat", async () => {
+    it("does not announce or prepare an already-cancelled chat run", async () => {
       // The agent turn's cancellation reaches the same controller as the
       // panel's Stop button, so one listener has to cover both surfaces.
       const appId = seedTestableApp("app");
@@ -395,113 +396,191 @@ describe("tests handlers", () => {
         externalSignal: AbortSignal.abort(),
       });
 
-      expect(runStates()).toContain("stopping");
-      const stopping = runStatePayloads().find(
-        (payload) => payload.state === "stopping",
-      );
-      expect(stopping?.runId).toEqual(expect.any(Number));
-      expect(stopping?.wasStopped).toBe(true);
+      expect(runStates()).toEqual([]);
+      expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
     });
 
-    it("does not emit stale progress when a newer run supersedes it", async () => {
+    it("queues three runs in FIFO order and waits for the first cleanup", async () => {
       const appId = seedTestableApp("app");
-      let resolveFirstPrepare!: (value: {
-        isolation: { mode: "neon-branch" };
-        infraError: { message: string };
-        teardown: () => Promise<{ envRestored: boolean }>;
-      }) => void;
+      let finishSetup!: (value: unknown) => void;
+      let finishCleanup!: () => void;
+      const teardown = vi.fn(
+        () =>
+          new Promise<{ envRestored: boolean }>((resolve) => {
+            finishCleanup = () => resolve({ envRestored: true });
+          }),
+      );
       prepareIsolatedTestDatabaseMock
         .mockReturnValueOnce(
           new Promise((resolve) => {
-            resolveFirstPrepare = resolve;
+            finishSetup = resolve;
           }),
         )
-        .mockResolvedValueOnce({
+        .mockResolvedValue({
           isolation: { mode: "none" },
-          infraError: { message: "second run stopped before execution" },
-          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+          infraError: { message: "no runner needed" },
+          teardown: async () => ({ envRestored: true }),
         });
-
-      const firstRun = runAppTestsWithIsolation({
+      const options = {
         event: { sender: {} } as any,
         appId,
-        source: "panel",
+        source: "agent" as const,
+      };
+      const first = runAppTestsWithIsolation({
+        ...options,
+        testFile: "e2e-tests/a.spec.ts",
       });
-      await vi.waitFor(() => {
-        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() =>
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1),
+      );
+      const signal = prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal;
+      const second = runAppTestsWithIsolation({
+        ...options,
+        testFile: "e2e-tests/b.spec.ts",
       });
-
-      const secondRun = runAppTestsWithIsolation({
-        event: { sender: {} } as any,
+      const third = runAppTestsWithIsolation({
+        ...options,
+        testFile: "e2e-tests/c.spec.ts",
+      });
+      expect(signal.aborted).toBe(false);
+      expect(runStates()).toEqual(["started"]);
+      const queued = await harness.invokeHandler<any>("tests:get-run-queue", {
         appId,
-        source: "panel",
       });
-      resolveFirstPrepare({
+      expect(queued.queuedRuns.map((run: any) => run.testFile)).toEqual([
+        "e2e-tests/b.spec.ts",
+        "e2e-tests/c.spec.ts",
+      ]);
+      finishSetup({
         isolation: { mode: "neon-branch" },
-        infraError: { message: "first run stopped before execution" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        infraError: { message: "first result" },
+        teardown,
       });
-
-      await Promise.all([firstRun, secondRun]);
-
-      expect(runStates()).not.toContain("stopping");
-      expect(runStates()).not.toContain("cleaning-up");
+      await vi.waitFor(() => expect(teardown).toHaveBeenCalledOnce());
+      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1);
+      expect(runStates()).toEqual(["started", "cleaning-up"]);
+      finishCleanup();
+      await Promise.all([first, second, third]);
+      expect(
+        runStatePayloads()
+          .filter((p) => p.state === "started")
+          .map((p) => p.testFile),
+      ).toEqual([
+        "e2e-tests/a.spec.ts",
+        "e2e-tests/b.spec.ts",
+        "e2e-tests/c.spec.ts",
+      ]);
+      expect(
+        await harness.invokeHandler("tests:get-run-queue", { appId }),
+      ).toEqual({ activeRun: null, queuedRuns: [] });
     });
 
-    it("attributes a queued run's stop to its own generation", async () => {
+    it("cancels a queued request immediately without stopping the active run", async () => {
       const appId = seedTestableApp("app");
-      let resolveFirstPrepare!: (value: {
-        isolation: { mode: "neon-branch" };
-        infraError: { message: string };
-        teardown: () => Promise<{ envRestored: boolean }>;
-      }) => void;
-      prepareIsolatedTestDatabaseMock
-        .mockReturnValueOnce(
-          new Promise((resolve) => {
-            resolveFirstPrepare = resolve;
-          }),
-        )
-        .mockResolvedValueOnce({
-          isolation: { mode: "none" },
-          infraError: { message: "queued run stopped before execution" },
-          teardown: vi.fn().mockResolvedValue({ envRestored: true }),
-        });
-
-      const firstRun = runAppTestsWithIsolation({
+      let finish!: (value: unknown) => void;
+      prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const options = {
         event: { sender: {} } as any,
         appId,
-        source: "panel",
+        source: "agent" as const,
+      };
+      const first = runAppTestsWithIsolation(options);
+      await vi.waitFor(() =>
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce(),
+      );
+      const controller = new AbortController();
+      const second = runAppTestsWithIsolation({
+        ...options,
+        externalSignal: controller.signal,
       });
-      await vi.waitFor(() => {
-        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1);
+      controller.abort();
+      expect((await second).infraError?.message).toContain(
+        "stopped before execution",
+      );
+      expect(
+        prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
+      ).toBe(false);
+      expect(runStates()).toEqual(["started"]);
+      finish({
+        isolation: { mode: "none" },
+        infraError: { message: "done" },
+        teardown: async () => ({ envRestored: true }),
       });
+      await first;
+      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
+    });
 
-      const secondAbort = new AbortController();
-      const secondRun = runAppTestsWithIsolation({
+    it("panel Stop cancels pending requests and aborts active setup", async () => {
+      const appId = seedTestableApp("app");
+      let finish!: (value: unknown) => void;
+      prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const options = {
         event: { sender: {} } as any,
         appId,
-        source: "agent",
-        externalSignal: secondAbort.signal,
-      });
-      secondAbort.abort();
-
-      const beforePriorFinishes = runStatePayloads();
-      const started = beforePriorFinishes.filter(
-        (payload) => payload.state === "started",
+        source: "panel" as const,
+      };
+      const first = runAppTestsWithIsolation(options);
+      await vi.waitFor(() =>
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce(),
       );
-      const stopping = beforePriorFinishes.find(
-        (payload) => payload.state === "stopping",
+      const second = runAppTestsWithIsolation(options);
+      await harness.invokeHandler("tests:stop", { appId });
+      expect((await second).infraError?.message).toContain(
+        "stopped before execution",
       );
-      expect(started).toHaveLength(2);
-      expect(stopping?.runId).toBe(started[1].runId);
-      expect(stopping?.runId).not.toBe(started[0].runId);
-
-      resolveFirstPrepare({
+      expect(
+        prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
+      ).toBe(true);
+      expect(runStates()).toEqual(["started", "stopping"]);
+      finish({
         isolation: { mode: "neon-branch" },
-        infraError: { message: "first run superseded" },
-        teardown: vi.fn().mockResolvedValue({ envRestored: true }),
+        infraError: { message: "stopped" },
+        teardown: async () => ({ envRestored: true }),
       });
-      await Promise.all([firstRun, secondRun]);
+      await first;
+      expect(runStates()).toEqual([
+        "started",
+        "stopping",
+        "cleaning-up",
+        "finished",
+      ]);
+      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
+    });
+
+    it("refuses the next queued run when cleanup leaves the test database active", async () => {
+      const appId = seedTestableApp("app");
+      prepareIsolatedTestDatabaseMock.mockImplementationOnce(async () => {
+        harness.db
+          .update(apps)
+          .set({ neonTestBranchId: "br-unrestored" })
+          .where(eq(apps.id, appId))
+          .run();
+        return {
+          isolation: { mode: "neon-branch" },
+          infraError: { message: "first result" },
+          teardown: async () => ({ envRestored: false }),
+        };
+      });
+      const options = {
+        event: { sender: {} } as any,
+        appId,
+        source: "agent" as const,
+      };
+      const first = runAppTestsWithIsolation(options);
+      const second = runAppTestsWithIsolation(options);
+      expect((await first).infraError?.message).toContain("couldn't restore");
+      expect((await second).infraError?.message).toContain(
+        "Restart the app to recover",
+      );
+      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
     });
   });
 

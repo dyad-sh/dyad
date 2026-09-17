@@ -107,26 +107,54 @@ describe("useTestRunEvents", () => {
     expect(store.get(testRunStateByAppIdAtom).get(1)?.source).toBe("panel");
   });
 
-  it("opens the native preview for an agent preview run", () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-    // Seeded away from the default so the previewMode assertion below can only
-    // pass if the hook actually switches back.
-    store.set(previewModeAtom, "code");
-    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+  it.each(["agent", "panel"])(
+    "opens the native preview when a %s run actually starts",
+    (source) => {
+      const { store, Wrapper } = makeWrapper();
+      store.set(selectedAppIdAtom, 1);
+      // Seeded away from the default so the previewMode assertion below can only
+      // pass if the hook actually switches back.
+      store.set(previewModeAtom, "code");
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
-    act(() => {
+      act(() => {
+        emitRunState({
+          appId: 1,
+          source,
+          state: "started",
+          preview: true,
+          previewOwnerWindowSessionId: getActiveWindowSessionId(),
+        });
+      });
+
+      expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
+      expect(store.get(previewModeAtom)).toBe("preview");
+    },
+  );
+
+  it("applies panel results from main after the originating panel unmounts", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    await act(async () => {
       emitRunState({
         appId: 1,
-        source: "agent",
+        source: "panel",
         state: "started",
-        preview: true,
-        previewOwnerWindowSessionId: getActiveWindowSessionId(),
+        testFile: "e2e-tests/a.spec.ts",
+      });
+      emitRunState({
+        appId: 1,
+        source: "panel",
+        state: "finished",
+        testFile: "e2e-tests/a.spec.ts",
+        results: [{ file: "e2e-tests/a.spec.ts", status: "passed" }],
       });
     });
-
-    expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
-    expect(store.get(previewModeAtom)).toBe("preview");
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
+    expect(
+      store.get(testRunStateByAppIdAtom).get(1)?.results["e2e-tests/a.spec.ts"]
+        ?.status,
+    ).toBe("passed");
   });
 
   it("leaves another window showing the same app out of an agent preview run", () => {

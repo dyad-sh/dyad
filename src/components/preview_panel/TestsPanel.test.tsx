@@ -35,6 +35,13 @@ const mocks = vi.hoisted(() => ({
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
   updateSettings: vi.fn(),
   settings: {} as Record<string, unknown>,
+  queuedRuns: [] as { runId: number; source: "agent"; testFile: string }[],
+}));
+
+vi.mock("@/hooks/useTestRunQueue", () => ({
+  useTestRunQueue: () => ({
+    data: { activeRun: null, queuedRuns: mocks.queuedRuns },
+  }),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -155,6 +162,7 @@ describe("TestsPanel", () => {
       uncommittedReason: null,
     });
     mocks.settings = {};
+    mocks.queuedRuns = [];
   });
 
   describe("headed runs in preview", () => {
@@ -162,7 +170,7 @@ describe("TestsPanel", () => {
       enableTestRunInPreview: true,
     };
 
-    it("runs headed mode in the preview and brings the native view forward", async () => {
+    it("requests headed preview without activating it before main starts the run", async () => {
       mocks.settings = { ...experimentOn, testHeaded: true };
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
       const { store } = renderPanel();
@@ -172,8 +180,7 @@ describe("TestsPanel", () => {
         fireEvent.click(button);
       });
 
-      expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
-      expect(store.get(previewModeAtom)).toBe("preview");
+      expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
       await waitFor(() => {
         expect(mocks.runAppTests).toHaveBeenCalledWith(
           expect.objectContaining({ appId: 1, preview: true, parallel: false }),
@@ -514,6 +521,19 @@ describe("TestsPanel", () => {
   });
 
   describe("stopping a run", () => {
+    it("shows pending requests and lets Stop cancel them during active cleanup", () => {
+      mocks.queuedRuns = [{ runId: 2, source: "agent", testFile: SPEC_FILE }];
+      mocks.stopAppTests.mockResolvedValue({ ok: true });
+      const { store } = renderPanel();
+      setPhase(store, { phase: "cleaning-up", runId: 1 });
+      expect(screen.getByRole("status").textContent).toBe("1 run queued");
+      const button = screen.getByRole("button", {
+        name: "Cancel queued tests",
+      }) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+      fireEvent.click(button);
+      expect(mocks.stopAppTests).toHaveBeenCalledWith({ appId: 1 });
+    });
     /** Put the panel's app into `phase` as if a run had reached it. */
     function setPhase(
       store: ReturnType<typeof createStore>,

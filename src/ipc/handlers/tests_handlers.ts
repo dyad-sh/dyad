@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { glob } from "glob";
 import log from "electron-log";
 import { BrowserWindow } from "electron";
@@ -58,7 +57,6 @@ import {
   SLOW_MO_DELAY_MS,
   SLOW_MO_TEST_TIMEOUT_MS,
   TEST_BASE_URL_ENV,
-  TEST_RESULTS_JSON,
   TEST_SLOW_MO_ENV,
 } from "../utils/playwright_bootstrap";
 import {
@@ -84,6 +82,15 @@ import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { resolveNodeModulePackageJsonPathSync } from "../../../shared/node_module_resolution";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import type { TestRunExecution } from "@/test_run_queue/controller";
+import {
+  getAppTestRunQueue,
+  ownsAppTestRun,
+  withAppTestRun,
+  stopAppTestsForApp,
+} from "../services/test_run_queue_service";
+import { createTestRunArtifactsDir } from "../utils/test_run_artifacts";
+import { isTestBranchCleanupOnly } from "../utils/neon_test_branch";
 
 const logger = log.scope("tests_handlers");
 
@@ -176,27 +183,10 @@ function parallelWorkerCount(): number {
  */
 const PREVIEW_TEARDOWN_ROTATION_TIMEOUT_MS = 5_000;
 
-// In-flight runs keyed by appId. `controller` lets the Stop button cancel an
-// in-progress bootstrap or test run; `done` resolves once the whole
-// prepare → run → teardown lifecycle has finished, so a new run can wait for
-// the prior run's teardown (env restore + branch delete) before swapping env
-// again instead of racing it.
-interface TestRun {
-  controller: AbortController;
-  done: Promise<void>;
-  runId: number;
-}
-const testRunControllers = new Map<number, TestRun>();
-const testRunGenerationByAppId = new Map<number, number>();
-
-/**
- * Whether a test run is in flight for the app. Consulted by the recording
- * handler for mutual exclusion — a recording session and a test run must never
- * run at once (both restart the dev server and share the Neon test-branch slot).
- */
-export function isTestRunActive(appId: number): boolean {
-  return testRunControllers.has(appId);
-}
+export {
+  withAppTestRun,
+  isTestRunActive,
+} from "../services/test_run_queue_service";
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -418,22 +408,7 @@ async function runPreviewTestBatch({
 }): Promise<RunAppTestsResult> {
   const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
   const casesByFile = new Map<string, TestCaseResult[]>();
-  const resultsRoot = path.join(appPath, "test-results");
-  fs.mkdirSync(resultsRoot, { recursive: true });
-  for (const entry of fs.readdirSync(resultsRoot, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name.startsWith("dyad-preview-")) {
-      try {
-        fs.rmSync(path.join(resultsRoot, entry.name), {
-          recursive: true,
-          force: true,
-        });
-      } catch (error) {
-        logger.warn(`Failed to remove stale preview test artifacts: ${error}`);
-      }
-    }
-  }
-  const batchDir = path.join(resultsRoot, `dyad-preview-${randomUUID()}`);
-  fs.mkdirSync(batchDir, { recursive: true });
+  const batchDir = createTestRunArtifactsDir(appPath);
 
   const remainingTimeout = (): number | undefined => {
     if (deadline === undefined) return undefined;
@@ -823,13 +798,8 @@ export async function runAppTestsCore({
   }
 
   // 2. Run the tests. Use list reporter for live stdout + json for parsing.
-  const resultsJsonPath = path.join(appPath, TEST_RESULTS_JSON);
-  // Clear any stale report so a crash doesn't surface old results.
-  try {
-    fs.rmSync(resultsJsonPath, { force: true });
-  } catch {
-    // ignore
-  }
+  const artifactsDir = createTestRunArtifactsDir(appPath);
+  const resultsJsonPath = path.join(artifactsDir, "results.json");
 
   // Pass args as an array (never a shell string) so a test path can't be
   // interpreted as a shell command. A line suffix (`file:line`) targets a
@@ -848,7 +818,10 @@ export async function runAppTestsCore({
   if (grep) {
     args.push("-g", grep);
   }
-  args.push("--reporter=list,json");
+  args.push(
+    "--reporter=list,json",
+    `--output=${path.join(artifactsDir, "artifacts")}`,
+  );
   // baseURL is passed via the DYAD_TEST_BASE_URL env var, not a CLI flag —
   // `playwright test` has no `--base-url` option.
   // `--headed` opens a visible browser window so the user can watch the run.
@@ -891,7 +864,7 @@ export async function runAppTestsCore({
         // generated fixture shim inert so this run launches its own browser.
         // Left unset at full speed so the config's `|| 0` fallback applies.
         ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
-        PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
+        PLAYWRIGHT_JSON_OUTPUT_NAME: resultsJsonPath,
         // Non-interactive: never try to open/serve an HTML report.
         CI: "true",
       }),
@@ -1043,7 +1016,7 @@ export interface RunTestsWithIsolationOptions {
   /** Pauses between actions so the user can follow the run. */
   slowMo?: boolean;
   timeoutMs?: number;
-  /** Stamped onto `tests:run-state` so the panel ignores its own runs. */
+  /** Identifies the initiating surface in lifecycle events and queue snapshots. */
   source: "panel" | "agent";
   /**
    * Aborts the run when the caller's own lifecycle ends (e.g. the agent turn is
@@ -1058,31 +1031,52 @@ export interface RunTestsWithIsolationOptions {
    * renderer opens that view for headed panel and agent runs.
    */
   preview?: boolean;
+  /** Internal queue ownership, supplied by the agent to include result accounting. */
+  queueRun?: TestRunExecution;
 }
 
-/**
- * Run an app's tests with database isolation, per-app serialization, and Stop
- * support. Wraps `runAppTestsCore` with everything the raw core omits:
- * controller registration in the shared `testRunControllers` map (so the panel
- * Stop button aborts agent-initiated runs too), the per-app lock, isolated
- * test-DB setup + guaranteed teardown, and `tests:output`/`tests:run-state`
- * streaming to the renderer. Backs both the `tests:run` IPC handler (panel Run)
- * and the agent's `run_tests` tool.
- */
-export async function runAppTestsWithIsolation({
-  event,
-  appId,
-  testFile,
-  testLine,
-  grep,
-  headed,
-  parallel,
-  slowMo,
-  timeoutMs,
-  source,
-  externalSignal,
-  preview,
-}: RunTestsWithIsolationOptions): Promise<RunAppTestsResult> {
+/** Shared admission for panel requests and agent-owned queue executions. */
+export function runAppTestsWithIsolation(
+  options: RunTestsWithIsolationOptions,
+): Promise<RunAppTestsResult> {
+  if (options.queueRun) {
+    if (!ownsAppTestRun(options.appId, options.queueRun)) {
+      throw new DyadError(
+        "Test run no longer owns its queue slot",
+        DyadErrorKind.Precondition,
+      );
+    }
+    return executeAppTestsWithIsolation(options, options.queueRun);
+  }
+  return withAppTestRun<RunAppTestsResult>(
+    options,
+    (run) => executeAppTestsWithIsolation(options, run),
+    () => ({
+      appId: options.appId,
+      results: [],
+      infraError: { message: "Test run stopped before execution." },
+    }),
+  );
+}
+
+async function executeAppTestsWithIsolation(
+  {
+    event,
+    appId,
+    testFile,
+    testLine,
+    grep,
+    headed,
+    parallel,
+    slowMo,
+    timeoutMs,
+    source,
+    preview,
+  }: RunTestsWithIsolationOptions,
+  { runId, signal }: TestRunExecution,
+): Promise<RunAppTestsResult> {
+  if (signal.aborted)
+    return { appId, results: [], infraError: { message: "Test run stopped." } };
   const normalizedTestFile =
     testFile === undefined ? undefined : normalizeRunTestFile(testFile);
 
@@ -1149,68 +1143,26 @@ export async function runAppTestsWithIsolation({
     }
   }
 
-  // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
-  // run's teardown — so a concurrent invocation sees THIS run as its prior
-  // and chains behind it. If we awaited before registering, two rapid Run
-  // clicks could both capture the same old run as `prior`, both wait for it,
-  // then both start isolation setup at once and double-swap the env file.
-  const prior = testRunControllers.get(appId);
-  const runId = (testRunGenerationByAppId.get(appId) ?? 0) + 1;
-  testRunGenerationByAppId.set(appId, runId);
-
-  const controller = new AbortController();
-  let resolveDone!: () => void;
-  const done = new Promise<void>((resolve) => {
-    resolveDone = resolve;
-  });
-  testRunControllers.set(appId, { controller, done, runId });
-
-  /**
-   * Progress-only run-state events for the two waits a Stop cannot skip. Both
-   * are emitted only while this controller still owns the app, so a late event
-   * from a superseded run cannot affect its replacement. Neither carries
-   * results — only `finished` is terminal.
-   */
+  // Only the active request publishes lifecycle events. Queued requests remain
+  // in the queue snapshot and cannot replace the active run's UI or preview.
   const emitProgress = (
     state: "stopping" | "cleaning-up",
     isolation?: TestIsolation,
   ) => {
-    // Starting a replacement run aborts the prior controller too. Those
-    // progress events belong to the superseded run and would otherwise pin
-    // the replacement panel run at stopping/cleanup because the panel writes
-    // its new setup state before the IPC invocation reaches main.
-    if (testRunControllers.get(appId)?.runId !== runId) return;
     emitRunState(event, {
       appId,
       runId,
       source,
       state,
-      wasStopped: controller.signal.aborted,
+      wasStopped: signal.aborted,
       testFile: normalizedTestFile ?? undefined,
       testLine,
       grep,
-      // Only `cleaning-up` carries this, and only so the UI can name the work
-      // accurately: the Neon path restarts the preview, the Supabase path
-      // touches nothing the user can see.
       isolation,
     });
   };
-
-  // Announce the kill the moment either Stop path fires. The panel button and
-  // the agent turn's cancellation both land on this one controller, so a single
-  // listener covers both surfaces. Registered BEFORE the external-signal wiring
-  // below, which can abort synchronously when the caller is already cancelled.
-  // `started` is published before that wiring, so progress always follows the
-  // generation it belongs to in a live renderer.
-  controller.signal.addEventListener("abort", () => emitProgress("stopping"), {
-    once: true,
-  });
-
-  // Publish the new generation before it waits for the prior teardown. A Stop
-  // can target this queued run immediately; the renderer must know that its
-  // progress belongs to the replacement rather than dropping it behind the
-  // prior run's later phase. Output and terminal events carry the same runId,
-  // so the prior lifecycle can safely finish after this announcement.
+  const onAbort = () => emitProgress("stopping");
+  signal.addEventListener("abort", onAbort, { once: true });
   emitRunState(event, {
     appId,
     runId,
@@ -1219,26 +1171,9 @@ export async function runAppTestsWithIsolation({
     testFile: normalizedTestFile ?? undefined,
     testLine,
     grep,
-    // What this run is, not what it requested. A refused preview has already
-    // cleared the endpoint and will emit a correlated fallback event below.
     preview: previewWindow !== undefined,
   });
-
-  // Install and announce the new owner before aborting the prior run. Its
-  // abort listener is synchronous, so stale progress can see that ownership
-  // moved and stay out of the replacement run's renderer state.
-  prior?.controller.abort();
-
-  // Cancelling the caller's lifecycle (e.g. the agent turn) aborts the run,
-  // just like the Stop button does via the same controller.
-  const onExternalAbort = () => controller.abort();
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      controller.abort();
-    } else {
-      externalSignal.addEventListener("abort", onExternalAbort);
-    }
-  }
+  if (signal.aborted) onAbort();
 
   const emit = (chunk: string, phase: "setup" | "running") =>
     emitOutput(event, appId, runId, chunk, phase);
@@ -1248,8 +1183,7 @@ export async function runAppTestsWithIsolation({
       `The preview panel can't host this run (${previewFellBackToBrowser}); running the tests in a separate browser instead.\n`,
       "setup",
     );
-    // The renderer switched to the native view optimistically on click, so it
-    // has to be told to switch back before the run starts somewhere else.
+    // Tell the invoking window that this request will use a separate browser.
     emitRunState(event, {
       appId,
       runId,
@@ -1292,21 +1226,6 @@ export async function runAppTestsWithIsolation({
     };
   };
   try {
-    // Wait for the prior run's full lifecycle (prepare → run → teardown) to
-    // finish before swapping env. Otherwise a Stop-then-Run could race the
-    // prior run's teardown (env restore + branch delete) against this run's
-    // env snapshot/swap, causing tests to execute against the real database.
-    if (prior) {
-      await prior.done.catch(() => {});
-    }
-
-    // The database lookup intentionally happens only after this run registered
-    // above. Keeping every await behind registration ensures a rapid second
-    // invocation chains behind this run instead of racing its isolation setup
-    // and env-file swap. (The resolved app is re-fetched inside the lock below,
-    // so this call exists only for the ordering barrier.)
-    await getApp(appId);
-
     // Own the runtime/test resources across the whole isolation lifecycle
     // (prepare → run → teardown). Startup reconciliation owns the same
     // resources, so a rapid Run after launch cannot interleave its env swap
@@ -1335,10 +1254,8 @@ export async function runAppTestsWithIsolation({
         operation: "run-app-tests",
         resources: testRunResources,
         allowCompatibleQueueBypass: true,
-        // The preflight above avoids registering/cancelling test controllers
-        // when a recording already exists, but a session can start during any
-        // of the awaits before admission. Refuse atomically here as well so the
-        // run never queues behind that session's whole-lifetime claims.
+        signal,
+        // Recheck recording admission atomically with the resource claim.
         refuseWhenRecording: "run tests",
       },
       async () => {
@@ -1357,6 +1274,25 @@ export async function runAppTestsWithIsolation({
             };
           }
 
+          if (signal.aborted)
+            return {
+              appId,
+              results: [],
+              infraError: { message: "Test run stopped." },
+            };
+          if (
+            app.neonTestBranchId &&
+            !isTestBranchCleanupOnly(app.neonTestBranchId)
+          ) {
+            return {
+              appId,
+              results: [],
+              infraError: {
+                message:
+                  "The previous test environment could not be restored. Restart the app to recover its database settings before running more tests.",
+              },
+            };
+          }
           const runtimeMode = readSettings().runtimeMode2 ?? "host";
 
           // Set up isolation so the run never mutates the user's real data:
@@ -1366,7 +1302,7 @@ export async function runAppTestsWithIsolation({
             app,
             emit,
             runtimeMode,
-            signal: controller.signal,
+            signal: signal,
           });
 
           // Isolation was required but couldn't be set up — dead-end safely
@@ -1394,7 +1330,7 @@ export async function runAppTestsWithIsolation({
                   // every call while the user is elsewhere — inside the app lock,
                   // holding up other operations — so it gives up sooner.
                   ...(source === "agent" ? { timeoutMs: 5_000 } : {}),
-                  signal: controller.signal,
+                  signal: signal,
                 })
               : ({ ok: false, reason: "the app isn't running" } as const);
 
@@ -1533,7 +1469,7 @@ export async function runAppTestsWithIsolation({
                       1,
                       Math.min(remainingMs ?? 15_000, 15_000),
                     ),
-                    signal: controller.signal,
+                    signal: signal,
                   });
                   if (!ready.ok) {
                     throw new Error(ready.reason);
@@ -1556,7 +1492,7 @@ export async function runAppTestsWithIsolation({
               headed,
               parallel,
               slowMo,
-              signal: controller.signal,
+              signal: signal,
               timeoutMs,
               onOutput: emit,
               testEnv: prepared.testCredentials,
@@ -1666,9 +1602,7 @@ export async function runAppTestsWithIsolation({
     // it sees the run go idle, and a still-standing claim would downgrade that
     // teardown into an invisible view nobody owns.
     releasePreviewReservation();
-    if (externalSignal) {
-      externalSignal.removeEventListener("abort", onExternalAbort);
-    }
+    signal.removeEventListener("abort", onAbort);
     emitRunState(event, {
       appId,
       runId,
@@ -1677,18 +1611,10 @@ export async function runAppTestsWithIsolation({
       testFile: normalizedTestFile ?? undefined,
       testLine,
       grep,
-      results: source === "agent" ? finalResult.results : undefined,
-      infraError: source === "agent" ? finalResult.infraError : undefined,
+      results: finalResult.results,
+      infraError: finalResult.infraError,
       isolation: finalResult.isolation,
     });
-    // A teardown failure must not skip the cleanup below — leaving the
-    // controller registered and `done` unresolved would make every future
-    // run for this app wait forever on `prior.done`.
-    if (testRunControllers.get(appId)?.controller === controller) {
-      testRunControllers.delete(appId);
-    }
-    // Signal the next queued run that this lifecycle (incl. teardown) is done.
-    resolveDone();
   }
 }
 
@@ -1720,6 +1646,9 @@ async function moveFileWithFallback(src: string, dst: string): Promise<void> {
 }
 
 export function registerTestsHandlers() {
+  createTypedHandler(testsContracts.getRunQueue, async (_event, { appId }) =>
+    getAppTestRunQueue(appId),
+  );
   createTypedHandler(testsContracts.listAppTests, async (_event, params) => {
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
@@ -1734,7 +1663,7 @@ export function registerTestsHandlers() {
   });
 
   createTypedHandler(testsContracts.stopAppTests, async (_event, params) => {
-    testRunControllers.get(params.appId)?.controller.abort();
+    stopAppTestsForApp(params.appId);
     return { ok: true as const };
   });
 

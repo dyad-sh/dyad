@@ -8,11 +8,13 @@ import {
 } from "./types";
 import {
   runAppTestsWithIsolation,
+  withAppTestRun,
   getRunningTestBaseUrl,
   normalizeRunTestFile,
   listSpecFiles,
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
+import type { TestRunExecution } from "@/test_run_queue/controller";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
@@ -275,6 +277,7 @@ function consumeFreeFlakeCheck(
 async function runSpec(
   ctx: AgentContext,
   testFile: string,
+  queueRun: TestRunExecution,
   grep?: string,
 ): Promise<RunAppTestsResult> {
   const label = grep ? `${testFile} › /${grep}/` : testFile;
@@ -296,6 +299,7 @@ async function runSpec(
     testFile,
     grep,
     source: "agent",
+    queueRun,
     headed: settings.testHeaded ?? false,
     // Deliberately not gated on `preview`: the runner already drops
     // `--fully-parallel` while the preview endpoint is live, and it clears that
@@ -514,7 +518,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 - Pass \`testFile\` (e.g. "e2e-tests/checkout.spec.ts") to run one spec — it's required, so always target the single spec you're working on. Use the exact path of a spec that exists under e2e-tests/ (the one you just wrote/edited) — don't guess. If the path doesn't match a real spec, the tool won't run anything and will reply with the list of specs that DO exist, so you can retry with a correct path.
 - Unless you just wrote or edited the spec this turn, READ it with read_file before running it — you need its current content to know the test() titles (for grep) and to interpret failures against what the test actually does.
 - By default the whole file runs, so a pass means every test in the spec passes.
-- Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next, even when targeting different spec files. Overlapping calls for the same app cancel earlier runs; they do not run in parallel.
+- Calls to \`run_tests\` for the same app are queued in arrival order. Each call waits for earlier runs and their cleanup, then returns its own results. Calls for different apps can run concurrently.
 - Run the whole file by default. Only add \`grep\` (a regex passed to Playwright's --grep, matched against full hierarchical test titles) when you have a specific reason to narrow the run — e.g. one test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no runnable test, the tool reports that nothing executed.
 - Requires the app's dev server to be running (the user starts it with the Run button in the preview panel).
 - On failure you get the error text plus the paths of Playwright's artifacts (error-context.md page snapshot, screenshot) — read error-context.md with read_file to see the page state, then fix and rerun.
@@ -533,101 +537,135 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       ? `Run test: ${args.testFile} › /${args.grep}/`
       : `Run test: ${args.testFile}`,
 
-  execute: async (args, ctx: AgentContext) => {
-    const resolved = await resolveSpecPath(ctx, args.testFile);
-    if ("error" in resolved) return resolved.error;
-    const { testFile } = resolved;
+  execute: async (args, ctx: AgentContext) =>
+    withAppTestRun(
+      {
+        appId: ctx.appId,
+        event: ctx.event,
+        source: "agent",
+        testFile: args.testFile,
+        grep: args.grep,
+        externalSignal: ctx.abortSignal,
+        onQueued: (position) =>
+          ctx.onXmlStream(
+            `<dyad-status title="${escapeXmlAttr(`Queued: ${args.testFile}`)}">Position ${position} in the queue. Waiting for the previous test run to finish.</dyad-status>`,
+          ),
+      },
+      async (queueRun) => {
+        const resolved = await resolveSpecPath(ctx, args.testFile);
+        if ("error" in resolved) return resolved.error;
+        const { testFile } = resolved;
 
-    const key = specKey(testFile);
-    const state: TestRunAttemptState = ctx.testRunAttempts.get(key) ?? {
-      attempts: 0,
-    };
-    ctx.testRunAttempts.set(key, state);
+        const key = specKey(testFile);
+        const state: TestRunAttemptState = ctx.testRunAttempts.get(key) ?? {
+          attempts: 0,
+        };
+        ctx.testRunAttempts.set(key, state);
 
-    // Mutation count, not just file edits: a fix made via delete_file,
-    // add_dependency, execute_sql, etc. must also unblock the guards below.
-    const currentEditCount = ctx.mutationCount ?? 0;
-    let runTargetKey = WHOLE_FILE;
-    if (args.grep) {
-      const validated = await validateGrep(ctx, testFile, args.grep);
-      if ("error" in validated) return validated.error;
-      runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
-    }
-    const blocked =
-      guardAttemptLimit(ctx, key, state) ??
-      guardTurnRunLimit(ctx) ??
-      guardDevServerRunning(ctx) ??
-      guardAlreadyPassed(ctx, args, state, currentEditCount, runTargetKey) ??
-      guardChangedSinceLastRun(
-        ctx,
-        args,
-        state,
-        currentEditCount,
-        runTargetKey,
-      );
-    if (blocked) return blocked;
+        // Mutation count, not just file edits: a fix made via delete_file,
+        // add_dependency, execute_sql, etc. must also unblock the guards below.
+        const currentEditCount = ctx.mutationCount ?? 0;
+        let runTargetKey = WHOLE_FILE;
+        if (args.grep) {
+          const validated = await validateGrep(ctx, testFile, args.grep);
+          if ("error" in validated) return validated.error;
+          runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
+        }
+        const blocked =
+          guardAttemptLimit(ctx, key, state) ??
+          guardTurnRunLimit(ctx) ??
+          guardDevServerRunning(ctx) ??
+          guardAlreadyPassed(
+            ctx,
+            args,
+            state,
+            currentEditCount,
+            runTargetKey,
+          ) ??
+          guardChangedSinceLastRun(
+            ctx,
+            args,
+            state,
+            currentEditCount,
+            runTargetKey,
+          );
+        if (blocked) return blocked;
+        if (queueRun.signal.aborted) {
+          const body =
+            "Test run stopped before execution. This did NOT count as a fix attempt.";
+          completeStatus(ctx, "Tests stopped", body);
+          return body;
+        }
 
-    const isFreeFlakeRun = consumeFreeFlakeCheck(args, state);
+        const isFreeFlakeRun = consumeFreeFlakeCheck(args, state);
 
-    let res: RunAppTestsResult;
-    try {
-      ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
-      res = await runSpec(ctx, testFile, args.grep);
-    } catch (error) {
-      // An unexpected throw (isolation setup, database access, teardown) must
-      // not crash the whole agent turn or leave the loop state inconsistent:
-      // give back the free flake rerun if this run consumed it, and surface
-      // the same uncounted infrastructure outcome as a structured infra error.
-      if (isFreeFlakeRun) {
-        state.flakeCheckUsed = false;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
-      completeWarning(ctx, "Test run couldn't complete", body);
-      return body;
-    }
-    const outcome = classify(res);
-    // A structured non-run (infra failure, nothing executed) is not a real
-    // flake rerun either — hand the free rerun back, matching the thrown-error
-    // path above. The infra reply promises "call run_tests again", and without
-    // the refund that retry would be refused by the guards (flake rerun spent,
-    // no files changed), dead-ending the agent.
-    if (
-      isFreeFlakeRun &&
-      (outcome.kind === "infra" || outcome.kind === "no-tests")
-    ) {
-      state.flakeCheckUsed = false;
-    }
+        let res: RunAppTestsResult;
+        try {
+          ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
+          res = await runSpec(ctx, testFile, queueRun, args.grep);
+        } catch (error) {
+          // An unexpected throw (isolation setup, database access, teardown) must
+          // not crash the whole agent turn or leave the loop state inconsistent:
+          // give back the free flake rerun if this run consumed it, and surface
+          // the same uncounted infrastructure outcome as a structured infra error.
+          if (isFreeFlakeRun) {
+            state.flakeCheckUsed = false;
+          }
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
+          completeWarning(ctx, "Test run couldn't complete", body);
+          return body;
+        }
+        const outcome = classify(res);
+        // A structured non-run (infra failure, nothing executed) is not a real
+        // flake rerun either — hand the free rerun back, matching the thrown-error
+        // path above. The infra reply promises "call run_tests again", and without
+        // the refund that retry would be refused by the guards (flake rerun spent,
+        // no files changed), dead-ending the agent.
+        if (
+          isFreeFlakeRun &&
+          (outcome.kind === "infra" || outcome.kind === "no-tests")
+        ) {
+          state.flakeCheckUsed = false;
+        }
 
-    switch (outcome.kind) {
-      case "no-tests":
-        return reportNoRunnableTests(ctx, testFile, args.grep);
-      case "infra":
-        return reportInfraFailure(ctx, outcome);
-      case "passed":
-        return reportPassed({
-          ctx,
-          testFile,
-          state,
-          outcome,
-          res,
-          currentEditCount,
-          runTargetKey,
-          grep: args.grep,
-        });
-      case "failed":
-        return reportFailure({
-          ctx,
-          key,
-          testFile,
-          grep: args.grep,
-          state,
-          res,
-          outcome,
-          isFreeFlakeRun,
-          currentEditCount,
-          runTargetKey,
-        });
-    }
-  },
+        switch (outcome.kind) {
+          case "no-tests":
+            return reportNoRunnableTests(ctx, testFile, args.grep);
+          case "infra":
+            return reportInfraFailure(ctx, outcome);
+          case "passed":
+            return reportPassed({
+              ctx,
+              testFile,
+              state,
+              outcome,
+              res,
+              currentEditCount,
+              runTargetKey,
+              grep: args.grep,
+            });
+          case "failed":
+            return reportFailure({
+              ctx,
+              key,
+              testFile,
+              grep: args.grep,
+              state,
+              res,
+              outcome,
+              isFreeFlakeRun,
+              currentEditCount,
+              runTargetKey,
+            });
+        }
+      },
+      () => {
+        const body =
+          "Test run cancelled while queued. No tests ran, and this did NOT count as a fix attempt.";
+        completeStatus(ctx, "Tests cancelled", body);
+        return body;
+      },
+    ),
 };

@@ -29,7 +29,7 @@ export function RepositoryConnector({
 }) {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
-  const { settings, loading: settingsLoading } = useSettings();
+  const { settings, settingsLoading } = useSettings();
   const { status: gitlabStatus, isLoading: gitlabStatusLoading } =
     useGitLabStatus();
   const linked = describeLinkedRemote(app);

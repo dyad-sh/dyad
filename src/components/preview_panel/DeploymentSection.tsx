@@ -45,7 +45,7 @@ function VercelDashboardLink() {
 
 function VercelDeployment({ appId, app }: { appId: number; app: AppSummary }) {
   const linked = describeLinkedRemote(app);
-  const { settings, loading: settingsLoading } = useSettings();
+  const { settings, settingsLoading } = useSettings();
   // Own-server deployment is itself behind an experiment that is off by
   // default, so pointing a GitLab user at it without saying where it lives
   // named a control that is nowhere on their screen. Until settings arrive

@@ -359,6 +359,10 @@ async function ensureGitLabDeployKey({
     // GitLab returns the key without its trailing comment.
     const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
     const keys = await client.listDeployKeys(remote.projectId);
+    // Before either verdict below: a cancel that lands while the listing is
+    // in flight should end the deploy as cancelled, not as a deploy-key
+    // problem the user would go and investigate.
+    throwIfAborted(signal);
     const existing = keys.find((k) => k.key.startsWith(ours));
     if (existing?.canPush) {
       // Dyad registers this key read-only, but an earlier registration — by

@@ -31,7 +31,7 @@ export const PublishPanel = () => {
   // The card title is chosen from `enableGitlabPublishing`, which reads false
   // until settings arrive — so waiting for them here keeps the card from
   // naming GitHub for a moment on an app whose provider is still unknown.
-  const { settings, loading: settingsLoading } = useSettings();
+  const { settings, settingsLoading } = useSettings();
 
   if (loading || settingsLoading) {
     return (

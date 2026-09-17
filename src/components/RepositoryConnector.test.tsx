@@ -19,7 +19,10 @@ vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({ app: h.app, loading: false }),
 }));
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: h.settings, loading: h.settingsLoading }),
+  useSettings: () => ({
+    settings: h.settings,
+    settingsLoading: h.settingsLoading,
+  }),
 }));
 vi.mock("@/hooks/useGitLabStatus", () => ({
   useGitLabStatus: () => ({

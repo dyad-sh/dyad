@@ -217,6 +217,11 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                   offset={{
                     bottom: "calc(24px + var(--layout-bottom-bar-height))",
                   }}
+                  // Sonner switches to this one under a 600px viewport, which
+                  // an 800px window reaches at 150% zoom.
+                  mobileOffset={{
+                    bottom: "calc(16px + var(--layout-bottom-bar-height))",
+                  }}
                 />
                 {/* Next to the Toaster on purpose: it is what keeps these
                     toasts from being painted underneath the native preview. */}

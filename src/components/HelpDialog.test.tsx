@@ -60,17 +60,21 @@ vi.mock("react-i18next", async () => {
   const home = (await import("@/i18n/locales/en/home.json")).default;
   const common = (await import("@/i18n/locales/en/common.json")).default;
   const bundles: Record<string, unknown> = { home, common };
-  // An unprefixed key resolves against the hook's first namespace, or the
-  // app's defaultNS when the hook was given none, as it would at runtime.
+  // An unprefixed key is looked up in the hook's namespaces in order, then in
+  // the app's defaultNS, as it would be at runtime.
   const translator =
-    (defaultNs: string) => (key: string, vars?: Record<string, string>) => {
-      const [ns, path] = key.includes(":") ? key.split(":") : [defaultNs, key];
-      const value = path
-        .split(".")
-        .reduce<unknown>(
-          (node, part) => (node as Record<string, unknown>)?.[part],
-          bundles[ns],
-        );
+    (hookNs: string[]) => (key: string, vars?: Record<string, string>) => {
+      const [prefix, path] = key.includes(":") ? key.split(":") : [null, key];
+      const lookup = (ns: string) =>
+        path
+          .split(".")
+          .reduce<unknown>(
+            (node, part) => (node as Record<string, unknown>)?.[part],
+            bundles[ns],
+          );
+      const value = (prefix ? [prefix] : [...hookNs, "common"])
+        .map(lookup)
+        .find((found) => typeof found === "string");
       if (typeof value !== "string")
         throw new Error(`Missing i18n key: ${key}`);
       // i18next substitutes {{name}}; without it a placeholder would render
@@ -81,7 +85,7 @@ vi.mock("react-i18next", async () => {
     };
   return {
     useTranslation: (ns?: string | string[]) => ({
-      t: translator(Array.isArray(ns) ? ns[0] : (ns ?? "common")),
+      t: translator(Array.isArray(ns) ? ns : ns ? [ns] : []),
     }),
   };
 });

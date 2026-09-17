@@ -473,7 +473,7 @@ You have a limited number of fix attempts per spec (the tool tells you how many 
 
 When a task touches multiple specs, batch them into one \`run_tests\` call. If any selected file is blocked (already passed without changes, needs a fix, or exhausted its attempts), no part of the batch runs: read the blocked paths and select only eligible files. A passing file never resets another file's failure budget. Infrastructure failures and incomplete runs do not consume failure attempts or grant verification.
 
-Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next. Overlapping calls cancel earlier runs; they do not run in parallel. Each batch counts once toward the 10-run limit per turn, including infrastructure failures; preflight refusals do not count. The selected tests share a 10-minute execution deadline (20 minutes with slow motion), tripled for per-test database isolation to allow for serial provisioning and cleanup.`;
+Calls to \`run_tests\` for the same app are queued in arrival order. Each call waits for earlier runs and their cleanup, then returns its own results. Calls for different apps can run concurrently. Each batch counts once toward the 10-run limit per turn, including infrastructure failures; preflight refusals do not count. The selected tests share a 10-minute execution deadline (20 minutes with slow motion), tripled for per-test database isolation to allow for serial provisioning and cleanup.`;
 };
 
 const AGENT_RUN_TESTS_GUIDANCE = buildAgentRunTestsGuidance();

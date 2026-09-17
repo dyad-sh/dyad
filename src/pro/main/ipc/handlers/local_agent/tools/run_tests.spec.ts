@@ -3,7 +3,10 @@ import path from "node:path";
 import type { AgentContext } from "./types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
 
-vi.mock("@/ipc/handlers/tests_handlers", () => ({
+vi.mock("@/ipc/handlers/tests_handlers", async () => ({
+  // Exercise the real queue even when the isolated runner itself is stubbed.
+  withAppTestRun: (await import("@/ipc/services/test_run_queue_service"))
+    .withAppTestRun,
   runAppTestsWithIsolation: vi.fn(),
   getRunningTestBaseUrl: vi.fn(),
   normalizeRunTestFile: vi.fn(),
@@ -16,6 +19,9 @@ vi.mock("@/ipc/utils/test_screenshot", () => ({
 }));
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
+}));
+vi.mock("@/ipc/utils/window_broadcast", () => ({
+  broadcastToRegisteredWindows: vi.fn(),
 }));
 
 import {
@@ -116,6 +122,64 @@ function addEdit(ctx: AgentContext, _file: string) {
 }
 
 describe("runTestsTool", () => {
+  it("rechecks every file after an earlier queued batch finishes", async () => {
+    let finish!: (result: RunAppTestsResult) => void;
+    runner.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const ctx = makeCtx();
+    const files = ["e2e-tests/a.spec.ts", "e2e-tests/b.spec.ts"];
+    specLister.mockResolvedValue([...files, "e2e-tests/c.spec.ts"]);
+    const first = runTestsTool.execute({ testFiles: files }, ctx);
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
+    const second = runTestsTool.execute(
+      { testFiles: [files[1], "e2e-tests/c.spec.ts"] },
+      ctx,
+    );
+    expect(emittedXml(ctx)).toContain("Queued:");
+    expect(runner.mock.calls[0][0].testFiles).toEqual(files);
+    finish({
+      appId: 1,
+      results: files.map((file) => ({ file, status: "passed" })),
+    });
+    await first;
+    expect(await second).toContain("already passed");
+    expect(runner).toHaveBeenCalledOnce();
+    expect(ctx.testRunCount).toBe(1);
+    expect(ctx.testRunAttempts.has("e2e-tests/c.spec.ts")).toBe(false);
+  });
+
+  it("does not spend a run or flake attempt when a waiting call is cancelled", async () => {
+    let finish!: (result: RunAppTestsResult) => void;
+    runner.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
+    const ctx = makeCtx();
+    const abort = new AbortController();
+    ctx.abortSignal = abort.signal;
+    const second = runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
+      ctx,
+    );
+    abort.abort();
+    expect(await second).toContain("cancelled while queued");
+    expect(ctx.testRunCount ?? 0).toBe(0);
+    expect(ctx.testRunAttempts.size).toBe(0);
+    finish(passedResult);
+    await first;
+  });
+
   beforeEach(() => {
     runner.mockReset();
     baseUrl.mockReset();
@@ -388,7 +452,12 @@ describe("runTestsTool", () => {
             runner.mockRejectedValue(new Error("runner unavailable"));
             break;
           case "cancel":
-            ctx.abortSignal = AbortSignal.abort();
+            const controller = new AbortController();
+            ctx.abortSignal = controller.signal;
+            runner.mockImplementationOnce(async () => {
+              controller.abort();
+              return infraResult;
+            });
             break;
           case "attempt limit":
             ctx.testRunAttempts.set(a, { attempts: 4 });

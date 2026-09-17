@@ -74,6 +74,7 @@ import {
   endRecordingForApp,
 } from "../services/recording_registry";
 import { forgetAppRecordedDrafts } from "../services/recorded_test_drafts";
+import { beginAppTestDeletion } from "../services/test_run_queue_service";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -515,14 +516,15 @@ async function deleteAppById(
     throw error;
   }
   let deletedRow: typeof apps.$inferSelect | null = null;
+  const testDeletion = beginAppTestDeletion(appId);
   try {
+    await endTestsForApp(appId);
     // A recording session already admitted before the fence holds this app's
     // resources until it ends. Stop that admitted owner before the exclusive
     // path drains the coordinator; nothing here needs the dev server back.
     const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
       skipRestart: true,
     });
-    await endTestsForApp(appId);
     if (!envRestored) {
       // The app directory is about to be removed, so a stale `.env.local`
       // inside it goes with it — this is diagnosis, not a refusal.
@@ -560,6 +562,7 @@ async function deleteAppById(
       }
     }
   } finally {
+    testDeletion.release();
     appOperationDeletion.release();
   }
 

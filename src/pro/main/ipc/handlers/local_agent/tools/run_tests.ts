@@ -8,6 +8,7 @@ import {
 } from "./types";
 import {
   runAppTestsWithIsolation,
+  withAppTestRun,
   getRunningTestBaseUrl,
   normalizeRunTestFile,
   listSpecFiles,
@@ -19,6 +20,7 @@ import {
 } from "@/ipc/utils/test_screenshot";
 import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { reconcileResultFile } from "@/lib/testResultUtils";
+import type { TestRunExecution } from "@/test_run_queue/controller";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
@@ -313,6 +315,7 @@ function consumeFreeFlakeCheck(
 async function runSpecs(
   ctx: AgentContext,
   testFiles: string[],
+  queueRun: TestRunExecution,
   grep?: string,
 ): Promise<RunAppTestsResult> {
   const filesLabel = testFiles.join(", ");
@@ -335,6 +338,7 @@ async function runSpecs(
     testFiles,
     grep,
     source: "agent",
+    queueRun,
     headed: settings.testHeaded ?? false,
     // Deliberately not gated on `preview`: the runner already drops
     // `--fully-parallel` while the preview endpoint is live, and it clears that
@@ -579,7 +583,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 - Pass \`testFiles\` (e.g. ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"]) to select exact existing specs. Omit it deliberately to run all specs under e2e-tests/. An empty list or the old testFile argument is invalid. Duplicate paths run once; if any path is missing, the entire batch is refused and the real specs are listed.
 - Unless you just wrote or edited a selected spec this turn, READ it with read_file before running it. Prefer batching affected specs over running the whole suite.
 - By default each whole file runs. For managed Neon and Supabase apps, database data and auth users are isolated per test case and retry, including across files. Seed each case independently. The batch follows the Tests panel's headed, parallel, and slow-motion preferences; preview and database-isolated runs remain sequential.
-- Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next. Overlapping calls cancel earlier runs; they do not run in parallel.
+- Calls to \`run_tests\` for the same app are queued in arrival order. Each call waits for earlier runs and their cleanup, then returns its own results. Calls for different apps can run concurrently.
 - Only add \`grep\` when you have a specific reason to narrow the run. One regex applies to Playwright's full hierarchical test titles across all selected files. Filtered runs stay sequential. A filtered pass verifies only matched tests; a file with no runnable matches is not verified.
 - Runs in an isolated copy of the app served on its own port, so the preview does not need to be running. Docker/cloud runtimes and disabled sandboxing require the dev server. Each batch shares one snapshot and clean dependency install; batch affected specs to amortize setup.
 - Results name each file and its pass/fail/no-tests outcome. Failures include error text and current artifact paths; read error-context.md with read_file (or the inline snapshot for sandbox artifacts), make a targeted fix, then rerun the relevant files.
@@ -602,192 +606,224 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       : `Run tests: ${selection}`;
   },
 
-  execute: async (args, ctx: AgentContext) => {
-    // Also fail closed for direct callers: a legacy testFile must never be
-    // stripped into an empty object and accidentally select the whole suite.
-    const parsed = runTestsSchema.safeParse(args);
-    if (!parsed.success) {
-      const body = `Invalid run_tests arguments: ${parsed.error.message}. Use testFiles with a nonempty list, or omit it to run all specs. Nothing ran.`;
-      completeWarning(ctx, "Invalid test selection", body);
-      return body;
-    }
-    const resolved = await resolveSpecPaths(ctx, args.testFiles);
-    if ("error" in resolved) return resolved.error;
-    const { testFiles, specs, selectionNote } = resolved;
-    const withSelectionNote = (body: string) =>
-      [selectionNote, body].filter(Boolean).join("\n\n");
-    const warn = (title: string, body: string) => {
-      const message = withSelectionNote(body);
-      completeWarning(ctx, title, message);
-      return message;
-    };
-    const selections = [];
-    for (const testFile of testFiles) {
-      const key = specKey(testFile);
-      let runTargetKey = WHOLE_FILE;
-      if (args.grep) {
-        const validated = await validateGrep(ctx, testFile, args.grep);
-        if ("error" in validated)
-          return warn("Invalid grep pattern", validated.error);
-        runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
-      }
-      selections.push({ testFile, key, runTargetKey });
-    }
-    // Read the shared counters after all asynchronous preflight work. Nothing
-    // can interleave admission checks and reservation of this batch's slot.
-    const targets = selections.map((selection) => {
-      const state: TestRunAttemptState = ctx.testRunAttempts.get(
-        selection.key,
-      ) ?? { attempts: 0 };
-      return { ...selection, state };
-    });
-    const currentEditCount = ctx.mutationCount ?? 0;
-    const refusals = targets.flatMap(
-      ({ testFile, key, state, runTargetKey }) => {
-        const blocked =
-          guardAttemptLimit(key, state) ??
-          guardAlreadyPassed(args, state, currentEditCount, runTargetKey) ??
-          guardChangedSinceLastRun(args, state, currentEditCount, runTargetKey);
-        return blocked ? [`${testFile}: ${blocked}`] : [];
-      },
-    );
-    if (refusals.length > 0) {
-      const body = `Batch not started; no files ran. Blocked files:\n\n${refusals.join("\n\n")}\n\nSelect only eligible files for the next call.`;
-      return warn("Test batch blocked", body);
-    }
-    const turnLimit = guardTurnRunLimit(ctx);
-    if (turnLimit) return warn("Test run limit reached", turnLimit);
-    const devServerBlocked = guardDevServerRunning(ctx);
-    if (devServerBlocked) return warn("App isn't running", devServerBlocked);
-    if (ctx.abortSignal?.aborted) {
-      return warn(
-        "Test run couldn't complete",
-        reportInfraFailure({
-          kind: "infra",
-          passed: 0,
-          failed: 0,
-          skipped: 0,
-          allInconclusive: false,
-          message: "Test run stopped.",
-        }),
-      );
-    }
-
-    const runs = targets.map((target) => {
-      ctx.testRunAttempts.set(target.key, target.state);
-      return {
-        ...target,
-        isFreeFlakeRun: consumeFreeFlakeCheck(args, target.state),
-      };
-    });
-    const refundFlakeChecks = () => {
-      for (const run of runs) {
-        if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
-      }
-    };
-
-    let res: RunAppTestsResult;
-    try {
-      ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
-      res = await runSpecs(ctx, testFiles, args.grep);
-    } catch (error) {
-      refundFlakeChecks();
-      const message = error instanceof Error ? error.message : String(error);
-      const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
-      return warn("Test run couldn't complete", body);
-    }
-    const resultsByFile = new Map<string, TestResult[]>();
-    for (const result of res.results) {
-      const file = reconcileResultFile(result.file, specs);
-      const results = resultsByFile.get(file) ?? [];
-      results.push({ ...result, file });
-      resultsByFile.set(file, results);
-    }
-    // Never grant verification or charge a file for an incomplete batch,
-    // including a preview run that returned partial results before cancellation.
-    const batchOutcome = classify(res);
-    if (batchOutcome.kind === "infra" || ctx.abortSignal?.aborted) {
-      refundFlakeChecks();
-      const observedResults = testFiles.map((file) => {
-        const results = resultsByFile.get(file) ?? [];
-        if (results.length === 0)
-          return `${file}: no results returned — not verified`;
-        // Report observations only; never pass these through the accounting
-        // helpers or infer a whole-file pass from an interrupted report.
-        const observed = classify({
-          appId: res.appId,
-          results: results.map(
-            ({ incomplete: _incomplete, ...result }) => result,
+  execute: async (args, ctx: AgentContext) =>
+    withAppTestRun(
+      {
+        appId: ctx.appId,
+        event: ctx.event,
+        source: "agent",
+        testFiles: args.testFiles,
+        grep: args.grep,
+        externalSignal: ctx.abortSignal,
+        onQueued: (position) =>
+          ctx.onXmlStream(
+            `<dyad-status title="${escapeXmlAttr(`Queued: ${args.testFiles?.join(", ") ?? "All tests"}`)}">Position ${position} in the queue. Waiting for the previous test run to finish.</dyad-status>`,
           ),
+      },
+      async (queueRun) => {
+        // Also fail closed for direct callers: a legacy testFile must never be
+        // stripped into an empty object and accidentally select the whole suite.
+        const parsed = runTestsSchema.safeParse(args);
+        if (!parsed.success) {
+          const body = `Invalid run_tests arguments: ${parsed.error.message}. Use testFiles with a nonempty list, or omit it to run all specs. Nothing ran.`;
+          completeWarning(ctx, "Invalid test selection", body);
+          return body;
+        }
+        const resolved = await resolveSpecPaths(ctx, args.testFiles);
+        if ("error" in resolved) return resolved.error;
+        const { testFiles, specs, selectionNote } = resolved;
+        const withSelectionNote = (body: string) =>
+          [selectionNote, body].filter(Boolean).join("\n\n");
+        const warn = (title: string, body: string) => {
+          const message = withSelectionNote(body);
+          completeWarning(ctx, title, message);
+          return message;
+        };
+        const selections = [];
+        for (const testFile of testFiles) {
+          const key = specKey(testFile);
+          let runTargetKey = WHOLE_FILE;
+          if (args.grep) {
+            const validated = await validateGrep(ctx, testFile, args.grep);
+            if ("error" in validated)
+              return warn("Invalid grep pattern", validated.error);
+            runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
+          }
+          selections.push({ testFile, key, runTargetKey });
+        }
+        // Read the shared counters after all asynchronous preflight work. Nothing
+        // can interleave admission checks and reservation of this batch's slot.
+        const targets = selections.map((selection) => {
+          const state: TestRunAttemptState = ctx.testRunAttempts.get(
+            selection.key,
+          ) ?? { attempts: 0 };
+          return { ...selection, state };
         });
-        return `${file}: observed ${observed.passed} passed, ${observed.failed} failed, ${observed.skipped} skipped${results.some((result) => result.incomplete) ? " (file incomplete)" : ""} — not verified`;
-      });
-      return warn(
-        "Test run couldn't complete",
-        reportInfraFailure(
-          ctx.abortSignal?.aborted
-            ? { ...batchOutcome, kind: "infra", message: "Test run stopped." }
-            : batchOutcome,
-          `Results returned before the batch warning:\n${observedResults.join("\n")}`,
-        ),
-      );
-    }
+        const currentEditCount = ctx.mutationCount ?? 0;
+        const refusals = targets.flatMap(
+          ({ testFile, key, state, runTargetKey }) => {
+            const blocked =
+              guardAttemptLimit(key, state) ??
+              guardAlreadyPassed(args, state, currentEditCount, runTargetKey) ??
+              guardChangedSinceLastRun(
+                args,
+                state,
+                currentEditCount,
+                runTargetKey,
+              );
+            return blocked ? [`${testFile}: ${blocked}`] : [];
+          },
+        );
+        if (refusals.length > 0) {
+          const body = `Batch not started; no files ran. Blocked files:\n\n${refusals.join("\n\n")}\n\nSelect only eligible files for the next call.`;
+          return warn("Test batch blocked", body);
+        }
+        const turnLimit = guardTurnRunLimit(ctx);
+        if (turnLimit) return warn("Test run limit reached", turnLimit);
+        const devServerBlocked = guardDevServerRunning(ctx);
+        if (devServerBlocked)
+          return warn("App isn't running", devServerBlocked);
+        if (queueRun.signal.aborted) {
+          return warn(
+            "Test run couldn't complete",
+            reportInfraFailure({
+              kind: "infra",
+              passed: 0,
+              failed: 0,
+              skipped: 0,
+              allInconclusive: false,
+              message: "Test run stopped.",
+            }),
+          );
+        }
 
-    const agentDetails: string[] = [];
-    const summary: string[] = [];
-    let failedFiles = 0;
-    let unverifiedFiles = 0;
-    for (const run of runs) {
-      const fileResult = {
-        ...res,
-        results: resultsByFile.get(run.testFile) ?? [],
-      };
-      const outcome = classify(fileResult);
-      const scope = args.grep ? ` (matching /${args.grep}/ only)` : "";
-      if (outcome.kind === "no-tests") {
-        if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
-        unverifiedFiles += 1;
-        summary.push(`${run.testFile}: no runnable tests — not verified`);
-        agentDetails.push(reportNoRunnableTests(run.testFile, args.grep));
-      } else if (outcome.kind === "passed") {
-        summary.push(
-          `${run.testFile}: passed — ${outcome.passed} passed, ${outcome.skipped} skipped${scope}`,
-        );
-        agentDetails.push(
-          `${run.testFile}: ${reportPassed({ ...run, outcome, res: fileResult, currentEditCount, grep: args.grep })}`,
-        );
-      } else {
-        failedFiles += 1;
-        summary.push(
-          `${run.testFile}: failed — ${outcome.passed} passed, ${outcome.failed} failed, ${outcome.skipped} skipped${scope}`,
-        );
-        agentDetails.push(
-          await reportFailure({
-            ...run,
-            ctx,
-            outcome,
-            res: fileResult,
-            currentEditCount,
-            grep: args.grep,
-            includeDetails: failedFiles <= MAX_DETAILED_FAILURE_FILES,
-          }),
-        );
-      }
-    }
-    // Show each file once in chat; detailed reports and retry instructions
-    // belong only in the model's tool response.
-    const body = [summary.join("\n"), isolationLine(res)].join("\n\n");
-    const title =
-      failedFiles > 0
-        ? `Tests failed in ${failedFiles} file(s)`
-        : unverifiedFiles > 0
-          ? "Test batch finished — some files not verified"
-          : args.grep
-            ? "Matching tests passed"
-            : "Tests passed";
-    if (unverifiedFiles > 0 && failedFiles === 0)
-      completeWarning(ctx, title, withSelectionNote(body));
-    else completeStatus(ctx, title, withSelectionNote(body));
-    return withSelectionNote([body, ...agentDetails].join("\n\n"));
-  },
+        const runs = targets.map((target) => {
+          ctx.testRunAttempts.set(target.key, target.state);
+          return {
+            ...target,
+            isFreeFlakeRun: consumeFreeFlakeCheck(args, target.state),
+          };
+        });
+        const refundFlakeChecks = () => {
+          for (const run of runs) {
+            if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
+          }
+        };
+
+        let res: RunAppTestsResult;
+        try {
+          ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
+          res = await runSpecs(ctx, testFiles, queueRun, args.grep);
+        } catch (error) {
+          refundFlakeChecks();
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
+          return warn("Test run couldn't complete", body);
+        }
+        const resultsByFile = new Map<string, TestResult[]>();
+        for (const result of res.results) {
+          const file = reconcileResultFile(result.file, specs);
+          const results = resultsByFile.get(file) ?? [];
+          results.push({ ...result, file });
+          resultsByFile.set(file, results);
+        }
+        // Never grant verification or charge a file for an incomplete batch,
+        // including a preview run that returned partial results before cancellation.
+        const batchOutcome = classify(res);
+        if (batchOutcome.kind === "infra" || queueRun.signal.aborted) {
+          refundFlakeChecks();
+          const observedResults = testFiles.map((file) => {
+            const results = resultsByFile.get(file) ?? [];
+            if (results.length === 0)
+              return `${file}: no results returned — not verified`;
+            // Report observations only; never pass these through the accounting
+            // helpers or infer a whole-file pass from an interrupted report.
+            const observed = classify({
+              appId: res.appId,
+              results: results.map(
+                ({ incomplete: _incomplete, ...result }) => result,
+              ),
+            });
+            return `${file}: observed ${observed.passed} passed, ${observed.failed} failed, ${observed.skipped} skipped${results.some((result) => result.incomplete) ? " (file incomplete)" : ""} — not verified`;
+          });
+          return warn(
+            "Test run couldn't complete",
+            reportInfraFailure(
+              queueRun.signal.aborted
+                ? {
+                    ...batchOutcome,
+                    kind: "infra",
+                    message: "Test run stopped.",
+                  }
+                : batchOutcome,
+              `Results returned before the batch warning:\n${observedResults.join("\n")}`,
+            ),
+          );
+        }
+
+        const agentDetails: string[] = [];
+        const summary: string[] = [];
+        let failedFiles = 0;
+        let unverifiedFiles = 0;
+        for (const run of runs) {
+          const fileResult = {
+            ...res,
+            results: resultsByFile.get(run.testFile) ?? [],
+          };
+          const outcome = classify(fileResult);
+          const scope = args.grep ? ` (matching /${args.grep}/ only)` : "";
+          if (outcome.kind === "no-tests") {
+            if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
+            unverifiedFiles += 1;
+            summary.push(`${run.testFile}: no runnable tests — not verified`);
+            agentDetails.push(reportNoRunnableTests(run.testFile, args.grep));
+          } else if (outcome.kind === "passed") {
+            summary.push(
+              `${run.testFile}: passed — ${outcome.passed} passed, ${outcome.skipped} skipped${scope}`,
+            );
+            agentDetails.push(
+              `${run.testFile}: ${reportPassed({ ...run, outcome, res: fileResult, currentEditCount, grep: args.grep })}`,
+            );
+          } else {
+            failedFiles += 1;
+            summary.push(
+              `${run.testFile}: failed — ${outcome.passed} passed, ${outcome.failed} failed, ${outcome.skipped} skipped${scope}`,
+            );
+            agentDetails.push(
+              await reportFailure({
+                ...run,
+                ctx,
+                outcome,
+                res: fileResult,
+                currentEditCount,
+                grep: args.grep,
+                includeDetails: failedFiles <= MAX_DETAILED_FAILURE_FILES,
+              }),
+            );
+          }
+        }
+        // Show each file once in chat; detailed reports and retry instructions
+        // belong only in the model's tool response.
+        const body = [summary.join("\n"), isolationLine(res)].join("\n\n");
+        const title =
+          failedFiles > 0
+            ? `Tests failed in ${failedFiles} file(s)`
+            : unverifiedFiles > 0
+              ? "Test batch finished — some files not verified"
+              : args.grep
+                ? "Matching tests passed"
+                : "Tests passed";
+        if (unverifiedFiles > 0 && failedFiles === 0)
+          completeWarning(ctx, title, withSelectionNote(body));
+        else completeStatus(ctx, title, withSelectionNote(body));
+        return withSelectionNote([body, ...agentDetails].join("\n\n"));
+      },
+      () => {
+        const body =
+          "Test run cancelled while queued. No tests ran, and this did NOT count as a fix attempt.";
+        completeStatus(ctx, "Tests cancelled", body);
+        return body;
+      },
+    ),
 };

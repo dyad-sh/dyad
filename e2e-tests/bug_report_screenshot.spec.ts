@@ -164,7 +164,7 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     // the issue itself, and back in Dyad once the browser has opened.
     expect(body).toContain("Paste your screenshot here");
     await expect(
-      po.page.getByText("One more step: paste your screenshot"),
+      po.page.getByText("Did you paste your screenshot?"),
     ).toBeVisible();
     await po.page.getByRole("button", { name: "Done" }).click();
     await expect(po.page.getByRole("dialog")).toHaveCount(0);

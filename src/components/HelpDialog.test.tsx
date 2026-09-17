@@ -2546,16 +2546,19 @@ describe("HelpDialog screenshot bar", () => {
 });
 
 describe("HelpDialog closing step", () => {
-  it("stays up after filing to say the screenshot still has to be pasted", async () => {
+  it("stays up after filing to ask whether the screenshot was pasted", async () => {
     await openForm();
     await addScreenshot();
     await fileIt();
 
-    // The image is only on the clipboard, so the report is not finished yet.
+    // Asked, not asserted: Dyad cannot see the issue, and the reporter may
+    // read this before pasting, after forgetting, or after doing it right.
     expect(
-      await screen.findByText("One more step: paste your screenshot"),
+      await screen.findByText("Did you paste your screenshot?"),
     ).toBeTruthy();
-    expect(screen.getByText(/Press Cmd\/Ctrl \+ V in the issue/)).toBeTruthy();
+    const body = screen.getByText(/Press Cmd\/Ctrl \+ V in the GitHub issue/);
+    expect(body.textContent).toContain("edit the issue and paste it there");
+    expect(body.textContent).toContain("you are all set");
     // What is on the clipboard, so the reporter knows what they are pasting.
     expect(screen.getByAltText("Screenshot of the Dyad window")).toBeTruthy();
     expect(screen.queryByLabelText(/What happened/)).toBeNull();
@@ -2575,9 +2578,7 @@ describe("HelpDialog closing step", () => {
     await fileIt();
 
     fireEvent.click(await screen.findByRole("button", { name: "Done" }));
-    expect(
-      screen.queryByText("One more step: paste your screenshot"),
-    ).toBeNull();
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
 
     fireEvent.click(screen.getByText("reopen-help"));
     expect(await screen.findByText("Need help with Dyad?")).toBeTruthy();
@@ -2591,9 +2592,7 @@ describe("HelpDialog closing step", () => {
     await waitFor(() =>
       expect(screen.queryByLabelText(/What happened/)).toBeNull(),
     );
-    expect(
-      screen.queryByText("One more step: paste your screenshot"),
-    ).toBeNull();
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
     expect(bodyOfOpenedIssue()).not.toContain(SCREENSHOT_PASTE_REMINDER);
   });
 
@@ -2607,16 +2606,14 @@ describe("HelpDialog closing step", () => {
     await waitFor(() =>
       expect(screen.queryByLabelText(/What happened/)).toBeNull(),
     );
-    expect(
-      screen.queryByText("One more step: paste your screenshot"),
-    ).toBeNull();
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
   });
 
   it("lets a crash report take over from the closing step", async () => {
     await openForm();
     await addScreenshot();
     await fileIt();
-    await screen.findByText("One more step: paste your screenshot");
+    await screen.findByText("Did you paste your screenshot?");
 
     fireEvent.click(screen.getByText("force-close-report"));
 

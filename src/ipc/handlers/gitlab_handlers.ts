@@ -18,12 +18,14 @@ import {
   GITLAB_REQUIRED_SCOPE,
   isGitLabStatus,
   type GitLabNamespace,
+  type GitLabProject,
 } from "../utils/gitlab_client";
 import {
   assertCanLinkProvider,
   gitlabRemote,
   gitlabRemoteAuth,
 } from "../utils/app_git_remote";
+import { findAppOrThrow } from "../utils/find_app";
 import { prepareLocalBranch } from "./github_handlers";
 
 const logger = log.scope("gitlab_handlers");
@@ -66,14 +68,6 @@ export function getGitLabConnection(signal?: AbortSignal): {
   };
 }
 
-async function findApp(appId: number) {
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) {
-    throw new DyadError("App not found", DyadErrorKind.NotFound);
-  }
-  return app;
-}
-
 export async function updateAppGitLabProject({
   appId,
   host,
@@ -99,34 +93,31 @@ export async function updateAppGitLabProject({
 }
 
 /**
- * Creates a private project in the chosen namespace and links the app to it.
- * Driven by the github_ops machine, not by IPC directly.
+ * Checks the app may be linked to GitLab and opens a connection for it.
+ *
+ * Both link paths need this, and both then hand the credential to git, so
+ * they share one implementation rather than two copies that can drift.
  */
-export async function handleCreateGitLabProject({
+async function beginGitLabLink(appId: number) {
+  const app = await findAppOrThrow(appId);
+  assertCanLinkProvider(app, "gitlab");
+  return getGitLabConnection();
+}
+
+/** Points the local repo at the project and records it on the app row. */
+async function linkAppToGitLabProject({
   appId,
-  namespaceId,
-  repo,
+  project,
+  instanceUrl,
+  token,
   branch,
 }: {
   appId: number;
-  namespaceId: number;
-  repo: string;
+  project: GitLabProject;
+  instanceUrl: string;
+  token: string;
   branch?: string;
 }): Promise<void> {
-  const app = await findApp(appId);
-  assertCanLinkProvider(app, "gitlab");
-  const { client, instanceUrl, token } = getGitLabConnection();
-
-  const path = normalizeGitLabProjectPath(repo);
-  const project = await client.createProject({
-    name: repo.trim() || path,
-    path,
-    namespaceId,
-  });
-  logger.info(
-    `Created GitLab project ${project.pathWithNamespace} (${project.id}) on ${gitLabInstanceLabel(instanceUrl)}`,
-  );
-
   const remote = gitlabRemote({
     host: instanceUrl,
     projectId: project.id,
@@ -150,6 +141,42 @@ export async function handleCreateGitLabProject({
 }
 
 /**
+ * Creates a private project in the chosen namespace and links the app to it.
+ * Driven by the github_ops machine, not by IPC directly.
+ */
+export async function handleCreateGitLabProject({
+  appId,
+  namespaceId,
+  repo,
+  branch,
+}: {
+  appId: number;
+  namespaceId: number;
+  repo: string;
+  branch?: string;
+}): Promise<void> {
+  const { client, instanceUrl, token } = await beginGitLabLink(appId);
+
+  const path = normalizeGitLabProjectPath(repo);
+  const project = await client.createProject({
+    name: repo.trim() || path,
+    path,
+    namespaceId,
+  });
+  logger.info(
+    `Created GitLab project ${project.pathWithNamespace} (${project.id}) on ${gitLabInstanceLabel(instanceUrl)}`,
+  );
+
+  await linkAppToGitLabProject({
+    appId,
+    project,
+    instanceUrl,
+    token,
+    branch,
+  });
+}
+
+/**
  * Links the app to a project the user already has. Driven by the github_ops
  * machine, not by IPC directly.
  */
@@ -160,34 +187,19 @@ export async function handleConnectToExistingGitLabProject({
 }: {
   appId: number;
   projectId: number;
-  branch: string;
+  branch?: string;
 }): Promise<void> {
-  const app = await findApp(appId);
-  assertCanLinkProvider(app, "gitlab");
-  const { client, instanceUrl, token } = getGitLabConnection();
+  const { client, instanceUrl, token } = await beginGitLabLink(appId);
 
   // Verifies the project exists and the token can see it, and yields the
   // canonical path to store rather than whatever the picker had cached.
   const project = await client.getProject(projectId);
 
-  const remote = gitlabRemote({
-    host: instanceUrl,
-    projectId: project.id,
-    projectPath: project.pathWithNamespace,
-    branch,
-  });
-  await prepareLocalBranch({
+  await linkAppToGitLabProject({
     appId,
-    branch,
-    remoteUrl: remote.httpsUrl,
-    auth: gitlabRemoteAuth(instanceUrl, token),
-    providerLabel: "GitLab",
-  });
-  await updateAppGitLabProject({
-    appId,
-    host: instanceUrl,
-    projectId: project.id,
-    projectPath: project.pathWithNamespace,
+    project,
+    instanceUrl,
+    token,
     branch,
   });
 }

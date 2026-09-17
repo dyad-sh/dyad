@@ -18,6 +18,10 @@ vi.mock("electron", () => ({
   },
 }));
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  GITLAB_REQUEST_ERROR_NAME,
+  GITLAB_TRANSPORT_ERROR_NAME,
+} from "@/shared/gitlab_error_names";
 import { ResponseValidationError } from "@vercel/sdk/models/responsevalidationerror.js";
 import { SDKError } from "@vercel/sdk/models/sdkerror.js";
 import { getVercelProjectCreationError } from "./vercel_errors";
@@ -271,11 +275,48 @@ describe("exceptions from a self-hosted instance", () => {
     expect(payload.ipc_channel).toBe("coolify-setup:run");
   });
 
+  it("redacts a self-hosted GitLab the same way", () => {
+    // A GitLab the user runs is the same class of surface as their Coolify:
+    // the address is theirs and the body is whatever that machine returned.
+    sendTelemetryException(
+      new Error(
+        "Could not reach GitLab at https://gitlab.acme-internal.example: " +
+          "getaddrinfo ENOTFOUND gitlab.acme-internal.example",
+      ),
+      { ipc_channel: "gitlab:list-projects" },
+    );
+
+    const payload = sent.calls[0];
+    expect(JSON.stringify(payload)).not.toContain("acme-internal");
+    expect(payload.exception_message).toBeUndefined();
+    expect(payload.ipc_channel).toBe("gitlab:list-projects");
+  });
+
   it("keeps the message for every other channel", () => {
     sendTelemetryException(new Error("something broke"), {
       ipc_channel: "apps:list",
     });
 
     expect(sent.calls[0].exception_message).toBe("something broke");
+  });
+});
+
+describe("GitLab errors are not reported at all", () => {
+  it("filters a non-2xx from the instance and a failed connection to it", () => {
+    // The Coolify deploy talks to GitLab on a `coolify:` channel, so the
+    // channel prefix alone would not have covered every path.
+    const requestError = new DyadError(
+      "GitLab answered 500: <the instance's own error page>",
+      DyadErrorKind.External,
+    );
+    requestError.name = GITLAB_REQUEST_ERROR_NAME;
+    const transportError = new DyadError(
+      "Could not reach GitLab at https://gitlab.acme-internal.example: refused",
+      DyadErrorKind.External,
+    );
+    transportError.name = GITLAB_TRANSPORT_ERROR_NAME;
+
+    expect(shouldFilterTelemetryException(requestError)).toBe(true);
+    expect(shouldFilterTelemetryException(transportError)).toBe(true);
   });
 });

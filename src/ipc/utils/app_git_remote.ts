@@ -4,18 +4,27 @@ import {
   gitLabInstanceLabel,
   normalizeGitLabInstanceUrl,
 } from "@/shared/gitlab_instance_url";
+import {
+  describeLinkedRemote,
+  gitLabProviderLabel,
+  type LinkedRemoteColumns,
+} from "@/shared/linked_remote";
 import type { GitRemoteAuth } from "../git_types";
 import { getGitHubGitBase, GITHUB_SSH_HOST } from "./github_endpoints";
 import { GitLabClient } from "./gitlab_client";
 
 /**
- * The one place that answers "which git hosting provider is this app linked
- * to, and how do we talk to it".
+ * How the main process talks to the provider an app is linked to.
  *
  * Push, pull, fetch, the Publish panel gates and the Coolify deploy all used
  * to read `githubOrg`/`githubRepo` straight off the app row and build GitHub
  * URLs inline. Routing them through here means a second provider is a new
  * branch in this module rather than a new `if` in every consumer.
+ *
+ * Which provider an app belongs to is decided once, in
+ * src/shared/linked_remote.ts, so the renderer and this module cannot
+ * disagree. This module adds what only the main process needs: URLs and
+ * credentials.
  */
 
 export type GitRemoteProvider = "github" | "gitlab";
@@ -58,15 +67,7 @@ export interface GitLabRemote {
 export type AppGitRemote = GitHubRemote | GitLabRemote;
 
 /** The app columns the resolver reads. A subset so callers can pass a row or a DTO. */
-export interface AppGitRemoteColumns {
-  githubOrg?: string | null;
-  githubRepo?: string | null;
-  githubBranch?: string | null;
-  gitlabHost?: string | null;
-  gitlabProjectId?: number | null;
-  gitlabProjectPath?: string | null;
-  gitlabBranch?: string | null;
-}
+export type AppGitRemoteColumns = LinkedRemoteColumns;
 
 export function githubRemote({
   owner,
@@ -113,53 +114,39 @@ export function gitlabRemote({
   };
 }
 
-/** "GitLab" for gitlab.com, the instance's host for anything self-hosted. */
-export function gitLabProviderLabel(host: string): string {
-  const label = gitLabInstanceLabel(host);
-  return label === "gitlab.com" ? "GitLab" : `GitLab (${label})`;
-}
-
 /** The remote an app is linked to, or null when it is not linked to any. */
 export function resolveAppGitRemote(
   app: AppGitRemoteColumns,
 ): AppGitRemote | null {
-  if (app.githubOrg && app.githubRepo) {
+  const linked = describeLinkedRemote(app);
+  if (!linked) return null;
+  if (linked.provider === "github") {
     return githubRemote({
-      owner: app.githubOrg,
-      repo: app.githubRepo,
-      branch: app.githubBranch,
+      owner: linked.owner,
+      repo: linked.repo,
+      branch: linked.branch,
     });
   }
-  if (
-    app.gitlabHost &&
-    app.gitlabProjectId !== null &&
-    app.gitlabProjectId !== undefined &&
-    app.gitlabProjectPath
-  ) {
-    return gitlabRemote({
-      host: app.gitlabHost,
-      projectId: app.gitlabProjectId,
-      projectPath: app.gitlabProjectPath,
-      branch: app.gitlabBranch,
-    });
-  }
-  return null;
-}
-
-export function hasAppGitRemote(app: AppGitRemoteColumns): boolean {
-  return resolveAppGitRemote(app) !== null;
+  return gitlabRemote({
+    host: linked.host,
+    projectId: linked.projectId,
+    projectPath: linked.projectPath,
+    branch: linked.branch,
+  });
 }
 
 /**
- * The remote an app is linked to, or a Precondition error. The message is
- * the one the GitHub handlers have always thrown for an unlinked app, so
- * nothing downstream that matches on it changes.
+ * The remote an app is linked to, or a Precondition error.
+ *
+ * The message names no provider: this fires on the ordinary "not linked yet"
+ * case for every sync action, and a GitLab user being told about a GitHub
+ * repo was the most likely first error message they would see.
  */
 export function requireAppGitRemote(app: AppGitRemoteColumns): AppGitRemote {
   const remote = resolveAppGitRemote(app);
   if (!remote) {
     throw new DyadError(
-      "App is not linked to a GitHub repo.",
+      "App is not linked to a repository.",
       DyadErrorKind.Precondition,
     );
   }

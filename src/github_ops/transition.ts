@@ -11,23 +11,31 @@ import type {
   GithubOpsIgnoreReason,
   GithubOpsState,
   GithubOpsTransitionResult,
+  GitRemoteProviderName,
 } from "./state";
 import { truncateGithubOpsErrorMessage } from "./error_message";
 
-const PUSH_NORMAL: GithubOperation = { type: "push", mode: "normal" };
+/**
+ * The normal push that follows `op`, against the same provider.
+ *
+ * Takes the provider from the operation it continues rather than defaulting,
+ * so a composed push cannot name a provider the app is not on. Every caller
+ * passes an operation that carries one, which the type demands.
+ */
+function pushAfter(op: { provider: GitRemoteProviderName }): GithubOperation {
+  return { type: "push", mode: "normal", provider: op.provider };
+}
 
 /**
- * The normal push that follows `op`, naming GitLab when `op` did so the
- * success banner says GitLab for a GitLab app. Identity with PUSH_NORMAL for
- * everything else keeps every GitHub operation byte-for-byte what it was.
+ * The provider a synthesized rebase belongs to.
+ *
+ * Only reached when git reports a rebase in progress that no rebase operation
+ * started — a conflicted pull, say. Those operations are provider-agnostic and
+ * carry no name, so this is the one place left that has to assume one. It is
+ * confined to the banner; the push itself resolves the remote from the app row.
  */
-function pushAfter(
-  op: GithubOperation | { type: "reconcile" },
-): GithubOperation {
-  const provider = "provider" in op ? op.provider : undefined;
-  return provider === "gitlab"
-    ? { type: "push", mode: "normal", provider }
-    : PUSH_NORMAL;
+function originProvider(origin: ConflictOrigin): GitRemoteProviderName {
+  return "provider" in origin ? origin.provider : "github";
 }
 
 export function transition(
@@ -99,7 +107,7 @@ function requestOperation(
               state,
               op,
               continuation.type === "rebase-continue"
-                ? pushAfter(state.origin)
+                ? pushAfter(continuation)
                 : undefined,
             )
           : ignore(state, "blocked-by-conflicts");
@@ -381,7 +389,10 @@ function conflictsReceived(
           });
     case "rebase-paused":
       return files.length > 0
-        ? enterConflicted(files, { type: "rebase" }, false)
+        ? // A rebase git was already in the middle of when the machine looked.
+          // Nothing here started it, so there is no provider to carry; see
+          // originProvider for why the banner assumes GitHub.
+          enterConflicted(files, { type: "rebase", provider: "github" }, false)
         : ignore(state, "no-change");
     case "idle":
       return files.length > 0
@@ -416,7 +427,7 @@ function gitStateReceived(
       const nextOrigin: ConflictOrigin = event.rebaseInProgress
         ? state.resolution !== undefined || isRebaseConflictOrigin(state.origin)
           ? state.origin
-          : { type: "rebase" }
+          : { type: "rebase", provider: originProvider(state.origin) }
         : state.resolution !== undefined &&
             isResumableRebaseOrigin(state.origin)
           ? pushAfter(state.origin)
@@ -747,7 +758,9 @@ export function continuationOperation(
       return origin;
     case "rebase":
     case "rebase-continue":
-      return { type: "rebase-continue" };
+      // Carries the provider forward: this is the operation a resumed rebase
+      // runs, and the push composed after it takes its provider from here.
+      return { type: "rebase-continue", provider: origin.provider };
     case "reconcile":
     case "pull":
     case "fetch":
@@ -778,7 +791,9 @@ function isRebaseConflictOrigin(origin: ConflictOrigin): boolean {
   return origin.type !== "reconcile" && isRebaseOperation(origin);
 }
 
-function isResumableRebaseOrigin(origin: ConflictOrigin): boolean {
+function isResumableRebaseOrigin(
+  origin: ConflictOrigin,
+): origin is Extract<GithubOperation, { type: "rebase" | "rebase-continue" }> {
   return origin.type === "rebase" || origin.type === "rebase-continue";
 }
 

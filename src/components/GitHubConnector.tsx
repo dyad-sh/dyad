@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { SegmentedChoice } from "@/components/SegmentedChoice";
 import {
   Github,
   Clipboard,
@@ -41,6 +42,7 @@ import {
   useGithubOps,
 } from "@/github_ops/useGithubOps";
 import { isDetailedGithubOpsErrorMessage } from "@/github_ops/error_message";
+import type { GitRemoteProviderName } from "@/github_ops/state";
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
@@ -161,10 +163,10 @@ export function ConnectedGitHubConnector({
   const providerLabel = linked?.providerLabel ?? "GitHub";
   const providerShortLabel =
     linked?.provider === "gitlab" ? "GitLab" : "GitHub";
-  // Only GitLab is named on the wire; GitHub operations stay byte-for-byte
-  // what they were, so every existing comparison and test holds.
-  const opProvider =
-    linked?.provider === "gitlab" ? ("gitlab" as const) : undefined;
+  // Every operation names its provider. An app with no link yet can only be
+  // reached through the GitHub path, which is what this component is.
+  const opProvider: GitRemoteProviderName =
+    linked?.provider === "gitlab" ? "gitlab" : "github";
   const {
     projection,
     connection,
@@ -286,7 +288,7 @@ export function ConnectedGitHubConnector({
               op: {
                 type: "push",
                 mode: "normal",
-                ...(opProvider ? { provider: opProvider } : {}),
+                provider: opProvider,
               },
             })
           }
@@ -365,7 +367,7 @@ export function ConnectedGitHubConnector({
                   onClick={() =>
                     send({
                       type: "OP_REQUESTED",
-                      op: { type: "rebase-continue" },
+                      op: { type: "rebase-continue", provider: opProvider },
                     })
                   }
                   variant="outline"
@@ -384,7 +386,7 @@ export function ConnectedGitHubConnector({
                       op: {
                         type: "push",
                         mode: "lease",
-                        ...(opProvider ? { provider: opProvider } : {}),
+                        provider: opProvider,
                       },
                     })
                   }
@@ -420,7 +422,7 @@ export function ConnectedGitHubConnector({
                   type: "OP_REQUESTED",
                   op: {
                     type: "rebase",
-                    ...(opProvider ? { provider: opProvider } : {}),
+                    provider: opProvider,
                   },
                 })
               }
@@ -694,7 +696,7 @@ export function ConnectedGitHubConnector({
                   op: {
                     type: "push",
                     mode: "force",
-                    ...(opProvider ? { provider: opProvider } : {}),
+                    provider: opProvider,
                   },
                 });
               }}
@@ -1115,38 +1117,18 @@ export function UnconnectedGitHubConnector({
         <div className="p-4 pt-0 space-y-4">
           {/* Mode Selection */}
           <div>
-            <div className="flex rounded-md border border-gray-200 dark:border-gray-700">
-              <Button
-                type="button"
-                variant={repoSetupMode === "create" ? "default" : "ghost"}
-                className={`flex-1 rounded-none rounded-l-md border-0 ${
-                  repoSetupMode === "create"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-800"
-                }`}
-                onClick={() => {
-                  setRepoSetupMode("create");
-                  send({ type: "BANNER_DISMISSED" });
-                }}
-              >
-                Create new repo
-              </Button>
-              <Button
-                type="button"
-                variant={repoSetupMode === "existing" ? "default" : "ghost"}
-                className={`flex-1 rounded-none rounded-r-md border-0 border-l border-gray-200 dark:border-gray-700 ${
-                  repoSetupMode === "existing"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-800"
-                }`}
-                onClick={() => {
-                  setRepoSetupMode("existing");
-                  send({ type: "BANNER_DISMISSED" });
-                }}
-              >
-                Connect to existing repo
-              </Button>
-            </div>
+            <SegmentedChoice
+              ariaLabel="How to link this app to GitHub"
+              value={repoSetupMode}
+              onChange={(next) => {
+                setRepoSetupMode(next);
+                send({ type: "BANNER_DISMISSED" });
+              }}
+              options={[
+                { value: "create", label: "Create new repo" },
+                { value: "existing", label: "Connect to existing repo" },
+              ]}
+            />
           </div>
 
           <form className="space-y-4" onSubmit={handleSetupRepo}>

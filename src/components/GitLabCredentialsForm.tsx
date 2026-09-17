@@ -11,6 +11,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { isSecureInstanceUrl } from "@/ipc/types/coolify";
 import {
   GITLAB_COM_URL,
+  gitLabInstanceLabel,
   isGitLabInstanceUrl,
   normalizeGitLabInstanceUrl,
 } from "@/shared/gitlab_instance_url";
@@ -40,7 +41,17 @@ export function GitLabCredentialsForm({
   const [acknowledgedInsecure, setAcknowledgedInsecure] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const trimmedUrl = instanceUrl.trim();
   const validUrl = isGitLabInstanceUrl(instanceUrl);
+  // A scheme-less host is what the hint invites and what `new URL` rejects.
+  // Offered rather than applied: prefixing https:// silently would hide that
+  // an http-only instance needs saying so, and skip the warning below.
+  const schemeSuggestion =
+    !validUrl &&
+    trimmedUrl.length > 0 &&
+    isGitLabInstanceUrl(`https://${trimmedUrl}`)
+      ? `https://${trimmedUrl}`
+      : null;
   const insecure = validUrl && !isSecureInstanceUrl(instanceUrl);
   const tokenPageUrl = validUrl
     ? `${normalizeGitLabInstanceUrl(instanceUrl)}/-/user_settings/personal_access_tokens?name=Dyad&scopes=api`
@@ -62,7 +73,7 @@ export function GitLabCredentialsForm({
       onConnected?.();
     },
     onError: (err: Error) => {
-      setError(err.message || "Could not connect to GitLab.");
+      setError(err.message || t("integrations.gitlab.connectFailed"));
     },
   });
 
@@ -101,6 +112,29 @@ export function GitLabCredentialsForm({
         <p className="mt-1 text-xs text-muted-foreground">
           {t("integrations.gitlab.instanceUrlHint")}
         </p>
+        {!validUrl && trimmedUrl.length > 0 && (
+          <p
+            className="mt-1 text-xs text-amber-700 dark:text-amber-400"
+            data-testid="gitlab-instance-url-invalid"
+          >
+            {t("integrations.gitlab.instanceUrlInvalid")}{" "}
+            {schemeSuggestion && (
+              <button
+                type="button"
+                data-testid="gitlab-instance-url-suggestion"
+                className="cursor-pointer underline"
+                onClick={() => {
+                  setInstanceUrl(schemeSuggestion);
+                  setAcknowledgedInsecure(false);
+                }}
+              >
+                {t("integrations.gitlab.instanceUrlUseSuggestion", {
+                  url: schemeSuggestion,
+                })}
+              </button>
+            )}
+          </p>
+        )}
       </div>
 
       <div>
@@ -137,17 +171,22 @@ export function GitLabCredentialsForm({
       </div>
 
       {insecure && (
-        <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          <Checkbox
-            data-testid="gitlab-insecure-ack"
-            checked={acknowledgedInsecure}
-            onCheckedChange={(checked) =>
-              setAcknowledgedInsecure(checked === true)
-            }
-            className="mt-0.5"
-          />
-          <span>{t("integrations.gitlab.insecureAck")}</span>
-        </label>
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="font-medium">
+            {t("integrations.gitlab.insecureTitle")}
+          </p>
+          <p className="mt-1">{t("integrations.gitlab.insecureExplanation")}</p>
+          <label className="mt-2 flex items-center gap-2">
+            <Checkbox
+              data-testid="gitlab-insecure-ack"
+              checked={acknowledgedInsecure}
+              onCheckedChange={(checked) =>
+                setAcknowledgedInsecure(checked === true)
+              }
+            />
+            <span>{t("integrations.gitlab.insecureConnectAnyway")}</span>
+          </label>
+        </div>
       )}
 
       {error && (
@@ -170,6 +209,22 @@ export function GitLabCredentialsForm({
           : t("integrations.gitlab.connect")}
         <Gitlab className="h-4 w-4" />
       </Button>
+
+      {/* Names the instance the token is about to be sent to. The form is
+          reused across apps, so the address in the field is not always the
+          one the user last looked at. */}
+      {validUrl && (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="gitlab-connect-target"
+        >
+          {t("integrations.gitlab.connectTarget", {
+            instance: gitLabInstanceLabel(
+              normalizeGitLabInstanceUrl(instanceUrl),
+            ),
+          })}
+        </p>
+      )}
     </form>
   );
 }

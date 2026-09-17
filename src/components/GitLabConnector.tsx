@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SegmentedChoice } from "@/components/SegmentedChoice";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -81,9 +82,20 @@ export function GitLabConnector({
               This app is linked to {linkedGitLab.displayPath} on{" "}
               {gitLabInstanceLabel(linkedGitLab.host ?? "")}, but Dyad is
               connected to {gitLabInstanceLabel(status.instanceUrl ?? "")}.
-              Reconnect to {gitLabInstanceLabel(linkedGitLab.host ?? "")} in
-              Settings to sync it.
+              Enter a token for {gitLabInstanceLabel(linkedGitLab.host ?? "")}{" "}
+              to sync it.
             </p>
+            {/* The form is here rather than a pointer to Settings: the
+                connected row there offers only Disconnect, so following that
+                advice led to a dead end — and with the experiment off the
+                section disappears the moment the user disconnects. Saving a
+                token replaces the connection, so no disconnect is needed. */}
+            <div className="mt-3">
+              <GitLabCredentialsForm
+                key={appId}
+                defaultInstanceUrl={linkedGitLab.host}
+              />
+            </div>
           </div>
         )}
         <ConnectedGitHubConnector appId={appId} app={app} />
@@ -151,7 +163,6 @@ export function UnconnectedGitLabConnector({
   );
   const [isCheckingProject, setIsCheckingProject] = useState(false);
   const [newBranch, setNewBranch] = useState("main");
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkAvailability = useCallback(
     async (name: string, namespaceFullPath: string | null) => {
@@ -181,22 +192,23 @@ export function UnconnectedGitLabConnector({
     [],
   );
 
-  const scheduleAvailabilityCheck = useCallback(
-    (name: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        void checkAvailability(name, selectedNamespace?.fullPath ?? null);
-      }, 500);
-    },
-    [checkAvailability, selectedNamespace?.fullPath],
-  );
-
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    },
-    [],
-  );
+  // A project name is only free within a namespace, so the check has to
+  // follow both. Driving it from an effect rather than the name's onChange
+  // also covers the name prefilled from the folder — the commonest path is to
+  // accept it and press Create, which never used to be checked at all.
+  useEffect(() => {
+    if (mode !== "create") return;
+    const namespaceFullPath = selectedNamespace?.fullPath ?? null;
+    if (!projectName || !namespaceFullPath) {
+      setProjectAvailable(null);
+      setProjectCheckError(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void checkAvailability(projectName, namespaceFullPath);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mode, projectName, selectedNamespace?.fullPath, checkAvailability]);
 
   // --- Existing ---
   const projects = useQuery({
@@ -281,7 +293,12 @@ export function UnconnectedGitLabConnector({
             </p>
           </div>
         )}
+        {/* Keyed on the app: the prefilled instance comes from the app row,
+            and this subtree is not remounted when the selected app changes,
+            so without a key the field keeps the previous app's host — and the
+            token would be sent to the wrong instance. */}
         <GitLabCredentialsForm
+          key={appId}
           defaultInstanceUrl={linked?.host ?? null}
           onConnected={() => setIsExpanded(true)}
         />
@@ -293,7 +310,12 @@ export function UnconnectedGitLabConnector({
     canConnectRepository &&
     !isLinking &&
     (mode === "create"
-      ? projectAvailable !== false && !!projectName && !!selectedNamespace
+      ? // Waits for a check already in flight rather than letting a fast
+        // typist submit the name it was about to flag.
+        !isCheckingProject &&
+        projectAvailable !== false &&
+        !!projectName &&
+        !!selectedNamespace
       : projectId !== null &&
         (branchInputMode === "custom"
           ? customBranchName.trim().length > 0
@@ -337,38 +359,18 @@ export function UnconnectedGitLabConnector({
         }`}
       >
         <div className="p-4 pt-0 space-y-4">
-          <div className="flex rounded-md border border-gray-200 dark:border-gray-700">
-            <Button
-              type="button"
-              variant={mode === "create" ? "default" : "ghost"}
-              className={`flex-1 rounded-none rounded-l-md border-0 ${
-                mode === "create"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-gray-50 dark:hover:bg-gray-800"
-              }`}
-              onClick={() => {
-                setMode("create");
-                send({ type: "BANNER_DISMISSED" });
-              }}
-            >
-              Create new project
-            </Button>
-            <Button
-              type="button"
-              variant={mode === "existing" ? "default" : "ghost"}
-              className={`flex-1 rounded-none rounded-r-md border-0 border-l border-gray-200 dark:border-gray-700 ${
-                mode === "existing"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-gray-50 dark:hover:bg-gray-800"
-              }`}
-              onClick={() => {
-                setMode("existing");
-                send({ type: "BANNER_DISMISSED" });
-              }}
-            >
-              Connect to existing project
-            </Button>
-          </div>
+          <SegmentedChoice
+            ariaLabel="How to link this app to GitLab"
+            value={mode}
+            onChange={(next) => {
+              setMode(next);
+              send({ type: "BANNER_DISMISSED" });
+            }}
+            options={[
+              { value: "create", label: "Create new project" },
+              { value: "existing", label: "Connect to existing project" },
+            ]}
+          />
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             {mode === "create" ? (
@@ -377,11 +379,7 @@ export function UnconnectedGitLabConnector({
                   <Label className="block text-sm font-medium">Namespace</Label>
                   <Select
                     value={namespaceId}
-                    onValueChange={(v) => {
-                      setNamespaceId(v ?? "");
-                      setProjectAvailable(null);
-                      setProjectCheckError(null);
-                    }}
+                    onValueChange={(v) => setNamespaceId(v ?? "")}
                     disabled={namespaces.isLoading}
                   >
                     <SelectTrigger
@@ -420,11 +418,9 @@ export function UnconnectedGitLabConnector({
                     className="w-full mt-1"
                     value={projectName}
                     onChange={(event) => {
-                      const value = event.target.value;
-                      setProjectName(value);
+                      setProjectName(event.target.value);
                       setProjectAvailable(null);
                       setProjectCheckError(null);
-                      scheduleAvailabilityCheck(value);
                     }}
                     disabled={isLinking}
                   />

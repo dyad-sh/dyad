@@ -39,11 +39,13 @@ import {
   getGitHubDeviceCodeUrl,
 } from "../utils/github_endpoints";
 import {
+  assertCanLinkProvider,
   getAppGitRemoteAuth,
   githubRemote,
   githubRemoteAuth,
   requireAppGitRemote,
 } from "../utils/app_git_remote";
+import { findAppOrThrow } from "../utils/find_app";
 import { withPushHint } from "../utils/git_push_hints";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
@@ -644,13 +646,8 @@ export async function handleCreateRepo(
     branch,
   }: { org: string; repo: string; appId: number; branch?: string },
 ): Promise<void> {
-  const app = await db.query.apps.findFirst({
-    columns: { id: true },
-    where: eq(apps.id, appId),
-  });
-  if (!app) {
-    throw new DyadError("App not found", DyadErrorKind.NotFound);
-  }
+  const app = await findAppOrThrow(appId);
+  assertCanLinkProvider(app, "github");
 
   // Normalize the repo name to match GitHub's automatic normalization
   // GitHub converts spaces to hyphens when creating repositories
@@ -761,6 +758,8 @@ export async function handleConnectToExistingRepo(
   }: { owner: string; repo: string; branch: string; appId: number },
 ): Promise<void> {
   try {
+    assertCanLinkProvider(await findAppOrThrow(appId), "github");
+
     // Get access token from settings
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -820,14 +819,7 @@ export async function handlePushToGithub(
     forceWithLease?: boolean;
   },
 ): Promise<void> {
-  // Get app info from DB
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
   const remote = requireAppGitRemote(app);
   const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
@@ -907,13 +899,7 @@ export async function handleRebaseFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<void> {
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
   const remote = requireAppGitRemote(app);
   const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);

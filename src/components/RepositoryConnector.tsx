@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Github, Gitlab } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { SegmentedChoice } from "@/components/SegmentedChoice";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useGitLabStatus } from "@/hooks/useGitLabStatus";
@@ -67,36 +67,33 @@ export function RepositoryConnector({
       <p className="text-sm text-gray-600 dark:text-gray-400">
         {t("preview.publish_panel.chooseProvider")}
       </p>
-      <div className="flex rounded-md border border-gray-200 dark:border-gray-700">
-        <Button
-          type="button"
-          variant={provider === "github" ? "default" : "ghost"}
-          className={`flex-1 rounded-none rounded-l-md border-0 ${
-            provider === "github"
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-gray-50 dark:hover:bg-gray-800"
-          }`}
-          onClick={() => setChoice("github")}
-          data-testid="repository-provider-github"
-        >
-          <Github className="h-4 w-4" />
-          GitHub
-        </Button>
-        <Button
-          type="button"
-          variant={provider === "gitlab" ? "default" : "ghost"}
-          className={`flex-1 rounded-none rounded-r-md border-0 border-l border-gray-200 dark:border-gray-700 ${
-            provider === "gitlab"
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-gray-50 dark:hover:bg-gray-800"
-          }`}
-          onClick={() => setChoice("gitlab")}
-          data-testid="repository-provider-gitlab"
-        >
-          <Gitlab className="h-4 w-4" />
-          GitLab
-        </Button>
-      </div>
+      <SegmentedChoice
+        ariaLabel={t("preview.publish_panel.chooseProvider")}
+        value={provider}
+        onChange={setChoice}
+        options={[
+          {
+            value: "github",
+            testId: "repository-provider-github",
+            label: (
+              <>
+                <Github className="h-4 w-4" />
+                GitHub
+              </>
+            ),
+          },
+          {
+            value: "gitlab",
+            testId: "repository-provider-gitlab",
+            label: (
+              <>
+                <Gitlab className="h-4 w-4" />
+                GitLab
+              </>
+            ),
+          },
+        ]}
+      />
       {provider === "github" ? (
         <GitHubConnector
           appId={appId}

@@ -11,6 +11,10 @@ import {
   COOLIFY_REQUEST_ERROR_NAME,
   COOLIFY_TRANSPORT_ERROR_NAME,
 } from "@/shared/coolify_error_names";
+import {
+  GITLAB_REQUEST_ERROR_NAME,
+  GITLAB_TRANSPORT_ERROR_NAME,
+} from "@/shared/gitlab_error_names";
 
 const logger = log.scope("telemetry");
 const FILTERED_EXCEPTION_MESSAGES = new Set([
@@ -100,7 +104,13 @@ export function sendTelemetryException(
  * the installer's own output, the address, and the address the user signs in
  * with.
  */
-const SELF_HOSTED_CHANNEL_PREFIXES = ["coolify:", "coolify-setup:"];
+const SELF_HOSTED_CHANNEL_PREFIXES = [
+  "coolify:",
+  "coolify-setup:",
+  // A GitLab instance is the user's own server too: these channels carry its
+  // address, and the errors they raise quote whatever it answered.
+  "gitlab:",
+];
 
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
   const channel = context?.ipc_channel;
@@ -137,6 +147,18 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // fails with the host in its message — "getaddrinfo ENOTFOUND <their box>" —
   // and its kind is External, which is not otherwise filtered.
   if (error instanceof Error && error.name === COOLIFY_TRANSPORT_ERROR_NAME) {
+    return true;
+  }
+
+  // A self-hosted GitLab is the same surface: a non-2xx quotes the body that
+  // instance chose to return, and a failed connection carries its address.
+  // The Coolify deploy reaches GitLab on a `coolify:` channel, so the channel
+  // prefix alone would not have covered every path there either.
+  if (
+    error instanceof Error &&
+    (error.name === GITLAB_REQUEST_ERROR_NAME ||
+      error.name === GITLAB_TRANSPORT_ERROR_NAME)
+  ) {
     return true;
   }
 

@@ -24,6 +24,8 @@ describe("describeLinkedRemote", () => {
     ).toEqual({
       provider: "github",
       providerLabel: "GitHub",
+      owner: "acme",
+      repo: "demo",
       displayPath: "acme/demo",
       webUrl: "https://github.com/acme/demo",
       branch: "main",
@@ -42,10 +44,14 @@ describe("describeLinkedRemote", () => {
     ).toEqual({
       provider: "gitlab",
       providerLabel: "GitLab (gitlab.example.com)",
+      projectId: 9,
+      projectPath: "team/demo",
       displayPath: "team/demo",
       webUrl: "https://gitlab.example.com/team/demo",
       branch: null,
-      host: "https://gitlab.example.com/",
+      // The trailing slash is stripped: this host is also what the main
+      // process resolves the remote from, so the two must not differ.
+      host: "https://gitlab.example.com",
     });
     expect(
       describeLinkedRemote({

@@ -1,5 +1,9 @@
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  GITLAB_REQUEST_ERROR_NAME,
+  GITLAB_TRANSPORT_ERROR_NAME,
+} from "@/shared/gitlab_error_names";
 
 const logger = log.scope("gitlab_client");
 
@@ -71,13 +75,21 @@ export interface GitLabDeployKey {
 }
 
 /** Carries the HTTP status so callers can branch on 404 and 400. */
-class GitLabRequestError extends DyadError {
+export class GitLabRequestError extends DyadError {
   readonly status: number;
 
   constructor(message: string, kind: DyadErrorKind, status: number) {
     super(message, kind);
-    this.name = "GitLabRequestError";
+    this.name = GITLAB_REQUEST_ERROR_NAME;
     this.status = status;
+  }
+}
+
+/** A request that never reached the instance: DNS, TLS, refused, timed out. */
+export class GitLabTransportError extends DyadError {
+  constructor(message: string) {
+    super(message, DyadErrorKind.External);
+    this.name = GITLAB_TRANSPORT_ERROR_NAME;
   }
 }
 
@@ -187,9 +199,8 @@ export class GitLabClient {
         : err instanceof Error
           ? err.message
           : String(err);
-    return new DyadError(
+    return new GitLabTransportError(
       `Could not reach GitLab at ${this.base}: ${reason}`,
-      DyadErrorKind.External,
     );
   }
 

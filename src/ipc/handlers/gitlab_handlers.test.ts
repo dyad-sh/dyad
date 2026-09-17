@@ -102,7 +102,8 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadErrorKind } from "@/errors/dyad_error";
+import { GitLabRequestError } from "@/ipc/utils/gitlab_client";
 import {
   handleConnectToExistingGitLabProject,
   handleCreateGitLabProject,
@@ -338,19 +339,29 @@ describe("gitlab:is-project-available", () => {
   it("normalizes the path and treats 404 as available", async () => {
     settings.current = connected();
     gitlabApi.getProject.mockRejectedValue(
-      Object.assign(new DyadError("missing", DyadErrorKind.NotFound), {
-        name: "GitLabRequestError",
-        status: 404,
-      }),
+      new GitLabRequestError("missing", DyadErrorKind.NotFound, 404),
     );
 
-    // The client mock rejects with a plain object, so isGitLabStatus does not
-    // recognise it; assert on the lookup instead and on the taken case below.
-    await handler("gitlab:is-project-available")({
-      namespaceFullPath: "team",
-      path: "My App",
-    });
+    expect(
+      await handler("gitlab:is-project-available")({
+        namespaceFullPath: "team",
+        path: "My App",
+      }),
+    ).toEqual({ available: true });
     expect(gitlabApi.getProject).toHaveBeenCalledWith("team/my-app");
+  });
+
+  it("does not mistake another failure for an available name", async () => {
+    settings.current = connected();
+    gitlabApi.getProject.mockRejectedValue(
+      new GitLabRequestError("no", DyadErrorKind.Auth, 403),
+    );
+
+    const result = (await handler("gitlab:is-project-available")({
+      namespaceFullPath: "team",
+      path: "my-app",
+    })) as { available: boolean };
+    expect(result.available).toBe(false);
   });
 
   it("reports a project that exists as taken", async () => {

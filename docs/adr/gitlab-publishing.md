@@ -57,8 +57,10 @@ rejected are noted where they shaped the design.
    the scope through `/personal_access_tokens/self` before storing the token,
    shows the expiry date, and asks the user to reconnect on a 401.
 6. **Exactly one GitLab connection at a time**, stored as
-   `settings.gitlab = { instanceUrl, accessToken, user, acknowledgedInsecure }`
-   in the shape of the Coolify entry. Each app records the host it was linked
+   `settings.gitlab = { instanceUrl, accessToken, user, tokenExpiresAt }`
+   in the shape of the Coolify entry. The plain-http acknowledgement is a
+   parameter of the save call, deliberately not stored, as Coolify's is.
+   Each app records the host it was linked
    on. If the active connection points at a different host, push and deploy
    fail with a message that names both hosts; apps stay linked across
    connection changes.
@@ -86,11 +88,15 @@ rejected are noted where they shaped the design.
 10. **The `github_ops` state machine is reused.** Push, pull, rebase,
     conflict handling and connect are git operations, not GitHub operations.
     The handler functions behind the machine resolve the provider per app.
-    The only change to the machine is that link, push and rebase operations
-    may name the provider, so the success banner the machine composes says
-    GitLab for a GitLab app; a GitHub operation stays byte-for-byte what it
-    was. Renaming the machine and its channels to `git_ops` is a follow-up,
-    not part of this change.
+    The only change to the machine is that every operation against a remote —
+    link, push, rebase and rebase-continue — names its provider, so the
+    success banner the machine composes says GitLab for a GitLab app. The
+    field is required rather than optional: an earlier draft left it optional
+    so GitHub payloads stayed byte-for-byte what they were, and that meant
+    re-attaching it by hand at each composite edge. `rebase-continue` was
+    missed, so a resumed rebase on a GitLab app announced a push to GitHub.
+    Required, the compiler finds the next such gap. Renaming the machine and
+    its channels to `git_ops` is a follow-up, not part of this change.
 11. **Token injection is per host.** The git credential header
     (`http.<host>/.extraheader`) is built for the app's host with user
     `oauth2` and the PAT. The startup remote scrub removes embedded
@@ -143,7 +149,11 @@ rejected are noted where they shaped the design.
     instance URL is user-supplied, the tests point Dyad at the fake server
     directly; no test-build switch is needed. Unit tests cover the handlers,
     the remote scrub and deploy-key registration.
-20. **All six locales are updated together**, as the i18n rule requires.
+20. **All six locales are updated together**, as the i18n rule requires. Note
+    this covers the keys that exist: Settings, the Publish card and the
+    credentials form are keyed, while the link form inside `GitLabConnector`
+    is still hardcoded English, matching `GitHubConnector`, which has never
+    been translated. Keying it is a follow-up, not a gap in the locales.
 
 ## Consequences
 
@@ -162,5 +172,9 @@ rejected are noted where they shaped the design.
 - Import an app from a GitLab project URL.
 - Member management for GitLab projects.
 - Rename `github_ops` to `git_ops` once the provider split has settled.
+- Key the link forms in `GitLabConnector` and `GitHubConnector` for i18n;
+  the `integrations.gitlab` namespace already exists in all six locales.
+- Filter or page the namespace and project pickers: both listings stop at
+  1000 items, silently.
 - OAuth device flow for gitlab.com if a registered application becomes
   available.

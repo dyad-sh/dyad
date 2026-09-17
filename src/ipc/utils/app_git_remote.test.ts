@@ -14,7 +14,6 @@ import {
   getGitHubRemoteAuth,
   githubRemote,
   gitlabRemote,
-  hasAppGitRemote,
   requireAppGitRemote,
   resolveAppGitRemote,
 } from "./app_git_remote";
@@ -32,9 +31,9 @@ describe("resolveAppGitRemote", () => {
     expect(
       resolveAppGitRemote({ githubOrg: "owner", githubRepo: null }),
     ).toBeNull();
-    expect(hasAppGitRemote({ githubOrg: null, githubRepo: "repo" })).toBe(
-      false,
-    );
+    expect(
+      resolveAppGitRemote({ githubOrg: null, githubRepo: "repo" }),
+    ).toBeNull();
   });
 
   it("describes a GitHub repository with every URL a consumer needs", () => {
@@ -122,9 +121,9 @@ describe("assertCanLinkProvider", () => {
 });
 
 describe("requireAppGitRemote", () => {
-  it("throws the message the GitHub handlers have always used", () => {
+  it("names no provider, so a GitLab user is not told about GitHub", () => {
     expect(() => requireAppGitRemote({})).toThrow(
-      "App is not linked to a GitHub repo.",
+      "App is not linked to a repository.",
     );
   });
 });

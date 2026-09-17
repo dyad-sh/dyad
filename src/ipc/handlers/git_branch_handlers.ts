@@ -40,6 +40,7 @@ import {
   resolveAppGitRemote,
   type AppGitRemoteColumns,
 } from "../utils/app_git_remote";
+import { findAppOrThrow } from "../utils/find_app";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts, gitEvents } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
@@ -83,13 +84,7 @@ export async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
   const auth = getAppGitRemoteAuth(requireAppGitRemote(app));
   const appPath = getDyadAppPath(app.path);
 
@@ -577,13 +572,7 @@ export async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
   const auth = getAppGitRemoteAuth(requireAppGitRemote(app));
   const appPath = getDyadAppPath(app.path);
   const currentBranch = await gitCurrentBranch({ path: appPath });

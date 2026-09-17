@@ -85,6 +85,7 @@ const CREATED = {
   id: 42,
   enabled: true,
   oauthEnabled: false,
+  oauthConnected: false,
   oauthCallbackPort: null,
 };
 
@@ -171,6 +172,10 @@ describe("DyadSuggestPlugin", () => {
     );
     expect(mocks.respond).not.toHaveBeenCalled();
     expect(connectButton().disabled).toBe(false);
+    // The failure stays on the card after the toast is gone.
+    expect(screen.getByRole("alert").textContent).toBe(
+      "suggestPlugin.unreachable",
+    );
   });
 
   it("tells the user to authorize when the probe is rejected with 401", async () => {
@@ -219,6 +224,33 @@ describe("DyadSuggestPlugin", () => {
     expect(mocks.probeConnection).toHaveBeenCalledWith(42);
   });
 
+  it("skips OAuth when the row came back already authorized", async () => {
+    mocks.pending = new Map([[7, { ...PENDING, needsOAuth: true }]]);
+    mocks.addFromCatalog.mockResolvedValue({
+      ...CREATED,
+      oauthConnected: true,
+    });
+    renderCard();
+
+    fireEvent.click(connectButton());
+
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalled());
+    expect(mocks.connectNewServer).not.toHaveBeenCalled();
+  });
+
+  it("stays busy after a successful connect until the card settles", async () => {
+    renderCard();
+
+    fireEvent.click(connectButton());
+
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalled());
+    expect(
+      screen.getByTestId<HTMLButtonElement>("plugin-suggestion-connect-button")
+        .disabled,
+    ).toBe(true);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("keeps the card interactive when OAuth fails", async () => {
     mocks.pending = new Map([[7, { ...PENDING, needsOAuth: true }]]);
     mocks.connectNewServer.mockResolvedValue(false);
@@ -229,6 +261,7 @@ describe("DyadSuggestPlugin", () => {
     await waitFor(() => expect(mocks.connectNewServer).toHaveBeenCalled());
     await waitFor(() => expect(connectButton().disabled).toBe(false));
     expect(mocks.respond).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toBeTruthy();
   });
 
   it("disables both buttons while another connect flow holds the slot", () => {

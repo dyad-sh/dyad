@@ -454,7 +454,6 @@ export function useNotificationHandler() {
           chatId: descriptor.chatId,
           toolName: `Connect ${descriptor.serverName}`,
           requestId: descriptor.requestId,
-          sourceLabel: "a plugin suggestion",
           tagPrefix: "dyad-plugin-suggestion",
           body: `Dyad wants to connect the ${descriptor.serverName} plugin. Click to review.`,
         });

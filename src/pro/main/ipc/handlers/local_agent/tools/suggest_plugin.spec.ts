@@ -33,6 +33,12 @@ vi.mock("@/ipc/shared/remote_mcp_catalog", () => ({
   peekRemoteMcpCatalog: mocks.peekCatalog,
 }));
 
+// The column holds the client registration before any token, so only the
+// literal "tokens" counts as authorized here.
+vi.mock("@/ipc/utils/mcp_oauth_provider", () => ({
+  oauthStateHasTokens: (stored: string | null) => stored === "tokens",
+}));
+
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({ neverSuggestPluginSlugs: mocks.neverSlugs }),
   writeSettings: mocks.writeSettings,
@@ -195,6 +201,13 @@ describe("collectSuggestablePlugins", () => {
     expect(vercel).toMatchObject({ slug: "vercel", needsOAuth: false });
   });
 
+  it("still suggests a plugin whose authorization was started but never finished", async () => {
+    mocks.rows = [row("vercel", { oauthState: "registration-only" })];
+
+    const [vercel] = await collectSuggestablePlugins({ chatId: 7 });
+    expect(vercel).toMatchObject({ slug: "vercel", needsOAuth: true });
+  });
+
   it("leaves out an authorized, enabled plugin", async () => {
     mocks.rows = [row("vercel", { oauthState: "tokens" })];
 
@@ -303,28 +316,6 @@ describe("suggestPluginTool", () => {
     expect(
       suggestPluginTool.getDescription?.(context({ suggestablePlugins: [] })),
     ).not.toContain("Plugins available");
-  });
-
-  it("streams a preview while arguments arrive but persists nothing itself", () => {
-    expect(suggestPluginTool.buildXml?.({ slug: "vercel" }, false)).toBe(
-      '<dyad-suggest-plugin slug="vercel" outcome="pending"></dyad-suggest-plugin>',
-    );
-    expect(
-      suggestPluginTool.buildXml?.(
-        { slug: "vercel", reason: 'Read the "failed" build logs' },
-        false,
-      ),
-    ).toBe(
-      '<dyad-suggest-plugin slug="vercel" reason="Read the &quot;failed&quot; build logs" outcome="pending"></dyad-suggest-plugin>',
-    );
-    expect(suggestPluginTool.buildXml?.({}, false)).toBeUndefined();
-    // The durable card is written by execute() with the request id.
-    expect(
-      suggestPluginTool.buildXml?.(
-        { slug: "vercel", reason: "Read the build logs." },
-        true,
-      ),
-    ).toBeUndefined();
   });
 
   it("persists the pending card with its request id before parking", async () => {

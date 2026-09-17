@@ -19,7 +19,6 @@ import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 interface DyadSuggestPluginProps {
   children?: React.ReactNode;
   slug: string;
-  /** Absent only on the streaming preview, which is never interactive. */
   name?: string;
   reason: string;
   /** The parked request this card belongs to; only pending cards carry it. */
@@ -132,6 +131,9 @@ function PendingSuggestionCard({
   const queryClient = useQueryClient();
   const { connectNewServer, connectingServerId } = usePluginConnect();
   const [phase, setPhase] = useState<ConnectPhase>("idle");
+  // Kept on the card so a failure outlives its toast. By then the plugin
+  // may already be added, and the user needs to see it still needs work.
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const displayName = pending.serverName;
   // Another connect flow anywhere in the app holds the shared slot.
@@ -141,6 +143,7 @@ function PendingSuggestionCard({
   const handleConnect = async () => {
     if (isBusy) return;
     setPhase("adding");
+    setConnectError(null);
     try {
       // Only one-click entries are suggestable (http, no inputs). Adding is
       // idempotent, so a plugin that already exists comes back as its row,
@@ -150,12 +153,17 @@ function PendingSuggestionCard({
         await ipc.mcp.updateServer({ id: created.id, enabled: true });
       }
       await invalidateMcpQueries(queryClient);
-      if (pending.needsOAuth) {
+      // The row may have been authorized elsewhere since the card appeared.
+      if (pending.needsOAuth && !created.oauthConnected) {
         setPhase("authorizing");
         // The shared flow toasts its own failure message.
         const connected = await connectNewServer(created);
         await invalidateMcpQueries(queryClient);
-        if (!connected) return;
+        if (!connected) {
+          setConnectError(t("suggestPlugin.authRequired"));
+          setPhase("idle");
+          return;
+        }
       }
       // Added and authorized are not the same as reachable; the agent
       // should only be told the plugin is ready when its server answers.
@@ -168,17 +176,22 @@ function PendingSuggestionCard({
             ? t("suggestPlugin.authRequired")
             : t("suggestPlugin.unreachable");
         showError(probe.error ? `${headline}\n${probe.error}` : headline);
+        setConnectError(headline);
+        setPhase("idle");
         return;
       }
-      await readModel.respond(pending.requestId, {
+      // Stay in the busy state on success: the card unmounts once the
+      // request settles, and resetting first would flash the idle button.
+      const responded = await readModel.respond(pending.requestId, {
         kind: "plugin-suggestion",
         outcome: "connected",
       });
+      if (!responded) setPhase("idle");
     } catch (error) {
-      showError(
-        error instanceof Error ? error.message : t("suggestPlugin.failed"),
-      );
-    } finally {
+      const message =
+        error instanceof Error ? error.message : t("suggestPlugin.failed");
+      showError(message);
+      setConnectError(message);
       setPhase("idle");
     }
   };
@@ -187,13 +200,14 @@ function PendingSuggestionCard({
   const handleDecline = async (outcome: "declined" | "never") => {
     if (isBusy) return;
     setPhase("declining");
+    let responded = false;
     try {
-      await readModel.respond(pending.requestId, {
+      responded = await readModel.respond(pending.requestId, {
         kind: "plugin-suggestion",
         outcome,
       });
     } finally {
-      setPhase("idle");
+      if (!responded) setPhase("idle");
     }
   };
 
@@ -236,6 +250,15 @@ function PendingSuggestionCard({
         {pending.serverDescription && (
           <p className="text-xs text-muted-foreground leading-snug">
             {pending.serverDescription}
+          </p>
+        )}
+        {connectError && (
+          <p
+            role="alert"
+            className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+            data-testid="plugin-suggestion-error"
+          >
+            {connectError}
           </p>
         )}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -281,7 +304,7 @@ function PendingSuggestionCard({
             type="button"
             onClick={() => void handleDecline("never")}
             disabled={isBusy}
-            className="shrink-0 self-start text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50 sm:self-auto"
+            className="shrink-0 self-start text-[11px] text-muted-foreground underline decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-foreground disabled:pointer-events-none disabled:opacity-50 sm:self-auto"
             data-testid="plugin-suggestion-never-button"
           >
             {t("suggestPlugin.never")}

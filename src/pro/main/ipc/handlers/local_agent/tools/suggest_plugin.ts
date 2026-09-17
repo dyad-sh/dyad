@@ -11,6 +11,7 @@ import type {
   HttpCatalogEntry,
   McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
+import { oauthStateHasTokens } from "@/ipc/utils/mcp_oauth_provider";
 import { readSettings, writeSettings } from "@/main/settings";
 import { userInputRegistry } from "@/user_input/main";
 import {
@@ -84,12 +85,18 @@ const PLUGIN_ROW_COLUMNS = {
   oauthState: mcpServers.oauthState,
 };
 
+// The OAuth column holds the client registration before any token exists,
+// so only a stored access token counts as authorized.
+function isAuthorized(row: PluginRow | undefined) {
+  return oauthStateHasTokens(row?.oauthState ?? null);
+}
+
 // A plugin can serve tools once it is added, enabled, and authorized when
 // its catalog entry requires that. Anything short of this is worth
 // suggesting: the card can enable or authorize an existing row.
 function isUsable(row: PluginRow | undefined, oauthRequired: boolean) {
   if (!row || !row.enabled) return false;
-  return !oauthRequired || row.oauthState != null;
+  return !oauthRequired || isAuthorized(row);
 }
 
 async function isPluginUsable(
@@ -166,7 +173,7 @@ export async function collectSuggestablePlugins({
       name: entry.name,
       description: entry.description,
       oauthRequired,
-      needsOAuth: oauthRequired && row?.oauthState == null,
+      needsOAuth: oauthRequired && !isAuthorized(row),
     }));
 }
 
@@ -204,12 +211,6 @@ function formatAvailablePlugins(servers: SuggestablePlugin[]): string {
   return `Plugins available to suggest (slug: name — what it does):\n${lines.join("\n")}`;
 }
 
-function previewXml(args: Partial<SuggestPluginArgs>): string | undefined {
-  if (!args.slug) return undefined;
-  const reason = args.reason ? ` reason="${escapeXmlAttr(args.reason)}"` : "";
-  return `<dyad-suggest-plugin slug="${escapeXmlAttr(args.slug)}"${reason} outcome="pending"></dyad-suggest-plugin>`;
-}
-
 function pendingXml(
   server: { slug: string; name: string },
   reason: string,
@@ -245,11 +246,6 @@ export const suggestPluginTool: ToolDefinition<SuggestPluginArgs> = {
   isEnabled: (ctx) => (ctx.suggestablePlugins?.length ?? 0) > 0,
 
   getConsentPreview: (args) => `Suggest connecting the ${args.slug} plugin`,
-
-  // Only a streaming preview while the arguments arrive. The durable
-  // pending card is written by execute() once the request id exists, so
-  // the card can be matched to exactly one request.
-  buildXml: (args, isComplete) => (isComplete ? undefined : previewXml(args)),
 
   execute: async (args, ctx: AgentContext) => {
     const servers = ctx.suggestablePlugins ?? [];

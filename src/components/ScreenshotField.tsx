@@ -7,6 +7,11 @@ interface ScreenshotFieldProps {
   outcome: ScreenshotOutcome | null;
   /** Data URL of the capture, shown large enough to read before it is sent. */
   previewSrc: string | null;
+  /**
+   * The dialog is normally closed for the whole capture, but the reporter can
+   * reopen Help from the sidebar while one is still in flight. The form then
+   * shows that it is pending and refuses to start a second one.
+   */
   isCapturing: boolean;
   /** Locked once filing starts: the screenshot has already been acted on. */
   locked: boolean;

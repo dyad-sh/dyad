@@ -2521,6 +2521,26 @@ describe("HelpDialog screenshot bar", () => {
     expect(mocks.takeScreenshot).not.toHaveBeenCalled();
   });
 
+  it("keeps its Escape from the rest of the page's Escape listeners", async () => {
+    // Stands in for the fullscreen code view, which listens on the window.
+    const pageListener = vi.fn();
+    window.addEventListener("keydown", pageListener);
+    try {
+      await openForm();
+      fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: /Capture screenshot/ }),
+        { key: "Escape" },
+      );
+
+      await screen.findByLabelText(/What happened/);
+      expect(pageListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", pageListener);
+    }
+  });
+
   it("describes the instructions to the focused Capture button", async () => {
     await openForm();
     fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));

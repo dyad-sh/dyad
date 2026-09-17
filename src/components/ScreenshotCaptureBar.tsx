@@ -57,10 +57,13 @@ export function ScreenshotCaptureBar({
       aria-label={t("report.captureBarLabel")}
       data-testid="screenshot-capture-bar"
       // Only while focus is inside the bar, so it cannot swallow an Escape
-      // meant for something else on the page.
+      // meant for something else on the page. Stopped here for the same
+      // reason in reverse: the fullscreen code view and others listen for
+      // Escape on the window, and this one is not meant for them.
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();
+        event.stopPropagation();
         onCancel();
       }}
       // Above the app's z-50 layer, so the bar stays reachable over the

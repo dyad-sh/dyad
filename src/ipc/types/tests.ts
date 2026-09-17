@@ -126,8 +126,10 @@ export const ListAppTestsResultSchema = z.object({
 
 export const RunAppTestsParamsSchema = z.object({
   appId: z.number(),
-  /** When set, runs a single spec file (relative path); otherwise runs all. */
+  /** Panel single-file target. Omit both selectors to run the whole suite. */
   testFile: z.string().optional(),
+  /** Selected specs. Mutually exclusive with the panel's single-file target. */
+  testFiles: z.array(z.string().min(1)).min(1).optional(),
   /**
    * When set (with testFile), runs only the test whose `test(` call is at this
    * 1-based line, via Playwright's `file:line` selector.
@@ -462,11 +464,13 @@ export const TestsRunStatePayloadSchema = z.object({
   ]),
   /** Authoritative abort state, carried by progress events. */
   wasStopped: z.boolean().optional(),
-  /** Single spec targeted, when set; absent = whole suite. */
+  /** Single spec targeted by the panel. */
   testFile: z.string().optional(),
+  /** Selected specs; absent with testFile means the whole suite. */
+  testFiles: z.array(z.string()).optional(),
   /** With testFile: only the test at this 1-based line was run. */
   testLine: z.number().optional(),
-  /** With testFile: regex passed to Playwright's --grep for a partial run. */
+  /** Regex passed to Playwright's --grep across the selection for a partial run. */
   grep: z.string().optional(),
   /** Whether this run drives the native preview view. Present on "started". */
   preview: z.boolean().optional(),

@@ -145,6 +145,10 @@ assuming map-entry ordering distinguishes them.
 
 ## Clearing data on temporary Neon test branches
 
+Batch runs may share the outer provider/runtime claims and temporary branch,
+but must retain the per-case lifecycle hooks and single-worker execution.
+Database data and auth users remain isolated for every case and retry across files.
+
 Preserve `neon_auth.project_config` and `neon_auth.jwks` when clearing test data;
 they configure the auth service, and deleting them causes signup to fail with
 `404 Project config not found`. Clear user/session data with one `TRUNCATE ...

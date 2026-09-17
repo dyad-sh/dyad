@@ -223,6 +223,7 @@ export const applyTestRunStartedAtom = atom(
     {
       appId,
       testFile,
+      testFiles,
       testLine,
       grep,
       startedAt,
@@ -231,6 +232,7 @@ export const applyTestRunStartedAtom = atom(
     }: {
       appId: number;
       testFile?: string;
+      testFiles?: string[];
       testLine?: number;
       grep?: string;
       startedAt?: number;
@@ -238,12 +240,21 @@ export const applyTestRunStartedAtom = atom(
       source: "panel" | "agent";
     },
   ) => {
-    const isPartialRun = testFile != null && (testLine != null || !!grep);
+    const isPartialRun = testLine != null || !!grep;
     const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
-    const targetFiles = testFile ? [testFile] : specs.map((s) => s.file);
+    const targetFiles =
+      testFiles ?? (testFile ? [testFile] : specs.map((s) => s.file));
     const grepMatchedTests =
-      testFile != null && testLine == null && grep
-        ? grepMatchedTestKeys(grep, specs, testFile)
+      testLine == null && grep
+        ? targetFiles.flatMap(
+            (file) =>
+              // Unknown hierarchical matches spin that file's known cases only;
+              // matches in another file must not hide this file's activity.
+              grepMatchedTestKeys(grep, specs, file) ??
+              (specs.find((s) => s.file === file)?.tests ?? []).map((test) =>
+                testKey(file, test.line),
+              ),
+          )
         : null;
     set(clearTestRunOutputForAppAtom, appId);
     set(setTestRunStateForAppAtom, {
@@ -259,8 +270,8 @@ export const applyTestRunStartedAtom = atom(
         wasStopped: false,
         runningFiles: targetFiles,
         runningTests:
-          testFile != null && testLine != null
-            ? [testKey(testFile, testLine)]
+          targetFiles.length === 1 && testLine != null
+            ? [testKey(targetFiles[0], testLine)]
             : (grepMatchedTests ?? []),
         // For a single-test run, keep the file's existing results (siblings
         // keep their status; we merge the one test back in afterward). Grep
@@ -322,7 +333,9 @@ export const applyTestRunFinishedAtom = atom(
           return prev;
         }
         const nextResults = { ...prev.results };
-        for (const r of res.results) {
+        // A preview batch may return completed cases followed by an infra
+        // failure. Its partial report cannot establish a whole-file pass.
+        for (const r of res.infraError ? [] : res.results) {
           const key = reconcileResultFile(r.file, specFiles);
           const mapped = { ...r, file: key };
           if (isPartialRun) {

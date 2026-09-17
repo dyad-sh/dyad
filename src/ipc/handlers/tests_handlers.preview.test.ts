@@ -1,3 +1,4 @@
+// @vitest-environment node
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   spawnStreaming: vi.fn(),
+  prepareIsolation: vi.fn(),
+  broadcast: vi.fn(),
   // `previewRouted` is what tells the run its specs actually reach the shim;
   // without it every case below would degrade to an ordinary browser run.
   ensurePlaywrightBootstrap: vi.fn(async () => ({
@@ -45,6 +48,15 @@ vi.mock("../utils/spawn_streaming", () => ({
   spawnStreaming: h.spawnStreaming,
 }));
 
+vi.mock("../services/isolated_test_db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/isolated_test_db")>()),
+  prepareIsolatedTestDatabase: h.prepareIsolation,
+}));
+
+vi.mock("../utils/window_broadcast", () => ({
+  broadcastToRegisteredWindows: h.broadcast,
+}));
+
 vi.mock("../utils/playwright_bootstrap", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/playwright_bootstrap")>()),
   ensurePlaywrightBootstrap: h.ensurePlaywrightBootstrap,
@@ -64,6 +76,7 @@ vi.mock("@/paths/paths", async (importOriginal) => ({
 import {
   buildPlaywrightCliInvocation,
   runAppTestsCore as runAppTestsCoreWithoutToken,
+  runAppTestsWithIsolation,
   type RunAppTestsCoreOptions,
 } from "./tests_handlers";
 import {
@@ -71,6 +84,10 @@ import {
   PREVIEW_CDP_TOKEN_ENV,
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
+import {
+  TEST_CASE_ENDPOINT_ENV,
+  TEST_CASE_TOKEN_ENV,
+} from "../services/test_case_lifecycle_server";
 
 const PROXY_URL = "http://localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
@@ -92,6 +109,8 @@ function lastSpawn() {
 }
 
 beforeEach(() => {
+  h.prepareIsolation.mockReset();
+  h.broadcast.mockReset();
   h.spawnStreaming.mockReset().mockResolvedValue({
     code: 1,
     stdout: "",
@@ -112,6 +131,304 @@ beforeEach(() => {
   );
   fs.mkdirSync(path.dirname(playwrightPackagePath), { recursive: true });
   fs.writeFileSync(playwrightPackagePath, "{}");
+});
+
+describe("selected file batches", () => {
+  const selected = ["e2e-tests/a(legacy).spec.ts", "e2e-tests/b.spec.ts"];
+  const candidates = [
+    ...selected,
+    "e2e-tests/b.spec.tsx",
+    "e2e-tests/nested/e2e-tests/b.spec.ts",
+  ];
+
+  function mockReports() {
+    h.spawnStreaming.mockImplementation(async (options) => {
+      const selectors = (options.args as string[]).filter((arg) =>
+        arg.startsWith("^"),
+      );
+      const files = candidates.filter((file) =>
+        selectors.some((selector) =>
+          new RegExp(selector.replace(/:\d+$/, "")).test(
+            path.resolve(APP_PATH, file),
+          ),
+        ),
+      );
+      const reportFile = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
+      const reportPath = path.resolve(APP_PATH, reportFile);
+      fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+      fs.writeFileSync(
+        reportPath,
+        JSON.stringify({
+          config: { rootDir: path.join(APP_PATH, "e2e-tests") },
+          suites: files.map((file) => ({
+            title: file,
+            file: options.args.includes("--list")
+              ? file.slice("e2e-tests/".length)
+              : path.resolve(APP_PATH, file),
+            specs: [
+              {
+                title: "checks login",
+                line: 3,
+                tests: options.args.includes("--list")
+                  ? [{ expectedStatus: "passed" }]
+                  : [
+                      {
+                        status: "expected",
+                        results: [{ status: "passed", duration: 10 }],
+                      },
+                    ],
+              },
+            ],
+          })),
+        }),
+      );
+      return {
+        code: 0,
+        stdout: "",
+        stderr: "",
+        aborted: false,
+        timedOut: false,
+      };
+    });
+  }
+
+  it("passes exact escaped file selectors to one browser process", async () => {
+    mockReports();
+    const result = await runAppTestsCore({
+      appId: 1,
+      testFiles: [...selected, selected[0]],
+      grep: "login",
+      timeoutMs: 600_000,
+    });
+    expect(result.results.map((result) => result.file)).toEqual(selected);
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(1);
+    expect(lastSpawn().args.filter((arg) => arg.startsWith("^"))).toHaveLength(
+      2,
+    );
+    expect(lastSpawn().args).toContain("-g");
+    expect(lastSpawn().args).toContain("login");
+    expect(h.spawnStreaming.mock.calls[0][0].timeoutMs).toBe(600_000);
+  });
+
+  it.each([
+    { testFile: selected[0] },
+    { testFiles: [selected[0]] },
+    { testFile: selected[0], testLine: 3 },
+  ])(
+    "preserves single-file and panel line selection: %j",
+    async (selection) => {
+      mockReports();
+      const result = await runAppTestsCore({ appId: 1, ...selection });
+      expect(result.results.map((result) => result.file)).toEqual([
+        selected[0],
+      ]);
+      const selectors = lastSpawn().args.filter((arg) => arg.startsWith("^"));
+      expect(selectors).toHaveLength(1);
+      expect(selectors[0].endsWith(":3")).toBe("testLine" in selection);
+    },
+  );
+
+  it("discovers only selected preview files and executes their cases serially", async () => {
+    mockReports();
+    const rotatePreviewView = vi.fn().mockResolvedValue(undefined);
+    const result = await runAppTestsCore({
+      appId: 1,
+      testFiles: selected,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+      parallel: true,
+      grep: "login",
+      timeoutMs: 600_000,
+    });
+    expect(result.results.map((result) => result.file)).toEqual(selected);
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(3);
+    const [discovery, ...executions] = h.spawnStreaming.mock.calls.map(
+      ([options]) => options,
+    );
+    expect(discovery.args).toContain("--list");
+    expect(
+      discovery.args.filter((arg: string) => arg.startsWith("^")),
+    ).toHaveLength(2);
+    expect(discovery.args).toContain("login");
+    for (const execution of executions) {
+      expect(execution.args).toContain("--workers=1");
+      expect(execution.args).not.toContain("--fully-parallel");
+      expect(execution.timeoutMs).toBeLessThanOrEqual(discovery.timeoutMs);
+    }
+    expect(rotatePreviewView).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { testFiles: [] },
+    { testFiles: [selected[0], "../escape.spec.ts"] },
+    { testFiles: selected, testFile: selected[0] },
+    { testFiles: selected, testLine: 3 },
+  ])(
+    "refuses malformed selections before bootstrap or isolation: %j",
+    async (selection) => {
+      const core = await runAppTestsCore({ appId: 1, ...selection });
+      const isolated = await runAppTestsWithIsolation({
+        appId: 1,
+        event: { sender: {} } as any,
+        source: "agent",
+        ...selection,
+      });
+      expect(core.infraError).toBeDefined();
+      expect(isolated.infraError).toBeDefined();
+      expect(h.ensurePlaywrightBootstrap).not.toHaveBeenCalled();
+      expect(h.prepareIsolation).not.toHaveBeenCalled();
+      expect(h.spawnStreaming).not.toHaveBeenCalled();
+    },
+  );
+
+  it("owns one batch setup and announces the same selection throughout", async () => {
+    mockReports();
+    const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+    h.prepareIsolation.mockResolvedValue({
+      isolation: { mode: "neon-branch" },
+      teardown,
+    });
+    const result = await runAppTestsWithIsolation({
+      appId: 1,
+      event: { sender: {} } as any,
+      source: "agent",
+      testFiles: selected,
+    });
+    expect(result.results.map((result) => result.file)).toEqual(selected);
+    expect(h.prepareIsolation).toHaveBeenCalledTimes(1);
+    expect(teardown).toHaveBeenCalledTimes(1);
+    const events = h.broadcast.mock.calls
+      .filter(([, channel]) => channel === "tests:run-state")
+      .map(([, , payload]) => payload);
+    expect(events.map((event) => event.state)).toEqual([
+      "started",
+      "cleaning-up",
+      "finished",
+    ]);
+    for (const event of events) expect(event.testFiles).toEqual(selected);
+    expect(new Set(events.map((event) => event.runId)).size).toBe(1);
+  });
+
+  it("provisions and cleans up each case and retry across selected files", async () => {
+    mockReports();
+    const reportSpawn = h.spawnStreaming.getMockImplementation()!;
+    const lifecycleCalls: string[] = [];
+    let userNumber = 0;
+    h.prepareIsolation.mockResolvedValue({
+      isolation: { mode: "neon-branch" },
+      testCaseLifecycle: {
+        beforeEach: vi.fn(async () => {
+          lifecycleCalls.push("before");
+          return { DYAD_TEST_USER_EMAIL: `user-${++userNumber}@dyad.test` };
+        }),
+        afterEach: vi.fn(async () => {
+          lifecycleCalls.push("after");
+        }),
+      },
+      teardown: vi.fn(async () => {
+        lifecycleCalls.push("teardown");
+        return { envRestored: true };
+      }),
+    });
+    const emails: string[] = [];
+    h.spawnStreaming.mockImplementation(async (options) => {
+      expect(options.args).toContain("--workers=1");
+      expect(options.args).not.toContain("--fully-parallel");
+      // Exercise the fixture's protocol for a case, its retry, then another file.
+      for (const attempt of ["file-a-case", "file-a-retry", "file-b-case"]) {
+        for (const phase of ["before", "after"]) {
+          const response = await fetch(
+            `${options.env[TEST_CASE_ENDPOINT_ENV]}/${phase}/${attempt}`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${options.env[TEST_CASE_TOKEN_ENV]}`,
+              },
+            },
+          );
+          expect(response.status).toBe(200);
+          const credentials = await response.json();
+          if (phase === "before") emails.push(credentials.DYAD_TEST_USER_EMAIL);
+        }
+      }
+      return reportSpawn(options);
+    });
+
+    const result = await runAppTestsWithIsolation({
+      appId: 1,
+      event: { sender: {} } as any,
+      source: "agent",
+      testFiles: selected,
+      parallel: true,
+    });
+
+    expect(result.infraError).toBeUndefined();
+    expect(result.results.map((result) => result.file)).toEqual(selected);
+    expect(h.prepareIsolation).toHaveBeenCalledTimes(1);
+    expect(h.prepareIsolation).toHaveBeenCalledWith(
+      expect.objectContaining({ perTestCase: true }),
+    );
+    expect(h.ensurePlaywrightBootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({ isolateTestCases: true }),
+    );
+    expect(emails).toEqual([
+      "user-1@dyad.test",
+      "user-2@dyad.test",
+      "user-3@dyad.test",
+    ]);
+    expect(lifecycleCalls).toEqual([
+      "before",
+      "after",
+      "before",
+      "after",
+      "before",
+      "after",
+      "teardown",
+    ]);
+  });
+
+  it.each(["cancel", "timeout"])(
+    "cleans up the entire batch after %s",
+    async (reason) => {
+      const controller = new AbortController();
+      const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+      h.prepareIsolation.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        teardown,
+      });
+      h.spawnStreaming.mockImplementation(async (options) => {
+        if (reason === "cancel") controller.abort();
+        expect(options.signal.aborted).toBe(reason === "cancel");
+        return {
+          code: 1,
+          stdout: "",
+          stderr: "",
+          aborted: reason === "cancel",
+          timedOut: reason === "timeout",
+        };
+      });
+      const result = await runAppTestsWithIsolation({
+        appId: 1,
+        event: { sender: {} } as any,
+        source: "agent",
+        testFiles: selected,
+        externalSignal: controller.signal,
+        timeoutMs: 600_000,
+      });
+      expect(result.results).toEqual([]);
+      expect(result.infraError?.message).toMatch(
+        reason === "cancel" ? /stopped/ : /10-minute limit/,
+      );
+      expect(h.prepareIsolation).toHaveBeenCalledTimes(1);
+      expect(teardown).toHaveBeenCalledTimes(1);
+      const finished = h.broadcast.mock.calls.filter(
+        ([, channel, payload]) =>
+          channel === "tests:run-state" && payload.state === "finished",
+      );
+      expect(finished).toHaveLength(1);
+      expect(finished[0][2].testFiles).toEqual(selected);
+    },
+  );
 });
 
 /**

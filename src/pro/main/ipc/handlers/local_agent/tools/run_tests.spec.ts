@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 import type { AgentContext } from "./types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
 
 vi.mock("@/ipc/handlers/tests_handlers", () => ({
   runAppTestsWithIsolation: vi.fn(),
   getRunningTestBaseUrl: vi.fn(),
-  // Identity so keys are stable in tests.
-  normalizeRunTestFile: (f: string) => f,
+  normalizeRunTestFile: (f: string) =>
+    path.posix.normalize(f.replace(/\\/g, "/")),
   listSpecFiles: vi.fn(),
   readSpecTestCases: vi.fn(),
 }));
@@ -136,9 +137,280 @@ describe("runTestsTool", () => {
     ).toBe(false);
   });
 
+  describe("batches", () => {
+    const a = "e2e-tests/a.spec.ts";
+    const b = "e2e-tests/b.spec.ts";
+    const c = "e2e-tests/c.spec.ts";
+    const d = "e2e-tests/d.spec.ts";
+
+    beforeEach(() => {
+      specLister.mockResolvedValue([a, b]);
+      runner.mockResolvedValue({
+        appId: 1,
+        results: [a, b].map((file) => ({ file, status: "passed" })),
+      });
+    });
+
+    it.each([{}, { testFiles: [a, b] }])(
+      "runs one batch for %j",
+      async (args) => {
+        const ctx = makeCtx();
+        const out = await runTestsTool.execute(args, ctx);
+        expect(runner).toHaveBeenCalledTimes(1);
+        expect(runner).toHaveBeenCalledWith(
+          expect.objectContaining({ testFiles: [a, b], timeoutMs: 600_000 }),
+        );
+        expect(ctx.testRunCount).toBe(1);
+        expect(ctx.testRunAttempts.get(a)?.passedAtEditCount?.[""]).toBe(0);
+        expect(ctx.testRunAttempts.get(b)?.passedAtEditCount?.[""]).toBe(0);
+        expect(out).toContain(`${a}: passed`);
+        expect(out).toContain(`${b}: passed`);
+        expect(ctx.onXmlComplete).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it("normalizes and deduplicates the selection before running", async () => {
+      const ctx = makeCtx();
+      await runTestsTool.execute(
+        { testFiles: [a, `./${a}`, "e2e-tests\\a.spec.ts", b] },
+        ctx,
+      );
+      expect(runner).toHaveBeenCalledWith(
+        expect.objectContaining({ testFiles: [a, b] }),
+      );
+      expect(ctx.testRunAttempts.size).toBe(2);
+    });
+
+    it.each([
+      { testFiles: [] },
+      { testFiles: [""] },
+      { testFile: a },
+      { testFile: a, testFiles: [b] },
+    ])("rejects invalid/legacy arguments without running: %j", async (args) => {
+      expect(runTestsTool.inputSchema.safeParse(args).success).toBe(false);
+      const ctx = makeCtx();
+      // Exercise the direct-call guard as well as the model schema.
+      const out = await runTestsTool.execute(
+        args as Parameters<typeof runTestsTool.execute>[0],
+        ctx,
+      );
+      expect(out).toContain("Invalid run_tests arguments");
+      expect(runner).not.toHaveBeenCalled();
+      expect(ctx.testRunCount).toBeUndefined();
+    });
+
+    it("rejects the entire batch and lists all missing paths", async () => {
+      const ctx = makeCtx();
+      const out = await runTestsTool.execute({ testFiles: [a, c, d] }, ctx);
+      expect(out).toContain(c);
+      expect(out).toContain(d);
+      expect(out).toContain("No part of the batch ran");
+      expect(runner).not.toHaveBeenCalled();
+      expect(ctx.testRunAttempts.size).toBe(0);
+    });
+
+    it("does not start isolation for an empty suite", async () => {
+      specLister.mockResolvedValue([]);
+      const out = await runTestsTool.execute({}, makeCtx());
+      expect(out).toContain("There are no specs to run");
+      expect(runner).not.toHaveBeenCalled();
+    });
+
+    it("accounts for passing, failing, skipped, and empty files independently", async () => {
+      specLister.mockResolvedValue([a, b, c, d]);
+      runner.mockResolvedValue({
+        appId: 1,
+        results: [
+          { file: "a.spec.ts", status: "passed" },
+          { ...failResult("checkout broke").results[0], file: b },
+          {
+            file: c,
+            status: "inconclusive",
+            tests: [{ title: "disabled", status: "inconclusive" }],
+          },
+        ],
+      });
+      const ctx = makeCtx();
+      ctx.testRunAttempts.set(a, { attempts: 2 });
+      ctx.testRunAttempts.set(b, { attempts: 1 });
+      const out = await runTestsTool.execute({}, ctx);
+      expect(ctx.testRunAttempts.get(a)?.attempts).toBe(0);
+      expect(ctx.testRunAttempts.get(b)?.attempts).toBe(2);
+      expect(ctx.testRunAttempts.get(c)).toEqual({ attempts: 0 });
+      expect(ctx.testRunAttempts.get(d)).toEqual({ attempts: 0 });
+      expect(out).toContain(`${a}: passed`);
+      expect(out).toContain(`${b}: failed`);
+      expect(out).toContain(`${c}: no runnable tests — not verified`);
+      expect(out).toContain(`${d}: no runnable tests — not verified`);
+      expect(out).toContain("2 attempt(s) remain");
+    });
+
+    it("rejects all files when one is blocked without spending other files' flake allowance", async () => {
+      const ctx = makeCtx();
+      ctx.testRunAttempts.set(b, { attempts: 4 });
+      const out = await runTestsTool.execute(
+        { testFiles: [a, b], flakeCheck: true },
+        ctx,
+      );
+      expect(out).toContain(`${b}: Attempt limit reached`);
+      expect(runner).not.toHaveBeenCalled();
+      expect(ctx.testRunAttempts.get(a)?.flakeCheckUsed).toBeUndefined();
+      expect(ctx.testRunCount).toBeUndefined();
+    });
+
+    it("rejects a whole-suite request containing an unchanged passing file", async () => {
+      const ctx = makeCtx();
+      ctx.testRunAttempts.set(b, { attempts: 0, passedAtEditCount: { "": 0 } });
+      const out = await runTestsTool.execute({}, ctx);
+      expect(out).toContain(`${b}: The whole spec already passed`);
+      expect(runner).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])(
+      "filters across files without resetting budgets (whole suite: %s)",
+      async (wholeSuite) => {
+        runner.mockResolvedValue({
+          appId: 1,
+          results: [passedResult.results[0]],
+        });
+        const ctx = makeCtx();
+        ctx.testRunAttempts.set(a, { attempts: 2 });
+        ctx.testRunAttempts.set(b, { attempts: 1 });
+        const out = await runTestsTool.execute(
+          {
+            ...(wholeSuite ? {} : { testFiles: [a, b] }),
+            grep: "does a thing",
+          },
+          ctx,
+        );
+        expect(runner).toHaveBeenCalledWith(
+          expect.objectContaining({
+            testFiles: [a, b],
+            grep: "does a thing",
+            parallel: false,
+          }),
+        );
+        expect(ctx.testRunAttempts.get(a)?.attempts).toBe(2);
+        expect(
+          ctx.testRunAttempts.get(a)?.passedAtEditCount?.[""],
+        ).toBeUndefined();
+        expect(ctx.testRunAttempts.get(b)).toEqual({ attempts: 1 });
+        expect(out).toContain("matching /does a thing/ only");
+        expect(out).toContain(`${b}: no runnable tests — not verified`);
+      },
+    );
+
+    it("reports errors and artifacts from every failing file separately", async () => {
+      runner.mockResolvedValue({
+        appId: 1,
+        results: [
+          ...failResult("first failure", "test-results/a/test-failed.png")
+            .results,
+          {
+            ...failResult("second failure", "test-results/b/test-failed.png")
+              .results[0],
+            file: b,
+          },
+        ],
+      });
+      const out = await runTestsTool.execute({}, makeCtx());
+      expect(out).toContain("first failure");
+      expect(out).toContain("second failure");
+      expect(out).toContain("test-results/a/error-context.md");
+      expect(out).toContain("test-results/b/error-context.md");
+    });
+
+    it.each(["infra", "throw", "cancel"])(
+      "refunds all flake allowances and never verifies partial results after %s",
+      async (kind) => {
+        const ctx = makeCtx();
+        ctx.testRunAttempts.set(a, { attempts: 1 });
+        ctx.testRunAttempts.set(b, { attempts: 2 });
+        const controller = new AbortController();
+        ctx.abortSignal = controller.signal;
+        if (kind === "throw")
+          runner.mockRejectedValue(new Error("setup failed"));
+        else
+          runner.mockImplementation(async () => {
+            if (kind === "cancel") controller.abort();
+            return {
+              ...passedResult,
+              ...(kind === "infra"
+                ? { infraError: { message: "deadline exceeded" } }
+                : {}),
+            };
+          });
+        await runTestsTool.execute({ flakeCheck: true }, ctx);
+        expect(ctx.testRunCount).toBe(1);
+        expect(ctx.testRunAttempts.get(a)).toEqual({
+          attempts: 1,
+          flakeCheckUsed: false,
+        });
+        expect(ctx.testRunAttempts.get(b)).toEqual({
+          attempts: 2,
+          flakeCheckUsed: false,
+        });
+      },
+    );
+
+    it("refunds a no-tests file's flake allowance without refunding executed files", async () => {
+      runner.mockResolvedValue(failResult("failed"));
+      const ctx = makeCtx();
+      await runTestsTool.execute({ flakeCheck: true }, ctx);
+      expect(ctx.testRunAttempts.get(a)).toMatchObject({
+        attempts: 0,
+        flakeCheckUsed: true,
+      });
+      expect(ctx.testRunAttempts.get(b)).toEqual({
+        attempts: 0,
+        flakeCheckUsed: false,
+      });
+    });
+
+    it("counts an infrastructure batch once and refuses the eleventh run", async () => {
+      runner.mockResolvedValue(infraResult);
+      const ctx = makeCtx();
+      ctx.testRunCount = 9;
+      await runTestsTool.execute({}, ctx);
+      const out = await runTestsTool.execute({}, ctx);
+      expect(ctx.testRunCount).toBe(10);
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(out).toContain("Turn-level test run limit reached");
+    });
+
+    it("reserves the final run slot before another batch finishes preflight", async () => {
+      const ctx = makeCtx();
+      ctx.testRunCount = 9;
+      const results = await Promise.all([
+        runTestsTool.execute({ testFiles: [a], grep: "does a thing" }, ctx),
+        runTestsTool.execute({ testFiles: [b], grep: "does a thing" }, ctx),
+      ]);
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(ctx.testRunCount).toBe(10);
+      expect(
+        results.some((result) =>
+          String(result).includes("Turn-level test run limit reached"),
+        ),
+      ).toBe(true);
+    });
+
+    it("gives the whole slow-motion batch one twenty-minute deadline", async () => {
+      settingsReader.mockReturnValue({ testSlowMo: true } as ReturnType<
+        typeof readSettings
+      >);
+      await runTestsTool.execute({}, makeCtx());
+      expect(runner).toHaveBeenCalledWith(
+        expect.objectContaining({ testFiles: [a, b], timeoutMs: 1_200_000 }),
+      );
+    });
+  });
+
   it("defaults to headless + serial + full speed when no Tests-panel mode is set", async () => {
     runner.mockResolvedValue(passedResult);
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    await runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({
         headed: false,
@@ -156,7 +428,10 @@ describe("runTestsTool", () => {
       testSlowMo: true,
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    await runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({
         headed: true,
@@ -176,7 +451,7 @@ describe("runTestsTool", () => {
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       makeCtx(),
     );
     expect(runner).toHaveBeenCalledWith(
@@ -190,7 +465,10 @@ describe("runTestsTool", () => {
       testHeaded: true,
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    await runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({ headed: true, parallel: false, preview: true }),
     );
@@ -202,7 +480,10 @@ describe("runTestsTool", () => {
       testHeaded: false,
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    await runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({ headed: false, preview: false }),
     );
@@ -214,7 +495,7 @@ describe("runTestsTool", () => {
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       makeCtx(),
     );
     expect(runner).toHaveBeenCalledWith(
@@ -226,7 +507,7 @@ describe("runTestsTool", () => {
     baseUrl.mockReturnValue(null);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -240,12 +521,12 @@ describe("runTestsTool", () => {
   it("reports success and resets the fix budget", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     expect(ctx.testRunAttempts.get("e2e-tests/a.spec.ts")?.attempts).toBe(1);
     addEdit(ctx, "e2e-tests/a.spec.ts");
     runner.mockResolvedValue(passedResult);
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("All runnable tests passed");
@@ -255,14 +536,14 @@ describe("runTestsTool", () => {
   it("refuses an unchanged rerun after a whole-file pass (targeted or not)", async () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockClear();
     const wholeAgain = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     const targeted = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -283,20 +564,20 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "test A" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "test A" },
       ctx,
     );
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "test B" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "test B" },
       ctx,
     );
     runner.mockClear();
     const rerunA = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "test A" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "test A" },
       ctx,
     );
     const rerunB = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "test B" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "test B" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -305,7 +586,7 @@ describe("runTestsTool", () => {
     expect(rerunA).toContain("Do NOT run it again");
     // A targeted pass no longer requires re-running the whole file, but it's
     // still allowed if the agent wants to verify the rest of the spec.
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
@@ -314,13 +595,13 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does.*thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does.*thing" },
       ctx,
     );
     runner.mockClear();
 
     const rerun = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       ctx,
     );
 
@@ -331,16 +612,16 @@ describe("runTestsTool", () => {
   it("allows rerunning a passed target after a file edit or with flakeCheck", async () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockClear();
     const flake = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(flake).toContain("All runnable tests passed");
     addEdit(ctx, "e2e-tests/a.spec.ts");
     const afterEdit = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(afterEdit).toContain("All runnable tests passed");
@@ -354,7 +635,7 @@ describe("runTestsTool", () => {
     screenshot.mockResolvedValue("data:image/png;base64,ABC");
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("Test run FAILED (attempt 1 of 4");
@@ -371,10 +652,10 @@ describe("runTestsTool", () => {
   it("adds a no-progress note when the failure signature is unchanged", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     addEdit(ctx, "e2e-tests/a.spec.ts"); // pass the require-a-change guard
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("did NOT alter the failure");
@@ -384,10 +665,10 @@ describe("runTestsTool", () => {
   it("refuses to rerun when no files changed since the last run", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockClear();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -399,10 +680,10 @@ describe("runTestsTool", () => {
   it("allows one free flakeCheck rerun without a change and without counting", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockClear();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
@@ -417,14 +698,14 @@ describe("runTestsTool", () => {
     // flakeCheck: true.
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     runner.mockClear();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -435,14 +716,14 @@ describe("runTestsTool", () => {
   it("refuses a second flakeCheck without changes on a failing spec", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     runner.mockClear();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -457,13 +738,13 @@ describe("runTestsTool", () => {
     const ctx = makeCtx();
     for (let i = 0; i < 4; i++) {
       addEdit(ctx, "e2e-tests/a.spec.ts");
-      await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+      await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     }
     expect(ctx.testRunAttempts.get("e2e-tests/a.spec.ts")?.attempts).toBe(4);
     runner.mockClear();
     addEdit(ctx, "e2e-tests/a.spec.ts");
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -474,7 +755,7 @@ describe("runTestsTool", () => {
     const ctx = makeCtx();
     ctx.testRunCount = 10;
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -485,7 +766,7 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(infraResult);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("infrastructure problem");
@@ -506,7 +787,7 @@ describe("runTestsTool", () => {
     ]);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/authentication.spec.ts" },
+      { testFiles: ["e2e-tests/authentication.spec.ts"] },
       ctx,
     );
     // Never started a run.
@@ -533,7 +814,7 @@ describe("runTestsTool", () => {
     specLister.mockResolvedValue(["e2e-tests/auth-entry.spec.ts"]);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "auth-entry.spec.ts" },
+      { testFiles: ["auth-entry.spec.ts"] },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -553,12 +834,12 @@ describe("runTestsTool", () => {
     });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/auth-entry.spec.ts" },
+      { testFiles: ["e2e-tests/auth-entry.spec.ts"] },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
     expect(runner.mock.calls[0][0]).toMatchObject({
-      testFile: "e2e-tests/auth-entry.spec.ts",
+      testFiles: ["e2e-tests/auth-entry.spec.ts"],
     });
     expect(runner.mock.calls[0][0].testLine).toBeUndefined();
     expect(out).toContain("All runnable tests passed");
@@ -572,12 +853,12 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does another thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does another thing" },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
     expect(runner.mock.calls[0][0]).toMatchObject({
-      testFile: "e2e-tests/a.spec.ts",
+      testFiles: ["e2e-tests/a.spec.ts"],
       grep: "does another thing",
     });
     // The agent targets by pattern, never by line.
@@ -598,7 +879,7 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "user can" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "user can" },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
@@ -614,7 +895,7 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue({ appId: 1, results: [] });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "user signs up" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "user signs up" },
       ctx,
     );
     expect(runner).toHaveBeenCalledWith(
@@ -630,7 +911,7 @@ describe("runTestsTool", () => {
   it("refuses an invalid grep regex without running", async () => {
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "user can (sign up" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "user can (sign up" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -652,12 +933,12 @@ describe("runTestsTool", () => {
     try {
       const ctx = makeCtx();
       const out = await runTestsTool.execute(
-        { testFile: "e2e-tests/a.spec.ts", grep: "100% complete" },
+        { testFiles: ["e2e-tests/a.spec.ts"], grep: "100% complete" },
         ctx,
       );
       expect(runner).toHaveBeenCalledTimes(1);
       expect(runner.mock.calls[0][0]).toMatchObject({
-        testFile: "e2e-tests/a.spec.ts",
+        testFiles: ["e2e-tests/a.spec.ts"],
         grep: "100% complete",
       });
       expect(out).toContain("matching /100% complete/ passed");
@@ -678,7 +959,7 @@ describe("runTestsTool", () => {
     try {
       const ctx = makeCtx();
       const out = await runTestsTool.execute(
-        { testFile: "e2e-tests/a.spec.ts", grep: "first\r\nsecond" },
+        { testFiles: ["e2e-tests/a.spec.ts"], grep: "first\r\nsecond" },
         ctx,
       );
       expect(runner).toHaveBeenCalledTimes(1);
@@ -697,10 +978,10 @@ describe("runTestsTool", () => {
     // a different run and must not be blocked as a pointless rerun.
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockClear();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
@@ -708,7 +989,7 @@ describe("runTestsTool", () => {
     // But rerunning the SAME target without an edit is still blocked.
     runner.mockClear();
     const blocked = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -721,7 +1002,7 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue({ appId: 1, results: [] });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       ctx,
     );
     expect(out).toContain("executed nothing");
@@ -739,14 +1020,13 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue({ appId: 1, results: [] });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("ran but nothing executed");
     expect(out).not.toContain("infrastructure problem");
     expect(out).toContain("did NOT count");
-    // Reason surfaced to the user in the warning title.
-    expect(emittedXml(ctx)).toContain("has no runnable test");
+    expect(emittedXml(ctx)).toContain("no runnable tests — not verified");
     expect(ctx.testRunAttempts.get("e2e-tests/a.spec.ts")?.attempts ?? 0).toBe(
       0,
     );
@@ -762,7 +1042,7 @@ describe("runTestsTool", () => {
     );
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("Test run FAILED");
@@ -776,7 +1056,7 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(failResult(longError));
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("(truncated)");
@@ -789,12 +1069,12 @@ describe("runTestsTool", () => {
     // unlimited attempts past the per-spec cap.
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     expect(ctx.testRunAttempts.get("e2e-tests/a.spec.ts")?.attempts).toBe(1);
     addEdit(ctx, "e2e-tests/a.spec.ts");
     runner.mockResolvedValue(passedResult);
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      { testFiles: ["e2e-tests/a.spec.ts"], grep: "does a thing" },
       ctx,
     );
     expect(out).toContain("matching /does a thing/ passed");
@@ -818,7 +1098,7 @@ describe("runTestsTool", () => {
     });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("skipped");
@@ -832,10 +1112,10 @@ describe("runTestsTool", () => {
   it("survives a thrown runner error: uncounted, and the free flakeCheck is restored", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockRejectedValue(new Error("db exploded"));
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(out).toContain("did NOT count");
@@ -853,10 +1133,10 @@ describe("runTestsTool", () => {
     // refund that retry would be refused (flake rerun spent, no changes made).
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
-    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute({ testFiles: ["e2e-tests/a.spec.ts"] }, ctx);
     runner.mockResolvedValue(infraResult);
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(out).toContain("infrastructure problem");
@@ -867,7 +1147,7 @@ describe("runTestsTool", () => {
     // And the promised retry actually runs.
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts", flakeCheck: true },
+      { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(3);
@@ -894,7 +1174,7 @@ describe("runTestsTool", () => {
     });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("All runnable tests passed");
@@ -906,7 +1186,7 @@ describe("runTestsTool", () => {
     // The pass was recorded: an unchanged rerun is refused.
     runner.mockClear();
     const rerun = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -932,7 +1212,7 @@ describe("runTestsTool", () => {
     });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "e2e-tests/a.spec.ts" },
+      { testFiles: ["e2e-tests/a.spec.ts"] },
       ctx,
     );
     expect(out).toContain("1 passed, 1 failed, 1 deliberately skipped");

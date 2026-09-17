@@ -105,6 +105,36 @@ export function normalizeRunTestFile(testFile: string): string | null {
   return TEST_FILE_PATTERN.test(normalized) ? normalized : null;
 }
 
+/** Keep panel file/line targets and agent batches on the same validated path. */
+function normalizeRunTestSelection({
+  testFile,
+  testFiles,
+  testLine,
+}: {
+  testFile?: string;
+  testFiles?: string[];
+  testLine?: number;
+}): { files: string[] | undefined } | { error: string } {
+  if (testFile !== undefined && testFiles !== undefined) {
+    return { error: "Pass either testFile or testFiles, not both." };
+  }
+  const requested =
+    testFiles ?? (testFile === undefined ? undefined : [testFile]);
+  if (requested?.length === 0) {
+    return { error: "testFiles must contain at least one spec." };
+  }
+  if (testLine !== undefined && requested?.length !== 1) {
+    return { error: "A test line requires exactly one spec file." };
+  }
+  const files = new Set<string>();
+  for (const file of requested ?? []) {
+    const normalized = normalizeRunTestFile(file);
+    if (!normalized) return { error: `Invalid test file: ${file}` };
+    files.add(normalized);
+  }
+  return { files: requested === undefined ? undefined : [...files] };
+}
+
 // Playwright treats each positional test argument as a regular expression
 // matched against the full test-file path, so a legitimate filename containing
 // regex metacharacters (e.g. `e2e-tests/checkout(legacy).spec.ts` or
@@ -113,6 +143,10 @@ export function normalizeRunTestFile(testFile: string): string | null {
 // appended outside the escaped portion — Playwright parses it separately.
 function escapeRegExpForSelector(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function exactTestFileSelector(appPath: string, file: string): string {
+  return `^${escapeRegExpForSelector(path.resolve(appPath, file))}$`;
 }
 
 function isNoTestsFoundOutput(output: string): boolean {
@@ -282,15 +316,17 @@ export interface RunAppTestsCoreOptions {
   /** Requires the auto fixture and serial execution for provider cleanup. */
   isolateTestCases?: boolean;
   appId: number;
-  /** When set, runs a single spec file (relative path); otherwise runs all. */
+  /** Panel single-file target. Omit both selectors to run the whole suite. */
   testFile?: string;
+  /** Selected spec files; omitted with testFile means the whole suite. */
+  testFiles?: string[];
   /**
    * When set (with testFile), runs only the test at this 1-based line via
    * Playwright's `file:line` selector. Used by the Tests panel's per-test Run.
    */
   testLine?: number;
   /**
-   * When set (with testFile), narrows the run to the tests whose title matches
+   * When set, narrows the selection to the tests whose title matches
    * this regex via Playwright's `-g`/`--grep`. Used by the agent's run_tests
    * tool to target a subset by name. Mutually exclusive with testLine.
    */
@@ -303,7 +339,7 @@ export interface RunAppTestsCoreOptions {
   /**
    * When true, runs the targeted tests in parallel by overriding the generated
    * config's serial defaults (`--fully-parallel --workers=N`). Lets a single
-   * file's independent tests run concurrently against the one dev server.
+   * selection's independent tests run concurrently against the one dev server.
    */
   parallel?: boolean;
   /**
@@ -322,8 +358,9 @@ export interface RunAppTestsCoreOptions {
   /** Aborts an in-flight bootstrap or run. */
   signal?: AbortSignal;
   /**
-   * Hard wall-clock cap (ms) for the Playwright process. Surfaces as a non-zero
-   * exit so it's classified as an infra failure rather than hanging. The panel
+   * Wall-clock cap (ms) for test execution, shared across preview processes.
+   * Surfaces as a non-zero exit so it's classified as an infra failure rather
+   * than hanging. The panel
    * leaves this unset (relies on Playwright's own per-test timeouts + Stop); the
    * agent tool sets it so one run_tests call can't stall the whole agent turn.
    */
@@ -352,16 +389,21 @@ export interface RunAppTestsCoreOptions {
 
 function appendRequestedTestTarget(
   args: string[],
-  normalizedTestFile: string | undefined,
+  appPath: string,
+  normalizedTestFiles: string[] | undefined,
   testLine: number | undefined,
 ): void {
-  if (normalizedTestFile) {
-    const escapedFile = escapeRegExpForSelector(normalizedTestFile);
-    args.push(
-      testLine && Number.isInteger(testLine) && testLine > 0
-        ? `${escapedFile}:${testLine}`
-        : escapedFile,
-    );
+  if (normalizedTestFiles) {
+    for (const file of normalizedTestFiles) {
+      // Select this exact path, including on Windows, without matching a
+      // similarly named extension or a nested e2e-tests directory.
+      const escapedFile = exactTestFileSelector(appPath, file);
+      args.push(
+        testLine && Number.isInteger(testLine) && testLine > 0
+          ? `${escapedFile}:${testLine}`
+          : escapedFile,
+      );
+    }
   } else {
     args.push(`${E2E_TEST_DIR}/`);
   }
@@ -390,7 +432,7 @@ async function runPreviewTestBatch({
   appId,
   appPath,
   baseUrl,
-  normalizedTestFile,
+  normalizedTestFiles,
   testLine,
   grep,
   slowMo,
@@ -406,7 +448,7 @@ async function runPreviewTestBatch({
   appId: number;
   appPath: string;
   baseUrl: string;
-  normalizedTestFile: string | undefined;
+  normalizedTestFiles: string[] | undefined;
   testLine: number | undefined;
   grep: string | undefined;
   slowMo: boolean | undefined;
@@ -459,7 +501,12 @@ async function runPreviewTestBatch({
   try {
     const discoveryReportPath = path.join(batchDir, "discovery.json");
     const discoveryArgs = ["test", "--config", DYAD_CONFIG_FILENAME];
-    appendRequestedTestTarget(discoveryArgs, normalizedTestFile, testLine);
+    appendRequestedTestTarget(
+      discoveryArgs,
+      appPath,
+      normalizedTestFiles,
+      testLine,
+    );
     if (grep) discoveryArgs.push("-g", grep);
     discoveryArgs.push("--list", "--reporter=json", "--trace=off");
 
@@ -579,7 +626,7 @@ async function runPreviewTestBatch({
 
       const args = ["test", "--config", DYAD_CONFIG_FILENAME];
       args.push(
-        `${escapeRegExpForSelector(target.file)}:${target.line}`,
+        `${exactTestFileSelector(appPath, target.file)}:${target.line}`,
         "-g",
         exactDiscoveredTitleGrep(target.file, target.fullTitle),
         "--reporter=list,json",
@@ -705,7 +752,7 @@ async function runPreviewTestBatch({
     failed,
     inconclusive,
     first_run: installed,
-    single_file: Boolean(normalizedTestFile),
+    single_file: normalizedTestFiles?.length === 1,
     parallel: false,
     slow_mo: Boolean(slowMo),
   });
@@ -722,6 +769,7 @@ export async function runAppTestsCore({
   isolateTestCases,
   appId,
   testFile,
+  testFiles,
   testLine,
   grep,
   headed,
@@ -743,18 +791,23 @@ export async function runAppTestsCore({
   const appPath = getDyadAppPath(app.path);
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
-  const normalizedTestFile =
-    testFile === undefined ? undefined : normalizeRunTestFile(testFile);
+  const selection = normalizeRunTestSelection({
+    testFile,
+    testFiles,
+    testLine,
+  });
 
   // Reject anything that doesn't look like one of our spec paths before it
   // reaches the Playwright CLI (the Zod schema only checks it's a string).
-  if (testFile !== undefined && !normalizedTestFile) {
+  if ("error" in selection) {
     return {
       appId,
       results: [],
-      infraError: { message: `Invalid test file: ${testFile}` },
+      infraError: { message: selection.error },
     };
   }
+
+  const normalizedTestFiles = selection.files;
 
   // Gate: the dev server must be running so baseURL resolves.
   const baseUrl = getRunningTestBaseUrl(appId);
@@ -825,7 +878,7 @@ export async function runAppTestsCore({
       appId,
       appPath,
       baseUrl,
-      normalizedTestFile: normalizedTestFile ?? undefined,
+      normalizedTestFiles,
       testLine,
       grep,
       slowMo,
@@ -859,7 +912,7 @@ export async function runAppTestsCore({
   // one that honors DYAD_TEST_BASE_URL, so it's passed explicitly rather than
   // Dyad taking over the canonical config name.
   const args = ["test", "--config", DYAD_CONFIG_FILENAME];
-  appendRequestedTestTarget(args, normalizedTestFile ?? undefined, testLine);
+  appendRequestedTestTarget(args, appPath, normalizedTestFiles, testLine);
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
   // the pattern can't be interpreted as a shell command or smuggle a flag.
@@ -1038,7 +1091,7 @@ export async function runAppTestsCore({
     failed,
     inconclusive,
     first_run: installed,
-    single_file: Boolean(testFile),
+    single_file: normalizedTestFiles?.length === 1,
     parallel: Boolean(parallel && !isolateTestCases),
     slow_mo: Boolean(slowMo),
   });
@@ -1055,6 +1108,7 @@ export interface RunTestsWithIsolationOptions {
   event: IpcMainInvokeEvent;
   appId: number;
   testFile?: string;
+  testFiles?: string[];
   testLine?: number;
   /** Regex passed to Playwright's `-g` to narrow the run (agent run_tests). */
   grep?: string;
@@ -1093,6 +1147,7 @@ export async function runAppTestsWithIsolation({
   event,
   appId,
   testFile,
+  testFiles,
   testLine,
   grep,
   headed,
@@ -1103,19 +1158,26 @@ export async function runAppTestsWithIsolation({
   externalSignal,
   preview,
 }: RunTestsWithIsolationOptions): Promise<RunAppTestsResult> {
-  const normalizedTestFile =
-    testFile === undefined ? undefined : normalizeRunTestFile(testFile);
+  const selection = normalizeRunTestSelection({
+    testFile,
+    testFiles,
+    testLine,
+  });
 
   // Reject an invalid target before the expensive isolation setup (Neon
   // branch creation, env swap, double dev-server restart) — the same check
   // in runAppTestsCore would otherwise only fire after all of it.
-  if (testFile !== undefined && !normalizedTestFile) {
+  if ("error" in selection) {
     return {
       appId,
       results: [],
-      infraError: { message: `Invalid test file: ${testFile}` },
+      infraError: { message: selection.error },
     };
   }
+
+  const normalizedTestFiles = selection.files;
+  const normalizedTestFile =
+    testFile === undefined ? undefined : normalizedTestFiles?.[0];
 
   // A recording session holds the same per-app lock and isolation; refuse to
   // run rather than queue invisibly behind it.
@@ -1206,7 +1268,8 @@ export async function runAppTestsWithIsolation({
       source,
       state,
       wasStopped: controller.signal.aborted,
-      testFile: normalizedTestFile ?? undefined,
+      testFile: normalizedTestFile,
+      testFiles: testFile === undefined ? normalizedTestFiles : undefined,
       testLine,
       grep,
       // Only `cleaning-up` carries this, and only so the UI can name the work
@@ -1236,7 +1299,8 @@ export async function runAppTestsWithIsolation({
     runId,
     source,
     state: "started",
-    testFile: normalizedTestFile ?? undefined,
+    testFile: normalizedTestFile,
+    testFiles: testFile === undefined ? normalizedTestFiles : undefined,
     testLine,
     grep,
     // What this run is, not what it requested. A refused preview has already
@@ -1276,7 +1340,8 @@ export async function runAppTestsWithIsolation({
       source,
       state: "preview-fallback",
       preview: true,
-      testFile: normalizedTestFile ?? undefined,
+      testFile: normalizedTestFile,
+      testFiles: testFile === undefined ? normalizedTestFiles : undefined,
       testLine,
       grep,
     });
@@ -1454,7 +1519,9 @@ export async function runAppTestsWithIsolation({
                   source,
                   state: "preview-fallback",
                   preview: true,
-                  testFile: normalizedTestFile ?? undefined,
+                  testFile: normalizedTestFile,
+                  testFiles:
+                    testFile === undefined ? normalizedTestFiles : undefined,
                   testLine,
                   grep,
                 });
@@ -1591,7 +1658,9 @@ export async function runAppTestsWithIsolation({
             }
             result = await runAppTestsCore({
               appId,
-              testFile: normalizedTestFile ?? undefined,
+              testFile: normalizedTestFile,
+              testFiles:
+                testFile === undefined ? normalizedTestFiles : undefined,
               testLine,
               grep,
               headed,
@@ -1620,7 +1689,9 @@ export async function runAppTestsWithIsolation({
                   source,
                   state: "preview-fallback",
                   preview: true,
-                  testFile: normalizedTestFile ?? undefined,
+                  testFile: normalizedTestFile,
+                  testFiles:
+                    testFile === undefined ? normalizedTestFiles : undefined,
                   testLine,
                   grep,
                 });
@@ -1737,7 +1808,8 @@ export async function runAppTestsWithIsolation({
       runId,
       source,
       state: "finished",
-      testFile: normalizedTestFile ?? undefined,
+      testFile: normalizedTestFile,
+      testFiles: testFile === undefined ? normalizedTestFiles : undefined,
       testLine,
       grep,
       results: source === "agent" ? finalResult.results : undefined,

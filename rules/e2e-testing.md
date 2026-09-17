@@ -100,6 +100,8 @@ await page.getByLabel("Vue").click();
 
 Changing an element's ARIA **role** is a breaking change for tests, even when the visible UI is identical. Page objects and Vitest integration tests look controls up by role — `getByRole("button", { name: "Connect to existing repo" })` appears in both `e2e-tests/helpers/page-objects/components/` and `src/ipc/handlers/__tests__/`. When consolidating duplicated controls into a shared component, grep for the labels first and budget for updating the selectors.
 
+A fake server that does not enforce what the real one enforces makes the spec unable to fail for the property it exists to prove. The fake GitLab served private repositories over git-over-HTTP without checking credentials, so the publish specs passed whether or not the host-bound auth header was built at all. When a fake stands in for a service Dyad authenticates against, make it reject the unauthenticated request — and only record a side effect (a push event, a created row) after the underlying command actually succeeds, or a test can assert an operation that was rejected.
+
 Let the semantics decide the role, not the selectors. A group of mutually exclusive options is a `radiogroup` of `radio`s; `aria-pressed` on buttons is for independent toggles, and is only a defensible shortcut for a segmented control when the churn is not worth it — say so in the code when you take it.
 
 ## Lexical editor in Playwright E2E tests

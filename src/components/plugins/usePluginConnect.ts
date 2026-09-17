@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { atom, useAtom } from "jotai";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
@@ -41,6 +41,18 @@ export function usePluginConnect() {
   const [connectFeedback, setConnectFeedback] = useAtom(connectFeedbackAtom);
 
   const callbackPort = useOauthCallbackPort();
+
+  // Permanently clear a stored discovery_failed once the affected server
+  // reports a successful discovery, so a later transient failure cannot
+  // resurface a stale "doesn't support OAuth" alert.
+  useEffect(() => {
+    if (
+      connectFeedback !== null &&
+      statusByServer[connectFeedback.serverId] === "ok"
+    ) {
+      setConnectFeedback(null);
+    }
+  }, [connectFeedback, statusByServer, setConnectFeedback]);
 
   const catalogQuery = useMcpCatalog();
   // Catalog slugs whose entries authenticate via a user-supplied key, so
@@ -214,6 +226,12 @@ export function usePluginConnect() {
   // on each read, so they clear as soon as discovery stops seeing a 401.
   const feedbackFor = (server: McpServer): ConnectFeedback | null => {
     if (connectFeedback && connectFeedback.serverId === server.id) {
+      // A discovery_failed alert means an OAuth flow failed. If live
+      // discovery has since succeeded (e.g. the user saved a working
+      // PAT header via the Headers editor while leaving OAuth enabled),
+      // the alert is stale — let the live status speak. Mirrors the
+      // auth kinds, which recompute from statusByServer on each read.
+      if (statusByServer[server.id] === "ok") return null;
       return connectFeedback;
     }
     if (!server.oauthEnabled && statusByServer[server.id] === "unauthorized") {

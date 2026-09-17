@@ -25,15 +25,15 @@ export function createChatScrollController(
   let disposed = false;
   let touchY: number | undefined;
   let draggingScrollbar = false;
-  let nestedAwayIntent = false;
   const position = () => ({
     top: scroller.scrollTop,
     height: scroller.scrollHeight,
     viewport: scroller.clientHeight,
   });
   let lastPosition = position();
-  const atBottom = () =>
-    scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 4;
+  const atBottom = (tolerance = 4) =>
+    scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <=
+    tolerance;
   const send = (event: ChatScrollEvent) => {
     if (disposed) return;
     const result = transition(state, event);
@@ -43,26 +43,28 @@ export function createChatScrollController(
     observeTransition?.(event, result);
     if (changed) onFollowingChange(next.type === "following");
   };
-  const observeNestedMovement = () => {
+  const observeUserMovement = () => {
     const current = position();
     // Passive input can arrive after compositor scrolling, and a touch gesture
     // stays latched to an inner card even after that card reaches its boundary.
-    // An inner gesture is chat-away intent only when the OUTER position moves
-    // upward. Exclude clamping caused by shrinking content/expanding viewport.
+    // Also cover selection/middle-button autoscroll and platform-specific keys:
+    // actual upward movement, not a growing bottom gap, signals reading intent.
+    // Exclude clamping caused by shrinking content/expanding viewport.
     if (
-      nestedAwayIntent &&
       current.top < lastPosition.top - 1 &&
       current.height >= lastPosition.height &&
       current.viewport <= lastPosition.viewport
     )
       send({ type: "user-away" });
+    const delta = current.top - lastPosition.top;
     lastPosition = current;
+    return delta;
   };
   const reconcile = () => {
     if (disposed || state.type !== "following" || frame !== undefined) return;
     frame = frames.request(() => {
       frame = undefined;
-      if (!disposed) observeNestedMovement();
+      if (!disposed) observeUserMovement();
       if (disposed || state.type !== "following" || scroller.clientHeight === 0)
         return;
       // Immediate positioning cannot chase a moving target like native smooth
@@ -72,14 +74,25 @@ export function createChatScrollController(
     });
   };
   const follow = () => {
-    nestedAwayIntent = false;
+    lastPosition = position();
     send({ type: "follow" });
     reconcile();
   };
   const pause = () => send({ type: "user-away" });
+  const pauseForUpwardInput = () => {
+    if (scroller.scrollHeight > scroller.clientHeight && scroller.scrollTop > 0)
+      pause();
+  };
   const onScroll = () => {
-    observeNestedMovement();
-    if (!draggingScrollbar) send({ type: "position", atBottom: atBottom() });
+    const delta = observeUserMovement();
+    const wasReading = state.type === "reading";
+    if (!draggingScrollbar) {
+      // A generous reattachment threshold only applies to downward movement;
+      // small deliberate upward movements must not immediately reattach.
+      const nearBottom = atBottom(delta > 0 ? 80 : 4);
+      send({ type: "position", atBottom: nearBottom });
+      if (wasReading && nearBottom) reconcile();
+    }
   };
   const hasNestedScroller = (target: EventTarget | null) => {
     for (
@@ -131,12 +144,11 @@ export function createChatScrollController(
   const onWheel = (event: WheelEvent) => {
     if (event.ctrlKey || event.defaultPrevented) return;
     if (hasNestedScroller(event.target)) {
-      if (event.deltaY < 0) nestedAwayIntent = true;
-      observeNestedMovement();
+      observeUserMovement();
       return;
     }
-    if (event.deltaY < 0) pause();
-    else if (event.deltaY > 0 && atBottom()) follow();
+    if (event.deltaY < 0) pauseForUpwardInput();
+    else if (event.deltaY > 0 && atBottom(80)) follow();
   };
   const onTouchStart = (event: TouchEvent) => {
     touchY = event.touches.length === 1 ? event.touches[0]?.clientY : undefined;
@@ -151,9 +163,8 @@ export function createChatScrollController(
       !event.defaultPrevented
     ) {
       if (hasNestedScroller(event.target)) {
-        nestedAwayIntent = true;
-        observeNestedMovement();
-      } else pause();
+        observeUserMovement();
+      } else pauseForUpwardInput();
     }
     touchY = y;
   };
@@ -192,10 +203,10 @@ export function createChatScrollController(
       ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
       (event.key === " " && event.shiftKey)
     )
-      pause();
+      pauseForUpwardInput();
     else if (
       ["ArrowDown", "PageDown", "End", " "].includes(event.key) &&
-      atBottom()
+      atBottom(80)
     )
       follow();
   };

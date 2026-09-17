@@ -100,6 +100,46 @@ describe("chat follow controller", () => {
     expect(h.scroller.scrollTop).toBe(2800);
   });
 
+  it("does not detach a short chat on ineffective wheel-up, then follows its growth", () => {
+    const h = setup();
+    h.grow(200);
+    h.flush();
+    h.scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+    h.grow(3000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(2800);
+    expect(h.onFollowing.mock.calls).toEqual([[true]]);
+  });
+
+  it("recognizes unenumerated upward scrolling but not layout clamping", () => {
+    const h = setup();
+    h.flush();
+    h.position(700); // Selection autoscroll has no preceding wheel/key event.
+    h.grow(2000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(700);
+    h.controller.follow();
+    h.flush();
+    h.grow(600);
+    h.position(400); // Native clamping after content shrink is not user intent.
+    h.flush();
+    h.grow(1000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(800);
+  });
+
+  it("resumes within 80px on downward movement without undoing a small upward gesture", () => {
+    const h = setup();
+    h.flush();
+    h.position(780);
+    expect(h.onFollowing).toHaveBeenLastCalledWith(false);
+    h.position(600);
+    h.position(740); // 60px short of bottom: deliberate downward return.
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(800);
+    expect(h.onFollowing).toHaveBeenLastCalledWith(true);
+  });
+
   it("does not treat editing a message input as scroll intent", () => {
     const h = setup();
     const input = document.createElement("textarea");

@@ -145,8 +145,9 @@ test("virtualized chat preserves keyboard scroll-away through completion", async
   await expect
     .poll(async () => Math.abs((await metrics(scroller)).top - reading.top))
     .toBeLessThan(5);
-  await po.page
-    .getByRole("button", { name: "Scroll to bottom", exact: true })
-    .click();
+  // Native downward scrolling should reattach even when the gesture stops
+  // slightly short of the bottom; this does not use the jump button.
+  await scroller.hover();
+  await po.page.mouse.wheel(0, (await metrics(scroller)).gap - 60);
   await expect.poll(async () => (await metrics(scroller)).gap).toBeLessThan(5);
 });

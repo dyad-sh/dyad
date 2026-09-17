@@ -42,15 +42,9 @@ import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { useChatStreamState } from "@/hooks/useChatStream";
-import {
-  useChatStreamManager,
-  useStreamFinished,
-} from "@/chat_stream/ChatStreamProvider";
-import {
-  isStreamActive,
-  selectStreamError,
-  streamInvocationRef,
-} from "@/chat_stream/transition";
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
+import { streamInvocationRef } from "@/chat_stream/transition";
+import { useChatScroll } from "./chat/scroll/useChatScroll";
 import { automaticChatScrollReason } from "./chatPanelScroll";
 import {
   useChatMessages,
@@ -114,43 +108,16 @@ export function ChatPanel({
     isQuotaExceeded;
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Tracks whether the user is at the bottom of the scroll container.
-  // Uses a ref so followOutput can read it without stale closures,
-  // and state for the scroll button UI which needs re-renders.
-  const isAtBottomRef = useRef(true);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-
-  const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = "smooth"): boolean => {
-      const messagesEnd = messagesEndRef.current;
-      if (!messagesEnd) {
-        return false;
-      }
-      messagesEnd.scrollIntoView({ behavior });
-      return true;
-    },
-    [],
-  );
-
-  // Called by Virtuoso's atBottomStateChange (production) or scroll handler (test mode).
-  // Pure position-based: no timeouts, no debounce.
-  const handleAtBottomChange = useCallback((atBottom: boolean) => {
-    isAtBottomRef.current = atBottom;
-    setShowScrollButton(!atBottom);
-  }, []);
-
-  const handleScrollButtonClick = useCallback(() => {
-    // Optimistically mark as at-bottom so followOutput resumes immediately
-    isAtBottomRef.current = true;
-    setShowScrollButton(false);
-    scrollToBottom("smooth");
-  }, [scrollToBottom]);
+  const {
+    scrollerRef,
+    contentRef,
+    onContentHeightChange,
+    scrollToBottom,
+    showScrollButton,
+  } = useChatScroll(chatId);
 
   // Scroll to bottom when a new stream starts (user sent a message)
   const streamOperationId = streamInvocationRef(streamState)?.operationId ?? "";
-  const streamError = selectStreamError(streamState);
   const isTerminalOpen = chatId
     ? (terminalOpenByChatId.get(chatId) ?? false)
     : false;
@@ -182,17 +149,7 @@ export function ChatPanel({
 
     if (reason === null) return;
 
-    isAtBottomRef.current = true;
-    setShowScrollButton(false);
-
-    // Wait for Virtuoso to render the selected chat or the new stream's
-    // placeholder before scrolling. Clearing an operation ID at completion is
-    // deliberately not a reason, so reading an older message is not disrupted.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom(reason === "stream-start" ? "smooth" : "instant");
-      });
-    });
+    scrollToBottom();
   }, [chatId, streamOperationId, messages.length, scrollToBottom]);
 
   useEffect(() => {
@@ -203,9 +160,6 @@ export function ChatPanel({
     ) {
       return;
     }
-
-    isAtBottomRef.current = true;
-    setShowScrollButton(false);
 
     // Wait for messages to render before scrolling. If the chat is loaded and
     // empty, there is nothing to scroll to, so clear the request instead of
@@ -222,36 +176,15 @@ export function ChatPanel({
       return;
     }
 
-    // Defer the scroll to after paint, but capture the RAF ids so a chat switch
-    // (which cleans up / re-runs this effect) cancels the pending scroll.
-    // scrollToBottom resolves the shared messagesEndRef at execution time, so
-    // an un-cancelled callback firing after a rapid switch would scroll whatever
-    // chat is now mounted. Clear the request only after the scroll actually
-    // runs, so the cleanup can't outrace the deferred scroll.
-    let innerRaf = 0;
-    const outerRaf = requestAnimationFrame(() => {
-      innerRaf = requestAnimationFrame(() => {
-        // The message list is unmounted while Version History is open. Keep the
-        // per-chat request queued until the list is visible and its end marker
-        // exists, then consume it after the scroll actually runs.
-        if (!scrollToBottom("instant")) {
-          return;
-        }
-        setScrollToBottomRequestedChatIds((prev) => {
-          if (!prev.has(chatId)) {
-            return prev;
-          }
-          const next = new Set(prev);
-          next.delete(chatId);
-          return next;
-        });
-      });
+    // The controller owns frame scheduling and cancels it on ref teardown.
+    // Retain requests while the message list is hidden.
+    if (!scrollToBottom()) return;
+    setScrollToBottomRequestedChatIds((prev) => {
+      if (!prev.has(chatId)) return prev;
+      const next = new Set(prev);
+      next.delete(chatId);
+      return next;
     });
-
-    return () => {
-      cancelAnimationFrame(outerRaf);
-      cancelAnimationFrame(innerRaf);
-    };
   }, [
     chatId,
     messages.length,
@@ -286,92 +219,6 @@ export function ChatPanel({
   useEffect(() => {
     fetchChatMessages();
   }, [fetchChatMessages]);
-
-  const isStreaming = isStreamActive(streamState);
-
-  // Scroll to bottom when streaming completes to ensure footer content is
-  // Keep the completed footer visible if the user was following the stream.
-  useStreamFinished(({ chatId: finishedChatId }) => {
-    if (finishedChatId !== chatId || !isAtBottomRef.current) return;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom("smooth");
-      });
-    });
-  });
-
-  // Keep footer actions (including Retry) visible when stream errors render below.
-  useEffect(() => {
-    if (!streamError) return;
-
-    const container = messagesContainerRef.current;
-    const distanceFromBottom = container
-      ? container.scrollHeight - (container.scrollTop + container.clientHeight)
-      : 0;
-    const isNearBottom = distanceFromBottom <= 220;
-    if (!isAtBottomRef.current && !isNearBottom) return;
-
-    let cancelled = false;
-    let firstRafId: number | undefined;
-    let secondRafId: number | undefined;
-    let timeoutId: number | undefined;
-
-    firstRafId = requestAnimationFrame(() => {
-      if (cancelled) return;
-      secondRafId = requestAnimationFrame(() => {
-        if (cancelled) return;
-        scrollToBottom("instant");
-        timeoutId = window.setTimeout(() => {
-          if (!cancelled) {
-            scrollToBottom("smooth");
-          }
-        }, 120);
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      if (firstRafId !== undefined) {
-        window.cancelAnimationFrame(firstRafId);
-      }
-      if (secondRafId !== undefined) {
-        window.cancelAnimationFrame(secondRafId);
-      }
-      if (timeoutId !== undefined) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [streamError, scrollToBottom]);
-
-  // Test mode only: Track scroll position to update isAtBottom state.
-  // In production, Virtuoso's atBottomStateChange handles this.
-  useEffect(() => {
-    if (!settings?.isTestMode) return;
-
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const distanceFromBottom =
-        container.scrollHeight - (container.scrollTop + container.clientHeight);
-      handleAtBottomChange(distanceFromBottom <= 80);
-    };
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [settings?.isTestMode, isVersionPaneOpen, handleAtBottomChange]);
-
-  // Test mode: Auto-scroll during streaming when user is at the bottom.
-  // In production, Virtuoso's followOutput handles this.
-  useEffect(() => {
-    if (!settings?.isTestMode) return;
-
-    if (isAtBottomRef.current && isStreaming) {
-      requestAnimationFrame(() => {
-        scrollToBottom("instant");
-      });
-    }
-  }, [messages, isStreaming, settings?.isTestMode, scrollToBottom]);
 
   const closeTerminal = useCallback(() => {
     if (!chatId) return;
@@ -435,8 +282,10 @@ export function ChatPanel({
                       chatId={chatId ?? null}
                       messages={messages}
                       messagesEndRef={messagesEndRef}
-                      ref={messagesContainerRef}
-                      onAtBottomChange={handleAtBottomChange}
+                      key={chatId}
+                      ref={scrollerRef}
+                      contentRef={contentRef}
+                      onContentHeightChange={onContentHeightChange}
                     />
 
                     {/* Scroll to bottom button */}
@@ -446,7 +295,8 @@ export function ChatPanel({
                           <TooltipTrigger
                             render={
                               <Button
-                                onClick={handleScrollButtonClick}
+                                onClick={scrollToBottom}
+                                aria-label={t("scrollToBottom")}
                                 size="icon"
                                 className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
                                 variant="outline"

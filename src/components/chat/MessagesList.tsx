@@ -36,7 +36,8 @@ interface MessagesListProps {
   chatId: number | null;
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  onAtBottomChange?: (atBottom: boolean) => void;
+  contentRef?: React.RefCallback<HTMLDivElement>;
+  onContentHeightChange?: () => void;
 }
 
 // Memoize ChatMessage at module level to prevent recreation on every render
@@ -582,10 +583,19 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       chatId: selectedChatId,
       messages: persistedMessages,
       messagesEndRef,
-      onAtBottomChange,
+      contentRef,
+      onContentHeightChange,
     },
     ref,
   ) {
+    const setScrollerRef = useCallback(
+      (element: HTMLElement | Window | null) => {
+        if (element instanceof Window) return;
+        if (typeof ref === "function") ref(element as HTMLDivElement | null);
+        else if (ref) ref.current = element as HTMLDivElement | null;
+      },
+      [ref],
+    );
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
     const {
@@ -759,39 +769,40 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           ref={ref}
           data-testid="messages-list"
         >
-          {messages.map((message, index) => {
-            const isLastMessage = index === messages.length - 1;
-            return (
-              <div className="px-4" key={message.id}>
-                <ChatMessage
-                  message={message}
-                  isLastMessage={isLastMessage}
-                  isCancelledPrompt={cancelledPromptIndices.has(index)}
-                />
-              </div>
-            );
-          })}
-          <FooterComponent context={footerContext} />
+          <div ref={contentRef}>
+            {messages.map((message, index) => {
+              const isLastMessage = index === messages.length - 1;
+              return (
+                <div className="px-4" key={message.id}>
+                  <ChatMessage
+                    message={message}
+                    isLastMessage={isLastMessage}
+                    isCancelledPrompt={cancelledPromptIndices.has(index)}
+                  />
+                </div>
+              );
+            })}
+            <FooterComponent context={footerContext} />
+          </div>
         </div>
       );
     }
 
     return (
       <div
-        className="absolute inset-0 overflow-y-auto p-4 pb-0 mb-2 pr-0"
-        ref={ref}
+        className="absolute inset-0 overflow-hidden p-4 pb-0 mb-2 pr-0"
         data-testid="messages-list"
       >
         <Virtuoso
+          scrollerRef={setScrollerRef}
+          totalListHeightChanged={onContentHeightChange}
           data={messages}
           increaseViewportBy={{ top: 1000, bottom: 500 }}
           initialTopMostItemIndex={messages.length - 1}
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}
-          atBottomThreshold={80}
-          atBottomStateChange={onAtBottomChange}
-          followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+          followOutput={false}
         />
       </div>
     );

@@ -43,6 +43,8 @@ export interface AppOperationRequest {
   appId: number;
   operation: string;
   resources: readonly (AppOperationResource | AppOperationAccess)[];
+  /** Cancel admission while queued. Once active, the callback owns cleanup. */
+  signal?: AbortSignal;
   /**
    * While this operation is active, later compatible work may pass an earlier
    * queued operation that is blocked exclusively by bypass-enabled active
@@ -87,6 +89,7 @@ interface PendingOperation {
   execute: () => Promise<unknown>;
   resolve: (result: unknown) => void;
   reject: (error: unknown) => void;
+  detachAbort: () => void;
 }
 
 interface BlockedOperation {
@@ -209,6 +212,9 @@ export class AppOperationCoordinator {
     request: AppOperationRequest,
     operation: () => Promise<Result>,
   ): Promise<Result> {
+    const cancelled = () =>
+      new DyadError("App operation cancelled", DyadErrorKind.UserCancelled);
+    if (request.signal?.aborted) return Promise.reject(cancelled());
     const state = this.getOrCreateState(request.appId);
     if (state.deletion) {
       return Promise.reject(
@@ -242,12 +248,24 @@ export class AppOperationCoordinator {
     if (block) return Promise.reject(block.error);
 
     return new Promise<Result>((resolve, reject) => {
-      state.queue.push({
+      const onAbort = () => {
+        const index = state.queue.indexOf(pending);
+        if (index < 0) return;
+        state.queue.splice(index, 1);
+        pending.detachAbort();
+        reject(cancelled());
+        this.pump(request.appId, state);
+      };
+      const pending: PendingOperation = {
         request: normalizedRequest,
         execute: operation,
         resolve: (result) => resolve(result as Result),
         reject,
-      });
+        detachAbort: () =>
+          request.signal?.removeEventListener("abort", onAbort),
+      };
+      request.signal?.addEventListener("abort", onAbort, { once: true });
+      state.queue.push(pending);
       this.pump(request.appId, state);
     });
   }
@@ -406,6 +424,7 @@ export class AppOperationCoordinator {
     const readySet = new Set(ready);
     state.queue = state.queue.filter((pending) => !readySet.has(pending));
     for (const pending of ready) {
+      pending.detachAbort();
       state.active.add(pending);
       void Promise.resolve()
         .then(pending.execute)

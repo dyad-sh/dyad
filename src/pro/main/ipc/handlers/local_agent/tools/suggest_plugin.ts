@@ -79,11 +79,15 @@ interface PluginRow {
   oauthState: string | null;
 }
 
-const PLUGIN_ROW_COLUMNS = {
-  catalogSlug: mcpServers.catalogSlug,
-  enabled: mcpServers.enabled,
-  oauthState: mcpServers.oauthState,
-};
+// Built on use rather than at import, so loading this module never
+// depends on the schema being fully available.
+function pluginRowColumns() {
+  return {
+    catalogSlug: mcpServers.catalogSlug,
+    enabled: mcpServers.enabled,
+    oauthState: mcpServers.oauthState,
+  };
+}
 
 // The OAuth column holds the client registration before any token exists,
 // so only a stored access token counts as authorized.
@@ -104,7 +108,7 @@ async function isPluginUsable(
   oauthRequired: boolean,
 ): Promise<boolean> {
   const rows = await db
-    .select(PLUGIN_ROW_COLUMNS)
+    .select(pluginRowColumns())
     .from(mcpServers)
     .where(eq(mcpServers.catalogSlug, slug));
   return isUsable(rows[0], oauthRequired);
@@ -147,7 +151,7 @@ export async function collectSuggestablePlugins({
   const entries = await readCatalog(cachedOnly);
   if (entries.length === 0) return [];
   const rows: PluginRow[] = await db
-    .select(PLUGIN_ROW_COLUMNS)
+    .select(pluginRowColumns())
     .from(mcpServers)
     .where(isNotNull(mcpServers.catalogSlug));
   const rowBySlug = new Map(rows.map((row) => [row.catalogSlug, row]));

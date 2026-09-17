@@ -1171,19 +1171,17 @@ export async function handleLocalAgentStream(
     // suggest_plugin.isEnabled and its description read this during the
     // build. Only writable root turns can offer plugins: Ask and Plan filter
     // the tool out anyway, and Build mode has no MCP tools to gain. A user
-    // who turned the tool off skips the catalog read entirely.
-    if (
-      !buildMode &&
-      !readOnly &&
-      !planModeOnly &&
-      getAgentToolConsent("suggest_plugin") !== "never"
-    ) {
+    // who turned the tool off skips the catalog read entirely. Suggestions
+    // are optional, so nothing in here may fail the turn.
+    if (!buildMode && !readOnly && !planModeOnly) {
       try {
-        ctx.suggestablePlugins = await collectSuggestablePlugins({
-          chatId: chat.id,
-        });
+        if (getAgentToolConsent("suggest_plugin") !== "never") {
+          ctx.suggestablePlugins = await collectSuggestablePlugins({
+            chatId: chat.id,
+          });
+        }
       } catch (e) {
-        logger.warn("Failed to collect suggestable MCP servers", e);
+        logger.warn("Failed to collect suggestable plugins", e);
       }
     }
     // search_mcp_tools.isEnabled reads this during the build, so set it up front

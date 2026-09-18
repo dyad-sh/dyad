@@ -195,7 +195,7 @@ import {
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
 import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
-import { toRendererMessage } from "../utils/renderer_chat_message";
+import { toRendererMessages } from "../utils/renderer_chat_message";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -1854,7 +1854,7 @@ ${componentSnippet}
         chatId: req.chatId,
         invocationRef: req.invocationRef,
         streamId: req.streamId,
-        messages: updatedChat.messages.map(toRendererMessage),
+        messages: toRendererMessages(updatedChat.messages),
       } satisfies ChatStreamChunkPayload);
 
       let fullResponse = "";
@@ -3143,7 +3143,7 @@ This conversation includes one or more image attachments. When the user uploads 
             chatId: req.chatId,
             invocationRef: req.invocationRef,
             streamId: req.streamId,
-            messages: chat!.messages.map(toRendererMessage),
+            messages: toRendererMessages(chat!.messages),
           } satisfies ChatStreamChunkPayload);
 
           if (status.error) {

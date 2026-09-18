@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
 import type { AgentContext } from "./tools/types";
+import { buildCompactionBlock } from "@/ipc/handlers/compaction/compaction_utils";
+import {
+  toRendererMessages,
+  type RendererMessageRow,
+} from "@/ipc/utils/renderer_chat_message";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -3311,174 +3316,195 @@ describe("handleLocalAgentStream", () => {
       },
     );
 
-    it("should compact between steps when token usage crosses threshold", async () => {
-      // Arrange
-      const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
-      const t0 = new Date("2025-01-01T00:00:00Z");
-      const t1 = new Date("2025-01-01T00:01:00Z");
-      const t2 = new Date("2025-01-01T00:02:00Z");
-      const t3 = new Date("2025-01-01T00:03:00Z");
-      mockChatData = buildTestChat({
-        messages: [
-          { id: 1, role: "user", content: "old context user", createdAt: t0 },
-          {
-            id: 2,
-            role: "assistant",
-            content: "old context assistant",
-            createdAt: t1,
-          },
-          { id: 3, role: "user", content: "current task", createdAt: t2 },
-          { id: 10, role: "assistant", content: "", createdAt: t3 }, // placeholder
-        ],
-      });
-
-      mockIsChatPendingCompaction
-        .mockResolvedValueOnce(false) // pre-turn check
-        .mockResolvedValueOnce(true) // mid-turn check
-        .mockResolvedValue(false);
-      mockCheckAndMarkForCompaction.mockResolvedValue(true);
-      mockPerformCompaction.mockImplementation(async () => {
-        if (!mockChatData) {
-          return { success: false, error: "missing chat" };
-        }
-        mockChatData = {
-          ...mockChatData,
+    it.each(["mid-turn summary", "", "  \n  "])(
+      "compacts between steps with summary %j and matches reloaded display",
+      async (summary) => {
+        // Arrange
+        const { event, getMessagesByChannel } = createFakeEvent();
+        mockSettings = buildTestSettings({ enableDyadPro: true });
+        const t0 = new Date("2025-01-01T00:00:00Z");
+        const t1 = new Date("2025-01-01T00:01:00Z");
+        const t2 = new Date("2025-01-01T00:02:00Z");
+        const t3 = new Date("2025-01-01T00:03:00Z");
+        mockChatData = buildTestChat({
           messages: [
-            ...mockChatData.messages,
+            { id: 1, role: "user", content: "old context user", createdAt: t0 },
             {
-              id: 20,
+              id: 2,
               role: "assistant",
-              content:
-                '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
-              isCompactionSummary: true,
-              createdAt: new Date("2025-01-01T00:03:30Z"),
+              content: "old context assistant",
+              createdAt: t1,
             },
+            { id: 3, role: "user", content: "current task", createdAt: t2 },
+            { id: 10, role: "assistant", content: "", createdAt: t3 }, // placeholder
           ],
-        } as any;
-        return {
-          success: true,
-          summary: "mid-turn summary",
-          backupPath: ".dyad/chats/1/compaction-test.md",
+        });
+
+        mockIsChatPendingCompaction
+          .mockResolvedValueOnce(false) // pre-turn check
+          .mockResolvedValueOnce(true) // mid-turn check
+          .mockResolvedValue(false);
+        mockCheckAndMarkForCompaction.mockResolvedValue(true);
+        mockPerformCompaction.mockImplementation(async () => {
+          if (!mockChatData) {
+            return { success: false, error: "missing chat" };
+          }
+          mockChatData = {
+            ...mockChatData,
+            messages: [
+              ...mockChatData.messages,
+              {
+                id: 20,
+                role: "assistant",
+                content: buildCompactionBlock(summary),
+                isCompactionSummary: true,
+                createdAt: new Date("2025-01-01T00:03:30Z"),
+              },
+            ],
+          } as any;
+          return {
+            success: true,
+            summary,
+            backupPath: ".dyad/chats/1/compaction-test.md",
+          };
+        });
+
+        let secondStepPreparedMessages: any[] | undefined;
+        mockStreamTextImpl = (options) => {
+          const firstStepMessages = [
+            { role: "user", content: "old context user" },
+            { role: "assistant", content: "old context assistant" },
+            { role: "user", content: "current task" },
+          ];
+
+          return {
+            fullStream: (async function* () {
+              await options.prepareStep?.({
+                messages: firstStepMessages,
+                stepNumber: 0,
+                steps: [],
+                model: {},
+                experimental_context: undefined,
+              });
+
+              yield { type: "text-delta", text: "before-compaction\n" };
+
+              await options.onStepFinish?.({
+                usage: { totalTokens: 200_000 },
+                toolCalls: [{}],
+              });
+
+              const secondStepMessages = [
+                ...firstStepMessages,
+                { role: "assistant", content: "tool state assistant" },
+                { role: "assistant", content: "tool state result" },
+              ];
+              const preparedSecondStep = (await options.prepareStep?.({
+                messages: secondStepMessages,
+                stepNumber: 1,
+                steps: [],
+                model: {},
+                experimental_context: undefined,
+              })) ?? { messages: secondStepMessages };
+
+              secondStepPreparedMessages = preparedSecondStep.messages;
+              yield { type: "text-delta", text: "done" };
+            })(),
+            response: Promise.resolve({ messages: [] }),
+            steps: Promise.resolve([]),
+          };
         };
-      });
 
-      let secondStepPreparedMessages: any[] | undefined;
-      mockStreamTextImpl = (options) => {
-        const firstStepMessages = [
-          { role: "user", content: "old context user" },
-          { role: "assistant", content: "old context assistant" },
-          { role: "user", content: "current task" },
-        ];
+        // Act
+        await handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "test" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        );
 
-        return {
-          fullStream: (async function* () {
-            await options.prepareStep?.({
-              messages: firstStepMessages,
-              stepNumber: 0,
-              steps: [],
-              model: {},
-              experimental_context: undefined,
-            });
-
-            yield { type: "text-delta", text: "before-compaction\n" };
-
-            await options.onStepFinish?.({
-              usage: { totalTokens: 200_000 },
-              toolCalls: [{}],
-            });
-
-            const secondStepMessages = [
-              ...firstStepMessages,
-              { role: "assistant", content: "tool state assistant" },
-              { role: "assistant", content: "tool state result" },
-            ];
-            const preparedSecondStep = (await options.prepareStep?.({
-              messages: secondStepMessages,
-              stepNumber: 1,
-              steps: [],
-              model: {},
-              experimental_context: undefined,
-            })) ?? { messages: secondStepMessages };
-
-            secondStepPreparedMessages = preparedSecondStep.messages;
-            yield { type: "text-delta", text: "done" };
-          })(),
-          response: Promise.resolve({ messages: [] }),
-          steps: Promise.resolve([]),
-        };
-      };
-
-      // Act
-      await handleLocalAgentStream(
-        event,
-        { chatId: 1, prompt: "test" },
-        new AbortController(),
-        {
-          placeholderMessageId: 10,
-          systemPrompt: "You are helpful",
+        // Assert
+        expect(mockCheckAndMarkForCompaction).toHaveBeenCalledWith(1, 200_000);
+        expect(mockPerformCompaction).toHaveBeenCalledTimes(1);
+        expect(mockPerformCompaction).toHaveBeenCalledWith(
+          expect.anything(),
+          1,
+          "/mock/apps/test-app-path",
           dyadRequestId,
-        },
-      );
+          expect.any(Function),
+          {
+            createdAtStrategy: "now",
+            abortSignal: expect.any(AbortSignal),
+            settingsOverride: expect.any(Object),
+          },
+        );
+        expect(secondStepPreparedMessages).toBeDefined();
 
-      // Assert
-      expect(mockCheckAndMarkForCompaction).toHaveBeenCalledWith(1, 200_000);
-      expect(mockPerformCompaction).toHaveBeenCalledTimes(1);
-      expect(mockPerformCompaction).toHaveBeenCalledWith(
-        expect.anything(),
-        1,
-        "/mock/apps/test-app-path",
-        dyadRequestId,
-        expect.any(Function),
-        {
-          createdAtStrategy: "now",
-          abortSignal: expect.any(AbortSignal),
-          settingsOverride: expect.any(Object),
-        },
-      );
-      expect(secondStepPreparedMessages).toBeDefined();
+        const secondStepContents = (secondStepPreparedMessages ?? []).map(
+          (msg: any) =>
+            typeof msg.content === "string"
+              ? msg.content
+              : JSON.stringify(msg.content),
+        );
 
-      const secondStepContents = (secondStepPreparedMessages ?? []).map(
-        (msg: any) =>
-          typeof msg.content === "string"
-            ? msg.content
-            : JSON.stringify(msg.content),
-      );
+        expect(
+          secondStepContents.some((content: string) =>
+            content.includes("Conversation compacted"),
+          ),
+        ).toBe(true);
+        expect(secondStepContents).not.toContain("old context user");
+        expect(secondStepContents).not.toContain("old context assistant");
+        expect(secondStepContents).toContain("tool state assistant");
+        expect(secondStepContents).toContain("tool state result");
 
-      expect(
-        secondStepContents.some((content: string) =>
-          content.includes("Conversation compacted"),
-        ),
-      ).toBe(true);
-      expect(secondStepContents).not.toContain("old context user");
-      expect(secondStepContents).not.toContain("old context assistant");
-      expect(secondStepContents).toContain("tool state assistant");
-      expect(secondStepContents).toContain("tool state result");
+        const contentUpdates = dbOperations.updates.filter(
+          (u) => u.data.content !== undefined,
+        );
+        const finalContent = contentUpdates[contentUpdates.length - 1].data
+          .content as string;
+        const beforeCompactionIndex = finalContent.indexOf("before-compaction");
+        const compactionIndex = finalContent.indexOf("Conversation compacted");
+        const doneIndex = finalContent.indexOf("done");
+        const backupPathIndex = finalContent.indexOf(
+          ".dyad/chats/1/compaction-test.md",
+        );
 
-      const contentUpdates = dbOperations.updates.filter(
-        (u) => u.data.content !== undefined,
-      );
-      const finalContent = contentUpdates[contentUpdates.length - 1].data
-        .content as string;
-      const beforeCompactionIndex = finalContent.indexOf("before-compaction");
-      const compactionIndex = finalContent.indexOf("Conversation compacted");
-      const doneIndex = finalContent.indexOf("done");
-      const backupPathIndex = finalContent.indexOf(
-        ".dyad/chats/1/compaction-test.md",
-      );
+        expect(beforeCompactionIndex).toBeGreaterThanOrEqual(0);
+        expect(compactionIndex).toBeGreaterThan(beforeCompactionIndex);
+        expect(backupPathIndex).toBeGreaterThan(compactionIndex);
+        expect(doneIndex).toBeGreaterThan(compactionIndex);
 
-      expect(beforeCompactionIndex).toBeGreaterThanOrEqual(0);
-      expect(compactionIndex).toBeGreaterThan(beforeCompactionIndex);
-      expect(backupPathIndex).toBeGreaterThan(compactionIndex);
-      expect(doneIndex).toBeGreaterThan(compactionIndex);
-
-      const chunkMessages = getMessagesByChannel("chat:response:chunk");
-      const streamedMessageIds = chunkMessages.flatMap((message) => {
-        const payload = message.args[0] as { messages?: Array<{ id: number }> };
-        return (payload.messages ?? []).map((msg) => msg.id);
-      });
-      expect(streamedMessageIds).not.toContain(20);
-    });
+        const chunkMessages = getMessagesByChannel("chat:response:chunk");
+        const streamedMessageIds = chunkMessages.flatMap((message) => {
+          const payload = message.args[0] as {
+            messages?: Array<{ id: number }>;
+          };
+          return (payload.messages ?? []).map((msg) => msg.id);
+        });
+        expect(streamedMessageIds).not.toContain(20);
+        const reloaded = toRendererMessages(
+          (mockChatData!.messages as RendererMessageRow[]).map((message) =>
+            message.id === 10 ? { ...message, content: finalContent } : message,
+          ),
+        );
+        expect(reloaded.map((message) => message.id)).not.toContain(20);
+        const fullChunks = chunkMessages
+          .map(
+            (message) =>
+              message.args[0] as { messages?: Array<{ id: number }> },
+          )
+          .filter((chunk) => chunk.messages);
+        expect(
+          fullChunks[fullChunks.length - 1]?.messages?.map(
+            (message) => message.id,
+          ),
+        ).toEqual(reloaded.map((message) => message.id));
+      },
+    );
 
     it("compacts before the next step when a tool error projects usage over the threshold", async () => {
       const { event } = createFakeEvent();

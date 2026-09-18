@@ -159,7 +159,10 @@ import {
   performCompaction,
   checkAndMarkForCompaction,
 } from "@/ipc/handlers/compaction/compaction_handler";
-import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
+import {
+  buildCompactionBlock,
+  getPostCompactionMessages,
+} from "@/ipc/handlers/compaction/compaction_utils";
 import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -172,7 +175,7 @@ import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
 import { userInputRegistry } from "@/user_input/main";
 import {
-  toRendererMessage,
+  toRendererMessages,
   type RendererMessageRow,
 } from "@/ipc/utils/renderer_chat_message";
 
@@ -515,35 +518,6 @@ function injectReferencedAppsReminder(
   }
 }
 
-function getMidTurnCompactionSummaryIds(
-  chatMessages: Array<{
-    id: number;
-    role: string;
-    createdAt: Date;
-    isCompactionSummary: boolean | null;
-  }>,
-): Set<number> {
-  const hiddenIds = new Set<number>();
-
-  for (const summary of chatMessages.filter((m) => m.isCompactionSummary)) {
-    const triggeringUserMessage = [...chatMessages]
-      .filter((m) => m.role === "user" && m.id < summary.id)
-      .sort((a, b) => b.id - a.id)[0];
-
-    if (!triggeringUserMessage) {
-      continue;
-    }
-
-    if (
-      summary.createdAt.getTime() >= triggeringUserMessage.createdAt.getTime()
-    ) {
-      hiddenIds.add(summary.id);
-    }
-  }
-
-  return hiddenIds;
-}
-
 function getMessageText(message: ModelMessage): string {
   if (typeof message.content === "string") {
     return message.content;
@@ -715,9 +689,6 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to persist compaction fallback history:", error);
     }
   };
-  // Mid-turn compaction inserts a DB summary row for LLM history, but we render
-  // the user-facing compaction indicator inline in the active assistant turn.
-  const hiddenMessageIdsForStreaming = new Set<number>();
   // Convenience wrapper that binds the stream-invariant context args so call
   // sites only pass the two things that vary: the current response content and
   // whether to send the full messages array.
@@ -733,7 +704,6 @@ export async function handleLocalAgentStream(
       chat,
       response,
       placeholderMessageId,
-      hiddenMessageIdsForStreaming,
       fullMessages,
       lastSentRef,
     );
@@ -769,11 +739,7 @@ export async function handleLocalAgentStream(
     summary?: string,
     backupPath?: string,
   ) => {
-    const summaryText =
-      summary && summary.trim().length > 0
-        ? summary
-        : "Conversation compacted.";
-    const inlineCompaction = `<dyad-compaction title="Conversation compacted" state="finished">\n${escapeXmlContent(summaryText)}\n</dyad-compaction>`;
+    const inlineCompaction = buildCompactionBlock(summary);
     const backupPathNote = backupPath
       ? `\nIf you need to retrieve earlier parts of the conversation history, you can read the backup file at: ${backupPath}\nNote: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.`
       : "";
@@ -838,10 +804,6 @@ export async function handleLocalAgentStream(
       : await resolveDefaultModelSelection(storedSettings);
   settings = { ...storedSettings, selectedModel };
 
-  for (const id of getMidTurnCompactionSummaryIds(chat.messages)) {
-    hiddenMessageIdsForStreaming.add(id);
-  }
-
   const appPath = getDyadAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
@@ -856,11 +818,6 @@ export async function handleLocalAgentStream(
     }
 
     logger.info(`Performing pending compaction for chat ${req.chatId}`);
-    const existingCompactionSummaryIds = new Set(
-      chat.messages
-        .filter((message) => message.isCompactionSummary)
-        .map((message) => message.id),
-    );
     const compactionResult = await performCompaction(
       event,
       req.chatId,
@@ -911,14 +868,6 @@ export async function handleLocalAgentStream(
       }
 
       if (options?.showOnTopOfCurrentResponse) {
-        for (const message of chat.messages) {
-          if (
-            message.isCompactionSummary &&
-            !existingCompactionSummaryIds.has(message.id)
-          ) {
-            hiddenMessageIdsForStreaming.add(message.id);
-          }
-        }
         await appendInlineCompactionToTurn(
           compactionResult.summary,
           compactionResult.backupPath,
@@ -2673,22 +2622,21 @@ function sendResponseChunk(
   chat: any,
   fullResponse: string,
   placeholderMessageId: number,
-  hiddenMessageIds: Set<number> | undefined,
   /** When true, sends the full messages array instead of an incremental update */
   sendFullMessages: boolean | undefined,
   /** Mutable ref tracking the renderer's last seen placeholder content. */
   lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
-    const currentMessages = (chat.messages as RendererMessageRow[])
-      .filter((message) => !hiddenMessageIds?.has(message.id))
-      .map(toRendererMessage);
-    const placeholderMsg = currentMessages.find(
-      (m) => m.id === placeholderMessageId,
+    // Project the live placeholder before filtering, since chat was loaded
+    // before the inline compaction indicator was persisted.
+    const currentMessages = toRendererMessages(
+      (chat.messages as RendererMessageRow[]).map((message) =>
+        message.id === placeholderMessageId
+          ? { ...message, content: fullResponse }
+          : message,
+      ),
     );
-    if (placeholderMsg) {
-      placeholderMsg.content = fullResponse;
-    }
     sendChatChunk(event.sender, {
       chatId,
       invocationRef,
@@ -2719,7 +2667,6 @@ function sendResponseChunk(
         chat,
         fullResponse,
         placeholderMessageId,
-        hiddenMessageIds,
         true,
         lastSentRef,
       );

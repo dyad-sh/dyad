@@ -94,7 +94,8 @@ describe("buildPreviewShimSource", () => {
 
   it("stays inert unless Dyad hands it an endpoint", () => {
     expect(source).toContain(`process.env.${PREVIEW_CDP_ENDPOINT_ENV}`);
-    expect(source).toContain("!endpoint\n  ? pw.test");
+    expect(source).toContain("!endpoint\n  ? isolatedTest");
+    expect(source).toContain("!caseEndpoint ? pw.test");
   });
 
   it("attaches a screenshot of the page under test, not of Dyad", () => {
@@ -190,6 +191,8 @@ describe("preview shim fixtures", () => {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     new Function("require", "module", "exports", "process", code)(
       (specifier: string) => {
+        if (specifier === "node:crypto")
+          return { randomUUID: () => "test-case-id" };
         if (specifier !== "@playwright/test") {
           throw new Error(`Unexpected import in the shim: ${specifier}`);
         }
@@ -1125,6 +1128,51 @@ describe("ensurePlaywrightBootstrap", () => {
     ).resolves.toMatchObject({ installed: false, previewRouted: true });
     expect(h.spawnStreaming).not.toHaveBeenCalled();
   });
+
+  it("installs the browser for isolated headless tests even though they use the shim", async () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: false,
+    });
+    fs.writeFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      'export default { testDir: "./e2e-tests" };\n',
+    );
+    h.spawnStreaming.mockResolvedValue({ code: 0, aborted: false });
+    await expect(
+      ensurePlaywrightBootstrap({ appPath, isolateTestCases: true }),
+    ).resolves.toMatchObject({ installed: true, previewRouted: true });
+    expect(h.spawnStreaming).toHaveBeenCalledWith(
+      expect.objectContaining({ args: ["playwright", "install", "chromium"] }),
+    );
+  });
+
+  it.each(["custom shim", "unrouted tsconfig"])(
+    "refuses database-isolated tests with a %s",
+    async (customization) => {
+      const { appPath } = makeAppWithBrowserMarker({
+        packageVersion: "1.2.3",
+        executableExists: true,
+      });
+      const filePath = path.join(
+        appPath,
+        customization === "custom shim"
+          ? PREVIEW_SHIM_RELATIVE_PATH
+          : E2E_TSCONFIG_RELATIVE_PATH,
+      );
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      const content =
+        customization === "custom shim"
+          ? 'export { test } from "@playwright/test";\n'
+          : '{ "compilerOptions": {} }';
+      fs.writeFileSync(filePath, content);
+      await expect(
+        ensurePlaywrightBootstrap({ appPath, isolateTestCases: true }),
+      ).rejects.toThrow(/fixture|path mapping/);
+      expect(fs.readFileSync(filePath, "utf8")).toBe(content);
+      expect(h.spawnStreaming).not.toHaveBeenCalled();
+    },
+  );
 
   it("still downloads a browser when preview routing falls back", async () => {
     const { appPath } = makeAppWithBrowserMarker({

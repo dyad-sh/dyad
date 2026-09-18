@@ -15,6 +15,10 @@ import {
   resolveNodeModulePackageJsonPathSync,
 } from "../../../shared/node_module_resolution";
 import { E2E_TEST_DIR, TEST_SPEC_GLOB } from "../types/tests";
+import {
+  TEST_CASE_ENDPOINT_ENV,
+  TEST_CASE_TOKEN_ENV,
+} from "../services/test_case_lifecycle_server";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -415,21 +419,54 @@ ${PREVIEW_RECORDER_CONFIG_LINES}
  * pnpm and Yarn keep it out of the app's top-level `node_modules` and the
  * import fails to resolve.
  *
- * Without the endpoint env var it re-exports Playwright's own `test` verbatim,
- * so normal runs are unaffected.
+ * Without either endpoint it re-exports Playwright's own `test` verbatim.
  */
 export function buildPreviewShimSource(): string {
   return `// ${DYAD_CONFIG_SENTINEL}. Do not edit — Dyad regenerates this file.
 //
 // Lets a headed run drive the page already open in Dyad's preview panel
-// instead of launching a separate browser. Inert unless Dyad sets
-// ${PREVIEW_CDP_ENDPOINT_ENV}, so ordinary test runs behave exactly as before.
+// instead of launching a separate browser, and isolates database data around
+// each test case when Dyad supplies a test-case lifecycle endpoint.
 import * as pw from "@playwright/test";
+import { randomUUID } from "node:crypto";
 
 export * from "@playwright/test";
 
 const endpoint = process.env.${PREVIEW_CDP_ENDPOINT_ENV};
 const cdpToken = process.env.${PREVIEW_CDP_TOKEN_ENV};
+const caseEndpoint = process.env.${TEST_CASE_ENDPOINT_ENV};
+const caseToken = process.env.${TEST_CASE_TOKEN_ENV};
+const credentialKeys = [
+  "DYAD_TEST_USER_EMAIL", "DYAD_TEST_USER_PASSWORD",
+  "DYAD_TEST_SUPABASE_URL", "DYAD_TEST_SUPABASE_ANON_KEY",
+];
+
+async function caseRequest(phase: "before" | "after", id: string) {
+  const response = await fetch(\`\${caseEndpoint}/\${phase}/\${id}\`, {
+    method: "POST",
+    headers: { Authorization: \`Bearer \${caseToken}\` },
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!response.ok) throw new Error("Dyad couldn't prepare or clean up isolated test data.");
+  return await response.json() as Record<string, string>;
+}
+
+const isolatedTest = !caseEndpoint ? pw.test : pw.test.extend<{ _dyadTestCase: void }>({
+  _dyadTestCase: [async ({}, use) => {
+    const id = randomUUID();
+    for (const key of credentialKeys) delete process.env[key];
+    try {
+      const credentials = await caseRequest("before", id);
+      for (const key of credentialKeys) {
+        if (credentials[key]) process.env[key] = credentials[key];
+      }
+      await use();
+    } finally {
+      for (const key of credentialKeys) delete process.env[key];
+      await caseRequest("after", id);
+    }
+  }, { auto: true, timeout: 150_000 }],
+});
 // No browser is launched here, so the config's \`launchOptions.slowMo\` never
 // applies — the connection carries it instead.
 const slowMo = Number(process.env.${TEST_SLOW_MO_ENV}) || 0;
@@ -514,8 +551,8 @@ async function ensurePreviewBetterAuthSession({
 }
 
 export const test = !endpoint
-  ? pw.test
-  : pw.test.extend({
+  ? isolatedTest
+  : isolatedTest.extend({
       browser: [
         async ({}, use) => {
           if (!cdpToken) {
@@ -979,13 +1016,25 @@ export function refreshGeneratedE2eTsconfig(appPath: string): void {
   );
 }
 
-export function ensurePreviewShim(appPath: string): { warning?: string } {
+export function ensurePreviewShim(
+  appPath: string,
+  isolateTestCases = false,
+): { warning?: string } {
   // Only the files this run actually generated get a gitignore rule; see
   // PREVIEW_GITIGNORE_ENTRIES.
   const generatedEntries: string[] = [];
 
   const shimPath = path.join(appPath, PREVIEW_SHIM_RELATIVE_PATH);
   const existingShim = readFileOrNull(shimPath);
+  if (
+    isolateTestCases &&
+    existingShim !== null &&
+    !existingShim.includes(DYAD_CONFIG_SENTINEL)
+  ) {
+    return {
+      warning: `Per-test isolation requires Dyad's generated fixture. Move your customized ${PREVIEW_SHIM_RELATIVE_PATH} aside so Dyad can regenerate it.\n`,
+    };
+  }
   if (existingShim === null || existingShim.includes(DYAD_CONFIG_SENTINEL)) {
     fs.mkdirSync(path.dirname(shimPath), { recursive: true });
     fs.writeFileSync(shimPath, buildPreviewShimSource());
@@ -1507,6 +1556,7 @@ export async function ensurePlaywrightBootstrap({
   signal,
   onOutput,
   ensurePreviewShim: writePreviewShim,
+  isolateTestCases,
 }: {
   appPath: string;
   signal?: AbortSignal;
@@ -1517,6 +1567,8 @@ export async function ensurePlaywrightBootstrap({
    * changes how their editor resolves `@playwright/test`.
    */
   ensurePreviewShim?: boolean;
+  /** Install the automatic database lifecycle fixture for every case/retry. */
+  isolateTestCases?: boolean;
 }): Promise<{ installed: boolean; previewRouted: boolean }> {
   // Yarn Plug'n'Play has no node_modules, so the installed-check below and the
   // direct Playwright CLI runner can't work with it: every run would reinstall
@@ -1595,14 +1647,17 @@ export async function ensurePlaywrightBootstrap({
   migrateConfigPreviewRecorders(appPath);
 
   let previewRouted = false;
-  if (writePreviewShim) {
+  if (writePreviewShim || isolateTestCases) {
     try {
-      const { warning } = ensurePreviewShim(appPath);
+      const { warning } = ensurePreviewShim(appPath, isolateTestCases);
       if (warning) {
+        if (isolateTestCases)
+          throw new DyadError(warning.trim(), DyadErrorKind.Precondition);
         onOutput?.(warning);
       }
       previewRouted = !warning;
     } catch (err) {
+      if (isolateTestCases) throw err;
       // Losing the preview routing is not worth failing an otherwise fine run.
       logger.warn(`Failed to write the preview test shim: ${err}`);
       onOutput?.(
@@ -1617,7 +1672,7 @@ export async function ensurePlaywrightBootstrap({
   // already-running Electron preview.
   let downloadedBrowser = false;
   if (
-    !previewRouted &&
+    !(writePreviewShim && previewRouted) &&
     !usesChannel &&
     !isPlaywrightBrowserInstalled(appPath)
   ) {

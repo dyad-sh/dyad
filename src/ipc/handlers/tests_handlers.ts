@@ -80,6 +80,7 @@ import {
   type PreparedIsolation,
 } from "../services/isolated_test_db";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
+import { startTestCaseLifecycleServer } from "../services/test_case_lifecycle_server";
 import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { resolveNodeModulePackageJsonPathSync } from "../../../shared/node_module_resolution";
@@ -278,6 +279,8 @@ function playwrightCliInvocationForApp(
 }
 
 export interface RunAppTestsCoreOptions {
+  /** Requires the auto fixture and serial execution for provider cleanup. */
+  isolateTestCases?: boolean;
   appId: number;
   /** When set, runs a single spec file (relative path); otherwise runs all. */
   testFile?: string;
@@ -716,6 +719,7 @@ async function runPreviewTestBatch({
  * handler (the UI "Run" button).
  */
 export async function runAppTestsCore({
+  isolateTestCases,
   appId,
   testFile,
   testLine,
@@ -774,8 +778,19 @@ export async function runAppTestsCore({
       signal,
       onOutput: (chunk) => emit(chunk, "setup"),
       ensurePreviewShim: !!previewCdpEndpoint,
+      isolateTestCases,
     });
     installed = result.installed;
+    if (isolateTestCases && !result.previewRouted) {
+      return {
+        appId,
+        results: [],
+        infraError: {
+          message:
+            "Per-test database isolation requires the Dyad test fixture. Map @playwright/test to ./fixtures/dyad/dyad-test.ts in e2e-tests/tsconfig.json before running tests.",
+        },
+      };
+    }
     if (previewEndpoint && !result.previewRouted) {
       // The specs import the real @playwright/test and will launch their own
       // browser. Keeping the endpoint would suppress `--headed` and leave the
@@ -864,7 +879,9 @@ export async function runAppTestsCore({
   // Preview runs, which can only ever be sequential, returned above — so the
   // caller's choice is honored as-is here, including on the fallback path where
   // preview routing was refused and this became an ordinary browser run.
-  if (parallel) {
+  if (isolateTestCases) {
+    args.push("--workers=1");
+  } else if (parallel) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
   }
   // Slow motion spends wall-clock time inside each test, which Playwright bills
@@ -1019,7 +1036,7 @@ export async function runAppTestsCore({
     inconclusive,
     first_run: installed,
     single_file: Boolean(testFile),
-    parallel: Boolean(parallel),
+    parallel: Boolean(parallel && !isolateTestCases),
     slow_mo: Boolean(slowMo),
   });
 
@@ -1367,6 +1384,7 @@ export async function runAppTestsWithIsolation({
             emit,
             runtimeMode,
             signal: controller.signal,
+            perTestCase: true,
           });
 
           // Isolation was required but couldn't be set up — dead-end safely
@@ -1547,7 +1565,20 @@ export async function runAppTestsWithIsolation({
               : undefined;
 
           let result: RunAppTestsResult;
+          let caseServer:
+            | Awaited<ReturnType<typeof startTestCaseLifecycleServer>>
+            | undefined;
           try {
+            if (prepared.testCaseLifecycle) {
+              caseServer = await startTestCaseLifecycleServer(
+                prepared.testCaseLifecycle,
+              );
+              if (parallel)
+                emit(
+                  "Running tests serially to isolate each case's database data.\n",
+                  "setup",
+                );
+            }
             result = await runAppTestsCore({
               appId,
               testFile: normalizedTestFile ?? undefined,
@@ -1559,7 +1590,8 @@ export async function runAppTestsWithIsolation({
               signal: controller.signal,
               timeoutMs,
               onOutput: emit,
-              testEnv: prepared.testCredentials,
+              testEnv: { ...prepared.testCredentials, ...caseServer?.env },
+              isolateTestCases: !!caseServer,
               previewCdpEndpoint,
               previewCdpToken,
               rotatePreviewView,
@@ -1585,6 +1617,7 @@ export async function runAppTestsWithIsolation({
               },
             });
           } finally {
+            await caseServer?.close();
             await previewBroker?.close().catch((error) => {
               logger.warn(
                 `Failed to close preview automation broker: ${error}`,
@@ -1593,6 +1626,14 @@ export async function runAppTestsWithIsolation({
             automation?.end();
           }
 
+          if (caseServer?.failure) {
+            result = {
+              ...result,
+              infraError: {
+                message: `Per-test database isolation failed: ${caseServer.failure.message}`,
+              },
+            };
+          }
           if (previewViewClosed) {
             // The CDP target vanished mid-run. Losing it usually doesn't abort
             // Playwright: it reports a screenful of "Target closed" test

@@ -8,6 +8,7 @@ import {
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
+import { clearNeonTestData } from "../utils/neon_test_data";
 import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import {
@@ -84,8 +85,8 @@ export interface PreparedIsolation {
   /**
    * Extra env vars to inject into the test runner (e.g. the isolated test
    * user's credentials the generated test signs in with). Never contains
-   * privileged keys — the service_role key stays in the main process. Set on the
-   * Supabase path and, when Neon Auth is provisioned, the Neon path too.
+   * privileged keys — the service_role key stays in the main process. Recordings
+   * receive these now; test runs receive fresh credentials from beforeEach.
    */
   testCredentials?: Record<string, string>;
   /**
@@ -94,7 +95,14 @@ export interface PreparedIsolation {
    * failed. Never contains privileged keys.
    */
   authSetup?: IsolationAuthSetup;
+  /** Main-owned hooks invoked by the runner around every case and retry. */
+  testCaseLifecycle?: TestCaseLifecycle;
   teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
+}
+
+export interface TestCaseLifecycle {
+  beforeEach: () => Promise<Record<string, string>>;
+  afterEach: () => Promise<void>;
 }
 
 type EmitOutput = (chunk: string, phase: "setup" | "running") => void;
@@ -125,15 +133,18 @@ export async function prepareIsolatedTestDatabase({
   emit,
   runtimeMode,
   signal,
+  perTestCase = false,
 }: {
   app: AppRow;
   emit: EmitOutput;
   runtimeMode: string;
   signal?: AbortSignal;
+  /** Recordings keep a single user; test runs provision one per case. */
+  perTestCase?: boolean;
 }): Promise<PreparedIsolation> {
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
-    return prepareSupabaseTestUserIsolation({ app, emit, signal });
+    return prepareSupabaseTestUserIsolation({ app, emit, signal, perTestCase });
   }
 
   // No Neon project → nothing to isolate.
@@ -243,10 +254,9 @@ export async function prepareIsolatedTestDatabase({
     const processId = await restartAppInPlace({ app, appPath });
     await waitForServerReady(app.id, signal, processId);
 
-    // 5. If the app uses Neon Auth, provision a throwaway Better Auth account on
-    //    the branch so auth-gated recordings/tests can sign in. Best-effort: on
-    //    failure we run unauthenticated rather than dead-ending (non-auth flows
-    //    still work). No teardown needed — the account dies with the branch.
+    // 5. Trust the preview origin for Neon Auth. Recordings get an account now;
+    //    test runs create one in beforeEach after clearing the database. Auth
+    //    setup remains best-effort for recordings, but tests fail closed.
     let testCredentials: Record<string, string> | undefined;
     let authSetup: IsolationAuthSetup | undefined;
     if (branch.neonAuthBaseUrl) {
@@ -273,20 +283,25 @@ export async function prepareIsolatedTestDatabase({
           `Trust preview origin for Neon test branch ${branch.branchId}`,
         );
 
-        const account = await createNeonTestAccount({
-          neonAuthBaseUrl: branch.neonAuthBaseUrl,
-          appId: app.id,
-        });
-        testCredentials = {
-          DYAD_TEST_USER_EMAIL: account.email,
-          DYAD_TEST_USER_PASSWORD: account.password,
-        };
-        authSetup = {
-          mode: "neon-better-auth",
-          email: account.email,
-          password: account.password,
-        };
+        const account = !perTestCase
+          ? await createNeonTestAccount({
+              neonAuthBaseUrl: branch.neonAuthBaseUrl,
+              appId: app.id,
+            })
+          : undefined;
+        if (account) {
+          testCredentials = {
+            DYAD_TEST_USER_EMAIL: account.email,
+            DYAD_TEST_USER_PASSWORD: account.password,
+          };
+          authSetup = {
+            mode: "neon-better-auth",
+            email: account.email,
+            password: account.password,
+          };
+        }
       } catch (error) {
+        if (perTestCase) throw error;
         logger.warn(
           `Couldn't prepare Neon test authentication for app ${app.id}; continuing unauthenticated: ${error}`,
         );
@@ -297,10 +312,8 @@ export async function prepareIsolatedTestDatabase({
       }
     }
 
-    // Provisioning the account is another multi-second network round trip (and
-    // its own catch deliberately swallows failures), so a Stop pressed during it
-    // would otherwise be reported as a ready session. The catch below restores
-    // the real branch and reports the stopped result instead.
+    // Honor Stop during the auth network calls before publishing a ready
+    // session. The catch below restores the real branch.
     if (signal?.aborted) {
       throw new Error("Test run stopped.");
     }
@@ -309,6 +322,27 @@ export async function prepareIsolatedTestDatabase({
       isolation: { mode: "neon-branch" },
       testCredentials,
       authSetup,
+      testCaseLifecycle: perTestCase
+        ? {
+            beforeEach: async (): Promise<Record<string, string>> => {
+              signal?.throwIfAborted();
+              // Clear the copied parent data before the first case too. Repeating
+              // this before later cases recovers a worker killed before teardown.
+              await clearNeonTestData(branch.databaseUrl);
+              signal?.throwIfAborted();
+              if (!branch.neonAuthBaseUrl) return {};
+              const account = await createNeonTestAccount({
+                neonAuthBaseUrl: branch.neonAuthBaseUrl,
+                appId: app.id,
+              });
+              return {
+                DYAD_TEST_USER_EMAIL: account.email,
+                DYAD_TEST_USER_PASSWORD: account.password,
+              };
+            },
+            afterEach: () => clearNeonTestData(branch.databaseUrl),
+          }
+        : undefined,
       teardown,
     };
   } catch (error) {
@@ -371,10 +405,12 @@ async function prepareSupabaseTestUserIsolation({
   app,
   emit,
   signal,
+  perTestCase,
 }: {
   app: AppRow;
   emit: EmitOutput;
   signal?: AbortSignal;
+  perTestCase: boolean;
 }): Promise<PreparedIsolation> {
   const projectId = app.supabaseProjectId!;
   const organizationSlug = app.supabaseOrganizationSlug;
@@ -390,18 +426,29 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
+  // Keep failed deletions tracked. Never overwrite the durable recovery slot
+  // by creating the next user while the previous one still exists.
+  let trackedUserId = app.supabaseTestUserId;
+  const afterEach = async () => {
+    if (!trackedUserId) return;
+    const deleted = await deleteTempTestUser({
+      ...app,
+      supabaseTestUserId: trackedUserId,
+    });
+    if (!deleted)
+      throw new Error("Couldn't delete the previous Supabase test user.");
+    trackedUserId = null;
+    testUser = undefined;
+  };
   // Nothing here touches `.env.local` — the Supabase path isolates by test user,
   // not by swapping the app's database — so the environment is never at risk.
   const teardown = async (): Promise<TeardownResult> => {
-    if (testUser) {
+    if (trackedUserId) {
       try {
-        await deleteTempTestUser({
-          ...app,
-          supabaseTestUserId: testUser.userId,
-        });
+        await afterEach();
       } catch (error) {
         logger.error(
-          `Failed to delete isolated Supabase test user ${testUser.userId} for app ${app.id}: ${error}`,
+          `Failed to delete isolated Supabase test user ${trackedUserId} for app ${app.id}: ${error}`,
         );
       }
     }
@@ -441,8 +488,11 @@ async function prepareSupabaseTestUserIsolation({
     if (signal?.aborted) {
       throw new Error("Test run stopped.");
     }
-    emit("Creating an isolated test user…\n", "setup");
-    testUser = await createTempTestUser(app);
+    if (!perTestCase) {
+      emit("Creating an isolated test user…\n", "setup");
+      testUser = await createTempTestUser(app);
+      trackedUserId = testUser.userId;
+    }
 
     // Fetch the project's anon (publishable) key so the recorder and the
     // generated `signIn` fixture can sign in via the password grant. Best-effort:
@@ -468,14 +518,15 @@ async function prepareSupabaseTestUserIsolation({
       throw new Error("Test run stopped.");
     }
 
-    const testCredentials: Record<string, string> = {
-      DYAD_TEST_USER_EMAIL: testUser.email,
-      DYAD_TEST_USER_PASSWORD: testUser.password,
-      DYAD_TEST_SUPABASE_URL: testUser.projectUrl,
-    };
+    const credentialsFor = (user: TempTestUser): Record<string, string> => ({
+      DYAD_TEST_USER_EMAIL: user.email,
+      DYAD_TEST_USER_PASSWORD: user.password,
+      DYAD_TEST_SUPABASE_URL: user.projectUrl,
+      ...(anonKey ? { DYAD_TEST_SUPABASE_ANON_KEY: anonKey } : {}),
+    });
+    const testCredentials = testUser ? credentialsFor(testUser) : undefined;
     let authSetup: IsolationAuthSetup | undefined;
-    if (anonKey) {
-      testCredentials.DYAD_TEST_SUPABASE_ANON_KEY = anonKey;
+    if (anonKey && testUser) {
       authSetup = {
         mode: "supabase-password",
         email: testUser.email,
@@ -493,6 +544,22 @@ async function prepareSupabaseTestUserIsolation({
       },
       testCredentials,
       authSetup,
+      testCaseLifecycle: perTestCase
+        ? {
+            beforeEach: async () => {
+              signal?.throwIfAborted();
+              await afterEach();
+              signal?.throwIfAborted();
+              testUser = await createTempTestUser({
+                ...app,
+                supabaseTestUserId: null,
+              });
+              trackedUserId = testUser.userId;
+              return credentialsFor(testUser);
+            },
+            afterEach,
+          }
+        : undefined,
       teardown,
     };
   } catch (error) {

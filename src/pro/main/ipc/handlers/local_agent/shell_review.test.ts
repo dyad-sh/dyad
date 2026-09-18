@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, symlink, rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -55,3 +55,20 @@ describe("shell reviewer evidence", () => {
     },
   );
 });
+
+it.skipIf(process.platform === "win32")(
+  "rejects aliases into app-local credential directories",
+  async () => {
+    const { root, inspect } = await setup();
+    for (const name of [".ssh", ".aws"]) {
+      await mkdir(path.join(root, name));
+      await writeFile(path.join(root, name, "config"), "private credentials");
+      await symlink(
+        path.join(root, name, "config"),
+        path.join(root, `${name.slice(1)}-alias`),
+      );
+      await expect(inspect(`${name}/config`)).rejects.toThrow();
+      await expect(inspect(`${name.slice(1)}-alias`)).rejects.toThrow();
+    }
+  },
+);

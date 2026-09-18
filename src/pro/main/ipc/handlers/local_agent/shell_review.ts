@@ -9,6 +9,15 @@ import { shellExecutionGuidance } from "@/shared/shell_capability";
 import type { AgentContext } from "./tools/types";
 import { readSettings } from "@/main/settings";
 
+function isForbiddenInspectionSegment(part: string): boolean {
+  return (
+    part === ".." ||
+    /^\.env(?:\.|$)|secret|credential|^\.(?:git|dyad|ssh|aws|npmrc|pypirc)$|^id_(?:rsa|ed25519)$|\.(?:pem|key)$/i.test(
+      part,
+    )
+  );
+}
+
 export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
   let reads = 0;
   return tool({
@@ -24,15 +33,7 @@ export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
       if (
         path.isAbsolute(relative) ||
         path.win32.isAbsolute(relative) ||
-        relative
-          .split(/[\\/]/)
-          .some(
-            (part) =>
-              part === ".." ||
-              part === ".git" ||
-              part === ".dyad" ||
-              /^\.env(?:\.|$)|secret|credential|^\.ssh$|^\.aws$/i.test(part),
-          )
+        relative.split(/[\\/]/).some(isForbiddenInspectionSegment)
       ) {
         throw new Error("Inspection path is unavailable");
       }
@@ -42,11 +43,7 @@ export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
       if (
         resolvedRelative.startsWith("..") ||
         path.isAbsolute(resolvedRelative) ||
-        resolvedRelative
-          .split(path.sep)
-          .some((part) =>
-            /^\.env(?:\.|$)|secret|credential|^\.git$|^\.dyad$/i.test(part),
-          )
+        resolvedRelative.split(path.sep).some(isForbiddenInspectionSegment)
       )
         throw new Error("Inspection path is unavailable");
       const stat = await fs.stat(target);

@@ -574,3 +574,30 @@ describe("buildMcpCapabilityMap", () => {
 // prefix on every toolKey makes a bare match like `read_file`
 // unreachable today. The seeded reserved set in `collectMcpToolDefs`
 // is defense in depth for future key-format or built-in changes.
+
+describe("MCP shell fallback evidence", () => {
+  it.each([true, false])(
+    "records execution failures without promoting consent denial (approved=%s)",
+    async (approved) => {
+      vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved });
+      const execute = vi
+        .fn()
+        .mockRejectedValue(new Error("Service unavailable"));
+      vi.mocked(mcpManager.getClient).mockResolvedValue({
+        tools: async () => ({ hello: { execute } }),
+      } as any);
+      const ctx = createCtx();
+      ctx.shellReviewContext = { tools: [], history: [] };
+      const map = buildMcpCapabilityMap({
+        event: {} as any,
+        ctx,
+        defs: [makeDef()],
+      });
+      await expect(map.srv__hello({})).rejects.toThrow();
+      expect(ctx.shellReviewContext.history[0].outcome).toContain(
+        approved ? "Execution failed" : "not eligible for shell fallback",
+      );
+      expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0);
+    },
+  );
+});

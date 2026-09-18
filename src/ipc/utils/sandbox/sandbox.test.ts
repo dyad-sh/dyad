@@ -413,6 +413,42 @@ describe("sandbox capabilities", () => {
     });
   });
 
+  it("supports the advertised 0.3 data helpers after a host file read", async () => {
+    if (!isSandboxSupportedPlatform()) return;
+
+    await fs.writeFile(
+      path.join(appPath, "src", "rows.json"),
+      JSON.stringify([
+        { name: "z", group: "one", internal: true },
+        { name: "é", group: "one", internal: true },
+        { name: "a", group: "two", internal: true },
+      ]),
+    );
+    const result = await runSandboxScript({
+      appPath,
+      script: `
+        const rows = JSON.parse(await read_file("src/rows.json"), (key, value) => key === "internal" ? undefined : value);
+        const grouped = Object.groupBy(rows, row => row.group);
+        const sorted = rows.toSorted((a, b) => a.name.localeCompare(b.name, "en-US"));
+        const names = sorted.map(row => { delete row.group; return row.name; });
+        JSON.stringify({
+          names,
+          firstGroupSize: grouped.one.length,
+          removed: !Object.hasOwn(rows[0], "internal") && !Object.hasOwn(rows[0], "group"),
+          union: Array.from(new Set(["one"]).union(new Set(["two"]))),
+          encoded: encodeURIComponent("a b")
+        }, null, 2);
+      `,
+    });
+    expect(JSON.parse(result.value)).toEqual({
+      names: ["a", "é", "z"],
+      firstGroupSize: 2,
+      removed: true,
+      union: ["one", "two"],
+      encoded: "a%20b",
+    });
+  });
+
   it("reports actual attachment host calls from MustardScript", async () => {
     if (!isSandboxSupportedPlatform()) {
       return;

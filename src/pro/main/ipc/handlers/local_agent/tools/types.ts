@@ -70,6 +70,11 @@ export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 export interface AgentContext {
   /** Recovery journal is needed only for Claude-owned conversations. */
   persistQuestionnaireRecovery?: boolean;
+  /** Host-recorded evidence for mandatory shell review, shared across tool calls. */
+  shellReviewContext?: {
+    tools: { name: string; description: string; available: boolean }[];
+    history: { tool: string; args: string; outcome: string }[];
+  };
   /** Accepted root settings, including resolved mode and billing account. */
   inferenceSettings?: UserSettings;
   /** Owner-scoped identity used to join only this root turn's mutations. */
@@ -490,7 +495,7 @@ export type ToolResult = string;
 export type ToolDescriptionContext = Pick<
   AgentContext,
   "runTypeScriptForWholeProject" | "suggestablePlugins"
->;
+> & { appPath?: string };
 
 export interface ToolDefinition<T = any> {
   readonly name: string;

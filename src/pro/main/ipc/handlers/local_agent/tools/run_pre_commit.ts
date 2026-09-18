@@ -56,7 +56,7 @@ async function waitForAll<T>(promises: Promise<T>[]): Promise<T[]> {
   });
 }
 
-async function tryGetGitStateFingerprint(
+export async function tryGetGitStateFingerprint(
   appPath: string,
   phase: "before" | "after",
   signal?: AbortSignal,
@@ -103,7 +103,7 @@ async function collectSupabaseFunctionEntryPoints(
   return functionNames;
 }
 
-async function tryCollectSupabaseFunctionEntryPoints(
+export async function tryCollectSupabaseFunctionEntryPoints(
   appPath: string,
   phase: "before" | "after",
 ): Promise<Set<string> | undefined> {
@@ -179,10 +179,11 @@ async function collectCurrentChangedPaths(
   return paths;
 }
 
-async function scheduleHookGeneratedFileSideEffects(
+export async function scheduleHookGeneratedFileSideEffects(
   ctx: AgentContext,
   beforeFunctionEntries: Set<string> | undefined,
   removedFunctionNamesOut: string[],
+  operation = "Pre-commit",
 ): Promise<string | undefined> {
   queueCloudSandboxSnapshotSync({ appId: ctx.appId, fullSync: true });
   if (!ctx.supabaseProjectId) {
@@ -202,7 +203,7 @@ async function scheduleHookGeneratedFileSideEffects(
       "Failed to identify Supabase paths changed by pre-commit; skipping Supabase reconciliation:",
       error,
     );
-    return "Dyad could not determine which Supabase files the hook changed, so it skipped automatic function reconciliation.";
+    return `Dyad could not determine which Supabase files ${operation} changed, so it skipped automatic function reconciliation.`;
   }
 
   const afterFunctionEntries = await tryCollectSupabaseFunctionEntryPoints(
@@ -247,7 +248,7 @@ async function scheduleHookGeneratedFileSideEffects(
     );
     if (ctx.skipPruneEdgeFunctions && removedFunctionNames.length > 0) {
       notes.push(
-        `Pre-commit removed local Supabase function(s) ${removedFunctionNames.join(", ")}, but Dyad kept their remote deployments because "Keep extra Supabase edge functions" is enabled.`,
+        `${operation} removed local Supabase function(s) ${removedFunctionNames.join(", ")}, but Dyad kept their remote deployments because "Keep extra Supabase edge functions" is enabled.`,
       );
     } else {
       // Queue first so the root finalizer retries if the immediate deletion

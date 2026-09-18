@@ -1,3 +1,4 @@
+import { shellExecutionGuidance } from "@/shared/shell_capability";
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import {
   getInferenceSource,
@@ -1201,6 +1202,9 @@ export async function handleLocalAgentStream(
       estimateMcpInlineTokens(mcpDefs) > getMcpInlineTokenThreshold();
 
     const agentTools = buildAgentToolSet(ctx, buildOptions);
+    if (agentTools.run_shell) {
+      systemPrompt += `\n\n<shell_execution>\n${shellExecutionGuidance(process.platform, ctx.appPath)}\n</shell_execution>`;
+    }
     ctx.planningQuestionnaireAvailable =
       agentTools.planning_questionnaire != undefined;
     // search_mcp_tools returns full tool declarations, so it alone is enough for
@@ -1252,6 +1256,21 @@ export async function handleLocalAgentStream(
       );
     }
     const registeredToolNames = new Set(Object.keys(allTools));
+    if (ctx.shellReviewContext) {
+      for (const [name, tool] of Object.entries(allTools)) {
+        const existing = ctx.shellReviewContext.tools.find(
+          (entry) => entry.name === name,
+        );
+        if (existing)
+          existing.description = tool.description ?? existing.description;
+        else if (name !== "run_shell")
+          ctx.shellReviewContext.tools.push({
+            name,
+            description: tool.description ?? "",
+            available: true,
+          });
+      }
+    }
 
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
@@ -2920,6 +2939,7 @@ async function getMcpTools(
                     : JSON.stringify(args).slice(0, 500);
 
               const autoApprove = buildMcpAutoApprove({
+                signal: ctx.abortSignal,
                 settings: ctx.inferenceSettings ?? readSettings(),
                 isDyadPro: ctx.isDyadPro,
                 freeModelMode: ctx.freeModelMode,

@@ -37,6 +37,7 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
   autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
+  enableShellTool: "setting-enable-shell-tool",
   autoApproveSafeMcpTools: "setting-auto-approve-safe-mcp-tools",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
@@ -457,6 +458,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Use the official local Claude Code CLI with your Claude subscription",
     keywords: ["claude", "anthropic", "subscription", "cli", "experiment"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableShellTool,
+    label: "Shell tool (Pro)",
+    description:
+      "Allow reviewed Bash or PowerShell commands in Pro Agent mode on the local host",
+    keywords: [
+      "shell",
+      "bash",
+      "powershell",
+      "command",
+      "terminal",
+      "pro",
+      "experiment",
+    ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

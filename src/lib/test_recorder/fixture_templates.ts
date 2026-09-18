@@ -38,7 +38,7 @@ const NEON_BETTER_AUTH_FIXTURE: string[] = [
   ` * endpoint from the page itself, so Chromium accepts the HttpOnly session`,
   ` * cookie exactly as it does for an interactive sign-in.`,
   ` *`,
-  ` * Dyad provisions an isolated user per test run and injects its credentials`,
+  ` * Dyad provisions an isolated user per test case and injects its credentials`,
   ` * via DYAD_TEST_USER_EMAIL / DYAD_TEST_USER_PASSWORD.`,
   ` */`,
   `export async function signIn(page: Page): Promise<void> {`,

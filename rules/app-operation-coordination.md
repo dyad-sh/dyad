@@ -142,3 +142,10 @@ preparing to record, so an unmarked restart ended the session it was setting up
 and deleted the temporary Neon branch ~200ms after creating it. Mark such stops
 (`stopAppByInfo(appId, appInfo, { recordingOwnedRestart: true })`) rather than
 assuming map-entry ordering distinguishes them.
+
+## Clearing data on temporary Neon test branches
+
+Preserve `neon_auth.project_config` and `neon_auth.jwks` when clearing test data;
+they configure the auth service, and deleting them causes signup to fail with
+`404 Project config not found`. Clear user/session data with one `TRUNCATE ...
+RESTRICT` so unexpected foreign keys cannot cascade into that configuration.

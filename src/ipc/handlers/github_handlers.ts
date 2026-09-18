@@ -31,8 +31,24 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
-import { IS_TEST_BUILD } from "../utils/test_utils";
 import path from "node:path";
+import type { GitRemoteAuth } from "../git_types";
+import {
+  getGitHubAccessTokenUrl,
+  getGitHubApiBase,
+  getGitHubDeviceCodeUrl,
+} from "../utils/github_endpoints";
+import {
+  assertCanLinkProvider,
+  assertRemoteProvider,
+  getAppGitRemoteAuth,
+  githubRemote,
+  githubRemoteAuth,
+  requireAppGitRemote,
+  type GitRemoteProvider,
+} from "../utils/app_git_remote";
+import { findAppOrThrow } from "../utils/find_app";
+import { withPushHint } from "../utils/git_push_hints";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
@@ -72,38 +88,6 @@ export function normalizeGitHubRepoName(repoName: string): string {
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
-
-function isGitHubTestBuild() {
-  return IS_TEST_BUILD || process.env.E2E_TEST_BUILD === "true";
-}
-
-function getGitHubTestServerBase() {
-  return `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
-}
-
-function getGitHubDeviceCodeUrl() {
-  return isGitHubTestBuild()
-    ? `${getGitHubTestServerBase()}/github/login/device/code`
-    : "https://github.com/login/device/code";
-}
-
-function getGitHubAccessTokenUrl() {
-  return isGitHubTestBuild()
-    ? `${getGitHubTestServerBase()}/github/login/oauth/access_token`
-    : "https://github.com/login/oauth/access_token";
-}
-
-export function getGitHubApiBase() {
-  return isGitHubTestBuild()
-    ? `${getGitHubTestServerBase()}/github/api`
-    : "https://api.github.com";
-}
-
-function getGitHubGitBase() {
-  return isGitHubTestBuild()
-    ? `${getGitHubTestServerBase()}/github/git`
-    : "https://github.com";
-}
 
 const GITHUB_SCOPES = "repo,user,workflow"; // Define the scopes needed
 
@@ -163,12 +147,15 @@ export async function prepareLocalBranch({
   appId,
   branch,
   remoteUrl,
-  accessToken,
+  auth,
+  providerLabel = "GitHub",
 }: {
   appId: number;
   branch?: string;
   remoteUrl?: string;
-  accessToken?: string;
+  auth?: GitRemoteAuth;
+  /** Named in the auto-commit message, so the history says where the app went. */
+  providerLabel?: string;
 }) {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) {
@@ -185,14 +172,14 @@ export async function prepareLocalBranch({
         remoteUrl,
       });
 
-      // Fetch remote branches if we have access token and remote URL
+      // Fetch remote branches if we have credentials and remote URL
       // This allows us to check if the branch exists remotely
-      if (accessToken) {
+      if (auth) {
         try {
           await gitFetch({
             path: appPath,
             remote: "origin",
-            accessToken,
+            auth,
           });
         } catch (fetchError: any) {
           // For new repos, fetch might fail because the repo is empty
@@ -224,8 +211,7 @@ export async function prepareLocalBranch({
       try {
         const commitHash = await gitService.stageAllAndCommit({
           path: appPath,
-          message:
-            "chore: auto-commit local changes before connecting to GitHub",
+          message: `chore: auto-commit local changes before connecting to ${providerLabel}`,
         });
         logger.info(
           `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,
@@ -248,7 +234,7 @@ export async function prepareLocalBranch({
 
     // Check if branch exists remotely (if remote was set up)
     let remoteBranches: string[] = [];
-    if (remoteUrl && accessToken) {
+    if (remoteUrl && auth) {
       remoteBranches = await gitListRemoteBranches({
         path: appPath,
         remote: "origin",
@@ -662,13 +648,8 @@ export async function handleCreateRepo(
     branch,
   }: { org: string; repo: string; appId: number; branch?: string },
 ): Promise<void> {
-  const app = await db.query.apps.findFirst({
-    columns: { id: true },
-    where: eq(apps.id, appId),
-  });
-  if (!app) {
-    throw new DyadError("App not found", DyadErrorKind.NotFound);
-  }
+  const app = await findAppOrThrow(appId);
+  assertCanLinkProvider(app, "github");
 
   // Normalize the repo name to match GitHub's automatic normalization
   // GitHub converts spaces to hyphens when creating repositories
@@ -749,14 +730,14 @@ export async function handleCreateRepo(
   // Set up remote URL before preparing branch.
   // The URL is stored without credentials; auth is injected per-invocation
   // via environment variables in git_utils.
-  const remoteUrl = `${getGitHubGitBase()}/${owner}/${normalizedRepo}.git`;
+  const remote = githubRemote({ owner, repo: normalizedRepo, branch });
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
     appId,
     branch,
-    remoteUrl,
-    accessToken,
+    remoteUrl: remote.httpsUrl,
+    auth: githubRemoteAuth(accessToken),
   });
 
   // Store org, repo (normalized), and branch in the app's DB row (apps table)
@@ -779,6 +760,8 @@ export async function handleConnectToExistingRepo(
   }: { owner: string; repo: string; branch: string; appId: number },
 ): Promise<void> {
   try {
+    assertCanLinkProvider(await findAppOrThrow(appId), "github");
+
     // Get access token from settings
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -806,14 +789,14 @@ export async function handleConnectToExistingRepo(
 
     // Set up remote URL before preparing branch (credentials are never
     // stored in the URL; auth is injected per-invocation in git_utils)
-    const remoteUrl = `${getGitHubGitBase()}/${owner}/${repo}.git`;
+    const remote = githubRemote({ owner, repo, branch });
 
     // Prepare local branch with remote URL set up
     await prepareLocalBranch({
       appId,
       branch,
-      remoteUrl,
-      accessToken,
+      remoteUrl: remote.httpsUrl,
+      auth: githubRemoteAuth(accessToken),
     });
 
     // Store org, repo, and branch in the app's DB row
@@ -832,38 +815,28 @@ export async function handlePushToGithub(
     appId,
     force,
     forceWithLease,
+    provider,
   }: {
     appId: number;
     force?: boolean;
     forceWithLease?: boolean;
+    /** What the caller believes this app is linked to; refused if it is not. */
+    provider?: GitRemoteProvider;
   },
 ): Promise<void> {
-  // Get access token from settings
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
-
-  // Get app info from DB
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
+  const remote = requireAppGitRemote(app);
+  assertRemoteProvider(remote, provider);
+  const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
-  const branch = app.githubBranch || "main";
+  const branch = remote.branch;
 
   // Set up remote URL (credentials are never stored in the URL; auth is
   // injected per-invocation in git_utils). Re-setting it on every push also
   // scrubs tokens that older versions embedded in .git/config.
-  const remoteUrl = `${getGitHubGitBase()}/${app.githubOrg}/${app.githubRepo}.git`;
-  // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
-    remoteUrl,
+    remoteUrl: remote.httpsUrl,
   });
 
   // Pull changes first (unless force push)
@@ -873,7 +846,7 @@ export async function handlePushToGithub(
         path: appPath,
         remote: "origin",
         branch,
-        accessToken,
+        auth,
       });
     } catch (pullError: any) {
       const errorMessage = pullError?.message || "";
@@ -891,14 +864,22 @@ export async function handlePushToGithub(
     }
   }
 
-  // Push to GitHub
-  await gitPush({
-    path: appPath,
-    branch,
-    accessToken,
-    force,
-    forceWithLease,
-  });
+  // Push to the linked remote
+  try {
+    await gitPush({
+      path: appPath,
+      branch,
+      auth,
+      force,
+      forceWithLease,
+    });
+  } catch (error) {
+    // A GitLab protected-branch refusal gets told where to change that. The
+    // remedy depends on whether this push was forced, so pass that along.
+    throw withPushHint(error, remote, {
+      forced: Boolean(force || forceWithLease),
+    });
+  }
 }
 
 export async function handleAbortRebase(
@@ -925,37 +906,27 @@ export async function handleContinueRebase(
 // --- GitHub Rebase Handler ---
 export async function handleRebaseFromGithub(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
+  { appId, provider }: { appId: number; provider?: GitRemoteProvider },
 ): Promise<void> {
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
+  const remote = requireAppGitRemote(app);
+  assertRemoteProvider(remote, provider);
+  const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
-  const branch = app.githubBranch || "main";
+  const branch = remote.branch;
 
   // Set up remote URL (credentials are never stored in the URL; auth is
   // injected per-invocation in git_utils)
-  const remoteUrl = `${getGitHubGitBase()}/${app.githubOrg}/${app.githubRepo}.git`;
-  // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
-    remoteUrl,
+    remoteUrl: remote.httpsUrl,
   });
 
   // Fetch latest changes from remote first
   await gitFetch({
     path: appPath,
     remote: "origin",
-    accessToken,
+    auth,
   });
 
   // Git requires a clean working directory for rebase.
@@ -1191,13 +1162,19 @@ export async function handleDisconnectGithubRepo(
     throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
 
-  // Update app in database to remove GitHub repo, org, and branch
+  // Clears whichever provider the app is linked to. An app links to one at a
+  // time, so nulling both sets is the same as nulling the linked one, and it
+  // leaves nothing stale behind if that invariant ever slipped.
   await db
     .update(apps)
     .set({
       githubRepo: null,
       githubOrg: null,
       githubBranch: null,
+      gitlabHost: null,
+      gitlabProjectId: null,
+      gitlabProjectPath: null,
+      gitlabBranch: null,
     })
     .where(eq(apps.id, appId));
 }
@@ -1266,12 +1243,12 @@ async function handleCloneRepoFromUrl(
 
       // Always clone with a credential-free URL; if a token exists it is
       // injected per-invocation in git_utils.
-      const cloneUrl = `${getGitHubGitBase()}/${owner}/${repoName}.git`;
+      const cloneUrl = githubRemote({ owner, repo: repoName }).httpsUrl;
       try {
         await gitClone({
           path: appPath,
           url: cloneUrl,
-          accessToken,
+          auth: accessToken ? githubRemoteAuth(accessToken) : undefined,
           singleBranch: false,
         });
       } catch (cloneErr) {

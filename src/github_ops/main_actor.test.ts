@@ -170,13 +170,13 @@ describe("main-hosted github_ops actor", () => {
 
     const receipt = await actorA.dispatch({
       type: "OP_REQUESTED",
-      op: { type: "pull" },
+      op: { type: "pull", provider: "github" },
       operationId: "pull-a",
     });
     expect(receipt.kind).toBe("applied");
     expect(actorB.getSnapshot().state).toMatchObject({
       type: "running",
-      op: { type: "pull" },
+      op: { type: "pull", provider: "github" },
     });
     expect(service.run).toHaveBeenCalledOnce();
 
@@ -205,7 +205,7 @@ describe("main-hosted github_ops actor", () => {
     await actorA.resync();
     await actorA.dispatch({
       type: "OP_REQUESTED",
-      op: { type: "rebase" },
+      op: { type: "rebase", provider: "github" },
       operationId: "rebase-before-reload",
     });
 
@@ -224,7 +224,7 @@ describe("main-hosted github_ops actor", () => {
     await reattached.resync();
     expect(reattached.getSnapshot().state).toMatchObject({
       type: "running",
-      op: { type: "rebase" },
+      op: { type: "rebase", provider: "github" },
     });
 
     pending.resolve();
@@ -364,23 +364,25 @@ describe("main-hosted github_ops actor", () => {
     await flush();
     expect(actorA.getSnapshot().state).toMatchObject({
       type: "conflicted",
-      origin: { type: "rebase" },
+      origin: { type: "rebase", provider: "github" },
       resolution: "ready-to-sync",
     });
 
     await actorA.dispatch({
       type: "OP_REQUESTED",
-      op: { type: "rebase-continue" },
+      op: { type: "rebase-continue", provider: "github" },
       operationId: "continue-rebase-and-push",
     });
     await flush();
 
     expect(service.run).toHaveBeenNthCalledWith(1, 7, {
       type: "rebase-continue",
+      provider: "github",
     });
     expect(service.run).toHaveBeenNthCalledWith(2, 7, {
       type: "push",
       mode: "normal",
+      provider: "github",
     });
     expect(actorA.getSnapshot().state.type).toBe("idle");
   });
@@ -726,6 +728,7 @@ describe("main-hosted github_ops actor", () => {
         operationId: "sentinel-operation",
         op: {
           type: "connect-repo",
+          provider: "github",
           mode: "create",
           org: "acme",
           repo: "orphan",
@@ -771,7 +774,7 @@ describe("main-hosted github_ops actor", () => {
     await actorA.dispatch({
       type: "OP_REQUESTED",
       operationId: "unsafe-error",
-      op: { type: "push", mode: "normal" },
+      op: { type: "push", mode: "normal", provider: "github" },
     });
     await vi.waitFor(() =>
       expect(actorA.getSnapshot().state).toMatchObject({

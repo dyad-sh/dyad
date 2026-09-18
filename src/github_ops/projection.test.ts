@@ -42,7 +42,10 @@ describe("projectGithubOps", () => {
       const projection = projectGithubOps({
         type: "conflicted",
         files: ["src/conflicted.ts"],
-        origin: { type },
+        origin:
+          type === "rebase-abort"
+            ? { type }
+            : { type, provider: "github" as const },
         banner: null,
       });
 
@@ -107,7 +110,7 @@ describe("projectGithubOps", () => {
     const projection = projectGithubOps({
       type: "conflicted",
       files: ["src/conflicted.ts"],
-      origin: { type: "push", mode: "normal" },
+      origin: { type: "push", mode: "normal", provider: "github" },
       resolution: "ready-to-sync",
       banner: null,
     });
@@ -116,6 +119,7 @@ describe("projectGithubOps", () => {
     expect(projection.syncContinuationOperation).toEqual({
       type: "push",
       mode: "normal",
+      provider: "github",
     });
     expect(projection.capabilities.canContinueSync).toBe(true);
     expect(projection.capabilities.canResolveConflicts).toBe(false);
@@ -126,7 +130,7 @@ describe("projectGithubOps", () => {
     const projection = projectGithubOps({
       type: "conflicted",
       files: ["src/conflicted.ts"],
-      origin: { type: "push", mode: "normal" },
+      origin: { type: "push", mode: "normal", provider: "github" },
       resolution: "checking",
       banner: null,
     });
@@ -139,7 +143,7 @@ describe("projectGithubOps", () => {
     const projection = projectGithubOps({
       type: "conflicted",
       files: ["src/conflicted.ts"],
-      origin: { type: "push", mode: "normal" },
+      origin: { type: "push", mode: "normal", provider: "github" },
       resolution: "verification-failed",
       verificationError: "temporary Git-state failure",
       banner: null,
@@ -158,13 +162,14 @@ describe("projectGithubOps", () => {
     const projection = projectGithubOps({
       type: "conflicted",
       files: ["src/conflicted.ts"],
-      origin: { type: "rebase" },
+      origin: { type: "rebase", provider: "github" },
       resolution: "ready-to-sync",
       banner: null,
     });
 
     expect(projection.syncContinuationOperation).toEqual({
       type: "rebase-continue",
+      provider: "github",
     });
   });
 });

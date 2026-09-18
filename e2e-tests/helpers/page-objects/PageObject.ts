@@ -23,6 +23,7 @@ import {
 
 // Import component page objects
 import { GitHubConnector } from "./components/GitHubConnector";
+import { GitLabConnector } from "./components/GitLabConnector";
 import { ChatActions } from "./components/ChatActions";
 import { PreviewPanel } from "./components/PreviewPanel";
 import { CodeEditor } from "./components/CodeEditor";
@@ -165,6 +166,7 @@ export class PageObject {
 
   // Component page objects (exposed for direct access)
   public githubConnector: GitHubConnector;
+  public gitlabConnector: GitLabConnector;
   public chatActions: ChatActions;
   public previewPanel: PreviewPanel;
   public codeEditor: CodeEditor;
@@ -196,6 +198,7 @@ export class PageObject {
 
     // Initialize component page objects
     this.githubConnector = new GitHubConnector(this.page, fakeLlmPort);
+    this.gitlabConnector = new GitLabConnector(this.page, fakeLlmPort);
     this.chatActions = new ChatActions(this.page);
     this.previewPanel = new PreviewPanel(this.page);
     this.codeEditor = new CodeEditor(this.page);

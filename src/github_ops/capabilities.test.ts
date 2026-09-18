@@ -25,7 +25,7 @@ const states: GithubOpsState[] = [
   },
   {
     type: "running",
-    op: { type: "push", mode: "normal" },
+    op: { type: "push", mode: "normal", provider: "github" },
     banner: null,
   },
   {
@@ -37,34 +37,34 @@ const states: GithubOpsState[] = [
   {
     type: "conflicted",
     files: ["src/conflicted.ts"],
-    origin: { type: "rebase" },
+    origin: { type: "rebase", provider: "github" },
     banner: null,
   },
   {
     type: "conflicted",
     files: ["src/conflicted.ts"],
-    origin: { type: "push", mode: "normal" },
+    origin: { type: "push", mode: "normal", provider: "github" },
     resolution: "resolving",
     banner: null,
   },
   {
     type: "conflicted",
     files: ["src/conflicted.ts"],
-    origin: { type: "push", mode: "normal" },
+    origin: { type: "push", mode: "normal", provider: "github" },
     resolution: "checking",
     banner: null,
   },
   {
     type: "conflicted",
     files: ["src/conflicted.ts"],
-    origin: { type: "push", mode: "normal" },
+    origin: { type: "push", mode: "normal", provider: "github" },
     resolution: "verification-failed",
     banner: null,
   },
   {
     type: "conflicted",
     files: ["src/conflicted.ts"],
-    origin: { type: "push", mode: "normal" },
+    origin: { type: "push", mode: "normal", provider: "github" },
     resolution: "ready-to-sync",
     banner: null,
   },
@@ -92,7 +92,9 @@ describe("github_ops capabilities", () => {
         cases: {
           canSync: {
             representativeEvents: () => ({
-              valid: [request({ type: "push", mode: "normal" })],
+              valid: [
+                request({ type: "push", mode: "normal", provider: "github" }),
+              ],
             }),
           },
           canDisconnect: {
@@ -107,22 +109,26 @@ describe("github_ops capabilities", () => {
           },
           canContinueRebase: {
             representativeEvents: () => ({
-              valid: [request({ type: "rebase-continue" })],
+              valid: [request({ type: "rebase-continue", provider: "github" })],
             }),
           },
           canSafeForcePush: {
             representativeEvents: () => ({
-              valid: [request({ type: "push", mode: "lease" })],
+              valid: [
+                request({ type: "push", mode: "lease", provider: "github" }),
+              ],
             }),
           },
           canForcePush: {
             representativeEvents: () => ({
-              valid: [request({ type: "push", mode: "force" })],
+              valid: [
+                request({ type: "push", mode: "force", provider: "github" }),
+              ],
             }),
           },
           canRebaseAndSync: {
             representativeEvents: () => ({
-              valid: [request({ type: "rebase" })],
+              valid: [request({ type: "rebase", provider: "github" })],
             }),
           },
           canResolveConflicts: {
@@ -149,7 +155,9 @@ describe("github_ops capabilities", () => {
           },
           canContinueSync: {
             representativeEvents: () => ({
-              valid: [request({ type: "push", mode: "normal" })],
+              valid: [
+                request({ type: "push", mode: "normal", provider: "github" }),
+              ],
             }),
           },
           canRetryConflictVerification: {
@@ -164,7 +172,7 @@ describe("github_ops capabilities", () => {
           canMutateBranches: {
             representativeEvents: () => ({
               valid: [
-                request({ type: "pull" }),
+                request({ type: "pull", provider: "github" }),
                 request({
                   type: "create-branch",
                   name: "feature",
@@ -206,6 +214,7 @@ describe("github_ops capabilities", () => {
               valid: [
                 request({
                   type: "connect-repo",
+                  provider: "github",
                   mode: "existing",
                   owner: "dyad",
                   repo: "app",
@@ -214,6 +223,7 @@ describe("github_ops capabilities", () => {
                 }),
                 request({
                   type: "connect-repo",
+                  provider: "github",
                   mode: "create",
                   org: "dyad",
                   repo: "app",

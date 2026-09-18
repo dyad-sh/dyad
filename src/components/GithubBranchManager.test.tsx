@@ -43,7 +43,7 @@ describe("GithubBranchManager machine projection", () => {
       banner: null,
     };
 
-    render(<GithubBranchManager appId={1} />);
+    render(<GithubBranchManager appId={1} provider="github" />);
 
     expect(
       (screen.getByTestId("branch-select-trigger") as HTMLButtonElement)
@@ -70,7 +70,7 @@ describe("GithubBranchManager machine projection", () => {
       banner: null,
     };
 
-    render(<GithubBranchManager appId={1} />);
+    render(<GithubBranchManager appId={1} provider="github" />);
 
     screen.getByText("Merge in Progress");
     screen.getByText("Unresolved conflicts detected");
@@ -90,7 +90,7 @@ describe("GithubBranchManager machine projection", () => {
       banner: null,
     };
 
-    render(<GithubBranchManager appId={1} />);
+    render(<GithubBranchManager appId={1} provider="github" />);
 
     expect(screen.queryByTestId("branch-conflict-status")).toBeNull();
     expect(
@@ -109,7 +109,7 @@ describe("GithubBranchManager machine projection", () => {
       banner: null,
     };
 
-    render(<GithubBranchManager appId={1} />);
+    render(<GithubBranchManager appId={1} provider="github" />);
 
     expect(
       (screen.getByTestId("branch-select-trigger") as HTMLButtonElement)
@@ -122,20 +122,20 @@ describe("GithubBranchManager machine projection", () => {
   });
 
   it("asks the remote to refresh branches instead of re-reading local refs", () => {
-    render(<GithubBranchManager appId={1} />);
+    render(<GithubBranchManager appId={1} provider="github" />);
 
     fireEvent.click(screen.getByTestId("branch-actions-menu-trigger"));
     fireEvent.click(screen.getByTestId("refresh-branches-button"));
 
     expect(mocks.send).toHaveBeenCalledWith({
       type: "OP_REQUESTED",
-      op: { type: "fetch" },
+      op: { type: "fetch", provider: "github" },
     });
     expect(mocks.inventory.refetch).not.toHaveBeenCalled();
   });
 
   it("preserves create input on failure and closes only after success", async () => {
-    const view = render(<GithubBranchManager appId={1} />);
+    const view = render(<GithubBranchManager appId={1} provider="github" />);
 
     fireEvent.click(screen.getByTestId("branch-actions-menu-trigger"));
     fireEvent.click(screen.getByTestId("create-branch-trigger"));
@@ -154,7 +154,7 @@ describe("GithubBranchManager machine projection", () => {
       next: { type: "switch", branch: "feature/preserved" },
       banner: null,
     };
-    view.rerender(<GithubBranchManager appId={1} />);
+    view.rerender(<GithubBranchManager appId={1} provider="github" />);
     expect(screen.getByTestId("create-branch-submit-button").textContent).toBe(
       "Creating...",
     );
@@ -166,7 +166,7 @@ describe("GithubBranchManager machine projection", () => {
         message: "Branch already exists",
       },
     };
-    view.rerender(<GithubBranchManager appId={1} />);
+    view.rerender(<GithubBranchManager appId={1} provider="github" />);
     expect(
       (screen.getByTestId("new-branch-name-input") as HTMLInputElement).value,
     ).toBe("feature/preserved");
@@ -179,14 +179,14 @@ describe("GithubBranchManager machine projection", () => {
         message: "Branch created",
       },
     };
-    view.rerender(<GithubBranchManager appId={1} />);
+    view.rerender(<GithubBranchManager appId={1} provider="github" />);
     await waitFor(() =>
       expect(screen.queryByTestId("new-branch-name-input")).toBeNull(),
     );
   });
 
   it("closes the merge dialog when conflict recovery takes over", async () => {
-    const view = render(<GithubBranchManager appId={1} />);
+    const view = render(<GithubBranchManager appId={1} provider="github" />);
 
     fireEvent.click(screen.getByTestId("branches-header"));
     fireEvent.click(screen.getByTestId("branch-actions-feature"));
@@ -203,7 +203,7 @@ describe("GithubBranchManager machine projection", () => {
         message: "Merge conflicts detected",
       },
     };
-    view.rerender(<GithubBranchManager appId={1} />);
+    view.rerender(<GithubBranchManager appId={1} provider="github" />);
 
     await waitFor(() =>
       expect(screen.queryByTestId("merge-branch-submit-button")).toBeNull(),
@@ -219,7 +219,7 @@ describe("GithubBranchManager machine projection", () => {
       hasConflicts: true,
       banner: null,
     };
-    const view = render(<GithubBranchManager appId={1} />);
+    const view = render(<GithubBranchManager appId={1} provider="github" />);
 
     fireEvent.click(screen.getByTestId("abort-confirmation-proceed"));
     mocks.state = {
@@ -228,7 +228,7 @@ describe("GithubBranchManager machine projection", () => {
       next: { type: "switch", branch: "feature" },
       banner: null,
     };
-    view.rerender(<GithubBranchManager appId={1} />);
+    view.rerender(<GithubBranchManager appId={1} provider="github" />);
 
     expect(screen.queryByTestId("branch-conflict-status")).toBeNull();
     expect(screen.queryByText("Merge in Progress")).toBeNull();

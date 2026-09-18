@@ -29,6 +29,7 @@ export {
 export {
   PageObject,
   GitHubConnector,
+  GitLabConnector,
   ChatActions,
   PreviewPanel,
   CodeEditor,

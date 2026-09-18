@@ -97,7 +97,7 @@ import {
 } from "./pro/main/ipc/handlers/local_agent/chat_search_indexer";
 import { recoverInterruptedSubagents } from "./pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
-import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
+import { scrubTokensFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import { encryptStoredMcpSecrets } from "./ipc/utils/mcp_secret_encryption";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
@@ -479,7 +479,7 @@ export async function onReady() {
   cleanupOldMediaFiles();
 
   // Remove GitHub tokens that older versions embedded in git remote URLs
-  scrubGithubTokenFromRemotes();
+  scrubTokensFromRemotes();
 
   // Encrypt MCP headers and env vars that are still stored as
   // plaintext. Awaited so no MCP read can see a row the pass is about

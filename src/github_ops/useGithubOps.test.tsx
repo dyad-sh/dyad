@@ -64,7 +64,7 @@ describe("useGithubOps remote readiness", () => {
     act(() => {
       result.current.send({
         type: "OP_REQUESTED",
-        op: { type: "push", mode: "normal" },
+        op: { type: "push", mode: "normal", provider: "github" },
       });
     });
 

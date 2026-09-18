@@ -48,6 +48,7 @@ describe("GithubOpsService lifecycle", () => {
     expect(
       getGithubOperationResources({
         type: "connect-repo",
+        provider: "github",
         mode: "create",
         org: "dyad",
         repo: "app",
@@ -66,7 +67,7 @@ describe("GithubOpsService lifecycle", () => {
     service.beginAppDeletion(7);
 
     await expect(
-      service.run(7, { type: "push", mode: "normal" }),
+      service.run(7, { type: "push", mode: "normal", provider: "github" }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
     expect(handlers.push).not.toHaveBeenCalled();
 
@@ -83,7 +84,7 @@ describe("GithubOpsService lifecycle", () => {
     handlers.disconnect.mockResolvedValue();
 
     await expect(
-      service.run(7, { type: "push", mode: "normal" }),
+      service.run(7, { type: "push", mode: "normal", provider: "github" }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
     await expect(
       service.run(7, { type: "disconnect" }),
@@ -98,17 +99,17 @@ describe("GithubOpsService lifecycle", () => {
     service.beginReset();
 
     await expect(
-      service.run(7, { type: "push", mode: "normal" }),
+      service.run(7, { type: "push", mode: "normal", provider: "github" }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
     await expect(
-      service.run(8, { type: "push", mode: "normal" }),
+      service.run(8, { type: "push", mode: "normal", provider: "github" }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
     expect(handlers.push).not.toHaveBeenCalled();
 
     service.endReset();
     handlers.push.mockResolvedValue();
     await expect(
-      service.run(7, { type: "push", mode: "normal" }),
+      service.run(7, { type: "push", mode: "normal", provider: "github" }),
     ).resolves.toBeUndefined();
   });
 
@@ -121,7 +122,11 @@ describe("GithubOpsService lifecycle", () => {
         }),
     );
     const service = new GithubOpsService();
-    const run = service.run(7, { type: "push", mode: "normal" });
+    const run = service.run(7, {
+      type: "push",
+      mode: "normal",
+      provider: "github",
+    });
     await vi.waitFor(() => expect(handlers.push).toHaveBeenCalledOnce());
 
     let settled = false;

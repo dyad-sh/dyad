@@ -142,12 +142,26 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
         if (changed)
           trackWorkspaceMutation(ctx, ctx.preCommitHookAvailable === true);
         let note: string | undefined;
-        if (changed && !ctx.abortSignal?.aborted) {
+        if (
+          changed &&
+          result.status !== "timed_out" &&
+          result.status !== "cancelled" &&
+          !ctx.abortSignal?.aborted
+        ) {
           note = await scheduleHookGeneratedFileSideEffects(
             ctx,
             entries,
             "Shell command",
           );
+        }
+        if (
+          changed &&
+          (result.status === "timed_out" ||
+            result.status === "cancelled" ||
+            ctx.abortSignal?.aborted)
+        ) {
+          note =
+            "Automatic provider reconciliation was skipped because the command did not finish. Inspect partial edits before making provider changes.";
         }
         if (result.status !== "completed")
           note = [

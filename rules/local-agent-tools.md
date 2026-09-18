@@ -288,3 +288,4 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - Shell review is enforced inside `run_shell`, independently of saved tool consent. Keep platform guidance, reviewer execution context, and tool descriptions aligned; never let an “always” consent setting bypass classification.
 - Classifier deadlines must include context preparation and model-client setup, not only response streaming. Race the whole operation against cancellation, and recheck the signal after setup so a late continuation cannot start inference or execution.
+- Safety-review outcome history must cover native tools and both direct and sandbox-hosted MCP calls. Record execution admission separately from consent/auth refusal so fallback cannot treat a denied call as a failed execution.

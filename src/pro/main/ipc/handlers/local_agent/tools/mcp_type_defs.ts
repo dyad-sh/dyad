@@ -1,3 +1,4 @@
+import { recordShellReviewOutcome } from "../shell_review_history";
 import type { IpcMainInvokeEvent } from "electron";
 import { randomUUID } from "node:crypto";
 import { asSchema } from "@ai-sdk/provider-utils";
@@ -179,6 +180,10 @@ export function buildMcpCapabilityMap(params: {
         },
       );
       if (!approved) {
+        recordShellReviewOutcome(params.ctx, def.toolKey, args, {
+          error: "Consent declined",
+          executed: false,
+        });
         throw new DyadError(
           `User declined running tool ${def.toolKey}`,
           DyadErrorKind.UserCancelled,
@@ -203,9 +208,11 @@ export function buildMcpCapabilityMap(params: {
         `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
       );
 
+      let executionStarted = false;
       try {
         params.ctx.mcpToolRan = true;
         const res = await withTrackedMutation(params.ctx, async () => {
+          executionStarted = true;
           return mcpTool.execute(args, {
             toolCallId: `mcp-sandbox-${def.toolKey}`,
             messages: [],
@@ -219,11 +226,18 @@ export function buildMcpCapabilityMap(params: {
             ? { content: [{ type: "text", text: res }] }
             : res;
         const safeResult = sanitizeMcpToolResult(normalized);
+        recordShellReviewOutcome(params.ctx, def.toolKey, args, {
+          result: safeResult.value,
+        });
         params.ctx.onXmlComplete(
           `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
         );
         return safeResult.value;
       } catch (error) {
+        recordShellReviewOutcome(params.ctx, def.toolKey, args, {
+          error,
+          executed: executionStarted,
+        });
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         const errorStack =

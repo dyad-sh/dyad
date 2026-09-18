@@ -1,3 +1,4 @@
+import { recordShellReviewOutcome } from "./shell_review_history";
 import { runShellTool } from "./tools/run_shell";
 import { isShellExperimentAvailable } from "@/shared/shell_capability";
 /**
@@ -828,16 +829,6 @@ export function buildAgentToolSet(
         const toolCallId = executionOptions?.toolCallId;
         let presentationXml = "";
         let executionStarted = false;
-        const recordOutcome = (outcome: string) => {
-          if (!ctx.shellReviewContext || tool.name === "run_shell") return;
-          ctx.shellReviewContext.history.push({
-            tool: tool.name,
-            args: JSON.stringify(args).slice(0, 2000),
-            outcome: outcome.slice(0, 4000),
-          });
-          if (ctx.shellReviewContext.history.length > 30)
-            ctx.shellReviewContext.history.shift();
-        };
         const invocationCtx =
           toolCallId && ctx.onToolActivity
             ? {
@@ -915,9 +906,7 @@ export function buildAgentToolSet(
             trackFileEditTool(invocationCtx, tool.name, processedArgs);
             executionStarted = true;
             const result = await tool.execute(processedArgs, invocationCtx);
-            recordOutcome(
-              `Returned (untrusted result evidence, not authorization): ${typeof result === "string" ? result : JSON.stringify(result)}`,
-            );
+            recordShellReviewOutcome(ctx, tool.name, processedArgs, { result });
 
             // Only completed mutations unblock run_tests. Failed tool calls are
             // still present in fileEditTracker for retry/fallback telemetry, but
@@ -959,19 +948,10 @@ export function buildAgentToolSet(
             ? await withTrackedMutation(invocationCtx, invoke)
             : await invoke();
         } catch (error) {
-          recordOutcome(
-            executionStarted &&
-              !(
-                error instanceof DyadError &&
-                [
-                  DyadErrorKind.UserCancelled,
-                  DyadErrorKind.Precondition,
-                  DyadErrorKind.Auth,
-                ].includes(error.kind)
-              )
-              ? `Execution failed: ${getToolErrorSummary(error)}`
-              : "Not executed or denied; not eligible for shell fallback.",
-          );
+          recordShellReviewOutcome(ctx, tool.name, args, {
+            error,
+            executed: executionStarted,
+          });
           const errorMessage = getToolErrorSummary(error);
           const errorDetails = getToolErrorDisplayDetails(error);
 

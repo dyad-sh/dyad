@@ -1,3 +1,4 @@
+import { recordShellReviewOutcome } from "./shell_review_history";
 import { shellExecutionGuidance } from "@/shared/shell_capability";
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import {
@@ -2927,6 +2928,7 @@ async function getMcpTools(
             const { serverName, toolName } = parseMcpToolKey(key);
             const callId = execCtx.toolCallId;
             let callEmitted = false;
+            let executionStarted = false;
             try {
               const inputPreview =
                 typeof args === "string"
@@ -2977,10 +2979,14 @@ async function getMcpTools(
               callEmitted = true;
 
               const res = await withTrackedMutation(ctx, async () => {
+                executionStarted = true;
                 return mcpTool.execute(args, execCtx);
               });
               ctx.mcpToolRan = true;
               const safeResult = sanitizeMcpToolResult(res);
+              recordShellReviewOutcome(ctx, key, args, {
+                result: safeResult.value,
+              });
 
               ctx.onXmlComplete(
                 `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
@@ -2988,6 +2994,10 @@ async function getMcpTools(
 
               return safeResult.serialized;
             } catch (error) {
+              recordShellReviewOutcome(ctx, key, args, {
+                error,
+                executed: executionStarted,
+              });
               const errorMessage =
                 error instanceof Error ? error.message : String(error);
               const errorStack =

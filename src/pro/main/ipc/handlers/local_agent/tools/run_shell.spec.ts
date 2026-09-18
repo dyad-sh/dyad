@@ -133,3 +133,23 @@ describe("reviewed shell execution", () => {
     ).rejects.toThrow();
   });
 });
+
+it("does not reconcile remote functions after a timeout leaves partial edits", async () => {
+  ctx.supabaseProjectId = "project";
+  const sleep =
+    process.platform === "win32" ? "Start-Sleep -Seconds 30" : "sleep 30";
+  const result = JSON.parse(
+    await runShellTool.execute(
+      {
+        command: `${writeCommand}\n${sleep}`,
+        description: "Regenerate functions",
+        timeout_ms: 200,
+      },
+      ctx,
+    ),
+  );
+  expect(result.status).toBe("timed_out");
+  expect(result.note).toContain("reconciliation was skipped");
+  expect(mocks.track).toHaveBeenCalled();
+  expect(mocks.reconcile).not.toHaveBeenCalled();
+});

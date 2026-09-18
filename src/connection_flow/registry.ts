@@ -248,7 +248,7 @@ export function createConnectionFlowRegistry(
             provider,
             {
               structuralSafety:
-                "Supabase and Neon deep links cannot echo application state; one active flow per provider and no active-flow replacement makes the awaiting invocation the only possible claim.",
+                "Test-only provider callbacks execute inside the trusted main process immediately after the one active flow is started.",
             },
           )
         : invocations.claim(expectedInvocationRef);

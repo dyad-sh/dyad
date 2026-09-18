@@ -343,7 +343,14 @@ async function pollForAccessToken(invocationRef: ConnectionFlowInvocationRef) {
             },
           });
         },
-        { expectedInvocationRef: invocationRef },
+        {
+          expectedInvocationRef: invocationRef,
+          // Device-flow polling is an authenticated producer. Preserve a
+          // successfully authorized token if the UI flow was cancelled while
+          // the final poll was in flight, without allowing it to claim a newer
+          // invocation.
+          allowUnclaimedExchange: true,
+        },
       );
       if (!outcome.ok) {
         // A claimed failure was already recorded on the flow; rethrow only

@@ -1,3 +1,4 @@
+import { ShellExperimentSwitch } from "@/components/ShellExperimentSwitch";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
@@ -234,6 +235,9 @@ export default function SettingsPage() {
             title="Experiments"
             description="Early features that may not be stable yet. Enable at your own risk."
           >
+            <div id={SETTING_IDS.enableShellTool}>
+              <ShellExperimentSwitch />
+            </div>
             <div id={SETTING_IDS.enableCloudSandbox}>
               <CloudSandboxExperimentSwitch />
             </div>

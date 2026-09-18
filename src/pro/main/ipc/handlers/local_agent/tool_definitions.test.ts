@@ -146,3 +146,35 @@ describe("Build mode tool profile", () => {
     expect(linkedNeonAvailable).toBeGreaterThan(linkedNeonUnavailable);
   });
 });
+
+describe("shell tool registration", () => {
+  it("excludes shell from Build, Ask, Plan, Free turns and children", async () => {
+    const { shouldIncludeTool } = await import("./tool_definitions");
+    const tool = TOOL_DEFINITIONS.find((entry) => entry.name === "run_shell")!;
+    const ctx = {
+      isDyadPro: true,
+      inferenceSettings: { enableShellTool: true },
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, ctx)).toBe(true);
+    for (const options of [
+      { toolProfile: "build" as const },
+      { readOnly: true },
+      { planModeOnly: true },
+      { freeModelMode: true },
+    ]) {
+      expect(shouldIncludeTool(tool, ctx, options)).toBe(false);
+    }
+    expect(
+      shouldIncludeTool(tool, {
+        ...ctx,
+        mutationActivityOwner: {
+          appId: 1,
+          chatId: 1,
+          turnId: "turn",
+          actorRunId: "child",
+          persona: "implementer",
+        },
+      }),
+    ).toBe(false);
+  });
+});

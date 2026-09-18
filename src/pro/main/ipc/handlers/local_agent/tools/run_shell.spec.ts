@@ -153,3 +153,19 @@ it("does not reconcile remote functions after a timeout leaves partial edits", a
   expect(mocks.track).toHaveBeenCalled();
   expect(mocks.reconcile).not.toHaveBeenCalled();
 });
+
+it("counts executed commands that change state outside Git without claiming file changes", async () => {
+  const command =
+    process.platform === "win32"
+      ? "Set-Content ignored.txt 'changed'"
+      : "printf changed > ignored.txt";
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command, description: "Update generated state" },
+      ctx,
+    ),
+  );
+  expect(result.executed).toBe(true);
+  expect(mocks.track).toHaveBeenCalledWith(ctx, false);
+  expect(mocks.reconcile).not.toHaveBeenCalled();
+});

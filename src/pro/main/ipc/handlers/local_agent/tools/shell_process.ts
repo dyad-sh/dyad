@@ -94,6 +94,7 @@ export function shellInvocation(command: string, platform = process.platform) {
 }
 
 export interface ShellProcessResult {
+  executed: boolean;
   code: number | null;
   status: "completed" | "failed" | "cancelled" | "timed_out";
   stdout: string;
@@ -116,6 +117,7 @@ export function runShellProcess({
 }): Promise<ShellProcessResult> {
   if (signal?.aborted)
     return Promise.resolve({
+      executed: false,
       code: null,
       status: "cancelled",
       stdout: "",
@@ -198,6 +200,7 @@ export function runShellProcess({
       emit(outDecoder.end());
       emit(errDecoder.end());
       resolve({
+        executed: true,
         code,
         status: status ?? (code === 0 ? "completed" : "failed"),
         stdout: stdout.toString(),

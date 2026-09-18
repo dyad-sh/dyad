@@ -139,8 +139,12 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
         const after = await tryGetGitStateFingerprint(ctx.appPath, "after");
         const changed =
           before === undefined || after === undefined || before !== after;
-        if (changed)
-          trackWorkspaceMutation(ctx, ctx.preCommitHookAvailable === true);
+        // Shell effects can include ignored files or external state that Git cannot observe.
+        if (result.executed)
+          trackWorkspaceMutation(
+            ctx,
+            changed && ctx.preCommitHookAvailable === true,
+          );
         let note: string | undefined;
         if (
           changed &&

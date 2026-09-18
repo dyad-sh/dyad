@@ -1,4 +1,3 @@
-import { createRef } from "react";
 import { Provider, createStore } from "jotai";
 import { render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
@@ -58,10 +57,9 @@ it("uses the rendered chat during navigation before global selection catches up"
   const optimisticMessages = new OptimisticChatMessages();
   state.manager = { optimisticMessages };
   optimisticMessages.add("pending-a", { chatId: 1, prompt: "Pending in A" });
-  const messagesEndRef = createRef<HTMLDivElement>();
   const view = render(
     <Provider store={store}>
-      <MessagesList chatId={1} messages={[]} messagesEndRef={messagesEndRef} />
+      <MessagesList chatId={1} messages={[]} />
     </Provider>,
   );
   expect(screen.getByText("Pending in A")).toBeTruthy();
@@ -70,7 +68,6 @@ it("uses the rendered chat during navigation before global selection catches up"
       <MessagesList
         chatId={2}
         messages={[{ id: 20, role: "user", content: "History in B" }]}
-        messagesEndRef={messagesEndRef}
       />
     </Provider>,
   );
@@ -79,7 +76,7 @@ it("uses the rendered chat during navigation before global selection catches up"
   expect(screen.queryByText("Pending in A")).toBeNull();
   view.rerender(
     <Provider store={store}>
-      <MessagesList chatId={1} messages={[]} messagesEndRef={messagesEndRef} />
+      <MessagesList chatId={1} messages={[]} />
     </Provider>,
   );
   expect(screen.getByText("Pending in A")).toBeTruthy();

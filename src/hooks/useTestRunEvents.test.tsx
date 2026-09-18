@@ -95,6 +95,95 @@ describe("useTestRunEvents", () => {
     });
   });
 
+  it.each(["started", "cleaning-up"])(
+    "carries a batch selection from %s events without clearing unrelated results",
+    (state) => {
+      const { store, Wrapper } = makeWrapper();
+      const files = ["e2e-tests/a.spec.ts", "e2e-tests/b.spec.ts"];
+      const unrelated = "e2e-tests/c.spec.ts";
+      store.set(setTestRunStateForAppAtom, {
+        appId: 1,
+        update: (prev) => ({
+          ...prev,
+          results: { [unrelated]: { file: unrelated, status: "passed" } },
+        }),
+      });
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+      act(() =>
+        emitRunState({ appId: 1, source: "agent", state, testFiles: files }),
+      );
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.runningFiles).toEqual(
+        files,
+      );
+      expect(
+        store.get(testRunStateByAppIdAtom).get(1)?.results[unrelated]?.status,
+      ).toBe("passed");
+    },
+  );
+
+  it("merges grep batch events without losing sibling cases", async () => {
+    const { store, Wrapper } = makeWrapper();
+    const files = ["e2e-tests/a.spec.ts", "e2e-tests/b.spec.ts"];
+    const tests = [
+      { title: "login", line: 3 },
+      { title: "logout", line: 8 },
+    ];
+    const specs = files.map((file) => ({ file, tests }));
+    store.set(testSpecsByAppIdAtom, new Map([[1, specs]]));
+    listAppTestsMock.mockResolvedValue({ specs });
+    store.set(setTestRunStateForAppAtom, {
+      appId: 1,
+      update: (prev) => ({
+        ...prev,
+        results: Object.fromEntries(
+          files.map((file) => [
+            file,
+            {
+              file,
+              status: "failed" as const,
+              tests: tests.map((test) => ({
+                ...test,
+                status: "failed" as const,
+                error: "old failure",
+              })),
+            },
+          ]),
+        ),
+      }),
+    });
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        testFiles: files,
+        grep: "login",
+      });
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "finished",
+        testFiles: files,
+        grep: "login",
+        results: files.map((file) => ({
+          file,
+          status: "passed",
+          tests: [{ ...tests[0], status: "passed" }],
+        })),
+      });
+    });
+    await waitFor(() => expect(listAppTestsMock).toHaveBeenCalled());
+    for (const file of files) {
+      expect(
+        store
+          .get(testRunStateByAppIdAtom)
+          .get(1)
+          ?.results[file].tests?.map((test) => test.status),
+      ).toEqual(["passed", "failed"]);
+    }
+  });
+
   it("tracks panel-initiated lifecycle events for remounts and peer windows", () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });

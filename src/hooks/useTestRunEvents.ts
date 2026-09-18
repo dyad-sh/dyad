@@ -126,7 +126,7 @@ export function useTestRunEvents() {
     });
 
     const unsubscribeRunState = ipc.events.tests.onRunState((payload) => {
-      const { appId, testFile, testLine } = payload;
+      const { appId, testFile, testFiles, testLine } = payload;
       if (payload.state === "preview-fallback") {
         if (activeRunByAppId.current.get(appId)?.runId !== payload.runId) {
           return;
@@ -183,6 +183,7 @@ export function useTestRunEvents() {
         applyStarted({
           appId,
           testFile,
+          testFiles,
           testLine,
           grep: payload.grep,
           startedAt,
@@ -218,6 +219,7 @@ export function useTestRunEvents() {
           applyStarted({
             appId,
             testFile,
+            testFiles,
             testLine,
             grep: payload.grep,
             startedAt,
@@ -285,8 +287,7 @@ export function useTestRunEvents() {
             infraError: payload.infraError,
             isolation: payload.isolation,
           },
-          isPartialRun:
-            testFile != null && (testLine != null || !!payload.grep),
+          isPartialRun: testLine != null || !!payload.grep,
           expectedStartedAt: runStartedAt,
           expectedRunId: runId,
         });

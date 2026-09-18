@@ -480,6 +480,14 @@ describe("local_agent_prompt", () => {
       testingEnabled: true,
     });
     expect(prompt).toContain("# Writing end-to-end tests");
+    expect(prompt).toContain(
+      'testFiles: ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"]',
+    );
+    expect(prompt).toContain("no reset between files");
+    expect(prompt).toContain("no part of the batch runs");
+    expect(prompt).toContain("10-minute execution deadline");
+    expect(prompt).not.toContain("one spec per call");
+    expect(prompt).not.toContain("run_tests({ testFile:");
   });
 
   it("basic agent mode gates test-writing guidance on testingEnabled", () => {

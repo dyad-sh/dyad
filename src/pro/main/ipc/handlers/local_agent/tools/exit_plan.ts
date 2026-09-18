@@ -7,6 +7,9 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { startPlanHandoffFromMain } from "@/ipc/services/plan_handoff_service";
+import { readPlanFromDisk } from "@/ipc/handlers/planPersistence";
+import { userInputRegistry } from "@/user_input/main";
+import { serializePlanDocument } from "@/plan_handoff/transport";
 
 const logger = log.scope("exit_plan");
 
@@ -66,6 +69,42 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
     }
 
     logger.log("Exiting plan mode, transitioning to implementation");
+    // A model-authored boolean is not independent user approval. The normal
+    // Plan panel accepts directly; conversational acceptance requires a
+    // one-shot human decision on this exact persisted version.
+    const plan = await readPlanFromDisk({
+      appPath: ctx.appPath,
+      chatId: ctx.chatId,
+    });
+    const acceptedVersion = serializePlanDocument(plan);
+    const requestId = userInputRegistry.request({
+      kind: "agent-consent",
+      chatId: ctx.chatId,
+      toolName: "Implement plan",
+      toolDescription: plan.title,
+      inputPreview: plan.content,
+      allowAlways: false,
+      classifier: "none",
+    });
+    const response = await userInputRegistry.park(requestId, ctx.abortSignal);
+    if (
+      response?.kind !== "agent-consent" ||
+      response.decision === "decline" ||
+      ctx.abortSignal?.aborted
+    )
+      throw new DyadError(
+        "Plan acceptance cancelled",
+        DyadErrorKind.UserCancelled,
+      );
+    if (
+      serializePlanDocument(
+        await readPlanFromDisk({ appPath: ctx.appPath, chatId: ctx.chatId }),
+      ) !== acceptedVersion
+    )
+      throw new DyadError(
+        "The plan changed. Review and accept the current version.",
+        DyadErrorKind.Precondition,
+      );
 
     try {
       await db

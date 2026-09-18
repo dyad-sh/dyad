@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import log from "electron-log";
 import { ToolDefinition, AgentContext } from "./types";
 import { userInputRegistry } from "@/user_input/main";
+import { persistQuestionnaire } from "@/user_input/questionnaire_journal";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -136,12 +137,25 @@ export const planningQuestionnaireTool: ToolDefinition<
       id: q.id || `q_${crypto.randomUUID().slice(0, 8)}`,
     }));
 
-    const requestId = userInputRegistry.request({
-      kind: "questionnaire",
+    const requestId = crypto.randomUUID();
+    await persistQuestionnaire({
+      requestId,
       chatId: ctx.chatId,
       questions,
-      classifier: "none",
+      outcome: "pending",
     });
+    ctx.onXmlComplete(
+      `<dyad-status title="Questionnaire requested" state="finished">${escapeXmlContent(questions.map((q) => q.question).join("\n"))}</dyad-status>`,
+    );
+    userInputRegistry.request(
+      {
+        kind: "questionnaire",
+        chatId: ctx.chatId,
+        questions,
+        classifier: "none",
+      },
+      requestId,
+    );
 
     logger.log(
       `Presenting questionnaire (${questions.length} questions), requestId: ${requestId}`,
@@ -151,6 +165,9 @@ export const planningQuestionnaireTool: ToolDefinition<
     const answers = result?.kind === "questionnaire" ? result.answers : null;
 
     if (!answers) {
+      ctx.onXmlComplete(
+        `<dyad-status title="Questionnaire closed" state="warning">${ctx.abortSignal?.aborted ? "Cancelled. No answers were submitted." : "Dismissed or interrupted. No answers were submitted."}</dyad-status>`,
+      );
       return "The user dismissed the questionnaire without answering. Ask them how they'd like to proceed, or try asking questions in regular chat text.";
     }
 

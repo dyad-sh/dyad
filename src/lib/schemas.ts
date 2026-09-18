@@ -546,6 +546,7 @@ const BaseUserSettingsFields = {
   enableCodeExplorer: z.boolean().optional(),
   runTypeScriptForWholeProject: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),
+  enableClaudeCodeSubscription: z.boolean().optional(),
   enableExplorerSubagent: z.boolean().optional(),
   enableAutoReview: z.boolean().optional(),
   enableReviewButton: z.boolean().optional(),
@@ -724,7 +725,9 @@ export function getEffectiveDefaultChatMode(
  */
 export function isBasicAgentMode(settings: UserSettings): boolean {
   return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+    settings.selectedModel.provider !== "claude-code" &&
+    !isDyadProEnabled(settings) &&
+    settings.selectedChatMode === "local-agent"
   );
 }
 

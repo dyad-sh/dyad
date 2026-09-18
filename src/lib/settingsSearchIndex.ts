@@ -44,6 +44,7 @@ export const SETTING_IDS = {
   enableCodeExplorer: "setting-enable-code-explorer",
   runTypeScriptForWholeProject: "setting-run-typescript-for-whole-project",
   enableMultiWindow: "setting-enable-multi-window",
+  enableClaudeCodeSubscription: "setting-enable-claude-code-subscription",
   enableExplorerSubagent: "setting-enable-explorer-subagent",
   enableAutoReview: "setting-enable-auto-review",
   enableReviewButton: "setting-enable-review-button",
@@ -419,6 +420,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 
   // Experiments
+  {
+    id: SETTING_IDS.enableClaudeCodeSubscription,
+    label: "Enable Claude Code subscription",
+    description:
+      "Use the official local Claude Code CLI with your Claude subscription",
+    keywords: ["claude", "anthropic", "subscription", "cli", "experiment"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
   {
     id: SETTING_IDS.autoApproveSafeMcpTools,
     label: "Skip consent for safe MCP tools",

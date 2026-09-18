@@ -51,6 +51,42 @@ beforeEach(() => {
     models: ["eligible-model"],
   });
 });
+
+it.each(["build", "ask", "plan", "local-agent"] as const)(
+  "matches Codex billing eligibility in %s mode, with Pro on or off",
+  async (selectedChatMode) => {
+    for (const provider of ["openai", "claude-code"]) {
+      for (const enableDyadPro of [true, false]) {
+        mocks.credits.mockClear();
+        const result = await preflightWithAdmission(
+          { ...model, provider },
+          {
+            ...settings,
+            selectedChatMode,
+            enableDyadPro,
+            enableClaudeCodeSubscription: true,
+          },
+          signal,
+        );
+        const billed = enableDyadPro && selectedChatMode === "local-agent";
+        expect(mocks.credits).toHaveBeenCalledTimes(billed ? 1 : 0);
+        expect(Boolean(result.externalModelAdmission)).toBe(billed);
+      }
+    }
+  },
+);
+
+it("blocks disabled Claude experiments before authentication or billing", async () => {
+  await expect(
+    preflightWithAdmission(
+      { ...model, provider: "claude-code" },
+      settings,
+      signal,
+    ),
+  ).rejects.toThrow("Settings → Experiments");
+  expect(mocks.credentials).not.toHaveBeenCalled();
+  expect(mocks.credits).not.toHaveBeenCalled();
+});
 describe("global subscription turn routing", () => {
   it.each(["build", "ask", "plan"] as const)(
     "allows %s subscription turns with no Dyad credits",
@@ -457,3 +493,22 @@ describe("cancelled admission", () => {
     expect(mocks.credits).not.toHaveBeenCalled();
   });
 });
+
+it.each([true, false])(
+  "keeps Claude on its CLI backend with Pro=%s, without ChatGPT auth",
+  async (pro) => {
+    const result = await preflightWithAdmission(
+      { provider: "claude-code", name: "sonnet", effortLevel: "medium" },
+      { ...settings, enableDyadPro: pro, enableClaudeCodeSubscription: true },
+      signal,
+    );
+    expect(result.model).toMatchObject({
+      provider: "claude-code",
+      connection: "subscription",
+    });
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credits).toHaveBeenCalledTimes(pro ? 1 : 0);
+    expect(Boolean(result.externalModelAdmission)).toBe(pro);
+  },
+);

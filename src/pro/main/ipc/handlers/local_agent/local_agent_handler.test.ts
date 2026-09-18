@@ -1,7 +1,12 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
+import {
+  InvalidToolInputError,
+  streamText,
+  jsonSchema,
+  type ModelMessage,
+} from "ai";
 import type { AgentContext } from "./tools/types";
 
 // ============================================================================
@@ -1416,7 +1421,7 @@ describe("handleLocalAgentStream", () => {
       mockMcpToolSet = {
         huge: {
           description: "Return a large result",
-          inputSchema: { type: "object" },
+          inputSchema: jsonSchema({ type: "object" }),
           execute: vi.fn().mockResolvedValue({
             content: [{ type: "text", text: hugeText }],
           }),

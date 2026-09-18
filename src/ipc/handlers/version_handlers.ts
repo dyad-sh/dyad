@@ -6,7 +6,7 @@ import {
   messages,
   versions,
 } from "../../db/schema";
-import { desc, eq, and, gt, gte } from "drizzle-orm";
+import { desc, eq, and, gt, gte, isNotNull } from "drizzle-orm";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -846,6 +846,18 @@ async function revertCodebaseToVersion({
       // Continue with the revert operation even if function deployment fails
     }
   }
+  // The restored working tree no longer matches any existing CLI transcript.
+  // Keep visible history, but require a fresh explicit session after undo.
+  await db
+    .update(chats)
+    .set({ claudeSessionState: "interrupted" })
+    .where(
+      and(
+        eq(chats.appId, appId),
+        eq(chats.executionBackend, "claude-code"),
+        isNotNull(chats.claudeSessionId),
+      ),
+    );
   await syncCloudSandboxSnapshotBestEffort(appId);
 
   const restoreCompletion = {
@@ -1193,6 +1205,22 @@ export function registerVersionHandlers() {
                 );
             }
           }
+        }
+
+        // Undo has now reconciled this chat's visible history with the restored
+        // tree. Start its next turn with that history in a fresh CLI session;
+        // other chats remain interrupted because their history was not pruned.
+        if (affectedChatId !== null) {
+          await db
+            .update(chats)
+            .set({ claudeSessionId: null, claudeSessionState: null })
+            .where(
+              and(
+                eq(chats.id, affectedChatId),
+                eq(chats.appId, appId),
+                eq(chats.executionBackend, "claude-code"),
+              ),
+            );
         }
 
         onRestoreProgress?.({
@@ -1650,6 +1678,8 @@ export function registerVersionHandlers() {
             | "maxTokensUsed"
             | "model"
             | "inferenceSource"
+            | "executionBackend"
+            | "executionUsage"
             | "aiMessagesJson"
             | "isCompactionSummary"
             | "createdAt";
@@ -1703,6 +1733,10 @@ export function registerVersionHandlers() {
                 title: restoredTitle,
                 chatMode: latestChat.chatMode,
                 modelSelection: latestChat.modelSelection,
+                executionBackend: latestChat.executionBackend,
+                // A fork starts a fresh CLI session with copied visible history,
+                // never resumes the original session against restored files.
+                claudeSessionState: null,
                 initialCommitHash: forkInitialCommitHash,
                 // Carry over the sticky referenced apps. The fork copies the
                 // history containing the `@app:` mentions, so dropping these
@@ -1742,6 +1776,8 @@ export function registerVersionHandlers() {
                     maxTokensUsed: m.maxTokensUsed,
                     model: m.model,
                     inferenceSource: m.inferenceSource,
+                    executionBackend: m.executionBackend,
+                    executionUsage: m.executionUsage,
                     aiMessagesJson: m.aiMessagesJson,
                     // Don't carry over the free-agent quota flag. The copied
                     // messages represent already-completed turns; preserving the

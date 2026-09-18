@@ -1,8 +1,17 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
+import { modelForChatBackend } from "@/shared/execution_backend";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { awaitTurnPreflight } from "../services/await_turn_preflight";
 import type { AutoModelCandidates } from "../services/auto_model_candidates";
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
+import {
+  executionBackendForModel,
+  BACKEND_SWITCH_MESSAGE,
+} from "@/shared/execution_backend";
+import { claudeStatus } from "@/ipc/services/claude_code/runtime";
+import { hasClaudeDisclosure } from "@/ipc/services/claude_code/disclosure";
+import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { v4 as uuidv4 } from "uuid";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { createTypedHandler } from "./base";
@@ -105,7 +114,6 @@ import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import {
   clearPendingLocalAgentInputsForChat,
-  handleLocalAgentStream,
   hasCompletedAppBlueprintQuestionnaire,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { isPreCommitHookAvailable } from "../services/pre_commit_service";
@@ -475,6 +483,7 @@ function executionObserver(
 // PROTOCOL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
 // src/chat_stream/host_transition.ts and src/chat_stream/main_actor.test.ts.
 interface TrackedStream {
+  drainBeforeEnd?: boolean;
   abortController: AbortController;
   sender: SafeSender;
   invocationRef?: ChatStreamInvocationRef;
@@ -682,6 +691,10 @@ async function cancelTrackedStreams(
   // Resolve consent prompts before awaiting completion. A stream parked on a
   // consent prompt cannot unwind until that prompt is resolved.
   for (const { chatId, streams } of trackedStreams) {
+    for (const { invocationRef } of streams) {
+      if (invocationRef)
+        cancelledActorInvocations.add(invocationRef.operationId);
+    }
     streams.forEach(({ abortController }) => abortController.abort());
     clearPendingLocalAgentInputsForChat(chatId);
     logger.log(`Aborted ${streams.length} stream(s) for chat ${chatId}`);
@@ -698,44 +711,50 @@ async function cancelTrackedStreams(
   // notification moves earlier, matching the pre-cancellation-refactor timing.
   // A new stream the renderer starts for a chat under an active restore barrier
   // simply waits at admission, so notifying early stays safe.
-  for (const { chatId, streams } of trackedStreams) {
-    const correlations =
-      streams.length > 0
-        ? streams.map(({ invocationRef, streamId, sender: streamSender }) => ({
+  await Promise.all(
+    trackedStreams.map(async ({ chatId, streams, completions }) => {
+      // Claude owns an external tool loop. Do not publish cancellation while
+      // approved project operations are still draining. Other backends retain
+      // their existing early-terminal contract.
+      if (streams.some((stream) => stream.drainBeforeEnd))
+        await Promise.allSettled(completions);
+      const correlations =
+        streams.length > 0
+          ? streams.map(
+              ({ invocationRef, streamId, sender: streamSender }) => ({
+                invocationRef,
+                streamId,
+                sender: streamSender,
+              }),
+            )
+          : [{ invocationRef: undefined, streamId: undefined, sender }];
+      for (const {
+        invocationRef,
+        streamId,
+        sender: streamSender,
+      } of correlations) {
+        const targetSender = streamSender ?? sender;
+        if (targetSender) {
+          safeSend(targetSender, "chat:response:end", {
+            chatId,
             invocationRef,
             streamId,
-            sender: streamSender,
-          }))
-        : [{ invocationRef: undefined, streamId: undefined, sender }];
-    for (const {
-      invocationRef,
-      streamId,
-      sender: streamSender,
-    } of correlations) {
-      if (invocationRef) {
-        cancelledActorInvocations.add(invocationRef.operationId);
+            updatedFiles: false,
+            wasCancelled: true,
+          } satisfies ChatStreamEndPayload);
+        }
       }
-      const targetSender = streamSender ?? sender;
-      if (targetSender) {
-        safeSend(targetSender, "chat:response:end", {
+      const terminalSenders = new Set(
+        streams.map(({ sender: streamSender }) => streamSender),
+      );
+      if (terminalSenders.size === 0 && sender) terminalSenders.add(sender);
+      for (const terminalSender of terminalSenders) {
+        safeSend(terminalSender, "chat:stream:end", {
           chatId,
-          invocationRef,
-          streamId,
-          updatedFiles: false,
-          wasCancelled: true,
-        } satisfies ChatStreamEndPayload);
+        } satisfies ChatStreamTransportEndPayload);
       }
-    }
-    const terminalSenders = new Set(
-      streams.map(({ sender: streamSender }) => streamSender),
-    );
-    if (terminalSenders.size === 0 && sender) terminalSenders.add(sender);
-    for (const terminalSender of terminalSenders) {
-      safeSend(terminalSender, "chat:stream:end", {
-        chatId,
-      } satisfies ChatStreamTransportEndPayload);
-    }
-  }
+    }),
+  );
 
   await Promise.all(
     trackedStreams.flatMap(({ completions }) =>
@@ -1145,7 +1164,10 @@ export function registerChatStreamHandlers() {
       let baseSettings = readSettings();
       let selectedModel = chat.modelSelection
         ? await normalizeModelSelection(chat.modelSelection)
-        : await resolveDefaultModelSelection(baseSettings);
+        : await resolveDefaultModelSelection({
+            ...baseSettings,
+            selectedModel: modelForChatBackend(chat, baseSettings),
+          });
       let { settings: storedSettings, mode: selectedChatMode } =
         await resolveChatModeForTurn({
           storedChatMode: chat.chatMode,
@@ -1153,6 +1175,32 @@ export function registerChatStreamHandlers() {
           settings: { ...baseSettings, selectedModel },
         });
       assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+      if (
+        executionBackendForModel(selectedModel) !==
+        (chat.executionBackend ?? "dyad")
+      )
+        throw new DyadError(BACKEND_SWITCH_MESSAGE, DyadErrorKind.Precondition);
+      if (chat.executionBackend === "claude-code") {
+        if (trackedStream) trackedStream.drainBeforeEnd = true;
+        if (!baseSettings.enableClaudeCodeSubscription)
+          throw new DyadError(
+            'Turn on "Enable Claude Code subscription" in Settings → Experiments before using this chat.',
+            DyadErrorKind.Precondition,
+          );
+        if (req.redo)
+          throw new DyadError(
+            "Claude Code cannot replace an earlier turn without retaining hidden CLI context. Start a new chat to retry; your current chat stays unchanged.",
+            DyadErrorKind.Precondition,
+          );
+        const status = await claudeStatus();
+        if (!status.connected || !status.compatible)
+          throw new DyadError(status.detail, DyadErrorKind.Precondition);
+        if (!(await hasClaudeDisclosure()))
+          throw new DyadError(
+            "Select Subscription in the model picker and accept the pricing disclosure first.",
+            DyadErrorKind.Precondition,
+          );
+      }
 
       // Reserve quota before redo or attachment persistence. The reservation
       // is converted to a durable message mark only after turn acceptance.
@@ -1239,6 +1287,15 @@ export function registerChatStreamHandlers() {
         await ensureDyadGitignored(appPath);
 
         for (const attachment of incomingAttachments) {
+          if (
+            chat.executionBackend === "claude-code" &&
+            isDotenvFilePath(attachment.name)
+          ) {
+            throw new DyadError(
+              "Claude Code cannot read dotenv attachments. Remove the attachment before sending.",
+              DyadErrorKind.Validation,
+            );
+          }
           const inspection = inspectBase64DataUrl(attachment.data);
           if (!inspection.ok) {
             throw new DyadError(
@@ -1545,6 +1602,7 @@ ${componentSnippet}
         const current = readSettings();
         return {
           enableDyadPro: current.enableDyadPro,
+          enableClaudeCodeSubscription: current.enableClaudeCodeSubscription,
           proModelUsage: current.proModelUsage,
           providerSettings: current.providerSettings,
           selectedModel: current.selectedModel,
@@ -1567,7 +1625,10 @@ ${componentSnippet}
             (async () => {
               const model = snapshot.modelSelection
                 ? await normalizeModelSelection(snapshot.modelSelection)
-                : await resolveDefaultModelSelection(attemptSettings);
+                : await resolveDefaultModelSelection({
+                    ...attemptSettings,
+                    selectedModel: modelForChatBackend(chat, attemptSettings),
+                  });
               const { mode } = await resolveChatModeForTurn({
                 storedChatMode: snapshot.chatMode,
                 requestedChatMode:
@@ -1819,9 +1880,12 @@ ${componentSnippet}
           approvalState: willUseLocalAgentStream ? "approved" : null,
           requestId: dyadRequestId,
           model:
-            selectedModel.connection === "subscription"
-              ? `ChatGPT subscription (${selectedModel.name})`
-              : selectedModel.name,
+            chat.executionBackend === "claude-code"
+              ? null
+              : selectedModel.connection === "subscription"
+                ? `ChatGPT subscription (${selectedModel.name})`
+                : selectedModel.name,
+          executionBackend: chat.executionBackend,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),
@@ -1991,7 +2055,7 @@ ${componentSnippet}
               updatedChat.app.id, // Exclude current app
             );
           referencedAppsForAgent = mentionedAppsCodebases.map(
-            ({ appName, appPath }) => ({ appName, appPath }),
+            ({ appId, appName, appPath }) => ({ appId, appName, appPath }),
           );
         }
         const useReferencedAppManifest =

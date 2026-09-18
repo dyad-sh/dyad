@@ -5,6 +5,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { ProModeSelector } from "./ProModeSelector";
 const mocks = vi.hoisted(() => ({
   connected: true,
+  claudeConnected: false,
+  claudeEnabled: false,
   usage: undefined as string | undefined,
   update: vi.fn(),
 }));
@@ -12,10 +14,16 @@ vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     settings: {
       enableDyadPro: true,
+      enableClaudeCodeSubscription: mocks.claudeEnabled,
       proModelUsage: mocks.usage,
       providerSettings: { auto: { apiKey: { value: "test-pro" } } },
     },
     updateSettings: mocks.update,
+  }),
+}));
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({
+    data: { connected: mocks.claudeConnected, compatible: true },
   }),
 }));
 vi.mock("@/hooks/useSubscriptionAccount", () => ({
@@ -26,8 +34,21 @@ vi.mock("@/ipc/types", () => ({
 }));
 beforeEach(() => {
   mocks.connected = true;
+  mocks.claudeConnected = false;
+  mocks.claudeEnabled = false;
   mocks.usage = undefined;
   vi.clearAllMocks();
+});
+it("allows subscription usage when only Claude Code is connected", async () => {
+  mocks.connected = false;
+  mocks.claudeConnected = true;
+  mocks.claudeEnabled = true;
+  mocks.usage = "pro";
+  const user = userEvent.setup();
+  render(<ProModeSelector />);
+  await user.click(screen.getByRole("button", { name: "Pro" }));
+  await user.click(screen.getByRole("button", { name: "Subscriptions" }));
+  expect(mocks.update).toHaveBeenCalledWith({ proModelUsage: "subscription" });
 });
 it("defaults to subscription when connected and writes a global preference", async () => {
   const user = userEvent.setup();

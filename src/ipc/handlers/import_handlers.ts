@@ -1,3 +1,4 @@
+import { initialChatExecution } from "@/ipc/utils/chat_execution_selection";
 import { dialog } from "electron";
 import fs from "fs/promises";
 import path from "path";
@@ -152,6 +153,7 @@ export function registerImportHandlers() {
         .values({
           appId: app.id,
           chatMode: initialChatMode,
+          ...(await initialChatExecution()),
         })
         .returning();
       queryInvalidationBus.publish([{ family: "apps" }, { family: "chats" }], {

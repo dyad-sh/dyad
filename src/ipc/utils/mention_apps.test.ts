@@ -97,7 +97,7 @@ describe("mention app utilities", () => {
 
     expect(dbMocks.findMany).toHaveBeenCalledTimes(1);
     expect(result.references).toEqual([
-      { appName: "foo.app.com", appPath: "/dyad-apps/foo-app" },
+      { appId: 1, appName: "foo.app.com", appPath: "/dyad-apps/foo-app" },
     ]);
     expect(result.appIds).toEqual([1]);
     expect(result.changed).toBe(true);
@@ -113,6 +113,7 @@ describe("mention app utilities", () => {
 
     expect(result.references).toEqual([
       {
+        appId: 3,
         appName: "App With Spaces",
         appPath: "/dyad-apps/spaced-app",
       },
@@ -130,7 +131,7 @@ describe("mention app utilities", () => {
     });
 
     expect(result.references).toEqual([
-      { appName: "foo.app.com", appPath: "/dyad-apps/foo-app" },
+      { appId: 1, appName: "foo.app.com", appPath: "/dyad-apps/foo-app" },
     ]);
     expect(result.appIds).toEqual([1]);
     // Nothing new, so the chat row does not need rewriting.
@@ -188,7 +189,7 @@ describe("mention app utilities", () => {
     });
 
     expect(result.references).toEqual([
-      { appName: "renamed", appPath: "/dyad-apps/moved-app" },
+      { appId: 1, appName: "renamed", appPath: "/dyad-apps/moved-app" },
     ]);
     expect(result.changed).toBe(false);
   });

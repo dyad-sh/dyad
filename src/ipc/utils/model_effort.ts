@@ -5,6 +5,7 @@ import type {
 } from "@/lib/schemas";
 import { createModelSelection, getModelPreferenceKey } from "@/lib/modelEffort";
 import { findLanguageModel } from "./findLanguageModel";
+import { modelForChatBackend } from "@/shared/execution_backend";
 
 export async function resolveModelSelection({
   model,
@@ -13,6 +14,8 @@ export async function resolveModelSelection({
   model: LargeLanguageModel;
   preferredEffortLevel?: string | null;
 }): Promise<ModelSelection> {
+  if (model.provider === "claude-code")
+    return { ...model, effortLevel: preferredEffortLevel ?? "medium" };
   const catalogModel = await findLanguageModel(model);
   return createModelSelection({
     model,
@@ -24,12 +27,11 @@ export async function resolveModelSelection({
 export async function resolveDefaultModelSelection(
   settings: UserSettings,
 ): Promise<ModelSelection> {
+  const selectedModel = modelForChatBackend(undefined, settings);
   return resolveModelSelection({
-    model: settings.selectedModel,
+    model: selectedModel,
     preferredEffortLevel:
-      settings.modelEffortPreferences?.[
-        getModelPreferenceKey(settings.selectedModel)
-      ],
+      settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
   });
 }
 

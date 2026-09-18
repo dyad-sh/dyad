@@ -47,6 +47,7 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   }),
   DescriptorBaseSchema.extend({
     kind: z.literal("agent-consent"),
+    allowAlways: z.boolean().optional(),
     toolName: z.string(),
     toolDescription: z.string().nullable().optional(),
     inputPreview: z.string().nullable().optional(),

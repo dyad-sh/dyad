@@ -1,3 +1,4 @@
+import { ipc } from "@/ipc/types";
 import { useCallback } from "react";
 import { useStore } from "jotai";
 
@@ -86,9 +87,10 @@ export function usePlanHandoff(): {
         throw new Error("Failed to accept plan: missing immutable plan data");
       }
       const planHash = await sha256Hex(serializePlanDocument(plan));
+      const source = await ipc.chat.getChat(payload.chatId);
       await manager.accept({
         sourceChatId: payload.chatId,
-        appId: payload.appId,
+        appId: source.appId,
         acceptInNewChat,
         plan,
         planHash,

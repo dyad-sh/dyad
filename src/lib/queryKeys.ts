@@ -33,6 +33,9 @@ export const queryKeys = {
     nodejsStatus: ["system", "nodejsStatus"] as const,
     nativeTheme: ["system", "nativeTheme"] as const,
     platform: ["system", "platform"] as const,
+    claudeCodeStatus: ["system", "claudeCodeStatus"] as const,
+    claudeCodeModels: ["system", "claudeCodeModels"] as const,
+    claudeCodeUsage: ["system", "claudeCodeUsage"] as const,
     subscriptionStatus: ["system", "subscriptionStatus"] as const,
     initialLoadTelemetryContext: [
       "system",

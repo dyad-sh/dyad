@@ -1,3 +1,4 @@
+import { withReferencedAppRead } from "./tools/referenced_app_read";
 /**
  * Tool definitions for Local Agent v2
  * Each tool includes a zod schema, description, and execute function
@@ -822,6 +823,22 @@ export function buildAgentToolSet(
               }
             : ctx;
         try {
+          // The SDK is not the authority for validation: MCP and sandbox
+          // adapters must enter the same invocation boundary.
+          if (!shouldIncludeTool(tool, invocationCtx, options)) {
+            throw new DyadError(
+              "Tool is unavailable in this turn",
+              DyadErrorKind.Precondition,
+            );
+          }
+          const schema = asSchema(
+            tool.getInputSchema?.(invocationCtx) ?? tool.inputSchema,
+          );
+          if (schema.validate) {
+            const validated = await schema.validate(args);
+            if (!validated.success) throw validated.error;
+            args = validated.value;
+          }
           const mutationRequiresTracking =
             toolModifiesState(tool, ctx) &&
             (tool.mutationTracking ?? "automatic") === "automatic";
@@ -863,6 +880,12 @@ export function buildAgentToolSet(
           // consent enter a closed actor generation.
           await requireToolConsentOrThrow(tool, processedArgs, invocationCtx);
           const invoke = async () => {
+            if (!shouldIncludeTool(tool, invocationCtx, options)) {
+              throw new DyadError(
+                "Tool is no longer available",
+                DyadErrorKind.Precondition,
+              );
+            }
             if (invocationCtx.abortSignal?.aborted) {
               throw new DyadError(
                 "This agent run was cancelled.",
@@ -872,7 +895,12 @@ export function buildAgentToolSet(
             // Track file edit tool usage before execution to capture all attempts
             // (including failures) for retry/fallback telemetry
             trackFileEditTool(invocationCtx, tool.name, processedArgs);
-            const result = await tool.execute(processedArgs, invocationCtx);
+            const result = await withReferencedAppRead(
+              tool.name,
+              processedArgs,
+              invocationCtx,
+              (readCtx) => tool.execute(processedArgs, readCtx),
+            );
 
             // Only completed mutations unblock run_tests. Failed tool calls are
             // still present in fileEditTracker for retry/fallback telemetry, but

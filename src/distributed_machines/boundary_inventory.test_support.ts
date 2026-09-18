@@ -287,6 +287,7 @@ export const nonRemoteDispatchOrEnqueueInventory = [
   owned("ipc/services/app_runtime_transport.ts", 1),
   owned("ipc/services/main_app_runtime_output.ts", 1),
   // Web ReadableStream output, not a distributed-machine command.
+  owned("ipc/services/claude_code/model.ts", 2),
   owned("ipc/utils/codex_subscription_provider.ts", 1),
   owned("ipc/utils/external_model_billing.ts", 1),
   owned("ipc/utils/fallback_ai_model.ts", 1),

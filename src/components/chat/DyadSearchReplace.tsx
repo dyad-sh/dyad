@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import { Search, ArrowLeftRight } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
-import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
+import {
+  type SearchReplaceBlock,
+  parseSearchReplaceBlocks,
+} from "@/pro/shared/search_replace_parser";
 import {
   DyadCard,
   DyadCardHeader,
@@ -21,10 +24,12 @@ interface DyadSearchReplaceProps {
   node?: any;
   path?: string;
   description?: string;
+  blocks?: SearchReplaceBlock[];
 }
 
 export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
   children,
+  blocks: suppliedBlocks,
   node,
   path: pathProp,
   description: descriptionProp,
@@ -38,18 +43,24 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
   const aborted = state === "aborted";
 
   const blocks = useMemo(
-    () => parseSearchReplaceBlocks(String(children ?? "")),
-    [children],
+    () => suppliedBlocks ?? parseSearchReplaceBlocks(String(children ?? "")),
+    [children, suppliedBlocks],
   );
 
   const fileName = path ? path.split("/").pop() : "";
+
+  const hasDetails =
+    blocks.length > 0 ||
+    (typeof children === "string" && children.trim().length > 0);
 
   return (
     <DyadCard
       state={state}
       accentColor="violet"
-      isExpanded={isContentVisible}
-      onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={hasDetails && isContentVisible}
+      onClick={
+        hasDetails ? () => setIsContentVisible(!isContentVisible) : undefined
+      }
       data-testid="dyad-search-replace"
     >
       <DyadCardHeader icon={<Search size={15} />} accentColor="violet">
@@ -65,11 +76,12 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
             pendingLabel="Applying changes..."
           />
         )}
+        {state === "error" && <DyadStateIndicator state="error" />}
         {aborted && (
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          {hasDetails && <DyadExpandIcon isExpanded={isContentVisible} />}
         </div>
       </DyadCardHeader>
       <DyadFilePath path={path} />
@@ -79,7 +91,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
           {description}
         </DyadDescription>
       )}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <DyadCardContent isExpanded={hasDetails && isContentVisible}>
         <div
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}

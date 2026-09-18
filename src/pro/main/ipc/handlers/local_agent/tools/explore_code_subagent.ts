@@ -1,3 +1,4 @@
+import { withReferencedAppRead } from "./referenced_app_read";
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
 
@@ -294,15 +295,23 @@ async function collectRawExploreObservation({
   candidateRegistry: CandidateRegistry;
   onProgress?: (progressText: string) => void;
 }): Promise<void> {
-  const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
-  const effectiveArgs = normalizeExploreCodeArgsForApp({
-    appPath: targetAppPath,
+  const { effectiveArgs, rawResult } = await withReferencedAppRead(
+    "explore_code",
     args,
-  });
-  const rawResult = await runRawExploreCode({
-    appPath: targetAppPath,
-    args: effectiveArgs,
-  });
+    ctx,
+    async (readCtx) => {
+      const targetAppPath = resolveTargetAppPath(readCtx, args.app_name);
+      const effectiveArgs = normalizeExploreCodeArgsForApp({
+        appPath: targetAppPath,
+        args,
+      });
+      const rawResult = await runRawExploreCode({
+        appPath: targetAppPath,
+        args: effectiveArgs,
+      });
+      return { effectiveArgs, rawResult };
+    },
+  );
   const resultText = formatRawExploreCodeResult(rawResult);
   const candidates = candidateRegistry.register(
     candidatesFromRawExploreCodeResult(rawResult),
@@ -752,15 +761,26 @@ function buildObservedExploreCodeTool({
             toolArgs.max_depth ??
             (parentArgs.intent === "explain" ? MAX_DEPTH : undefined),
         };
-        const targetAppPath = resolveTargetAppPath(ctx, lockedArgs.app_name);
-        const effectiveToolArgs = normalizeExploreCodeArgsForApp({
-          appPath: targetAppPath,
-          args: lockedArgs,
-        });
-        const rawResult = await runRawExploreCode({
-          appPath: targetAppPath,
-          args: effectiveToolArgs,
-        });
+        const { effectiveToolArgs, rawResult } = await withReferencedAppRead(
+          "explore_code",
+          lockedArgs,
+          ctx,
+          async (readCtx) => {
+            const targetAppPath = resolveTargetAppPath(
+              readCtx,
+              lockedArgs.app_name,
+            );
+            const effectiveToolArgs = normalizeExploreCodeArgsForApp({
+              appPath: targetAppPath,
+              args: lockedArgs,
+            });
+            const rawResult = await runRawExploreCode({
+              appPath: targetAppPath,
+              args: effectiveToolArgs,
+            });
+            return { effectiveToolArgs, rawResult };
+          },
+        );
         const resultText = formatRawExploreCodeResult(rawResult);
         const candidates = candidateRegistry.register(
           candidatesFromRawExploreCodeResult(rawResult),
@@ -804,7 +824,7 @@ function buildObservedExploreCodeTool({
   };
 }
 
-function wrapSubagentTool<TArgs>({
+function wrapSubagentTool<TArgs extends { app_name?: string }>({
   tool,
   ctx,
   observations,
@@ -857,7 +877,12 @@ function wrapSubagentTool<TArgs>({
           return compactResult;
         }
 
-        const result = await tool.execute(toolArgs, ctx);
+        const result = await withReferencedAppRead(
+          tool.name,
+          toolArgs,
+          ctx,
+          (readCtx) => tool.execute(toolArgs, readCtx),
+        );
         const resultText =
           typeof result === "string" ? result : JSON.stringify(result, null, 2);
         const registeredCandidates = candidateRegistry.register(

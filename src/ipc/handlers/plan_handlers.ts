@@ -10,6 +10,7 @@ import { planContracts } from "../types/plan";
 import { buildFrontmatter, validatePlanId, parsePlanFile } from "./planUtils";
 import {
   normalizePlanStatus,
+  loadPlanForChat,
   planDirForAppPath,
   savePlanToDisk,
 } from "./planPersistence";
@@ -93,52 +94,10 @@ export function registerPlanHandlers() {
   createTypedHandler(
     planContracts.getPlanForChat,
     async (_, { appId, chatId }) => {
-      const planDir = await getPlanDir(appId);
-      let files: string[];
-      try {
-        files = await fs.promises.readdir(planDir);
-      } catch {
-        return null;
-      }
-
-      const mdFiles = files.filter((f) => f.endsWith(".md"));
-
-      const prefix = `chat-${chatId}-`;
-      const matches = mdFiles.filter((f) => f.startsWith(prefix));
-      if (matches.length === 0) return null;
-
-      // A chat normally has a single stable-slug plan file, but legacy
-      // timestamped files may coexist. Pick the most recently updated one so
-      // filename ordering can't surface a stale plan over a newer draft.
-      // A single unreadable file (concurrent deletion, permission issue, etc.)
-      // must not prevent the chat from loading its other plans, so read each
-      // file defensively and drop the ones that fail.
-      const parsedResults = await Promise.all(
-        matches.map(async (file) => {
-          try {
-            const raw = await fs.promises.readFile(
-              path.join(planDir, file),
-              "utf-8",
-            );
-            return { slug: file.replace(/\.md$/, ""), ...parsePlanFile(raw) };
-          } catch (err) {
-            logger.warn(`Failed to read plan file ${file}:`, err);
-            return null;
-          }
-        }),
-      );
-      const parsed = parsedResults.filter(
-        (p): p is NonNullable<typeof p> => p !== null,
-      );
-      if (parsed.length === 0) return null;
-      // Fall back to createdAt (then empty) so a missing updatedAt can't sort a
-      // stale legacy plan ahead of a newer one.
-      parsed.sort((a, b) => {
-        const aTime = a.meta.updatedAt || a.meta.createdAt || "";
-        const bTime = b.meta.updatedAt || b.meta.createdAt || "";
-        return aTime.localeCompare(bTime);
-      });
-      const { slug, meta, content } = parsed[parsed.length - 1];
+      const appPath = await getAppPath(appId);
+      const plan = await loadPlanForChat(appPath, chatId);
+      if (!plan) return null;
+      const { slug, meta, content } = plan;
 
       return {
         id: slug,

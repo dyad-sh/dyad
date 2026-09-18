@@ -404,6 +404,60 @@ describe("context compaction (integration)", () => {
     }
   });
 
+  it("undo resets only the reconciled Claude chat to a fresh session", async () => {
+    const targetCommitHash = await getCurrentCommitHash({
+      path: harness.appDir,
+    });
+    const rows = await harness.db
+      .insert(chats)
+      .values(
+        ["undo-session", "other-session", null].map((claudeSessionId) => ({
+          appId: harness.appId,
+          executionBackend: "claude-code" as const,
+          claudeSessionState: claudeSessionId ? ("ready" as const) : null,
+          claudeSessionId,
+          initialCommitHash: targetCommitHash,
+        })),
+      )
+      .returning();
+    const [targetMessage] = await harness.db
+      .insert(messages)
+      .values({
+        chatId: rows[0].id,
+        role: "user",
+        content: "Undo this turn",
+      })
+      .returning();
+    await versionPreviewHandlerService.revertVersion({
+      appId: harness.appId,
+      previousVersionId: targetCommitHash,
+      currentChatMessageId: { chatId: rows[0].id, messageId: targetMessage.id },
+    });
+    const reconciled = await harness.db.query.chats.findFirst({
+      where: (chats, { eq }) => eq(chats.id, rows[0].id),
+      with: { messages: true },
+    });
+    expect(reconciled).toMatchObject({
+      claudeSessionId: null,
+      claudeSessionState: null,
+      messages: [],
+    });
+    const other = await harness.db.query.chats.findFirst({
+      where: (chats, { eq }) => eq(chats.id, rows[1].id),
+    });
+    expect(other).toMatchObject({
+      claudeSessionId: "other-session",
+      claudeSessionState: "interrupted",
+    });
+    const fresh = await harness.db.query.chats.findFirst({
+      where: (chats, { eq }) => eq(chats.id, rows[2].id),
+    });
+    expect(fresh).toMatchObject({
+      claudeSessionId: null,
+      claudeSessionState: null,
+    });
+  });
+
   it("does not create an interrupted version for Dyad-managed-only churn", async () => {
     const targetCommitHash = await getCurrentCommitHash({
       path: harness.appDir,

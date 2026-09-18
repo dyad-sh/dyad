@@ -48,13 +48,17 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
     <DyadFinishedIcon />
   );
 
+  const hasDetails = typeof children === "string" && children.trim().length > 0;
+
   return (
     <DyadCard
       state={state}
       accentColor={accentColor}
       showAccent={isWarning || isError || undefined}
-      isExpanded={isContentVisible}
-      onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={hasDetails && isContentVisible}
+      onClick={
+        hasDetails ? () => setIsContentVisible(!isContentVisible) : undefined
+      }
     >
       <DyadCardHeader icon={icon} accentColor={accentColor}>
         <span
@@ -69,10 +73,10 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
           {title}
         </span>
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          {hasDetails && <DyadExpandIcon isExpanded={isContentVisible} />}
         </div>
       </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
+      <DyadCardContent isExpanded={hasDetails && isContentVisible}>
         {content && (
           <div
             className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded-lg cursor-text"

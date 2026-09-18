@@ -35,6 +35,7 @@ import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
+import { ClaudeCodeSubscriptionExperimentSwitch } from "@/components/ClaudeCodeSubscriptionExperimentSwitch";
 import { TestRunInPreviewSwitch } from "@/components/TestRunInPreviewSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
@@ -240,6 +241,9 @@ export default function SettingsPage() {
 
             <div id={SETTING_IDS.enableMultiWindow}>
               <MultiWindowExperimentSwitch />
+            </div>
+            <div id={SETTING_IDS.enableClaudeCodeSubscription}>
+              <ClaudeCodeSubscriptionExperimentSwitch />
             </div>
 
             <div id={SETTING_IDS.enableTestRunInPreview}>

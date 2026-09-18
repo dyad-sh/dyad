@@ -13,6 +13,7 @@ import type { AutoModelCandidates } from "@/ipc/services/auto_model_candidates";
 import { IpcMainInvokeEvent } from "electron";
 import {
   streamText,
+  asSchema,
   ToolSet,
   stepCountIs,
   hasToolCall,
@@ -30,6 +31,7 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
+import { ClaudeCodeModel } from "@/ipc/services/claude_code/model";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { scheduleChatSearchIndexing } from "./chat_search_indexer";
@@ -663,6 +665,7 @@ export async function handleLocalAgentStream(
      * Read-only tools can target these via an `app_name` parameter.
      */
     referencedApps?: {
+      appId?: number;
       appName: string;
       appPath: string;
     }[];
@@ -844,13 +847,14 @@ export async function handleLocalAgentStream(
     hiddenMessageIdsForStreaming.add(id);
   }
 
-  const appPath = getDyadAppPath(chat.app.path);
+  let appPath = getDyadAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
     showOnTopOfCurrentResponse?: boolean;
     force?: boolean;
   }) => {
     if (
+      selectedModel.provider === "claude-code" ||
       settings.enableContextCompaction === false ||
       (!options?.force && !(await isChatPendingCompaction(req.chatId)))
     ) {
@@ -969,6 +973,7 @@ export async function handleLocalAgentStream(
   const synthesizedExplorerThreadIds = new Set<string>();
   const mutationTurnId = `local-agent-turn:${placeholderMessageId}`;
   let rootMutationOwner: MutationActivityOwner | undefined;
+  let claudeRuntime: ClaudeCodeModel | undefined;
 
   try {
     // Get model client
@@ -978,6 +983,15 @@ export async function handleLocalAgentStream(
       selectedModel,
       { chatId: req.chatId, autoModelCandidates, externalModelAdmission },
     );
+    if (modelClient.model instanceof ClaudeCodeModel) {
+      claudeRuntime = modelClient.model;
+      await claudeRuntime.prepare(abortController.signal);
+      const refreshed = await loadChat();
+      if (!refreshed?.app)
+        throw new DyadError("App no longer exists", DyadErrorKind.NotFound);
+      chat = refreshed;
+      appPath = getDyadAppPath(chat.app.path);
+    }
     currentInferenceSource = () =>
       getInferenceSource(
         modelClient.getRuntimeModel?.() ?? runtimeModel,
@@ -1029,6 +1043,13 @@ export async function handleLocalAgentStream(
       appId: chat.app.id,
       appPath,
       referencedApps: referencedAppsMap,
+      referencedAppIds: new Map(
+        referencedApps.flatMap((ref) =>
+          ref.appId === undefined
+            ? []
+            : [[ref.appName.toLowerCase(), ref.appId]],
+        ),
+      ),
       chatId: chat.id,
       planAcceptInNewChat: req.planAcceptInNewChat,
       supabaseProjectId: chat.app.supabaseProjectId,
@@ -1262,6 +1283,11 @@ export async function handleLocalAgentStream(
       }
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
+    if (modelClient.model instanceof ClaudeCodeModel) {
+      modelClient.model.bindTools(allTools, ctx, () =>
+        pendingUserMessages.splice(0).flat(),
+      );
+    }
     const registeredToolNames = new Set(Object.keys(allTools));
 
     // Prepare message history with graceful fallback
@@ -1620,7 +1646,8 @@ export async function handleLocalAgentStream(
                 .update(messages)
                 .set({
                   inferenceSource: currentInferenceSource(),
-                  ...(actualModel.connection === "subscription"
+                  ...(actualModel.connection === "subscription" &&
+                  actualModel.provider !== "claude-code"
                     ? {
                         model: `ChatGPT subscription (${step.response.modelId || actualModel.name})`,
                       }
@@ -1648,6 +1675,7 @@ export async function handleLocalAgentStream(
               }
 
               if (
+                selectedModel.provider === "claude-code" ||
                 settings.enableContextCompaction === false ||
                 compactedMidTurn ||
                 typeof step.usage.totalTokens !== "number"
@@ -2072,7 +2100,10 @@ export async function handleLocalAgentStream(
       }
 
       // Track total steps for step limit detection
-      totalStepsExecuted += steps.length;
+      totalStepsExecuted +=
+        modelClient.model instanceof ClaudeCodeModel
+          ? modelClient.model.stepsExecuted
+          : steps.length;
 
       if (responseMessages.length > 0 || allInjectedMessages.length > 0) {
         // For mid-turn compaction, slice off pre-compaction messages
@@ -2479,6 +2510,9 @@ export async function handleLocalAgentStream(
     });
     return false; // Error - don't consume quota
   } finally {
+    await claudeRuntime
+      ?.close()
+      .catch((error) => logger.error("Claude admission cleanup failed", error));
     await persistCompactionFallback();
     endTurnFinalization(mutationTurnId);
     // If an in-progress tool's XML preview was overlaid in the renderer
@@ -2909,6 +2943,12 @@ async function getMcpTools(
             const callId = execCtx.toolCallId;
             let callEmitted = false;
             try {
+              const schema = asSchema(mcpTool.inputSchema);
+              if (schema.validate) {
+                const parsed = await schema.validate(args);
+                if (!parsed.success) throw parsed.error;
+                args = parsed.value;
+              }
               const inputPreview =
                 typeof args === "string"
                   ? args

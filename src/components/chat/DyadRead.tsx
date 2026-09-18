@@ -1,7 +1,7 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { FileText } from "lucide-react";
-import { DyadBadge } from "./DyadCardPrimitives";
+import { DyadBadge, DyadStateIndicator } from "./DyadCardPrimitives";
 
 interface DyadReadProps {
   children?: ReactNode;
@@ -45,6 +45,14 @@ export const DyadRead: React.FC<DyadReadProps> = ({
       <div className="flex items-center gap-1 py-1">
         <FileText size={14} className="shrink-0 text-muted-foreground/50" />
         <span className="text-[13px] font-medium text-foreground/70">Read</span>
+        {(node?.properties?.state === "error" ||
+          node?.properties?.state === "aborted") && (
+          <DyadStateIndicator
+            state={node.properties.state}
+            errorLabel="Failed"
+            abortedLabel="Did not finish"
+          />
+        )}
         {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         {path && (
           <span

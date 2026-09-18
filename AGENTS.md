@@ -42,6 +42,8 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/i18n.md](rules/i18n.md)                                             | Adding translation keys to `src/i18n/locales/*/chat.json` or building i18n-aware chat tool cards                                                                                                                                          |
 | [rules/model-effort-and-catalog.md](rules/model-effort-and-catalog.md)     | Sending reasoning effort or output-token limits to models via the engine, editing the remote model catalog, or debugging 400s / truncation from a provider (Gemini thought signatures, OpenRouter context limits, Anthropic 4096 default) |
 
+| [rules/claude-code-backend.md](rules/claude-code-backend.md) | Claude Code backend, model picker, subscription usage, and tool presentation |
+
 ## Project setup and lints
 
 Make sure you run this once after doing `npm install` because it will make sure whenever you commit something, it will run pre-commit hooks like linting and formatting.

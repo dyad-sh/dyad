@@ -16,10 +16,23 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import { hasDyadProKey } from "@/lib/schemas";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
   const subscription = useSubscriptionAccount();
+  const claudeStatus = useQuery({
+    queryKey: queryKeys.system.claudeCodeStatus,
+    queryFn: () => ipc.chat.claudeCodeStatus(),
+    enabled: !!settings?.enableClaudeCodeSubscription,
+    staleTime: 10_000,
+  });
+  const claudeConnected =
+    !!settings?.enableClaudeCodeSubscription &&
+    !!claudeStatus.data?.connected &&
+    !!claudeStatus.data?.compatible;
+  const subscriptionConnected = subscription.data?.connected || claudeConnected;
 
   const toggleProEnabled = () => {
     updateSettings({
@@ -73,16 +86,14 @@ export function ProModeSelector() {
                 size="sm"
                 className="w-full"
                 value={[
-                  subscription.data?.connected &&
-                  settings?.proModelUsage !== "pro"
+                  subscriptionConnected && settings?.proModelUsage !== "pro"
                     ? "subscription"
                     : "pro",
                 ]}
                 onValueChange={(value) => {
                   if (
                     value[0] === "pro" ||
-                    (value[0] === "subscription" &&
-                      subscription.data?.connected)
+                    (value[0] === "subscription" && subscriptionConnected)
                   )
                     void updateSettings({
                       proModelUsage: value[0] as "pro" | "subscription",
@@ -91,10 +102,12 @@ export function ProModeSelector() {
               >
                 <ToggleGroupItem
                   value="subscription"
-                  disabled={!subscription.data?.connected}
+                  disabled={!subscriptionConnected}
                   className="text-xs"
                 >
-                  ChatGPT Subscription
+                  {settings?.enableClaudeCodeSubscription
+                    ? "Subscriptions"
+                    : "ChatGPT Subscription"}
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   value="pro"
@@ -104,7 +117,7 @@ export function ProModeSelector() {
                     // preference still requires subscription credentials.
                     // Clicking that selected toggle emits an empty value.
                     if (
-                      !subscription.data?.connected &&
+                      !subscriptionConnected &&
                       settings?.proModelUsage !== "pro"
                     )
                       void updateSettings({ proModelUsage: "pro" });

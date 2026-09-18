@@ -200,14 +200,6 @@ describe("plan mode (integration)", () => {
     const acceptButton = await screen.findByTestId("accept-plan-new-chat");
     fireEvent.click(acceptButton);
 
-    await harness.waitForEvent(
-      "plan:exit",
-      (payload) =>
-        typeof payload === "object" &&
-        payload !== null &&
-        (payload as { chatId?: number }).chatId === app.chatId,
-      30_000,
-    );
     await waitFor(
       () => {
         const location = harness.currentLocation();
@@ -233,14 +225,6 @@ describe("plan mode (integration)", () => {
 
     fireEvent.click(await screen.findByTestId("accept-plan-continue-here"));
 
-    await harness.waitForEvent(
-      "plan:exit",
-      (payload) =>
-        typeof payload === "object" &&
-        payload !== null &&
-        (payload as { chatId?: number }).chatId === app.chatId,
-      30_000,
-    );
     await waitFor(
       async () => {
         const location = harness.currentLocation();
@@ -278,15 +262,14 @@ describe("plan mode (integration)", () => {
       { chatId: app.chatId },
     );
     send();
-
-    await harness.waitForEvent(
-      "plan:exit",
-      (payload) =>
-        typeof payload === "object" &&
-        payload !== null &&
-        (payload as { chatId?: number }).chatId === app.chatId,
-      30_000,
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: "Allow once" },
+        { timeout: 15_000 },
+      ),
     );
+
     await waitFor(
       async () => {
         const location = harness.currentLocation();
@@ -316,14 +299,6 @@ describe("plan mode (integration)", () => {
 
     fireEvent.click(await screen.findByTestId("accept-plan-new-chat"));
 
-    await harness.waitForEvent(
-      "plan:exit",
-      (payload) =>
-        typeof payload === "object" &&
-        payload !== null &&
-        (payload as { chatId?: number }).chatId === source.chatId,
-      30_000,
-    );
     let implementationChatId = 0;
     await waitFor(
       () => {

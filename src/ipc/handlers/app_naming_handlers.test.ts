@@ -1,3 +1,6 @@
+vi.mock("@/ipc/services/chat_journal_cleanup", () => ({
+  deleteChatJournals: vi.fn(async () => {}),
+}));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -541,11 +544,11 @@ describe("app naming handlers", () => {
       await deletion;
     });
 
-    it("quiesces chat actors before deletion and disposes them after commit", async () => {
+    it("drains journal-owning chat actors before deleting the app", async () => {
       const appId = seedAppWithFolder("Delete Me", "delete-me");
       harness.db.insert(chats).values({ appId }).run();
       settleChatActorsForDeletionMock.mockImplementationOnce(async () => {
-        expect(getAppRow(appId)).toBeUndefined();
+        expect(getAppRow(appId)).toBeDefined();
         deletionOrder.push("settle-actors");
       });
 

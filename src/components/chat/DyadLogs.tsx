@@ -37,12 +37,16 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
 
   const displayText = `Reading ${hasResults ? `${logCount} ` : ""}logs${filterDesc}`;
 
+  const hasDetails = typeof children === "string" && children.trim().length > 0;
+
   return (
     <DyadCard
       state={state}
       accentColor="slate"
-      isExpanded={isContentVisible}
-      onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={hasDetails && isContentVisible}
+      onClick={
+        hasDetails ? () => setIsContentVisible(!isContentVisible) : undefined
+      }
     >
       <DyadCardHeader icon={<FileText size={15} />} accentColor="slate">
         <DyadBadge color="slate">LOGS</DyadBadge>
@@ -52,14 +56,15 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
         {inProgress && (
           <DyadStateIndicator state="pending" pendingLabel="Reading..." />
         )}
+        {state === "error" && <DyadStateIndicator state="error" />}
         {aborted && (
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          {hasDetails && <DyadExpandIcon isExpanded={isContentVisible} />}
         </div>
       </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
+      <DyadCardContent isExpanded={hasDetails && isContentVisible}>
         <div className="text-xs">
           <CodeHighlight className="language-log">{children}</CodeHighlight>
         </div>

@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   safeSend: vi.fn(),
   restoreAppFromTestBranch: vi.fn(),
   runningApps: new Map<number, any>(),
-  readSettings: vi.fn().mockReturnValue({ runtimeMode2: "host" }),
+  readSettings: vi.fn().mockReturnValue({
+    runtimeMode2: "host",
+    selectedModel: { provider: "auto", name: "auto" },
+  }),
 }));
 
 vi.mock("./base", () => ({
@@ -139,7 +142,10 @@ beforeEach(() => {
   mocks.restoreAppFromTestBranch.mockReset();
   mocks.restoreAppFromTestBranch.mockResolvedValue(true);
   mocks.isTestRunActive.mockReturnValue(false);
-  mocks.readSettings.mockReturnValue({ runtimeMode2: "host" });
+  mocks.readSettings.mockReturnValue({
+    runtimeMode2: "host",
+    selectedModel: { provider: "auto", name: "auto" },
+  });
 });
 
 describe("recording:discard-draft", () => {
@@ -562,6 +568,8 @@ describe("recording:start / recording:stop", () => {
     expect(mocks.insertValues).toHaveBeenCalledWith({
       appId: 1,
       title: "New chat",
+      executionBackend: "dyad",
+      modelSelection: undefined,
       initialCommitHash: "abc123",
       chatMode: null,
     });

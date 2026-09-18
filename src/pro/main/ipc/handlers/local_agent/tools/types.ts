@@ -83,6 +83,7 @@ export interface AgentContext {
    * absolute app path.
    */
   referencedApps: Map<string, string>;
+  referencedAppIds?: Map<string, number>;
   chatId: number;
   planAcceptInNewChat?: boolean;
   supabaseProjectId: string | null;

@@ -194,15 +194,17 @@ export function AgentConsentBanner({
           </div>
         )}
         <div className="flex items-center gap-2 ml-6">
-          <Button
-            onClick={() => onDecision("accept-always")}
-            size="sm"
-            variant="outline"
-            className="h-7 px-3 text-xs"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-            Always allow
-          </Button>
+          {consent.allowAlways !== false && (
+            <Button
+              onClick={() => onDecision("accept-always")}
+              size="sm"
+              variant="outline"
+              className="h-7 px-3 text-xs"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+              Always allow
+            </Button>
+          )}
           <Button
             onClick={() => onDecision("accept-once")}
             size="sm"

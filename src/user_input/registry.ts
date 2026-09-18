@@ -89,6 +89,10 @@ export function createUserInputRegistry(deps: {
     descriptor: UserInputDescriptor,
     response: UserInputResponse,
   ) => void | Promise<void>;
+  persistOutcome?: (
+    descriptor: UserInputDescriptor,
+    value: UserInputParkValue | null,
+  ) => Promise<void>;
   commandRunner?: UserInputCommandRunner;
   observer?: TransitionObserver<
     UserInputState,
@@ -103,6 +107,7 @@ export function createUserInputRegistry(deps: {
   const deadlines = new Map<string, ClockHandle>();
   const chatIndex = new Map<number, Set<string>>();
   const settledOrder: string[] = [];
+  const pendingOutcomes = new Map<string, Promise<boolean>>();
   const observer = deps.observer ?? createTraceObserver("user_input");
   const effects = createUserInputCommandRunner({
     broadcast: deps.broadcast,
@@ -113,7 +118,8 @@ export function createUserInputRegistry(deps: {
     if (kind === "integration") return INTEGRATION_DEADLINE_MS;
     // Connecting a plugin can include a browser OAuth step.
     if (kind === "plugin-suggestion") return INTEGRATION_DEADLINE_MS;
-    if (kind === "test-assertions") return REVIEW_DEADLINE_MS;
+    if (kind === "test-assertions" || kind === "questionnaire")
+      return REVIEW_DEADLINE_MS;
     return CONSENT_DEADLINE_MS;
   }
 
@@ -194,12 +200,49 @@ export function createUserInputRegistry(deps: {
   function dispatch(
     requestId: string,
     event: UserInputEvent,
+    outcomePersisted = false,
   ): Promise<boolean> {
+    const saving = pendingOutcomes.get(requestId);
+    if (saving && !outcomePersisted)
+      return saving.catch(() => false).then(() => dispatch(requestId, event));
     const previous = states.get(requestId) ?? ({ status: "idle" } as const);
     const result = transition(previous, event);
-    observeTransition(observer, previous, event, result);
-    if (result.kind === "ignored") return Promise.resolve(false);
+    if (result.kind === "ignored") {
+      observeTransition(observer, previous, event, result);
+      return Promise.resolve(false);
+    }
 
+    // Human answers remain pending until durable. Serialize competing answers
+    // and cancellation behind the write; on failure the same request can retry.
+    const resolution = result.commands.find((c) => c.type === "resolve-park");
+    if (
+      !outcomePersisted &&
+      resolution?.type === "resolve-park" &&
+      isLiveUserInputState(previous) &&
+      previous.descriptor.kind === "questionnaire" &&
+      deps.persistOutcome
+    ) {
+      const pending = Promise.resolve()
+        .then(() => deps.persistOutcome!(previous.descriptor, resolution.value))
+        .catch((error) => {
+          deps.onCommandError?.(resolution, error);
+          // Cancellation must still drain even when storage is unavailable.
+          // Human answers/dismissals, however, must never silently become null.
+          if (resolution.value !== null) throw error;
+        })
+        .then(() => {
+          if (states.get(requestId) !== previous) return false;
+          return dispatch(requestId, event, true);
+        })
+        .finally(() => {
+          if (pendingOutcomes.get(requestId) === pending)
+            pendingOutcomes.delete(requestId);
+        });
+      pendingOutcomes.set(requestId, pending);
+      return pending;
+    }
+
+    observeTransition(observer, previous, event, result);
     states.set(requestId, result.state);
     if (isLiveUserInputState(result.state)) addToChat(result.state.descriptor);
     else if (isLiveUserInputState(previous))
@@ -268,6 +311,11 @@ export function createUserInputRegistry(deps: {
   return {
     request(input, explicitRequestId) {
       const requestId = explicitRequestId ?? deps.idSource.next(input.kind);
+      if (pendingOutcomes.has(requestId))
+        throw new DyadError(
+          "User input is being saved",
+          DyadErrorKind.Conflict,
+        );
       const ms = deadlineMs(input.kind);
       const descriptor = {
         ...input,
@@ -466,6 +514,7 @@ export function createUserInputRegistry(deps: {
         }
       }
       for (const requestId of deadlines.keys()) cancelDeadline(requestId);
+      for (const requestId of parks.keys()) resolvePark(requestId, null);
       states.clear();
       parks.clear();
       chatIndex.clear();

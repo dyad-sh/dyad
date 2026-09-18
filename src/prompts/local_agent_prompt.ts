@@ -123,7 +123,13 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
 </tool_calling>`;
 
-const GIT_CONTEXT_BLOCK = `<git_context>
+const GIT_CONTEXT_BLOCK = `<dyad_workflow>
+Dyad automatically commits app file changes at the end of writable Agent turns; do not make your own commits or rewrite Git history. Ask and Plan turns do not commit or deploy.
+Dyad manages preview startup, including configured package installation and npm/pnpm development-server commands. Rely on hot reload for ordinary edits. Use available dedicated tools for dependencies, logs, restart, tests, builds, file operations, and Git inspection instead of reproducing those workflows with shell commands. Do not launch a second development server.
+Provider file changes can trigger Dyad-managed deployment and deletion; consider these downstream effects before editing Supabase functions.
+</dyad_workflow>
+
+<git_context>
 Dyad may add Git provenance to a user message.
 
 - "Previous assistant message created commit: ..." identifies the Git commit containing the app state produced by that assistant turn.

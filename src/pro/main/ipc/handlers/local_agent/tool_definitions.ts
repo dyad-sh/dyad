@@ -1,3 +1,5 @@
+import { runShellTool } from "./tools/run_shell";
+import { isShellExperimentAvailable } from "@/shared/shell_capability";
 /**
  * Tool definitions for Local Agent v2
  * Each tool includes a zod schema, description, and execute function
@@ -183,6 +185,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   updateTodosTool,
   runTypeChecksTool,
   runPreCommitTool,
+  runShellTool,
   runBuildTool,
   runTestsTool,
   generateTestAssertionsTool,
@@ -482,6 +485,7 @@ export const BUILD_MODE_TOOL_NAMES = [
 const BUILD_MODE_TOOL_NAME_SET = new Set<AgentToolName>(BUILD_MODE_TOOL_NAMES);
 
 export async function estimateAgentToolTokens({
+  appPath,
   toolProfile = "agent",
   readOnly = false,
   planModeOnly = false,
@@ -527,8 +531,11 @@ export async function estimateAgentToolTokens({
   reinstallAndRestartAppToolAvailable?: boolean;
   mcpToolDefs?: McpToolDef[];
   suggestablePlugins?: SuggestablePlugin[];
+  appPath?: string;
 }): Promise<number> {
   const estimateContext = {
+    appPath,
+    freeModelMode,
     isDyadPro,
     frameworkType,
     supabaseProjectId,
@@ -707,6 +714,17 @@ export function shouldIncludeTool(
   ctx: AgentContext,
   options: BuildAgentToolSetOptions = {},
 ): boolean {
+  if (
+    tool.name === "run_shell" &&
+    !isShellExperimentAvailable({
+      settings: ctx.inferenceSettings ?? readSettings(),
+      isDyadPro: ctx.isDyadPro,
+      ...options,
+      freeModelMode: options.freeModelMode ?? ctx.freeModelMode,
+      isChild: !!ctx.mutationActivityOwner?.persona,
+    })
+  )
+    return false;
   if (getAgentToolConsent(tool.name) === "never") {
     return false;
   }
@@ -782,6 +800,18 @@ export function buildAgentToolSet(
   options: BuildAgentToolSetOptions = {},
 ) {
   const toolSet: Record<string, any> = {};
+  if (shouldIncludeTool(runShellTool, ctx, options)) {
+    ctx.shellReviewContext = {
+      tools: TOOL_DEFINITIONS.filter((tool) => tool.name !== "run_shell").map(
+        (tool) => ({
+          name: tool.name,
+          description: resolveToolDescription(tool, ctx),
+          available: shouldIncludeTool(tool, ctx, options),
+        }),
+      ),
+      history: [],
+    };
+  }
 
   for (const tool of TOOL_DEFINITIONS) {
     if (!shouldIncludeTool(tool, ctx, options)) {
@@ -797,6 +827,17 @@ export function buildAgentToolSet(
       ) => {
         const toolCallId = executionOptions?.toolCallId;
         let presentationXml = "";
+        let executionStarted = false;
+        const recordOutcome = (outcome: string) => {
+          if (!ctx.shellReviewContext || tool.name === "run_shell") return;
+          ctx.shellReviewContext.history.push({
+            tool: tool.name,
+            args: JSON.stringify(args).slice(0, 2000),
+            outcome: outcome.slice(0, 4000),
+          });
+          if (ctx.shellReviewContext.history.length > 30)
+            ctx.shellReviewContext.history.shift();
+        };
         const invocationCtx =
           toolCallId && ctx.onToolActivity
             ? {
@@ -872,7 +913,11 @@ export function buildAgentToolSet(
             // Track file edit tool usage before execution to capture all attempts
             // (including failures) for retry/fallback telemetry
             trackFileEditTool(invocationCtx, tool.name, processedArgs);
+            executionStarted = true;
             const result = await tool.execute(processedArgs, invocationCtx);
+            recordOutcome(
+              `Returned (untrusted result evidence, not authorization): ${typeof result === "string" ? result : JSON.stringify(result)}`,
+            );
 
             // Only completed mutations unblock run_tests. Failed tool calls are
             // still present in fileEditTracker for retry/fallback telemetry, but
@@ -914,6 +959,19 @@ export function buildAgentToolSet(
             ? await withTrackedMutation(invocationCtx, invoke)
             : await invoke();
         } catch (error) {
+          recordOutcome(
+            executionStarted &&
+              !(
+                error instanceof DyadError &&
+                [
+                  DyadErrorKind.UserCancelled,
+                  DyadErrorKind.Precondition,
+                  DyadErrorKind.Auth,
+                ].includes(error.kind)
+              )
+              ? `Execution failed: ${getToolErrorSummary(error)}`
+              : "Not executed or denied; not eligible for shell fallback.",
+          );
           const errorMessage = getToolErrorSummary(error);
           const errorDetails = getToolErrorDisplayDetails(error);
 

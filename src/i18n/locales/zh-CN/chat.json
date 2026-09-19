@@ -392,6 +392,7 @@
   },
   "guide": "指南",
   "annotations": {
+    "addToChat": "添加到聊天",
     "commentOnSelection": "评论所选文本",
     "editComment": "编辑评论",
     "viewComment": "查看评论",

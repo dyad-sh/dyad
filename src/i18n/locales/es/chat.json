@@ -393,6 +393,7 @@
   },
   "guide": "Guía",
   "annotations": {
+    "addToChat": "Añadir al chat",
     "commentOnSelection": "Comentar el texto seleccionado",
     "editComment": "Editar comentario",
     "viewComment": "Ver comentario",

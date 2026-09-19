@@ -395,6 +395,7 @@
   },
   "guide": "Rehber",
   "annotations": {
+    "addToChat": "Sohbete ekle",
     "commentOnSelection": "Seçili metne yorum yap",
     "editComment": "Yorumu düzenle",
     "viewComment": "Yorumu görüntüle",

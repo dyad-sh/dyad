@@ -395,6 +395,7 @@
   },
   "guide": "Guide",
   "annotations": {
+    "addToChat": "Add to chat",
     "commentOnSelection": "Comment on selected text",
     "editComment": "Edit comment",
     "viewComment": "View comment",

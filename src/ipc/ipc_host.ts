@@ -9,6 +9,7 @@ import { registerConnectionFlowHandlers } from "./handlers/connection_flow_handl
 import { registerGithubHandlers } from "./handlers/github_handlers";
 import { registerGithubBranchHandlers } from "./handlers/git_branch_handlers";
 import { registerVercelHandlers } from "./handlers/vercel_handlers";
+import { registerCloudflareHandlers } from "./handlers/cloudflare_handlers";
 import { registerNodeHandlers } from "./handlers/node_handlers";
 import { registerProposalHandlers } from "./handlers/proposal_handlers";
 import { registerDebugHandlers } from "./handlers/debug_handlers";
@@ -74,6 +75,7 @@ export function registerIpcHandlers() {
   registerGithubHandlers();
   registerGithubBranchHandlers();
   registerVercelHandlers();
+  registerCloudflareHandlers();
   registerNodeHandlers();
   registerProblemsHandlers();
   registerProposalHandlers();

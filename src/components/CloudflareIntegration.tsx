@@ -1,0 +1,61 @@
+import { useState } from "react";
+import { Cloud } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useSettings } from "@/hooks/useSettings";
+import { showSuccess, showError } from "@/lib/toast";
+
+/**
+ * The account-level Cloudflare connection. Removing the token does not touch
+ * any Worker or deploy rule: those keep deploying until a new token is added
+ * or the app is disconnected from the Publish panel.
+ */
+export function CloudflareIntegration() {
+  const { settings, updateSettings } = useSettings();
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  if (
+    !settings?.enableCloudflareDeployment ||
+    !settings?.cloudflareAccessToken
+  ) {
+    return null;
+  }
+
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true);
+    try {
+      const result = await updateSettings({ cloudflareAccessToken: undefined });
+      if (result) {
+        showSuccess("Disconnected from Cloudflare.");
+      } else {
+        showError("Failed to disconnect from Cloudflare.");
+      }
+    } catch (err: any) {
+      showError(err.message || "Error disconnecting from Cloudflare.");
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Cloudflare Integration
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          Your Cloudflare API token is saved.
+        </p>
+      </div>
+      <Button
+        onClick={handleDisconnect}
+        variant="destructive"
+        size="sm"
+        disabled={isDisconnecting}
+        className="flex items-center gap-2"
+      >
+        {isDisconnecting ? "Disconnecting..." : "Disconnect from Cloudflare"}
+        <Cloud className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}

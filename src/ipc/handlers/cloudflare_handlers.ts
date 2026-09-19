@@ -1,0 +1,813 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import log from "electron-log";
+import { and, eq } from "drizzle-orm";
+import { db } from "../../db";
+import { apps, cloudflareAppConnections } from "../../db/schema";
+import { readSettings, writeSettings } from "../../main/settings";
+import { getDyadAppPath } from "@/paths/paths";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { execGit } from "../utils/git_utils";
+import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
+import { createAppOperationHandler } from "../utils/app_mutation_lock";
+import { readAppResource } from "../services/app_operation_coordinator";
+import { createTypedHandler } from "./base";
+import { getGitHubApiBase } from "./github_handlers";
+import {
+  cloudflareContracts,
+  type CloudflareAppStatus,
+  type CloudflareConnection,
+  type CloudflareDeploymentStatus,
+  type ConnectCloudflareWorkerParams,
+  type ConnectCloudflareWorkerResult,
+} from "../types/cloudflare";
+import {
+  canCloudflareSeeRepo,
+  createPlaceholderWorker,
+  createTrigger,
+  deleteTrigger,
+  deleteWorker,
+  describeTriggerRepo,
+  enableWorkersDevRoute,
+  ensureBuildToken,
+  getAccountSubdomain,
+  getBuildLogLines,
+  getLatestBuild,
+  getTriggerRepoConnectionUuid,
+  listAccounts,
+  listTriggers,
+  listWorkers,
+  probeBuildsAccess,
+  setTriggerBuildToken,
+  setTriggerBuildVariables,
+  startBuild,
+  toCloudflareDyadError,
+  updateTrigger,
+  upsertRepoConnection,
+  verifyToken,
+  type GithubRepoIdentity,
+} from "@/cloudflare_deploy/api";
+import {
+  buildCloudflareWorkerDashboardUrl,
+  buildDeployRule,
+  isBuildTokenRevokedLog,
+  isValidWorkerName,
+  pnpmVersionForBuild,
+  suggestWorkerName,
+  toDeploymentState,
+} from "@/cloudflare_deploy/build_config";
+import {
+  describeCloudflareTarget,
+  detectCloudflareTargets,
+  readWranglerWorkerName,
+  type CloudflareTarget,
+} from "@/cloudflare_deploy/targets";
+
+const logger = log.scope("cloudflare_handlers");
+
+const DEFAULT_BRANCH = "main";
+const LOG_TAIL_LINES = 30;
+
+type AppRow = typeof apps.$inferSelect;
+type ConnectionRow = typeof cloudflareAppConnections.$inferSelect;
+
+// --- Helpers ---
+
+function assertCloudflareEnabled(): void {
+  if (!readSettings().enableCloudflareDeployment) {
+    throw new DyadError(
+      "Cloudflare deployment is not enabled. Turn it on in Settings > Experiments.",
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
+function requireToken(): string {
+  const token = readSettings().cloudflareAccessToken?.value;
+  if (!token) {
+    throw new DyadError(
+      "Not connected to Cloudflare. Add an API token first.",
+      DyadErrorKind.Auth,
+    );
+  }
+  return token;
+}
+
+async function requireApp(appId: number): Promise<AppRow> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) {
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
+  }
+  return app;
+}
+
+function toConnection(row: ConnectionRow): CloudflareConnection {
+  return {
+    rootDirectory: row.rootDirectory,
+    accountId: row.accountId,
+    workerName: row.workerName,
+    workerUrl: row.workerUrl,
+    dashboardUrl: buildCloudflareWorkerDashboardUrl({
+      accountId: row.accountId,
+      workerName: row.workerName,
+    }),
+  };
+}
+
+async function findConnection(
+  appId: number,
+  rootDirectory: string,
+): Promise<ConnectionRow | undefined> {
+  return db.query.cloudflareAppConnections.findFirst({
+    where: and(
+      eq(cloudflareAppConnections.appId, appId),
+      eq(cloudflareAppConnections.rootDirectory, rootDirectory),
+    ),
+  });
+}
+
+async function revParse(appPath: string, ref: string): Promise<string | null> {
+  const result = await execGit(
+    ["rev-parse", "--verify", "--quiet", ref],
+    appPath,
+  );
+  return result.exitCode === 0 ? result.stdout.trim() : null;
+}
+
+/**
+ * Targets come from the committed branch, not the working folder: Cloudflare
+ * builds what is on GitHub, so a Wrangler config that was never committed is
+ * not something it can deploy.
+ */
+async function listCommittedTargets(
+  appPath: string,
+  branch: string,
+): Promise<CloudflareTarget[]> {
+  const result = await execGit(
+    ["ls-tree", "-r", "--name-only", "-z", `refs/heads/${branch}`],
+    appPath,
+  );
+  if (result.exitCode !== 0) {
+    return [];
+  }
+  return detectCloudflareTargets(result.stdout.split("\0").filter(Boolean));
+}
+
+async function readTargetFile(
+  appPath: string,
+  relativePath: string,
+): Promise<string | null> {
+  try {
+    return await fs.readFile(path.join(appPath, relativePath), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function hasBuildScript(
+  appPath: string,
+  rootDirectory: string,
+): Promise<boolean> {
+  const contents = await readTargetFile(
+    appPath,
+    path.posix.join(rootDirectory, "package.json"),
+  );
+  if (!contents) return false;
+  try {
+    const manifest = JSON.parse(contents) as {
+      scripts?: Record<string, unknown>;
+    };
+    return typeof manifest.scripts?.build === "string";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A Worker holds one script, so it can be deployed from one folder only. A
+ * second folder would overwrite the first on every push, and would take over
+ * the first folder's deploy rule to do it.
+ */
+async function assertWorkerIsFree(
+  accountId: string,
+  workerTag: string,
+  workerName: string,
+): Promise<void> {
+  const existing = await db.query.cloudflareAppConnections.findFirst({
+    where: and(
+      eq(cloudflareAppConnections.accountId, accountId),
+      eq(cloudflareAppConnections.workerTag, workerTag),
+    ),
+  });
+  if (!existing) return;
+  const owner = await db.query.apps.findFirst({
+    where: eq(apps.id, existing.appId),
+  });
+  const folder =
+    existing.rootDirectory === "" ? "the app root" : existing.rootDirectory;
+  throw new DyadError(
+    `"${workerName}" already deploys ${folder} of ${owner?.name ?? "another app"}. A Worker can only be deployed from one folder, so pick or create a different Worker.`,
+    DyadErrorKind.Conflict,
+  );
+}
+
+/** Build-time variables the target needs for Cloudflare to install it. */
+async function getBuildVariables(
+  appPath: string,
+  rootDirectory: string,
+): Promise<Record<string, string>> {
+  const usesPnpm =
+    (await readTargetFile(
+      appPath,
+      path.posix.join(rootDirectory, "pnpm-lock.yaml"),
+    )) !== null;
+  if (!usesPnpm) return {};
+
+  let packageManagerField: string | null = null;
+  const manifest = await readTargetFile(
+    appPath,
+    path.posix.join(rootDirectory, "package.json"),
+  );
+  if (manifest) {
+    try {
+      const field = (JSON.parse(manifest) as { packageManager?: unknown })
+        .packageManager;
+      packageManagerField = typeof field === "string" ? field : null;
+    } catch {
+      packageManagerField = null;
+    }
+  }
+  const localPnpm = await getPnpmMinimumReleaseAgeSupport().catch(() => null);
+  const version = pnpmVersionForBuild({
+    packageManagerField,
+    localPnpmVersion: localPnpm?.version ?? null,
+  });
+  return version ? { PNPM_VERSION: version } : {};
+}
+
+async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
+  if (!app.githubOrg || !app.githubRepo) {
+    throw new DyadError(
+      "Connect this app to a GitHub repository before deploying to Cloudflare.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  const githubToken = readSettings().githubAccessToken?.value;
+  if (!githubToken) {
+    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
+  }
+  const response = await fetch(
+    `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}`,
+    { headers: { Authorization: `Bearer ${githubToken}` } },
+  );
+  if (!response.ok) {
+    throw new DyadError(
+      `Could not read ${app.githubOrg}/${app.githubRepo} from GitHub (${response.status}).`,
+      response.status === 404 ? DyadErrorKind.NotFound : DyadErrorKind.External,
+    );
+  }
+  const repo = (await response.json()) as {
+    id?: number;
+    name?: string;
+    owner?: { id?: number; login?: string };
+  };
+  if (repo.id === undefined || repo.owner?.id === undefined) {
+    throw new DyadError(
+      "GitHub did not return the repository's identifiers.",
+      DyadErrorKind.External,
+    );
+  }
+  return {
+    ownerId: String(repo.owner.id),
+    ownerLogin: repo.owner.login ?? app.githubOrg,
+    repoId: String(repo.id),
+    repoName: repo.name ?? app.githubRepo,
+  };
+}
+
+// --- Handlers ---
+
+async function handleSaveToken(rawToken: string): Promise<void> {
+  const token = rawToken.trim();
+  if (token === "") {
+    throw new DyadError("An API token is required.", DyadErrorKind.Auth);
+  }
+
+  try {
+    const info = await verifyToken(token);
+    if (info.status !== "active") {
+      throw new DyadError(
+        `This API token is ${info.status}. Create a new one and try again.`,
+        DyadErrorKind.Auth,
+      );
+    }
+  } catch (error) {
+    if (error instanceof DyadError) throw error;
+    throw new DyadError(
+      "Cloudflare did not accept this API token. Check that you copied all of it.",
+      DyadErrorKind.Auth,
+    );
+  }
+
+  let accounts;
+  try {
+    accounts = await listAccounts(token);
+  } catch (error) {
+    throw toCloudflareDyadError(error, "Could not list Cloudflare accounts");
+  }
+  if (accounts.length === 0) {
+    throw new DyadError(
+      "This API token cannot see any Cloudflare account. Create it with the link above so it has the right permissions.",
+      DyadErrorKind.Auth,
+    );
+  }
+
+  // A token missing a permission would otherwise fail at the first deploy,
+  // long after the user has left the page that could fix it.
+  const probes = await Promise.allSettled(
+    accounts.map(async (account) => {
+      await listWorkers(token, account.id);
+      await probeBuildsAccess(token, account.id);
+    }),
+  );
+  if (!probes.some((probe) => probe.status === "fulfilled")) {
+    throw new DyadError(
+      "This API token is missing a permission. It needs Workers Scripts (edit) and Workers Builds Configuration (edit). Create it with the link above so both are included.",
+      DyadErrorKind.Auth,
+    );
+  }
+
+  writeSettings({ cloudflareAccessToken: { value: token } });
+  logger.log("Saved Cloudflare API token.");
+  await moveDeployRulesToToken(token);
+}
+
+/**
+ * Every deploy rule names the API token Cloudflare deploys with. After the
+ * user replaces a deleted or rolled token, rules still naming the old one
+ * would keep failing, so they are pointed at the new one.
+ */
+async function moveDeployRulesToToken(token: string): Promise<void> {
+  const rows = await db.query.cloudflareAppConnections.findMany();
+  if (rows.length === 0) return;
+  try {
+    const tokenInfo = await verifyToken(token);
+    const buildTokenByAccount = new Map<string, string>();
+    for (const row of rows) {
+      let buildTokenUuid = buildTokenByAccount.get(row.accountId);
+      if (!buildTokenUuid) {
+        buildTokenUuid = await ensureBuildToken(
+          token,
+          row.accountId,
+          tokenInfo.id,
+        );
+        buildTokenByAccount.set(row.accountId, buildTokenUuid);
+      }
+      await setTriggerBuildToken(
+        token,
+        row.accountId,
+        row.triggerUuid,
+        buildTokenUuid,
+      );
+    }
+  } catch (error) {
+    // The token itself is saved and valid; a rule that could not be moved
+    // shows up as a failed deployment the user can act on.
+    logger.warn("Could not move deploy rules to the new token:", error);
+  }
+}
+
+async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
+  const app = await requireApp(appId);
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch ?? DEFAULT_BRANCH;
+
+  const [localHead, remoteHead, targets, rows] = await Promise.all([
+    revParse(appPath, `refs/heads/${branch}`),
+    revParse(appPath, `refs/remotes/origin/${branch}`),
+    listCommittedTargets(appPath, branch),
+    db.query.cloudflareAppConnections.findMany({
+      where: eq(cloudflareAppConnections.appId, appId),
+    }),
+  ]);
+
+  const targetSummaries = await Promise.all(
+    targets.map(async (target) => {
+      const contents = await readTargetFile(appPath, target.configPath);
+      return {
+        rootDirectory: target.rootDirectory,
+        configPath: target.configPath,
+        label: describeCloudflareTarget(target),
+        suggestedWorkerName: suggestWorkerName({
+          configName: contents
+            ? readWranglerWorkerName(target.configPath, contents)
+            : null,
+          appName: app.name,
+          rootDirectory: target.rootDirectory,
+        }),
+      };
+    }),
+  );
+
+  return {
+    synced: localHead !== null && localHead === remoteHead,
+    branch,
+    targets: targetSummaries,
+    connections: rows.map(toConnection),
+  };
+}
+
+async function handleCheckRepoAccess({
+  appId,
+  accountId,
+}: {
+  appId: number;
+  accountId: string;
+}): Promise<{ hasAccess: boolean }> {
+  const token = requireToken();
+  const app = await requireApp(appId);
+  const repo = await getGithubRepoIdentity(app);
+  try {
+    const hasAccess = await canCloudflareSeeRepo(
+      token,
+      accountId,
+      repo,
+      app.githubBranch ?? DEFAULT_BRANCH,
+    );
+    return { hasAccess };
+  } catch (error) {
+    throw toCloudflareDyadError(
+      error,
+      "Could not check Cloudflare's access to the repository",
+    );
+  }
+}
+
+async function handleConnectWorker(
+  params: ConnectCloudflareWorkerParams,
+): Promise<ConnectCloudflareWorkerResult> {
+  const { appId, accountId, rootDirectory, workerName, mode } = params;
+  const token = requireToken();
+  const app = await requireApp(appId);
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch ?? DEFAULT_BRANCH;
+
+  if (!isValidWorkerName(workerName)) {
+    throw new DyadError(
+      "A Worker name can only contain lowercase letters, numbers and dashes, and must be 63 characters or fewer.",
+      DyadErrorKind.Validation,
+    );
+  }
+  if (await findConnection(appId, rootDirectory)) {
+    throw new DyadError(
+      "This folder is already connected to a Worker.",
+      DyadErrorKind.Conflict,
+    );
+  }
+  // The folder ends up in a rule Cloudflare runs, so it has to be one Dyad
+  // found in the repository rather than whatever the caller sent.
+  const targets = await listCommittedTargets(appPath, branch);
+  if (!targets.some((target) => target.rootDirectory === rootDirectory)) {
+    throw new DyadError(
+      "No Wrangler config was found in that folder on the synced branch.",
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  const repo = await getGithubRepoIdentity(app);
+
+  let createdWorkerName: string | null = null;
+  let createdTriggerUuid: string | null = null;
+  try {
+    if (!(await canCloudflareSeeRepo(token, accountId, repo, branch))) {
+      throw new DyadError(
+        "Cloudflare cannot see this GitHub repository yet.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    const subdomain = await getAccountSubdomain(token, accountId);
+    if (!subdomain) {
+      throw new DyadError(
+        "This Cloudflare account has no workers.dev subdomain yet. Open Workers & Pages in the Cloudflare dashboard once to create it, then try again.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const workers = await listWorkers(token, accountId);
+    let worker = workers.find((candidate) => candidate.name === workerName);
+    if (mode === "create") {
+      if (worker) {
+        throw new DyadError(
+          `A Worker named "${workerName}" already exists in this account.`,
+          DyadErrorKind.Conflict,
+        );
+      }
+      worker = await createPlaceholderWorker(token, accountId, workerName);
+      createdWorkerName = workerName;
+    } else if (!worker) {
+      throw new DyadError(
+        `No Worker named "${workerName}" exists in this account.`,
+        DyadErrorKind.NotFound,
+      );
+    } else {
+      await assertWorkerIsFree(accountId, worker.tag, workerName);
+    }
+    const repoConnectionUuid = await upsertRepoConnection(
+      token,
+      accountId,
+      repo,
+    );
+
+    const existingTriggers = await listTriggers(token, accountId, worker.tag);
+    const foreignTriggers = existingTriggers.filter(
+      (trigger) => getTriggerRepoConnectionUuid(trigger) !== repoConnectionUuid,
+    );
+    if (foreignTriggers.length > 0 && !params.overwrite) {
+      return {
+        status: "conflict",
+        existingRepo: describeTriggerRepo(foreignTriggers[0]),
+      };
+    }
+
+    // Only once the user has agreed to take the Worker over, if it was another
+    // repository's, does Dyad change anything about it.
+    await enableWorkersDevRoute(token, accountId, workerName);
+
+    const tokenInfo = await verifyToken(token);
+    const buildTokenUuid = await ensureBuildToken(
+      token,
+      accountId,
+      tokenInfo.id,
+    );
+    const rule = buildDeployRule({
+      workerTag: worker.tag,
+      workerName,
+      repoConnectionUuid,
+      buildTokenUuid,
+      rootDirectory,
+      branch,
+      hasBuildScript: await hasBuildScript(appPath, rootDirectory),
+    });
+
+    for (const trigger of foreignTriggers) {
+      await deleteTrigger(token, accountId, trigger.trigger_uuid);
+    }
+    // A rule this repository already has on the Worker is updated in place,
+    // so reconnecting never leaves two rules deploying the same branch.
+    const reusable = existingTriggers.find(
+      (trigger) =>
+        !foreignTriggers.includes(trigger) &&
+        (trigger.branch_includes ?? []).includes(branch),
+    );
+    let triggerUuid: string;
+    if (reusable) {
+      await updateTrigger(token, accountId, reusable.trigger_uuid, rule);
+      triggerUuid = reusable.trigger_uuid;
+    } else {
+      triggerUuid = await createTrigger(token, accountId, rule);
+      createdTriggerUuid = triggerUuid;
+    }
+    const buildVariables = await getBuildVariables(appPath, rootDirectory);
+    if (Object.keys(buildVariables).length > 0) {
+      await setTriggerBuildVariables(
+        token,
+        accountId,
+        triggerUuid,
+        buildVariables,
+      );
+    }
+
+    const [row] = await db
+      .insert(cloudflareAppConnections)
+      .values({
+        appId,
+        rootDirectory,
+        accountId,
+        workerName,
+        workerTag: worker.tag,
+        triggerUuid,
+        workerUrl: `https://${workerName}.${subdomain}.workers.dev`,
+      })
+      .returning();
+    // From here the connection is real; nothing below may undo it.
+    createdWorkerName = null;
+    createdTriggerUuid = null;
+
+    let warning: string | undefined;
+    try {
+      await startBuild(token, accountId, triggerUuid, branch);
+    } catch (error) {
+      logger.warn("Could not start the first Cloudflare build:", error);
+      warning =
+        "The Worker is connected, but the first deployment did not start. It will deploy on your next sync to GitHub.";
+    }
+
+    return { status: "connected", connection: toConnection(row), warning };
+  } catch (error) {
+    if (createdTriggerUuid) {
+      // A rule without a row would keep deploying with nothing in Dyad to
+      // show or remove it.
+      await deleteTrigger(token, accountId, createdTriggerUuid).catch(
+        (cleanupError) =>
+          logger.warn("Could not remove the unused deploy rule:", cleanupError),
+      );
+    }
+    if (createdWorkerName) {
+      // Do not leave behind a Worker that only ever held the stand-in script.
+      await deleteWorker(token, accountId, createdWorkerName).catch(
+        (cleanupError) =>
+          logger.warn("Could not remove the unused Worker:", cleanupError),
+      );
+    }
+    throw toCloudflareDyadError(error, "Could not connect the Worker");
+  }
+}
+
+async function handleGetDeploymentStatus({
+  appId,
+  rootDirectory,
+}: {
+  appId: number;
+  rootDirectory: string;
+}): Promise<CloudflareDeploymentStatus> {
+  const token = requireToken();
+  const row = await findConnection(appId, rootDirectory);
+  if (!row) {
+    throw new DyadError(
+      "This folder is not connected to a Worker.",
+      DyadErrorKind.NotFound,
+    );
+  }
+
+  try {
+    const [build, ruleMissing] = await Promise.all([
+      getLatestBuild(token, row.accountId, row.workerTag),
+      // A rule deleted in the Cloudflare dashboard leaves the Worker and its
+      // last build in place, so nothing else would show that deploys stopped.
+      // Failing to list rules is not evidence that the rule is gone.
+      listTriggers(token, row.accountId, row.workerTag)
+        .then(
+          (triggers) =>
+            !triggers.some(
+              (trigger) => trigger.trigger_uuid === row.triggerUuid,
+            ),
+        )
+        .catch(() => false),
+    ]);
+    if (!build) {
+      return {
+        state: "none",
+        commitHash: null,
+        logTail: [],
+        tokenRevoked: false,
+        ruleMissing,
+      };
+    }
+    const state = toDeploymentState(build);
+    let logTail: string[] = [];
+    if (state === "failed") {
+      // The log explains a failure, but a status without it is still useful.
+      logTail = await getBuildLogLines(token, row.accountId, build.build_uuid)
+        .then((lines) => lines.slice(-LOG_TAIL_LINES))
+        .catch(() => []);
+    }
+    return {
+      state,
+      commitHash: build.build_trigger_metadata?.commit_hash ?? null,
+      logTail,
+      tokenRevoked: isBuildTokenRevokedLog(logTail),
+      ruleMissing,
+    };
+  } catch (error) {
+    throw toCloudflareDyadError(error, "Could not read the deployment status");
+  }
+}
+
+async function handleDisconnect({
+  appId,
+  rootDirectory,
+}: {
+  appId: number;
+  rootDirectory: string;
+}): Promise<void> {
+  const row = await findConnection(appId, rootDirectory);
+  if (!row) {
+    return;
+  }
+  // Without this the Worker would keep deploying on every push after Dyad
+  // says it is disconnected. The Worker itself stays: it may be serving traffic.
+  // With the token gone Dyad cannot reach Cloudflare, so the rule stays; the
+  // connection is still forgotten so the app is not stuck connected.
+  const token = readSettings().cloudflareAccessToken?.value;
+  if (token) {
+    try {
+      await deleteTrigger(token, row.accountId, row.triggerUuid);
+    } catch (error) {
+      throw toCloudflareDyadError(
+        error,
+        "Could not remove the deploy rule from Cloudflare",
+      );
+    }
+  }
+  await db
+    .delete(cloudflareAppConnections)
+    .where(eq(cloudflareAppConnections.id, row.id));
+}
+
+// --- Registration ---
+
+const CONNECTION_RESOURCES = ["metadata", readAppResource("app-path")] as const;
+const STATUS_RESOURCES = [
+  readAppResource("app-path"),
+  readAppResource("repository-ref"),
+] as const;
+
+export function registerCloudflareHandlers() {
+  // DO NOT LOG this handler because tokens are sensitive
+  createTypedHandler(cloudflareContracts.saveToken, async (_, { token }) => {
+    assertCloudflareEnabled();
+    await handleSaveToken(token);
+  });
+
+  createTypedHandler(cloudflareContracts.listAccounts, async () => {
+    assertCloudflareEnabled();
+    try {
+      return await listAccounts(requireToken());
+    } catch (error) {
+      throw toCloudflareDyadError(error, "Could not list Cloudflare accounts");
+    }
+  });
+
+  createTypedHandler(
+    cloudflareContracts.listWorkers,
+    async (_, { accountId }) => {
+      assertCloudflareEnabled();
+      try {
+        const workers = await listWorkers(requireToken(), accountId);
+        return workers.map(({ name }) => ({ name }));
+      } catch (error) {
+        throw toCloudflareDyadError(error, "Could not list Workers");
+      }
+    },
+  );
+
+  createTypedHandler(
+    cloudflareContracts.getAppStatus,
+    createAppOperationHandler(
+      "cloudflare:get-app-status",
+      STATUS_RESOURCES,
+      async (_, { appId }: { appId: number }) => {
+        assertCloudflareEnabled();
+        return handleGetAppStatus(appId);
+      },
+    ),
+  );
+
+  createTypedHandler(cloudflareContracts.checkRepoAccess, async (_, params) => {
+    assertCloudflareEnabled();
+    return handleCheckRepoAccess(params);
+  });
+
+  createTypedHandler(
+    cloudflareContracts.connectWorker,
+    createAppOperationHandler(
+      "cloudflare:connect-worker",
+      [...CONNECTION_RESOURCES, readAppResource("repository-ref")],
+      async (_, params: ConnectCloudflareWorkerParams) => {
+        assertCloudflareEnabled();
+        return handleConnectWorker(params);
+      },
+    ),
+  );
+
+  createTypedHandler(
+    cloudflareContracts.getDeploymentStatus,
+    async (_, params) => {
+      assertCloudflareEnabled();
+      return handleGetDeploymentStatus(params);
+    },
+  );
+
+  createTypedHandler(
+    cloudflareContracts.disconnect,
+    createAppOperationHandler(
+      "cloudflare:disconnect",
+      CONNECTION_RESOURCES,
+      async (_, params: { appId: number; rootDirectory: string }) => {
+        assertCloudflareEnabled();
+        await handleDisconnect(params);
+      },
+    ),
+  );
+
+  logger.debug("Registered Cloudflare IPC handlers");
+}
+
+export const cloudflareHandlersForTesting = {
+  handleSaveToken,
+  handleGetAppStatus,
+  handleCheckRepoAccess,
+  handleConnectWorker,
+  handleGetDeploymentStatus,
+  handleDisconnect,
+};

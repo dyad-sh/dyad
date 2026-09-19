@@ -331,6 +331,23 @@ export const queryKeys = {
       ["vercel", "syncPreview", appId] as const,
   },
 
+  cloudflare: {
+    accounts: ["cloudflare", "accounts"] as const,
+    workers: ({ accountId }: { accountId: string | null }) =>
+      ["cloudflare", "workers", accountId] as const,
+    appStatus: ({ appId }: { appId: number }) =>
+      ["cloudflare", "appStatus", appId] as const,
+    repoAccess: ({ appId, accountId }: { appId: number; accountId: string }) =>
+      ["cloudflare", "repoAccess", appId, accountId] as const,
+    deploymentStatus: ({
+      appId,
+      rootDirectory,
+    }: {
+      appId: number;
+      rootDirectory: string;
+    }) => ["cloudflare", "deploymentStatus", appId, rootDirectory] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Coolify Deployments
   // ─────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 /**
@@ -22,6 +22,9 @@ vi.mock("@/components/VercelConnector", () => ({
 }));
 vi.mock("@/components/CoolifyConnector", () => ({
   CoolifyConnector: () => <div>coolify-connector</div>,
+}));
+vi.mock("@/components/CloudflareConnector", () => ({
+  CloudflareConnector: () => <div>cloudflare-connector</div>,
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl: vi.fn() } },
@@ -58,5 +61,68 @@ describe("with it turned on", () => {
     // is the tab that opens.
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("vercel-connector")).toBeTruthy();
+  });
+});
+
+describe("with Cloudflare deployment turned off", () => {
+  it("does not mention Cloudflare, even beside your own server", () => {
+    settings.value = { enableOwnServerDeployment: true };
+    render(<DeploymentSection appId={1} app={APP} />);
+
+    expect(screen.queryByText(/cloudflare/i)).toBeNull();
+  });
+});
+
+describe("with Cloudflare deployment turned on", () => {
+  it("adds a Cloudflare tab without bringing your own server along", () => {
+    settings.value = { enableCloudflareDeployment: true };
+    render(<DeploymentSection appId={1} app={APP} />);
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Vercel", "Cloudflare"]);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByText("coolify-connector")).toBeNull();
+  });
+
+  it("orders the tabs the same way whichever options are on", () => {
+    settings.value = {
+      enableCloudflareDeployment: true,
+      enableOwnServerDeployment: true,
+    };
+    render(<DeploymentSection appId={1} app={APP} />);
+
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Vercel",
+      "Cloudflare",
+      "Your Own Server",
+    ]);
+  });
+
+  it("shows the connector once the app is on GitHub", () => {
+    settings.value = { enableCloudflareDeployment: true };
+    render(<DeploymentSection appId={1} app={APP} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Cloudflare" }));
+
+    expect(screen.getByText("cloudflare-connector")).toBeTruthy();
+  });
+
+  it("asks for GitHub first, before any Cloudflare setup", () => {
+    // Cloudflare builds from the repository, so without one there is nothing
+    // an API token could be used for yet.
+    settings.value = { enableCloudflareDeployment: true };
+    render(
+      <DeploymentSection
+        appId={1}
+        app={{ name: "demo", githubOrg: null, githubRepo: null }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Cloudflare" }));
+
+    expect(
+      screen.getByText("GitHub Required for Cloudflare Deployment"),
+    ).toBeTruthy();
+    expect(screen.queryByText("cloudflare-connector")).toBeNull();
   });
 });

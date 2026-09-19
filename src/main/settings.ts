@@ -410,6 +410,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.vercelAccessToken.value,
       );
     }
+    if (newSettings.cloudflareAccessToken) {
+      newSettings.cloudflareAccessToken = encrypt(
+        newSettings.cloudflareAccessToken.value,
+      );
+    }
     if (newSettings.coolify?.accessToken) {
       newSettings.coolify = {
         ...newSettings.coolify,
@@ -680,6 +685,19 @@ function readExistingSettingsFile(
       combinedSettings.vercelAccessToken = resolved;
     } else {
       delete combinedSettings.vercelAccessToken;
+    }
+  }
+  if (combinedSettings.cloudflareAccessToken) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.cloudflareAccessToken,
+      "Cloudflare access token",
+      ["cloudflareAccessToken"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.cloudflareAccessToken = resolved;
+    } else {
+      delete combinedSettings.cloudflareAccessToken;
     }
   }
   if (combinedSettings.coolify?.accessToken) {

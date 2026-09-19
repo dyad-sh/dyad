@@ -573,6 +573,50 @@ export const coolifyAppConnections = sqliteTable(
   ],
 );
 
+/**
+ * Which Cloudflare Worker a folder of an app deploys to.
+ *
+ * One row per target, where a target is a folder holding a Wrangler config:
+ * an app can deploy several Workers, each with its own rule on Cloudflare. The
+ * row existing is what "connected" means, so every column is NOT NULL and
+ * disconnecting deletes the row. The API token is account-wide and lives in
+ * settings.
+ */
+export const cloudflareAppConnections = sqliteTable(
+  "cloudflare_app_connections",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    /** Path from the repository root, "" for the root itself. */
+    rootDirectory: text("root_directory").notNull(),
+    accountId: text("account_id").notNull(),
+    workerName: text("worker_name").notNull(),
+    /** Cloudflare's immutable id for the Worker; its builds API keys on this. */
+    workerTag: text("worker_tag").notNull(),
+    /** The rule that deploys this target on each push. */
+    triggerUuid: text("trigger_uuid").notNull(),
+    workerUrl: text("worker_url").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("cloudflare_app_connections_target_unique").on(
+      table.appId,
+      table.rootDirectory,
+    ),
+    // A Worker holds one script, so two folders deploying to it would
+    // overwrite each other on every push. Held here as well as in the handler
+    // because the app lock is per app, and two apps can connect at once.
+    unique("cloudflare_app_connections_worker_unique").on(
+      table.accountId,
+      table.workerTag,
+    ),
+  ],
+);
+
 // Define relations
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),

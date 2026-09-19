@@ -5,6 +5,7 @@ import cors from "cors";
 import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { registerFakeCoolify } from "./coolify";
+import { registerFakeCloudflare } from "./cloudflare";
 import { createResponsesHandler } from "./responsesHandler";
 import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import { fakeLlmLog } from "./log";
@@ -719,6 +720,9 @@ export function createFakeLlmApp(getPort: () => number) {
   // A Coolify instance. Nothing redirects to it: a test types its URL into
   // the connection form, the way a user types their own instance's.
   registerFakeCoolify(app);
+
+  // The Cloudflare API. Test builds send Cloudflare calls here.
+  registerFakeCloudflare(app);
 
   // GitHub API Mock Endpoints
   fakeLlmLog("Setting up GitHub mock endpoints");

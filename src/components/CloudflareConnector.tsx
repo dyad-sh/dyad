@@ -1,0 +1,755 @@
+import { useState } from "react";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ipc } from "@/ipc/types";
+import type {
+  CloudflareConnection,
+  CloudflareTargetSummary,
+  CloudflareWorkerSummary,
+} from "@/ipc/types";
+import { useSettings } from "@/hooks/useSettings";
+import {
+  useCloudflareAccounts,
+  useCloudflareAppStatus,
+  useCloudflareDeploymentStatus,
+  useCloudflareRepoAccess,
+  useCloudflareWorkers,
+  useConnectCloudflareWorker,
+  useDisconnectCloudflareWorker,
+} from "@/hooks/useCloudflareDeploy";
+import {
+  CLOUDFLARE_CONNECT_GITHUB_URL,
+  CLOUDFLARE_GITHUB_APP_URL,
+  buildCloudflareTokenTemplateUrl,
+  isDeploymentInProgress,
+  isValidWorkerName,
+  type CloudflareDeploymentState,
+} from "@/cloudflare_deploy/build_config";
+
+/**
+ * When a target deploys. A sync that pushes nothing never reaches Cloudflare,
+ * and a folder's deploy rule only watches that folder.
+ */
+function deployTriggerText(target: { rootDirectory: string; label: string }) {
+  return target.rootDirectory === ""
+    ? "Deploys whenever a sync pushes new commits to GitHub."
+    : `Deploys whenever a sync pushes changes inside ${target.label} to GitHub.`;
+}
+
+const noticeClass =
+  "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3 text-sm text-blue-800 dark:text-blue-200";
+const warningClass =
+  "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200";
+const errorClass =
+  "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3 text-sm text-red-800 dark:text-red-200";
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function CloudflareConnector({ appId }: { appId: number }) {
+  const { settings } = useSettings();
+  if (!settings?.cloudflareAccessToken) {
+    return <TokenForm />;
+  }
+  return <ConnectedAccount appId={appId} />;
+}
+
+// ---------------------------------------------------------------------------
+// API token
+// ---------------------------------------------------------------------------
+
+function TokenForm() {
+  const { refreshSettings } = useSettings();
+  const [token, setToken] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!token.trim()) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await ipc.cloudflare.saveToken({ token: token.trim() });
+      setToken("");
+      refreshSettings();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="cloudflare-token-form">
+      <h3 className="font-medium">Connect to Cloudflare</h3>
+      <div className={noticeClass}>
+        <p className="mb-2">
+          Cloudflare needs an API token to deploy your Workers. This is a
+          one-time step:
+        </p>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>If you don't have a Cloudflare account, sign up first</li>
+          <li>
+            Create the token. The form opens with the right permissions already
+            chosen, so continue to the summary and create it
+          </li>
+          <li>Copy the token and paste it below</li>
+        </ol>
+        <div className="flex gap-2 mt-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() =>
+              ipc.system.openExternalUrl("https://dash.cloudflare.com/sign-up")
+            }
+          >
+            Sign Up for Cloudflare
+          </Button>
+          <Button
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() =>
+              ipc.system.openExternalUrl(buildCloudflareTokenTemplateUrl())
+            }
+          >
+            Create API Token
+          </Button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-3">
+        <div>
+          <Label
+            htmlFor="cloudflare-api-token"
+            className="block text-sm font-medium mb-1"
+          >
+            Cloudflare API Token
+          </Label>
+          <Input
+            id="cloudflare-api-token"
+            type="password"
+            placeholder="Paste your Cloudflare API token"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            disabled={isSaving}
+            className="w-full"
+          />
+        </div>
+        <Button
+          type="submit"
+          disabled={!token.trim() || isSaving}
+          className="w-full"
+        >
+          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          {isSaving ? "Checking Token..." : "Save API Token"}
+        </Button>
+      </form>
+
+      {error && <div className={errorClass}>{error}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Account, target and readiness
+// ---------------------------------------------------------------------------
+
+function ConnectedAccount({ appId }: { appId: number }) {
+  const accounts = useCloudflareAccounts();
+  const status = useCloudflareAppStatus({ appId });
+  const [chosenAccountId, setChosenAccountId] = useState<string | null>(null);
+  const [chosenTarget, setChosenTarget] = useState<string | null>(null);
+
+  if (accounts.isLoading || status.isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading Cloudflare...
+      </div>
+    );
+  }
+  if (accounts.error || status.error) {
+    return (
+      <div className={errorClass}>
+        {errorMessage(accounts.error ?? status.error)}
+      </div>
+    );
+  }
+  if (!accounts.data || !status.data) {
+    return null;
+  }
+
+  const targets = status.data.targets;
+  if (targets.length === 0) {
+    return (
+      <div className={noticeClass} data-testid="cloudflare-no-targets">
+        <p className="font-medium mb-1">No Cloudflare Worker found</p>
+        <p>
+          Dyad deploys folders that contain a Wrangler config (wrangler.jsonc,
+          wrangler.json or wrangler.toml). Add a Worker to this app, then sync
+          it to GitHub.
+        </p>
+      </div>
+    );
+  }
+
+  const accountId = chosenAccountId ?? accounts.data[0]?.id ?? null;
+  const target =
+    targets.find((candidate) => candidate.rootDirectory === chosenTarget) ??
+    targets[0];
+  const connection = status.data.connections.find(
+    (candidate) => candidate.rootDirectory === target.rootDirectory,
+  );
+
+  return (
+    <div className="space-y-4" data-testid="cloudflare-connector">
+      {targets.length > 1 && (
+        <TargetList
+          targets={targets}
+          connections={status.data.connections}
+          selected={target.rootDirectory}
+          onSelect={setChosenTarget}
+        />
+      )}
+
+      {connection ? (
+        <DeploymentCard
+          appId={appId}
+          connection={connection}
+          targetLabel={target.label}
+        />
+      ) : (
+        <>
+          {accounts.data.length > 1 && (
+            <div>
+              <Label className="block text-sm font-medium mb-1">
+                Cloudflare account
+              </Label>
+              <Select
+                value={accountId ?? ""}
+                onValueChange={(value) => setChosenAccountId(value)}
+                items={accounts.data.map((account) => ({
+                  value: account.id,
+                  label: account.name,
+                }))}
+              >
+                <SelectTrigger
+                  className="w-full"
+                  data-testid="cloudflare-account-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.data.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {!status.data.synced ? (
+            <div className={warningClass} data-testid="cloudflare-not-synced">
+              <p className="font-medium mb-1">Sync to GitHub first</p>
+              <p>
+                Cloudflare deploys what is on GitHub, and the latest commit on{" "}
+                {status.data.branch} has not been pushed yet. Sync the app above
+                and this continues on its own.
+              </p>
+            </div>
+          ) : accountId ? (
+            <TargetSetup
+              // The form seeds itself from the target and the account.
+              key={`${accountId}:${target.rootDirectory}`}
+              appId={appId}
+              accountId={accountId}
+              target={target}
+              connections={status.data.connections}
+            />
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Every deployable folder and whether it is connected. A list rather than a
+ * dropdown because the folders are not alternatives: each deploys to its own
+ * Worker, and any number of them can be connected at once.
+ */
+function TargetList({
+  targets,
+  connections,
+  selected,
+  onSelect,
+}: {
+  targets: CloudflareTargetSummary[];
+  connections: CloudflareConnection[];
+  selected: string;
+  onSelect: (rootDirectory: string) => void;
+}) {
+  return (
+    <div className="space-y-2" data-testid="cloudflare-target-list">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        This app has {targets.length} Workers. Each folder deploys to its own
+        Worker, and each connected one deploys when a sync pushes changes to it.
+      </p>
+      <ul className="border rounded-md divide-y">
+        {targets.map((target) => {
+          const connection = connections.find(
+            (candidate) => candidate.rootDirectory === target.rootDirectory,
+          );
+          const isSelected = target.rootDirectory === selected;
+          return (
+            <li key={target.rootDirectory}>
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => onSelect(target.rootDirectory)}
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm cursor-pointer hover:bg-muted/50 ${
+                  isSelected ? "bg-muted" : "bg-transparent"
+                }`}
+              >
+                <span className="font-medium truncate">{target.label}</span>
+                <span
+                  className={
+                    connection
+                      ? "text-xs text-green-700 dark:text-green-400 truncate"
+                      : "text-xs text-gray-500 dark:text-gray-400"
+                  }
+                >
+                  {connection
+                    ? `Connected to ${connection.workerName}`
+                    : "Not connected"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function TargetSetup({
+  appId,
+  accountId,
+  target,
+  connections,
+}: {
+  appId: number;
+  accountId: string;
+  target: CloudflareTargetSummary;
+  connections: CloudflareConnection[];
+}) {
+  const access = useCloudflareRepoAccess({ appId, accountId });
+  const workers = useCloudflareWorkers({ accountId });
+
+  if (access.isLoading || workers.isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Checking Cloudflare...
+      </div>
+    );
+  }
+  if (access.error || workers.error) {
+    return (
+      <div className={errorClass}>
+        {errorMessage(access.error ?? workers.error)}
+      </div>
+    );
+  }
+  if (!access.data?.hasAccess) {
+    return <RepoAccessPrompt />;
+  }
+  return (
+    <WorkerForm
+      appId={appId}
+      accountId={accountId}
+      target={target}
+      workers={workers.data ?? []}
+      inUseWorkerNames={connections
+        .filter((connection) => connection.accountId === accountId)
+        .map((connection) => connection.workerName)}
+    />
+  );
+}
+
+function RepoAccessPrompt() {
+  return (
+    <div className={warningClass} data-testid="cloudflare-repo-access">
+      <p className="font-medium mb-1">
+        Cloudflare needs access to this GitHub repository
+      </p>
+      <p>
+        If you have never connected Cloudflare to GitHub, open Workers &amp;
+        Pages in the Cloudflare dashboard, choose Create, then Import a
+        repository, and connect GitHub. Choosing "All repositories" means you
+        will not be asked again for future apps. If Cloudflare is already
+        connected, add this repository to it on GitHub.
+      </p>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <Button
+          size="sm"
+          onClick={() =>
+            ipc.system.openExternalUrl(CLOUDFLARE_CONNECT_GITHUB_URL)
+          }
+        >
+          Connect GitHub on Cloudflare
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => ipc.system.openExternalUrl(CLOUDFLARE_GITHUB_APP_URL)}
+        >
+          Add This Repository on GitHub
+        </Button>
+      </div>
+      <p className="flex items-center gap-2 mt-3 text-xs">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Waiting for access. This continues on its own once it is granted.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Worker
+// ---------------------------------------------------------------------------
+
+function WorkerForm({
+  appId,
+  accountId,
+  target,
+  workers,
+  inUseWorkerNames,
+}: {
+  appId: number;
+  accountId: string;
+  target: CloudflareTargetSummary;
+  workers: CloudflareWorkerSummary[];
+  /** Workers another folder of this app already deploys to. */
+  inUseWorkerNames: string[];
+}) {
+  // A Worker holds one script, so one already deployed from another folder is
+  // not a choice here. It still counts as a taken name.
+  const availableWorkers = workers.filter(
+    (worker) => !inUseWorkerNames.includes(worker.name),
+  );
+  const suggestedExists = availableWorkers.some(
+    (worker) => worker.name === target.suggestedWorkerName,
+  );
+  const [mode, setMode] = useState<"create" | "existing">(
+    suggestedExists ? "existing" : "create",
+  );
+  const [newName, setNewName] = useState(
+    suggestedExists ? "" : target.suggestedWorkerName,
+  );
+  const [existingName, setExistingName] = useState(
+    suggestedExists ? target.suggestedWorkerName : "",
+  );
+  const [conflictRepo, setConflictRepo] = useState<string | null>(null);
+  const connect = useConnectCloudflareWorker();
+
+  const workerName = mode === "create" ? newName.trim() : existingName;
+  const nameTaken =
+    mode === "create" && workers.some((worker) => worker.name === workerName);
+  const nameInvalid =
+    mode === "create" && workerName !== "" && !isValidWorkerName(workerName);
+  const canSubmit =
+    workerName !== "" && !nameTaken && !nameInvalid && !connect.isPending;
+
+  const submit = async (overwrite: boolean) => {
+    try {
+      const result = await connect.mutateAsync({
+        appId,
+        accountId,
+        rootDirectory: target.rootDirectory,
+        workerName,
+        mode,
+        overwrite,
+      });
+      setConflictRepo(
+        result.status === "conflict" ? result.existingRepo : null,
+      );
+    } catch {
+      // Shown below from the mutation's error.
+    }
+  };
+
+  if (conflictRepo) {
+    return (
+      <div className={warningClass} data-testid="cloudflare-overwrite-prompt">
+        <p className="font-medium mb-1">
+          This Worker already deploys from GitHub
+        </p>
+        <p>
+          "{workerName}" currently deploys from {conflictRepo}. Replacing that
+          rule means it stops deploying from there and deploys this app instead.
+        </p>
+        <div className="flex gap-2 mt-3">
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={connect.isPending}
+            onClick={() => submit(true)}
+          >
+            {connect.isPending && (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            )}
+            Replace Rule
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={connect.isPending}
+            onClick={() => setConflictRepo(null)}
+          >
+            Cancel
+          </Button>
+        </div>
+        {connect.error && (
+          <div className={`${errorClass} mt-3`}>
+            {errorMessage(connect.error)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="space-y-3"
+      data-testid="cloudflare-worker-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canSubmit) submit(false);
+      }}
+    >
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === "create" ? "default" : "outline"}
+          onClick={() => setMode("create")}
+        >
+          Create new Worker
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === "existing" ? "default" : "outline"}
+          disabled={availableWorkers.length === 0}
+          onClick={() => setMode("existing")}
+        >
+          Use existing Worker
+        </Button>
+      </div>
+
+      {mode === "create" ? (
+        <div>
+          <Label
+            htmlFor="cloudflare-worker-name"
+            className="block text-sm font-medium mb-1"
+          >
+            Worker name
+          </Label>
+          <Input
+            id="cloudflare-worker-name"
+            data-testid="cloudflare-worker-name"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            disabled={connect.isPending}
+          />
+          {nameTaken && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+              {inUseWorkerNames.includes(workerName)
+                ? "Another folder of this app already deploys to this Worker. Each folder needs its own."
+                : "A Worker with this name already exists. Pick another name or use the existing Worker."}
+            </p>
+          )}
+          {nameInvalid && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+              Use lowercase letters, numbers and dashes, 63 characters at most.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <Label className="block text-sm font-medium mb-1">Worker</Label>
+          <Select
+            value={existingName}
+            onValueChange={(value) => setExistingName(value ?? "")}
+            disabled={connect.isPending}
+          >
+            <SelectTrigger
+              className="w-full"
+              data-testid="cloudflare-worker-select"
+            >
+              <SelectValue placeholder="Select a Worker" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableWorkers.map((worker) => (
+                <SelectItem key={worker.name} value={worker.name}>
+                  {worker.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <Button type="submit" disabled={!canSubmit} className="w-full">
+        {connect.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        {connect.isPending ? "Setting Up Deployment..." : "Connect and Deploy"}
+      </Button>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        {deployTriggerText(target)}
+      </p>
+
+      {connect.error && (
+        <div className={errorClass}>{errorMessage(connect.error)}</div>
+      )}
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deployment
+// ---------------------------------------------------------------------------
+
+const STATE_LABELS: Record<CloudflareDeploymentState, string> = {
+  none: "No deployment yet",
+  queued: "Deployment queued",
+  building: "Deploying",
+  live: "Live",
+  failed: "Deployment failed",
+  cancelled: "Deployment cancelled",
+};
+
+function DeploymentCard({
+  appId,
+  connection,
+  targetLabel,
+}: {
+  appId: number;
+  connection: CloudflareConnection;
+  targetLabel: string;
+}) {
+  const status = useCloudflareDeploymentStatus({
+    appId,
+    rootDirectory: connection.rootDirectory,
+  });
+  const disconnect = useDisconnectCloudflareWorker();
+  const state = status.data?.state;
+  const inProgress = state !== undefined && isDeploymentInProgress(state);
+
+  return (
+    <div className="space-y-3" data-testid="cloudflare-deployment">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">
+            {connection.workerName}
+          </p>
+          <button
+            type="button"
+            className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate max-w-full bg-transparent border-none p-0 cursor-pointer"
+            onClick={() => ipc.system.openExternalUrl(connection.workerUrl)}
+          >
+            {connection.workerUrl}
+          </button>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => ipc.system.openExternalUrl(connection.dashboardUrl)}
+        >
+          <ExternalLink className="h-4 w-4 mr-1" />
+          Cloudflare
+        </Button>
+      </div>
+
+      <div
+        className="flex items-center gap-2 text-sm"
+        data-testid="cloudflare-deployment-state"
+      >
+        {(status.isLoading || inProgress) && (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        )}
+        <span>
+          {status.isLoading
+            ? "Checking deployment..."
+            : state
+              ? STATE_LABELS[state]
+              : "Deployment status unavailable"}
+        </span>
+        {status.data?.commitHash && (
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+            {status.data.commitHash.slice(0, 7)}
+          </span>
+        )}
+      </div>
+
+      {status.error && (
+        <div className={errorClass}>{errorMessage(status.error)}</div>
+      )}
+      {status.data?.ruleMissing && (
+        <div className={warningClass} data-testid="cloudflare-rule-missing">
+          The rule that deploys {targetLabel} no longer exists on Cloudflare, so
+          syncing does not deploy it. Disconnect {targetLabel} and connect it
+          again to restore it.
+        </div>
+      )}
+      {status.data?.tokenRevoked && (
+        <div className={warningClass}>
+          The Cloudflare API token this deployment uses was deleted or rolled.
+          Disconnect Cloudflare under Settings &gt; Integrations, then add a new
+          token here. Your Workers stay connected.
+        </div>
+      )}
+      {state === "failed" && status.data && status.data.logTail.length > 0 && (
+        <pre className="text-xs bg-gray-100 dark:bg-gray-800 rounded-md p-2 max-h-48 overflow-auto whitespace-pre-wrap">
+          {status.data.logTail.join("\n")}
+        </pre>
+      )}
+
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        {deployTriggerText({
+          rootDirectory: connection.rootDirectory,
+          label: targetLabel,
+        })}
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={disconnect.isPending}
+        onClick={() =>
+          disconnect.mutate({
+            appId,
+            rootDirectory: connection.rootDirectory,
+          })
+        }
+      >
+        {disconnect.isPending
+          ? "Disconnecting..."
+          : `Disconnect ${targetLabel}`}
+      </Button>
+      {disconnect.error && (
+        <div className={errorClass}>{errorMessage(disconnect.error)}</div>
+      )}
+    </div>
+  );
+}

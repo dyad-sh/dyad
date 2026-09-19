@@ -11,6 +11,7 @@ import { useAppVersion } from "@/hooks/useAppVersion";
 import { BackButton } from "@/components/ui/back-button";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
+import { CloudflareIntegration } from "@/components/CloudflareIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector";
 import { Switch } from "@/components/ui/switch";
@@ -175,6 +176,9 @@ export default function SettingsPage() {
             <div id={SETTING_IDS.vercel}>
               <VercelIntegration />
             </div>
+            <div id={SETTING_IDS.cloudflare}>
+              <CloudflareIntegration />
+            </div>
             <div id={SETTING_IDS.supabase}>
               <SupabaseIntegration />
             </div>
@@ -275,6 +279,29 @@ export default function SettingsPage() {
                 Integrates with Coolify so you can deploy an app to a server you
                 run yourself. This is in early development: it is undocumented,
                 unstable, and may change or break without notice.
+              </p>
+            </div>
+
+            <div
+              id={SETTING_IDS.enableCloudflareDeployment}
+              className="space-y-1.5"
+            >
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="enable-cloudflare-deployment"
+                  aria-label="Allow deployment to Cloudflare Workers"
+                  checked={!!settings?.enableCloudflareDeployment}
+                  onCheckedChange={(checked) => {
+                    updateSettings({ enableCloudflareDeployment: checked });
+                  }}
+                />
+                <Label htmlFor="enable-cloudflare-deployment">
+                  Allow deployment to Cloudflare Workers
+                </Label>
+              </div>
+              <p className={hint}>
+                Adds a Cloudflare tab to the Publish panel that deploys a Worker
+                from your app when you sync changes to GitHub.
               </p>
             </div>
 

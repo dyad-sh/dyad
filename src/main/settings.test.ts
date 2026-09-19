@@ -1162,6 +1162,28 @@ describe("preserving undecryptable secrets", () => {
     });
   });
 
+  it("puts the Cloudflare API token through encryption", () => {
+    writeSettings({ cloudflareAccessToken: { value: "cf-token" } });
+
+    expect(readStoredFile().cloudflareAccessToken).toEqual({
+      value: "cf-token",
+      encryptionType: "plaintext",
+    });
+    expect(readSettings().cloudflareAccessToken?.value).toBe("cf-token");
+  });
+
+  it("keeps a Cloudflare API token that will not decrypt, without exposing it", () => {
+    // Cloudflare deploys with this token on every push, so losing the stored
+    // copy to an unrelated write would break deployments the user cannot see.
+    const locked = lockedSecret("cloudflare");
+    store[mockSettingsPath] = JSON.stringify({ cloudflareAccessToken: locked });
+
+    expect(readSettings().cloudflareAccessToken).toBeUndefined();
+
+    writeSettings({ enableAutoUpdate: false });
+    expect(readStoredFile().cloudflareAccessToken).toEqual(locked);
+  });
+
   it("forgets a Coolify token that will not decrypt when signing out", () => {
     // The preservation pass puts a secret back whenever the container it
     // lives in is still there, treating an absent key as a consumer read that

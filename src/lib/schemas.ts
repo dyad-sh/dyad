@@ -490,6 +490,9 @@ const BaseUserSettingsFields = {
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
+  // One API token does two jobs: Dyad uses it to set up Workers and deploy
+  // rules, and Cloudflare's build service deploys with it after each push.
+  cloudflareAccessToken: SecretSchema.optional(),
   coolify: CoolifySchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
@@ -558,6 +561,9 @@ const BaseUserSettingsFields = {
   // still changing, and with it off the Publish panel keeps the Vercel card
   // it has always had.
   enableOwnServerDeployment: z.boolean().optional(),
+  // Deploying Cloudflare Workers from the Publish panel. Off unless turned on
+  // while the integration is new; with it off the panel is unchanged.
+  enableCloudflareDeployment: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,

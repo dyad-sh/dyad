@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { ServerResponse } from "node:http";
 import {
   startTestCaseLifecycleServer,
   TEST_CASE_ENDPOINT_ENV,
@@ -20,17 +21,23 @@ import { ensurePreviewShim } from "../utils/playwright_bootstrap";
 const servers: Awaited<ReturnType<typeof startTestCaseLifecycleServer>>[] = [];
 const directories: string[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   for (const server of servers.splice(0)) await server.close();
   for (const directory of directories.splice(0))
     fs.rmSync(directory, { recursive: true, force: true });
 });
 
-async function setup() {
+async function setup(onSlowShutdown?: () => void) {
   const lifecycle = {
-    beforeEach: vi.fn(async () => ({ DYAD_TEST_USER_EMAIL: "new@dyad.test" })),
+    beforeEach: vi.fn(async (_signal?: AbortSignal) => ({
+      DYAD_TEST_USER_EMAIL: "new@dyad.test",
+    })),
     afterEach: vi.fn(async () => {}),
   };
-  const server = await startTestCaseLifecycleServer(lifecycle);
+  const server = await startTestCaseLifecycleServer(lifecycle, {
+    onSlowShutdown,
+  });
   servers.push(server);
   const request = (route: string, headers: Record<string, string> = {}) =>
     fetch(`${server.env[TEST_CASE_ENDPOINT_ENV]}/${route}`, {
@@ -44,6 +51,81 @@ async function setup() {
 }
 
 describe("test case lifecycle bridge", () => {
+  it("cancels a hanging provider operation and still drains cleanup on close", async () => {
+    const { lifecycle, server, request } = await setup();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    lifecycle.beforeEach.mockImplementationOnce(
+      (signal) =>
+        new Promise((_, reject) => {
+          signal!.addEventListener("abort", () => reject(signal!.reason), {
+            once: true,
+          });
+          started();
+        }),
+    );
+    const pendingRequest = request("before/one").catch(() => undefined);
+    await ready;
+    await server.close();
+    await pendingRequest;
+    expect(server.failure?.message).toContain("closing");
+    expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a provider that ignores cancellation while retaining the drain barrier", async () => {
+    const warning = vi.fn();
+    const { lifecycle, server, request } = await setup(warning);
+    let started!: () => void;
+    let finish!: (value: { DYAD_TEST_USER_EMAIL: string }) => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    lifecycle.beforeEach.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+          started();
+        }),
+    );
+    const pendingRequest = request("before/one").catch(() => undefined);
+    await ready;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let drained = false;
+    const closed = server.close().then(() => {
+      drained = true;
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(drained).toBe(false);
+    expect(lifecycle.afterEach).not.toHaveBeenCalled();
+    finish({ DYAD_TEST_USER_EMAIL: "late@dyad.test" });
+    await closed;
+    await pendingRequest;
+    expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the queue usable when sending a response throws", async () => {
+    const { lifecycle, server, request } = await setup();
+    const original = ServerResponse.prototype.writeHead;
+    const writeHead = vi
+      .spyOn(ServerResponse.prototype, "writeHead")
+      .mockImplementationOnce(function (
+        this: ServerResponse,
+        ...args: Parameters<typeof original>
+      ) {
+        original.apply(this, args);
+        throw new Error("response failed");
+      });
+    await request("before/one").catch(() => undefined);
+    writeHead.mockRestore();
+    expect((await request("before/two")).status).toBe(500);
+    await server.close();
+    expect(server.failure?.message).toBe("response failed");
+    expect(lifecycle.beforeEach).toHaveBeenCalledTimes(1);
+    expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
+  });
   it("requires the run token and rejects browser-origin requests", async () => {
     const { lifecycle, request } = await setup();
     expect(

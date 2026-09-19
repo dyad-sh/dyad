@@ -7,6 +7,7 @@ import {
   getSupabaseProjectLogs,
   listSupabaseOrganizations,
   refreshSupabaseToken,
+  executeSupabaseSql,
 } from "./supabase_management_client";
 import { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
@@ -17,6 +18,52 @@ vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
   writeSettings: vi.fn(),
 }));
+
+describe("executeSupabaseSql cancellation", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("forwards cancellation to the management request and stops a hanging query", async () => {
+    vi.mocked(readSettings).mockReturnValue({
+      supabase: {
+        accessToken: { value: "management-token" },
+        expiresIn: 3600,
+        tokenTimestamp: Date.now(),
+      },
+    } as ReturnType<typeof readSettings>);
+    const controller = new AbortController();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_input, init) =>
+          new Promise((_, reject) => {
+            expect(init.signal).toBe(controller.signal);
+            init.signal.addEventListener(
+              "abort",
+              () => reject(init.signal.reason),
+              { once: true },
+            );
+            started();
+          }),
+      ),
+    );
+    const query = executeSupabaseSql({
+      supabaseProjectId: "project",
+      organizationSlug: null,
+      query: "SELECT 1",
+      signal: controller.signal,
+    });
+    const rejected = expect(query).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await ready;
+    controller.abort();
+    await rejected;
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("hasSupabaseCredentialsForOrganization", () => {
   const settings = {

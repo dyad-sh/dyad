@@ -4,20 +4,40 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   neon: vi.fn(),
   testBuild: false,
+  listProjectBranchEndpoints: vi.fn(),
 }));
 vi.mock("@neondatabase/serverless", () => ({ neon: mocks.neon }));
+vi.mock("../../neon_admin/neon_management_client", () => ({
+  getNeonClient: async () => ({
+    listProjectBranchEndpoints: mocks.listProjectBranchEndpoints,
+  }),
+}));
 vi.mock("./test_utils", () => ({
   get IS_TEST_BUILD() {
     return mocks.testBuild;
   },
 }));
 
-import { clearNeonTestData } from "./neon_test_data";
+import { createNeonTestDataCleaner } from "./neon_test_data";
+
+const target = {
+  databaseUrl: "postgres://temporary",
+  projectId: "project",
+  branchId: "test-branch",
+  protectedBranchIds: ["real-branch"],
+};
+async function clearNeonTestData(databaseUrl: string) {
+  const clear = await createNeonTestDataCleaner({ ...target, databaseUrl });
+  await clear();
+}
 
 beforeEach(() => {
   mocks.query.mockReset();
   mocks.neon.mockReset().mockReturnValue({ query: mocks.query });
   mocks.testBuild = false;
+  mocks.listProjectBranchEndpoints.mockReset().mockResolvedValue({
+    data: { endpoints: [{ host: "temporary", branch_id: "test-branch" }] },
+  });
 });
 
 describe("clearNeonTestData", () => {
@@ -51,7 +71,10 @@ describe("clearNeonTestData", () => {
 
     await clearNeonTestData("postgres://temporary");
 
-    expect(mocks.neon).toHaveBeenCalledWith("postgres://temporary");
+    expect(mocks.neon).toHaveBeenCalledWith(
+      "postgres://temporary",
+      expect.anything(),
+    );
     const cleanup = mocks.query.mock.calls[1][0];
     expect(cleanup).not.toContain('"neon_auth"."project_config"');
     expect(cleanup).not.toContain('"neon_auth"."jwks"');
@@ -75,6 +98,72 @@ describe("clearNeonTestData", () => {
       { schema_name: "neon_auth", table_name: "jwks" },
     ]);
     await clearNeonTestData("postgres://temporary");
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves extension data and migration bookkeeping", async () => {
+    mocks.query
+      .mockResolvedValueOnce([
+        {
+          schema_name: "public",
+          table_name: "spatial_ref_sys",
+          extension_owned: true,
+        },
+        { schema_name: "drizzle", table_name: "custom_history" },
+        { schema_name: "supabase_migrations", table_name: "schema_migrations" },
+        { schema_name: "public", table_name: "__drizzle_migrations" },
+        { schema_name: "public", table_name: "_prisma_migrations" },
+        { schema_name: "public", table_name: "todos", extension_owned: false },
+      ])
+      .mockResolvedValueOnce([]);
+    await clearNeonTestData(target.databaseUrl);
+    expect(mocks.query.mock.calls[1][0]).toBe(
+      'TRUNCATE TABLE "public"."todos" RESTART IDENTITY RESTRICT',
+    );
+    expect(mocks.query.mock.calls[0][0]).toContain("d.deptype = 'e'");
+  });
+
+  it.each([
+    { branchId: "real-branch" },
+    { databaseUrl: "postgres://production" },
+    { branchId: "different-branch" },
+  ])(
+    "refuses unsafe database targets before any SQL (%j)",
+    async (override) => {
+      await expect(
+        createNeonTestDataCleaner({ ...target, ...override }),
+      ).rejects.toThrow("Refusing to clear");
+      expect(mocks.neon).not.toHaveBeenCalled();
+    },
+  );
+
+  it("validates once per run and forwards cancellation to SQL requests", async () => {
+    const clear = await createNeonTestDataCleaner(target);
+    mocks.query.mockResolvedValue([]);
+    const signal = new AbortController().signal;
+    await clear(signal);
+    await clear(signal);
+    expect(mocks.listProjectBranchEndpoints).toHaveBeenCalledTimes(1);
+    expect(mocks.neon).toHaveBeenCalledWith(target.databaseUrl, {
+      fetchOptions: { signal },
+    });
+  });
+
+  it("accepts the pooler hostname of the verified temporary endpoint", async () => {
+    mocks.listProjectBranchEndpoints.mockResolvedValue({
+      data: {
+        endpoints: [
+          { host: "ep-test.region.neon.tech", branch_id: target.branchId },
+        ],
+      },
+    });
+    mocks.query.mockResolvedValue([]);
+    const clear = await createNeonTestDataCleaner({
+      ...target,
+      databaseUrl:
+        "postgres://user:password@ep-test-pooler.region.neon.tech/database",
+    });
+    await clear();
     expect(mocks.query).toHaveBeenCalledTimes(1);
   });
 

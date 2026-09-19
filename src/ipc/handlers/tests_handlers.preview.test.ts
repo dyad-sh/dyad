@@ -549,6 +549,31 @@ describe("ordinary runs are untouched", () => {
     expect(h.spawnStreaming).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "scales explicit run budgets for isolation (%s)",
+    async (isolateTestCases) => {
+      h.spawnStreaming.mockResolvedValueOnce({
+        code: 1,
+        stdout: "",
+        stderr: "",
+        timedOut: true,
+      });
+      const result = await runAppTestsCore({
+        appId: 1,
+        isolateTestCases,
+        timeoutMs: 600_000,
+      });
+      expect(h.spawnStreaming).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          timeoutMs: isolateTestCases ? 1_800_000 : 600_000,
+        }),
+      );
+      expect(result.infraError?.message).toContain(
+        isolateTestCases ? "30-minute" : "10-minute",
+      );
+    },
+  );
+
   it("never sets the endpoint env var or requests the shim", async () => {
     await runAppTestsCore({ appId: 1 });
 

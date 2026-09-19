@@ -736,6 +736,9 @@ export async function runAppTestsCore({
   previewCdpToken,
   rotatePreviewView,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
+  // One worker plus provider provisioning/cleanup makes isolated suites slower.
+  // Preserve the manual-run unlimited budget and scale explicit agent caps.
+  if (isolateTestCases && timeoutMs !== undefined) timeoutMs *= 3;
   const app = await getApp(appId);
   const appPath = getDyadAppPath(app.path);
   const emit = (chunk: string, phase: "setup" | "running") =>
@@ -1572,6 +1575,13 @@ export async function runAppTestsWithIsolation({
             if (prepared.testCaseLifecycle) {
               caseServer = await startTestCaseLifecycleServer(
                 prepared.testCaseLifecycle,
+                {
+                  onSlowShutdown: () =>
+                    emit(
+                      "Waiting for the database provider to finish cancelled test setup or cleanup. New runs remain blocked until it settles.\n",
+                      "running",
+                    ),
+                },
               );
               if (parallel)
                 emit(
@@ -1617,13 +1627,25 @@ export async function runAppTestsWithIsolation({
               },
             });
           } finally {
-            await caseServer?.close();
-            await previewBroker?.close().catch((error) => {
+            // Release the preview even when a provider is still draining.
+            const caseClosing = caseServer?.close().catch((error) => {
               logger.warn(
-                `Failed to close preview automation broker: ${error}`,
+                `Failed to close test case lifecycle server: ${error}`,
               );
             });
-            automation?.end();
+            try {
+              await previewBroker?.close().catch((error) => {
+                logger.warn(
+                  `Failed to close preview automation broker: ${error}`,
+                );
+              });
+            } finally {
+              try {
+                automation?.end();
+              } finally {
+                await caseClosing;
+              }
+            }
           }
 
           if (caseServer?.failure) {

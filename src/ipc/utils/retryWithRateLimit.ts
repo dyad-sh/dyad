@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { setTimeout as delayWithSignal } from "node:timers/promises";
 
 export const logger = log.scope("retryWithRateLimit");
 
@@ -67,6 +68,7 @@ const RETRY_CONFIG = {
 };
 
 export interface RetryWithRateLimitOptions {
+  signal?: AbortSignal;
   /** Maximum number of retries */
   maxRetries?: number;
   /** Base delay in ms for exponential backoff */
@@ -95,6 +97,7 @@ export async function retryWithRateLimit<T>(
   let lastError: any;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    options?.signal?.throwIfAborted();
     try {
       const result = await operation();
       if (attempt > 0) {
@@ -143,7 +146,11 @@ export async function retryWithRateLimit<T>(
         );
       }
 
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (options?.signal) {
+        await delayWithSignal(delay, undefined, { signal: options.signal });
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
   }
 
@@ -182,6 +189,6 @@ export async function fetchWithRetry(
       return response;
     },
     context,
-    retryOptions,
+    { ...retryOptions, signal: init?.signal ?? retryOptions?.signal },
   );
 }

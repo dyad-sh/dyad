@@ -8,13 +8,15 @@ import {
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
-import { clearNeonTestData } from "../utils/neon_test_data";
+import { createNeonTestDataCleaner } from "../utils/neon_test_data";
 import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import {
   checkRls,
   createTempTestUser,
   deleteTempTestUser,
+  getServiceRoleKey,
+  type AdminKey,
   type TempTestUser,
 } from "../utils/supabase_test_user";
 import { detectLegacyAppKey } from "../../supabase_admin/supabase_app_key";
@@ -101,8 +103,8 @@ export interface PreparedIsolation {
 }
 
 export interface TestCaseLifecycle {
-  beforeEach: () => Promise<Record<string, string>>;
-  afterEach: () => Promise<void>;
+  beforeEach: (signal?: AbortSignal) => Promise<Record<string, string>>;
+  afterEach: (signal?: AbortSignal) => Promise<void>;
 }
 
 type EmitOutput = (chunk: string, phase: "setup" | "running") => void;
@@ -318,29 +320,50 @@ export async function prepareIsolatedTestDatabase({
       throw new Error("Test run stopped.");
     }
 
+    const clearTestData = perTestCase
+      ? await createNeonTestDataCleaner({
+          databaseUrl: branch.databaseUrl,
+          projectId: app.neonProjectId!,
+          branchId: branch.branchId,
+          protectedBranchIds: [
+            app.neonActiveBranchId,
+            app.neonDevelopmentBranchId,
+            app.neonPreviewBranchId,
+          ],
+        })
+      : undefined;
+    signal?.throwIfAborted();
+    if (perTestCase)
+      emit(
+        "Each test starts with an empty temporary Neon database, including the first test. Seed required rows in each test or beforeEach, and read test credentials there rather than at module scope or in beforeAll. Your original branch is unchanged.\n",
+        "running",
+      );
+
     return {
       isolation: { mode: "neon-branch" },
       testCredentials,
       authSetup,
       testCaseLifecycle: perTestCase
         ? {
-            beforeEach: async (): Promise<Record<string, string>> => {
+            beforeEach: async (caseSignal): Promise<Record<string, string>> => {
               signal?.throwIfAborted();
               // Clear the copied parent data before the first case too. Repeating
               // this before later cases recovers a worker killed before teardown.
-              await clearNeonTestData(branch.databaseUrl);
+              await clearTestData!(caseSignal);
               signal?.throwIfAborted();
+              caseSignal?.throwIfAborted();
               if (!branch.neonAuthBaseUrl) return {};
               const account = await createNeonTestAccount({
                 neonAuthBaseUrl: branch.neonAuthBaseUrl,
                 appId: app.id,
+                signal: caseSignal,
               });
               return {
                 DYAD_TEST_USER_EMAIL: account.email,
                 DYAD_TEST_USER_PASSWORD: account.password,
               };
             },
-            afterEach: () => clearNeonTestData(branch.databaseUrl),
+            afterEach: (caseSignal) => clearTestData!(caseSignal),
           }
         : undefined,
       teardown,
@@ -426,15 +449,20 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
+  // Main-process memory only, shared by all cases and final teardown in this run.
+  let adminKey: AdminKey | undefined;
   // Keep failed deletions tracked. Never overwrite the durable recovery slot
   // by creating the next user while the previous one still exists.
   let trackedUserId = app.supabaseTestUserId;
-  const afterEach = async () => {
+  const afterEach = async (caseSignal?: AbortSignal) => {
     if (!trackedUserId) return;
-    const deleted = await deleteTempTestUser({
-      ...app,
-      supabaseTestUserId: trackedUserId,
-    });
+    const userApp = { ...app, supabaseTestUserId: trackedUserId };
+    const deleted = perTestCase
+      ? await deleteTempTestUser(userApp, {
+          adminKey,
+          signal: caseSignal ?? AbortSignal.timeout(120_000),
+        })
+      : await deleteTempTestUser(userApp);
     if (!deleted)
       throw new Error("Couldn't delete the previous Supabase test user.");
     trackedUserId = null;
@@ -492,6 +520,12 @@ async function prepareSupabaseTestUserIsolation({
       emit("Creating an isolated test user…\n", "setup");
       testUser = await createTempTestUser(app);
       trackedUserId = testUser.userId;
+    } else {
+      adminKey = await getServiceRoleKey({ projectId, organizationSlug });
+      emit(
+        "Each test gets a fresh isolated Supabase user. Read test credentials inside a test or beforeEach; they are unavailable at module scope or in beforeAll.\n",
+        "running",
+      );
     }
 
     // Fetch the project's anon (publishable) key so the recorder and the
@@ -546,14 +580,18 @@ async function prepareSupabaseTestUserIsolation({
       authSetup,
       testCaseLifecycle: perTestCase
         ? {
-            beforeEach: async () => {
+            beforeEach: async (caseSignal) => {
               signal?.throwIfAborted();
-              await afterEach();
+              await afterEach(caseSignal);
               signal?.throwIfAborted();
-              testUser = await createTempTestUser({
-                ...app,
-                supabaseTestUserId: null,
-              });
+              caseSignal?.throwIfAborted();
+              testUser = await createTempTestUser(
+                {
+                  ...app,
+                  supabaseTestUserId: null,
+                },
+                { adminKey, signal: caseSignal },
+              );
               trackedUserId = testUser.userId;
               return credentialsFor(testUser);
             },

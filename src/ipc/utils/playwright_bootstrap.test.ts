@@ -25,8 +25,11 @@ import {
   refreshGeneratedE2eTsconfig,
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
+  PREVIEW_SLOW_MO_ENV,
   PREVIEW_SHIM_RELATIVE_PATH,
   SHIM_TSCONFIG_RELATIVE_PATH,
+  SLOW_MO_DELAY_MS,
+  SLOW_MO_TEST_TIMEOUT_MS,
   TEST_BASE_URL_ENV,
   TEST_RESULTS_JSON,
   TEST_SLOW_MO_ENV,
@@ -83,6 +86,11 @@ afterEach(() => {
 describe("buildPreviewShimSource", () => {
   const source = buildPreviewShimSource();
 
+  it("makes slow-motion runs deliberate without shrinking their action budget", () => {
+    expect(SLOW_MO_DELAY_MS).toBe(1_500);
+    expect(SLOW_MO_TEST_TIMEOUT_MS).toBe(360_000);
+  });
+
   it("re-exports the real runner from the app's direct dependency", () => {
     // NOT `playwright/test`: that package is only a transitive dependency, so
     // pnpm/Yarn keep it out of the app's top-level node_modules and the import
@@ -109,9 +117,59 @@ describe("buildPreviewShimSource", () => {
   it("carries the slow-motion delay on the connection", () => {
     // No browser is launched here, so the generated config's
     // `launchOptions.slowMo` never applies to a preview run.
-    expect(source).toContain(`process.env.${TEST_SLOW_MO_ENV}`);
+    expect(source).toContain(`process.env.${PREVIEW_SLOW_MO_ENV}`);
     expect(source).toContain("connectOverCDP(endpoint, {");
     expect(source).toContain("headers: { Authorization:");
+  });
+
+  it("injects and removes the synthetic cursor only for preview runs", () => {
+    expect(source).toContain("context.addInitScript(installCursorRuntime)");
+    expect(source).toContain("patchPointerActions(page)");
+    expect(source).toContain("const locatorTargetMethods = [");
+    for (const method of [
+      "fill",
+      "focus",
+      "press",
+      "setInputFiles",
+      "_expect",
+    ]) {
+      expect(source).toContain(`"${method}"`);
+    }
+    expect(source).toContain('createElementNS(svgNamespace, "svg")');
+    expect(source).toContain('attachShadow({ mode: "open" })');
+    expect(source).toContain(":root, :root * { cursor: none !important; }");
+    expect(source).toContain("nativeCursorStyle.remove()");
+    expect(source).not.toContain("cursor.innerHTML");
+    expect(source).toContain("The arrow's tip is the pointer hotspot");
+    expect(source).toContain("window.__dyadTestCursor?.show(point)");
+    expect(source).toContain("await page.evaluate(installCursorRuntime)");
+    expect(source).toContain("window.__dyadTestCursor?.glide");
+    expect(source).toContain('testInfo.attach("dyad-cursor-trace"');
+    expect(source).toContain("cursorTraces.get(page)");
+    expect(source).toContain("cursor.animate(");
+    expect(source).toContain(
+      "await new Promise((resolve) => setTimeout(resolve, duration))",
+    );
+    expect(source).toContain("const found = await target.evaluate(");
+    expect(source).toContain("const actionableSelector = [");
+    expect(source).toContain("actionableChildren.length === 1");
+    expect(source).toContain("const targetBox = visibleBox(preciseRect)");
+    expect(source).toContain("x: targetBox.x + targetBox.width / 2");
+    expect(source).toContain("range.getClientRects()");
+    expect(source).not.toContain("setTimeout(resolve, 1100)");
+    expect(source).not.toContain("requestAnimationFrame(frame)");
+    expect(source).toContain("window.__dyadTestCursor?.press");
+    expect(source).toContain("window.__dyadTestCursor?.destroy()");
+    // addInitScript executes before documentElement is guaranteed to exist.
+    // The cursor must mount lazily rather than throwing during navigation.
+    expect(source).toContain("const ensureMounted = () =>");
+    expect(source).toContain("if (root && !cursor.isConnected)");
+    expect(source).toContain(
+      'document.addEventListener("DOMContentLoaded", ensureMounted, { once: true })',
+    );
+    expect(source).not.toContain(
+      "const root = document.documentElement;\n  const cursor",
+    );
   });
 
   it("attaches to the existing page instead of opening one", () => {
@@ -267,9 +325,11 @@ describe("preview shim fixtures", () => {
   async function runPageFixture({
     initialUrl,
     contextOptions,
+    exerciseCursor = false,
   }: {
     initialUrl: string;
     contextOptions?: { baseURL?: string };
+    exerciseCursor?: boolean;
   }) {
     const fixtures = await loadShimFixtures();
 
@@ -282,19 +342,86 @@ describe("preview shim fixtures", () => {
       goto: (url: string) => Promise<null>;
       url: () => string;
       evaluate: (fn: unknown, arg: unknown) => Promise<unknown>;
+      locator: (selector: string) => object;
+      getByPlaceholder: (text: string, options?: { exact?: boolean }) => object;
+      getByRole: (
+        role: string,
+        options?: { name?: string; exact?: boolean },
+      ) => object;
+      mouse: object;
     };
     const browserAuthRequests: unknown[] = [];
     page.url = () => initialUrl;
     page.evaluate = async (_fn, arg) => {
       if (typeof arg === "string") return arg === "selected-preview";
-      browserAuthRequests.push(arg);
-      return { ok: true, status: 200 };
+      if (arg && typeof arg === "object" && "signInUrl" in arg) {
+        browserAuthRequests.push(arg);
+        return { ok: true, status: 200 };
+      }
+      return (_fn as (value?: unknown) => unknown)(arg);
     };
+    const locatorPrototype = {
+      click: async () => {},
+      fill: async (_value: string) => {},
+      hover: async () => {},
+      press: async (_key: string) => {},
+      evaluate: async function (this: { selector?: string }) {
+        const locatorBox = await locatorPrototype.boundingBox.call(this);
+        if (!locatorBox) return null;
+        const targetBox =
+          this.selector === "[data-action-wrapper]"
+            ? { x: 210, y: 160, width: 20, height: 30 }
+            : locatorBox;
+        return {
+          locatorBox,
+          targetBox,
+          point: {
+            x: targetBox.x + targetBox.width / 2,
+            y: targetBox.y + targetBox.height / 2,
+          },
+        };
+      },
+      first: function () {
+        return this;
+      },
+      nth: function (_index: number) {
+        return this;
+      },
+      boundingBox: async function (this: { selector?: string }) {
+        if (this.selector === "[data-fillable]") {
+          return { x: 100, y: 80, width: 40, height: 20 };
+        }
+        if (this.selector === "placeholder:Add a new task") {
+          return { x: 160, y: 120, width: 240, height: 40 };
+        }
+        if (this.selector === "role:button:Mark completed") {
+          return { x: 40, y: 240, width: 32, height: 32 };
+        }
+        if (this.selector === "[data-action-wrapper]") {
+          return { x: 120, y: 100, width: 300, height: 180 };
+        }
+        return null;
+      },
+      waitFor: async () => {},
+      scrollIntoViewIfNeeded: async () => {},
+    };
+    page.locator = (selector) =>
+      Object.assign(Object.create(locatorPrototype), { selector });
+    page.getByPlaceholder = (text) =>
+      page.locator(
+        text.startsWith("Add a new task")
+          ? "placeholder:Add a new task"
+          : `placeholder:${text}`,
+      );
+    page.getByRole = (role, options) =>
+      page.locator(`role:${role}:${options?.name ?? ""}`);
+    page.mouse = { move: async () => {}, click: async () => {} };
 
     const { calls, api } = makeApiStub();
     const originalApi = { ...api };
     const context = {
       pages: () => [page],
+      addInitScript: async () => {},
       _options: contextOptions,
       request: api,
     };
@@ -311,6 +438,12 @@ describe("preview shim fixtures", () => {
       gotoOnPrototype: typeof gotoOnPrototype;
       apiDuringRun: Record<string, unknown>;
       originalApi: Record<string, unknown>;
+      cursorWasMounted: boolean;
+      nativeCursorWasHidden: boolean;
+      cursorWasShownWithoutMeasurement: boolean;
+      cursorMovedToFilledElement: boolean;
+      cursorTargetedActionableDescendant: boolean;
+      cursorFollowedRecordedTestLocators: boolean;
     };
 
     await fixtures.context(
@@ -321,6 +454,55 @@ describe("preview shim fixtures", () => {
           { context: usedContext },
           async (usedPage) => {
             const target = usedPage as typeof page;
+            const cursor = document.querySelector("[data-dyad-test-cursor]");
+            let cursorWasShownWithoutMeasurement = false;
+            let cursorMovedToFilledElement = false;
+            let cursorTargetedActionableDescendant = false;
+            let cursorFollowedRecordedTestLocators = false;
+            if (exerciseCursor && cursor instanceof HTMLElement) {
+              cursor.style.opacity = "0";
+              await (
+                target.locator("[data-unmeasurable]") as {
+                  click: () => Promise<void>;
+                }
+              ).click();
+              cursorWasShownWithoutMeasurement = cursor.style.opacity === "1";
+              await (
+                target.locator("[data-fillable]") as {
+                  fill: (value: string) => Promise<void>;
+                }
+              ).fill("hello");
+              cursorMovedToFilledElement =
+                cursor.style.transform === "translate3d(118px, 88.5px, 0)";
+              await (
+                target.locator("[data-action-wrapper]") as {
+                  click: () => Promise<void>;
+                }
+              ).click();
+              cursorTargetedActionableDescendant =
+                cursor.style.transform === "translate3d(218px, 173.5px, 0)";
+              const taskInput = target.getByPlaceholder(
+                "Add a new task... (press Enter to save)",
+                { exact: true },
+              ) as {
+                fill: (value: string) => Promise<void>;
+                press: (key: string) => Promise<void>;
+              };
+              await taskInput.fill("aaa");
+              const movedToTaskInput =
+                cursor.style.transform === "translate3d(278px, 138.5px, 0)";
+              await taskInput.press("Enter");
+              const completedButton = target.getByRole("button", {
+                name: "Mark completed",
+                exact: true,
+              }) as {
+                nth: (index: number) => { click: () => Promise<void> };
+              };
+              await completedButton.nth(0).click();
+              cursorFollowedRecordedTestLocators =
+                movedToTaskInput &&
+                cursor.style.transform === "translate3d(54px, 254.5px, 0)";
+            }
             await target.goto("/");
             await target.goto("/todos?done=1");
             await target.goto("https://example.com/elsewhere");
@@ -338,6 +520,16 @@ describe("preview shim fixtures", () => {
               gotoOnPrototype,
               apiDuringRun,
               originalApi,
+              cursorWasMounted: Boolean(
+                cursor?.shadowRoot?.querySelector('svg path[fill="#111827"]'),
+              ),
+              nativeCursorWasHidden: Boolean(
+                document.querySelector("[data-dyad-test-native-cursor]"),
+              ),
+              cursorWasShownWithoutMeasurement,
+              cursorMovedToFilledElement,
+              cursorTargetedActionableDescendant,
+              cursorFollowedRecordedTestLocators,
             };
           },
           PASSING_TEST_INFO,
@@ -369,6 +561,30 @@ describe("preview shim fixtures", () => {
     });
 
     expect(context._options).toEqual({ baseURL: "http://localhost:32100" });
+  });
+
+  it("moves the isolated arrow to locator actions and removes it afterward", async () => {
+    const {
+      cursorWasMounted,
+      nativeCursorWasHidden,
+      cursorWasShownWithoutMeasurement,
+      cursorMovedToFilledElement,
+      cursorTargetedActionableDescendant,
+      cursorFollowedRecordedTestLocators,
+    } = await runPageFixture({
+      initialUrl: "http://localhost:32100/",
+      contextOptions: {},
+      exerciseCursor: true,
+    });
+
+    expect(cursorWasMounted).toBe(true);
+    expect(nativeCursorWasHidden).toBe(true);
+    expect(cursorWasShownWithoutMeasurement).toBe(true);
+    expect(cursorMovedToFilledElement).toBe(true);
+    expect(cursorTargetedActionableDescendant).toBe(true);
+    expect(cursorFollowedRecordedTestLocators).toBe(true);
+    expect(document.querySelector("[data-dyad-test-cursor]")).toBeNull();
+    expect(document.querySelector("[data-dyad-test-native-cursor]")).toBeNull();
   });
 
   it("resolves relative API request URLs and restores the methods after", async () => {

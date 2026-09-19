@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
   updateSettings: vi.fn(),
   settings: {} as Record<string, unknown>,
+  app: { id: 1, testingEnabled: true } as Record<string, unknown>,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -56,7 +57,7 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 vi.mock("@/hooks/useLoadApp", () => ({
-  useLoadApp: () => ({ app: { id: 1, testingEnabled: true } }),
+  useLoadApp: () => ({ app: mocks.app }),
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -155,7 +156,31 @@ describe("TestsPanel", () => {
       uncommittedReason: null,
     });
     mocks.settings = {};
+    mocks.app = { id: 1, testingEnabled: true };
   });
+
+  it.each([
+    { neonProjectId: "neon" },
+    { supabaseProjectId: "supabase", supabaseOrganizationSlug: "org" },
+  ])(
+    "explains why database-isolated runs cannot run in parallel (%j)",
+    async (provider) => {
+      mocks.settings = { testParallel: true };
+      mocks.app = { ...mocks.app, ...provider };
+      renderPanel();
+      fireEvent.click(await screen.findByTestId("tests-options-button"));
+      expect(
+        await screen.findByText(
+          "Unavailable while each test uses isolated database data.",
+        ),
+      ).toBeTruthy();
+      const toggle = screen.getByRole("switch", {
+        name: "Switch to parallel mode",
+      });
+      expect(toggle.getAttribute("aria-checked")).toBe("false");
+      expect(toggle.hasAttribute("data-disabled")).toBe(true);
+    },
+  );
 
   describe("headed runs in preview", () => {
     const experimentOn = {

@@ -6,6 +6,32 @@ import {
 } from "@/ipc/utils/retryWithRateLimit";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+it("cancels a server-directed rate-limit wait without another request", async () => {
+  const controller = new AbortController();
+  const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(null, {
+      status: 429,
+      headers: { "Retry-After": "3600" },
+    }),
+  );
+  try {
+    const pending = fetchWithRetry(
+      "https://provider.test",
+      { signal: controller.signal },
+      "test",
+    );
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await Promise.resolve();
+    controller.abort();
+    await rejected;
+    expect(request).toHaveBeenCalledTimes(1);
+  } finally {
+    request.mockRestore();
+  }
+});
+
 describe("RateLimitError", () => {
   it("should be an instance of Error", () => {
     const mockResponse = new Response(null, { status: 429 });

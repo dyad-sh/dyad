@@ -84,6 +84,12 @@ vi.mock("../services/git_service", () => ({
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
 const prepareIsolatedTestDatabaseMock = vi.hoisted(() => vi.fn());
+const startTestCaseLifecycleServerMock = vi.hoisted(() => vi.fn());
+vi.mock("../services/test_case_lifecycle_server", () => ({
+  startTestCaseLifecycleServer: startTestCaseLifecycleServerMock,
+  TEST_CASE_ENDPOINT_ENV: "DYAD_TEST_CASE_ENDPOINT",
+  TEST_CASE_TOKEN_ENV: "DYAD_TEST_CASE_TOKEN",
+}));
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
@@ -127,6 +133,7 @@ describe("tests handlers", () => {
     removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
     prepareIsolatedTestDatabaseMock.mockReset();
+    startTestCaseLifecycleServerMock.mockReset();
     broadcastToRegisteredWindowsMock.mockClear();
     browserWindowFromWebContentsMock.mockReset();
     harness = setupHandlerTestHarness();
@@ -153,6 +160,32 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it("retains the run result and restores isolation when lifecycle close rejects", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+      const close = vi
+        .fn()
+        .mockRejectedValue(new Error("lifecycle close failed"));
+      startTestCaseLifecycleServerMock.mockResolvedValue({ env: {}, close });
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        testCaseLifecycle: { beforeEach: vi.fn(), afterEach: vi.fn() },
+        teardown,
+      });
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(teardown).toHaveBeenCalledTimes(1);
+      expect(result.infraError?.message).toContain("dev server isn't running");
+    });
     it("assigns preview activation to the invoking window session", async () => {
       const appId = seedApp("app");
       harness.db

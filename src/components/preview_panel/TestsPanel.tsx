@@ -754,8 +754,11 @@ export function TestsPanel() {
   const runsInPreviewWebContentsView = previewRunEnabled && headed;
   // Display only. The value SENT to the runner is the user's raw choice: main
   // decides whether the preview actually gets the run, and a run that falls
-  // back to an ordinary browser should parallelize as asked.
-  const effectiveParallel = parallel && !runsInPreviewWebContentsView;
+  // back to an ordinary browser can parallelize when it has no per-case data.
+  const isolatesTestCases =
+    hasSupabaseIsolation || (!hasSupabase && hasNeonIsolation);
+  const effectiveParallel =
+    parallel && !runsInPreviewWebContentsView && !isolatesTestCases;
 
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
@@ -1365,15 +1368,21 @@ export function TestsPanel() {
                       Run in parallel
                     </Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {runsInPreviewWebContentsView
-                        ? "Unavailable while tests run in the preview panel."
-                        : "Run independent tests in a file at the same time."}
+                      {isolatesTestCases
+                        ? "Unavailable while each test uses isolated database data."
+                        : runsInPreviewWebContentsView
+                          ? "Unavailable while tests run in the preview panel."
+                          : "Run independent tests in a file at the same time."}
                     </p>
                   </div>
                   <Switch
                     id="test-option-parallel"
                     checked={effectiveParallel}
-                    disabled={isRunning || runsInPreviewWebContentsView}
+                    disabled={
+                      isRunning ||
+                      runsInPreviewWebContentsView ||
+                      isolatesTestCases
+                    }
                     aria-label={
                       effectiveParallel
                         ? "Switch to serial mode"

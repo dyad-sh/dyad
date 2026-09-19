@@ -1032,7 +1032,7 @@ export function ensurePreviewShim(
     !existingShim.includes(DYAD_CONFIG_SENTINEL)
   ) {
     return {
-      warning: `Per-test isolation requires Dyad's generated fixture. Move your customized ${PREVIEW_SHIM_RELATIVE_PATH} aside so Dyad can regenerate it.\n`,
+      warning: `The run was stopped because per-test database isolation requires Dyad's generated fixture. Move your customized ${PREVIEW_SHIM_RELATIVE_PATH} aside so Dyad can regenerate it.\n`,
     };
   }
   if (existingShim === null || existingShim.includes(DYAD_CONFIG_SENTINEL)) {
@@ -1112,7 +1112,9 @@ export function ensurePreviewShim(
     const closerTsconfig = findUnroutedCloserTsconfig(appPath, shimPath);
     if (closerTsconfig) {
       return {
-        warning: `${closerTsconfig} takes precedence for at least one test and doesn't route "@playwright/test" through Dyad's preview shim. The run will use a separate browser instead. Extend ${E2E_TSCONFIG_RELATIVE_PATH} or add a mapping to the generated shim to enable preview runs.\n`,
+        warning: isolateTestCases
+          ? `The run was stopped because ${closerTsconfig} bypasses the fixture required for per-test database isolation. Extend ${E2E_TSCONFIG_RELATIVE_PATH} or add an "@playwright/test" path mapping to ${PREVIEW_SHIM_RELATIVE_PATH}, relative to that config.\n`
+          : `${closerTsconfig} takes precedence for at least one test and doesn't route "@playwright/test" through Dyad's preview shim. The run will use a separate browser instead. Extend ${E2E_TSCONFIG_RELATIVE_PATH} or add a mapping to the generated shim to enable preview runs.\n`,
       };
     }
     // The app kept its own root tsconfig, or every closer config, routing to a
@@ -1121,7 +1123,9 @@ export function ensurePreviewShim(
   }
 
   return {
-    warning: `Your app has its own ${E2E_TSCONFIG_RELATIVE_PATH}, so Dyad can't route tests through the preview. The run will use a separate browser instead. Add a "@playwright/test" path mapping to "${SHIM_PATH_FROM_E2E_TSCONFIG}" to enable preview runs.\n`,
+    warning: isolateTestCases
+      ? `The run was stopped because ${E2E_TSCONFIG_RELATIVE_PATH} bypasses the fixture required for per-test database isolation. Add an "@playwright/test" path mapping to "${SHIM_PATH_FROM_E2E_TSCONFIG}" in its compilerOptions.paths.\n`
+      : `Your app has its own ${E2E_TSCONFIG_RELATIVE_PATH}, so Dyad can't route tests through the preview. The run will use a separate browser instead. Add a "@playwright/test" path mapping to "${SHIM_PATH_FROM_E2E_TSCONFIG}" to enable preview runs.\n`,
   };
 }
 

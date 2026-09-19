@@ -92,7 +92,7 @@ function pickSecretKey(
  * The key the Auth Admin calls authenticate with, and which format it is.
  * The format decides the headers it may be sent on (see `adminHeaders`).
  */
-interface AdminKey {
+export interface AdminKey {
   apiKey: string;
   /**
    * True for the legacy `service_role` JWT, false for a new-format
@@ -110,13 +110,15 @@ interface AdminKey {
  * ONLY by the main process for test-user setup/teardown — it must NEVER be
  * injected into the app under test (which runs with the publishable key).
  */
-async function getServiceRoleKey({
+export async function getServiceRoleKey({
   projectId,
   organizationSlug,
 }: {
   projectId: string;
   organizationSlug: string;
 }): Promise<AdminKey> {
+  if (IS_TEST_BUILD)
+    return { apiKey: "fake-test-admin-key", isLegacyJwt: false };
   // reveal: without it Supabase redacts secret key values, which would leave
   // the legacy service_role JWT as the only usable key on the project.
   const keys = await getProjectApiKeys({
@@ -173,7 +175,9 @@ function adminHeaders(key: AdminKey): Record<string, string> {
  */
 export async function createTempTestUser(
   appData: AppRow,
+  options: { adminKey?: AdminKey; signal?: AbortSignal } = {},
 ): Promise<TempTestUser> {
+  options.signal?.throwIfAborted();
   const projectId = appData.supabaseProjectId;
   const organizationSlug = appData.supabaseOrganizationSlug;
   if (!projectId) {
@@ -212,6 +216,7 @@ export async function createTempTestUser(
       projectId,
       organizationSlug,
       userId: appData.supabaseTestUserId,
+      ...options,
     });
     if (!priorCleanupOk) {
       throw new DyadError(
@@ -221,7 +226,9 @@ export async function createTempTestUser(
     }
   }
 
-  const adminKey = await getServiceRoleKey({ projectId, organizationSlug });
+  const adminKey =
+    options.adminKey ??
+    (await getServiceRoleKey({ projectId, organizationSlug }));
   // fetchWithRetry (not a bare fetch in retryWithRateLimit): fetch resolves on
   // a 429 rather than throwing, so only the throwing wrapper actually retries
   // when back-to-back runs hit the Auth Admin rate limit.
@@ -229,6 +236,9 @@ export async function createTempTestUser(
     `${projectUrl}/auth/v1/admin/users`,
     {
       method: "POST",
+      // Drain an accepted create until its ID is persisted. Aborting the HTTP
+      // response can leave a remotely-created user with no recovery marker.
+      // Cancellation still stops retries; the lifecycle reports a slow drain.
       headers: adminHeaders(adminKey),
       body: JSON.stringify({
         email,
@@ -241,6 +251,7 @@ export async function createTempTestUser(
       }),
     },
     `Create test user for app ${appData.id}`,
+    { signal: options.signal },
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
@@ -296,6 +307,7 @@ export async function createTempTestUser(
         projectId,
         organizationSlug,
         userId: created.id,
+        adminKey,
       });
       throw error;
     }
@@ -310,7 +322,11 @@ export async function createTempTestUser(
  * user on Supabase, and clear the persisted `supabaseTestUserId`. Safe to call
  * when no user is set.
  */
-export async function deleteTempTestUser(appData: AppRow): Promise<boolean> {
+export async function deleteTempTestUser(
+  appData: AppRow,
+  options: { adminKey?: AdminKey; signal?: AbortSignal } = {},
+): Promise<boolean> {
+  options.signal?.throwIfAborted();
   const userId = appData.supabaseTestUserId;
   const projectId = appData.supabaseProjectId;
   const organizationSlug = appData.supabaseOrganizationSlug;
@@ -327,7 +343,12 @@ export async function deleteTempTestUser(appData: AppRow): Promise<boolean> {
 
   // Sweep the user's rows FIRST so a `restrict`/`no action` FK to auth.users
   // doesn't block the user delete below.
-  await cleanUpRowsOwnedBy({ projectId, organizationSlug, userId });
+  await cleanUpRowsOwnedBy({
+    projectId,
+    organizationSlug,
+    userId,
+    signal: options.signal,
+  });
 
   // Only forget the user once Supabase confirms it's gone. Clearing the column
   // on a failed delete would orphan the user, since the startup reconciliation
@@ -338,6 +359,7 @@ export async function deleteTempTestUser(appData: AppRow): Promise<boolean> {
     projectId,
     organizationSlug,
     userId,
+    ...options,
   });
   if (deleted) {
     await db
@@ -444,10 +466,12 @@ async function cleanUpRowsOwnedBy({
   projectId,
   organizationSlug,
   userId,
+  signal,
 }: {
   projectId: string;
   organizationSlug: string;
   userId: string;
+  signal?: AbortSignal;
 }): Promise<void> {
   if (!UUID_RE.test(userId)) {
     // The id comes from Supabase, but never interpolate a non-UUID into SQL.
@@ -465,6 +489,7 @@ WHERE table_schema = 'public'
       supabaseProjectId: projectId,
       query: discoverQuery,
       organizationSlug,
+      signal,
     });
     const rows = JSON.parse(raw);
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -498,14 +523,17 @@ WHERE table_schema = 'public'
           supabaseProjectId: projectId,
           query: `DO $dyad_cleanup$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $dyad_cleanup$;`,
           organizationSlug,
+          signal,
         });
       } catch (error) {
+        signal?.throwIfAborted();
         logger.warn(
           `Best-effort cleanup of public.${table}.${column} for test user failed: ${error}`,
         );
       }
     }
   } catch (error) {
+    signal?.throwIfAborted();
     logger.warn(`Could not discover owner columns for cleanup: ${error}`);
   }
 }
@@ -515,11 +543,15 @@ async function deleteUserBestEffort({
   projectId,
   organizationSlug,
   userId,
+  adminKey: cachedAdminKey,
+  signal,
 }: {
   projectUrl: string;
   projectId: string;
   organizationSlug: string;
   userId: string;
+  adminKey?: AdminKey;
+  signal?: AbortSignal;
 }): Promise<boolean> {
   if (!UUID_RE.test(userId)) {
     // The id comes from Supabase (or a possibly-corrupted DB column), but never
@@ -528,14 +560,17 @@ async function deleteUserBestEffort({
     return false;
   }
   try {
-    const adminKey = await getServiceRoleKey({
-      projectId,
-      organizationSlug,
-    });
+    const adminKey =
+      cachedAdminKey ??
+      (await getServiceRoleKey({
+        projectId,
+        organizationSlug,
+      }));
     const response = await fetchWithRetry(
       `${projectUrl}/auth/v1/admin/users/${userId}`,
       {
         method: "DELETE",
+        signal,
         headers: adminHeaders(adminKey),
       },
       `Delete test user ${userId}`,

@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as esbuild from "esbuild";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  TEST_CASE_ENDPOINT_ENV,
+  TEST_CASE_TOKEN_ENV,
+} from "../services/test_case_lifecycle_server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   spawnStreaming: vi.fn(),
@@ -167,6 +171,7 @@ describe("preview shim fixtures", () => {
    */
   async function loadShimFixtures(
     browserToConnect: unknown = { close: async () => {} },
+    caseFetch?: typeof fetch,
   ) {
     const source = buildPreviewShimSource();
     const { code } = await esbuild.transform(source, {
@@ -176,20 +181,31 @@ describe("preview shim fixtures", () => {
     });
 
     let registered: Record<string, unknown> = {};
-    const pwStub = {
-      test: {
-        extend: (fixtures: Record<string, unknown>) => {
-          registered = fixtures;
-          return fixtures;
-        },
+    const testStub = {
+      extend: (fixtures: Record<string, unknown>) => {
+        registered = { ...registered, ...fixtures };
+        return testStub;
       },
+    };
+    const pwStub = {
+      test: testStub,
       expect: () => {},
       chromium: { connectOverCDP: async () => browserToConnect },
     };
 
     const module = { exports: {} as Record<string, unknown> };
+    const env = {
+      ...process.env,
+      [PREVIEW_CDP_ENDPOINT_ENV]: "http://127.0.0.1:9222",
+      [PREVIEW_CDP_TOKEN_ENV]: "test-token",
+      [TEST_BASE_URL_ENV]: BASE_URL,
+      [TEST_CASE_ENDPOINT_ENV]: caseFetch
+        ? "http://127.0.0.1:12345"
+        : undefined,
+      [TEST_CASE_TOKEN_ENV]: caseFetch ? "case-secret" : undefined,
+    };
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    new Function("require", "module", "exports", "process", code)(
+    new Function("require", "module", "exports", "process", "fetch", code)(
       (specifier: string) => {
         if (specifier === "node:crypto")
           return { randomUUID: () => "test-case-id" };
@@ -202,16 +218,14 @@ describe("preview shim fixtures", () => {
       module.exports,
       {
         ...process,
-        env: {
-          ...process.env,
-          [PREVIEW_CDP_ENDPOINT_ENV]: "http://127.0.0.1:9222",
-          [PREVIEW_CDP_TOKEN_ENV]: "test-token",
-          [TEST_BASE_URL_ENV]: BASE_URL,
-        },
+        env,
       },
+      caseFetch,
     );
 
-    return registered as {
+    return { ...registered, env } as unknown as {
+      env: Record<string, string | undefined>;
+      _dyadTestCase: [FixtureFn, { auto: true; timeout: number }];
       browser: [FixtureFn, { scope: "worker" }];
       context: FixtureFn;
       page: FixtureFn;
@@ -225,6 +239,56 @@ describe("preview shim fixtures", () => {
   ) => Promise<void>;
 
   const BASE_URL = "http://localhost:32100";
+
+  it.each(["success", "test failure", "setup failure", "cleanup failure"])(
+    "runs the isolation fixture with authenticated lifecycle calls and credential cleanup: %s",
+    async (scenario) => {
+      const requests: string[] = [];
+      const fetchCase = vi.fn<typeof fetch>(async (input, init) => {
+        const url = String(input);
+        requests.push(url);
+        expect(init?.method).toBe("POST");
+        expect(init?.headers).toEqual({ Authorization: "Bearer case-secret" });
+        expect(init?.signal).toBeDefined();
+        const failed =
+          (scenario === "setup failure" && url.includes("/before/")) ||
+          (scenario === "cleanup failure" && url.includes("/after/"));
+        return new Response(
+          JSON.stringify({
+            DYAD_TEST_USER_EMAIL: "fresh@dyad.test",
+            DYAD_TEST_USER_PASSWORD: "fresh-password",
+            SERVICE_ROLE_KEY: "never-expose",
+          }),
+          { status: failed ? 500 : 200 },
+        );
+      });
+      const fixtures = await loadShimFixtures(undefined, fetchCase);
+      fixtures.env.DYAD_TEST_USER_EMAIL = "stale";
+      fixtures.env.DYAD_TEST_SUPABASE_ANON_KEY = "stale-key";
+      const use = vi.fn(async () => {
+        expect(fixtures.env.DYAD_TEST_USER_EMAIL).toBe("fresh@dyad.test");
+        expect(fixtures.env.DYAD_TEST_USER_PASSWORD).toBe("fresh-password");
+        expect(fixtures.env.DYAD_TEST_SUPABASE_ANON_KEY).toBeUndefined();
+        expect(fixtures.env.SERVICE_ROLE_KEY).toBeUndefined();
+        if (scenario === "test failure") throw new Error("assertion failed");
+      });
+      const attempt = fixtures._dyadTestCase[0]({}, use, {});
+      if (scenario === "success") await attempt;
+      else
+        await expect(attempt).rejects.toThrow(
+          scenario === "test failure"
+            ? "assertion failed"
+            : "isolated test data",
+        );
+      expect(use).toHaveBeenCalledTimes(scenario === "setup failure" ? 0 : 1);
+      expect(requests).toEqual([
+        "http://127.0.0.1:12345/before/test-case-id",
+        "http://127.0.0.1:12345/after/test-case-id",
+      ]);
+      expect(fixtures.env.DYAD_TEST_USER_EMAIL).toBeUndefined();
+      expect(fixtures.env.DYAD_TEST_USER_PASSWORD).toBeUndefined();
+    },
+  );
 
   const PASSING_TEST_INFO = {
     status: "passed",
@@ -929,6 +993,16 @@ describe("buildPlaywrightConfig", () => {
 });
 
 describe("ensurePlaywrightBootstrap", () => {
+  beforeEach(() => {
+    const exists = fs.existsSync.bind(fs);
+    // Keep app fixtures real while hiding machine-installed Chrome/Edge.
+    vi.spyOn(fs, "existsSync").mockImplementation(
+      (file) =>
+        tempDirs.some((dir) => String(file).startsWith(dir + path.sep)) &&
+        exists(file),
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
   // The fixture has @playwright/test and a valid browser marker, so bootstrap
   // reaches the config step without spawning an install.
   it("writes its own config and never touches the app's playwright.config.ts", async () => {
@@ -1168,7 +1242,7 @@ describe("ensurePlaywrightBootstrap", () => {
       fs.writeFileSync(filePath, content);
       await expect(
         ensurePlaywrightBootstrap({ appPath, isolateTestCases: true }),
-      ).rejects.toThrow(/fixture|path mapping/);
+      ).rejects.toThrow(/run was stopped.*per-test database isolation/);
       expect(fs.readFileSync(filePath, "utf8")).toBe(content);
       expect(h.spawnStreaming).not.toHaveBeenCalled();
     },

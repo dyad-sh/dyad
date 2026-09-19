@@ -31,9 +31,11 @@ export interface NeonTestAccount {
 export async function createNeonTestAccount({
   neonAuthBaseUrl,
   appId,
+  signal,
 }: {
   neonAuthBaseUrl: string;
   appId: number;
+  signal?: AbortSignal;
 }): Promise<NeonTestAccount> {
   const email = `dyad-test+${appId}-${Date.now()}@dyad.test`;
   const password = crypto.randomBytes(24).toString("base64url");
@@ -53,6 +55,7 @@ export async function createNeonTestAccount({
     `${base}/sign-up/email`,
     {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Origin: authUrl.origin,

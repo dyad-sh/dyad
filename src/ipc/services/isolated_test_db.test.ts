@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   markAndDeleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
   createNeonTestAccount: vi.fn(),
   clearNeonTestData: vi.fn().mockResolvedValue(undefined),
+  createNeonTestDataCleaner: vi.fn(),
+  getServiceRoleKey: vi.fn(),
   ensureNeonAuthTrustedDomain: vi.fn().mockResolvedValue(null),
   createTempTestUser: vi.fn(),
   deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
@@ -52,7 +54,7 @@ vi.mock("../utils/neon_test_account", () => ({
   createNeonTestAccount: mocks.createNeonTestAccount,
 }));
 vi.mock("../utils/neon_test_data", () => ({
-  clearNeonTestData: mocks.clearNeonTestData,
+  createNeonTestDataCleaner: mocks.createNeonTestDataCleaner,
 }));
 vi.mock("../utils/neon_utils", () => ({
   ensureNeonAuthTrustedDomain: mocks.ensureNeonAuthTrustedDomain,
@@ -64,6 +66,7 @@ vi.mock("../utils/supabase_test_user", () => ({
   createTempTestUser: mocks.createTempTestUser,
   deleteTempTestUser: mocks.deleteTempTestUser,
   checkRls: mocks.checkRls,
+  getServiceRoleKey: mocks.getServiceRoleKey,
 }));
 vi.mock("../../supabase_admin/supabase_app_key", () => ({
   detectLegacyAppKey: mocks.detectLegacyAppKey,
@@ -143,6 +146,11 @@ beforeEach(() => {
   mocks.ensureNeonAuthTrustedDomain.mockResolvedValue(null);
   mocks.deleteTempTestUser.mockResolvedValue(true);
   mocks.clearNeonTestData.mockResolvedValue(undefined);
+  mocks.createNeonTestDataCleaner.mockResolvedValue(mocks.clearNeonTestData);
+  mocks.getServiceRoleKey.mockResolvedValue({
+    apiKey: "secret",
+    isLegacyJwt: false,
+  });
 });
 
 describe("per-case database isolation", () => {
@@ -176,11 +184,21 @@ describe("per-case database isolation", () => {
       await lifecycle.afterEach();
       expect(mocks.deleteTempTestUser).toHaveBeenLastCalledWith(
         expect.objectContaining({ supabaseTestUserId: userId }),
+        expect.objectContaining({
+          adminKey: { apiKey: "secret", isLegacyJwt: false },
+        }),
       );
     }
     await prepared.teardown();
     expect(mocks.createTempTestUser).toHaveBeenCalledTimes(2);
     expect(mocks.deleteTempTestUser).toHaveBeenCalledTimes(2);
+    expect(mocks.getServiceRoleKey).toHaveBeenCalledTimes(1);
+    for (const [, options] of mocks.createTempTestUser.mock.calls) {
+      expect(options.adminKey).toEqual({
+        apiKey: "secret",
+        isLegacyJwt: false,
+      });
+    }
   });
 
   it("retains a failed Supabase deletion for retry and refuses to provision another user", async () => {
@@ -198,6 +216,9 @@ describe("per-case database isolation", () => {
     await prepared.teardown();
     expect(mocks.deleteTempTestUser).toHaveBeenLastCalledWith(
       expect.objectContaining({ supabaseTestUserId: "user-1" }),
+      expect.objectContaining({
+        adminKey: { apiKey: "secret", isLegacyJwt: false },
+      }),
     );
   });
 
@@ -207,6 +228,9 @@ describe("per-case database isolation", () => {
     await prepared.teardown();
     expect(mocks.deleteTempTestUser).toHaveBeenCalledWith(
       expect.objectContaining({ supabaseTestUserId: "user-1" }),
+      expect.objectContaining({
+        adminKey: { apiKey: "secret", isLegacyJwt: false },
+      }),
     );
   });
 
@@ -246,14 +270,32 @@ describe("per-case database isolation", () => {
           await prepared.testCaseLifecycle!.afterEach();
         }
         expect(mocks.clearNeonTestData.mock.calls).toEqual(
-          Array.from({ length: 4 }, () => ["postgres://temporary"]),
+          Array.from({ length: 4 }, () => [undefined]),
+        );
+        expect(mocks.createNeonTestDataCleaner).toHaveBeenCalledWith(
+          expect.objectContaining({
+            databaseUrl: "postgres://temporary",
+            branchId: "temporary",
+            projectId: "project",
+          }),
+        );
+        expect(emit).toHaveBeenCalledWith(
+          expect.stringContaining("including the first test"),
+          "running",
         );
         if (withAuth) {
-          expect(
-            mocks.clearNeonTestData.mock.invocationCallOrder[0],
-          ).toBeLessThan(
-            mocks.createNeonTestAccount.mock.invocationCallOrder[0],
-          );
+          for (let index = 0; index < 2; index++) {
+            expect(
+              mocks.clearNeonTestData.mock.invocationCallOrder[index * 2],
+            ).toBeLessThan(
+              mocks.createNeonTestAccount.mock.invocationCallOrder[index],
+            );
+            expect(
+              mocks.createNeonTestAccount.mock.invocationCallOrder[index],
+            ).toBeLessThan(
+              mocks.clearNeonTestData.mock.invocationCallOrder[index * 2 + 1],
+            );
+          }
         }
         await prepared.teardown();
         expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(

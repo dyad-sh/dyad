@@ -149,3 +149,11 @@ Preserve `neon_auth.project_config` and `neon_auth.jwks` when clearing test data
 they configure the auth service, and deleting them causes signup to fail with
 `404 Project config not found`. Clear user/session data with one `TRUNCATE ...
 RESTRICT` so unexpected foreign keys cannot cascade into that configuration.
+
+Also preserve extension-owned tables (`pg_depend.deptype = 'e'`) and migration
+bookkeeping. Verify the connection hostname belongs to the temporary branch
+before exposing the cleanup callback.
+
+Lifecycle shutdown must drain provider mutations before releasing its claims.
+In particular, don't abort a Supabase user-creation response before persisting
+the returned ID; cancel retries and surface a slow drain so recovery stays possible.

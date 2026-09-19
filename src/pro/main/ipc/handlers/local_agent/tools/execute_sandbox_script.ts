@@ -171,6 +171,8 @@ Use this when you need to slice, search, count, aggregate, summarize file conten
 
 Supported language surface:
 - let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
+- Data helpers include Object.groupBy/Map.groupBy, toSorted/toReversed/toSpliced, Set union/intersection/difference, and delete for object properties or array elements. JSON.parse revivers and JSON.stringify replacers/indentation are supported; JSON callbacks must be synchronous and must not call host functions.
+- String.prototype.localeCompare and Intl formatting support en-US only; Date local-time methods use UTC. URI encoding/decoding helpers are available, but URL/URLSearchParams and network access are not.
 - Top-level await is supported. Top-level return is not supported; return the final expression value instead, e.g. \`const text = await read_file("attachments:data.csv"); text.length;\`.
 - The script has no ambient authority. It can only act through the host functions below.
 
@@ -179,9 +181,10 @@ Recommendations:
 
 Unsupported / unavailable:
 - No var, import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, fetch, timers, setTimeout, setInterval, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.
-- String.prototype.localeCompare is not supported; compare with <, >, or === instead.
 - \`console.*\` is not available.
 - Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.
+
+Return only plain structured data (strings, numbers, booleans, null/undefined, arrays, and plain objects). Convert Map/Set to arrays or plain objects and BigInt to a string before returning or passing to host functions. Strings and object keys must not contain lone UTF-16 surrogates.
 
 Avoid returning shared references:
 

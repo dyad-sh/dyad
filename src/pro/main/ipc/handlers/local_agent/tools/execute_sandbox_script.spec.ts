@@ -651,6 +651,27 @@ describe("executeSandboxScriptTool", () => {
 });
 
 describe("buildExecuteSandboxScriptDescription (search mode)", () => {
+  it.each([false, true])(
+    "describes the 0.3 data helpers without widening host authority (writes: %s)",
+    async (includeWriteFile) => {
+      const description = await buildExecuteSandboxScriptDescription([], {
+        includeWriteFile,
+      });
+      expect(description).toContain("Object.groupBy/Map.groupBy");
+      expect(description).toContain(
+        "JSON callbacks must be synchronous and must not call host functions",
+      );
+      expect(description).toContain("en-US only");
+      expect(description).not.toContain("localeCompare is not supported");
+      expect(description).toContain("Top-level return is not supported");
+      expect(description).toContain("BigInt to a string");
+      expect(description).toContain("lone UTF-16 surrogates");
+      expect(description).toContain(
+        "URL/URLSearchParams and network access are not",
+      );
+    },
+  );
+
   function def(serverName: string, toolName: string): McpToolDef {
     return {
       jsName: `${serverName}__${toolName}`,

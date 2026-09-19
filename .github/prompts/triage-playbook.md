@@ -132,7 +132,8 @@ credits were affected. Never promise a refund or credit adjustment.
 **Assessment:** `external_service`
 
 **Tell the reporter:** open **Settings**, go to Integrations, click **Disconnect
-from Neon**, then open **Manage app** and connect to Neon again.
+from Neon**, then click your app's name in the title bar and connect to
+Neon again.
 
 **Source:** #4316. Verified on 1.11.0.
 
@@ -177,9 +178,9 @@ app's git history is broken.
 
 **Assessment:** `environment_setup`
 
-**Tell the reporter:** open **Manage app**, click the overflow menu (three dots,
-top right), and choose **Copy app** without history. Or use **Import App** on
-the home screen to import the folder again.
+**Tell the reporter:** click your app's name in the title bar, click the overflow
+menu (three dots, top right), and choose **Copy app** without history. Or use
+**Import App** on the home screen to import the folder again.
 
 **Source:** #4241, #3657, #3552. Verified on 1.10.0.
 

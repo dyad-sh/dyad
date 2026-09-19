@@ -382,6 +382,17 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
       args.thread_ids,
       ctx.abortSignal,
     );
+    // Mark any Explorer threads whose reports were returned here as delivered
+    // so the end-of-pass filter does not force a redundant synthesis pass for
+    // reports the model already received via this tool call.
+    for (const summary of summaries) {
+      if (summary.persona === "explorer") {
+        ctx.deliveredExplorerThreadIds ??= [];
+        if (!ctx.deliveredExplorerThreadIds.includes(summary.id)) {
+          ctx.deliveredExplorerThreadIds.push(summary.id);
+        }
+      }
+    }
     return JSON.stringify(summaries);
   },
 };
@@ -461,6 +472,16 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       if (!ctx.spawnedImplementerThreadIds.includes(args.thread_id)) {
         ctx.spawnedImplementerThreadIds.push(args.thread_id);
       }
+    }
+    if (persona === "explorer") {
+      ctx.deliveredExplorerThreadIds ??= [];
+      const at = ctx.deliveredExplorerThreadIds.indexOf(args.thread_id);
+      if (at >= 0) {
+        ctx.deliveredExplorerThreadIds.splice(at, 1);
+      }
+      // Also clear from the synthesis-pass exclusion set so a second follow-up
+      // on the same Explorer thread triggers a new synthesis pass.
+      ctx.synthesizedExplorerThreadIds?.delete(args.thread_id);
     }
     return "Follow-up queued durably.";
   },

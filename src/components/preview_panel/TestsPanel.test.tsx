@@ -182,6 +182,39 @@ describe("TestsPanel", () => {
     },
   );
 
+  it.each([false, true])(
+    "explains per-test Neon resets before running (enabled: %s)",
+    async (testingEnabled) => {
+      mocks.app = { ...mocks.app, testingEnabled, neonProjectId: "project" };
+      renderPanel();
+      expect(
+        await screen.findByText(/Each test and retry starts with empty/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/Seed required rows in each test or beforeEach/),
+      ).toBeTruthy();
+    },
+  );
+
+  it.each([false, true])(
+    "explains per-test Supabase users before running (enabled: %s)",
+    async (testingEnabled) => {
+      mocks.app = {
+        ...mocks.app,
+        testingEnabled,
+        supabaseProjectId: "project",
+        supabaseOrganizationSlug: "org",
+      };
+      renderPanel();
+      expect(
+        await screen.findByText(
+          /Each test and retry gets a fresh Supabase test user/,
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText(/may not cover every table/)).toBeTruthy();
+    },
+  );
+
   describe("headed runs in preview", () => {
     const experimentOn = {
       enableTestRunInPreview: true,

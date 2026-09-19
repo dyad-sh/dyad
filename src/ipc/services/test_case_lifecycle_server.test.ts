@@ -96,13 +96,16 @@ describe("test case lifecycle bridge", () => {
     const closed = server.close().then(() => {
       drained = true;
     });
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(warning).toHaveBeenCalledTimes(1);
-    expect(drained).toBe(false);
-    expect(lifecycle.afterEach).not.toHaveBeenCalled();
-    finish({ DYAD_TEST_USER_EMAIL: "late@dyad.test" });
-    await closed;
-    await pendingRequest;
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(warning).toHaveBeenCalledTimes(1);
+      expect(drained).toBe(false);
+      expect(lifecycle.afterEach).not.toHaveBeenCalled();
+    } finally {
+      finish({ DYAD_TEST_USER_EMAIL: "late@dyad.test" });
+      await closed;
+      await pendingRequest;
+    }
     expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
   });
 

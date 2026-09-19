@@ -263,11 +263,7 @@ function resolvedPlaywrightTargets(
     const targets = (paths as Record<string, unknown>)["@playwright/test"];
     if (!Array.isArray(targets)) return [];
     const configDir = path.dirname(configPath);
-    const baseUrl = parsed.compilerOptions?.baseUrl;
-    const baseDir =
-      typeof baseUrl === "string"
-        ? path.resolve(configDir, baseUrl)
-        : configDir;
+    const baseDir = resolvedTsconfigBaseUrl(configPath) ?? configDir;
     return targets
       .filter((target): target is string => typeof target === "string")
       .map((target) => path.resolve(baseDir, target));
@@ -287,6 +283,50 @@ function resolvedPlaywrightTargets(
     if (targets !== null) return targets;
   }
   return null;
+}
+
+/** An inherited baseUrl stays relative to the config that declared it. */
+function resolvedTsconfigBaseUrl(
+  configPath: string,
+  visited = new Set<string>(),
+): string | undefined {
+  if (visited.has(configPath) || visited.size >= MAX_TSCONFIG_FILES) return;
+  visited.add(configPath);
+  const raw = readFileOrNull(configPath);
+  const parsed = raw === null ? null : parseTsconfigJson(raw);
+  if (!parsed) return;
+  const baseUrl = parsed.compilerOptions?.baseUrl;
+  if (typeof baseUrl === "string")
+    return path.resolve(path.dirname(configPath), baseUrl);
+  const parents = Array.isArray(parsed.extends)
+    ? parsed.extends
+    : [parsed.extends];
+  for (const parent of parents.reverse()) {
+    if (typeof parent !== "string" || !parent.startsWith(".")) continue;
+    const inherited = resolvedTsconfigBaseUrl(
+      resolveTsconfigRef(configPath, parent, "extends"),
+      visited,
+    );
+    if (inherited !== undefined) return inherited;
+  }
+}
+
+function shimRoutingInstructions(appPath: string, configPath: string): string {
+  const configDir = path.dirname(configPath);
+  const relativeTo = (baseDir: string, target: string) => {
+    const relative = path.relative(baseDir, target).split(path.sep).join("/");
+    return relative.startsWith(".") ? relative : `./${relative}`;
+  };
+  const mapping = relativeTo(
+    resolvedTsconfigBaseUrl(configPath) ?? configDir,
+    path.join(appPath, PREVIEW_SHIM_RELATIVE_PATH),
+  );
+  const e2eConfig = path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
+  const extend =
+    configPath === e2eConfig
+      ? ""
+      : `Extend "${relativeTo(configDir, e2eConfig)}" without overriding its compilerOptions.paths or baseUrl, or `;
+  return `${extend}${extend ? "add" : "Add"} an "@playwright/test" path mapping to "${mapping}" in compilerOptions.paths (relative to this config's effective baseUrl, or its directory if unset).`;
 }
 
 function tsconfigRoutesToShim(configPath: string, shimPath: string): boolean {
@@ -1111,10 +1151,14 @@ export function ensurePreviewShim(
   if (rootRoutesToShim) {
     const closerTsconfig = findUnroutedCloserTsconfig(appPath, shimPath);
     if (closerTsconfig) {
+      const instructions = shimRoutingInstructions(
+        appPath,
+        path.join(appPath, closerTsconfig),
+      );
       return {
         warning: isolateTestCases
-          ? `The run was stopped because ${closerTsconfig} bypasses the fixture required for per-test database isolation. Extend ${E2E_TSCONFIG_RELATIVE_PATH} or add an "@playwright/test" path mapping to ${PREVIEW_SHIM_RELATIVE_PATH}, relative to that config.\n`
-          : `${closerTsconfig} takes precedence for at least one test and doesn't route "@playwright/test" through Dyad's preview shim. The run will use a separate browser instead. Extend ${E2E_TSCONFIG_RELATIVE_PATH} or add a mapping to the generated shim to enable preview runs.\n`,
+          ? `The run was stopped because ${closerTsconfig} bypasses the fixture required for per-test database isolation. ${instructions}\n`
+          : `${closerTsconfig} takes precedence for at least one test and doesn't route "@playwright/test" through Dyad's preview shim. The run will use a separate browser instead. ${instructions}\n`,
       };
     }
     // The app kept its own root tsconfig, or every closer config, routing to a
@@ -1124,8 +1168,8 @@ export function ensurePreviewShim(
 
   return {
     warning: isolateTestCases
-      ? `The run was stopped because ${E2E_TSCONFIG_RELATIVE_PATH} bypasses the fixture required for per-test database isolation. Add an "@playwright/test" path mapping to "${SHIM_PATH_FROM_E2E_TSCONFIG}" in its compilerOptions.paths.\n`
-      : `Your app has its own ${E2E_TSCONFIG_RELATIVE_PATH}, so Dyad can't route tests through the preview. The run will use a separate browser instead. Add a "@playwright/test" path mapping to "${SHIM_PATH_FROM_E2E_TSCONFIG}" to enable preview runs.\n`,
+      ? `The run was stopped because ${E2E_TSCONFIG_RELATIVE_PATH} bypasses the fixture required for per-test database isolation. ${shimRoutingInstructions(appPath, tsconfigPath)}\n`
+      : `Your app has its own ${E2E_TSCONFIG_RELATIVE_PATH}, so Dyad can't route tests through the preview. The run will use a separate browser instead. ${shimRoutingInstructions(appPath, tsconfigPath)}\n`,
   };
 }
 
@@ -1566,9 +1610,11 @@ export async function ensurePlaywrightBootstrap({
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
   /**
-   * Generate the preview fixture shim + tsconfig mapping. Only set for preview
-   * runs, so apps that never use the experiment don't get a tsconfig that
-   * changes how their editor resolves `@playwright/test`.
+   * Generate the fixture shim + tsconfig mapping for preview runs. Database-
+   * isolated runs also generate these files, even without the preview option,
+   * because their per-case lifecycle requires the fixture. App-owned configs
+   * and shims are preserved; incompatible routing stops isolated runs with
+   * repair instructions rather than silently running without isolation.
    */
   ensurePreviewShim?: boolean;
   /** Install the automatic database lifecycle fixture for every case/retry. */

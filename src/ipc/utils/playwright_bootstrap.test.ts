@@ -543,6 +543,66 @@ describe("ensurePreviewShim", () => {
     expect(warning).toContain("separate browser");
   });
 
+  it.each([
+    {
+      baseUrl: undefined,
+      inherited: false,
+      mapping: "../fixtures/dyad/dyad-test.ts",
+    },
+    {
+      baseUrl: "../..",
+      inherited: false,
+      mapping: "./e2e-tests/fixtures/dyad/dyad-test.ts",
+    },
+    {
+      baseUrl: ".",
+      inherited: true,
+      mapping: "./e2e-tests/fixtures/dyad/dyad-test.ts",
+    },
+  ])(
+    "gives usable nested isolation routing instructions (%j)",
+    ({ baseUrl, inherited, mapping }) => {
+      const appPath = makeApp();
+      const nestedDir = path.join(appPath, "e2e-tests", "nested");
+      fs.mkdirSync(nestedDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(nestedDir, "auth.spec.ts"),
+        'import { test } from "@playwright/test";\n',
+      );
+      if (inherited)
+        fs.writeFileSync(
+          path.join(appPath, "tsconfig.base.json"),
+          JSON.stringify({ compilerOptions: { baseUrl } }),
+        );
+      const config = {
+        ...(inherited ? { extends: "../../tsconfig.base.json" } : {}),
+        compilerOptions: !inherited && baseUrl !== undefined ? { baseUrl } : {},
+      };
+      const configPath = path.join(nestedDir, "tsconfig.json");
+      fs.writeFileSync(configPath, JSON.stringify(config));
+      const { warning } = ensurePreviewShim(appPath, true);
+      expect(warning).toContain('Extend "../tsconfig.json"');
+      expect(warning).toContain(`path mapping to "${mapping}"`);
+      // Applying either advertised repair must actually enable the fixture.
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({
+          ...config,
+          compilerOptions: {
+            ...config.compilerOptions,
+            paths: { "@playwright/test": [mapping] },
+          },
+        }),
+      );
+      expect(ensurePreviewShim(appPath, true)).toEqual({});
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({ extends: "../tsconfig.json" }),
+      );
+      expect(ensurePreviewShim(appPath, true)).toEqual({});
+    },
+  );
+
   it("allows a closer tsconfig that inherits the preview mapping", () => {
     const appPath = makeApp();
     const nestedDir = path.join(appPath, "e2e-tests", "nested");

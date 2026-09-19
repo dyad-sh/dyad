@@ -1648,7 +1648,7 @@ export async function runAppTestsWithIsolation({
             }
           }
 
-          if (caseServer?.failure) {
+          if (caseServer?.failure && !controller.signal.aborted) {
             result = {
               ...result,
               infraError: {

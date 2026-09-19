@@ -248,7 +248,12 @@ describe("per-case database isolation", () => {
         .mockResolvedValue(new Response("ok"));
       try {
         const prepared = await prepareIsolatedTestDatabase({
-          app: makeApp({ neonProjectId: "project" }),
+          app: makeApp({
+            neonProjectId: "project",
+            neonActiveBranchId: "active",
+            neonDevelopmentBranchId: "development",
+            neonPreviewBranchId: "preview",
+          }),
           emit,
           runtimeMode: "host",
           perTestCase: true,
@@ -277,6 +282,7 @@ describe("per-case database isolation", () => {
             databaseUrl: "postgres://temporary",
             branchId: "temporary",
             projectId: "project",
+            protectedBranchIds: ["active", "development", "preview"],
           }),
         );
         expect(emit).toHaveBeenCalledWith(

@@ -1672,10 +1672,28 @@ export function TestsPanel() {
               <ShieldCheck size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">
                 Neon test runs restart the preview to switch to a temporary
-                database, then restart it again afterward.
+                database, then restart it again afterward. Each test and retry
+                starts with empty application and auth-user data, including the
+                first test. Seed required rows in each test or beforeEach. Your
+                original branch is unchanged.
               </span>
             </div>
           )}
+
+          {!isRunning &&
+            !hasNeonIsolation &&
+            hasSupabaseIsolation &&
+            specs.length > 0 && (
+              <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
+                <ShieldCheck size={15} className="shrink-0 mt-0.5" />
+                <span className="flex-1">
+                  Each test and retry gets a fresh Supabase test user. Seed
+                  required user data in each test or beforeEach; supported
+                  user-owned rows are cleaned up afterward. Isolation relies on
+                  Row-Level Security and may not cover every table.
+                </span>
+              </div>
+            )}
 
           {/* Dev-server gate banner */}
           {!devServerRunning && specs.length > 0 && (
@@ -1954,7 +1972,9 @@ function EnableTestingScreen({
           <ShieldCheck size={15} className="shrink-0 mt-0.5" />
           <span>
             Tests run against a temporary copy of your Neon database, so your
-            real data isn&apos;t touched.
+            real data isn&apos;t touched. Each test and retry starts with empty
+            application and auth-user data, including the first test. Seed
+            required rows in each test or beforeEach.
           </span>
         </div>
       ) : (
@@ -1962,7 +1982,7 @@ function EnableTestingScreen({
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
             {hasSupabaseIsolation
-              ? "Tests run as an isolated test user under Row-Level Security, but RLS may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
+              ? "Each test and retry gets a fresh Supabase test user. Seed required user data in each test or beforeEach; supported user-owned rows are cleaned up afterward. Isolation relies on Row-Level Security, which may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
               : hasManagedDatabase
                 ? "Dyad can't isolate this database in the current setup. These tests can create, update, or delete current data, so we strongly recommend enabling data backups before running them."
                 : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}

@@ -19,9 +19,8 @@ vi.mock("@/main/settings", () => ({
   writeSettings: vi.fn(),
 }));
 
-describe("executeSupabaseSql cancellation", () => {
-  afterEach(() => vi.unstubAllGlobals());
-  it("forwards cancellation to the management request and stops a hanging query", async () => {
+describe("executeSupabaseSql", () => {
+  beforeEach(() => {
     vi.mocked(readSettings).mockReturnValue({
       supabase: {
         accessToken: { value: "management-token" },
@@ -29,20 +28,80 @@ describe("executeSupabaseSql cancellation", () => {
         tokenTimestamp: Date.now(),
       },
     } as ReturnType<typeof readSettings>);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([false, true])(
+    "returns SQL results with a signal: %s",
+    async (withSignal) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response('[{"id":1}]', { status: 201 })),
+      );
+      expect(
+        await executeSupabaseSql({
+          supabaseProjectId: "project",
+          organizationSlug: null,
+          query: "SELECT 1",
+          signal: withSignal ? new AbortController().signal : undefined,
+        }),
+      ).toBe('[{"id":1}]');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledWith(
+        "https://api.supabase.com/v1/projects/project/database/query",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ query: "SELECT 1" }),
+        }),
+      );
+    },
+  );
+
+  it.each([false, true])(
+    "classifies SQL errors consistently with a signal: %s",
+    async (withSignal) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response('{"message":"Invalid SQL"}', {
+            status: 400,
+            statusText: "Bad Request",
+          }),
+        ),
+      );
+      const query = executeSupabaseSql({
+        supabaseProjectId: "project",
+        organizationSlug: null,
+        query: "INVALID SQL",
+        signal: withSignal ? new AbortController().signal : undefined,
+      });
+      await expect(query).rejects.toBeInstanceOf(SupabaseManagementAPIError);
+      await expect(query).rejects.toMatchObject({
+        response: { status: 400 },
+        message: expect.stringContaining("Bad Request (400)"),
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("forwards cancellation to the management request and stops a hanging query", async () => {
     const controller = new AbortController();
     let started!: () => void;
     const ready = new Promise<void>((resolve) => {
       started = resolve;
     });
+    let forwardedSignal: AbortSignal | null | undefined;
+    let rejectFetch!: (reason: unknown) => void;
     vi.stubGlobal(
       "fetch",
       vi.fn(
         (_input, init) =>
           new Promise((_, reject) => {
-            expect(init.signal).toBe(controller.signal);
-            init.signal.addEventListener(
+            forwardedSignal = init?.signal;
+            rejectFetch = reject;
+            forwardedSignal?.addEventListener(
               "abort",
-              () => reject(init.signal.reason),
+              () => reject(forwardedSignal?.reason),
               { once: true },
             );
             started();
@@ -59,7 +118,14 @@ describe("executeSupabaseSql cancellation", () => {
       name: "AbortError",
     });
     await ready;
-    controller.abort();
+    try {
+      expect(forwardedSignal).toBe(controller.signal);
+    } finally {
+      controller.abort();
+      // Settle even if a regression stops forwarding the signal.
+      rejectFetch(controller.signal.reason);
+      await query.catch(() => undefined);
+    }
     await rejected;
     expect(fetch).toHaveBeenCalledTimes(1);
   });

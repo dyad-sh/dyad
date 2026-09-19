@@ -18,6 +18,8 @@ import {
 } from "@/testing/handler_test_harness";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
+import * as playwrightBootstrap from "../utils/playwright_bootstrap";
+import { runningApps } from "../utils/process_manager";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -160,6 +162,66 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it.each([false, true])(
+      "only reports lifecycle failure when the run was not cancelled (cancelled: %s)",
+      async (cancelled) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .run();
+        const controller = new AbortController();
+        let failure: Error | undefined;
+        const close = vi.fn(async () => {
+          failure = new Error(
+            cancelled ? "Test case lifecycle is closing." : "cleanup failed",
+          );
+        });
+        startTestCaseLifecycleServerMock.mockResolvedValue({
+          env: {},
+          close,
+          get failure() {
+            return failure;
+          },
+        });
+        const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "neon-branch" },
+          testCaseLifecycle: { beforeEach: vi.fn(), afterEach: vi.fn() },
+          teardown,
+        });
+        const bootstrap = vi
+          .spyOn(playwrightBootstrap, "ensurePlaywrightBootstrap")
+          .mockImplementation(async () => {
+            controller.abort();
+            return { installed: false, previewRouted: true };
+          });
+        // Cancellation happens after the lifecycle server starts, before spawning
+        // Playwright. The non-cancelled case uses the missing-server result.
+        if (cancelled)
+          runningApps.set(appId, { proxyUrl: "http://localhost:42100" } as any);
+        try {
+          const result = await runAppTestsWithIsolation({
+            event: { sender: {} } as any,
+            appId,
+            source: "panel",
+            externalSignal: controller.signal,
+          });
+          expect(result.infraError?.message).toBe(
+            cancelled
+              ? "Test run stopped."
+              : "Per-test database isolation failed: cleanup failed",
+          );
+          expect(close).toHaveBeenCalledTimes(1);
+          expect(teardown).toHaveBeenCalledTimes(1);
+        } finally {
+          runningApps.delete(appId);
+          bootstrap.mockRestore();
+        }
+      },
+    );
+
     it("retains the run result and restores isolation when lifecycle close rejects", async () => {
       const appId = seedApp("app");
       harness.db

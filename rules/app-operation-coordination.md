@@ -157,3 +157,7 @@ before exposing the cleanup callback.
 Lifecycle shutdown must drain provider mutations before releasing its claims.
 In particular, don't abort a Supabase user-creation response before persisting
 the returned ID; cancel retries and surface a slow drain so recovery stays possible.
+
+When shutdown aborts lifecycle hooks, preserve an explicit run cancellation in
+the final result. A hook's "closing" error must not overwrite "Test run stopped"
+with an isolation failure; still surface lifecycle failures on non-cancelled runs.

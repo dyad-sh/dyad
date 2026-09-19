@@ -805,7 +805,6 @@ export async function executeSupabaseSql({
   const supabase = await getSupabaseClient({ organizationSlug });
   const result = await retryWithRateLimit(
     async () => {
-      if (!signal) return supabase.runQuery(supabaseProjectId, query);
       const { data, response } = await supabase.client.post(
         "/v1/projects/{ref}/database/query",
         {

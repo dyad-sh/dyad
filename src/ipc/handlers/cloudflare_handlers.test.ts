@@ -187,8 +187,11 @@ async function fakeFetch(
     );
   }
   if ((match = /\/workers\/scripts\/([^/]+)\/subdomain$/.exec(path))) {
-    cloudflare.workers.get(match[1])!.routeEnabled = true;
-    return ok({ enabled: true });
+    const worker = cloudflare.workers.get(match[1])!;
+    if (method === "POST") {
+      worker.routeEnabled = true;
+    }
+    return ok({ enabled: worker.routeEnabled });
   }
   if ((match = /\/workers\/scripts\/([^/]+)$/.exec(path))) {
     if (method === "PUT") {
@@ -694,6 +697,8 @@ describe("connecting to a Worker that already exists", () => {
 
   it("updates a rule this repository already has instead of adding a second", async () => {
     existingWorkerDeployingFrom("conn-501");
+    // Already this folder on this branch, so there is nothing to ask about.
+    cloudflare.triggers[0].root_directory = "/worker";
 
     const result = await handlers.handleConnectWorker({
       appId,
@@ -795,7 +800,12 @@ describe("connecting to a Worker that already exists", () => {
     cloudflare.failOn = (_, path) => path.endsWith("/environment_variables");
 
     await expect(
-      handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" }),
+      handlers.handleConnectWorker({
+        appId,
+        ...CONNECT,
+        mode: "existing",
+        overwrite: true,
+      }),
     ).rejects.toThrow(/simulated failure/);
 
     // Otherwise the rule would go on deploying this folder with no row in
@@ -804,17 +814,66 @@ describe("connecting to a Worker that already exists", () => {
     expect(connectionRows()).toHaveLength(0);
   });
 
-  it("leaves how an existing Worker is reachable as it was", async () => {
+  it("leaves how an existing Worker is reachable as it was, and shows no address for it", async () => {
     // Its owner may serve it only behind a custom domain.
     cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
 
     await handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" });
 
     expect(cloudflare.workers.get("shop-api")?.routeEnabled).toBe(false);
-    expect(connectionRows()).toHaveLength(1);
+    expect(connectionRows()[0].workerUrl).toBeNull();
   });
 
-  it("takes over this repository's rule even when it named another branch", async () => {
+  it("keeps the workers.dev address of an existing Worker that is served there", async () => {
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: true });
+
+    await handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" });
+
+    expect(connectionRows()[0].workerUrl).toBe(
+      "https://shop-api.acme.workers.dev",
+    );
+  });
+
+  it("asks before repointing this repository's rule from another branch", async () => {
+    existingWorkerDeployingFrom("conn-501");
+    Object.assign(cloudflare.triggers[0], {
+      branch_includes: ["release"],
+      root_directory: "/worker",
+    });
+    const ruleBefore = structuredClone(cloudflare.triggers[0]);
+
+    const result = await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+
+    expect(result).toEqual({
+      status: "conflict",
+      existingRepo: "someone/other-site (branch release, folder worker)",
+    });
+    expect(cloudflare.triggers).toEqual([ruleBefore]);
+    expect(connectionRows()).toHaveLength(0);
+  });
+
+  it("asks before repointing this repository's rule from another folder", async () => {
+    existingWorkerDeployingFrom("conn-501");
+    cloudflare.triggers[0].root_directory = "/";
+
+    const result = await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+
+    expect(result).toEqual({
+      status: "conflict",
+      existingRepo: "someone/other-site (branch main, root folder)",
+    });
+    expect(connectionRows()).toHaveLength(0);
+  });
+
+  it("takes over this repository's rule on another branch once the user agrees", async () => {
     // Cloudflare would refuse a second rule on the Worker.
     existingWorkerDeployingFrom("conn-501");
     cloudflare.triggers[0].branch_includes = ["release"];
@@ -823,6 +882,7 @@ describe("connecting to a Worker that already exists", () => {
       appId,
       ...CONNECT,
       mode: "existing",
+      overwrite: true,
     });
 
     expect(result.status).toBe("connected");
@@ -849,6 +909,33 @@ describe("connecting to a Worker that already exists", () => {
     expect(connectionRows()[0].triggerUuid).toBe(
       cloudflare.triggers[1].trigger_uuid,
     );
+  });
+
+  it("says the replaced rule is gone when the connection then fails", async () => {
+    existingWorkerDeployingFrom("conn-999");
+    cloudflare.failOn = (method, path) =>
+      method === "POST" && path.endsWith("/builds/triggers");
+
+    await expect(
+      handlers.handleConnectWorker({
+        appId,
+        ...CONNECT,
+        mode: "existing",
+        overwrite: true,
+      }),
+    ).rejects.toThrow(
+      /simulated failure.*from someone\/other-site was already removed/,
+    );
+  });
+
+  it("says nothing about a removed rule when none was removed", async () => {
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
+    cloudflare.failOn = (method, path) =>
+      method === "POST" && path.endsWith("/builds/triggers");
+
+    await expect(
+      handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" }),
+    ).rejects.toThrow(/simulated failure$/);
   });
 
   it("fails clearly when the chosen Worker is not in the account", async () => {

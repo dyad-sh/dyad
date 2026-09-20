@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -21,7 +22,7 @@ const SYNC_POLL_MS = 4_000;
  */
 const REPO_ACCESS_POLL_MS = 4_000;
 const REPO_ACCESS_SLOW_POLL_MS = 15_000;
-const REPO_ACCESS_FAST_POLLS = 15;
+const REPO_ACCESS_FAST_WINDOW_MS = 60_000;
 /** A push starts a build Dyad is not told about, so an idle card still polls. */
 const IDLE_STATUS_POLL_MS = 15_000;
 const ACTIVE_STATUS_POLL_MS = 5_000;
@@ -87,6 +88,8 @@ export function useCloudflareRepoAccess({
   appId: number;
   accountId: string;
 }) {
+  // Timed from when the prompt appears, so each wait starts out quick.
+  const [waitingSince] = useState(() => Date.now());
   return useQuery({
     queryKey: queryKeys.cloudflare.repoAccess({ appId, accountId }),
     queryFn: () => ipc.cloudflare.checkRepoAccess({ appId, accountId }),
@@ -94,7 +97,7 @@ export function useCloudflareRepoAccess({
     refetchInterval: (query) =>
       query.state.data?.hasAccess !== false
         ? false
-        : query.state.dataUpdateCount <= REPO_ACCESS_FAST_POLLS
+        : Date.now() - waitingSince < REPO_ACCESS_FAST_WINDOW_MS
           ? REPO_ACCESS_POLL_MS
           : REPO_ACCESS_SLOW_POLL_MS,
   });

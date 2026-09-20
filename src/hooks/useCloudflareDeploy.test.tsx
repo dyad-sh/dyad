@@ -1,0 +1,79 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const checkRepoAccess = vi.hoisted(() => vi.fn());
+vi.mock("@/ipc/types", () => ({ ipc: { cloudflare: { checkRepoAccess } } }));
+vi.mock("@/lib/toast", () => ({ showWarning: vi.fn() }));
+
+const { useCloudflareRepoAccess } = await import("./useCloudflareDeploy");
+
+function renderAccessCheck(queryClient: QueryClient) {
+  return renderHook(
+    () => useCloudflareRepoAccess({ appId: 7, accountId: "acct-1" }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    },
+  );
+}
+
+async function wait(ms: number) {
+  await act(() => vi.advanceTimersByTimeAsync(ms));
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  checkRepoAccess.mockReset();
+  checkRepoAccess.mockResolvedValue({ hasAccess: false });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+describe("waiting for Cloudflare to see the repository", () => {
+  it("asks often for the first minute, then rarely", async () => {
+    renderAccessCheck(new QueryClient());
+
+    await wait(60_000);
+    const duringFirstMinute = checkRepoAccess.mock.calls.length;
+    expect(duringFirstMinute).toBeGreaterThanOrEqual(14);
+
+    await wait(60_000);
+    const duringSecondMinute =
+      checkRepoAccess.mock.calls.length - duringFirstMinute;
+    expect(duringSecondMinute).toBeLessThanOrEqual(5);
+    expect(duringSecondMinute).toBeGreaterThanOrEqual(3);
+  });
+
+  it("asks often again when the prompt is opened a second time", async () => {
+    // The same client, so what the first wait cached is still there.
+    const queryClient = new QueryClient();
+    const first = renderAccessCheck(queryClient);
+    await wait(120_000);
+    first.unmount();
+
+    renderAccessCheck(queryClient);
+    const before = checkRepoAccess.mock.calls.length;
+    await wait(13_000);
+
+    expect(checkRepoAccess.mock.calls.length - before).toBeGreaterThanOrEqual(
+      3,
+    );
+  });
+
+  it("stops asking once Cloudflare can see it", async () => {
+    checkRepoAccess.mockResolvedValue({ hasAccess: true });
+    renderAccessCheck(new QueryClient());
+
+    await wait(30_000);
+
+    expect(checkRepoAccess).toHaveBeenCalledTimes(1);
+  });
+});

@@ -28,13 +28,16 @@ import {
   deleteTrigger,
   deleteWorker,
   describeTriggerRepo,
+  describeTriggerSource,
   enableWorkersDevRoute,
   ensureBuildToken,
   getAccountSubdomain,
   getBuildLogLines,
   getLatestBuild,
   getTriggerRepoConnectionUuid,
+  getTriggerRootDirectory,
   isCloudflareAuthFailure,
+  isWorkersDevRouteEnabled,
   listAccounts,
   listTriggers,
   listWorkers,
@@ -563,6 +566,7 @@ async function handleConnectWorker(
   let createdWorkerName: string | null = null;
   let createdTriggerUuid: string | null = null;
   let rewrittenTrigger: CloudflareTrigger | null = null;
+  const removedRuleRepos: string[] = [];
   try {
     if (!(await canCloudflareSeeRepo(token, accountId, repo, branch))) {
       throw new DyadError(
@@ -580,6 +584,8 @@ async function handleConnectWorker(
 
     const workers = await listWorkers(token, accountId);
     let worker = workers.find((candidate) => candidate.name === workerName);
+    let workerUrl: string | null =
+      `https://${workerName}.${subdomain}.workers.dev`;
     if (mode === "create") {
       if (worker) {
         throw new DyadError(
@@ -599,6 +605,9 @@ async function handleConnectWorker(
       );
     } else {
       await assertWorkerIsFree(accountId, worker.tag, workerName);
+      if (!(await isWorkersDevRouteEnabled(token, accountId, workerName))) {
+        workerUrl = null;
+      }
     }
     const repoConnectionUuid = await upsertRepoConnection(
       token,
@@ -610,11 +619,33 @@ async function handleConnectWorker(
     const foreignTriggers = existingTriggers.filter(
       (trigger) => getTriggerRepoConnectionUuid(trigger) !== repoConnectionUuid,
     );
-    if (foreignTriggers.length > 0 && !params.overwrite) {
-      return {
-        status: "conflict",
-        existingRepo: describeTriggerRepo(foreignTriggers[0]),
-      };
+    // Cloudflare allows a Worker one rule for named branches, whatever the
+    // branch, and refuses a second. So this repository's existing one is
+    // updated in place. Its preview rule, the one for every other branch, is
+    // a separate thing and is left alone.
+    const ownRule = existingTriggers.find(
+      (trigger) =>
+        !foreignTriggers.includes(trigger) &&
+        !(trigger.branch_includes ?? []).includes("*"),
+    );
+    // Repointing it would end a deployment of another branch or folder.
+    const ownRuleDeploysElsewhere =
+      ownRule !== undefined &&
+      (!(ownRule.branch_includes ?? []).includes(branch) ||
+        getTriggerRootDirectory(ownRule) !== rootDirectory);
+    if (!params.overwrite) {
+      if (foreignTriggers.length > 0) {
+        return {
+          status: "conflict",
+          existingRepo: describeTriggerRepo(foreignTriggers[0]),
+        };
+      }
+      if (ownRule && ownRuleDeploysElsewhere) {
+        return {
+          status: "conflict",
+          existingRepo: describeTriggerSource(ownRule),
+        };
+      }
     }
 
     const tokenInfo = await verifyToken(token);
@@ -635,21 +666,13 @@ async function handleConnectWorker(
 
     for (const trigger of foreignTriggers) {
       await deleteTrigger(token, accountId, trigger.trigger_uuid);
+      removedRuleRepos.push(describeTriggerRepo(trigger));
     }
-    // Cloudflare allows a Worker one rule for named branches, whatever the
-    // branch, and refuses a second. So this repository's existing one is
-    // updated in place. Its preview rule, the one for every other branch, is
-    // a separate thing and is left alone.
-    const reusable = existingTriggers.find(
-      (trigger) =>
-        !foreignTriggers.includes(trigger) &&
-        !(trigger.branch_includes ?? []).includes("*"),
-    );
     let triggerUuid: string;
-    if (reusable) {
-      rewrittenTrigger = reusable;
-      await updateTrigger(token, accountId, reusable.trigger_uuid, rule);
-      triggerUuid = reusable.trigger_uuid;
+    if (ownRule) {
+      rewrittenTrigger = ownRule;
+      await updateTrigger(token, accountId, ownRule.trigger_uuid, rule);
+      triggerUuid = ownRule.trigger_uuid;
     } else {
       triggerUuid = await createTrigger(token, accountId, rule);
       createdTriggerUuid = triggerUuid;
@@ -677,7 +700,7 @@ async function handleConnectWorker(
         workerName,
         workerTag: worker.tag,
         triggerUuid,
-        workerUrl: `https://${workerName}.${subdomain}.workers.dev`,
+        workerUrl,
       })
       .returning();
     // From here the connection is real; nothing below may undo it.
@@ -719,7 +742,20 @@ async function handleConnectWorker(
           logger.warn("Could not remove the unused Worker:", cleanupError),
       );
     }
-    throw toCloudflareDyadError(error, "Could not connect the Worker");
+    const failure = toCloudflareDyadError(
+      error,
+      "Could not connect the Worker",
+    );
+    if (removedRuleRepos.length > 0 && failure instanceof DyadError) {
+      // Cloudflare refuses a new rule while the old one exists, so it was
+      // already gone when this failed, and its secrets cannot be read back
+      // to recreate it. The user has to be told.
+      throw new DyadError(
+        `${failure.message} The rule that deployed this Worker from ${removedRuleRepos.join(", ")} was already removed and has not been put back.`,
+        failure.kind,
+      );
+    }
+    throw failure;
   }
 }
 

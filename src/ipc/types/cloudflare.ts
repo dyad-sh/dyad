@@ -33,7 +33,8 @@ export const CloudflareConnectionSchema = z.object({
   rootDirectory: z.string(),
   accountId: z.string(),
   workerName: z.string(),
-  workerUrl: z.string(),
+  /** Null when the Worker is not served at a workers.dev address. */
+  workerUrl: z.string().nullable(),
   dashboardUrl: z.string(),
 });
 

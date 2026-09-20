@@ -259,6 +259,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
             appId={appId}
             connection={connection}
             targetLabel={folder.label}
+            hasConfig={target !== null}
           />
         </>
       ) : !target ? null : accounts.data.length === 0 ? (
@@ -356,9 +357,8 @@ function TargetList({
   return (
     <div className="space-y-2" data-testid="cloudflare-target-list">
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        This app has {folders.length} folders that can deploy as Workers. Each
-        deploys to its own Worker, and each connected one deploys when a sync
-        pushes changes to it.
+        Each folder here deploys to its own Worker, and each connected one
+        deploys when a sync pushes changes to it.
       </p>
       <ul className="border rounded-md divide-y">
         {folders.map((target) => {
@@ -379,14 +379,18 @@ function TargetList({
                 <span className="font-medium truncate">{target.label}</span>
                 <span
                   className={
-                    connection
-                      ? "text-xs text-green-700 dark:text-green-400 truncate"
-                      : "text-xs text-gray-500 dark:text-gray-400"
+                    !connection
+                      ? "text-xs text-gray-500 dark:text-gray-400"
+                      : target.target
+                        ? "text-xs text-green-700 dark:text-green-400 truncate"
+                        : "text-xs text-amber-700 dark:text-amber-400 truncate"
                   }
                 >
-                  {connection
-                    ? `Connected to ${connection.workerName}`
-                    : "Not connected"}
+                  {!connection
+                    ? "Not connected"
+                    : target.target
+                      ? `Connected to ${connection.workerName}`
+                      : `Connected to ${connection.workerName}, config missing`}
                 </span>
               </button>
             </li>
@@ -703,11 +707,15 @@ function DeploymentCard({
   appId,
   connection,
   targetLabel,
+  hasConfig,
 }: {
   appId: number;
   connection: CloudflareConnection;
   targetLabel: string;
+  /** False once the folder's Wrangler config has left the branch. */
+  hasConfig: boolean;
 }) {
+  const { workerUrl } = connection;
   const status = useCloudflareDeploymentStatus({
     appId,
     rootDirectory: connection.rootDirectory,
@@ -723,13 +731,16 @@ function DeploymentCard({
           <p className="text-sm font-medium truncate">
             {connection.workerName}
           </p>
-          <button
-            type="button"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate max-w-full bg-transparent border-none p-0 cursor-pointer"
-            onClick={() => ipc.system.openExternalUrl(connection.workerUrl)}
-          >
-            {connection.workerUrl}
-          </button>
+          {workerUrl && (
+            <button
+              type="button"
+              data-testid="cloudflare-worker-url"
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate max-w-full bg-transparent border-none p-0 cursor-pointer"
+              onClick={() => ipc.system.openExternalUrl(workerUrl)}
+            >
+              {workerUrl}
+            </button>
+          )}
         </div>
         <Button
           variant="outline"
@@ -785,12 +796,14 @@ function DeploymentCard({
         </pre>
       )}
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        {deployTriggerText({
-          rootDirectory: connection.rootDirectory,
-          label: targetLabel,
-        })}
-      </p>
+      {hasConfig && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {deployTriggerText({
+            rootDirectory: connection.rootDirectory,
+            label: targetLabel,
+          })}
+        </p>
+      )}
       <Button
         variant="outline"
         size="sm"

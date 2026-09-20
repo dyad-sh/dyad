@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  describeTriggerSource,
+  getTriggerRootDirectory,
   CloudflareApiError,
   deleteTrigger,
   isCloudflareAuthFailure,
@@ -66,11 +68,16 @@ describe("responses", () => {
     await expect(verifyToken("token")).rejects.toThrow(/could not be read/);
   });
 
-  it("accept a success that has no body at all", async () => {
+  it("accept a success with no body from a call that returns nothing", async () => {
     respondWith("", 200);
     await expect(
       deleteTrigger("token", "acct", "rule-1"),
     ).resolves.toBeUndefined();
+  });
+
+  it("refuse a success with no body from a call whose answer is used", async () => {
+    respondWith("", 200);
+    await expect(verifyToken("token")).rejects.toThrow(/could not be read/);
   });
 
   it("keep Cloudflare's status and codes on failure", async () => {
@@ -92,6 +99,31 @@ describe("responses", () => {
     const error = await verifyToken("token").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CloudflareApiError);
     expect(isCloudflareAuthFailure(error)).toBe(false);
+  });
+});
+
+describe("what a rule deploys", () => {
+  const rule = {
+    trigger_uuid: "rule-1",
+    branch_includes: ["staging"],
+    repo_connection: { repo_name: "shop", provider_account_name: "acme" },
+  };
+
+  it("reads the folder in the form targets use", () => {
+    expect(getTriggerRootDirectory({ ...rule, root_directory: "/" })).toBe("");
+    expect(getTriggerRootDirectory({ ...rule, root_directory: "/api/" })).toBe(
+      "api",
+    );
+    expect(getTriggerRootDirectory(rule)).toBe("");
+  });
+
+  it("names the repository, branch and folder", () => {
+    expect(describeTriggerSource({ ...rule, root_directory: "/api" })).toBe(
+      "acme/shop (branch staging, folder api)",
+    );
+    expect(describeTriggerSource({ ...rule, root_directory: "/" })).toBe(
+      "acme/shop (branch staging, root folder)",
+    );
   });
 });
 

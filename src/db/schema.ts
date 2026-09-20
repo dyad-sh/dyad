@@ -597,7 +597,8 @@ export const cloudflareAppConnections = sqliteTable(
     workerTag: text("worker_tag").notNull(),
     /** The rule that deploys this target on each push. */
     triggerUuid: text("trigger_uuid").notNull(),
-    workerUrl: text("worker_url").notNull(),
+    /** The workers.dev address, or null when the Worker has that route off. */
+    workerUrl: text("worker_url"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),

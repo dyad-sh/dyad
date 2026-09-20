@@ -89,11 +89,32 @@ function apiPath(strings: TemplateStringsArray, ...values: string[]): string {
   );
 }
 
-async function request<T>(
+/** A call whose answer is used. A success with no body is a failure here. */
+function request<T>(
   token: string,
   method: string,
   path: string,
   body?: unknown,
+): Promise<T> {
+  return call<T>(token, method, path, body, false);
+}
+
+/** A call that returns nothing, where a success may come with no body. */
+async function send(
+  token: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<void> {
+  await call(token, method, path, body, true);
+}
+
+async function call<T>(
+  token: string,
+  method: string,
+  path: string,
+  body: unknown,
+  emptyBodyOk: boolean,
 ): Promise<T> {
   const isForm = body instanceof FormData;
   const response = await fetch(`${getCloudflareApiBase()}${path}`, {
@@ -112,12 +133,10 @@ async function request<T>(
           : JSON.stringify(body),
   });
 
-  // An empty body is a success with nothing to return. A body that is there
-  // but cannot be parsed is not.
   const text = await response.text();
   let envelope: CloudflareEnvelope<T> | undefined;
   if (text.trim() === "") {
-    envelope = {};
+    envelope = emptyBodyOk ? {} : undefined;
   } else {
     try {
       envelope = JSON.parse(text) as CloudflareEnvelope<T>;
@@ -141,8 +160,8 @@ async function request<T>(
   }
 
   if (envelope === undefined) {
-    // Success with a body that cannot be read would otherwise hand callers an
-    // undefined result to trip over.
+    // Success with a body that is missing or cannot be read would otherwise
+    // hand callers an undefined result to trip over.
     throw new CloudflareApiError(
       "Cloudflare returned a response that could not be read.",
       response.status,
@@ -257,7 +276,7 @@ export async function deleteWorker(
   accountId: string,
   name: string,
 ): Promise<void> {
-  await request(
+  await send(
     token,
     "DELETE",
     apiPath`/accounts/${accountId}/workers/scripts/${name}?force=true`,
@@ -269,12 +288,26 @@ export async function enableWorkersDevRoute(
   accountId: string,
   name: string,
 ): Promise<void> {
-  await request(
+  await send(
     token,
     "POST",
     apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
     { enabled: true, previews_enabled: true },
   );
+}
+
+/** Whether the Worker is served at its workers.dev address. */
+export async function isWorkersDevRouteEnabled(
+  token: string,
+  accountId: string,
+  name: string,
+): Promise<boolean> {
+  const result = await request<{ enabled?: boolean }>(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
+  );
+  return result?.enabled === true;
 }
 
 /** The account's workers.dev subdomain, or null when it has none yet. */
@@ -445,6 +478,19 @@ export function describeTriggerRepo(trigger: CloudflareTrigger): string {
   return name ?? "another repository";
 }
 
+/** The folder a rule builds, in the form targets use: "" for the root. */
+export function getTriggerRootDirectory(trigger: CloudflareTrigger): string {
+  return (trigger.root_directory ?? "").replace(/^\/+|\/+$/g, "");
+}
+
+/** The repository, branch and folder a rule deploys, for showing to the user. */
+export function describeTriggerSource(trigger: CloudflareTrigger): string {
+  const branches = (trigger.branch_includes ?? []).join(", ");
+  const root = getTriggerRootDirectory(trigger);
+  const folder = root === "" ? "root folder" : `folder ${root}`;
+  return `${describeTriggerRepo(trigger)} (branch ${branches}, ${folder})`;
+}
+
 export async function listTriggers(
   token: string,
   accountId: string,
@@ -480,7 +526,7 @@ export async function updateTrigger(
 ): Promise<void> {
   // The Worker a rule belongs to cannot be changed after creation.
   const { external_script_id: _workerTag, ...changes } = rule;
-  await request(
+  await send(
     token,
     "PATCH",
     apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}`,
@@ -509,7 +555,7 @@ export async function restoreTrigger(
     path_includes: listed.path_includes,
     path_excludes: listed.path_excludes,
   };
-  await request(
+  await send(
     token,
     "PATCH",
     apiPath`/accounts/${accountId}/builds/triggers/${listed.trigger_uuid}`,
@@ -526,7 +572,7 @@ export async function setTriggerBuildVariables(
   triggerUuid: string,
   variables: Record<string, string>,
 ): Promise<void> {
-  await request(
+  await send(
     token,
     "PATCH",
     apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}/environment_variables`,
@@ -546,7 +592,7 @@ export async function setTriggerBuildToken(
   triggerUuid: string,
   buildTokenUuid: string,
 ): Promise<void> {
-  await request(
+  await send(
     token,
     "PATCH",
     apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}`,
@@ -561,7 +607,7 @@ export async function deleteTrigger(
   triggerUuid: string,
 ): Promise<void> {
   try {
-    await request(
+    await send(
       token,
       "DELETE",
       apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}`,
@@ -580,7 +626,7 @@ export async function startBuild(
   triggerUuid: string,
   branch: string,
 ): Promise<void> {
-  await request(
+  await send(
     token,
     "POST",
     apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}/builds`,

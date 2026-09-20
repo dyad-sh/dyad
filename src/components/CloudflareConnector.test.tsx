@@ -392,6 +392,18 @@ describe("a connected Worker", () => {
     expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
   });
 
+  it("shows no address for a Worker that is not served at workers.dev", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [{ ...CONNECTION, workerUrl: null }] }),
+    );
+    renderConnector();
+
+    await screen.findByText("Live");
+    expect(screen.queryByTestId("cloudflare-worker-url")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cloudflare" }));
+    expect(openExternalUrl).toHaveBeenCalledWith(CONNECTION.dashboardUrl);
+  });
+
   it("shows the end of the log for a failed deployment", async () => {
     cloudflare.getDeploymentStatus.mockResolvedValue({
       state: "failed",
@@ -495,6 +507,8 @@ describe("a connected Worker", () => {
 
     expect(await screen.findByTestId("cloudflare-config-missing")).toBeTruthy();
     expect(screen.queryByText("No Cloudflare Worker found")).toBeNull();
+    // Cloudflare cannot build it, so the card must not say that it deploys.
+    expect(screen.queryByText(/Deploys whenever/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Disconnect worker" }));
     await waitFor(() =>
       expect(cloudflare.disconnect).toHaveBeenCalledWith({
@@ -681,7 +695,7 @@ describe("a folder that lost its config beside one that still has it", () => {
 
     const list = await screen.findByTestId("cloudflare-target-list");
     expect(list.textContent).toContain("old-worker");
-    expect(list.textContent).toContain("Connected to shop-api");
+    expect(list.textContent).toContain("Connected to shop-api, config missing");
     // The deployable folder comes first and opens on its setup form.
     expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
 

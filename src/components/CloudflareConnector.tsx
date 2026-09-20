@@ -25,6 +25,7 @@ import {
   useCloudflareWorkers,
   useConnectCloudflareWorker,
   useDisconnectCloudflareWorker,
+  useSaveCloudflareToken,
 } from "@/hooks/useCloudflareDeploy";
 import {
   CLOUDFLARE_CONNECT_GITHUB_URL,
@@ -71,23 +72,18 @@ export function CloudflareConnector({ appId }: { appId: number }) {
 function TokenForm() {
   const { refreshSettings } = useSettings();
   const [token, setToken] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const saveToken = useSaveCloudflareToken();
+  const isSaving = saveToken.isPending;
 
-  const handleSave = async (event: React.FormEvent) => {
+  const handleSave = (event: React.FormEvent) => {
     event.preventDefault();
     if (!token.trim()) return;
-    setIsSaving(true);
-    setError(null);
-    try {
-      await ipc.cloudflare.saveToken({ token: token.trim() });
-      setToken("");
-      refreshSettings();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setIsSaving(false);
-    }
+    saveToken.mutate(token.trim(), {
+      onSuccess: () => {
+        setToken("");
+        refreshSettings();
+      },
+    });
   };
 
   return (
@@ -155,7 +151,9 @@ function TokenForm() {
         </Button>
       </form>
 
-      {error && <div className={errorClass}>{error}</div>}
+      {saveToken.error && (
+        <div className={errorClass}>{errorMessage(saveToken.error)}</div>
+      )}
     </div>
   );
 }
@@ -178,15 +176,21 @@ function ConnectedAccount({ appId }: { appId: number }) {
       </div>
     );
   }
-  if (accounts.error || status.error) {
+  if (!accounts.data || !status.data) {
+    // Only with nothing to show. A later refetch that fails keeps what is
+    // already on screen rather than replacing it with an error.
+    const error = accounts.error ?? status.error;
+    return error ? (
+      <div className={errorClass}>{errorMessage(error)}</div>
+    ) : null;
+  }
+  if (accounts.data.length === 0) {
     return (
-      <div className={errorClass}>
-        {errorMessage(accounts.error ?? status.error)}
+      <div className={warningClass} data-testid="cloudflare-no-accounts">
+        This API token can no longer see any Cloudflare account. Disconnect
+        Cloudflare under Settings &gt; Integrations, then add a new token here.
       </div>
     );
-  }
-  if (!accounts.data || !status.data) {
-    return null;
   }
 
   const targets = status.data.targets;
@@ -232,7 +236,10 @@ function ConnectedAccount({ appId }: { appId: number }) {
         <>
           {accounts.data.length > 1 && (
             <div>
-              <Label className="block text-sm font-medium mb-1">
+              <Label
+                htmlFor="cloudflare-account"
+                className="block text-sm font-medium mb-1"
+              >
                 Cloudflare account
               </Label>
               <Select
@@ -244,6 +251,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
                 }))}
               >
                 <SelectTrigger
+                  id="cloudflare-account"
                   className="w-full"
                   data-testid="cloudflare-account-select"
                 >
@@ -365,14 +373,13 @@ function TargetSetup({
       </div>
     );
   }
-  if (access.error || workers.error) {
-    return (
-      <div className={errorClass}>
-        {errorMessage(access.error ?? workers.error)}
-      </div>
-    );
+  if (!access.data || !workers.data) {
+    const error = access.error ?? workers.error;
+    return error ? (
+      <div className={errorClass}>{errorMessage(error)}</div>
+    ) : null;
   }
-  if (!access.data?.hasAccess) {
+  if (!access.data.hasAccess) {
     return <RepoAccessPrompt />;
   }
   return (
@@ -380,7 +387,7 @@ function TargetSetup({
       appId={appId}
       accountId={accountId}
       target={target}
-      workers={workers.data ?? []}
+      workers={workers.data}
       inUseWorkerNames={connections
         .filter((connection) => connection.accountId === accountId)
         .map((connection) => connection.workerName)}
@@ -589,13 +596,19 @@ function WorkerForm({
         </div>
       ) : (
         <div>
-          <Label className="block text-sm font-medium mb-1">Worker</Label>
+          <Label
+            htmlFor="cloudflare-existing-worker"
+            className="block text-sm font-medium mb-1"
+          >
+            Worker
+          </Label>
           <Select
             value={existingName}
             onValueChange={(value) => setExistingName(value ?? "")}
             disabled={connect.isPending}
           >
             <SelectTrigger
+              id="cloudflare-existing-worker"
               className="w-full"
               data-testid="cloudflare-worker-select"
             >

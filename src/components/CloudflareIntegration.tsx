@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
-import { showSuccess, showError } from "@/lib/toast";
+import { showSuccess } from "@/lib/toast";
 
 /**
  * The account-level Cloudflare connection. Removing the token does not touch
@@ -23,14 +23,10 @@ export function CloudflareIntegration() {
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
     try {
-      const result = await updateSettings({ cloudflareAccessToken: undefined });
-      if (result) {
-        showSuccess("Disconnected from Cloudflare.");
-      } else {
-        showError("Failed to disconnect from Cloudflare.");
-      }
-    } catch (err: any) {
-      showError(err.message || "Error disconnecting from Cloudflare.");
+      await updateSettings({ cloudflareAccessToken: undefined });
+      showSuccess("Disconnected from Cloudflare.");
+    } catch {
+      // useSettings reports a failed write itself.
     } finally {
       setIsDisconnecting(false);
     }

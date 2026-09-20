@@ -332,6 +332,7 @@ export const queryKeys = {
   },
 
   cloudflare: {
+    all: ["cloudflare"] as const,
     accounts: ["cloudflare", "accounts"] as const,
     workers: ({ accountId }: { accountId: string | null }) =>
       ["cloudflare", "workers", accountId] as const,

@@ -10,6 +10,7 @@ import type {
   ConnectCloudflareWorkerParams,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { showWarning } from "@/lib/toast";
 import { isDeploymentInProgress } from "@/cloudflare_deploy/build_config";
 
 /** An unsynced app is about to be synced; notice when it has been. */
@@ -27,10 +28,23 @@ const ACTIVE_STATUS_POLL_MS = 5_000;
  */
 const ALWAYS_REFETCH = { staleTime: 0 } as const;
 
+export function useSaveCloudflareToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => ipc.cloudflare.saveToken({ token }),
+    onSuccess: () => {
+      // Accounts, Workers and statuses fetched with another token are not
+      // this token's.
+      queryClient.removeQueries({ queryKey: queryKeys.cloudflare.all });
+    },
+  });
+}
+
 export function useCloudflareAccounts() {
   return useQuery({
     queryKey: queryKeys.cloudflare.accounts,
     queryFn: () => ipc.cloudflare.listAccounts(),
+    ...ALWAYS_REFETCH,
   });
 }
 
@@ -102,6 +116,9 @@ export function useConnectCloudflareWorker() {
       ipc.cloudflare.connectWorker(params),
     onSuccess: (result, params) => {
       if (result.status !== "connected") return;
+      // The form is gone once the folder is connected, so this is the only
+      // place left to say the first deployment did not start.
+      if (result.warning) showWarning(result.warning);
       forgetDeploymentStatus(queryClient, params);
       queryClient.invalidateQueries({
         queryKey: queryKeys.cloudflare.appStatus({ appId: params.appId }),

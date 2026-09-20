@@ -173,6 +173,9 @@ export function DeploymentSection({
             </div>
             <VercelDeployment appId={appId} app={app} />
           </TabsContent>
+          {/* Mounted on first click, unlike your own server below: mounting it
+              with the card would call Cloudflare every time Publish opens,
+              for users who never leave the Vercel tab. */}
           {showCloudflare && (
             <TabsContent value="cloudflare" className="pt-4 space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold">

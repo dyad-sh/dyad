@@ -39,6 +39,9 @@ vi.mock("@/ipc/types", () => ({
   ipc: { cloudflare, system: { openExternalUrl } },
 }));
 
+const showWarning = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/toast", () => ({ showWarning }));
+
 const { CloudflareConnector } = await import("./CloudflareConnector");
 
 const TARGET = {
@@ -165,6 +168,14 @@ describe("before a Worker can be connected", () => {
     expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
   });
 
+  it("says so when the token can no longer see any account", async () => {
+    cloudflare.listAccounts.mockResolvedValue([]);
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-no-accounts")).toBeTruthy();
+    expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
+  });
+
   it("offers both ways to grant access when Cloudflare cannot see the repository", async () => {
     cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
     renderConnector();
@@ -286,6 +297,41 @@ describe("choosing a Worker", () => {
 
     expect(screen.getByTestId("cloudflare-worker-form")).toBeTruthy();
     expect(cloudflare.connectWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes on the warning when the first deployment did not start", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+      warning:
+        "The Worker is connected, but the first deployment did not start.",
+    });
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+
+    await waitFor(() =>
+      expect(showWarning).toHaveBeenCalledWith(
+        "The Worker is connected, but the first deployment did not start.",
+      ),
+    );
+  });
+
+  it("says nothing extra when the connection went through cleanly", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+    });
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+
+    await waitFor(() => expect(cloudflare.connectWorker).toHaveBeenCalled());
+    expect(showWarning).not.toHaveBeenCalled();
   });
 
   it("shows why the setup failed", async () => {
@@ -574,7 +620,25 @@ describe("an app with several Workers", () => {
         rootDirectory: "worker",
       }),
     );
+    expect(cloudflare.disconnect).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps showing a folder's deployment when a later status check fails", async () => {
+    let calls = 0;
+    cloudflare.getAppStatus.mockImplementation(async () => {
+      calls += 1;
+      // Unsynced, so the tab polls; every poll after the first fails.
+      if (calls === 1) return appStatus({ synced: false });
+      throw new Error("offline");
+    });
+    renderConnector();
+
+    expect(await screen.findByText("Sync to GitHub first")).toBeTruthy();
+    await waitFor(() => expect(calls).toBeGreaterThan(1), { timeout: 8000 });
+
+    expect(screen.getByText("Sync to GitHub first")).toBeTruthy();
+    expect(screen.queryByText("offline")).toBeNull();
+  }, 12_000);
 });
 
 describe("an app with one Worker", () => {

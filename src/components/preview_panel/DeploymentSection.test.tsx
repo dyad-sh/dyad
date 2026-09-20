@@ -15,7 +15,7 @@ vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({ settings: settings.value, updateSettings: vi.fn() }),
 }));
 
-// The two connectors each open IPC channels and queries of their own; this is
+// The connectors each open IPC channels and queries of their own; this is
 // about which of them the panel puts on screen.
 vi.mock("@/components/VercelConnector", () => ({
   VercelConnector: () => <div>vercel-connector</div>,

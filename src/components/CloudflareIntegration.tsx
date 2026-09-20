@@ -41,6 +41,8 @@ export function CloudflareIntegration() {
           Your Cloudflare API token is saved. Removing it does not stop
           connected Workers from deploying: disconnect them in each app's
           Publish panel first.
+          {!settings.enableCloudflareDeployment &&
+            " The Cloudflare tab is hidden while the Cloudflare experiment is off, so turn it back on to do that."}
         </p>
       </div>
       <Button

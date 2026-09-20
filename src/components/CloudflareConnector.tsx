@@ -168,22 +168,25 @@ function ConnectedAccount({ appId }: { appId: number }) {
   const [chosenAccountId, setChosenAccountId] = useState<string | null>(null);
   const [chosenTarget, setChosenTarget] = useState<string | null>(null);
 
-  if (accounts.isLoading || status.isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading Cloudflare...
-      </div>
-    );
+  const loading = (
+    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Loading Cloudflare...
+    </div>
+  );
+  if (status.isLoading) {
+    return loading;
   }
-  if (!accounts.data || !status.data) {
+  if (!status.data) {
     // Only with nothing to show. A later refetch that fails keeps what is
     // already on screen rather than replacing it with an error.
-    const error = accounts.error ?? status.error;
-    return error ? (
-      <div className={errorClass}>{errorMessage(error)}</div>
+    return status.error ? (
+      <div className={errorClass}>{errorMessage(status.error)}</div>
     ) : null;
   }
+  // Only setting a folder up needs the accounts. A connected folder is shown
+  // without them, since a revoked token fails this call first.
+  const accountList = accounts.data;
   // Every folder the tab has something to say about: the ones that can be
   // deployed, and any still connected whose Wrangler config has since left
   // the branch. Those keep their rule on Cloudflare, so they must stay
@@ -222,7 +225,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
     );
   }
 
-  const accountId = chosenAccountId ?? accounts.data[0]?.id ?? null;
+  const accountId = chosenAccountId ?? accountList?.[0]?.id ?? null;
   const folder =
     folders.find((candidate) => candidate.rootDirectory === chosenTarget) ??
     folders[0];
@@ -262,7 +265,15 @@ function ConnectedAccount({ appId }: { appId: number }) {
             hasConfig={target !== null}
           />
         </>
-      ) : !target ? null : accounts.data.length === 0 ? (
+      ) : !target ? null : !accountList ? (
+        accounts.error ? (
+          <div className={errorClass} data-testid="cloudflare-accounts-error">
+            {errorMessage(accounts.error)}
+          </div>
+        ) : (
+          loading
+        )
+      ) : accountList.length === 0 ? (
         <div className={warningClass} data-testid="cloudflare-no-accounts">
           This API token can no longer see any Cloudflare account. Disconnect
           Cloudflare under Settings &gt; Integrations, then add a new token
@@ -270,7 +281,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
         </div>
       ) : (
         <>
-          {accounts.data.length > 1 && (
+          {accountList.length > 1 && (
             <div>
               <Label
                 htmlFor="cloudflare-account"
@@ -284,7 +295,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
                   // Base UI reports a cleared selection as null.
                   if (value) setChosenAccountId(value);
                 }}
-                items={accounts.data.map((account) => ({
+                items={accountList.map((account) => ({
                   value: account.id,
                   label: account.name,
                 }))}
@@ -297,7 +308,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.data.map((account) => (
+                  {accountList.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       {account.name}
                     </SelectItem>

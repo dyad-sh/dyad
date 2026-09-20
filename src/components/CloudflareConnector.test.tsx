@@ -176,6 +176,17 @@ describe("before a Worker can be connected", () => {
     expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
   });
 
+  it("shows why the accounts could not be listed when a folder needs setting up", async () => {
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    renderConnector();
+
+    const error = await screen.findByTestId("cloudflare-accounts-error");
+    expect(error.textContent).toContain("Authentication error");
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
+
   it("offers both ways to grant access when Cloudflare cannot see the repository", async () => {
     cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
     renderConnector();
@@ -526,6 +537,23 @@ describe("a connected Worker", () => {
       await screen.findByRole("button", { name: "Disconnect worker" }),
     ).toBeTruthy();
     expect(screen.queryByTestId("cloudflare-no-accounts")).toBeNull();
+  });
+
+  it("stays reachable when the accounts cannot be listed", async () => {
+    // A revoked token fails this call, which is when the card matters most.
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-deployment")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Disconnect worker" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Authentication error/)).toBeNull();
   });
 
   it("disconnects the target it is showing", async () => {

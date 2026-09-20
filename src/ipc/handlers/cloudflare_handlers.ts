@@ -229,7 +229,9 @@ async function assertWorkerIsFree(
     where: eq(apps.id, existing.appId),
   });
   const folder =
-    existing.rootDirectory === "" ? "the app root" : existing.rootDirectory;
+    existing.rootDirectory === ""
+      ? "the app root"
+      : `folder "${existing.rootDirectory}"`;
   throw new DyadError(
     `"${workerName}" already deploys ${folder} of ${owner?.name ?? "another app"}. A Worker can only be deployed from one folder, so pick or create a different Worker.`,
     DyadErrorKind.Conflict,
@@ -575,7 +577,9 @@ async function handleConnectWorker(
       );
     }
     const subdomain = await getAccountSubdomain(token, accountId);
-    if (!subdomain) {
+    // A new Worker is served at workers.dev. An existing one may be served
+    // only at its own domain, in an account that never set a subdomain up.
+    if (!subdomain && mode === "create") {
       throw new DyadError(
         "This Cloudflare account has no workers.dev subdomain yet. Open Workers & Pages in the Cloudflare dashboard once to create it, then try again.",
         DyadErrorKind.Precondition,
@@ -584,8 +588,9 @@ async function handleConnectWorker(
 
     const workers = await listWorkers(token, accountId);
     let worker = workers.find((candidate) => candidate.name === workerName);
-    let workerUrl: string | null =
-      `https://${workerName}.${subdomain}.workers.dev`;
+    let workerUrl = subdomain
+      ? `https://${workerName}.${subdomain}.workers.dev`
+      : null;
     if (mode === "create") {
       if (worker) {
         throw new DyadError(
@@ -605,7 +610,10 @@ async function handleConnectWorker(
       );
     } else {
       await assertWorkerIsFree(accountId, worker.tag, workerName);
-      if (!(await isWorkersDevRouteEnabled(token, accountId, workerName))) {
+      if (
+        workerUrl &&
+        !(await isWorkersDevRouteEnabled(token, accountId, workerName))
+      ) {
         workerUrl = null;
       }
     }

@@ -38,7 +38,9 @@ export function CloudflareIntegration() {
           Cloudflare Integration
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Your Cloudflare API token is saved.
+          Your Cloudflare API token is saved. Removing it does not stop
+          connected Workers from deploying: disconnect them in each app's
+          Publish panel first.
         </p>
       </div>
       <Button

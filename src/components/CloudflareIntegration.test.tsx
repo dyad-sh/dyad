@@ -26,4 +26,12 @@ describe("the Cloudflare card in Settings", () => {
       screen.getByRole("button", { name: /Disconnect from Cloudflare/ }),
     ).toBeTruthy();
   });
+
+  it("says that removing the token does not stop Workers deploying", () => {
+    settings.value = { cloudflareAccessToken: { value: "cf-token" } };
+    render(<CloudflareIntegration />);
+    expect(
+      screen.getByText(/does not stop\s+connected Workers from deploying/),
+    ).toBeTruthy();
+  });
 });

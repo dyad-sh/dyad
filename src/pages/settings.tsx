@@ -301,7 +301,8 @@ export default function SettingsPage() {
               </div>
               <p className={hint}>
                 Adds a Cloudflare tab to the Publish panel that deploys a Worker
-                from your app when you sync changes to GitHub.
+                from your app when you sync changes to GitHub. Turning this off
+                hides the tab, but Workers you already connected keep deploying.
               </p>
             </div>
 

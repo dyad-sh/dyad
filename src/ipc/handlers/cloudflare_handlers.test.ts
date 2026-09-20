@@ -728,7 +728,7 @@ describe("connecting to a Worker that already exists", () => {
         rootDirectory: "cron",
         mode: "existing",
       }),
-    ).rejects.toThrow(/already deploys worker of Shop/);
+    ).rejects.toThrow(/already deploys folder "worker" of Shop/);
 
     // The first folder's rule must not be repointed at the second folder.
     expect(cloudflare.triggers).toEqual([ruleBefore]);
@@ -779,7 +779,7 @@ describe("connecting to a Worker that already exists", () => {
         ...CONNECT,
         mode: "existing",
       }),
-    ).rejects.toThrow(/already deploys worker of Shop/);
+    ).rejects.toThrow(/already deploys folder "worker" of Shop/);
     expect(cloudflare.triggers).toHaveLength(1);
   });
 
@@ -821,6 +821,22 @@ describe("connecting to a Worker that already exists", () => {
     await handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" });
 
     expect(cloudflare.workers.get("shop-api")?.routeEnabled).toBe(false);
+    expect(connectionRows()[0].workerUrl).toBeNull();
+  });
+
+  it("connects an existing Worker in an account with no workers.dev subdomain", async () => {
+    // Served at its own domain only. Even with the Worker's route setting on,
+    // there is no subdomain to make an address from.
+    cloudflare.subdomain = null;
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: true });
+
+    const result = await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+
+    expect(result.status).toBe("connected");
     expect(connectionRows()[0].workerUrl).toBeNull();
   });
 

@@ -37,6 +37,11 @@ const electronConfig: ElectronConfig = {
 
 const test = testWithConfig(electronConfig);
 
+// Later spec files in this worker read the variable when they load.
+test.afterAll(() => {
+  delete process.env.DYAD_TEST_PNPM_VERSION;
+});
+
 /** Fails here, by name, rather than later as a puzzling assertion. */
 async function fakeCloudflare(port: number, path: string, init?: RequestInit) {
   const res = await fetch(

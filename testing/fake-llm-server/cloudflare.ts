@@ -205,6 +205,24 @@ export function registerFakeCloudflare(app: Express): void {
     if (!req.body?.build_token_uuid) {
       return fail(res, 400, 12002, "Invalid request body");
     }
+    // As Cloudflare does: one rule for named branches and one preview rule
+    // per Worker, and a 409 for another of either kind.
+    const isPreview = (rule: { branch_includes?: string[] }) =>
+      (rule.branch_includes ?? []).includes("*");
+    const clash = state.triggers.some(
+      (existing) =>
+        existing.external_script_id === req.body.external_script_id &&
+        isPreview(existing as { branch_includes?: string[] }) ===
+          isPreview(req.body),
+    );
+    if (clash) {
+      return fail(
+        res,
+        409,
+        12042,
+        "A trigger already exists for this configuration",
+      );
+    }
     const trigger = { ...req.body, trigger_uuid: id("trigger") } as FakeTrigger;
     state.triggers.push(trigger);
     ok(res, trigger);

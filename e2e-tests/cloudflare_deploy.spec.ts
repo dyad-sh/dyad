@@ -5,6 +5,7 @@ import {
   testWithConfig,
   Timeout,
   type ElectronConfig,
+  type PageObject,
 } from "./helpers/test_helper";
 import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
 
@@ -71,7 +72,7 @@ async function cloudflareState(port: number) {
   };
 }
 
-async function saveToken(po: any) {
+async function saveToken(po: PageObject) {
   await po.page.getByRole("tab", { name: "Cloudflare" }).click();
   await po.page
     .getByLabel("Cloudflare API Token")

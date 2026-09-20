@@ -147,6 +147,13 @@ export function registerFakeCloudflare(app: Express): void {
     ok(res, null);
   });
 
+  app.get(`${account}/workers/scripts/:name/subdomain`, (req, res) => {
+    if (!authed(req, res)) return;
+    const worker = state.workers.find((w) => w.name === req.params.name);
+    if (!worker) return fail(res, 404, 10007, "Worker not found");
+    ok(res, { enabled: worker.routeEnabled, previews_enabled: true });
+  });
+
   app.post(`${account}/workers/scripts/:name/subdomain`, (req, res) => {
     if (!authed(req, res)) return;
     const worker = state.workers.find((w) => w.name === req.params.name);

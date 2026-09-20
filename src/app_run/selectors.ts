@@ -10,12 +10,14 @@ export interface AppExit {
 export type AppUrlState =
   | {
       appUrl: string;
+      neonAuthWarning?: string;
       appId: number;
       originalUrl: string;
       mode: RuntimeMode2;
     }
   | {
       appUrl: null;
+      neonAuthWarning?: undefined;
       appId: null;
       originalUrl: null;
       mode: null;
@@ -37,6 +39,9 @@ export function selectRemoteAppUrl(state: AppRunRemoteSnapshot): AppUrlState {
   }
   return {
     appUrl: state.url.appUrl,
+    ...(state.url.neonAuthWarning
+      ? { neonAuthWarning: state.url.neonAuthWarning }
+      : {}),
     appId: state.appId,
     originalUrl: state.url.originalUrl,
     mode: state.url.mode,

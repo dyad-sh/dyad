@@ -2,7 +2,7 @@
 - button "Collapse error banner" [expanded]
 - button "Dismiss error banner"
 - button "Hide details" [expanded]
-- text: "/Error Line 6 error Stack trace: Index \\(http:\\/\\/localhost:\\d+\\/src\\/pages\\/Index\\.tsx:6:6\\) Try restarting the app\\./"
+- text: "/Error Line 6 error Stack trace: Index \\(http:\\/\\/app-1\\.localhost:\\d+\\/src\\/pages\\/Index\\.tsx:6:6\\) Try restarting the app\\./"
 - button "Copy":
   - img
   - text: ""

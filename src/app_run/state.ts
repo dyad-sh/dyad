@@ -40,6 +40,7 @@ export interface RunErrorInfo {
 
 /** A ready dev-server URL as reported by the dyad proxy server. */
 export interface RunUrl {
+  neonAuthWarning?: string;
   appUrl: string;
   originalUrl: string;
   mode: RuntimeMode2;

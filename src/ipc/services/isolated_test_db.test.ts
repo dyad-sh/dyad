@@ -740,7 +740,7 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     mocks.runningApps.set(1, {
       processId: 42,
       originalUrl: "http://localhost:32100",
-      proxyUrl: "http://localhost:42100",
+      proxyUrl: "http://app-1.localhost:42100",
     });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -764,7 +764,7 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
       expect(fetchSpy).not.toHaveBeenCalledWith(
-        "http://localhost:42100",
+        "http://app-1.localhost:42100",
         expect.anything(),
       );
     } finally {
@@ -781,7 +781,7 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     });
     // Server comes up immediately.
     mocks.runningApps.set(1, {
-      proxyUrl: "http://localhost:42100",
+      proxyUrl: "http://app-1.localhost:42100",
     });
     // try/finally so a failing assertion can't leak the mocked fetch into
     // other tests (vi.clearAllMocks in beforeEach doesn't restore spies).
@@ -806,6 +806,7 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
       );
       expect(mocks.executeApp).toHaveBeenCalledWith(
         expect.objectContaining({
+          neonAuthTarget: { projectId: "proj-1", branchId: "test-br" },
           output: {},
           invocationRef: {
             kind: "app-run",
@@ -819,6 +820,12 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
 
       // Teardown deletes the branch we created (row is stale, so it's passed in).
       await prepared.teardown();
+      expect(mocks.executeApp).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          neonAuthTarget: undefined,
+          previewAbortSignal: undefined,
+        }),
+      );
       expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(
         expect.objectContaining({ id: 1 }),
         "test-br",
@@ -836,7 +843,7 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
       neonAuthBaseUrl: "https://auth",
       cookieSecret: "secret",
     });
-    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    mocks.runningApps.set(1, { proxyUrl: "http://app-1.localhost:42100" });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response("ok"));
@@ -884,7 +891,7 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
 
 describe("prepareIsolatedTestDatabase — auth provisioning", () => {
   function withServerUp() {
-    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    mocks.runningApps.set(1, { proxyUrl: "http://app-1.localhost:42100" });
     return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
   }
 
@@ -910,7 +917,8 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
       expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith({
         projectId: "proj-1",
         branchId: "test-br",
-        origin: "http://localhost:42100",
+        origin: "http://app-1.localhost:42100",
+        signal: expect.any(AbortSignal),
       });
       expect(
         mocks.ensureNeonAuthTrustedDomain.mock.invocationCallOrder[0],
@@ -1100,7 +1108,7 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
     }
   });
 
-  it("continues unauthenticated when the preview origin cannot be trusted", async () => {
+  it("fails setup and tears down when the preview origin cannot be trusted", async () => {
     mocks.createTempTestBranch.mockResolvedValue({
       branchId: "test-br",
       databaseUrl: "postgres://temp",
@@ -1118,15 +1126,12 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
         runtimeMode: "host",
       });
 
-      expect(prepared.isolation).toEqual({ mode: "neon-branch" });
-      expect(prepared.infraError).toBeUndefined();
+      expect(prepared.isolation.mode).toBe("none");
+      expect(prepared.infraError?.message).toContain("trusted domain rejected");
+      expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalled();
       expect(prepared.testCredentials).toBeUndefined();
       expect(prepared.authSetup).toBeUndefined();
       expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
-      expect(emit).toHaveBeenCalledWith(
-        expect.stringMatching(/continuing without authentication/i),
-        "setup",
-      );
     } finally {
       fetchSpy.mockRestore();
     }

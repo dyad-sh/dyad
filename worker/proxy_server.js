@@ -12,8 +12,17 @@ const fs = require("fs");
 const path = require("path");
 
 /* ──────────────────────────── worker code ─────────────────────────────── */
-const LISTEN_HOST = "localhost";
+const LISTEN_HOST = "127.0.0.1";
 const LISTEN_PORT = workerData.port;
+const PREVIEW_HOSTNAME = workerData.hostname;
+if (
+  typeof PREVIEW_HOSTNAME !== "string" ||
+  !/^app-([1-9]\d*)\.localhost$/.test(PREVIEW_HOSTNAME) ||
+  !Number.isSafeInteger(Number(PREVIEW_HOSTNAME.split(".")[0].slice(4)))
+) {
+  throw new Error("Invalid preview hostname");
+}
+let previewOrigin;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
 const fixedHeaders = workerData?.fixedHeaders || {};
@@ -377,11 +386,13 @@ function rewriteCookieForIframe(cookieStr) {
     .filter(Boolean);
   if (parts.length === 0) return cookieStr;
   const nameValue = parts[0];
-  // Drop any existing SameSite / Secure / Partitioned attributes so ours win.
+  // Host-only cookies isolate previews, including deletion cookies. Keep the
+  // existing iframe SameSite handling for the packaged file:// shell.
   const attrs = parts.slice(1).filter((p) => {
     const lower = p.toLowerCase();
     return (
       !lower.startsWith("samesite") &&
+      !/^domain\s*=/.test(lower) &&
       lower !== "secure" &&
       lower !== "partitioned"
     );
@@ -434,6 +445,11 @@ function applyProxyFrameAncestorsCsp(headers) {
 /* ----------------------------------------------------------------------- */
 
 const server = http.createServer((clientReq, clientRes) => {
+  if (!hasPreviewAuthority(clientReq)) {
+    clientRes.writeHead(421, { "content-type": "text/plain" });
+    clientRes.end("This preview belongs to a different app hostname.");
+    return;
+  }
   // Special handling for Service Worker file
   if (clientReq.url === "/dyad-sw.js") {
     if (dyadSwContent) {
@@ -490,6 +506,7 @@ const server = http.createServer((clientReq, clientRes) => {
   };
 
   const upReq = lib.request(upOpts, (upRes) => {
+    rewriteRedirect(upRes.headers);
     const wantsInjection = needsInjection(target.pathname);
     // Only inject when upstream indicates HTML content
     const contentTypeHeader = upRes.headers["content-type"];
@@ -521,6 +538,7 @@ const server = http.createServer((clientReq, clientRes) => {
         };
         // If we injected content, it's no longer encoded in the original way
         delete hdrs["content-encoding"];
+        delete hdrs["transfer-encoding"];
         // Also, remove ETag as content has changed
         delete hdrs["etag"];
         // Never cache an injected document. The scripts above are stamped with
@@ -557,6 +575,19 @@ const server = http.createServer((clientReq, clientRes) => {
 /* ----------------------------------------------------------------------- */
 
 server.on("upgrade", (req, socket, _head) => {
+  // Chromium tears down HMR sockets during navigation/reload. Once upgraded,
+  // raw sockets no longer have HTTP's error handling; a reset must only close
+  // this tunnel, never crash the app's proxy worker.
+  let upstreamSocket;
+  socket.on("error", () => {
+    upstreamSocket?.destroy();
+    socket.destroy();
+  });
+  socket.on("close", () => upstreamSocket?.destroy());
+  if (!hasPreviewAuthority(req)) {
+    socket.end("HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n");
+    return;
+  }
   let target;
   try {
     target = buildTargetURL(req);
@@ -579,14 +610,25 @@ server.on("upgrade", (req, socket, _head) => {
   });
 
   upReq.on("upgrade", (upRes, upSocket, upHead) => {
+    upstreamSocket = upSocket;
+    upSocket.on("error", () => socket.destroy());
+    upSocket.on("close", () => socket.destroy());
+    if (socket.destroyed) {
+      upSocket.destroy();
+      return;
+    }
+    rewriteSetCookieHeaders(upRes.headers);
     socket.write(
       "HTTP/1.1 101 Switching Protocols\r\n" +
         Object.entries(upRes.headers)
-          .map(([k, v]) => `${k}: ${v}`)
+          .flatMap(([k, v]) =>
+            (Array.isArray(v) ? v : [v]).map((value) => `${k}: ${value}`),
+          )
           .join("\r\n") +
         "\r\n\r\n",
     );
     if (upHead && upHead.length) socket.write(upHead);
+    if (_head && _head.length) upSocket.write(_head);
 
     upSocket.pipe(socket).pipe(upSocket);
   });
@@ -620,10 +662,40 @@ function listenWithFallback(port, nextFallback, attemptsLeft) {
   server.listen(port, LISTEN_HOST, () => {
     server.removeListener("error", onError);
     const boundPort = server.address()?.port ?? port;
-    parentPort?.postMessage(
-      `proxy-server-start url=http://${LISTEN_HOST}:${boundPort}`,
-    );
+    previewOrigin = `http://${PREVIEW_HOSTNAME}:${boundPort}`;
+    parentPort?.postMessage(`proxy-server-start url=${previewOrigin}`);
   });
 }
 
 listenWithFallback(LISTEN_PORT, FALLBACK_PORT_START, MAX_PORT_ATTEMPTS);
+
+function hasPreviewAuthority(req) {
+  // Never forward cookies received through localhost, another app's name, or
+  // a conflicting absolute-form request target.
+  if (
+    !previewOrigin ||
+    req.headers.host?.toLowerCase() !== new URL(previewOrigin).host
+  ) {
+    return false;
+  }
+  try {
+    return new URL(req.url, previewOrigin).origin === previewOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function rewriteRedirect(headers) {
+  // Relative redirects already resolve on the public origin (and must retain
+  // their request-relative path semantics).
+  if (!headers.location || !/^(https?:)?\/\//i.test(headers.location)) return;
+  try {
+    const location = new URL(headers.location, rememberedOrigin);
+    if (location.origin === rememberedOrigin) {
+      headers.location =
+        previewOrigin + location.pathname + location.search + location.hash;
+    }
+  } catch {
+    // Leave malformed upstream redirects to the browser.
+  }
+}

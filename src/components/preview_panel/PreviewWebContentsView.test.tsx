@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
+  neonAuthWarning: undefined as string | undefined,
   overlayActiveAtom: Symbol("overlayActiveAtom"),
   previewModeAtom: Symbol("previewModeAtom"),
   previewNativeViewAppIdAtom: Symbol("previewNativeViewAppIdAtom"),
@@ -70,8 +71,9 @@ vi.mock("@/components/ui/tooltip", async () => {
 
 vi.mock("@/hooks/useAppRun", () => ({
   useCurrentAppUrl: () => ({
-    appUrl: "http://localhost:42101/",
-    originalUrl: "http://localhost:42101/",
+    neonAuthWarning: h.neonAuthWarning,
+    appUrl: "http://app-1.localhost:42101/",
+    originalUrl: "http://app-1.localhost:42101/",
     mode: "local",
   }),
 }));
@@ -119,6 +121,7 @@ vi.mock("./PreviewLoadingScreen", () => ({
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
 
 beforeEach(() => {
+  h.neonAuthWarning = undefined;
   h.testRunPhase = "running";
   h.overlayActive = true;
   h.setTestSetupOverlayActive.mockReset();
@@ -229,4 +232,30 @@ describe("PreviewWebContentsView screenshot fallback", () => {
     });
     expect(screen.queryByTestId("preview-native-screenshot")).toBeNull();
   });
+});
+
+it("renders the app's persistent authentication warning above the native surface", () => {
+  h.neonAuthWarning = "Neon registration failed for this app.";
+  h.testRunPhase = "idle";
+  const view = render(<PreviewWebContentsView loading={false} />);
+  expect(screen.getByRole("status").textContent).toContain(h.neonAuthWarning);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Restart and retry",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+  h.testRunPhase = "running";
+  view.rerender(<PreviewWebContentsView loading={false} />);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Restart and retry",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  h.neonAuthWarning = undefined;
+  view.rerender(<PreviewWebContentsView loading={false} />);
+  expect(screen.queryByTestId("neon-auth-warning")).toBeNull();
 });

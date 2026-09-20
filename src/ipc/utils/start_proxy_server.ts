@@ -15,6 +15,7 @@ export async function startProxy(
   targetOrigin: string,
   opts: {
     port: number;
+    hostname: string;
     onStarted?: (proxyUrl: string) => void;
     onError?: (error: DyadError) => void;
     fixedHeaders?: Record<string, string>;
@@ -35,6 +36,7 @@ export async function startProxy(
     {
       workerData: {
         targetOrigin,
+        hostname: opts.hostname,
         port,
         fallbackPortStart,
         maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
@@ -44,9 +46,12 @@ export async function startProxy(
     },
   );
 
+  let started = false;
+
   worker.on("message", (m) => {
     logger.info("[proxy]", m);
     if (typeof m === "string" && m.startsWith("proxy-server-start url=")) {
+      started = true;
       const url = m.substring("proxy-server-start url=".length);
       onStarted?.(url);
     } else if (typeof m === "string" && m.startsWith("proxy-server-error")) {
@@ -59,8 +64,25 @@ export async function startProxy(
       );
     }
   });
-  worker.on("error", (e) => logger.error("[proxy] error:", e));
-  worker.on("exit", (c) => logger.info("[proxy] exit", c));
+  worker.on("error", (e) => {
+    logger.error("[proxy] error:", e);
+    onError?.(
+      new DyadError(
+        `Preview proxy failed: ${e.message}`,
+        DyadErrorKind.External,
+      ),
+    );
+  });
+  worker.on("exit", (c) => {
+    logger.info("[proxy] exit", c);
+    if (!started)
+      onError?.(
+        new DyadError(
+          "Preview proxy exited before it was ready",
+          DyadErrorKind.External,
+        ),
+      );
+  });
 
   return worker; // let the caller keep a handle if desired
 }

@@ -84,6 +84,12 @@ describe("canonicalOrigin", () => {
   });
 
   it("preserves explicit HTTP loopback origins for local auth", () => {
+    expect(canonicalOrigin("http://app-42.localhost:42999/path")).toBe(
+      "http://app-42.localhost:42999",
+    );
+    expect(canonicalOrigin("http://app-42.localhost.evil:42999/path")).toBe(
+      "https://app-42.localhost.evil:42999",
+    );
     expect(canonicalOrigin("http://localhost:42111/path")).toBe(
       "http://localhost:42111",
     );

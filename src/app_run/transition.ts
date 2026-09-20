@@ -14,7 +14,8 @@ function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
     left !== null &&
     left.appUrl === right.appUrl &&
     left.originalUrl === right.originalUrl &&
-    left.mode === right.mode
+    left.mode === right.mode &&
+    left.neonAuthWarning === right.neonAuthWarning
   );
 }
 

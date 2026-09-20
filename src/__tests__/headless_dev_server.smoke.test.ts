@@ -109,7 +109,7 @@ const BOOM = "HEADLESS_SMOKE_BOOM";
     console.log("[smoke] startDevServer ->", JSON.stringify(preview));
     expect(preview.error, "dev server failed to start").toBeUndefined();
     expect(preview.ok).toBe(true);
-    expect(preview.url).toMatch(/^http:\/\/localhost:\d+/);
+    expect(preview.url).toMatch(/^http:\/\/app-\d+\.localhost:\d+/);
   }, 1_500_000);
 
   afterAll(async () => {
@@ -131,7 +131,7 @@ const BOOM = "HEADLESS_SMOKE_BOOM";
     // eslint-disable-next-line no-console
     console.log("[smoke] restart_app ->", result);
     expect(result).toBe("The app restarted successfully.");
-    expect(harness.devServerUrl()).toMatch(/^http:\/\/localhost:\d+/);
+    expect(harness.devServerUrl()).toMatch(/^http:\/\/app-\d+\.localhost:\d+/);
 
     // The restart cleared the log store; the new process refills it.
     const logs = await readLogs({ type: "server" });

@@ -1,3 +1,4 @@
+import { NeonAuthWarning } from "./NeonAuthWarning";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
@@ -121,7 +122,7 @@ export const PreviewIframe = ({
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
-  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, mode, neonAuthWarning } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -1055,7 +1056,7 @@ export const PreviewIframe = ({
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        originalUrl,
+        appUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -1091,10 +1092,15 @@ export const PreviewIframe = ({
     getPreviewToolbarActionVisibility(previewToolbarWidth);
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !originalUrl;
+    : !appUrl;
 
   return (
     <div className="flex flex-col h-full">
+      <NeonAuthWarning
+        message={neonAuthWarning}
+        onRetry={onRestart}
+        disabled={loading || recorder.isRecording}
+      />
       {/* Browser-style header - hide when annotator is active */}
       {!annotatorMode && (
         <div
@@ -1387,6 +1393,14 @@ export const PreviewIframe = ({
 
           {/* Flexible route field keeps priority as the panel narrows. */}
           <div className="relative flex h-8 min-w-24 flex-1 items-center rounded-md border border-border bg-(--background-lighter) px-1">
+            {appUrl && (
+              <span
+                className="max-w-40 truncate pl-2 text-xs text-muted-foreground"
+                title={appUrl}
+              >
+                {new URL(appUrl).host}
+              </span>
+            )}
             <div className="flex min-w-[2rem] flex-1 items-center">
               <input
                 aria-label="Preview path"

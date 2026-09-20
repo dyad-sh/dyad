@@ -59,6 +59,8 @@ DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e
 
 ## PageObject sub-component pattern
 
+Test builds skip `shell.openExternal` in the `open-external-url` handler. To assert the browser-opening URL, capture that IPC handler with `ipcMain.removeHandler`/`ipcMain.handle`; stubbing `shell.openExternal` never sees the preview toolbar action.
+
 The `PageObject` (aliased as `po` in tests) delegates most methods to sub-component page objects. Don't call methods directly on `po` unless they are explicitly defined on `PageObject` itself:
 
 ```ts

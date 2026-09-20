@@ -67,6 +67,8 @@ export function resolveProxyWorkerPath(): string {
 
 export interface HeadlessStartProxyOptions {
   port: number;
+  hostname: string;
+  authBootstrapToken: string;
   onStarted?: (proxyUrl: string) => void;
   onError?: (error: DyadError) => void;
   fixedHeaders?: Record<string, string>;
@@ -96,6 +98,8 @@ export function createHeadlessProxyModule(): {
     const worker = new Worker(workerPath, {
       workerData: {
         targetOrigin,
+        hostname: opts.hostname,
+        authBootstrapToken: opts.authBootstrapToken,
         port,
         fallbackPortStart,
         maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
@@ -103,8 +107,10 @@ export function createHeadlessProxyModule(): {
       },
     });
 
+    let started = false;
     worker.on("message", (m) => {
       if (typeof m === "string" && m.startsWith("proxy-server-start url=")) {
+        started = true;
         onStarted?.(m.substring("proxy-server-start url=".length));
       } else if (typeof m === "string" && m.startsWith("proxy-server-error")) {
         onError?.(
@@ -128,6 +134,15 @@ export function createHeadlessProxyModule(): {
       );
     });
 
+    worker.on("exit", () => {
+      if (!started)
+        onError?.(
+          new DyadError(
+            "Preview proxy exited before it was ready",
+            DyadErrorKind.External,
+          ),
+        );
+    });
     return worker;
   };
 

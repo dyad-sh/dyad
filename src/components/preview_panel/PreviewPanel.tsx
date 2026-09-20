@@ -1,3 +1,4 @@
+import { getAppPreviewHostname } from "../../../shared/preview_hostname";
 import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
@@ -407,6 +408,7 @@ function PreviewNodeRequirement({
   onCancelManagedNodeInstall: () => Promise<void>;
   onSelectNodeFolder: () => Promise<void>;
 }) {
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isCheckingAgain, setIsCheckingAgain] = useState(false);
   const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
   const [isCancellingManagedNode, setIsCancellingManagedNode] = useState(false);
@@ -519,7 +521,10 @@ function PreviewNodeRequirement({
           <div className="mx-auto flex h-7 w-full min-w-0 max-w-xs items-center justify-center gap-1.5 rounded-full bg-(--background-darker)/70 px-3">
             <Globe className="size-3 shrink-0 text-muted-foreground" />
             <span className="truncate text-xs text-muted-foreground">
-              {appName ? `${appName} · localhost` : "Your app · localhost"}
+              {appName ?? "Your app"}
+              {selectedAppId
+                ? ` · ${getAppPreviewHostname(selectedAppId)}`
+                : ""}
             </span>
           </div>
           <div className="w-13 shrink-0" aria-hidden="true" />

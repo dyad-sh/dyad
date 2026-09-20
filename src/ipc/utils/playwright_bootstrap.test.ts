@@ -26,6 +26,7 @@ import {
   E2E_TSCONFIG_RELATIVE_PATH,
   ensurePlaywrightBootstrap,
   ensurePreviewShim,
+  ensurePreviewDnsPreload,
   isPlaywrightBrowserInstalled,
   isPlaywrightInstalled,
   refreshGeneratedE2eTsconfig,
@@ -1125,6 +1126,12 @@ describe("ensurePlaywrightBootstrap", () => {
 
     await ensurePlaywrightBootstrap({ appPath });
 
+    expect(
+      fs.readFileSync(
+        path.join(appPath, "e2e-tests/fixtures/dyad/preview-dns.cjs"),
+        "utf8",
+      ),
+    ).toContain("dns.promises.lookup");
     // Ours lands under its own name, wired to the env var.
     const dyadConfigPath = path.join(appPath, DYAD_CONFIG_FILENAME);
     expect(fs.existsSync(dyadConfigPath)).toBe(true);
@@ -1774,4 +1781,16 @@ describe("canResolvePlaywrightRunner", () => {
 
     expect(canResolvePlaywrightRunner(appPath)).toBe(false);
   });
+});
+
+it("does not overwrite an app-owned preview DNS helper", () => {
+  const { appPath } = makeAppWithBrowserMarker({
+    packageVersion: "1.0.0",
+    executableExists: true,
+  });
+  const file = path.join(appPath, "e2e-tests/fixtures/dyad/preview-dns.cjs");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "// My helper\n");
+  expect(() => ensurePreviewDnsPreload(appPath)).toThrow("app-owned");
+  expect(fs.readFileSync(file, "utf8")).toBe("// My helper\n");
 });

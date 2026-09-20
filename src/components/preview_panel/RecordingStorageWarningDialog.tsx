@@ -25,10 +25,7 @@ interface RecordingStorageWarningDialogProps {
  * — with no undo. Asking first is the difference between a documented step and
  * a surprise.
  *
- * The copy names other running previews too, because the cookie half of that
- * clear cannot be narrowed to one preview: cookies aren't port-scoped, so every
- * `localhost` preview sharing this browser session is signed out with it (see
- * `clearPreviewStorage`). Consent has to cover what actually happens.
+ * App hostnames let cleanup leave other previews signed in.
  */
 export function RecordingStorageWarningDialog({
   open,
@@ -45,9 +42,8 @@ export function RecordingStorageWarningDialog({
           <AlertDialogDescription>
             Recording starts from a signed-out browser, so Dyad clears the
             preview's cookies and local storage first. You'll be signed out of
-            your preview and anything the app stored there will be gone. Cookies
-            aren't specific to one preview, so any other app you have running is
-            signed out too. Your app's code and database aren't touched.
+            this app's preview and anything it stored there will be gone. Other
+            apps stay signed in. Your app's code and database aren't touched.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

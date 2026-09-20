@@ -82,7 +82,9 @@ describe("proxy worker Content-Security-Policy", () => {
   function startWorker(workerData: Record<string, unknown>): {
     waitForStart: () => Promise<number>;
   } {
-    const worker = new Worker(WORKER_PATH, { workerData });
+    const worker = new Worker(WORKER_PATH, {
+      workerData: { hostname: "app-42.localhost", ...workerData },
+    });
     cleanup.push(async () => {
       await worker.terminate();
     });
@@ -148,7 +150,12 @@ describe("proxy worker Content-Security-Policy", () => {
       rawHeaders: string[];
     }>((resolve, reject) => {
       const req = http.get(
-        { host: "localhost", path: "/", port: proxyPort },
+        {
+          host: "127.0.0.1",
+          path: "/",
+          port: proxyPort,
+          headers: { Host: `app-42.localhost:${proxyPort}` },
+        },
         (res) => {
           const chunks: Buffer[] = [];
           res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));

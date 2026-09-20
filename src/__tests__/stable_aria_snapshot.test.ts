@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { normalizeMessagesAriaSnapshot } from "../../e2e-tests/helpers/utils/stable-aria-snapshot";
 
 describe("normalizeMessagesAriaSnapshot", () => {
+  it("normalizes app preview IDs and ports without changing paths, idempotently", () => {
+    const normalized = normalizeMessagesAriaSnapshot(
+      '- link "http://app-12345.localhost:52123/auth?next=%2F":\n  - /url: http://app-12345.localhost:52123/auth?next=%2F\n',
+    );
+    expect(normalized).toBe(
+      '- link "http://app-[[id]].localhost:[[port]]/auth?next=%2F":\n  - /url: http://app-[[id]].localhost:[[port]]/auth?next=%2F\n',
+    );
+    expect(normalizeMessagesAriaSnapshot(normalized)).toBe(normalized);
+  });
+
   it("elides button descendants while preserving accessible names", () => {
     expect(
       normalizeMessagesAriaSnapshot(`- button "Copy Request ID":

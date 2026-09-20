@@ -415,6 +415,7 @@ export type { DeepLinkData } from "../deep_link_data";
 // =============================================================================
 
 export const AppOutputSchema = z.object({
+  neonAuthWarning: z.string().max(2000).optional(),
   type: z.enum([
     "stdout",
     "stderr",

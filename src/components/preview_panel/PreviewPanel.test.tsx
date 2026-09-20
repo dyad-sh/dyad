@@ -453,7 +453,7 @@ describe("PreviewPanel", () => {
     render(<PreviewPanel />);
 
     expect(await screen.findByText("Installing Node.js")).toBeTruthy();
-    expect(screen.getByText("Your app · localhost")).toBeTruthy();
+    expect(screen.getByText("Your app · app-1.localhost")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     await waitFor(() => {
       expect(mocks.installManagedNode).toHaveBeenCalledTimes(1);

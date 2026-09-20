@@ -38,6 +38,8 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { runningApps } from "@/ipc/utils/process_manager";
+import { neonPreviewDomainService } from "@/ipc/services/neon_preview_domain_service";
 
 type TestApp = {
   appId: number;
@@ -159,6 +161,65 @@ describe("Neon branch actions (integration)", () => {
     );
     return contents;
   }
+
+  it("reconciles the bound preview when connecting Neon Auth and switching its active branch", async () => {
+    const app = await createNextApp("preview-domains");
+    const origin = `http://app-${app.appId}.localhost:43999`;
+    const registration = vi.spyOn(neonPreviewDomainService, "ensure");
+    const send = vi.fn();
+    runningApps.set(app.appId, {
+      process: null,
+      processId: 99,
+      mode: "host",
+      lastViewedAt: 0,
+      proxyUrl: origin,
+      originalUrl: "http://localhost:32999",
+      output: { send, enqueue: send, flush: vi.fn() },
+    });
+    try {
+      connectNeonAccount();
+      await mountNeonDetails(app);
+      await connectNeonProject();
+      await waitFor(() =>
+        expect(registration).toHaveBeenCalledWith(
+          expect.objectContaining({
+            appId: app.appId,
+            origin,
+            target: {
+              projectId: "test-project-id",
+              branchId: "test-development-branch-id",
+            },
+          }),
+        ),
+      );
+      await harness.selectFromBaseUiSelect(
+        await screen.findByTestId("neon-branch-select"),
+        /^main\b/i,
+      );
+      await waitFor(() =>
+        expect(registration).toHaveBeenCalledWith(
+          expect.objectContaining({
+            appId: app.appId,
+            origin,
+            target: {
+              projectId: "test-project-id",
+              branchId: "test-main-branch-id",
+            },
+          }),
+        ),
+      );
+      expect(runningApps.get(app.appId)?.proxyUrl).toBe(origin);
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          neonAuthWarning: undefined,
+          message: expect.stringContaining(origin),
+        }),
+      );
+    } finally {
+      runningApps.delete(app.appId);
+      registration.mockRestore();
+    }
+  }, 90_000);
 
   it("updates Neon env vars and preserves per-branch auth secrets when switching branches", async () => {
     const app = await createNextApp("neon-branch");

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import log from "electron-log";
-import { session } from "electron";
+import { clearPreviewStorage } from "../services/preview_storage";
 import { eq } from "drizzle-orm";
 
 import { db } from "../../db";
@@ -78,39 +78,6 @@ async function getApp(appId: number) {
 /** The isolation's auth setup and the renderer-facing auth shape are identical. */
 function toRecordingAuth(setup: IsolationAuthSetup | undefined): RecordingAuth {
   return setup ?? NO_AUTH;
-}
-
-/**
- * Drop everything the preview's browser session holds for the app's origin.
- *
- * Called at both ends of a recording. Setup uses it to start capture from the
- * pristine, signed-out state the generated test replays from; teardown uses it
- * to take the temporary identity back out. The auth bootstrap seeds that
- * identity into storage the preview keeps — a Supabase session under
- * `sb-<ref>-auth-token`, a Better Auth cookie — and deleting the test user is a
- * server-side change an already-issued JWT does not see. Left behind, the
- * preview goes on acting as a user Dyad has disowned, against the real project.
- *
- * The `origin` filter is honest for localStorage/IndexedDB/service workers,
- * which are genuinely origin-keyed, but NOT for cookies: cookies have never been
- * port-scoped on the web, so clearing `http://localhost:<proxyPort>` clears
- * cookies for every other `localhost` origin in this session too — other
- * previews included. There is no API that narrows it, and `session.clearData`'s
- * `origins` filter is wider still (Electron deletes cookies at the registrable
- * domain there). Only the dedicated `session.fromPartition()` noted below would
- * actually contain it; until then the confirmation dialog says so out loud.
- */
-async function clearPreviewStorage(origin: string): Promise<void> {
-  await session.defaultSession.clearStorageData({
-    origin,
-    storages: [
-      "cookies",
-      "localstorage",
-      "indexdb",
-      "serviceworkers",
-      "cachestorage",
-    ],
-  });
 }
 
 function infraResult(appId: number, message: string): StartRecordingResult {

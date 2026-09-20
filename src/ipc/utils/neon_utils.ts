@@ -14,6 +14,7 @@ import {
 import { detectFrameworkType } from "./framework_utils";
 import { reconcileTrustedDomains } from "./vercel_neon_sync_helpers";
 import { getDyadAppPath } from "@/paths/paths";
+import { abortable } from "./abortable";
 
 export type NeonBranchType = "production" | "development";
 
@@ -283,6 +284,13 @@ export async function autoInjectNeonEnvVars({
     preserveExistingAuth: !neonAuthBaseUrl,
   });
 
+  if (neonAuthBaseUrl) {
+    // Already under the provider/runtime-config claim held by connect/switch.
+    const { reconcileRunningNeonPreview } =
+      await import("../services/app_runtime_service");
+    await reconcileRunningNeonPreview(appId, { projectId, branchId });
+  }
+
   return warning;
 }
 
@@ -376,24 +384,56 @@ export async function ensureNeonAuthTrustedDomain({
   projectId,
   branchId,
   origin,
+  signal,
 }: {
   projectId: string;
   branchId: string;
   origin: string;
+  signal?: AbortSignal;
 }): Promise<string | null> {
-  const neonClient = await getNeonClient();
+  signal?.throwIfAborted();
+  // Token refresh is shared with other callers; cancel this wait, not their
+  // refresh. Recheck before any domain mutation after credential acquisition.
+  const neonClient = await abortable(getNeonClient(), signal);
+  signal?.throwIfAborted();
   const existing = await neonClient.listBranchNeonAuthTrustedDomains(
     projectId,
     branchId,
+    { signal },
   );
+  signal?.throwIfAborted();
   const existingDomains = (existing.data?.domains ?? []).map((d) => d.domain);
   // Shared with the Vercel sync so both hosts normalise an origin the same way.
   const [toAdd] = reconcileTrustedDomains(existingDomains, [origin]);
   if (!toAdd) return null;
-  await neonClient.addBranchNeonAuthTrustedDomain(projectId, branchId, {
-    domain: toAdd,
-    auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
-  });
+  try {
+    await neonClient.addBranchNeonAuthTrustedDomain(
+      projectId,
+      branchId,
+      {
+        domain: toAdd,
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+      },
+      { signal },
+    );
+  } catch (error) {
+    signal?.throwIfAborted();
+    // Another app/window may have registered the same project/branch origin.
+    if ((error as { response?: { status: number } }).response?.status !== 409)
+      throw error;
+    const current = await neonClient.listBranchNeonAuthTrustedDomains(
+      projectId,
+      branchId,
+      { signal },
+    );
+    if (
+      reconcileTrustedDomains(
+        (current.data.domains ?? []).map((d) => d.domain),
+        [origin],
+      ).length
+    )
+      throw error;
+  }
   return toAdd;
 }
 
@@ -463,6 +503,15 @@ export async function resolveNeonBranchEnvVars({
       appData,
       branchType,
     });
+  }
+
+  if (
+    neonAuthBaseUrl &&
+    branchId === (appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId)
+  ) {
+    const { reconcileRunningNeonPreview } =
+      await import("../services/app_runtime_service");
+    await reconcileRunningNeonPreview(appData.id, { projectId, branchId });
   }
 
   return {

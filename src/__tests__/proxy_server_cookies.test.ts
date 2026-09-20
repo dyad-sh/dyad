@@ -63,11 +63,19 @@ function startUpstream(
 /** Issues a GET to the proxy and resolves with the raw Set-Cookie header. */
 function getSetCookie(port: number): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    const req = http.get({ host: "localhost", port, path: "/" }, (res) => {
-      // Drain the body so the socket can close.
-      res.on("data", () => {});
-      res.on("end", () => resolve(res.headers["set-cookie"] ?? []));
-    });
+    const req = http.get(
+      {
+        host: "127.0.0.1",
+        port,
+        headers: { Host: `app-42.localhost:${port}` },
+        path: "/",
+      },
+      (res) => {
+        // Drain the body so the socket can close.
+        res.on("data", () => {});
+        res.on("end", () => resolve(res.headers["set-cookie"] ?? []));
+      },
+    );
     req.once("error", reject);
   });
 }
@@ -75,11 +83,19 @@ function getSetCookie(port: number): Promise<string[]> {
 /** Issues a GET to the proxy and resolves with the decoded response body. */
 function getBody(port: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const req = http.get({ host: "localhost", port, path: "/" }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    });
+    const req = http.get(
+      {
+        host: "127.0.0.1",
+        port,
+        headers: { Host: `app-42.localhost:${port}` },
+        path: "/",
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      },
+    );
     req.once("error", reject);
   });
 }
@@ -96,7 +112,9 @@ describe("proxy worker cookie rewriting", () => {
   function startWorker(workerData: Record<string, unknown>): {
     waitForStart: () => Promise<number>;
   } {
-    const worker = new Worker(WORKER_PATH, { workerData });
+    const worker = new Worker(WORKER_PATH, {
+      workerData: { hostname: "app-42.localhost", ...workerData },
+    });
     cleanup.push(async () => {
       await worker.terminate();
     });

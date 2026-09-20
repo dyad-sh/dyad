@@ -14,7 +14,7 @@ describe("MainAppRuntimeOutput", () => {
       type: "stdout",
       appId: 7,
       message:
-        "[dyad-proxy-server]started=[http://localhost:3210] original=[http://localhost:5173] mode=[host]",
+        "[dyad-proxy-server]started=[http://app-7.localhost:42107] original=[http://localhost:5173] mode=[host]",
     });
     output.enqueue({
       type: "stdout",
@@ -43,7 +43,7 @@ describe("MainAppRuntimeOutput", () => {
           operationId: "run-1",
         },
         url: {
-          appUrl: "http://localhost:3210",
+          appUrl: "http://app-7.localhost:42107",
           originalUrl: "http://localhost:5173",
           mode: "host",
         },
@@ -68,4 +68,23 @@ describe("MainAppRuntimeOutput", () => {
       },
     ]);
   });
+});
+
+it("carries Neon warnings into authoritative readiness and clears them on recovery", () => {
+  const send = vi.fn();
+  const output = new MainAppRuntimeOutput(
+    7,
+    { kind: "app-run", entityKey: 7, operationId: "run-1" },
+    { send },
+  );
+  const event = {
+    type: "stdout" as const,
+    appId: 7,
+    message:
+      "[dyad-proxy-server]started=[http://app-7.localhost:42107] original=[http://localhost:32107] mode=[host]",
+  };
+  output.send({ ...event, neonAuthWarning: "Restart and retry" });
+  expect(send.mock.calls[0][0].url.neonAuthWarning).toBe("Restart and retry");
+  output.send(event);
+  expect(send.mock.calls[1][0].url.neonAuthWarning).toBeUndefined();
 });

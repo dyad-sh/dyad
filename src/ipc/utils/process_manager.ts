@@ -14,6 +14,7 @@ import { endRecordingForApp } from "../services/recording_registry";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { killProcessTreeSync } from "./kill_process_tree_sync";
+import type { NeonPreviewTarget } from "../services/neon_preview_domain_service";
 
 const logger = log.scope("process_manager");
 
@@ -37,6 +38,12 @@ export interface RunningAppInfo {
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
   proxyUrl?: string;
+  neonAuthTarget?: NeonPreviewTarget | null;
+  neonAuthWarning?: string;
+  proxyStartup?: Promise<void>;
+  proxyStartupError?: Error;
+  proxyAbortController?: AbortController;
+  previewAbortSignal?: AbortSignal;
   /**
    * Capability embedded in proxied HTML and returned only to the trusted
    * renderer. Auth bootstrap messages must echo it before the preview will
@@ -192,6 +199,7 @@ export async function stopAppByInfo(
   appInfo: RunningAppInfo,
   options: { recordingOwnedRestart?: boolean } = {},
 ): Promise<void> {
+  appInfo.proxyAbortController?.abort();
   if (options.recordingOwnedRestart) {
     appInfo.recordingOwnedRestart = true;
   }
@@ -239,6 +247,7 @@ export function removeAppIfCurrentProcess(
 ): void {
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
+    currentAppInfo.proxyAbortController?.abort();
     if (currentAppInfo.proxyWorker) {
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
@@ -454,6 +463,7 @@ export function stopAllAppsSync(): void {
     const appInfo = runningApps.get(appId);
     if (!appInfo) continue;
 
+    appInfo.proxyAbortController?.abort();
     if (appInfo.proxyWorker) {
       void appInfo.proxyWorker.terminate();
       appInfo.proxyWorker = undefined;

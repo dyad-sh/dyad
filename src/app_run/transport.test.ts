@@ -31,7 +31,8 @@ const restartOptions = {
   recreateSandbox: false,
 };
 const url = {
-  appUrl: "http://localhost:3210",
+  appUrl: "http://app-42.localhost:42142",
+  neonAuthWarning: "Registration failed. Restart and retry.",
   originalUrl: "http://localhost:5173",
   mode: "host" as const,
 };

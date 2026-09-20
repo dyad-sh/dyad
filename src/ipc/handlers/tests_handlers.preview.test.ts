@@ -72,7 +72,7 @@ import {
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
 
-const PROXY_URL = "http://localhost:42101/";
+const PROXY_URL = "http://app-1.localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
 const CDP_TOKEN = "test-preview-token";
 const APP_PATH = path.join(os.tmpdir(), "dyad-tests-preview", "apps", "my-app");
@@ -171,6 +171,26 @@ function mockPreviewBatch() {
 }
 
 describe("preview runs", () => {
+  it.each([undefined, CDP_ENDPOINT])(
+    "passes app DNS preload and preserves NODE_OPTIONS for endpoint %s",
+    async (previewCdpEndpoint) => {
+      vi.stubEnv("NODE_OPTIONS", "--no-warnings");
+      try {
+        await runAppTestsCore({ appId: 1, previewCdpEndpoint });
+        expect(lastSpawn().env.DYAD_TEST_BASE_URL).toBe(PROXY_URL);
+        expect(lastSpawn().env.NODE_OPTIONS).toBe(
+          `--no-warnings --require ${JSON.stringify(
+            path
+              .join(APP_PATH, "e2e-tests/fixtures/dyad/preview-dns.cjs")
+              .replaceAll("\\", "/"),
+          )}`,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
   it("keeps exact titles out of the Windows batch-file transport", () => {
     const titleGrep = "^shows 100% progress\non completion$";
     const invocation = buildPlaywrightCliInvocation(

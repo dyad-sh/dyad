@@ -120,11 +120,13 @@ describe("AppRuntimeService", () => {
       { resource: "app-path", mode: "read" },
       "runtime",
       { resource: "runtime-config", mode: "read" },
+      "provider",
     ]);
     expect(getAppRuntimeOperationResources("restart")).toEqual([
       { resource: "app-path", mode: "read" },
       "runtime",
       { resource: "runtime-config", mode: "read" },
+      "provider",
     ]);
   });
 

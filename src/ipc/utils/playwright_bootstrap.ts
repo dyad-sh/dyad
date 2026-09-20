@@ -1,3 +1,7 @@
+import {
+  PREVIEW_DNS_RELATIVE_PATH,
+  buildPreviewDnsSource,
+} from "./preview_dns";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -979,6 +983,20 @@ export function refreshGeneratedE2eTsconfig(appPath: string): void {
   );
 }
 
+export function ensurePreviewDnsPreload(appPath: string): void {
+  const dnsPath = path.join(appPath, PREVIEW_DNS_RELATIVE_PATH);
+  const existing = readFileOrNull(dnsPath);
+  if (existing !== null && !existing.includes(DYAD_CONFIG_SENTINEL)) {
+    throw new DyadError(
+      `Cannot generate the preview DNS helper because ${PREVIEW_DNS_RELATIVE_PATH} is app-owned. Move or rename that file and retry.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  fs.mkdirSync(path.dirname(dnsPath), { recursive: true });
+  fs.writeFileSync(dnsPath, buildPreviewDnsSource());
+  appendGitignoreEntries(appPath, ["/" + PREVIEW_DNS_RELATIVE_PATH]);
+}
+
 export function ensurePreviewShim(appPath: string): { warning?: string } {
   // Only the files this run actually generated get a gitignore rule; see
   // PREVIEW_GITIGNORE_ENTRIES.
@@ -1593,6 +1611,9 @@ export async function ensurePlaywrightBootstrap({
   migrateConfigTestDir(appPath);
   migrateConfigSlowMo(appPath);
   migrateConfigPreviewRecorders(appPath);
+
+  // API requests use Node DNS in both native-preview and standalone runs.
+  ensurePreviewDnsPreload(appPath);
 
   let previewRouted = false;
   if (writePreviewShim) {

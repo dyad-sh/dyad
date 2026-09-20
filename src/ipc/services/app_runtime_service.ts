@@ -8,6 +8,14 @@ import killPort from "kill-port";
 import log from "electron-log";
 import { eq } from "drizzle-orm";
 
+import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import { abortable } from "../utils/abortable";
+import {
+  neonPreviewDomainService,
+  resolveNeonPreviewTarget,
+  type NeonPreviewTarget,
+} from "./neon_preview_domain_service";
+
 import { getAppPort, getAppProxyPort } from "../../../shared/ports";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
@@ -273,7 +281,33 @@ function emitPnpmMinimumReleaseAgeWarning({
   });
 }
 
+interface PreviewAuthContext {
+  target: NeonPreviewTarget | null;
+  warning?: string;
+  signal?: AbortSignal;
+}
+
+async function resolvePreviewAuthContext(
+  appId: number,
+  isNeon: boolean,
+  neonAuthTarget?: NeonPreviewTarget | null,
+): Promise<PreviewAuthContext> {
+  const neonPreview: PreviewAuthContext = { target: neonAuthTarget ?? null };
+  if (isNeon && neonAuthTarget === undefined) {
+    try {
+      neonPreview.target = await resolveNeonPreviewTarget(appId);
+    } catch (error) {
+      neonPreview.warning =
+        "Could not determine this app's Neon Auth branch. Login may fail. Restart and retry.";
+      logger.warn(neonPreview.warning, error);
+    }
+  }
+  return neonPreview;
+}
+
 export async function executeApp({
+  neonAuthTarget,
+  previewAbortSignal,
   appPath,
   appId,
   output,
@@ -282,6 +316,8 @@ export async function executeApp({
   startCommand,
   invocationRef,
 }: {
+  neonAuthTarget?: NeonPreviewTarget | null;
+  previewAbortSignal?: AbortSignal;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -290,7 +326,14 @@ export async function executeApp({
   startCommand?: string | null;
   invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
+  const neonPreview = await resolvePreviewAuthContext(
+    appId,
+    isNeon,
+    neonAuthTarget,
+  );
   const settings = readSettings();
+  previewAbortSignal?.throwIfAborted();
+  neonPreview.signal = previewAbortSignal;
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
   if (runtimeMode === "docker") {
@@ -302,6 +345,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
+      neonPreview,
     });
   } else if (runtimeMode === "cloud") {
     await executeAppInCloud({
@@ -311,6 +355,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
+      neonPreview,
     });
   } else {
     notifyPnpmVersionMigrationAvailable({ appPath, appId, output });
@@ -322,6 +367,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
+      neonPreview,
     });
   }
 }
@@ -370,6 +416,7 @@ export function emitProxyServerStarted({
   originalUrl,
   mode,
   invocationRef,
+  neonAuthWarning,
 }: {
   appId: number;
   output: AppRuntimeOutput;
@@ -377,13 +424,75 @@ export function emitProxyServerStarted({
   originalUrl: string;
   mode: RuntimeMode2;
   invocationRef?: AppRunInvocationRef;
+  neonAuthWarning?: string;
 }) {
   output.send({
     type: "stdout",
     message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}] mode=[${mode}]`,
     appId,
     invocationRef,
+    neonAuthWarning,
   });
+}
+
+/** Caller owns provider/runtime configuration admission. */
+export async function reconcileRunningNeonPreview(
+  appId: number,
+  target?: NeonPreviewTarget | null,
+  outputOverride?: AppRuntimeOutput,
+): Promise<void> {
+  const appInfo = runningApps.get(appId);
+  if (!appInfo?.proxyUrl || !appInfo.originalUrl) return;
+  if (target !== undefined) appInfo.neonAuthTarget = target;
+  if (target === null) appInfo.neonAuthWarning = undefined;
+  const output = outputOverride ?? appInfo.output;
+  if (!output) return;
+  await registerPreviewOrigin(appId, appInfo, appInfo.proxyUrl, target);
+  if (
+    runningApps.get(appId) !== appInfo ||
+    appInfo.proxyAbortController?.signal.aborted ||
+    appInfo.previewAbortSignal?.aborted
+  )
+    return;
+  emitProxyServerStarted({
+    appId,
+    output,
+    proxyUrl: appInfo.proxyUrl,
+    originalUrl: appInfo.originalUrl,
+    mode: appInfo.mode,
+    invocationRef: appInfo.invocationRef,
+    neonAuthWarning: appInfo.neonAuthWarning,
+  });
+}
+
+async function registerPreviewOrigin(
+  appId: number,
+  appInfo: RunningAppInfo,
+  proxyUrl: string,
+  target = appInfo.neonAuthTarget,
+) {
+  if (!target) return;
+  const controller = (appInfo.proxyAbortController ??= new AbortController());
+  const signal = appInfo.previewAbortSignal
+    ? AbortSignal.any([controller.signal, appInfo.previewAbortSignal])
+    : controller.signal;
+  try {
+    await neonPreviewDomainService.ensure({
+      appId,
+      processId: appInfo.processId,
+      invocationRef: appInfo.invocationRef,
+      target,
+      origin: new URL(proxyUrl).origin,
+      signal,
+    });
+    if (runningApps.get(appId) === appInfo && !signal.aborted)
+      appInfo.neonAuthWarning = undefined;
+  } catch (error) {
+    if (runningApps.get(appId) !== appInfo || signal.aborted) return;
+    appInfo.neonAuthWarning =
+      "Neon could not register this app's preview address. Login and authentication redirects may fail. Restart and retry.";
+    logger.warn("Neon preview registration failed for app " + appId, error);
+  }
 }
 
 export async function ensureProxyForRunningApp({
@@ -400,74 +509,99 @@ export async function ensureProxyForRunningApp({
   invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
   const appInfo = runningApps.get(appId);
-  if (!appInfo) {
-    return;
-  }
   if (
-    invocationRef &&
-    (!appInfo.invocationRef ||
-      !sameInvocationRef(appInfo.invocationRef, invocationRef))
-  ) {
-    // Producer callbacks are bound to their spawned process's ref. Reject an
-    // old callback before it can terminate or replace the current proxy.
+    !appInfo ||
+    (invocationRef &&
+      (!appInfo.invocationRef ||
+        !sameInvocationRef(appInfo.invocationRef, invocationRef)))
+  )
+    return;
+  // Install the promise before the first asynchronous boundary: dev servers
+  // can print their URL more than once before the proxy has bound.
+  if (appInfo.proxyStartup) {
+    await appInfo.proxyStartup;
     return;
   }
-
   const proxyAuthToken =
     mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;
-
-  if (
-    appInfo.proxyWorker &&
-    appInfo.originalUrl === originalUrl &&
-    appInfo.proxyAuthToken === proxyAuthToken &&
-    appInfo.authBootstrapToken &&
-    appInfo.proxyUrl
-  ) {
-    emitProxyServerStarted({
-      appId,
-      output,
-      proxyUrl: appInfo.proxyUrl,
-      originalUrl,
-      mode,
-      invocationRef,
-    });
-    return;
-  }
-
-  if (appInfo.proxyWorker) {
-    await appInfo.proxyWorker.terminate();
+  const startup = Promise.resolve().then(async () => {
+    if (
+      runningApps.get(appId) !== appInfo ||
+      appInfo.proxyAbortController?.signal.aborted ||
+      appInfo.previewAbortSignal?.aborted
+    )
+      return;
+    if (
+      appInfo.proxyWorker &&
+      appInfo.proxyUrl &&
+      appInfo.originalUrl === originalUrl &&
+      appInfo.proxyAuthToken === proxyAuthToken &&
+      appInfo.authBootstrapToken
+    ) {
+      // Repeated dev-server log lines do not acquire provider admission.
+      // Explicit lifecycle/configuration operations reconcile under their claims.
+      emitProxyServerStarted({
+        appId,
+        output,
+        proxyUrl: appInfo.proxyUrl,
+        originalUrl,
+        mode,
+        invocationRef,
+        neonAuthWarning: appInfo.neonAuthWarning,
+      });
+      return;
+    }
+    appInfo.proxyAbortController?.abort();
+    const controller = new AbortController();
+    appInfo.proxyAbortController = controller;
+    const signal = appInfo.previewAbortSignal
+      ? AbortSignal.any([controller.signal, appInfo.previewAbortSignal])
+      : controller.signal;
+    const current = () =>
+      runningApps.get(appId) === appInfo &&
+      appInfo.proxyAbortController === controller &&
+      !signal.aborted;
+    if (appInfo.proxyWorker) await appInfo.proxyWorker.terminate();
+    if (!current()) return;
     appInfo.proxyWorker = undefined;
-  }
-
-  // Prefer the deterministic port so the iframe origin stays stable across
-  // restarts — otherwise origin-scoped browser state (auth sessions,
-  // localStorage) gets orphaned and users appear logged out. If that port is
-  // already taken (by a foreign service, or another Dyad app in the rare 10k
-  // overlap), the proxy worker scans the fallback band upward rather than
-  // killing whatever holds the port.
-  const proxyPort = getAppProxyPort(appId);
-  // A framing page can reach the preview's postMessage listeners but cannot
-  // read this capability from the cross-origin document. The trusted renderer
-  // receives the same value through recording:start and must echo it before the
-  // injected bootstrap will accept credentials.
-  const authBootstrapToken = randomUUID();
-
-  const proxyWorker = await startProxy(originalUrl, {
-    port: proxyPort,
-    authBootstrapToken,
-    onStarted: (proxyUrl) => {
-      const latestAppInfo = runningApps.get(appId);
-      if (
-        latestAppInfo &&
-        (!invocationRef ||
-          (latestAppInfo.invocationRef &&
-            sameInvocationRef(latestAppInfo.invocationRef, invocationRef)))
-      ) {
-        latestAppInfo.proxyUrl = proxyUrl;
-        latestAppInfo.originalUrl = originalUrl;
-        latestAppInfo.proxyAuthToken = proxyAuthToken;
-        latestAppInfo.authBootstrapToken = authBootstrapToken;
+    appInfo.proxyUrl = undefined;
+    appInfo.proxyStartupError = undefined;
+    const authBootstrapToken = randomUUID();
+    let resolveReady!: (url: string) => void;
+    let rejectReady!: (error: unknown) => void;
+    const readyPromise = new Promise<string>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    // Observe rejection immediately, including synchronous worker-launch failure.
+    const readyUrl = abortable(readyPromise, signal);
+    void readyUrl.catch(() => undefined);
+    let worker: RunningAppInfo["proxyWorker"];
+    try {
+      worker = await startProxy(originalUrl, {
+        port: getAppProxyPort(appId),
+        hostname: getAppPreviewHostname(appId),
+        authBootstrapToken,
+        onStarted: resolveReady,
+        onError: rejectReady,
+        fixedHeaders:
+          mode === "cloud" && proxyAuthToken
+            ? { Authorization: "Bearer " + proxyAuthToken }
+            : undefined,
+      });
+      if (!current()) {
+        await worker.terminate();
+        return;
       }
+      appInfo.proxyWorker = worker;
+      appInfo.originalUrl = originalUrl;
+      appInfo.proxyAuthToken = proxyAuthToken;
+      appInfo.authBootstrapToken = authBootstrapToken;
+      const proxyUrl = await readyUrl;
+      if (!current()) return;
+      await registerPreviewOrigin(appId, appInfo, proxyUrl);
+      if (!current()) return;
+      appInfo.proxyUrl = proxyUrl;
       emitProxyServerStarted({
         appId,
         output,
@@ -475,41 +609,33 @@ export async function ensureProxyForRunningApp({
         originalUrl,
         mode,
         invocationRef,
+        neonAuthWarning: appInfo.neonAuthWarning,
       });
-    },
-    onError: (error) => {
-      logger.error(`Failed to start proxy for app ${appId}:`, error);
+    } catch (error) {
+      if (!current()) return;
+      appInfo.proxyStartupError =
+        error instanceof Error ? error : new Error(String(error));
       output.send({
         type: "stderr",
-        message: `[dyad-proxy-server] ${error.message}`,
         appId,
+        invocationRef,
+        message: "[dyad-proxy-server] " + appInfo.proxyStartupError.message,
       });
-    },
-    fixedHeaders:
-      mode === "cloud" && proxyAuthToken
-        ? {
-            Authorization: `Bearer ${proxyAuthToken}`,
-          }
-        : undefined,
+      controller.abort();
+      if (worker) await worker.terminate();
+      if (appInfo.proxyWorker === worker) appInfo.proxyWorker = undefined;
+    }
   });
-
-  const latestAppInfo = runningApps.get(appId);
-  if (
-    latestAppInfo &&
-    (!invocationRef ||
-      (latestAppInfo.invocationRef &&
-        sameInvocationRef(latestAppInfo.invocationRef, invocationRef)))
-  ) {
-    latestAppInfo.proxyWorker = proxyWorker;
-    latestAppInfo.originalUrl = originalUrl;
-    latestAppInfo.proxyAuthToken = proxyAuthToken;
-    latestAppInfo.authBootstrapToken = authBootstrapToken;
-  } else {
-    await proxyWorker.terminate();
+  appInfo.proxyStartup = startup;
+  try {
+    await startup;
+  } finally {
+    if (appInfo.proxyStartup === startup) appInfo.proxyStartup = undefined;
   }
 }
 
 async function executeAppLocalNode({
+  neonPreview,
   appPath,
   appId,
   output,
@@ -519,6 +645,7 @@ async function executeAppLocalNode({
   invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
+  neonPreview: PreviewAuthContext;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -594,6 +721,10 @@ Details: ${details || "n/a"}
 
   const currentProcessId = processCounter.increment();
   runningApps.set(appId, {
+    proxyAbortController: new AbortController(),
+    previewAbortSignal: neonPreview.signal,
+    neonAuthTarget: neonPreview.target,
+    neonAuthWarning: neonPreview.warning,
     process: spawnedProcess,
     processId: currentProcessId,
     invocationRef,
@@ -639,6 +770,7 @@ Details: ${details || "n/a"}
               startCommand,
               invocationRef,
               ignoredBuildsSelfHealAttempted: true,
+              neonPreview,
             });
             return true;
           }
@@ -810,6 +942,7 @@ function listenToProcess({
           ignoredBuildsRecordedAfterInstall = true;
           await recordIgnoredBuildsAfterInstall(appPath);
         }
+        if (runningApps.get(appId)?.process !== spawnedProcess) return;
         await ensureProxyForRunningApp({
           appId,
           output,
@@ -944,6 +1077,7 @@ async function selfHealDeniedPnpmBuilds({
 }
 
 async function executeAppInDocker({
+  neonPreview,
   appPath,
   appId,
   output,
@@ -953,6 +1087,7 @@ async function executeAppInDocker({
   invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
+  neonPreview: PreviewAuthContext;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -1129,6 +1264,10 @@ ${errorOutput || "(empty)"}`,
 
   const currentProcessId = processCounter.increment();
   runningApps.set(appId, {
+    proxyAbortController: new AbortController(),
+    previewAbortSignal: neonPreview.signal,
+    neonAuthTarget: neonPreview.target,
+    neonAuthWarning: neonPreview.warning,
     process,
     processId: currentProcessId,
     invocationRef,
@@ -1179,6 +1318,7 @@ ${errorOutput || "(empty)"}`,
               startCommand,
               invocationRef,
               ignoredBuildsSelfHealAttempted: true,
+              neonPreview,
             });
             return true;
           }
@@ -1187,6 +1327,7 @@ ${errorOutput || "(empty)"}`,
 }
 
 async function executeAppInCloud({
+  neonPreview,
   appPath,
   appId,
   output,
@@ -1194,6 +1335,7 @@ async function executeAppInCloud({
   startCommand,
   invocationRef,
 }: {
+  neonPreview: PreviewAuthContext;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -1249,6 +1391,10 @@ async function executeAppInCloud({
 
   const cloudLogAbortController = new AbortController();
   runningApps.set(appId, {
+    proxyAbortController: new AbortController(),
+    previewAbortSignal: neonPreview.signal,
+    neonAuthTarget: neonPreview.target,
+    neonAuthWarning: neonPreview.warning,
     process: null,
     processId: currentProcessId,
     invocationRef,
@@ -1531,6 +1677,7 @@ export function getAppRuntimeOperationResources(
     readAppResource("app-path"),
     "runtime",
     readAppResource("runtime-config"),
+    "provider",
   ];
 }
 
@@ -1594,10 +1741,17 @@ export class AppRuntimeService {
       if (existing) {
         logger.debug(`App ${appId} is already running.`);
         if (existing.proxyUrl && existing.originalUrl) {
+          await registerPreviewOrigin(appId, existing, existing.proxyUrl);
+          if (
+            this.dependencies.getRunningApp(appId) !== existing ||
+            existing.proxyAbortController?.signal.aborted
+          )
+            return;
           emitProxyServerStarted({
             appId,
             output,
             proxyUrl: existing.proxyUrl,
+            neonAuthWarning: existing.neonAuthWarning,
             originalUrl: existing.originalUrl,
             mode: existing.mode,
             invocationRef: invocationRef ?? existing.invocationRef,
@@ -1654,6 +1808,7 @@ export class AppRuntimeService {
         !recreateSandbox
       ) {
         await this.restartCloudSandboxInPlace({
+          isNeon: !!app.neonProjectId,
           appId,
           appPath,
           output,
@@ -1693,6 +1848,9 @@ export class AppRuntimeService {
   }
 
   async stop(appId: number): Promise<void> {
+    // Cancellation must reach pending credential/API waits before waiting for
+    // the startup operation to release its runtime/provider claims.
+    this.dependencies.getRunningApp(appId)?.proxyAbortController?.abort();
     logger.log(
       `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
     );
@@ -1804,6 +1962,15 @@ export class AppRuntimeService {
 
   cancelExternalLifecycle(invocationRef: AppRunInvocationRef): void {
     this.cancellationTombstones.add(invocationRef);
+    const running = this.dependencies.getRunningApp(
+      Number(invocationRef.entityKey),
+    );
+    if (
+      running?.invocationRef &&
+      sameInvocationRef(running.invocationRef, invocationRef)
+    ) {
+      running.proxyAbortController?.abort();
+    }
     const claim = this.externalClaims.get(invocationRegistryKey(invocationRef));
     if (claim) {
       this.releaseExternalClaim(claim);
@@ -1857,6 +2024,7 @@ export class AppRuntimeService {
    * recognized by bounded tombstones and cannot settle a replacement claim.
    */
   cleanup(appId: number): void {
+    this.dependencies.getRunningApp(appId)?.proxyAbortController?.abort();
     for (const claim of this.externalClaimsByApp.get(appId)?.values() ?? []) {
       this.cancellationTombstones.add(claim.invocationRef);
       this.externalClaims.delete(invocationRegistryKey(claim.invocationRef));
@@ -1895,12 +2063,19 @@ export class AppRuntimeService {
   }
 
   private async restartCloudSandboxInPlace(input: {
+    isNeon: boolean;
     appId: number;
     appPath: string;
     output: AppRuntimeOutput;
     invocationRef?: AppRunInvocationRef;
     appInfo: RunningAppInfo;
   }): Promise<void> {
+    const neonPreview = await resolvePreviewAuthContext(
+      input.appId,
+      input.isNeon,
+    );
+    input.appInfo.neonAuthTarget = neonPreview.target;
+    input.appInfo.neonAuthWarning = neonPreview.warning;
     const sandboxId = input.appInfo.cloudSandboxId!;
     input.appInfo.cloudLogAbortController?.abort();
     const result = await this.dependencies.restartSandbox(sandboxId);
@@ -1910,6 +2085,17 @@ export class AppRuntimeService {
     input.appInfo.invocationRef = input.invocationRef;
     input.appInfo.output = input.output;
     input.appInfo.cloudLogAbortController = new AbortController();
+    if (
+      input.appInfo.proxyUrl &&
+      input.appInfo.originalUrl === result.previewUrl &&
+      input.appInfo.proxyAuthToken === result.previewAuthToken
+    ) {
+      await registerPreviewOrigin(
+        input.appId,
+        input.appInfo,
+        input.appInfo.proxyUrl,
+      );
+    }
     await this.dependencies.ensureProxy({
       appId: input.appId,
       output: input.output,
@@ -1979,6 +2165,13 @@ async function waitForAppReady(
         DyadErrorKind.External,
       );
     }
+    if (appInfo.proxyStartupError) throw appInfo.proxyStartupError;
+    if (appInfo.proxyAbortController?.signal.aborted) {
+      throw new DyadError(
+        "Preview startup was cancelled",
+        DyadErrorKind.Precondition,
+      );
+    }
     if (appInfo.proxyUrl) {
       return;
     }
@@ -1986,6 +2179,7 @@ async function waitForAppReady(
       setTimeout(resolve, APP_READY_POLL_MS);
     });
   }
+  runningApps.get(appId)?.proxyAbortController?.abort();
   throw new DyadError(
     "Timed out waiting for the app preview to become ready",
     DyadErrorKind.External,

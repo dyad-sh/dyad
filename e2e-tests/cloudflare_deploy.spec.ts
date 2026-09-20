@@ -17,9 +17,15 @@ import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
  * readiness checks in between.
  */
 
+// Not the fixture's default, so the spec can tell this value reached the rule
+// rather than the default happening to match.
+const TEST_PNPM_VERSION = "11.4.2";
+
 const electronConfig: ElectronConfig = {
   // Cloudflare deployment is off by default, so every spec here opts in.
   preLaunchHook: async ({ userDataDir }) => {
+    // Set here because the fixture clears it before each launch.
+    process.env.DYAD_TEST_PNPM_VERSION = TEST_PNPM_VERSION;
     await fs.mkdir(userDataDir, { recursive: true });
     await fs.writeFile(
       path.join(userDataDir, "user-settings.json"),
@@ -31,23 +37,20 @@ const electronConfig: ElectronConfig = {
 
 const test = testWithConfig(electronConfig);
 
-// Test builds report this as the machine's pnpm, so what Dyad tells
-// Cloudflare to install with does not depend on the runner.
-const TEST_PNPM_VERSION = "11.1.2";
-const originalTestPnpmVersion = process.env.DYAD_TEST_PNPM_VERSION;
-test.beforeAll(() => {
-  process.env.DYAD_TEST_PNPM_VERSION = TEST_PNPM_VERSION;
-});
-test.afterAll(() => {
-  if (originalTestPnpmVersion === undefined) {
-    delete process.env.DYAD_TEST_PNPM_VERSION;
-  } else {
-    process.env.DYAD_TEST_PNPM_VERSION = originalTestPnpmVersion;
+/** Fails here, by name, rather than later as a puzzling assertion. */
+async function fakeCloudflare(port: number, path: string, init?: RequestInit) {
+  const res = await fetch(
+    `http://localhost:${port}/cloudflare/test/${path}`,
+    init,
+  );
+  if (!res.ok) {
+    throw new Error(`fake Cloudflare ${path} failed: ${res.status}`);
   }
-});
+  return res;
+}
 
 async function resetCloudflare(port: number, overrides: unknown = {}) {
-  await fetch(`http://localhost:${port}/cloudflare/test/reset`, {
+  await fakeCloudflare(port, "reset", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(overrides),
@@ -55,7 +58,7 @@ async function resetCloudflare(port: number, overrides: unknown = {}) {
 }
 
 async function cloudflareState(port: number) {
-  const res = await fetch(`http://localhost:${port}/cloudflare/test/state`);
+  const res = await fakeCloudflare(port, "state");
   return (await res.json()) as {
     workers: Array<Record<string, unknown>>;
     triggers: Array<Record<string, unknown>>;
@@ -140,10 +143,7 @@ test("waits for Cloudflare to get access to the repository, then continues", asy
   await expect(po.page.getByTestId("cloudflare-worker-form")).toBeHidden();
 
   // The user grants access in a browser; Dyad notices without being told.
-  await fetch(
-    `http://localhost:${fakeLlmPort}/cloudflare/test/grant-github-access`,
-    { method: "POST" },
-  );
+  await fakeCloudflare(fakeLlmPort, "grant-github-access", { method: "POST" });
 
   await expect(po.page.getByTestId("cloudflare-worker-form")).toBeVisible({
     timeout: Timeout.LONG,

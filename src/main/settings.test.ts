@@ -1181,7 +1181,10 @@ describe("preserving undecryptable secrets", () => {
     expect(readSettings().cloudflareAccessToken).toBeUndefined();
 
     writeSettings({ enableAutoUpdate: false });
-    expect(readStoredFile().cloudflareAccessToken).toEqual(locked);
+    const stored = readStoredFile();
+    expect(stored.enableAutoUpdate).toBe(false);
+    expect(stored.cloudflareAccessToken).toEqual(locked);
+    expect(readSettings().cloudflareAccessToken).toBeUndefined();
   });
 
   it("forgets a Coolify token that will not decrypt when signing out", () => {

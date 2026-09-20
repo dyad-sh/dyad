@@ -188,6 +188,9 @@ describe("deployment state", () => {
     expect(
       toDeploymentState({ status: "stopped", build_outcome: "cancelled" }),
     ).toBe("cancelled");
+    expect(
+      toDeploymentState({ status: "stopped", build_outcome: "canceled" }),
+    ).toBe("cancelled");
     // A stopped build with no recorded outcome did not succeed.
     expect(toDeploymentState({ status: "stopped" })).toBe("failed");
     expect(toDeploymentState({})).toBe("none");

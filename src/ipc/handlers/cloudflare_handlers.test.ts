@@ -49,6 +49,13 @@ vi.mock("../utils/git_utils", () => ({
         stderr: "",
       };
     }
+    if (args[0] === "show") {
+      // "refs/heads/<branch>:<path>", the file as committed on the branch.
+      const contents = holder.files[args[1].slice(args[1].indexOf(":") + 1)];
+      return contents === undefined
+        ? { exitCode: 128, stdout: "", stderr: "does not exist" }
+        : { exitCode: 0, stdout: contents, stderr: "" };
+    }
     if (args[0] === "rev-parse") {
       const sha = holder.refs[args[args.length - 1]];
       return sha
@@ -65,14 +72,6 @@ vi.mock("../utils/socket_firewall", () => ({
     minimumReleaseAgeSupported: true,
     version: holder.localPnpmVersion,
   }),
-}));
-
-vi.mock("node:fs/promises", () => ({
-  readFile: async (filePath: string) => {
-    const contents = holder.files[filePath];
-    if (contents === undefined) throw new Error("ENOENT");
-    return contents;
-  },
 }));
 
 const { cloudflareHandlersForTesting: handlers } =
@@ -134,6 +133,17 @@ async function fakeFetch(
   const method = init?.method ?? "GET";
 
   if (url.origin === "https://github.test") {
+    const headers = new Headers(init?.headers);
+    if (headers.get("authorization") !== "Bearer gh-token") {
+      return new Response(JSON.stringify({ message: "Bad credentials" }), {
+        status: 401,
+      });
+    }
+    if (method !== "GET" || url.pathname !== "/repos/acme/shop") {
+      return new Response(JSON.stringify({ message: "Not Found" }), {
+        status: 404,
+      });
+    }
     return new Response(
       JSON.stringify({
         id: 501,
@@ -287,7 +297,7 @@ beforeEach(() => {
   };
   holder.localPnpmVersion = "11.4.2";
   holder.files = {
-    "/apps/shop/worker/wrangler.jsonc": `{ "name": "shop-api" }`,
+    "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
   };
   cloudflare = {
     tokenStatus: "active",
@@ -359,7 +369,7 @@ describe("connecting a new Worker", () => {
   });
 
   it("builds first when the folder has a build script", async () => {
-    holder.files["/apps/shop/worker/package.json"] = JSON.stringify({
+    holder.files["worker/package.json"] = JSON.stringify({
       scripts: { build: "tsc" },
     });
     await handlers.handleConnectWorker({ appId, ...CONNECT });
@@ -368,6 +378,8 @@ describe("connecting a new Worker", () => {
 
   it("follows the branch the app syncs to", async () => {
     db.update(apps).set({ githubBranch: "release" }).run();
+    holder.refs["refs/heads/release"] = "sha-9";
+    holder.refs["refs/remotes/origin/release"] = "sha-9";
     await handlers.handleConnectWorker({ appId, ...CONNECT });
     expect(cloudflare.triggers[0].branch_includes).toEqual(["release"]);
   });
@@ -410,7 +422,7 @@ describe("a target installed with pnpm", () => {
   // Cloudflare's build image defaults to a pnpm that refuses a settings-only
   // pnpm-workspace.yaml, which is what Cloudflare's own scaffolder writes.
   beforeEach(() => {
-    holder.files["/apps/shop/worker/pnpm-lock.yaml"] = "lockfileVersion: '9.0'";
+    holder.files["worker/pnpm-lock.yaml"] = "lockfileVersion: '9.0'";
   });
 
   it("tells Cloudflare to use the pnpm this machine uses", async () => {
@@ -423,7 +435,7 @@ describe("a target installed with pnpm", () => {
   });
 
   it("prefers the version the project pins", async () => {
-    holder.files["/apps/shop/worker/package.json"] = JSON.stringify({
+    holder.files["worker/package.json"] = JSON.stringify({
       packageManager: "pnpm@10.30.1+sha512.abcdef",
     });
     await handlers.handleConnectWorker({ appId, ...CONNECT });
@@ -462,6 +474,16 @@ describe("a target not installed with pnpm", () => {
   });
 });
 
+describe("reading the target", () => {
+  it("fails when GitHub does not accept Dyad's token", async () => {
+    holder.settings.githubAccessToken = { value: "stale-token" };
+    await expect(
+      handlers.handleConnectWorker({ appId, ...CONNECT }),
+    ).rejects.toThrow(/Could not read acme\/shop from GitHub \(401\)/);
+    expect(cloudflare.workers.size).toBe(0);
+  });
+});
+
 describe("refusing before anything is created", () => {
   async function expectNothingCreated(
     promise: Promise<unknown>,
@@ -487,6 +509,16 @@ describe("refusing before anything is created", () => {
       handlers.handleConnectWorker({ appId, ...CONNECT }),
       /no workers.dev subdomain/,
     );
+  });
+
+  it("when the latest commit has not reached GitHub", async () => {
+    // The tab checks this too, but the user can commit after it did.
+    holder.refs["refs/heads/main"] = "sha-2";
+    await expectNothingCreated(
+      handlers.handleConnectWorker({ appId, ...CONNECT }),
+      /Sync this app to GitHub first/,
+    );
+    expect(cloudflare.calls).toEqual([]);
   });
 
   it("when the folder is not a target on the synced branch", async () => {
@@ -701,6 +733,32 @@ describe("connecting to a Worker that already exists", () => {
       }),
     ).rejects.toThrow(/already deploys worker of Shop/);
     expect(cloudflare.triggers).toHaveLength(1);
+  });
+
+  it("puts a reused rule back as it was when the connection then fails", async () => {
+    existingWorkerDeployingFrom("conn-501");
+    Object.assign(cloudflare.triggers[0], {
+      trigger_name: "Deploy production",
+      build_command: "npm run compile",
+      deploy_command: "npx wrangler deploy",
+      root_directory: "/",
+      path_includes: ["*"],
+      path_excludes: [],
+      branch_excludes: [],
+    });
+    const ruleBefore = structuredClone(cloudflare.triggers[0]);
+    // A pnpm target needs one more call after the rule is rewritten.
+    holder.files["worker/pnpm-lock.yaml"] = "lockfileVersion: '9.0'";
+    cloudflare.failOn = (_, path) => path.endsWith("/environment_variables");
+
+    await expect(
+      handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" }),
+    ).rejects.toThrow(/simulated failure/);
+
+    // Otherwise the rule would go on deploying this folder with no row in
+    // Dyad to show for it.
+    expect(cloudflare.triggers).toEqual([ruleBefore]);
+    expect(connectionRows()).toHaveLength(0);
   });
 
   it("fails clearly when the chosen Worker is not in the account", async () => {
@@ -935,6 +993,48 @@ describe("saving an API token", () => {
       /missing a permission/,
     );
     expect(holder.settings.cloudflareAccessToken).toBeUndefined();
+  });
+
+  it("does not call the token bad when Cloudflare is the one failing", async () => {
+    cloudflare.failOn = (_, path) => path === "/user/tokens/verify";
+    await expect(handlers.handleSaveToken("new-token")).rejects.toThrow(
+      /Could not check the API token: simulated failure/,
+    );
+    expect(holder.settings.cloudflareAccessToken).toBeUndefined();
+  });
+
+  it("does not blame permissions for a failure that is not about them", async () => {
+    cloudflare.failOn = (_, path) => path.endsWith("/workers/scripts");
+    await expect(handlers.handleSaveToken("new-token")).rejects.toThrow(
+      /Could not check the API token's permissions: simulated failure/,
+    );
+    expect(holder.settings.cloudflareAccessToken).toBeUndefined();
+  });
+
+  it("moves every rule it can when one cannot be moved", async () => {
+    holder.settings.cloudflareAccessToken = { value: TOKEN };
+    await handlers.handleConnectWorker({ appId, ...CONNECT });
+    holder.committedFiles.push("cron/wrangler.toml");
+    await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      rootDirectory: "cron",
+      workerName: "shop-cron",
+    });
+    const [first, second] = cloudflare.triggers;
+    cloudflare.buildTokens.length = 0;
+    // The first rule was deleted on Cloudflare; the second is fine.
+    cloudflare.failOn = (method, path) =>
+      method === "PATCH" && path.endsWith(`/triggers/${first.trigger_uuid}`);
+
+    await handlers.handleSaveToken("replacement-token");
+
+    expect(second.build_token_uuid).toBe(
+      cloudflare.buildTokens[0].build_token_uuid,
+    );
+    expect(holder.settings.cloudflareAccessToken).toEqual({
+      value: "replacement-token",
+    });
   });
 
   it("points existing deploy rules at the replacement token", async () => {

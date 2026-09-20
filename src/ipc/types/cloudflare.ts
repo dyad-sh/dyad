@@ -79,6 +79,14 @@ export type CloudflareDeploymentStatus = z.infer<
   typeof CloudflareDeploymentStatusSchema
 >;
 
+/**
+ * The account id goes into the path of every Cloudflare request, which carries
+ * the user's token, so nothing but Cloudflare's own id format is let through.
+ */
+const CloudflareAccountIdSchema = z
+  .string()
+  .regex(/^[a-f0-9]{32}$/i, "Invalid Cloudflare account id");
+
 export const SaveCloudflareTokenParamsSchema = z.object({
   token: z.string(),
 });
@@ -88,12 +96,12 @@ export const CloudflareAppParamsSchema = z.object({
 });
 
 export const CloudflareAccountParamsSchema = z.object({
-  accountId: z.string(),
+  accountId: CloudflareAccountIdSchema,
 });
 
 export const CheckCloudflareRepoAccessParamsSchema = z.object({
   appId: z.number(),
-  accountId: z.string(),
+  accountId: CloudflareAccountIdSchema,
 });
 
 export const CloudflareTargetParamsSchema = z.object({
@@ -103,7 +111,7 @@ export const CloudflareTargetParamsSchema = z.object({
 
 export const ConnectCloudflareWorkerParamsSchema = z.object({
   appId: z.number(),
-  accountId: z.string(),
+  accountId: CloudflareAccountIdSchema,
   rootDirectory: z.string(),
   workerName: z.string(),
   /** Whether `workerName` is a Worker to create or one that already exists. */

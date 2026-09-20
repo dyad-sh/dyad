@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import log from "electron-log";
 import { and, eq } from "drizzle-orm";
@@ -22,6 +21,7 @@ import {
   type ConnectCloudflareWorkerResult,
 } from "../types/cloudflare";
 import {
+  CloudflareApiError,
   canCloudflareSeeRepo,
   createPlaceholderWorker,
   createTrigger,
@@ -34,10 +34,12 @@ import {
   getBuildLogLines,
   getLatestBuild,
   getTriggerRepoConnectionUuid,
+  isCloudflareAuthFailure,
   listAccounts,
   listTriggers,
   listWorkers,
   probeBuildsAccess,
+  restoreTrigger,
   setTriggerBuildToken,
   setTriggerBuildVariables,
   startBuild,
@@ -45,6 +47,7 @@ import {
   updateTrigger,
   upsertRepoConnection,
   verifyToken,
+  type CloudflareTrigger,
   type GithubRepoIdentity,
 } from "@/cloudflare_deploy/api";
 import {
@@ -153,23 +156,42 @@ async function listCommittedTargets(
   return detectCloudflareTargets(result.stdout.split("\0").filter(Boolean));
 }
 
-async function readTargetFile(
+/**
+ * Reads a file as committed on the branch, for the same reason targets are
+ * listed from it: an uncommitted edit is not something Cloudflare will build.
+ */
+async function readCommittedFile(
   appPath: string,
+  branch: string,
   relativePath: string,
 ): Promise<string | null> {
-  try {
-    return await fs.readFile(path.join(appPath, relativePath), "utf8");
-  } catch {
-    return null;
-  }
+  const result = await execGit(
+    ["show", `refs/heads/${branch}:${relativePath}`],
+    appPath,
+  );
+  return result.exitCode === 0 ? result.stdout : null;
+}
+
+/** Whether the branch's latest commit is the one GitHub has. */
+async function isBranchSynced(
+  appPath: string,
+  branch: string,
+): Promise<boolean> {
+  const [localHead, remoteHead] = await Promise.all([
+    revParse(appPath, `refs/heads/${branch}`),
+    revParse(appPath, `refs/remotes/origin/${branch}`),
+  ]);
+  return localHead !== null && localHead === remoteHead;
 }
 
 async function hasBuildScript(
   appPath: string,
+  branch: string,
   rootDirectory: string,
 ): Promise<boolean> {
-  const contents = await readTargetFile(
+  const contents = await readCommittedFile(
     appPath,
+    branch,
     path.posix.join(rootDirectory, "package.json"),
   );
   if (!contents) return false;
@@ -214,18 +236,21 @@ async function assertWorkerIsFree(
 /** Build-time variables the target needs for Cloudflare to install it. */
 async function getBuildVariables(
   appPath: string,
+  branch: string,
   rootDirectory: string,
 ): Promise<Record<string, string>> {
   const usesPnpm =
-    (await readTargetFile(
+    (await readCommittedFile(
       appPath,
+      branch,
       path.posix.join(rootDirectory, "pnpm-lock.yaml"),
     )) !== null;
   if (!usesPnpm) return {};
 
   let packageManagerField: string | null = null;
-  const manifest = await readTargetFile(
+  const manifest = await readCommittedFile(
     appPath,
+    branch,
     path.posix.join(rootDirectory, "package.json"),
   );
   if (manifest) {
@@ -293,18 +318,26 @@ async function handleSaveToken(rawToken: string): Promise<void> {
     throw new DyadError("An API token is required.", DyadErrorKind.Auth);
   }
 
+  let info;
   try {
-    const info = await verifyToken(token);
-    if (info.status !== "active") {
+    info = await verifyToken(token);
+  } catch (error) {
+    // Cloudflare answers 400 to a token that is not even well formed. Anything
+    // else, an outage or a rate limit, says nothing about the token.
+    if (
+      isCloudflareAuthFailure(error) ||
+      (error instanceof CloudflareApiError && error.status === 400)
+    ) {
       throw new DyadError(
-        `This API token is ${info.status}. Create a new one and try again.`,
+        "Cloudflare did not accept this API token. Check that you copied all of it.",
         DyadErrorKind.Auth,
       );
     }
-  } catch (error) {
-    if (error instanceof DyadError) throw error;
+    throw toCloudflareDyadError(error, "Could not check the API token");
+  }
+  if (info.status !== "active") {
     throw new DyadError(
-      "Cloudflare did not accept this API token. Check that you copied all of it.",
+      `This API token is ${info.status}. Create a new one and try again.`,
       DyadErrorKind.Auth,
     );
   }
@@ -331,6 +364,16 @@ async function handleSaveToken(rawToken: string): Promise<void> {
     }),
   );
   if (!probes.some((probe) => probe.status === "fulfilled")) {
+    const otherFailure = probes.find(
+      (probe) =>
+        probe.status === "rejected" && !isCloudflareAuthFailure(probe.reason),
+    );
+    if (otherFailure?.status === "rejected") {
+      throw toCloudflareDyadError(
+        otherFailure.reason,
+        "Could not check the API token's permissions",
+      );
+    }
     throw new DyadError(
       "This API token is missing a permission. It needs Workers Scripts (edit) and Workers Builds Configuration (edit). Create it with the link above so both are included.",
       DyadErrorKind.Auth,
@@ -339,7 +382,7 @@ async function handleSaveToken(rawToken: string): Promise<void> {
 
   writeSettings({ cloudflareAccessToken: { value: token } });
   logger.log("Saved Cloudflare API token.");
-  await moveDeployRulesToToken(token);
+  await moveDeployRulesToToken(token, info.id);
 }
 
 /**
@@ -347,20 +390,21 @@ async function handleSaveToken(rawToken: string): Promise<void> {
  * user replaces a deleted or rolled token, rules still naming the old one
  * would keep failing, so they are pointed at the new one.
  */
-async function moveDeployRulesToToken(token: string): Promise<void> {
+async function moveDeployRulesToToken(
+  token: string,
+  tokenId: string,
+): Promise<void> {
   const rows = await db.query.cloudflareAppConnections.findMany();
-  if (rows.length === 0) return;
-  try {
-    const tokenInfo = await verifyToken(token);
-    const buildTokenByAccount = new Map<string, string>();
-    for (const row of rows) {
+  const buildTokenByAccount = new Map<string, string>();
+  for (const row of rows) {
+    // Each rule on its own: one in an account the new token cannot reach must
+    // not leave the others on the old token. The token is saved and valid
+    // either way, and a rule that could not be moved shows up as a failed
+    // deployment the user can act on.
+    try {
       let buildTokenUuid = buildTokenByAccount.get(row.accountId);
       if (!buildTokenUuid) {
-        buildTokenUuid = await ensureBuildToken(
-          token,
-          row.accountId,
-          tokenInfo.id,
-        );
+        buildTokenUuid = await ensureBuildToken(token, row.accountId, tokenId);
         buildTokenByAccount.set(row.accountId, buildTokenUuid);
       }
       await setTriggerBuildToken(
@@ -369,11 +413,12 @@ async function moveDeployRulesToToken(token: string): Promise<void> {
         row.triggerUuid,
         buildTokenUuid,
       );
+    } catch (error) {
+      logger.warn(
+        `Could not move the deploy rule for ${row.workerName} to the new token:`,
+        error,
+      );
     }
-  } catch (error) {
-    // The token itself is saved and valid; a rule that could not be moved
-    // shows up as a failed deployment the user can act on.
-    logger.warn("Could not move deploy rules to the new token:", error);
   }
 }
 
@@ -382,9 +427,8 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch ?? DEFAULT_BRANCH;
 
-  const [localHead, remoteHead, targets, rows] = await Promise.all([
-    revParse(appPath, `refs/heads/${branch}`),
-    revParse(appPath, `refs/remotes/origin/${branch}`),
+  const [synced, targets, rows] = await Promise.all([
+    isBranchSynced(appPath, branch),
     listCommittedTargets(appPath, branch),
     db.query.cloudflareAppConnections.findMany({
       where: eq(cloudflareAppConnections.appId, appId),
@@ -393,7 +437,11 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
 
   const targetSummaries = await Promise.all(
     targets.map(async (target) => {
-      const contents = await readTargetFile(appPath, target.configPath);
+      const contents = await readCommittedFile(
+        appPath,
+        branch,
+        target.configPath,
+      );
       return {
         rootDirectory: target.rootDirectory,
         configPath: target.configPath,
@@ -410,7 +458,7 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
   );
 
   return {
-    synced: localHead !== null && localHead === remoteHead,
+    synced,
     branch,
     targets: targetSummaries,
     connections: rows.map(toConnection),
@@ -464,6 +512,14 @@ async function handleConnectWorker(
       DyadErrorKind.Conflict,
     );
   }
+  // The tab only offers this once the app is synced, but that was a moment
+  // ago. Unsynced, the folder may not be on GitHub for Cloudflare to build.
+  if (!(await isBranchSynced(appPath, branch))) {
+    throw new DyadError(
+      `Sync this app to GitHub first. The latest commit on ${branch} has not been pushed, and Cloudflare builds what is on GitHub.`,
+      DyadErrorKind.Precondition,
+    );
+  }
   // The folder ends up in a rule Cloudflare runs, so it has to be one Dyad
   // found in the repository rather than whatever the caller sent.
   const targets = await listCommittedTargets(appPath, branch);
@@ -478,6 +534,7 @@ async function handleConnectWorker(
 
   let createdWorkerName: string | null = null;
   let createdTriggerUuid: string | null = null;
+  let rewrittenTrigger: CloudflareTrigger | null = null;
   try {
     if (!(await canCloudflareSeeRepo(token, accountId, repo, branch))) {
       throw new DyadError(
@@ -546,7 +603,7 @@ async function handleConnectWorker(
       buildTokenUuid,
       rootDirectory,
       branch,
-      hasBuildScript: await hasBuildScript(appPath, rootDirectory),
+      hasBuildScript: await hasBuildScript(appPath, branch, rootDirectory),
     });
 
     for (const trigger of foreignTriggers) {
@@ -561,13 +618,18 @@ async function handleConnectWorker(
     );
     let triggerUuid: string;
     if (reusable) {
+      rewrittenTrigger = reusable;
       await updateTrigger(token, accountId, reusable.trigger_uuid, rule);
       triggerUuid = reusable.trigger_uuid;
     } else {
       triggerUuid = await createTrigger(token, accountId, rule);
       createdTriggerUuid = triggerUuid;
     }
-    const buildVariables = await getBuildVariables(appPath, rootDirectory);
+    const buildVariables = await getBuildVariables(
+      appPath,
+      branch,
+      rootDirectory,
+    );
     if (Object.keys(buildVariables).length > 0) {
       await setTriggerBuildVariables(
         token,
@@ -592,6 +654,7 @@ async function handleConnectWorker(
     // From here the connection is real; nothing below may undo it.
     createdWorkerName = null;
     createdTriggerUuid = null;
+    rewrittenTrigger = null;
 
     let warning: string | undefined;
     try {
@@ -604,6 +667,14 @@ async function handleConnectWorker(
 
     return { status: "connected", connection: toConnection(row), warning };
   } catch (error) {
+    if (rewrittenTrigger) {
+      // The Worker's own rule was repointed at this folder. Left that way it
+      // would deploy the folder with nothing in Dyad to show for it.
+      await restoreTrigger(token, accountId, rewrittenTrigger).catch(
+        (cleanupError) =>
+          logger.warn("Could not restore the deploy rule:", cleanupError),
+      );
+    }
     if (createdTriggerUuid) {
       // A rule without a row would keep deploying with nothing in Dyad to
       // show or remove it.

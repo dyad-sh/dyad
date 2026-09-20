@@ -59,6 +59,10 @@ describe("detectCloudflareTargets", () => {
         "api/wrangler.json",
         "api/wrangler.jsonc",
       ]),
+    ).toEqual([{ rootDirectory: "api", configPath: "api/wrangler.json" }]);
+    // Without a wrangler.json, jsonc comes before toml.
+    expect(
+      detectCloudflareTargets(["api/wrangler.toml", "api/wrangler.jsonc"]),
     ).toEqual([{ rootDirectory: "api", configPath: "api/wrangler.jsonc" }]);
   });
 

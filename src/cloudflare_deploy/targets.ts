@@ -6,9 +6,10 @@
  * over anything Dyad would have to generate.
  */
 
+/** In the order Wrangler itself looks for them, so the first found is the one it uses. */
 export const WRANGLER_CONFIG_FILES = [
-  "wrangler.jsonc",
   "wrangler.json",
+  "wrangler.jsonc",
   "wrangler.toml",
 ] as const;
 
@@ -60,7 +61,7 @@ export function detectCloudflareTargets(files: string[]): CloudflareTarget[] {
     }
     const rootDirectory = directories.join("/");
     const existing = byDirectory.get(rootDirectory);
-    // Wrangler itself prefers jsonc over json over toml when several exist.
+    // Keep the config Wrangler would pick when a folder has several.
     if (
       existing === undefined ||
       configPriority(fileName) <

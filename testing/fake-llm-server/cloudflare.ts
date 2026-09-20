@@ -44,7 +44,8 @@ interface State {
   builds: FakeBuild[];
 }
 
-const ACCOUNT_ID = "fake-cloudflare-account";
+// In Cloudflare's format: Dyad refuses an account id in any other.
+const ACCOUNT_ID = "fa4ec10df1a7e0000000000000000001";
 
 function initialState(): State {
   return {

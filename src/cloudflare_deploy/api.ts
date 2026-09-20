@@ -47,6 +47,14 @@ export class CloudflareApiError extends Error {
   }
 }
 
+/** Cloudflare refused the token itself, rather than failing for another reason. */
+export function isCloudflareAuthFailure(error: unknown): boolean {
+  return (
+    error instanceof CloudflareApiError &&
+    (error.status === 401 || error.status === 403)
+  );
+}
+
 /** Classifies an API failure so expected ones stay out of error telemetry. */
 export function toCloudflareDyadError(error: unknown, action: string): Error {
   if (error instanceof DyadError) {
@@ -65,6 +73,20 @@ export function toCloudflareDyadError(error: unknown, action: string): Error {
   }
   const message = error instanceof Error ? error.message : String(error);
   return new DyadError(`${action}: ${message}`, DyadErrorKind.External);
+}
+
+/**
+ * Builds a request path, encoding every interpolated value so that none of
+ * them can add a segment or a query to it.
+ */
+function apiPath(strings: TemplateStringsArray, ...values: string[]): string {
+  return strings.reduce(
+    (path, literal, index) =>
+      path +
+      literal +
+      (index < values.length ? encodeURIComponent(values[index]) : ""),
+    "",
+  );
 }
 
 async function request<T>(
@@ -111,7 +133,17 @@ async function request<T>(
     );
   }
 
-  return envelope?.result as T;
+  if (envelope === undefined) {
+    // Success with a body that cannot be read would otherwise hand callers an
+    // undefined result to trip over.
+    throw new CloudflareApiError(
+      "Cloudflare returned a response that could not be read.",
+      response.status,
+      [],
+    );
+  }
+
+  return envelope.result as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +192,7 @@ export async function listWorkers(
   const scripts = await request<{ id: string; tag: string }[]>(
     token,
     "GET",
-    `/accounts/${accountId}/workers/scripts`,
+    apiPath`/accounts/${accountId}/workers/scripts`,
   );
   return (scripts ?? []).map((script) => ({
     name: script.id,
@@ -207,7 +239,7 @@ export async function createPlaceholderWorker(
   const result = await request<{ tag: string }>(
     token,
     "PUT",
-    `/accounts/${accountId}/workers/scripts/${name}`,
+    apiPath`/accounts/${accountId}/workers/scripts/${name}`,
     form,
   );
   return { name, tag: result.tag };
@@ -221,7 +253,7 @@ export async function deleteWorker(
   await request(
     token,
     "DELETE",
-    `/accounts/${accountId}/workers/scripts/${name}?force=true`,
+    apiPath`/accounts/${accountId}/workers/scripts/${name}?force=true`,
   );
 }
 
@@ -233,7 +265,7 @@ export async function enableWorkersDevRoute(
   await request(
     token,
     "POST",
-    `/accounts/${accountId}/workers/scripts/${name}/subdomain`,
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
     { enabled: true, previews_enabled: true },
   );
 }
@@ -247,7 +279,7 @@ export async function getAccountSubdomain(
     const result = await request<{ subdomain?: string }>(
       token,
       "GET",
-      `/accounts/${accountId}/workers/subdomain`,
+      apiPath`/accounts/${accountId}/workers/subdomain`,
     );
     return result?.subdomain ?? null;
   } catch (error) {
@@ -287,7 +319,7 @@ export async function canCloudflareSeeRepo(
     await request(
       token,
       "GET",
-      `/accounts/${accountId}/builds/repos/github/${repo.ownerId}/${repo.repoId}/config_autofill?branch=${encodeURIComponent(branch)}`,
+      apiPath`/accounts/${accountId}/builds/repos/github/${repo.ownerId}/${repo.repoId}/config_autofill?branch=${branch}`,
     );
     return true;
   } catch (error) {
@@ -309,7 +341,7 @@ export async function upsertRepoConnection(
   const result = await request<{ repo_connection_uuid: string }>(
     token,
     "PUT",
-    `/accounts/${accountId}/builds/repos/connections`,
+    apiPath`/accounts/${accountId}/builds/repos/connections`,
     {
       provider_type: "github",
       provider_account_id: repo.ownerId,
@@ -338,7 +370,7 @@ export async function ensureBuildToken(
   const existing = await request<BuildToken[]>(
     token,
     "GET",
-    `/accounts/${accountId}/builds/tokens`,
+    apiPath`/accounts/${accountId}/builds/tokens`,
   );
   const match = (existing ?? []).find(
     (candidate) => candidate.cloudflare_token_id === tokenId,
@@ -349,7 +381,7 @@ export async function ensureBuildToken(
   const created = await request<BuildToken>(
     token,
     "POST",
-    `/accounts/${accountId}/builds/tokens`,
+    apiPath`/accounts/${accountId}/builds/tokens`,
     {
       build_token_name: "Dyad",
       build_token_secret: token,
@@ -364,7 +396,7 @@ export async function probeBuildsAccess(
   token: string,
   accountId: string,
 ): Promise<void> {
-  await request(token, "GET", `/accounts/${accountId}/builds/tokens`);
+  await request(token, "GET", apiPath`/accounts/${accountId}/builds/tokens`);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,8 +405,15 @@ export async function probeBuildsAccess(
 
 export interface CloudflareTrigger {
   trigger_uuid: string;
+  trigger_name?: string;
+  build_token_uuid?: string;
+  build_command?: string;
+  deploy_command?: string;
   root_directory?: string;
   branch_includes?: string[];
+  branch_excludes?: string[];
+  path_includes?: string[];
+  path_excludes?: string[];
   repo_connection_uuid?: string;
   repo_connection?: {
     repo_connection_uuid?: string;
@@ -407,7 +446,7 @@ export async function listTriggers(
   const triggers = await request<CloudflareTrigger[]>(
     token,
     "GET",
-    `/accounts/${accountId}/builds/workers/${workerTag}/triggers`,
+    apiPath`/accounts/${accountId}/builds/workers/${workerTag}/triggers`,
   );
   return triggers ?? [];
 }
@@ -420,7 +459,7 @@ export async function createTrigger(
   const result = await request<CloudflareTrigger>(
     token,
     "POST",
-    `/accounts/${accountId}/builds/triggers`,
+    apiPath`/accounts/${accountId}/builds/triggers`,
     rule,
   );
   return result.trigger_uuid;
@@ -437,8 +476,39 @@ export async function updateTrigger(
   await request(
     token,
     "PATCH",
-    `/accounts/${accountId}/builds/triggers/${triggerUuid}`,
+    apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}`,
     changes,
+  );
+}
+
+/**
+ * Puts a rule back the way Cloudflare listed it. Only what the listing
+ * included is sent, so an absent field is left as it is rather than cleared.
+ */
+export async function restoreTrigger(
+  token: string,
+  accountId: string,
+  listed: CloudflareTrigger,
+): Promise<void> {
+  const changes = {
+    repo_connection_uuid: getTriggerRepoConnectionUuid(listed),
+    build_token_uuid: listed.build_token_uuid,
+    trigger_name: listed.trigger_name,
+    build_command: listed.build_command,
+    deploy_command: listed.deploy_command,
+    root_directory: listed.root_directory,
+    branch_includes: listed.branch_includes,
+    branch_excludes: listed.branch_excludes,
+    path_includes: listed.path_includes,
+    path_excludes: listed.path_excludes,
+  };
+  await request(
+    token,
+    "PATCH",
+    apiPath`/accounts/${accountId}/builds/triggers/${listed.trigger_uuid}`,
+    Object.fromEntries(
+      Object.entries(changes).filter(([, value]) => value !== undefined),
+    ),
   );
 }
 
@@ -452,7 +522,7 @@ export async function setTriggerBuildVariables(
   await request(
     token,
     "PATCH",
-    `/accounts/${accountId}/builds/triggers/${triggerUuid}/environment_variables`,
+    apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}/environment_variables`,
     Object.fromEntries(
       Object.entries(variables).map(([key, value]) => [
         key,
@@ -472,7 +542,7 @@ export async function setTriggerBuildToken(
   await request(
     token,
     "PATCH",
-    `/accounts/${accountId}/builds/triggers/${triggerUuid}`,
+    apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}`,
     { build_token_uuid: buildTokenUuid },
   );
 }
@@ -487,7 +557,7 @@ export async function deleteTrigger(
     await request(
       token,
       "DELETE",
-      `/accounts/${accountId}/builds/triggers/${triggerUuid}`,
+      apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}`,
     );
   } catch (error) {
     if (error instanceof CloudflareApiError && error.status === 404) {
@@ -506,7 +576,7 @@ export async function startBuild(
   await request(
     token,
     "POST",
-    `/accounts/${accountId}/builds/triggers/${triggerUuid}/builds`,
+    apiPath`/accounts/${accountId}/builds/triggers/${triggerUuid}/builds`,
     { branch },
   );
 }
@@ -528,7 +598,7 @@ export async function getLatestBuild(
   const builds = await request<CloudflareBuild[]>(
     token,
     "GET",
-    `/accounts/${accountId}/builds/workers/${workerTag}/builds`,
+    apiPath`/accounts/${accountId}/builds/workers/${workerTag}/builds`,
   );
   if (!builds || builds.length === 0) {
     return null;
@@ -546,7 +616,7 @@ export async function getBuildLogLines(
   const result = await request<{ lines?: [number, string][] }>(
     token,
     "GET",
-    `/accounts/${accountId}/builds/builds/${buildUuid}/logs`,
+    apiPath`/accounts/${accountId}/builds/builds/${buildUuid}/logs`,
   );
   return (result?.lines ?? []).map((line) => String(line[1] ?? ""));
 }

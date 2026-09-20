@@ -270,6 +270,13 @@ async function getBuildVariables(
   return version ? { PNPM_VERSION: version } : {};
 }
 
+/** How long a repository's ids are remembered. They only change if it is recreated. */
+const GITHUB_IDENTITY_TTL_MS = 10 * 60 * 1000;
+const githubIdentityCache = new Map<
+  string,
+  { identity: GithubRepoIdentity; expiresAt: number }
+>();
+
 async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
   if (!app.githubOrg || !app.githubRepo) {
     throw new DyadError(
@@ -281,10 +288,26 @@ async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
   if (!githubToken) {
     throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
   }
-  const response = await fetch(
-    `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}`,
-    { headers: { Authorization: `Bearer ${githubToken}` } },
-  );
+  // The access check polls while the user is away granting access, and would
+  // otherwise ask GitHub for the same two numbers every few seconds.
+  const cacheKey = `${app.githubOrg}/${app.githubRepo}`;
+  const cached = githubIdentityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.identity;
+  }
+  let response: Response;
+  try {
+    response = await fetch(
+      `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}`,
+      { headers: { Authorization: `Bearer ${githubToken}` } },
+    );
+  } catch (error) {
+    // Being offline is not a bug to report.
+    throw new DyadError(
+      `Could not reach GitHub: ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.External,
+    );
+  }
   if (!response.ok) {
     throw new DyadError(
       `Could not read ${app.githubOrg}/${app.githubRepo} from GitHub (${response.status}).`,
@@ -302,12 +325,17 @@ async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
       DyadErrorKind.External,
     );
   }
-  return {
+  const identity = {
     ownerId: String(repo.owner.id),
     ownerLogin: repo.owner.login ?? app.githubOrg,
     repoId: String(repo.id),
     repoName: repo.name ?? app.githubRepo,
   };
+  githubIdentityCache.set(cacheKey, {
+    identity,
+    expiresAt: Date.now() + GITHUB_IDENTITY_TTL_MS,
+  });
+  return identity;
 }
 
 // --- Handlers ---
@@ -561,6 +589,9 @@ async function handleConnectWorker(
       }
       worker = await createPlaceholderWorker(token, accountId, workerName);
       createdWorkerName = workerName;
+      // Only for a Worker made here. How an existing Worker is reachable is
+      // its owner's decision: one kept behind a custom domain stays that way.
+      await enableWorkersDevRoute(token, accountId, workerName);
     } else if (!worker) {
       throw new DyadError(
         `No Worker named "${workerName}" exists in this account.`,
@@ -586,10 +617,6 @@ async function handleConnectWorker(
       };
     }
 
-    // Only once the user has agreed to take the Worker over, if it was another
-    // repository's, does Dyad change anything about it.
-    await enableWorkersDevRoute(token, accountId, workerName);
-
     const tokenInfo = await verifyToken(token);
     const buildTokenUuid = await ensureBuildToken(
       token,
@@ -609,12 +636,14 @@ async function handleConnectWorker(
     for (const trigger of foreignTriggers) {
       await deleteTrigger(token, accountId, trigger.trigger_uuid);
     }
-    // A rule this repository already has on the Worker is updated in place,
-    // so reconnecting never leaves two rules deploying the same branch.
+    // Cloudflare allows a Worker one rule for named branches, whatever the
+    // branch, and refuses a second. So this repository's existing one is
+    // updated in place. Its preview rule, the one for every other branch, is
+    // a separate thing and is left alone.
     const reusable = existingTriggers.find(
       (trigger) =>
         !foreignTriggers.includes(trigger) &&
-        (trigger.branch_includes ?? []).includes(branch),
+        !(trigger.branch_includes ?? []).includes("*"),
     );
     let triggerUuid: string;
     if (reusable) {
@@ -875,6 +904,7 @@ export function registerCloudflareHandlers() {
 }
 
 export const cloudflareHandlersForTesting = {
+  clearGithubIdentityCache: () => githubIdentityCache.clear(),
   handleSaveToken,
   handleGetAppStatus,
   handleCheckRepoAccess,

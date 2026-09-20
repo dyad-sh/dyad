@@ -112,11 +112,18 @@ async function request<T>(
           : JSON.stringify(body),
   });
 
+  // An empty body is a success with nothing to return. A body that is there
+  // but cannot be parsed is not.
+  const text = await response.text();
   let envelope: CloudflareEnvelope<T> | undefined;
-  try {
-    envelope = (await response.json()) as CloudflareEnvelope<T>;
-  } catch {
-    envelope = undefined;
+  if (text.trim() === "") {
+    envelope = {};
+  } else {
+    try {
+      envelope = JSON.parse(text) as CloudflareEnvelope<T>;
+    } catch {
+      envelope = undefined;
+    }
   }
 
   if (!response.ok || envelope?.success === false) {

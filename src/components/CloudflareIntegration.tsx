@@ -13,10 +13,9 @@ export function CloudflareIntegration() {
   const { settings, updateSettings } = useSettings();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
-  if (
-    !settings?.enableCloudflareDeployment ||
-    !settings?.cloudflareAccessToken
-  ) {
+  // Shown for a saved token even with the experiment off, or turning it off
+  // would leave a stored token with no way to remove it.
+  if (!settings?.cloudflareAccessToken) {
     return null;
   }
 

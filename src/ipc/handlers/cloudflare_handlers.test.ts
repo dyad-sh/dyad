@@ -16,6 +16,8 @@ const holder = vi.hoisted(() => ({
   committedFiles: [] as string[],
   refs: {} as Record<string, string>,
   files: {} as Record<string, string>,
+  githubCalls: 0,
+  githubOffline: false,
   localPnpmVersion: "11.4.2" as string | undefined,
 }));
 
@@ -133,6 +135,8 @@ async function fakeFetch(
   const method = init?.method ?? "GET";
 
   if (url.origin === "https://github.test") {
+    holder.githubCalls += 1;
+    if (holder.githubOffline) throw new TypeError("fetch failed");
     const headers = new Headers(init?.headers);
     if (headers.get("authorization") !== "Bearer gh-token") {
       return new Response(JSON.stringify({ message: "Bad credentials" }), {
@@ -227,6 +231,22 @@ async function fakeFetch(
     );
   }
   if (path === `${account}/builds/triggers` && method === "POST") {
+    // As Cloudflare does: a Worker takes one rule for named branches and one
+    // preview rule, and refuses another of either kind.
+    const isPreview = (rule: { branch_includes?: string[] }) =>
+      (rule.branch_includes ?? []).includes("*");
+    const clash = cloudflare.triggers.some(
+      (existing) =>
+        existing.external_script_id === body.external_script_id &&
+        isPreview(existing) === isPreview(body),
+    );
+    if (clash) {
+      return fail(
+        409,
+        12042,
+        "A trigger already exists for this configuration",
+      );
+    }
     const trigger = { ...body, trigger_uuid: id("trigger") } as FakeTrigger;
     cloudflare.triggers.push(trigger);
     return ok(trigger);
@@ -296,6 +316,9 @@ beforeEach(() => {
     "refs/remotes/origin/main": "sha-1",
   };
   holder.localPnpmVersion = "11.4.2";
+  holder.githubCalls = 0;
+  holder.githubOffline = false;
+  handlers.clearGithubIdentityCache();
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
   };
@@ -481,6 +504,26 @@ describe("reading the target", () => {
       handlers.handleConnectWorker({ appId, ...CONNECT }),
     ).rejects.toThrow(/Could not read acme\/shop from GitHub \(401\)/);
     expect(cloudflare.workers.size).toBe(0);
+  });
+});
+
+describe("asking GitHub about the repository", () => {
+  it("reports being offline as that, not as a crash", async () => {
+    holder.githubOffline = true;
+    await expect(
+      handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT }),
+    ).rejects.toMatchObject({
+      name: "DyadError",
+      message: expect.stringMatching(/Could not reach GitHub/),
+    });
+  });
+
+  it("asks once, however often access is checked", async () => {
+    // The tab polls this while the user is away granting access.
+    for (let check = 0; check < 5; check++) {
+      await handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT });
+    }
+    expect(holder.githubCalls).toBe(1);
   });
 });
 
@@ -761,6 +804,53 @@ describe("connecting to a Worker that already exists", () => {
     expect(connectionRows()).toHaveLength(0);
   });
 
+  it("leaves how an existing Worker is reachable as it was", async () => {
+    // Its owner may serve it only behind a custom domain.
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
+
+    await handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" });
+
+    expect(cloudflare.workers.get("shop-api")?.routeEnabled).toBe(false);
+    expect(connectionRows()).toHaveLength(1);
+  });
+
+  it("takes over this repository's rule even when it named another branch", async () => {
+    // Cloudflare would refuse a second rule on the Worker.
+    existingWorkerDeployingFrom("conn-501");
+    cloudflare.triggers[0].branch_includes = ["release"];
+
+    const result = await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+
+    expect(result.status).toBe("connected");
+    expect(cloudflare.triggers).toHaveLength(1);
+    expect(cloudflare.triggers[0]).toMatchObject({
+      trigger_uuid: "trigger-old",
+      branch_includes: ["main"],
+    });
+  });
+
+  it("leaves this repository's preview rule alone", async () => {
+    existingWorkerDeployingFrom("conn-501");
+    Object.assign(cloudflare.triggers[0], {
+      branch_includes: ["*"],
+      branch_excludes: ["main"],
+      deploy_command: "npx wrangler versions upload",
+    });
+    const previewBefore = structuredClone(cloudflare.triggers[0]);
+
+    await handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" });
+
+    expect(cloudflare.triggers).toHaveLength(2);
+    expect(cloudflare.triggers[0]).toEqual(previewBefore);
+    expect(connectionRows()[0].triggerUuid).toBe(
+      cloudflare.triggers[1].trigger_uuid,
+    );
+  });
+
   it("fails clearly when the chosen Worker is not in the account", async () => {
     await expect(
       handlers.handleConnectWorker({ appId, ...CONNECT, mode: "existing" }),
@@ -1024,8 +1114,7 @@ describe("saving an API token", () => {
     const [first, second] = cloudflare.triggers;
     cloudflare.buildTokens.length = 0;
     // The first rule was deleted on Cloudflare; the second is fine.
-    cloudflare.failOn = (method, path) =>
-      method === "PATCH" && path.endsWith(`/triggers/${first.trigger_uuid}`);
+    cloudflare.triggers.splice(cloudflare.triggers.indexOf(first), 1);
 
     await handlers.handleSaveToken("replacement-token");
 

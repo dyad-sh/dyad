@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CloudflareApiError,
+  deleteTrigger,
   isCloudflareAuthFailure,
   listWorkers,
   restoreTrigger,
@@ -63,6 +64,13 @@ describe("responses", () => {
   it("fail clearly when a success has no readable body", async () => {
     respondWith("<html>gateway</html>");
     await expect(verifyToken("token")).rejects.toThrow(/could not be read/);
+  });
+
+  it("accept a success that has no body at all", async () => {
+    respondWith("", 200);
+    await expect(
+      deleteTrigger("token", "acct", "rule-1"),
+    ).resolves.toBeUndefined();
   });
 
   it("keep Cloudflare's status and codes on failure", async () => {

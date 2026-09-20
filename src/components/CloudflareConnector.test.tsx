@@ -485,6 +485,35 @@ describe("a connected Worker", () => {
     expect(screen.queryByTestId("cloudflare-rule-missing")).toBeNull();
   });
 
+  it("stays reachable after its Wrangler config leaves the branch", async () => {
+    // The rule is still on Cloudflare, so the way to remove it has to be here.
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [], connections: [CONNECTION] }),
+    );
+    cloudflare.disconnect.mockResolvedValue(undefined);
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-config-missing")).toBeTruthy();
+    expect(screen.queryByText("No Cloudflare Worker found")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect worker" }));
+    await waitFor(() =>
+      expect(cloudflare.disconnect).toHaveBeenCalledWith({
+        appId: 7,
+        rootDirectory: "worker",
+      }),
+    );
+  });
+
+  it("stays reachable when the token can no longer see an account", async () => {
+    cloudflare.listAccounts.mockResolvedValue([]);
+    renderConnector();
+
+    expect(
+      await screen.findByRole("button", { name: "Disconnect worker" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-no-accounts")).toBeNull();
+  });
+
   it("disconnects the target it is showing", async () => {
     cloudflare.disconnect.mockResolvedValue(undefined);
     renderConnector();
@@ -639,6 +668,27 @@ describe("an app with several Workers", () => {
     expect(screen.getByText("Sync to GitHub first")).toBeTruthy();
     expect(screen.queryByText("offline")).toBeNull();
   }, 12_000);
+});
+
+describe("a folder that lost its config beside one that still has it", () => {
+  it("lists both, and sets up only the one that can deploy", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        connections: [{ ...CONNECTION, rootDirectory: "old-worker" }],
+      }),
+    );
+    renderConnector();
+
+    const list = await screen.findByTestId("cloudflare-target-list");
+    expect(list.textContent).toContain("old-worker");
+    expect(list.textContent).toContain("Connected to shop-api");
+    // The deployable folder comes first and opens on its setup form.
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^old-worker/ }));
+    expect(await screen.findByTestId("cloudflare-config-missing")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
 });
 
 describe("an app with one Worker", () => {

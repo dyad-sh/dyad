@@ -184,17 +184,32 @@ function ConnectedAccount({ appId }: { appId: number }) {
       <div className={errorClass}>{errorMessage(error)}</div>
     ) : null;
   }
-  if (accounts.data.length === 0) {
-    return (
-      <div className={warningClass} data-testid="cloudflare-no-accounts">
-        This API token can no longer see any Cloudflare account. Disconnect
-        Cloudflare under Settings &gt; Integrations, then add a new token here.
-      </div>
-    );
-  }
-
-  const targets = status.data.targets;
-  if (targets.length === 0) {
+  // Every folder the tab has something to say about: the ones that can be
+  // deployed, and any still connected whose Wrangler config has since left
+  // the branch. Those keep their rule on Cloudflare, so they must stay
+  // reachable here to be disconnected.
+  const connections = status.data.connections;
+  const deployable = status.data.targets;
+  const folders: DeployFolder[] = [
+    ...deployable.map((target) => ({
+      rootDirectory: target.rootDirectory,
+      label: target.label,
+      target,
+    })),
+    ...connections
+      .filter(
+        (connection) =>
+          !deployable.some(
+            (target) => target.rootDirectory === connection.rootDirectory,
+          ),
+      )
+      .map((connection) => ({
+        rootDirectory: connection.rootDirectory,
+        label: connection.rootDirectory || "App root",
+        target: null,
+      })),
+  ];
+  if (folders.length === 0) {
     return (
       <div className={noticeClass} data-testid="cloudflare-no-targets">
         <p className="font-medium mb-1">No Cloudflare Worker found</p>
@@ -208,30 +223,50 @@ function ConnectedAccount({ appId }: { appId: number }) {
   }
 
   const accountId = chosenAccountId ?? accounts.data[0]?.id ?? null;
-  const target =
-    targets.find((candidate) => candidate.rootDirectory === chosenTarget) ??
-    targets[0];
-  const connection = status.data.connections.find(
-    (candidate) => candidate.rootDirectory === target.rootDirectory,
+  const folder =
+    folders.find((candidate) => candidate.rootDirectory === chosenTarget) ??
+    folders[0];
+  const target = folder.target;
+  const connection = connections.find(
+    (candidate) => candidate.rootDirectory === folder.rootDirectory,
   );
 
   return (
     <div className="space-y-4" data-testid="cloudflare-connector">
-      {targets.length > 1 && (
+      {folders.length > 1 && (
         <TargetList
-          targets={targets}
-          connections={status.data.connections}
-          selected={target.rootDirectory}
+          folders={folders}
+          connections={connections}
+          selected={folder.rootDirectory}
           onSelect={setChosenTarget}
         />
       )}
 
       {connection ? (
-        <DeploymentCard
-          appId={appId}
-          connection={connection}
-          targetLabel={target.label}
-        />
+        <>
+          {!target && (
+            <div
+              className={warningClass}
+              data-testid="cloudflare-config-missing"
+            >
+              {folder.label} no longer has a Wrangler config on{" "}
+              {status.data.branch}, so Cloudflare cannot build it, but its
+              deploy rule is still there. Restore the config, or disconnect{" "}
+              {folder.label} to remove the rule.
+            </div>
+          )}
+          <DeploymentCard
+            appId={appId}
+            connection={connection}
+            targetLabel={folder.label}
+          />
+        </>
+      ) : !target ? null : accounts.data.length === 0 ? (
+        <div className={warningClass} data-testid="cloudflare-no-accounts">
+          This API token can no longer see any Cloudflare account. Disconnect
+          Cloudflare under Settings &gt; Integrations, then add a new token
+          here.
+        </div>
       ) : (
         <>
           {accounts.data.length > 1 && (
@@ -244,7 +279,10 @@ function ConnectedAccount({ appId }: { appId: number }) {
               </Label>
               <Select
                 value={accountId ?? ""}
-                onValueChange={(value) => setChosenAccountId(value)}
+                onValueChange={(value) => {
+                  // Base UI reports a cleared selection as null.
+                  if (value) setChosenAccountId(value);
+                }}
                 items={accounts.data.map((account) => ({
                   value: account.id,
                   label: account.name,
@@ -297,13 +335,20 @@ function ConnectedAccount({ appId }: { appId: number }) {
  * dropdown because the folders are not alternatives: each deploys to its own
  * Worker, and any number of them can be connected at once.
  */
+/** A folder shown in the tab. `target` is null once its Wrangler config is gone. */
+interface DeployFolder {
+  rootDirectory: string;
+  label: string;
+  target: CloudflareTargetSummary | null;
+}
+
 function TargetList({
-  targets,
+  folders,
   connections,
   selected,
   onSelect,
 }: {
-  targets: CloudflareTargetSummary[];
+  folders: DeployFolder[];
   connections: CloudflareConnection[];
   selected: string;
   onSelect: (rootDirectory: string) => void;
@@ -311,11 +356,12 @@ function TargetList({
   return (
     <div className="space-y-2" data-testid="cloudflare-target-list">
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        This app has {targets.length} Workers. Each folder deploys to its own
-        Worker, and each connected one deploys when a sync pushes changes to it.
+        This app has {folders.length} folders that can deploy as Workers. Each
+        deploys to its own Worker, and each connected one deploys when a sync
+        pushes changes to it.
       </p>
       <ul className="border rounded-md divide-y">
-        {targets.map((target) => {
+        {folders.map((target) => {
           const connection = connections.find(
             (candidate) => candidate.rootDirectory === target.rootDirectory,
           );

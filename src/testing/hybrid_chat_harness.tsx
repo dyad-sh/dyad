@@ -500,6 +500,7 @@ function eventPayload(e: { args: unknown[] }): unknown {
 
 const HYBRID_EXTRA_ENV_KEYS = [
   "DYAD_SKIP_MANAGED_PNPM_INSTALL",
+  "DYAD_DEV_NODEJS_STATUS",
   "E2E_TEST_BUILD",
   "FAKE_LLM_PORT",
 ] as const;
@@ -617,6 +618,9 @@ export async function setupHybridChatHarness(
 
   const envSnapshot = snapshotHybridEnv();
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
+  // The mounted UI queries Node status. Use the existing development override
+  // so host Node/pnpm subprocesses cannot delay bridge settling on busy CI.
+  process.env.DYAD_DEV_NODEJS_STATUS = "installed";
   if (options.testBuild) {
     if (!IS_TEST_BUILD) {
       // eslint-disable-next-line no-console

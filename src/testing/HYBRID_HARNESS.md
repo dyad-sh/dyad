@@ -319,6 +319,11 @@ before the active one fully disposes.
 
 ## 7. Pitfalls
 
+- **Host Node/pnpm probes** — the harness sets `DYAD_DEV_NODEJS_STATUS=installed`
+  and restores its previous value on disposal. This keeps the real `nodejs-status`
+  handler deterministic without running host subprocesses that can exceed the
+  bridge's settle budget on Windows. Test runtime detection in the focused Node
+  handler tests instead.
 - **Missing `waitForStreamEnd` before main-side asserts** → flaky files/git/db
   and teardown "Database not initialized". See §5.
 - **Mounting `ChatPage` instead of `ChatPanel`** → pulls in Monaco/iframe and

@@ -206,6 +206,10 @@ turn. A raw invoke can leave the tracked set before its renderer-side `.then()`
 continuation schedules a dependent invoke, so returning on the first empty
 observation recreates teardown races.
 
+If `settleInFlight()` times out with pending `nodejs-status`, check host Node/pnpm
+probes. The hybrid harness sets and restores `DYAD_DEV_NODEJS_STATUS=installed`
+to avoid those subprocesses; skipping implicit pnpm installation alone is insufficient.
+
 A distributed-machine dispatch receipt confirms admission, not completion of
 the main-owned command. Hybrid harness disposal must fence new actor work,
 cancel and dispose every harness-owned actor, drain legacy stream handlers, and

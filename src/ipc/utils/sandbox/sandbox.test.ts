@@ -429,13 +429,27 @@ describe("sandbox capabilities", () => {
       script: `
         const rows = JSON.parse(await read_file("src/rows.json"), (key, value) => key === "internal" ? undefined : value);
         const grouped = Object.groupBy(rows, row => row.group);
+        const mapped = Map.groupBy(rows, row => row.group);
         const sorted = rows.toSorted((a, b) => a.name.localeCompare(b.name, "en-US"));
         const names = sorted.map(row => { delete row.group; return row.name; });
+        const sparse = [1, 2, 3];
+        delete sparse[1];
+        const date = new Date("2026-09-21T23:30:00-07:00");
         JSON.stringify({
           names,
           firstGroupSize: grouped.one.length,
+          mappedGroupNames: mapped.get("one").map(row => row.name),
+          reversed: names.toReversed(),
+          spliced: names.toSpliced(1, 1, "b"),
+          originalNames: names.join(","),
           removed: !Object.hasOwn(rows[0], "internal") && !Object.hasOwn(rows[0], "group"),
+          deletedElement: !Object.hasOwn(sparse, 1) && sparse.length === 3,
           union: Array.from(new Set(["one"]).union(new Set(["two"]))),
+          intersection: Array.from(new Set(["one", "two"]).intersection(new Set(["two", "three"]))),
+          difference: Array.from(new Set(["one", "two"]).difference(new Set(["two"]))),
+          replaced: JSON.stringify({ keep: 1, internal: true }, (key, value) => key === "internal" ? undefined : value, 2),
+          formatted: new Intl.NumberFormat("en-US", { minimumFractionDigits: 2 }).format(1234.5),
+          utcDate: [date.getHours(), date.getDate(), date.getTimezoneOffset()],
           encoded: encodeURIComponent("a b")
         }, null, 2);
       `,
@@ -443,10 +457,78 @@ describe("sandbox capabilities", () => {
     expect(JSON.parse(result.value)).toEqual({
       names: ["a", "é", "z"],
       firstGroupSize: 2,
+      mappedGroupNames: ["z", "é"],
+      reversed: ["z", "é", "a"],
+      spliced: ["a", "b", "z"],
+      originalNames: "a,é,z",
       removed: true,
+      deletedElement: true,
       union: ["one", "two"],
+      intersection: ["two"],
+      difference: ["one"],
+      replaced: '{\n  "keep": 1\n}',
+      formatted: "1,234.50",
+      utcDate: [6, 22, 0],
       encoded: "a%20b",
     });
+  });
+
+  it.each([
+    '"a".localeCompare("b", "de");',
+    'new Intl.NumberFormat("de").format(1);',
+    'new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles" });',
+  ])("rejects unsupported locale/time-zone arguments: %s", async (script) => {
+    if (!isSandboxSupportedPlatform()) return;
+    await expect(runSandboxScript({ appPath, script })).rejects.toThrow(
+      /en-US|UTC/,
+    );
+  });
+
+  it.each(["1n", 'new Map([["key", 1]])', "new Set([1])"])(
+    "rejects non-structured values at return and host-call boundaries: %s",
+    async (expression) => {
+      if (!isSandboxSupportedPlatform()) return;
+      await expect(
+        runSandboxScript({ appPath, script: `${expression};` }),
+      ).rejects.toThrow(/BigInt|Map|Set|structured/i);
+      let called = false;
+      await expect(
+        executeSandboxScriptInProcess({
+          appPath,
+          script: `send(${expression});`,
+          capabilities: {
+            send: () => {
+              called = true;
+            },
+          },
+        }),
+      ).rejects.toThrow(/BigInt|Map|Set|structured/i);
+      expect(called).toBe(false);
+    },
+  );
+
+  it.each(["\ud800", { ["\ud800"]: 1 }])(
+    "rejects lone surrogates in host-returned strings and keys: %j",
+    async (value) => {
+      if (!isSandboxSupportedPlatform()) return;
+      await expect(
+        executeSandboxScriptInProcess({
+          appPath,
+          script: "receive();",
+          capabilities: { receive: () => value },
+        }),
+      ).rejects.toThrow(/lone surrogate/i);
+    },
+  );
+
+  it.each([
+    'JSON.parse("1", () => read_file("src/data.txt"));',
+    'JSON.stringify({ a: 1 }, () => read_file("src/data.txt"));',
+  ])("rejects host calls inside JSON callbacks: %s", async (script) => {
+    if (!isSandboxSupportedPlatform()) return;
+    await expect(runSandboxScript({ appPath, script })).rejects.toThrow(
+      "JSON callbacks do not support synchronous host suspensions",
+    );
   });
 
   it("reports actual attachment host calls from MustardScript", async () => {

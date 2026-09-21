@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
 import type { McpToolConsent } from "@/ipc/types";
+import { userSuppliedInputs } from "@/ipc/types/mcp_catalog";
 import { useOauthStorageEncrypted } from "./AddPluginDialog";
 import { CatalogBadge } from "./CatalogBadge";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
@@ -121,7 +122,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const catalogEntry = s.catalogSlug
     ? catalogQuery.data?.entries.find((e) => e.slug === s.catalogSlug)
     : undefined;
-  const setupInputs = catalogEntry?.inputs ?? [];
+  const setupInputs = userSuppliedInputs(catalogEntry?.inputs);
   // Show the guided setup until every declared field has a saved value.
   const needsSetup = serverNeedsSetup(s, setupInputs);
   // A disabled catalog server might still need setup while its catalog is

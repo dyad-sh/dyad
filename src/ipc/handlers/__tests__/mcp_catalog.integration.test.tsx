@@ -463,4 +463,48 @@ describe("Plugins catalog (integration)", () => {
       clearMcpCatalogCacheForTests();
     }
   }, 40_000);
+
+  it("adds an entry with a vendored oauth client enabled, with the client stored", async () => {
+    const previousPayload = catalogPayload;
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-vendored",
+          name: "Integration Vendored Server",
+          category: "Testing",
+          transport: "http",
+          url: `http://localhost:${mcpPort}/mcp`,
+          oauth: { required: true },
+          inputs: [
+            {
+              kind: "vendoredOAuthClient",
+              clientId: "vendored-id",
+              clientSecret: "vendored-secret",
+            },
+          ],
+        },
+      ],
+    };
+    clearMcpCatalogCacheForTests();
+    try {
+      const created = await ipc.mcp.addFromCatalog({
+        slug: "integration-vendored",
+      });
+      // Nothing for the user to fill in, so no setup step.
+      expect(created.enabled).toBe(true);
+      expect(created.oauthEnabled).toBe(true);
+      expect(created.oauthClientId).toBe("vendored-id");
+      expect(created).not.toHaveProperty("oauthClientSecret");
+      const [row] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, created.id));
+      expect(decryptFromString(row.oauthClientSecret!)).toBe(
+        "vendored-secret",
+      );
+    } finally {
+      catalogPayload = previousPayload;
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
 });

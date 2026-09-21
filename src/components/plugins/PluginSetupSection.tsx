@@ -2,20 +2,23 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isRequiredInput, type CatalogInput } from "@/ipc/types/mcp_catalog";
+import {
+  isRequiredInput,
+  type UserSuppliedInput,
+} from "@/ipc/types/mcp_catalog";
 import type { McpServer } from "@/ipc/types";
 import type { McpServerUpdate } from "@/ipc/types/mcp";
 import { useOauthCallbackPort } from "./AddPluginDialog";
 
 // A stable key per input, and where its value is stored, both derive from
 // `kind` (plus `name` for the ones that address a specific header/var).
-function keyOf(input: CatalogInput): string {
+function keyOf(input: UserSuppliedInput): string {
   if (input.kind === "header") return `header:${input.name}`;
   if (input.kind === "env") return `env:${input.name}`;
   return input.kind;
 }
 
-function labelOf(input: CatalogInput, markOptional: boolean): string {
+function labelOf(input: UserSuppliedInput, markOptional: boolean): string {
   if (input.kind === "oauthClientId") return "Client ID";
   if (input.kind === "oauthClientSecret") return "Client secret";
   return markOptional && !isRequiredInput(input)
@@ -24,7 +27,7 @@ function labelOf(input: CatalogInput, markOptional: boolean): string {
 }
 
 // The client ID is a public identifier; keys and secrets are masked.
-function isSecret(input: CatalogInput): boolean {
+function isSecret(input: UserSuppliedInput): boolean {
   return input.kind !== "oauthClientId";
 }
 
@@ -43,7 +46,7 @@ export function PluginSetupSection({
   disabled = false,
 }: {
   server: McpServer;
-  inputs: CatalogInput[];
+  inputs: UserSuppliedInput[];
   isSaving: boolean;
   onSave: (update: McpServerUpdate) => Promise<void>;
   variant?: "setup" | "optional";
@@ -51,7 +54,7 @@ export function PluginSetupSection({
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const isSetup = variant === "setup";
-  const isFilled = (input: CatalogInput) =>
+  const isFilled = (input: UserSuppliedInput) =>
     !!(values[keyOf(input)] ?? "").trim();
   // Setup needs every required input; a blank optional one is simply not
   // written. The optional form saves as soon as anything is typed.

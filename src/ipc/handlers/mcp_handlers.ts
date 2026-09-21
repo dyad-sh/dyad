@@ -1,6 +1,6 @@
 import log from "electron-log";
 import { getRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
-import { isRequiredInput } from "@/ipc/types/mcp_catalog";
+import { isRequiredInput, userSuppliedInputs } from "@/ipc/types/mcp_catalog";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
@@ -251,7 +251,10 @@ export function registerMcpHandlers() {
       // them on the setup page first, so it's added disabled and doesn't
       // connect or spawn until configured. Optional-only inputs don't
       // hold it back; they can be set later from the server's editor.
-      const needsSetup = (entry.inputs ?? []).some(isRequiredInput);
+      const needsSetup = userSuppliedInputs(entry.inputs).some(isRequiredInput);
+      const vendoredClient = entry.inputs?.find(
+        (input) => input.kind === "vendoredOAuthClient",
+      );
       const values =
         entry.transport === "stdio"
           ? {
@@ -273,6 +276,10 @@ export function registerMcpHandlers() {
               enabled: !needsSetup,
               oauthEnabled: entry.oauth != null,
               oauthScope: entry.oauth?.scope ?? null,
+              oauthClientId: vendoredClient?.clientId ?? null,
+              oauthClientSecret: vendoredClient?.clientSecret
+                ? encryptToString(vendoredClient.clientSecret)
+                : null,
               catalogSlug: entry.slug,
             };
       const [created] = await db

@@ -381,9 +381,8 @@ export function registerRecordingHandlers() {
                   return;
                 }
 
-                // Start from the same pristine, logged-out state the generated test
-                // replays from: the CoW branch copied the real users, so a stale
-                // cookie could still look valid.
+                // Clear stored browser state too so recording starts from the
+                // same pristine, logged-out browser as the generated test.
                 //
                 // The preview shares the app's normal browser session, so this also
                 // signs the user out of their own preview and drops whatever it had in

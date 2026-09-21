@@ -115,10 +115,11 @@ const NOOP_TEARDOWN = async () => {
 };
 
 /**
- * Prepare an isolated database for a test run.
+ * Prepare an isolated database for a recording or test run.
  *
  * - Neon apps: cut a throwaway copy-on-write branch, point the app's
  *   `.env.local` at it, and restart the dev server so it picks up the branch.
+ *   Clear copied data before recording or before each test case.
  *   On any failure we dead-end (no run against real data). `teardown` restores
  *   `.env.local`, restarts back onto the real branch, and deletes the branch.
  * - Supabase apps (free tier, no branching): create a throwaway auth user in
@@ -256,7 +257,26 @@ export async function prepareIsolatedTestDatabase({
     const processId = await restartAppInPlace({ app, appPath });
     await waitForServerReady(app.id, signal, processId);
 
-    // 5. Trust the preview origin for Neon Auth. Recordings get an account now;
+    // 5. Recordings start from the same empty database as replay. Clear before
+    //    provisioning the recording user so cleanup cannot delete that account.
+    const clearTestData = await createNeonTestDataCleaner({
+      databaseUrl: branch.databaseUrl,
+      projectId: app.neonProjectId!,
+      branchId: branch.branchId,
+      protectedBranchIds: [
+        app.neonActiveBranchId,
+        app.neonDevelopmentBranchId,
+        app.neonPreviewBranchId,
+      ],
+    });
+    signal?.throwIfAborted();
+    if (!perTestCase) {
+      emit("Clearing copied data from the temporary Neon database…\n", "setup");
+      await clearTestData(signal);
+      signal?.throwIfAborted();
+    }
+
+    // 6. Trust the preview origin for Neon Auth. Recordings get an account now;
     //    test runs create one in beforeEach after clearing the database. Auth
     //    setup remains best-effort for recordings, but tests fail closed.
     let testCredentials: Record<string, string> | undefined;
@@ -320,19 +340,6 @@ export async function prepareIsolatedTestDatabase({
       throw new Error("Test run stopped.");
     }
 
-    const clearTestData = perTestCase
-      ? await createNeonTestDataCleaner({
-          databaseUrl: branch.databaseUrl,
-          projectId: app.neonProjectId!,
-          branchId: branch.branchId,
-          protectedBranchIds: [
-            app.neonActiveBranchId,
-            app.neonDevelopmentBranchId,
-            app.neonPreviewBranchId,
-          ],
-        })
-      : undefined;
-    signal?.throwIfAborted();
     if (perTestCase)
       emit(
         "Each test starts with an empty temporary Neon database, including the first test. Seed required rows in each test or beforeEach, and read test credentials there rather than at module scope or in beforeAll. Your original branch is unchanged.\n",
@@ -349,7 +356,7 @@ export async function prepareIsolatedTestDatabase({
               signal?.throwIfAborted();
               // Clear the copied parent data before the first case too. Repeating
               // this before later cases recovers a worker killed before teardown.
-              await clearTestData!(caseSignal);
+              await clearTestData(caseSignal);
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               if (!branch.neonAuthBaseUrl) return {};
@@ -363,7 +370,7 @@ export async function prepareIsolatedTestDatabase({
                 DYAD_TEST_USER_PASSWORD: account.password,
               };
             },
-            afterEach: (caseSignal) => clearTestData!(caseSignal),
+            afterEach: (caseSignal) => clearTestData(caseSignal),
           }
         : undefined,
       teardown,

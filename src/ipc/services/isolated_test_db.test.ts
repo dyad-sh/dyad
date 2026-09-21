@@ -492,6 +492,101 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
 });
 
 describe("prepareIsolatedTestDatabase — Neon happy path", () => {
+  it.each([true, false])(
+    "clears copied data once before recording starts (auth: %s)",
+    async (withAuth) => {
+      mocks.createTempTestBranch.mockResolvedValue({
+        branchId: "temporary",
+        databaseUrl: "postgres://temporary",
+        ...(withAuth ? { neonAuthBaseUrl: "https://auth" } : {}),
+      });
+      mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+      const signal = new AbortController().signal;
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("ok"));
+      try {
+        const prepared = await prepareIsolatedTestDatabase({
+          app: makeApp({
+            neonProjectId: "project",
+            neonActiveBranchId: "active",
+            neonDevelopmentBranchId: "development",
+            neonPreviewBranchId: "preview",
+          }),
+          emit,
+          runtimeMode: "host",
+          signal,
+        });
+
+        expect(prepared.infraError).toBeUndefined();
+        expect(prepared.isolation).toEqual({ mode: "neon-branch" });
+        expect(prepared.testCaseLifecycle).toBeUndefined();
+        expect(mocks.createNeonTestDataCleaner).toHaveBeenCalledWith({
+          databaseUrl: "postgres://temporary",
+          branchId: "temporary",
+          projectId: "project",
+          protectedBranchIds: ["active", "development", "preview"],
+        });
+        expect(mocks.clearNeonTestData.mock.calls).toEqual([[signal]]);
+        if (withAuth) {
+          expect(
+            mocks.clearNeonTestData.mock.invocationCallOrder[0],
+          ).toBeLessThan(
+            mocks.createNeonTestAccount.mock.invocationCallOrder[0],
+          );
+          expect(prepared.authSetup).toEqual({
+            mode: "neon-better-auth",
+            email: "neon-test@dyad.test",
+            password: "neon-pw",
+          });
+        } else {
+          expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
+          expect(prepared.authSetup).toBeUndefined();
+        }
+
+        await prepared.teardown();
+        expect(mocks.clearNeonTestData).toHaveBeenCalledTimes(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
+
+  it("stops recording setup and restores the preview when clearing copied data fails", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "temporary",
+      databaseUrl: "postgres://temporary",
+      neonAuthBaseUrl: "https://auth",
+    });
+    mocks.clearNeonTestData.mockRejectedValueOnce(
+      new Error("permission denied"),
+    );
+    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("ok"));
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "project" }),
+        emit,
+        runtimeMode: "host",
+      });
+
+      expect(prepared.infraError?.message).toContain("permission denied");
+      expect(prepared.isolation.mode).toBe("none");
+      expect(prepared.authSetup).toBeUndefined();
+      expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
+      expect(mocks.executeApp).toHaveBeenCalledTimes(2);
+      expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1 }),
+        "temporary",
+      );
+      expect(await prepared.teardown()).toEqual({ envRestored: true });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("checks the direct dev server instead of the HTML-rewriting proxy", async () => {
     mocks.createTempTestBranch.mockResolvedValue({
       branchId: "test-br",

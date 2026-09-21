@@ -19,6 +19,7 @@ import {
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 import * as playwrightBootstrap from "../utils/playwright_bootstrap";
+import * as spawnStreamingUtils from "../utils/spawn_streaming";
 import { runningApps } from "../utils/process_manager";
 
 // Every app folder lives under one throwaway base so the delete handler runs
@@ -34,7 +35,10 @@ const { browserWindowFromWebContentsMock } = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
-  BrowserWindow: { fromWebContents: browserWindowFromWebContentsMock },
+  BrowserWindow: {
+    fromWebContents: browserWindowFromWebContentsMock,
+    getAllWindows: vi.fn(() => []),
+  },
   app: {
     getPath: vi.fn(() =>
       path.join(os.tmpdir(), "dyad-tests-handler-user-data"),
@@ -50,6 +54,8 @@ vi.mock("@/paths/paths", async (importOriginal) => {
   const base = nodePath.join(nodeOs.tmpdir(), "dyad-tests-handler-tests");
   return {
     ...actual,
+    getUserDataPath: () =>
+      nodePath.join(nodeOs.tmpdir(), "dyad-tests-handler-user-data"),
     getDyadAppPath: (appPath: string) =>
       nodePath.isAbsolute(appPath) ? appPath : nodePath.join(base, appPath),
   };
@@ -162,9 +168,25 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
-    it.each([false, true])(
-      "only reports lifecycle failure when the run was not cancelled (cancelled: %s)",
-      async (cancelled) => {
+    it.each([
+      { outcome: "cancelled", message: "Test run stopped." },
+      {
+        outcome: "timed out",
+        message:
+          "The test run exceeded the 3-minute limit and was stopped before it could finish.",
+      },
+      {
+        outcome: "missing server",
+        message:
+          "Start the app before running tests — the dev server isn't running.",
+      },
+      {
+        outcome: "completed",
+        message: "Per-test database isolation failed: cleanup failed",
+      },
+    ])(
+      "handles lifecycle cleanup failure after a $outcome run",
+      async ({ outcome, message }) => {
         const appId = seedApp("app");
         harness.db
           .update(apps)
@@ -174,9 +196,7 @@ describe("tests handlers", () => {
         const controller = new AbortController();
         let failure: Error | undefined;
         const close = vi.fn(async () => {
-          failure = new Error(
-            cancelled ? "Test case lifecycle is closing." : "cleanup failed",
-          );
+          failure = new Error("cleanup failed");
         });
         startTestCaseLifecycleServerMock.mockResolvedValue({
           env: {},
@@ -194,12 +214,59 @@ describe("tests handlers", () => {
         const bootstrap = vi
           .spyOn(playwrightBootstrap, "ensurePlaywrightBootstrap")
           .mockImplementation(async () => {
-            controller.abort();
+            if (outcome === "cancelled") controller.abort();
             return { installed: false, previewRouted: true };
           });
-        // Cancellation happens after the lifecycle server starts, before spawning
-        // Playwright. The non-cancelled case uses the missing-server result.
-        if (cancelled)
+        const appPath = path.join(TEMP_BASE, "app");
+        const packagePath = path.join(
+          appPath,
+          "node_modules",
+          "@playwright",
+          "test",
+          "package.json",
+        );
+        fs.mkdirSync(path.dirname(packagePath), { recursive: true });
+        fs.writeFileSync(packagePath, "{}");
+        const spawn = vi
+          .spyOn(spawnStreamingUtils, "spawnStreaming")
+          .mockImplementation(async ({ signal, timeoutMs, env }) => {
+            expect(signal?.aborted).toBe(false);
+            expect(timeoutMs).toBe(180_000);
+            const reportPath = path.join(
+              appPath,
+              env!.PLAYWRIGHT_JSON_OUTPUT_NAME!,
+            );
+            fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+            fs.writeFileSync(
+              reportPath,
+              JSON.stringify({
+                suites: [
+                  {
+                    file: path.join(appPath, "e2e-tests/test.spec.ts"),
+                    specs: [
+                      {
+                        title: "passes",
+                        tests: [
+                          {
+                            status: "expected",
+                            results: [{ status: "passed", duration: 10 }],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              }),
+            );
+            return {
+              code: outcome === "timed out" ? 124 : 0,
+              stdout: "",
+              stderr: "",
+              aborted: false,
+              timedOut: outcome === "timed out",
+            };
+          });
+        if (outcome !== "missing server")
           runningApps.set(appId, { proxyUrl: "http://localhost:42100" } as any);
         try {
           const result = await runAppTestsWithIsolation({
@@ -207,17 +274,23 @@ describe("tests handlers", () => {
             appId,
             source: "panel",
             externalSignal: controller.signal,
+            timeoutMs: 60_000,
           });
-          expect(result.infraError?.message).toBe(
-            cancelled
-              ? "Test run stopped."
-              : "Per-test database isolation failed: cleanup failed",
+          expect(result.infraError?.message).toBe(message);
+          expect(spawn).toHaveBeenCalledTimes(
+            outcome === "timed out" || outcome === "completed" ? 1 : 0,
           );
+          if (outcome === "completed") {
+            expect(result.results).toEqual([
+              expect.objectContaining({ status: "passed" }),
+            ]);
+          }
           expect(close).toHaveBeenCalledTimes(1);
           expect(teardown).toHaveBeenCalledTimes(1);
         } finally {
           runningApps.delete(appId);
           bootstrap.mockRestore();
+          spawn.mockRestore();
         }
       },
     );

@@ -51,28 +51,33 @@ async function setup(onSlowShutdown?: () => void) {
 }
 
 describe("test case lifecycle bridge", () => {
-  it("cancels a hanging provider operation and still drains cleanup on close", async () => {
-    const { lifecycle, server, request } = await setup();
-    let started!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    lifecycle.beforeEach.mockImplementationOnce(
-      (signal) =>
-        new Promise((_, reject) => {
-          signal!.addEventListener("abort", () => reject(signal!.reason), {
-            once: true,
-          });
-          started();
-        }),
-    );
-    const pendingRequest = request("before/one").catch(() => undefined);
-    await ready;
-    await server.close();
-    await pendingRequest;
-    expect(server.failure?.message).toContain("closing");
-    expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
-  });
+  it.each([false, true])(
+    "ignores shutdown cancellation but retains final cleanup failures (cleanup fails: %s)",
+    async (cleanupFails) => {
+      const { lifecycle, server, request } = await setup();
+      const cleanupError = new Error("final cleanup failed");
+      if (cleanupFails) lifecycle.afterEach.mockRejectedValueOnce(cleanupError);
+      let started!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      lifecycle.beforeEach.mockImplementationOnce(
+        (signal) =>
+          new Promise((_, reject) => {
+            signal!.addEventListener("abort", () => reject(signal!.reason), {
+              once: true,
+            });
+            started();
+          }),
+      );
+      const pendingRequest = request("before/one").catch(() => undefined);
+      await ready;
+      await server.close();
+      await pendingRequest;
+      expect(server.failure).toBe(cleanupFails ? cleanupError : undefined);
+      expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("surfaces a provider that ignores cancellation while retaining the drain barrier", async () => {
     const warning = vi.fn();
@@ -106,6 +111,7 @@ describe("test case lifecycle bridge", () => {
       await closed;
       await pendingRequest;
     }
+    expect(server.failure).toBeUndefined();
     expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
   });
 

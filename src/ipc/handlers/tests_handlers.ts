@@ -1648,13 +1648,13 @@ export async function runAppTestsWithIsolation({
             }
           }
 
-          if (caseServer?.failure && !controller.signal.aborted) {
-            result = {
-              ...result,
-              infraError: {
-                message: `Per-test database isolation failed: ${caseServer.failure.message}`,
-              },
-            };
+          if (caseServer?.failure) {
+            const message = `Per-test database isolation failed: ${caseServer.failure.message}`;
+            // Keep cleanup diagnostics without replacing the reason the run stopped.
+            logger.warn(message);
+            if (!controller.signal.aborted && !result.infraError) {
+              result = { ...result, infraError: { message } };
+            }
           }
           if (previewViewClosed) {
             // The CDP target vanished mid-run. Losing it usually doesn't abort

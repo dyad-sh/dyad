@@ -21,7 +21,10 @@ export async function startTestCaseLifecycleServer(
   let pending = Promise.resolve();
   let activeController: AbortController | undefined;
   let closePromise: Promise<void> | undefined;
+  const closingError = new Error("Test case lifecycle is closing.");
   const rememberFailure = (error: unknown) => {
+    // Shutdown cancellation is expected; final cleanup can still genuinely fail.
+    if (error === closingError) return;
     failure ??= error instanceof Error ? error : new Error(String(error));
   };
   const runHook = async <T>(hook: (signal: AbortSignal) => Promise<T>) => {
@@ -120,7 +123,7 @@ export async function startTestCaseLifecycleServer(
     close() {
       if (closePromise) return closePromise;
       closing = true;
-      activeController?.abort(new Error("Test case lifecycle is closing."));
+      activeController?.abort(closingError);
       closePromise = (async () => {
         const closed = new Promise<void>((resolve) =>
           server.close(() => resolve()),

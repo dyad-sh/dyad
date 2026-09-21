@@ -79,6 +79,11 @@ export const CloudflareDeploymentStatusSchema = z.object({
    * folder the app syncs. Null when it matches.
    */
   ruleDeploys: z.string().nullable(),
+  /**
+   * The Worker's workers.dev address as of this check, since the route can be
+   * turned on or off after connecting. Null when it is off.
+   */
+  workerUrl: z.string().nullable(),
 });
 
 export type CloudflareDeploymentStatus = z.infer<

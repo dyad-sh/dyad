@@ -1251,6 +1251,61 @@ describe("deployment status", () => {
     ).toBe("acme/shop (branch main, folder worker)");
   });
 
+  it("does not warn about a rule widened to every branch", async () => {
+    cloudflare.triggers[0].branch_includes = ["*"];
+    db.update(apps)
+      .set({ githubBranch: "redesign" })
+      .where(eq(apps.id, appId))
+      .run();
+    const target = { appId, rootDirectory: "worker" };
+    expect(
+      (await handlers.handleGetDeploymentStatus(target)).ruleDeploys,
+    ).toBeNull();
+
+    cloudflare.triggers[0].branch_excludes = ["redesign"];
+    expect(
+      (await handlers.handleGetDeploymentStatus(target)).ruleDeploys,
+    ).not.toBeNull();
+  });
+
+  it("gives the Worker's address as its route is now", async () => {
+    const target = { appId, rootDirectory: "worker" };
+    expect((await handlers.handleGetDeploymentStatus(target)).workerUrl).toBe(
+      "https://shop-api.acme.workers.dev",
+    );
+
+    // Switched off in the dashboard, or by a deploy whose config says so.
+    cloudflare.workers.get("shop-api")!.routeEnabled = false;
+    expect(
+      (await handlers.handleGetDeploymentStatus(target)).workerUrl,
+    ).toBeNull();
+  });
+
+  it("finds the address of a Worker whose route was turned on after connecting", async () => {
+    db.update(cloudflareAppConnections).set({ workerUrl: null }).run();
+    expect(
+      (
+        await handlers.handleGetDeploymentStatus({
+          appId,
+          rootDirectory: "worker",
+        })
+      ).workerUrl,
+    ).toBe("https://shop-api.acme.workers.dev");
+  });
+
+  it("keeps the stored address when the route cannot be read", async () => {
+    cloudflare.workers.get("shop-api")!.routeEnabled = false;
+    cloudflare.failOn = (_, path) => path.endsWith("/subdomain");
+    expect(
+      (
+        await handlers.handleGetDeploymentStatus({
+          appId,
+          rootDirectory: "worker",
+        })
+      ).workerUrl,
+    ).toBe("https://shop-api.acme.workers.dev");
+  });
+
   it("says what the rule deploys once the app syncs another repository", async () => {
     db.update(apps)
       .set({ githubRepo: "shop-v2" })

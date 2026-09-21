@@ -48,6 +48,7 @@ import {
   startBuild,
   toCloudflareDyadError,
   triggerDeploys,
+  triggerDeploysBranch,
   updateTrigger,
   upsertRepoConnection,
   verifyToken,
@@ -644,7 +645,7 @@ async function handleConnectWorker(
     // Repointing it would end a deployment of another branch or folder.
     const ownRuleDeploysElsewhere =
       ownRule !== undefined &&
-      (!(ownRule.branch_includes ?? []).includes(branch) ||
+      (!triggerDeploysBranch(ownRule, branch) ||
         getTriggerRootDirectory(ownRule) !== rootDirectory);
     if (!params.overwrite) {
       if (foreignTriggers.length > 0) {
@@ -791,6 +792,23 @@ async function handleConnectWorker(
   }
 }
 
+/** The Worker's address given what its route is now, which may not be what was stored. */
+async function currentWorkerUrl(
+  token: string,
+  row: ConnectionRow,
+  routeEnabled: boolean | undefined,
+): Promise<string | null> {
+  if (routeEnabled === undefined) return row.workerUrl;
+  if (!routeEnabled) return null;
+  if (row.workerUrl) return row.workerUrl;
+  const subdomain = await getAccountSubdomain(token, row.accountId).catch(
+    () => null,
+  );
+  return subdomain
+    ? `https://${row.workerName}.${subdomain}.workers.dev`
+    : null;
+}
+
 async function handleGetDeploymentStatus({
   appId,
   rootDirectory,
@@ -809,7 +827,7 @@ async function handleGetDeploymentStatus({
   }
 
   try {
-    const [build, rule] = await Promise.all([
+    const [build, rule, routeEnabled] = await Promise.all([
       getLatestBuild(token, row.accountId, row.workerTag),
       // A rule deleted in the Cloudflare dashboard leaves the Worker and its
       // last build in place, so nothing else would show that deploys stopped.
@@ -822,7 +840,13 @@ async function handleGetDeploymentStatus({
             ) ?? null,
         )
         .catch(() => undefined),
+      // The route can be switched in the dashboard, and a deploy applies
+      // whatever the Wrangler config says. Not knowing keeps the stored address.
+      isWorkersDevRouteEnabled(token, row.accountId, row.workerName).catch(
+        () => undefined,
+      ),
     ]);
+    const workerUrl = await currentWorkerUrl(token, row, routeEnabled);
     const ruleMissing = rule === null;
     // The rule stays on the branch and repository it was made for. An app
     // moved to another one still syncs, but nothing deploys.
@@ -844,6 +868,7 @@ async function handleGetDeploymentStatus({
         tokenRevoked: false,
         ruleMissing,
         ruleDeploys,
+        workerUrl,
       };
     }
     const state = toDeploymentState(build);
@@ -861,6 +886,7 @@ async function handleGetDeploymentStatus({
       tokenRevoked: isBuildTokenRevokedLog(logTail),
       ruleMissing,
       ruleDeploys,
+      workerUrl,
     };
   } catch (error) {
     throw toCloudflareDyadError(error, "Could not read the deployment status");

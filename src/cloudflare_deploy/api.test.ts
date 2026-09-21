@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   describeTriggerSource,
   triggerDeploys,
+  triggerDeploysBranch,
   getTriggerRootDirectory,
   CloudflareApiError,
   deleteTrigger,
@@ -160,6 +161,38 @@ describe("whether a rule still deploys what the app syncs", () => {
       true,
     );
     expect(describeTriggerSource(unnamed)).toBe("branch main, folder api");
+  });
+});
+
+describe("which branches set a rule off", () => {
+  const rule = (includes: string[], excludes: string[] = []) => ({
+    trigger_uuid: "rule-1",
+    branch_includes: includes,
+    branch_excludes: excludes,
+  });
+
+  it("is the branches it names", () => {
+    expect(triggerDeploysBranch(rule(["main"]), "main")).toBe(true);
+    expect(triggerDeploysBranch(rule(["main"]), "redesign")).toBe(false);
+    expect(triggerDeploysBranch(rule(["main"]), "main-2")).toBe(false);
+    expect(triggerDeploysBranch(rule(["main"]), "not-main")).toBe(false);
+  });
+
+  it("reads * as any run of characters", () => {
+    expect(triggerDeploysBranch(rule(["*"]), "redesign")).toBe(true);
+    expect(triggerDeploysBranch(rule(["release/*"]), "release/1.2")).toBe(true);
+    expect(triggerDeploysBranch(rule(["release/*"]), "main")).toBe(false);
+  });
+
+  it("lets an exclusion win", () => {
+    expect(triggerDeploysBranch(rule(["*"], ["main"]), "main")).toBe(false);
+    expect(triggerDeploysBranch(rule(["*"], ["main"]), "redesign")).toBe(true);
+  });
+
+  it("takes every other character in a pattern literally", () => {
+    expect(triggerDeploysBranch(rule(["feat.x"]), "feat.x")).toBe(true);
+    expect(triggerDeploysBranch(rule(["feat.x"]), "featax")).toBe(false);
+    expect(triggerDeploysBranch(rule(["fix(ui)"]), "fix(ui)")).toBe(true);
   });
 });
 

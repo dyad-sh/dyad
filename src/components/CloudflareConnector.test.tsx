@@ -94,6 +94,8 @@ beforeEach(() => {
     logTail: [],
     tokenRevoked: false,
     ruleMissing: false,
+    ruleDeploys: null,
+    workerUrl: CONNECTION.workerUrl,
   });
 });
 
@@ -404,15 +406,35 @@ describe("a connected Worker", () => {
   });
 
   it("shows no address for a Worker that is not served at workers.dev", async () => {
+    // The route was on when it was connected and has been turned off since.
     cloudflare.getAppStatus.mockResolvedValue(
-      appStatus({ connections: [{ ...CONNECTION, workerUrl: null }] }),
+      appStatus({ connections: [CONNECTION] }),
     );
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: "abc1234def",
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: null,
+      workerUrl: null,
+    });
     renderConnector();
 
     await screen.findByText("Live");
     expect(screen.queryByTestId("cloudflare-worker-url")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Cloudflare" }));
     expect(openExternalUrl).toHaveBeenCalledWith(CONNECTION.dashboardUrl);
+  });
+
+  it("shows an address the Worker gained after it was connected", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [{ ...CONNECTION, workerUrl: null }] }),
+    );
+    renderConnector();
+
+    const link = await screen.findByTestId("cloudflare-worker-url");
+    expect(link.textContent).toBe(CONNECTION.workerUrl);
   });
 
   it("shows the end of the log for a failed deployment", async () => {
@@ -441,6 +463,8 @@ describe("a connected Worker", () => {
 
     const warning = await screen.findByTestId("cloudflare-rule-missing");
     expect(warning.textContent).toMatch(/no longer exists on Cloudflare/);
+    // It would contradict the warning.
+    expect(screen.queryByText(/Deploys whenever/)).toBeNull();
     // "Live" alone would say everything is fine.
     expect(screen.getByText("Live")).toBeTruthy();
   });

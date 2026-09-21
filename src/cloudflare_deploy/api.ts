@@ -484,6 +484,27 @@ export function getTriggerRootDirectory(trigger: CloudflareTrigger): string {
 }
 
 /**
+ * Whether a push to the branch sets the rule off. In Cloudflare's patterns
+ * `*` stands for any run of characters, and an exclusion wins.
+ */
+export function triggerDeploysBranch(
+  trigger: CloudflareTrigger,
+  branch: string,
+): boolean {
+  const matches = (pattern: string) =>
+    new RegExp(
+      `^${pattern
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
+    ).test(branch);
+  return (
+    (trigger.branch_includes ?? []).some(matches) &&
+    !(trigger.branch_excludes ?? []).some(matches)
+  );
+}
+
+/**
  * Whether a rule deploys what is expected of it. A rule listed without its
  * repository is not counted against the repository.
  */
@@ -507,7 +528,7 @@ export function triggerDeploys(
       repo.toLowerCase() === expected.repo.toLowerCase());
   return (
     sameRepo &&
-    (trigger.branch_includes ?? []).includes(expected.branch) &&
+    triggerDeploysBranch(trigger, expected.branch) &&
     getTriggerRootDirectory(trigger) === expected.rootDirectory
   );
 }

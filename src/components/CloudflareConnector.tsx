@@ -726,11 +726,12 @@ function DeploymentCard({
   /** False once the folder's Wrangler config has left the branch. */
   hasConfig: boolean;
 }) {
-  const { workerUrl } = connection;
   const status = useCloudflareDeploymentStatus({
     appId,
     rootDirectory: connection.rootDirectory,
   });
+  // The stored address until the status says what it is now.
+  const workerUrl = status.data ? status.data.workerUrl : connection.workerUrl;
   const disconnect = useDisconnectCloudflareWorker();
   const state = status.data?.state;
   const inProgress = state !== undefined && isDeploymentInProgress(state);
@@ -814,7 +815,7 @@ function DeploymentCard({
         </pre>
       )}
 
-      {hasConfig && !status.data?.ruleDeploys && (
+      {hasConfig && !status.data?.ruleDeploys && !status.data?.ruleMissing && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {deployTriggerText({
             rootDirectory: connection.rootDirectory,

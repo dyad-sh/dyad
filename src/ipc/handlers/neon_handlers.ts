@@ -711,6 +711,9 @@ export function registerNeonHandlers() {
         await removeNeonEnvVars({ appPath: appRecord[0].path });
       }
 
+      const { reconcileRunningNeonPreview } =
+        await import("../services/app_runtime_service");
+      await reconcileRunningNeonPreview(appId, null);
       logger.info(`Successfully unlinked Neon project from app ${appId}`);
       return { success: true };
     } catch (error: any) {
@@ -916,7 +919,7 @@ export function registerNeonHandlers() {
   );
 
   // Do not use log handler because there's sensitive data in the response
-  createTypedHandler(neonContracts.getBranchEnvVars, async (_, params) => {
+  createLockedHandler(neonContracts.getBranchEnvVars, async (_, params) => {
     const { appId, branchType } = params;
 
     const appRows = await db

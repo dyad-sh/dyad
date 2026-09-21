@@ -54,6 +54,7 @@ const restartOptionsSchema = z
 
 const runUrlSchema = z
   .object({
+    neonAuthWarning: z.string().max(2000).optional(),
     appUrl: z.string().min(1),
     originalUrl: z.string().min(1),
     mode: RuntimeMode2Schema,

@@ -1,3 +1,4 @@
+import { previewTestNodeOptions } from "../utils/preview_dns";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -444,6 +445,7 @@ async function runPreviewTestBatch({
       ...process.env,
       ...testEnv,
       [TEST_BASE_URL_ENV]: baseUrl,
+      NODE_OPTIONS: previewTestNodeOptions(appPath),
       [PREVIEW_CDP_ENDPOINT_ENV]: previewEndpoint,
       [PREVIEW_CDP_TOKEN_ENV]: previewToken,
       PLAYWRIGHT_NO_COPY_PROMPT: "1",
@@ -886,6 +888,7 @@ export async function runAppTestsCore({
         ...process.env,
         ...testEnv,
         [TEST_BASE_URL_ENV]: baseUrl,
+        NODE_OPTIONS: previewTestNodeOptions(appPath),
         // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
         // returned above; leaving the variable unset is what keeps the
         // generated fixture shim inert so this run launches its own browser.

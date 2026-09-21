@@ -29,7 +29,7 @@ const FRESH_REF = makeRef("app-run:4");
 
 function makeUrl(n: number): RunUrl {
   return {
-    appUrl: `http://localhost:4210${n}`,
+    appUrl: `http://app-7.localhost:4210${n}`,
     originalUrl: `http://localhost:3210${n}`,
     mode: "host",
   };
@@ -721,4 +721,30 @@ describe("ignore", () => {
     });
     expect(ignore(state, "invalid-in-current-state").state).toBe(state);
   });
+});
+
+it("updates and clears the warning even when the proxy URL is unchanged", () => {
+  const state: RunState = {
+    type: "ready",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  };
+  const warning = transition(state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: { ...makeUrl(1), neonAuthWarning: "Restart and retry" },
+  });
+  expect(warning.state).not.toBe(state);
+  expect(warning.state).toMatchObject({
+    url: { neonAuthWarning: "Restart and retry" },
+  });
+  const recovered = transition(warning.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  });
+  expect(recovered.state).toEqual(state);
 });

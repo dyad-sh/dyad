@@ -17,7 +17,7 @@ function occupyPort(port: number): Promise<net.Server> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once("error", reject);
-    server.listen(port, "localhost", () => resolve(server));
+    server.listen(port, "127.0.0.1", () => resolve(server));
   });
 }
 
@@ -26,7 +26,7 @@ function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once("error", reject);
-    server.listen(0, "localhost", () => {
+    server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
       const port = typeof addr === "object" && addr ? addr.port : 0;
       server.close(() => resolve(port));
@@ -52,7 +52,9 @@ describe("proxy worker port fallback", () => {
     messages: string[];
     waitFor: (predicate: (m: string) => boolean) => Promise<string>;
   } {
-    const worker = new Worker(WORKER_PATH, { workerData });
+    const worker = new Worker(WORKER_PATH, {
+      workerData: { hostname: "app-42.localhost", ...workerData },
+    });
     cleanup.push(async () => {
       await worker.terminate();
     });

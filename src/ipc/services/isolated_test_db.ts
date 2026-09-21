@@ -8,8 +8,10 @@ import {
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
-import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
-import { retryOnLocked } from "../utils/retryOnLocked";
+import {
+  neonPreviewDomainService,
+  type NeonPreviewTarget,
+} from "./neon_preview_domain_service";
 import {
   checkRls,
   createTempTestUser,
@@ -240,39 +242,37 @@ export async function prepareIsolatedTestDatabase({
     // 4. Restart so the dev server reads the throwaway branch, then wait until
     //    it's serving again before Playwright points at it.
     emit("Starting the app against the isolated test database…\n", "setup");
-    const processId = await restartAppInPlace({ app, appPath });
+    const processId = await restartAppInPlace({
+      app,
+      appPath,
+      signal,
+      neonAuthTarget: branch.neonAuthBaseUrl
+        ? { projectId: app.neonProjectId!, branchId: branch.branchId }
+        : null,
+    });
     await waitForServerReady(app.id, signal, processId);
 
     // 5. If the app uses Neon Auth, provision a throwaway Better Auth account on
-    //    the branch so auth-gated recordings/tests can sign in. Best-effort: on
-    //    failure we run unauthenticated rather than dead-ending (non-auth flows
-    //    still work). No teardown needed — the account dies with the branch.
+    //    the branch so auth-gated recordings/tests can sign in. Trusted-domain
+    //    registration is required; account creation remains best-effort. The
+    //    account dies with the branch during normal teardown.
     let testCredentials: Record<string, string> | undefined;
     let authSetup: IsolationAuthSetup | undefined;
     if (branch.neonAuthBaseUrl) {
-      try {
-        // Neon Auth validates the browser's Origin on sign-in. A temporary
-        // branch gets its own Auth configuration, so it does not inherit the
-        // preview proxy origin trusted by the app's development branch. Add
-        // the exact origin the recorder and Playwright will use before handing
-        // them credentials; otherwise account creation succeeds but sign-in is
-        // rejected as an invalid origin.
-        const proxyUrl = runningApps.get(app.id)?.proxyUrl;
-        if (!proxyUrl) {
-          throw new Error(
-            "The preview proxy URL is unavailable for Neon Auth sign-in.",
-          );
-        }
-        await retryOnLocked(
-          () =>
-            ensureNeonAuthTrustedDomain({
-              projectId: app.neonProjectId!,
-              branchId: branch.branchId,
-              origin: new URL(proxyUrl).origin,
-            }),
-          `Trust preview origin for Neon test branch ${branch.branchId}`,
+      const info = runningApps.get(app.id);
+      if (!info?.proxyUrl)
+        throw new Error(
+          "The preview URL is unavailable for Neon Auth sign-in.",
         );
-
+      await neonPreviewDomainService.ensure({
+        appId: app.id,
+        processId: info.processId,
+        invocationRef: info.invocationRef,
+        target: { projectId: app.neonProjectId!, branchId: branch.branchId },
+        origin: new URL(info.proxyUrl).origin,
+        signal: signal ?? new AbortController().signal,
+      });
+      try {
         const account = await createNeonTestAccount({
           neonAuthBaseUrl: branch.neonAuthBaseUrl,
           appId: app.id,
@@ -567,9 +567,13 @@ async function restoreEnvFile(
 async function restartAppInPlace({
   app,
   appPath,
+  neonAuthTarget,
+  signal,
 }: {
   app: AppRow;
   appPath: string;
+  neonAuthTarget?: NeonPreviewTarget | null;
+  signal?: AbortSignal;
 }): Promise<number | undefined> {
   return appRunActorService.executeAlreadyLockedExternalRestart(
     app.id,
@@ -588,6 +592,8 @@ async function restartAppInPlace({
         appId: app.id,
         output,
         isNeon: !!app.neonProjectId,
+        neonAuthTarget,
+        previewAbortSignal: signal,
         installCommand: app.installCommand,
         startCommand: app.startCommand,
         invocationRef,

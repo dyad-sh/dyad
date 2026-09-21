@@ -1,3 +1,9 @@
+import { neonPreviewDomainService } from "./neon_preview_domain_service";
+import { ensureSupabasePreviewRedirects } from "./supabase_preview_redirect_service";
+import {
+  reconcileRunningNeonPreview,
+  reconcileRunningSupabasePreview,
+} from "./app_runtime_service";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import type { Worker } from "node:worker_threads";
@@ -49,6 +55,15 @@ const {
   spawnMock: vi.fn(),
   killPortMock: vi.fn<() => Promise<void>>(async () => {}),
   startProxyMock: vi.fn(),
+}));
+
+vi.mock("@/ipc/services/neon_preview_domain_service", () => ({
+  resolveNeonPreviewTarget: vi.fn().mockResolvedValue(null),
+  neonPreviewDomainService: { ensure: vi.fn().mockResolvedValue(undefined) },
+}));
+
+vi.mock("@/ipc/services/supabase_preview_redirect_service", () => ({
+  ensureSupabasePreviewRedirects: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -281,7 +296,17 @@ describe("executeApp", () => {
     spawnMock.mockReset();
     killPortMock.mockReset();
     killPortMock.mockResolvedValue(undefined);
+    vi.mocked(neonPreviewDomainService.ensure)
+      .mockReset()
+      .mockResolvedValue(undefined);
+    vi.mocked(ensureSupabasePreviewRedirects)
+      .mockReset()
+      .mockResolvedValue(undefined);
     startProxyMock.mockReset();
+    startProxyMock.mockImplementation(async (_url, opts) => {
+      opts.onStarted(`http://${opts.hostname}:${opts.port}`);
+      return { terminate: vi.fn() };
+    });
   });
 
   it("does not emit app-exit when a replaced process closes later", async () => {
@@ -930,10 +955,250 @@ describe("executeApp", () => {
     }
   });
 
+  it("registers Supabase callbacks before publishing the actual preview URL, including duplicate startup logs", async () => {
+    let finish!: () => void;
+    vi.mocked(ensureSupabasePreviewRedirects).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+    });
+    startProxyMock.mockImplementation(async (_url, opts) => {
+      opts.onStarted("http://app-42.localhost:42999");
+      return { terminate: vi.fn() };
+    });
+    const request = {
+      appId: 42,
+      output: createOutput(),
+      originalUrl: "http://localhost:32142",
+      mode: "host" as const,
+    };
+    const first = ensureProxyForRunningApp(request);
+    const duplicate = ensureProxyForRunningApp(request);
+    await vi.waitFor(() =>
+      expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(1),
+    );
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 42,
+        origin: "http://app-42.localhost:42999",
+      }),
+    );
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+    expect(safeSendMock).not.toHaveBeenCalled();
+    finish();
+    await Promise.all([first, duplicate]);
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42999");
+    expect(startProxyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the preview after a Supabase registration failure and retries when the running project is reconciled", async () => {
+    const output = createOutput();
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+      output,
+    });
+    vi.mocked(ensureSupabasePreviewRedirects).mockRejectedValueOnce(
+      new Error("private upstream details"),
+    );
+    await ensureProxyForRunningApp({
+      appId: 42,
+      output,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42142");
+    expect(safeSendMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "app:output",
+      expect.objectContaining({
+        type: "stderr",
+        message: expect.stringContaining("[supabase-auth]"),
+      }),
+    );
+    expect(JSON.stringify(safeSendMock.mock.calls)).not.toContain(
+      "private upstream details",
+    );
+    await reconcileRunningSupabasePreview(42);
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish a preview or auth warning after stopping during Supabase registration", async () => {
+    let fail!: (error: Error) => void;
+    vi.mocked(ensureSupabasePreviewRedirects).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+    });
+    const startup = ensureProxyForRunningApp({
+      appId: 42,
+      output: createOutput(),
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+    await vi.waitFor(() =>
+      expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(1),
+    );
+    runningApps.get(42)!.proxyAbortController!.abort();
+    fail(new Error("Stopped"));
+    await startup;
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+    expect(safeSendMock).not.toHaveBeenCalled();
+  });
+
+  it("waits for Neon reconciliation on the actual origin and serializes duplicate startup callbacks", async () => {
+    let finish!: () => void;
+    vi.mocked(neonPreviewDomainService.ensure).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const output = createOutput();
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+      neonAuthTarget: { projectId: "project", branchId: "active" },
+    });
+    startProxyMock.mockImplementation(async (_url, opts) => {
+      opts.onStarted("http://app-42.localhost:42999");
+      opts.onStarted("http://app-42.localhost:42142");
+      return { terminate: vi.fn() };
+    });
+    const request = {
+      appId: 42,
+      output,
+      originalUrl: "http://localhost:32142",
+      mode: "host" as const,
+    };
+    const startup = ensureProxyForRunningApp(request);
+    const duplicate = ensureProxyForRunningApp(request);
+    await vi.waitFor(() =>
+      expect(neonPreviewDomainService.ensure).toHaveBeenCalledTimes(1),
+    );
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+    expect(safeSendMock).not.toHaveBeenCalled();
+    expect(neonPreviewDomainService.ensure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: "http://app-42.localhost:42999",
+        target: { projectId: "project", branchId: "active" },
+      }),
+    );
+    finish();
+    await Promise.all([startup, duplicate]);
+    expect(startProxyMock).toHaveBeenCalledTimes(1);
+    expect(safeSendMock).toHaveBeenCalledTimes(1);
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42999");
+  });
+
+  it("opens with a persistent warning on registration timeout, then clears it on successful retry", async () => {
+    const output = createOutput();
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      output,
+      lastViewedAt: 0,
+      neonAuthTarget: { projectId: "project", branchId: "active" },
+    });
+    vi.mocked(neonPreviewDomainService.ensure).mockRejectedValueOnce(
+      new DOMException("Timed out", "TimeoutError"),
+    );
+    const request = {
+      appId: 42,
+      output,
+      originalUrl: "http://localhost:32142",
+      mode: "host" as const,
+    };
+    await ensureProxyForRunningApp(request);
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42142");
+    expect(runningApps.get(42)?.neonAuthWarning).toContain("Restart and retry");
+    expect(safeSendMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "app:output",
+      expect.objectContaining({
+        neonAuthWarning: expect.stringContaining("Restart and retry"),
+      }),
+    );
+    await reconcileRunningNeonPreview(42, {
+      projectId: "project",
+      branchId: "new-active",
+    });
+    expect(runningApps.get(42)?.neonAuthWarning).toBeUndefined();
+    expect(neonPreviewDomainService.ensure).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        target: { projectId: "project", branchId: "new-active" },
+      }),
+    );
+    expect(safeSendMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "app:output",
+      expect.objectContaining({ neonAuthWarning: undefined }),
+    );
+    expect(startProxyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["runtime", "isolated-test"])(
+    "does not publish readiness after %s cancellation during Neon registration",
+    async (source) => {
+      const externalAbort = new AbortController();
+      let finish!: () => void;
+      vi.mocked(neonPreviewDomainService.ensure).mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      runningApps.set(42, {
+        process: null,
+        processId: 8,
+        previewAbortSignal:
+          source === "isolated-test" ? externalAbort.signal : undefined,
+        mode: "host",
+        lastViewedAt: 0,
+        neonAuthTarget: { projectId: "project", branchId: "active" },
+      });
+      const work = ensureProxyForRunningApp({
+        appId: 42,
+        output: createOutput(),
+        originalUrl: "http://localhost:32142",
+        mode: "host",
+      });
+      await vi.waitFor(() =>
+        expect(neonPreviewDomainService.ensure).toHaveBeenCalled(),
+      );
+      if (source === "runtime")
+        runningApps.get(42)!.proxyAbortController!.abort();
+      else externalAbort.abort();
+      finish();
+      await work;
+      expect(safeSendMock).not.toHaveBeenCalled();
+      expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+    },
+  );
+
   it("starts the proxy on the deterministic port without killing the occupant", async () => {
     const terminate = vi.fn();
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {
-      opts.onStarted?.("http://localhost:42142");
+      opts.onStarted?.("http://app-42.localhost:42142");
       return { terminate };
     });
     runningApps.set(42, {
@@ -955,9 +1220,11 @@ describe("executeApp", () => {
       "http://localhost:32142",
       expect.objectContaining({
         port: 42142,
+        hostname: "app-42.localhost",
         authBootstrapToken: expect.any(String),
       }),
     );
+    expect(neonPreviewDomainService.ensure).not.toHaveBeenCalled();
     const proxyOptions = startProxyMock.mock.calls[0][1];
     expect(proxyOptions.authBootstrapToken).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -970,7 +1237,7 @@ describe("executeApp", () => {
     expect(killPortMock).not.toHaveBeenCalledWith(42142, "tcp");
   });
 
-  it("stamps a late proxy callback with the spawned process invocation", async () => {
+  it("discards a late proxy callback from a replaced process", async () => {
     let onStarted: ((proxyUrl: string) => void) | undefined;
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {
       onStarted = opts.onStarted;
@@ -995,13 +1262,14 @@ describe("executeApp", () => {
     });
 
     const event = createEvent();
-    await ensureProxyForRunningApp({
+    const startup = ensureProxyForRunningApp({
       appId: 42,
       output: createOutput(event),
       originalUrl: "http://localhost:32142",
       mode: "host",
       invocationRef: oldRef,
     });
+    await vi.waitFor(() => expect(onStarted).toBeDefined());
     runningApps.set(42, {
       process: null,
       processId: 2,
@@ -1010,14 +1278,15 @@ describe("executeApp", () => {
       lastViewedAt: Date.now(),
     });
 
-    onStarted?.("http://localhost:42142");
+    onStarted?.("http://app-42.localhost:42142");
+    await startup;
 
-    expect(safeSendMock).toHaveBeenCalledWith(
+    expect(safeSendMock).not.toHaveBeenCalledWith(
       event.sender,
       "app:output",
       expect.objectContaining({
         invocationRef: oldRef,
-        message: expect.stringContaining("http://localhost:42142"),
+        message: expect.stringContaining("http://app-42.localhost:42142"),
       }),
     );
     expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
@@ -1043,7 +1312,7 @@ describe("executeApp", () => {
       proxyWorker: {
         terminate: terminateReplacement,
       } as unknown as Worker,
-      proxyUrl: "http://localhost:42142",
+      proxyUrl: "http://app-42.localhost:42142",
       originalUrl: "http://localhost:32142",
       lastViewedAt: Date.now(),
     });
@@ -1060,7 +1329,7 @@ describe("executeApp", () => {
     expect(startProxyMock).not.toHaveBeenCalled();
     expect(runningApps.get(42)).toMatchObject({
       invocationRef: newRef,
-      proxyUrl: "http://localhost:42142",
+      proxyUrl: "http://app-42.localhost:42142",
       originalUrl: "http://localhost:32142",
     });
   });

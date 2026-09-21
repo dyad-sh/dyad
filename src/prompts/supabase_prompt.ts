@@ -18,12 +18,15 @@ export const SUPABASE_SERVICE_ROLE_BROWSER_RULE =
   "- **Keep the service role server-side:** The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.";
 export const SUPABASE_EDGE_FUNCTION_JWT_RULE =
   "- **Verify Edge Function JWTs:** Supabase Edge Functions deploy with `verify_jwt: false`. For authenticated or privileged operations, explicitly verify and decode the caller's JWT in function code; checking only that an Authorization header exists is not authentication.";
+export const SUPABASE_AUTH_REDIRECT_RULE =
+  "- **Always supply auth redirect URLs:** Every Supabase auth flow that returns through a URL MUST specify an absolute callback URL for the current app. In browser event handlers, build it with `new URL(callbackPath, window.location.origin).href`; for SSR, use the framework's trusted request origin or configured application origin, never a hardcoded localhost URL or an unvalidated forwarded host. Use `options.redirectTo` for `signInWithOAuth` and `linkIdentity`, `options.emailRedirectTo` for `signUp`, email `signInWithOtp`, `resend`, and email `updateUser`, and `{ redirectTo }` as the second argument to `resetPasswordForEmail`. Pass `redirectTo` to the Auth UI component too. Do not rely on the project's Site URL fallback or change Site URL to fix local redirects. Register and implement the chosen public callback/reset routes, including session/code handling for the client's auth flow; password recovery must reach a password-update screen. When modifying existing auth, replace hardcoded localhost callbacks and add missing redirect options.";
 export const SUPABASE_DISCONNECTED_SYSTEM_PROMPT = `
 This app is already linked to a Supabase project, but credentials for its Supabase organization are unavailable. Do not offer to add another database integration. Tell the user to reconnect the linked Supabase organization before attempting provider operations.
 
 Continue to preserve these Supabase code-safety invariants while disconnected:
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
 ${SUPABASE_EDGE_FUNCTION_JWT_RULE}
+${SUPABASE_AUTH_REDIRECT_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_ROOT_RLS_RULE}
 ${SUPABASE_ROOT_NO_MANUAL_MIGRATIONS_RULE}`;
@@ -48,6 +51,21 @@ ${supabaseClientCode}
 2. **Add the dependency** \`@supabase/supabase-js\` to the project.
 
 ## Auth
+
+${SUPABASE_AUTH_REDIRECT_RULE}
+
+Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist without changing Site URL. Deployment callback URLs must also be allowed in the project's URL Configuration. The callback path must exist in the app; adding a redirect option alone does not implement it. If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
+
+Browser examples (use the callback routes you actually implement):
+\`\`\`typescript
+const callbackUrl = new URL('/auth/callback', window.location.origin).href;
+const resetUrl = new URL('/reset-password', window.location.origin).href;
+
+await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl } });
+await supabase.auth.signUp({ email, password, options: { emailRedirectTo: callbackUrl } });
+await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callbackUrl } });
+await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });
+\`\`\`
 
 When asked to add authentication or login feature to the app, always follow these steps:
 
@@ -116,6 +134,7 @@ function Login() {
   return (
     <Auth
       supabaseClient={supabase}
+      redirectTo={new URL('/auth/callback', window.location.origin).href}
       providers={[]}
       appearance={{
         theme: ThemeSupa,

@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentCommitHash: vi.fn(),
   prepareIsolatedTestDatabase: vi.fn(),
   isTestRunActive: vi.fn().mockReturnValue(false),
-  clearStorageData: vi.fn().mockResolvedValue(undefined),
+  clearData: vi.fn().mockResolvedValue(undefined),
   safeSend: vi.fn(),
   restoreAppFromTestBranch: vi.fn(),
   runningApps: new Map<number, any>(),
@@ -32,7 +32,12 @@ vi.mock("../../db/schema", () => ({
   chats: { id: "chat-id" },
 }));
 vi.mock("electron", () => ({
-  session: { defaultSession: { clearStorageData: mocks.clearStorageData } },
+  session: {
+    defaultSession: {
+      clearData: mocks.clearData,
+      cookies: { get: vi.fn().mockResolvedValue([]), remove: vi.fn() },
+    },
+  },
 }));
 vi.mock("../utils/process_manager", () => ({ runningApps: mocks.runningApps }));
 // The real operation coordinator, deliberately: a session owns the app's
@@ -124,7 +129,7 @@ beforeEach(() => {
   resetRecordedTestDrafts();
   mocks.runningApps.clear();
   mocks.runningApps.set(1, {
-    proxyUrl: "http://localhost:42100",
+    proxyUrl: "http://app-1.localhost:42100",
     authBootstrapToken: "00000000-0000-4000-8000-000000000001",
   });
   mocks.findFirst.mockResolvedValue({
@@ -378,8 +383,8 @@ describe("recording:start / recording:stop", () => {
       "00000000-0000-4000-8000-000000000001",
     );
     expect(result.infraError).toBeUndefined();
-    expect(mocks.clearStorageData).toHaveBeenCalledWith(
-      expect.objectContaining({ origin: "http://localhost:42100" }),
+    expect(mocks.clearData).toHaveBeenCalledWith(
+      expect.objectContaining({ origins: ["http://app-1.localhost:42100"] }),
     );
     // The lock is still held (session running) until stop.
     expect(activeRecordings.has(1)).toBe(true);
@@ -435,15 +440,15 @@ describe("recording:start / recording:stop", () => {
     const { event } = makeEvent();
 
     await startHandler(event, { appId: 1 });
-    expect(mocks.clearStorageData).toHaveBeenCalledTimes(1);
+    expect(mocks.clearData).toHaveBeenCalledTimes(1);
 
     await stopHandler(event, { appId: 1 });
 
-    expect(mocks.clearStorageData).toHaveBeenCalledTimes(2);
-    expect(mocks.clearStorageData).toHaveBeenLastCalledWith(
+    expect(mocks.clearData).toHaveBeenCalledTimes(2);
+    expect(mocks.clearData).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        origin: "http://localhost:42100",
-        storages: expect.arrayContaining(["localstorage", "cookies"]),
+        origins: ["http://app-1.localhost:42100"],
+        dataTypes: expect.arrayContaining(["localStorage", "serviceWorkers"]),
       }),
     );
   });
@@ -453,7 +458,7 @@ describe("recording:start / recording:stop", () => {
     // — but the session goes on to seed the temporary test user's credentials
     // under that origin either way. Forgetting the origin because the first
     // clear threw is what leaves them in the preview after the user is deleted.
-    mocks.clearStorageData.mockRejectedValueOnce(new Error("clear failed"));
+    mocks.clearData.mockRejectedValueOnce(new Error("clear failed"));
     const prepared = makePrepared();
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(prepared);
     const { event } = makeEvent();
@@ -463,9 +468,9 @@ describe("recording:start / recording:stop", () => {
 
     await stopHandler(event, { appId: 1 });
 
-    expect(mocks.clearStorageData).toHaveBeenCalledTimes(2);
-    expect(mocks.clearStorageData).toHaveBeenLastCalledWith(
-      expect.objectContaining({ origin: "http://localhost:42100" }),
+    expect(mocks.clearData).toHaveBeenCalledTimes(2);
+    expect(mocks.clearData).toHaveBeenLastCalledWith(
+      expect.objectContaining({ origins: ["http://app-1.localhost:42100"] }),
     );
   });
 
@@ -627,7 +632,7 @@ describe("recording:start / recording:stop", () => {
     const result = await startHandler(event, { appId: 1 });
 
     expect(result.infraError?.message).toMatch(/app stopped while/i);
-    expect(mocks.clearStorageData).not.toHaveBeenCalled();
+    expect(mocks.clearData).not.toHaveBeenCalled();
     // The isolation that was already stood up has to come back down.
     await activeRecordings.get(1)?.done;
     expect(prepared.teardown).toHaveBeenCalledTimes(1);

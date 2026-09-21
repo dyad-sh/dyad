@@ -9,6 +9,7 @@ import log from "electron-log";
 import { eq } from "drizzle-orm";
 
 import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import { ensureSupabasePreviewRedirects } from "./supabase_preview_redirect_service";
 import { abortable } from "../utils/abortable";
 import {
   neonPreviewDomainService,
@@ -470,8 +471,10 @@ async function registerPreviewOrigin(
   appInfo: RunningAppInfo,
   proxyUrl: string,
   target = appInfo.neonAuthTarget,
+  output = appInfo.output,
 ) {
-  if (!target) return;
+  await registerSupabasePreviewOrigin(appId, appInfo, proxyUrl, output);
+  if (!target || runningApps.get(appId) !== appInfo) return;
   const controller = (appInfo.proxyAbortController ??= new AbortController());
   const signal = appInfo.previewAbortSignal
     ? AbortSignal.any([controller.signal, appInfo.previewAbortSignal])
@@ -492,6 +495,49 @@ async function registerPreviewOrigin(
     appInfo.neonAuthWarning =
       "Neon could not register this app's preview address. Login and authentication redirects may fail. Restart and retry.";
     logger.warn("Neon preview registration failed for app " + appId, error);
+  }
+}
+
+/** Caller owns provider admission; also covers linking an already-running app. */
+export async function reconcileRunningSupabasePreview(appId: number) {
+  const appInfo = runningApps.get(appId);
+  if (!appInfo?.proxyUrl) return;
+  await registerSupabasePreviewOrigin(appId, appInfo, appInfo.proxyUrl);
+}
+
+async function registerSupabasePreviewOrigin(
+  appId: number,
+  appInfo: RunningAppInfo,
+  proxyUrl: string,
+  output = appInfo.output,
+) {
+  const controller = (appInfo.proxyAbortController ??= new AbortController());
+  const signal = appInfo.previewAbortSignal
+    ? AbortSignal.any([controller.signal, appInfo.previewAbortSignal])
+    : controller.signal;
+  if (runningApps.get(appId) !== appInfo || signal.aborted) return;
+  try {
+    await ensureSupabasePreviewRedirects({
+      appId,
+      origin: new URL(proxyUrl).origin,
+      signal,
+    });
+  } catch (error) {
+    if (runningApps.get(appId) !== appInfo || signal.aborted) return;
+    logger.warn(
+      "Supabase preview redirect registration failed for app " + appId,
+      error,
+    );
+    // Keep the preview usable, but expose a fixed, actionable message in its
+    // console. Raw provider errors can contain credentials or private data.
+    output?.send({
+      type: "stderr",
+      appId,
+      invocationRef: appInfo.invocationRef,
+      message:
+        "[supabase-auth] Could not register this app's preview redirect URLs. Authentication redirects may fail. Check your Supabase connection and restart the app to retry, or add " +
+        `${new URL(proxyUrl).origin} and ${new URL(proxyUrl).origin}/** in Supabase Authentication > URL Configuration > Redirect URLs.`,
+    });
   }
 }
 
@@ -599,7 +645,7 @@ export async function ensureProxyForRunningApp({
       appInfo.authBootstrapToken = authBootstrapToken;
       const proxyUrl = await readyUrl;
       if (!current()) return;
-      await registerPreviewOrigin(appId, appInfo, proxyUrl);
+      await registerPreviewOrigin(appId, appInfo, proxyUrl, undefined, output);
       if (!current()) return;
       appInfo.proxyUrl = proxyUrl;
       emitProxyServerStarted({
@@ -1741,7 +1787,13 @@ export class AppRuntimeService {
       if (existing) {
         logger.debug(`App ${appId} is already running.`);
         if (existing.proxyUrl && existing.originalUrl) {
-          await registerPreviewOrigin(appId, existing, existing.proxyUrl);
+          await registerPreviewOrigin(
+            appId,
+            existing,
+            existing.proxyUrl,
+            undefined,
+            output,
+          );
           if (
             this.dependencies.getRunningApp(appId) !== existing ||
             existing.proxyAbortController?.signal.aborted

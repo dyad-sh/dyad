@@ -6,6 +6,7 @@ import {
   resolveImplementerProvider,
 } from "@/prompts/local_agent_prompt";
 import {
+  SUPABASE_AUTH_REDIRECT_RULE,
   SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
   SUPABASE_GRANTS_AND_RLS_RULE,
@@ -50,6 +51,9 @@ describe("local_agent_prompt", () => {
   it("keeps Supabase safety invariants in the disconnected root prompt", () => {
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
       SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      SUPABASE_AUTH_REDIRECT_RULE,
     );
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
       SUPABASE_EDGE_FUNCTION_JWT_RULE,
@@ -181,6 +185,7 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain("You are Dyad Implementer");
     expect(prompt).toContain('<provider_invariants provider="supabase">');
+    expect(prompt).toContain(SUPABASE_AUTH_REDIRECT_RULE);
     expect(prompt).toContain(SUPABASE_SERVICE_ROLE_BROWSER_RULE);
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
     expect(prompt).toContain(SUPABASE_IMPLEMENTER_RLS_RULE);
